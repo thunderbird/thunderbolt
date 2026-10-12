@@ -16,6 +16,7 @@ import type { PermissionOption, RequestPermissionRequest, RequestPermissionRespo
 import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
+import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -94,6 +95,10 @@ export type ChatSession = {
    *  with a live request (see `getTurnActivity`), so lingering is harmless there. */
   stopping: boolean
   selectedAgent: Agent
+  /** The user picked `selectedAgent`, or a model (which only the built-in uses),
+   *  in this chat, so a late-arriving discovered default must not replace it.
+   *  False when the agent came from the fallback chain. */
+  agentChosenByUser: boolean
   selectedModel: Model
   /**
    * Owning project for this chat, or null for a loose chat. Resolved at
@@ -120,13 +125,37 @@ type ChatStoreState = {
   reconnectClient: ReconnectClient
   models: Model[]
   sessions: Map<string, ChatSession>
+  /** What this session's discovery reported as the default agent, held in memory
+   *  so a chat that hydrates while discovery lands resolves against it rather than
+   *  against `agents_system` rows read before discovery wrote or cleared them. */
+  agentDiscovery: AgentDiscovery
 }
+
+/**
+ * `pending` until the current discovery run answers, so hydration falls back to
+ * the cached `is_default` row (a returning visitor). It goes back to `pending`
+ * whenever a run starts for a new account or server, so the last one's answer is
+ * never taken for this one's. `done` once the run has answered: its
+ * `defaultAgent` wins over the row, including a `null` that cleared it, and
+ * `agents` is the list it loaded after writing its rows, which hydration's own
+ * read may predate.
+ */
+type AgentDiscovery = { status: 'pending' } | { status: 'done'; defaultAgent: Agent | null; agents: Agent[] }
 
 type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
+  /** Record what discovery reported as the default agent (null when it names
+   *  none, or answered 401/403) and re-run `resolveSessionAgent` for every chat
+   *  that is brand-new, unstarted and still on the agent the fallback chain gave
+   *  it, against the refreshed `agents`. Discovery can land after such a chat
+   *  resolved its agent, as on a first visit, or seed an agent the user's synced
+   *  pick names. Chats whose agent or model the user picked are left alone. */
+  applyDiscoveredDefaultAgent(defaultAgent: Agent | null, agents: Agent[], preference: AgentPreference): void
+  /** Put discovery back to `pending` as a run starts for a new account or server. */
+  resetAgentDiscovery(): void
   cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
@@ -164,6 +193,7 @@ const initialState: ChatStoreState = {
   reconnectClient: async () => null,
   models: [],
   sessions: new Map(),
+  agentDiscovery: { status: 'pending' },
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
@@ -214,6 +244,26 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       set({ sessions: nextSessions })
     }
   },
+
+  applyDiscoveredDefaultAgent: (defaultAgent, agents, preference) => {
+    const nextSessions = new Map(get().sessions)
+    for (const session of get().sessions.values()) {
+      const isUnstartedNewChat = !session.chatThread && session.chatInstance.messages.length === 0
+      if (!isUnstartedNewChat || session.agentChosenByUser) {
+        continue
+      }
+      const selectedAgent = resolveSessionAgent(agents, {
+        ...preference,
+        discoveredDefaultAgent: defaultAgent ?? undefined,
+      })
+      if (selectedAgent.id !== session.selectedAgent.id) {
+        nextSessions.set(session.id, { ...session, selectedAgent })
+      }
+    }
+    set({ agentDiscovery: { status: 'done', defaultAgent, agents }, sessions: nextSessions })
+  },
+
+  resetAgentDiscovery: () => set({ agentDiscovery: { status: 'pending' } }),
 
   cancelPendingPermissionsForAgent: (agentId) => {
     const matching = [...get().sessions.entries()].filter(
@@ -364,7 +414,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
     const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
+    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent, agentChosenByUser: true })
 
     set({ sessions: nextSessions })
 
@@ -398,7 +448,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
 
     const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedModel: model })
+    // The picker only shows for the built-in agent, so picking a model is choosing it too.
+    nextSessions.set(id, { ...session, selectedModel: model, agentChosenByUser: true })
 
     set({ sessions: nextSessions })
 

@@ -61,14 +61,14 @@ Default-data tables use composite primary keys so multiple users can hold the sa
 
 `src/db/powersync/schema.ts` splits the client schema into `syncedTables` (the twelve above) and `localOnlyTables`. The latter carry `options: { localOnly: true }`: created in SQLite, never streamed.
 
-| Table                  | Holds                                                                     |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `models_secrets`       | Model API keys                                                            |
-| `integrations_secrets` | Google / Microsoft OAuth tokens                                           |
-| `mcp_servers`          | MCP server configuration                                                  |
-| `mcp_secrets`          | MCP bearer tokens / API keys                                              |
-| `agents_system`        | System-provided ACP agents, hydrated from the backend `/agents` discovery |
-| `agents_secrets`       | ACP agent credentials                                                     |
+| Table                  | Holds                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `models_secrets`       | Model API keys                                                                                   |
+| `integrations_secrets` | Google / Microsoft OAuth tokens                                                                  |
+| `mcp_servers`          | MCP server configuration                                                                         |
+| `mcp_secrets`          | MCP bearer tokens / API keys                                                                     |
+| `agents_system`        | System-provided agents (ACP and the hosted agent), hydrated from the backend `/agents` discovery |
+| `agents_secrets`       | ACP agent credentials                                                                            |
 
 - `models` + `models_secrets` and `agents` + `agents_secrets` sync the config row, keep the credential on-device. Both MCP halves stay local: a replicated server entry without its credentials is one no other device can connect to. `agents_system` caches a backend response the other device can fetch itself.
 - `src/dal/mcp-servers.ts` writes both MCP halves in one transaction (`createMcpServerWithCredentials`, `updateMcpServerWithCredentials`); connect-time code reads the secret, so a partial write orphans it or connects unauthenticated.

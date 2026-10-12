@@ -14,12 +14,14 @@ import {
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { getClock } from '@/testing-library'
+import { builtInAgent } from '@/defaults/agents'
+import type { Agent } from '@/types/acp'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
 
@@ -51,6 +53,27 @@ const createMockUseContextTracking =
     isLoading: false,
     estimateTokensForInput: (_input: string) => 0,
   })
+
+const remoteAcpAgent: Agent = {
+  ...builtInAgent,
+  id: 'remote-agent',
+  type: 'remote-acp',
+  transport: 'websocket',
+  url: 'wss://agent.example/ws',
+  isSystem: 0,
+  userId: 'user-1',
+}
+
+const hostedAgent: Agent = {
+  ...builtInAgent,
+  id: 'hosted-agent',
+  type: 'managed-http',
+  transport: 'http',
+  url: '/v1/agent/chat',
+}
+
+/** Skips the agent warm-up, which would otherwise open a real connection to a test agent's url. */
+const noWarmUp = () => {}
 
 const createMockUseIsMobile =
   (isMobile: boolean = false) =>
@@ -540,6 +563,48 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('attach control', () => {
+    const openAddMenu = () =>
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), { button: 0, ctrlKey: false })
+
+    it.each([
+      ['the built-in agent', builtInAgent],
+      ['an ACP agent', remoteAcpAgent],
+    ])('offers Upload file for %s', async (_label, agent) => {
+      // A real connection to the test agent's url fails asynchronously and poisons later tests.
+      const openSocket = spyOn(globalThis, 'WebSocket')
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      openAddMenu()
+
+      expect(screen.getByRole('menuitem', { name: 'Upload file' })).toBeInTheDocument()
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(openSocket).not.toHaveBeenCalled()
+      openSocket.mockRestore()
+    })
+
+    it('hides Upload file for the hosted agent, which takes no attachments', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      openAddMenu()
+
+      expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Upload file' })).toBeNull()
+    })
+  })
+
   describe('clipboard paste', () => {
     type ClipboardItemInit = { kind: string; type: string; getAsFile: () => File | null }
 
@@ -616,6 +681,91 @@ describe('ChatPromptInput', () => {
       await flushAttachments()
 
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+    })
+
+    it('lets a file paste fall through untouched for the hosted agent', async () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+      const file = new File(['data'], 'shot.png', { type: 'image/png' })
+      const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+      await flushAttachments()
+
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+      expect(screen.queryByLabelText('Remove shot.png')).toBeNull()
+    })
+
+    it.each([
+      ['the hosted agent', hostedAgent, false],
+      ['the built-in agent', builtInAgent, true],
+    ])('on a file drop, %s attaches it: %p', async (_label, agent, attaches) => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
+      const file = new File(['data'], 'dropped.png', { type: 'image/png' })
+      fireEvent.dragOver(textarea)
+      expect(screen.queryByText('Drop file to attach') !== null).toBe(attaches)
+      fireEvent.drop(textarea, { dataTransfer: { files: [file] } })
+      await flushAttachments()
+
+      expect(screen.queryByLabelText('Remove dropped.png') !== null).toBe(attaches)
+    })
+
+    describe('files queued before the chat moved to the hosted agent', () => {
+      /** Queue an image on the built-in agent, then move the chat onto the hosted agent. */
+      const renderWithQueuedImageOnHostedAgent = async () => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const { container } = render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['data'], 'queued.png', { type: 'image/png' })
+        pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
+        await flushAttachments()
+        fireEvent.change(textarea, { target: { value: 'What is in this picture?' } })
+        act(() => {
+          useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+        })
+        const submit = async () => {
+          await act(async () => {
+            fireEvent.submit(container.querySelector('form')!)
+          })
+        }
+        return { sendMessage: mockChatInstance.sendMessage, submit }
+      }
+
+      it('keeps the queued file visible, says why, and holds the send', async () => {
+        const { sendMessage, submit } = await renderWithQueuedImageOnHostedAgent()
+
+        expect(screen.getByLabelText('Remove queued.png')).toBeInTheDocument()
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          `${hostedAgent.name} can't take attachments. Remove the attached files to send.`,
+        )
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('sends again once the queued file is removed', async () => {
+        const { sendMessage, submit } = await renderWithQueuedImageOnHostedAgent()
+
+        fireEvent.click(screen.getByLabelText('Remove queued.png'))
+        await flushAttachments()
+
+        expect(screen.queryByRole('alert')).toBeNull()
+        await submit()
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
     })
 
     describe('image support gate', () => {

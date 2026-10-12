@@ -19,6 +19,7 @@ import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { getSettings } from '@/config/settings'
+import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
@@ -32,7 +33,7 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { captchaTokenHeader, createCaptchaVerifier } from './captcha'
+import { captchaTokenHeader, createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
@@ -147,13 +148,29 @@ const buildSsoPlugins = () => {
   return []
 }
 
+/** The single key of the deployment-wide anonymous sign-in budget: every client shares it. */
+const anonymousSignInBudgetKey = 'all'
+
+/** Rate-limit headers as Better Auth's `ctx.error` takes them. */
+const toHeaderRecord = (headers: RateLimitSet['headers']) =>
+  Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, String(value)]))
+
 export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {}) => {
   const settings = getSettings()
   const parsedOrigins = parseTrustedOrigins(process.env.TRUSTED_ORIGINS)
   const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
   const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
   const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
-  const captchaVerifier = createCaptchaVerifier(settings)
+  const captchaProvider = createCaptchaProvider(settings, database)
+  // Deployment-wide anonymous sign-in budget: one bucket every client shares. Charged in the
+  // before-hook only once a sign-in has passed the captcha, so unsolved attempts cannot drain
+  // it; the per-IP bucket runs earlier, in the Elysia limiter around the mount.
+  const anonymousSignInBudget = settings.authAllowAnonymous
+    ? createRateLimitConsumer(database, { enabled: settings.rateLimitEnabled }, 'anonymous-sign-in-global', {
+        max: settings.anonymousSignInGlobalRateLimitMax,
+        durationSecs: settings.anonymousSignInGlobalRateLimitWindowSecs,
+      })
+    : null
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -192,9 +209,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only. The captcha
-    // on anonymous sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once a
-    // provider ships (THU-113).
+    // horizontally-scaled deployments. Provides single-instance defence only. Today this
+    // limiter and the DB-backed `auth` IP tier are the controls; the captcha on anonymous
+    // sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once the app supports
+    // ALTCHA.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
@@ -266,15 +284,25 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           // Better Auth's hook context exposes no socket address, so only a trusted proxy
           // header can identify the client here.
           const headers = ctx.headers ?? new Headers()
-          const captchaSolved = await captchaVerifier.verify(headers.get(captchaTokenHeader), {
+          const captchaSolved = await captchaProvider.verify(headers.get(captchaTokenHeader), {
             clientIp: extractClientIp(headers, 'unknown', settings.trustedProxy),
           })
           if (!captchaSolved) {
-            throw ctx.error('FORBIDDEN', { message: 'Captcha verification failed' })
+            throw ctx.error('FORBIDDEN', {
+              message: 'Captcha verification failed',
+              code: 'CAPTCHA_VERIFICATION_FAILED',
+            })
           }
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
           if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
             throw ctx.error('BAD_REQUEST', { message: 'Already authenticated' })
+          }
+          if (anonymousSignInBudget) {
+            const set: RateLimitSet = { headers: {} }
+            const rejected = await anonymousSignInBudget(anonymousSignInBudgetKey, set)
+            if (rejected) {
+              throw ctx.error('TOO_MANY_REQUESTS', { message: rejected.error }, toHeaderRecord(set.headers))
+            }
           }
           return
         }
@@ -372,7 +400,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         resendStrategy: 'reuse', // Preserves attempt counter on resend (prevents reset-by-resend attack).
         // Defense-in-depth: 8-digit OTP (100M keyspace) + 3 attempts + 15s cooldown between
         // code requests + session binding (challenge token) make brute-force infeasible.
-        // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)

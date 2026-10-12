@@ -2,21 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import {
+  isBlankTextPart,
+  isHostedAgentPartType,
+  maxHostedAgentHistoryMessages,
+  startsAndEndsOnUserMessage,
+} from '@shared/hosted-agent-history'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
 
-/** Most messages per request. Well past a long chat, and it bounds the work spent validating one request. */
-export const maxHistoryMessages = 200
-
 /**
- * Parts the client may replay: text only. Each schema rebuilds the part from known fields only, so
- * client-forged `providerMetadata` never reaches the provider. A blank text part is dropped: `useChat` leaves
- * one behind when a reply is stopped as it starts, and Anthropic rejects the empty assistant message it would
- * become.
+ * Parts the client may replay: text only (see `isHostedAgentPartType` in `@shared/hosted-agent-history`). Each
+ * schema rebuilds the part from known fields only, so client-forged `providerMetadata` never reaches the
+ * provider. Blank text parts are dropped (see `isBlankTextPart`).
  */
 const textPartSchema = z
   .object({ type: z.literal('text'), text: z.string() })
-  .transform((part) => (part.text.trim() === '' ? null : part))
+  .transform((part) => (isBlankTextPart(part) ? null : part))
 
 /**
  * Any message carrying a file part, in any role. The agent takes no attachments yet, whatever its model, so a
@@ -47,24 +49,24 @@ const droppedPartSchema = z
 /** Remove the parts the schemas above mapped to null. */
 const withoutDroppedParts = <Part>(parts: (Part | null)[]): Part[] => parts.filter((part) => part !== null)
 
+/** A role's replayed parts, checked against the shared per-role rule. Files never get here: `containsFilePart`
+ *  refuses them first, with their own reason. */
+const partsSchemaFor = (role: 'user' | 'assistant') =>
+  z
+    .array(z.union([textPartSchema, droppedPartSchema]))
+    .transform(withoutDroppedParts)
+    .refine((parts) => parts.every((part) => isHostedAgentPartType(role, part.type)))
+
 const messageSchema = z.discriminatedUnion('role', [
-  z.object({
-    id: z.string(),
-    role: z.literal('user'),
-    parts: z.array(z.union([textPartSchema, droppedPartSchema])).transform(withoutDroppedParts),
-  }),
-  z.object({
-    id: z.string(),
-    role: z.literal('assistant'),
-    parts: z.array(z.union([textPartSchema, droppedPartSchema])).transform(withoutDroppedParts),
-  }),
+  z.object({ id: z.string(), role: z.literal('user'), parts: partsSchemaFor('user') }),
+  z.object({ id: z.string(), role: z.literal('assistant'), parts: partsSchemaFor('assistant') }),
   // Client system messages are dropped whole, so their parts are never inspected.
   z.object({ id: z.string(), role: z.literal('system'), parts: z.array(z.unknown()) }),
 ])
 
 const requestSchema = z.object({
   id: z.string(),
-  messages: z.array(messageSchema).max(maxHistoryMessages),
+  messages: z.array(messageSchema).max(maxHostedAgentHistoryMessages),
 })
 
 export type AgentChatRequest = { id: string; messages: UIMessage[] }
@@ -74,10 +76,10 @@ export type AgentChatParseResult =
 
 /**
  * Parse a `DefaultChatTransport` body into a history safe to send to the model. Client system messages and
- * the parts above are dropped. A file part anywhere is refused as `files_unsupported`. Too many messages and
- * unknown part types are `invalid`, as is a history that does not start and end with a user message:
- * Anthropic treats a trailing assistant message as prefill, which would let a caller write the start of the
- * answer. The byte cap is enforced earlier, while the body is read (see `readBoundedJson`).
+ * the parts above are dropped. A file part anywhere is refused as `files_unsupported`, before any of the shared
+ * rules from `@shared/hosted-agent-history` run. Too many messages and unknown part types are `invalid`, as is
+ * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`). The byte cap
+ * is enforced earlier, while the body is read (see `readBoundedJson`).
  */
 export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
   if (containsFilePart(body)) {
@@ -93,7 +95,7 @@ export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
     }
     return message.parts.length === 0 ? [] : [{ id: message.id, role: message.role, parts: message.parts }]
   })
-  if (messages[0]?.role !== 'user' || messages.at(-1)?.role !== 'user') {
+  if (!startsAndEndsOnUserMessage(messages)) {
     return { ok: false, reason: 'invalid' }
   }
   return { ok: true, value: { id: parsed.data.id, messages } }

@@ -20,9 +20,10 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
+import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
+import { isHostedAgent } from '@/defaults/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
-import { builtInAgent } from '@/defaults/agents'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -34,6 +35,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
+import { resolveSessionAgent } from './resolve-session-agent'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 
 type UseHydrateChatStoreParams = {
@@ -141,6 +143,9 @@ export const useHydrateChatStore = ({
       // on this first save, so both must ride the session to reach it.
       projectId: session.projectId,
       miniAppId: session.miniAppId,
+      // The hosted agent sends the chat to the backend unencrypted, so its threads
+      // are never private chats, whatever the (unused) selected model is.
+      isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
     })
 
     // Save messages and update context size using DAL
@@ -231,46 +236,32 @@ export const useHydrateChatStore = ({
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
     // and the dropdown agree on whether the built-in exists.
     const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
-    const allAgents = composeAllAgents(
-      systemAgentRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        type: row.type,
-        transport: row.transport,
-        url: row.url,
-        description: row.description,
-        icon: row.icon,
-        isSystem: 1 as const,
-        enabled: 1 as const,
-        deletedAt: null,
-        userId: null,
-      })),
-      customAgentRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        type: row.type,
-        transport: row.transport,
-        url: row.url,
-        description: row.description,
-        icon: row.icon,
-        isSystem: 0 as const,
-        enabled: row.enabled === 1 ? (1 as const) : (0 as const),
-        deletedAt: row.deletedAt,
-        userId: row.userId,
-      })),
-      { includeBuiltIn },
-    )
-    // Resolve the thread's persisted agent. When it no longer resolves (deleted
-    // custom, unsynced system, or built-in disabled by the deployment) fall back
-    // to the user's last-used agent (the global `selected_agent` setting), so a
-    // new chat defaults to it rather than always the first/built-in agent. Both
-    // fall back to the first available agent — silently, so enterprise users who
-    // never had the built-in just continue with their own agent. `builtInAgent`
-    // is the last-resort safety net for the degenerate zero-agent deployment.
-    const findAgent = (agentId: string | null | undefined) =>
-      agentId ? allAgents.find((a) => a.id === agentId) : undefined
-    const selectedAgent =
-      findAgent(chatThread?.agentId) ?? findAgent(settings.selectedAgent) ?? allAgents[0] ?? builtInAgent
+    const allAgents = composeAllAgents(systemAgentRows.map(systemRowToAgent), customAgentRows.map(customRowToAgent), {
+      includeBuiltIn,
+    })
+    // Only a brand-new chat takes the discovered default; a persisted thread with
+    // no agent of its own stays on the fallback chain. Read after the last await
+    // so nothing can land between this and `createSession`. Once discovery has
+    // answered, its result wins over `agents_system` rows read before it wrote or
+    // cleared them; until then the cached `is_default` row stands in.
+    const { agentDiscovery } = useChatStore.getState()
+    const discoveredDefaultRowId = systemAgentRows.find((row) => row.isDefault === 1)?.id
+    const discoveredDefaultAgent = chatThread
+      ? undefined
+      : agentDiscovery.status === 'done'
+        ? (agentDiscovery.defaultAgent ?? undefined)
+        : allAgents.find((agent) => agent.id === discoveredDefaultRowId)
+    // A finished discovery's own list covers agents its write added after the read above.
+    const knownAgents =
+      agentDiscovery.status === 'done'
+        ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
+        : allAgents
+    const selectedAgent = resolveSessionAgent(knownAgents, {
+      threadAgentId: chatThread?.agentId,
+      lastUsedAgentId: settings.selectedAgent,
+      hasModelPick: !!settings.selectedModel,
+      discoveredDefaultAgent,
+    })
 
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
@@ -304,6 +295,7 @@ export const useHydrateChatStore = ({
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,
+      agentChosenByUser: false,
       selectedModel: defaultModel,
       projectId,
       miniAppId,

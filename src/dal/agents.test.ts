@@ -9,9 +9,18 @@ import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AgentAdapter } from '@/types/acp'
-import type { AgentDiscoveryResponse } from '@shared/acp-types'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
+import type { AgentDiscoveryResponse, CustomAgentType } from '@shared/acp-types'
+import { eq } from 'drizzle-orm'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import {
+  composeAllAgents,
+  createAgent,
+  deleteAgent,
+  getAgentSecrets,
+  loadAllAgents,
+  setAgentSecrets,
+  updateAgent,
+} from './agents'
 import { getChatThread } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
@@ -267,6 +276,54 @@ describe('agents DAL', () => {
     })
   })
 
+  describe('loadAllAgents', () => {
+    const seedSystemAndCustomRows = async () => {
+      await getDb().insert(agentsSystemTable).values({
+        id: 'hosted-agent',
+        name: 'Assistant',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+      })
+      await createAgent(getDb(), {
+        id: 'custom-agent',
+        name: 'Custom',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://custom.example/ws',
+        userId: 'u1',
+      })
+    }
+
+    it('loads the built-in agent, then system rows, then custom rows', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.map((agent) => agent.id)).toEqual([builtInAgent.id, 'hosted-agent', 'custom-agent'])
+    })
+
+    it('leaves the built-in agent out when the deployment disables it', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb(), { includeBuiltIn: false })
+
+      expect(agents.map((agent) => agent.id)).toEqual(['hosted-agent', 'custom-agent'])
+    })
+
+    it('clamps a custom row whose plaintext type was rewritten to managed-http', async () => {
+      await seedSystemAndCustomRows()
+      // What a server could write into the synced, unencrypted `type` column.
+      const rewrittenType = 'managed-http' as CustomAgentType
+      await getDb().update(agentsTable).set({ type: rewrittenType }).where(eq(agentsTable.id, 'custom-agent'))
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.find((agent) => agent.id === 'custom-agent')?.type).toBe('remote-acp')
+    })
+  })
+
   describe('composeAllAgents', () => {
     const customAgent = (id: string, name: string): Agent => ({
       id,
@@ -374,7 +431,7 @@ describe('agents DAL', () => {
       const client = makeHttpClient(async () => baseResponse)
 
       const result = await refreshSystemAgents(getDb(), client)
-      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toHaveLength(1)
@@ -462,6 +519,7 @@ describe('agents DAL', () => {
             userId: null,
           },
         ],
+        defaultAgent: null,
       })
       expect((await getChatThread(getDb(), 'thread-changed-system'))?.acpSessionId).toBeNull()
       expect((await getChatThread(getDb(), 'thread-unchanged-system'))?.acpSessionId).toBe('session-unchanged')
@@ -472,7 +530,7 @@ describe('agents DAL', () => {
         getDb(),
         makeHttpClient(async () => response),
       )
-      expect(unchangedResult).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
+      expect(unchangedResult).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
     })
 
     it('removes local rows that disappear from the discovery response', async () => {
@@ -492,6 +550,24 @@ describe('agents DAL', () => {
       await refreshSystemAgents(getDb(), client)
 
       const ids = (await getDb().select().from(agentsSystemTable).all()).map((r) => r.id)
+      expect(ids).toEqual(['haystack-rag'])
+    })
+
+    it('skips a kind this build does not know, so a newer backend cannot add one', async () => {
+      const futureDescriptor = { ...baseResponse.agents[0]!, id: 'future', type: 'future-kind' }
+      const response = {
+        ...baseResponse,
+        agents: [...baseResponse.agents, futureDescriptor],
+        defaultAgentId: 'future',
+      } as unknown as AgentDiscoveryResponse
+
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => response),
+      )
+
+      expect(result).toMatchObject({ refreshed: true, defaultAgent: null })
+      const ids = (await getDb().select().from(agentsSystemTable).all()).map((row) => row.id)
       expect(ids).toEqual(['haystack-rag'])
     })
 
@@ -515,9 +591,89 @@ describe('agents DAL', () => {
       const client = makeHttpClient(async () => response)
 
       const result = await refreshSystemAgents(getDb(), client)
-      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
+      expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
+    })
+
+    const hostedAgentResponse: AgentDiscoveryResponse = {
+      version: '1',
+      agents: [
+        ...baseResponse.agents,
+        {
+          id: 'hosted-agent',
+          name: 'Assistant',
+          type: 'managed-http',
+          transport: 'http',
+          url: '/v1/agent/chat',
+          description: null,
+          icon: null,
+          isSystem: 1,
+          anonymousSafe: true,
+        },
+      ],
+      allowCustomAgents: true,
+      defaultAgentId: 'hosted-agent',
+    }
+
+    it('seeds managed-http agents and flags the discovered default', async () => {
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+
+      expect(result).toMatchObject({
+        refreshed: true,
+        defaultAgent: { id: 'hosted-agent', type: 'managed-http', transport: 'http', url: '/v1/agent/chat' },
+      })
+      const rows = await getDb().select().from(agentsSystemTable).orderBy(agentsSystemTable.id).all()
+      expect(rows.map(({ id, type, isDefault }) => ({ id, type, isDefault }))).toEqual([
+        { id: 'haystack-rag', type: 'managed-acp', isDefault: 0 },
+        { id: 'hosted-agent', type: 'managed-http', isDefault: 1 },
+      ])
+    })
+
+    it('clears the default flag when the response stops naming a default', async () => {
+      await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+
+      const { defaultAgentId: _, ...withoutDefault } = hostedAgentResponse
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => withoutDefault),
+      )
+
+      expect(result).toMatchObject({ refreshed: true, defaultAgent: null })
+      const rows = await getDb().select().from(agentsSystemTable).all()
+      expect(rows.every((row) => row.isDefault === 0)).toBe(true)
+    })
+
+    it('lets a newer refresh win when an aborted older one resolves after it', async () => {
+      // An anonymous refresh is still in flight when the visitor signs in.
+      const resolvers: { anonymous?: () => void } = {}
+      const anonymousClient = makeHttpClient(
+        () =>
+          new Promise((_, reject) => {
+            resolvers.anonymous = () => reject(httpErrorOf(403))
+          }),
+      )
+      const anonymous = new AbortController()
+      const anonymousRefresh = refreshSystemAgents(getDb(), anonymousClient, anonymous.signal)
+      await Promise.resolve()
+
+      anonymous.abort()
+      const signedIn = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+      resolvers.anonymous!()
+
+      expect(signedIn).toMatchObject({ refreshed: true })
+      expect(await anonymousRefresh).toEqual({ refreshed: false, reason: 'aborted' })
+      const rows = await getDb().select().from(agentsSystemTable).all()
+      expect(rows.map((row) => row.id).sort()).toEqual(['haystack-rag', 'hosted-agent'])
     })
 
     it('clears agents_system on 403 (anonymous user)', async () => {
@@ -565,6 +721,27 @@ describe('agents DAL', () => {
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
+    })
+
+    it('logs a discovery failure other than 401/403, and stays quiet about an aborted one', async () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const failure = new TypeError('Network down')
+      const failing = makeHttpClient(async () => {
+        throw failure
+      })
+
+      try {
+        await refreshSystemAgents(getDb(), failing)
+        expect(warn).toHaveBeenCalledWith('Agent discovery failed; keeping the cached agents', failure)
+
+        warn.mockClear()
+        const aborted = new AbortController()
+        aborted.abort()
+        await refreshSystemAgents(getDb(), failing, aborted.signal)
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('preserves existing rows on network error', async () => {

@@ -39,4 +39,13 @@ describe('ChatAddMenu', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
   })
+
+  it('leaves out Upload file when no upload handler is given', () => {
+    render(<ChatAddMenu onOpenConnections={() => {}} />)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), { button: 0, ctrlKey: false })
+
+    expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Upload file' })).toBeNull()
+  })
 })

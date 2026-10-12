@@ -1,6 +1,6 @@
 # Backend API Surface
 
-One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:66`). Route groups are plugins `.use()`d onto it; a group with no prefix of its own sits directly under `/v1`.
+One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are plugins `.use()`d onto it; a group with no prefix of its own sits directly under `/v1`.
 
 ## Route inventory
 
@@ -10,6 +10,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:66`). Route groups are pl
 | ----------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------- | ------------------------------------------------- | ------- |
 | `ALL /v1/*` (Better Auth: `/v1/api/auth/*`)                                   | `auth/elysia-plugin.ts`, `auth/auth.ts` | the flow's own                            | `auth` (IP)                                       | gated\* |
 | `GET /v1/api/auth/sso/desktop-initiate`, `/desktop-callback`                  | `auth/sso-desktop-callback.ts`          | browser redirect                          | none                                              | exempt  |
+| `GET /v1/captcha/challenge` (only with `CAPTCHA_PROVIDER=altcha`)             | `auth/captcha-routes.ts`                | public                                    | `captcha-challenge` (IP)                          | gated   |
 | `GET /v1/health`                                                              | `api/routes.ts`                         | public                                    | none                                              | exempt  |
 | `GET /v1/health/{database,powersync,email,models}`                            | `api/health.ts`                         | `MONITORING_TOKEN`                        | none                                              | exempt  |
 | `GET /v1/config`                                                              | `api/config.ts`                         | public                                    | none                                              | exempt  |
@@ -49,15 +50,16 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 
 ### Conditional groups
 
-| Group                         | Condition                                                           |
-| ----------------------------- | ------------------------------------------------------------------- |
-| PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                         |
-| SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                     |
-| `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                   |
-| Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                        |
-| Hosted agent                  | only under `AGENT_ENABLED`                                          |
-| Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset              |
-| `PUT /v1/account/devices/cli` | stays mounted, answers 404 unless `CLI_DEVICE_REGISTRATION_ENABLED` |
+| Group                         | Condition                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                                                         |
+| SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                                                     |
+| `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                                                   |
+| Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                                                        |
+| Hosted agent                  | only under `AGENT_ENABLED`                                                                          |
+| Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset                                              |
+| `PUT /v1/account/devices/cli` | stays mounted, answers 404 unless `CLI_DEVICE_REGISTRATION_ENABLED`                                 |
+| `GET /v1/captcha/challenge`   | mounted only when the captcha provider issues challenges (`altcha`) and `AUTH_ALLOW_ANONYMOUS=true` |
 
 ### Prefix quirks
 
@@ -69,7 +71,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 
 ## Global middleware, in order
 
-Order in `backend/src/index.ts:120-226` is load-bearing:
+Order in `backend/src/index.ts:123-237` is load-bearing:
 
 1. `createCorsMiddleware`: short-circuited responses still carry `Access-Control-Allow-Origin`.
 2. `createHttpLoggingMiddleware`: the one entry whose position does not matter. It wraps the whole request handler with `.wrap()`, so the access log records every response, including the 426s below, 404s and guard rejections.
@@ -77,11 +79,11 @@ Order in `backend/src/index.ts:120-226` is load-bearing:
 4. `createErrorHandlingMiddleware`: the root `onError`.
 5. The Better Auth plugin, then the route groups.
 
-Plugin isolation hides in-plugin errors from the root `onError`, which covers only routes on the main app. Nearly every route module installs its own `.onError(safeErrorHandler)` (`backend/src/middleware/error-handling.ts:107-111`).
+Plugin isolation hides in-plugin errors from the root `onError`, which covers only routes on the main app. Nearly every route module installs its own `.onError(safeErrorHandler)` (`backend/src/middleware/error-handling.ts:106-111`).
 
 ### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts:66`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:181`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts:66`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:198`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 
@@ -93,7 +95,7 @@ Session minting, SSO, the CLI device grant, bearer signing: [backend/docs/authen
 | Session via `.derive`          | `auth.api.getSession` called directly, route branches itself                                                                                                  | `api/powersync.ts`, `agents/routes.ts`, `haystack/routes.ts` |
 | Signed bearer, verified inline | the route verifies the HMAC itself via `verifySignedBearerToken` (`backend/src/auth/bearer-token.ts`)                                                         | `GET /v1/powersync/token`, the CLI device routes             |
 | WebSocket subprotocol bearer   | `thunderbolt.bearer.<token>` entry in `Sec-WebSocket-Protocol`, validated in `open()`                                                                         | `/v1/proxy/ws`, `/v1/haystack/ws`                            |
-| Operator token                 | `Authorization` compared against `MONITORING_TOKEN` with `timingSafeEqual` (`backend/src/api/health.ts:47-55`)                                                | the deep health probes                                       |
+| Operator token                 | `Authorization` compared against `MONITORING_TOKEN` with `timingSafeEqual` (`backend/src/api/health.ts:52-61`)                                                | the deep health probes                                       |
 | Server-to-server client key    | per-client key, hashed and looked up in the database, never a user session (`backend/src/api/debug-transcripts-intake.ts`)                                    | the transcript intake                                        |
 
 - Sessions come from a cookie, a signed bearer, or an `x-api-key` PAT (`enableSessionForAPIKeys`).
@@ -109,16 +111,19 @@ Metered routes add two guards:
 
 ## Rate-limit tiers
 
-| Tier                      | Budget       | Key                            |
-| ------------------------- | ------------ | ------------------------------ |
-| `inference`               | 60 / minute  | `user:<id>`                    |
-| `receipt`                 | 100 / minute | `user:<id>`                    |
-| `pro`                     | 100 / minute | `user:<id>`                    |
-| `auth`                    | 10 / minute  | `ip:<addr>`                    |
-| `debug-transcript`        | 10 / hour    | `user:<id>`                    |
-| `debug-transcript-intake` | 600 / hour   | `ip:<addr>`, and `client:<id>` |
+| Tier                       | Budget       | Key                             |
+| -------------------------- | ------------ | ------------------------------- |
+| `inference`                | 60 / minute  | `user:<id>`                     |
+| `receipt`                  | 100 / minute | `user:<id>`                     |
+| `pro`                      | 100 / minute | `user:<id>`                     |
+| `auth`                     | 10 / minute  | `ip:<addr>`                     |
+| `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |
+| `captcha-challenge`        | 10 / minute  | `ip:<addr>`                     |
+| `anonymous-sign-in-global` | 2000 / hour  | `all` (one deployment-wide key) |
+| `debug-transcript`         | 10 / hour    | `user:<id>`                     |
+| `debug-transcript-intake`  | 600 / hour   | `ip:<addr>`, and `client:<id>`  |
 
-Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:33-40`, threaded into route groups from `backend/src/index.ts:90-198`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances.
+Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:49-56`, threaded into route groups from `backend/src/index.ts:94-238`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances. The exceptions are operator-set, and the table shows their defaults: `anonymous-sign-in` is sized by `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS`, `captcha-challenge` takes that same object, and `anonymous-sign-in-global` (`ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`) caps anonymous sign-in across every IP while anonymous auth is on, counting only sign-ins that passed the captcha.
 
 - **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`), which fronts every managed-inference route. They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
@@ -132,7 +137,7 @@ Full treatment in [AGENTS.md](../../../AGENTS.md), "App version gate" and "CORS 
 
 - **Fail-closed**: a missing or unparseable `X-App-Version` is rejected on every non-exempt `/v1` path once `MIN_APP_VERSION` is set. `OPTIONS` preflights are always exempt; prefix matching is on segment boundaries, so `/v1/config` cannot exempt a future `/v1/configuration`.
 - Browser redirects, WebSocket upgrades, header-less SDKs (posthog-js) and server-to-server callers need a prefix in `appVersionExemptPrefixes`. `/v1/haystack/ws` is not listed today, though the managed-ACP client opens it as a native browser `WebSocket` (`src/acp/transports/index.ts`) that cannot attach the header. Check before enabling the gate.
-- Request headers need no CORS change: the main mount and the PostHog route use `allowedHeaders: true`, echoing back whatever the browser asks for. Response headers are the opposite, cross-origin JS reads only what `corsExposeHeaders` lists (`backend/src/config/settings.ts:11`).
+- Request headers need no CORS change: the main mount and the PostHog route use `allowedHeaders: true`, echoing back whatever the browser asks for. Response headers are the opposite, cross-origin JS reads only what `corsExposeHeaders` lists (`backend/src/config/settings.ts:15`).
 
 ## Adding a route
 

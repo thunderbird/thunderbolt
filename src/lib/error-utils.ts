@@ -16,6 +16,7 @@ const inferenceQuotaErrorSchema = z.object({
 })
 const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
 const serializedErrorSchema = z.object({ error: z.string() })
+const agentRunInProgressBodySchema = z.object({ error: z.object({ code: z.literal('AGENT_RUN_IN_PROGRESS') }) })
 const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
 const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
 
@@ -71,6 +72,22 @@ const getErrorClassificationFields = (error: unknown): ErrorClassificationFields
     message: firstString(value.responseBody, value.message),
   }
 }
+
+/**
+ * The error `Response` an agent adapter hands the AI SDK in place of a stream:
+ * `{ error, status, kind }`, which `DefaultChatTransport` throws as the error
+ * message and the chat error UI parses back (`getChatErrorKind`,
+ * `getInferenceQuotaWindow`, `isAgentRunInProgressError`).
+ */
+export const createChatErrorResponse = (
+  message: string,
+  status: number | undefined,
+  kind: ChatErrorKind | undefined,
+): Response =>
+  new Response(JSON.stringify({ error: message, status, kind }), {
+    status: status ?? 500,
+    headers: { 'Content-Type': 'application/json' },
+  })
 
 /**
  * Classify a raw pipeline error into a stable user-facing chat error kind.
@@ -190,6 +207,21 @@ export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWin
   const responseBody = serializedQuotaError.success ? parseJson(serializedQuotaError.data.error) : undefined
   const nestedQuotaError = inferenceQuotaResponseSchema.safeParse(responseBody)
   return nestedQuotaError.success ? nestedQuotaError.data.error.window : undefined
+}
+
+/**
+ * Whether the hosted agent refused the turn because the user's previous reply is
+ * still running (`429 AGENT_RUN_IN_PROGRESS` from `POST /v1/agent/chat`, as the
+ * managed-http adapter serializes it). Unlike a rate limit it clears on its own
+ * once that run finishes, so the chat retries it after a delay.
+ */
+export const isAgentRunInProgressError = (error?: Error | null): boolean => {
+  if (!error?.message || getErrorStatusCode(error) !== 429) {
+    return false
+  }
+  const serializedError = serializedErrorSchema.safeParse(parseJson(error.message))
+  const responseBody = serializedError.success ? parseJson(serializedError.data.error) : undefined
+  return agentRunInProgressBodySchema.safeParse(responseBody).success
 }
 
 /**

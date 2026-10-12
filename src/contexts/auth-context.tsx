@@ -251,8 +251,9 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   }, [value])
 
   // Validate the stored token on mount via HttpClient — its afterResponse hook fires
-  // session_expired on the first 401. Avoids Better Auth's auth client to sidestep its
-  // internal retry path. Ref guards against StrictMode's double mount.
+  // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
+  // Avoids Better Auth's auth client to sidestep its internal retry path. Ref guards
+  // against StrictMode's double mount.
   const httpClient = useHttpClient()
   const sessionCheckFiredRef = useRef(false)
   useEffect(() => {

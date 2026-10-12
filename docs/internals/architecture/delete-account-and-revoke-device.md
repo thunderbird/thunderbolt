@@ -9,7 +9,7 @@
 | Delete account | Settings > Preferences | User row hard-deleted (cascades); **410** `ACCOUNT_DELETED` on token refresh        | Full `clearLocalData()` and redirect to `/account-deleted`, triggered by the 410 or by its own device row vanishing |
 | Revoke device  | Settings > Devices     | Envelope deleted, `revoked_at` set, sessions revoked; **403** `DEVICE_DISCONNECTED` | Full `clearLocalData()` and redirect to `/device-revoked`, triggered by the synced row or the 403                   |
 
-Both end the same way. Revocation is the action you take for a lost or stolen device, and asking the device itself whether to keep its data would hand that choice to whoever is holding it. A device that is offline, or whose session is already dead, never hears about the revocation and keeps what it has — revocation is not a remote wipe.
+Both end the same way. Revocation is the action you take for a lost or stolen device, and asking the device itself whether to keep its data would hand that choice to whoever is holding it. It finds out the next time it reaches the server, even with its session already gone: the session check answers a revoked device with a 403 `DEVICE_DISCONNECTED`. A device that never comes back online never finds out and keeps what it has — revocation is not a remote wipe.
 
 ## User Flows
 

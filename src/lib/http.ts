@@ -224,7 +224,7 @@ export const createAuthenticatedClient = (
       afterResponse: [
         // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
         // would create a cycle (connector → sync-tracker → posthog → http).
-        (request, response) => {
+        async (request, response) => {
           // Only app-backend responses are actionable — external APIs use this same
           // client with caller-provided tokens, so their 401/426 are not signals about
           // our app session or app version. Same prefix guard as the beforeRequest hook.
@@ -241,6 +241,20 @@ export const createAuthenticatedClient = (
             window.dispatchEvent(
               new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
             )
+            return
+          }
+          // A revoked device: its sessions are gone, so this is the only way it learns.
+          // Cloned so the caller still owns the body.
+          if (response.status === 403) {
+            const body = (await response
+              .clone()
+              .json()
+              .catch(() => null)) as { code?: string } | null
+            if (body?.code === 'DEVICE_DISCONNECTED') {
+              window.dispatchEvent(
+                new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'device_revoked' } }),
+              )
+            }
           }
         },
       ],

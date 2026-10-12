@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
@@ -73,6 +73,7 @@ export const usePowerSyncCredentialsInvalidListener = ({
   clearLocalData = defaultClearLocalData,
 }: UsePowerSyncCredentialsInvalidListenerOptions = {}): void => {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const hasTriggeredResetRef = useRef(false)
   const hasDispatchedSignInModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
@@ -106,6 +107,10 @@ export const usePowerSyncCredentialsInvalidListener = ({
         clearAuthToken()
         void setSyncEnabled(false)
         window.dispatchEvent(new CustomEvent(showSignInModalEvent))
+        // A 401 can't tell an expired session from a revoked device (revocation deletes
+        // its sessions). Ask once: the session check answers a revoked device with a 403
+        // that the HttpClient turns into device_revoked, wiping it.
+        void httpClient.get('api/auth/get-session').catch(() => {})
         return
       }
 
@@ -123,7 +128,7 @@ export const usePowerSyncCredentialsInvalidListener = ({
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
     return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
-  }, [clearLocalData])
+  }, [clearLocalData, httpClient])
 
   // After successful re-authentication, allow a future session expiry to re-trigger the modal.
   useEffect(() => {

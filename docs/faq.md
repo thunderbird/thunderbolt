@@ -166,7 +166,7 @@ Ten active devices. Devices awaiting approval do not count against the limit.
 
 Revoke it from _Settings → Devices_ on another device. It can no longer ask for a new sync token, so an online device is cut off within 5 minutes and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
 
-Revocation is not a remote wipe. A device that is online when you revoke it signs out and clears its local copy straight away. One that is offline, or whose session has already ended, is never reached: whatever was on it stays readable until you wipe it through whatever endpoint management you already use.
+Revocation is not a remote wipe. The device signs out and clears its local copy the next time it connects. One that never comes back online is never reached: whatever was on it stays readable until you wipe it through whatever endpoint management you already use.
 
 ### What if all devices are lost?
 

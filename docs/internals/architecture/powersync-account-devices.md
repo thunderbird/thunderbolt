@@ -90,8 +90,7 @@ PowerSync re-resolves that as the `revoked_at` write replicates, so a connected 
 buckets — and the rows in them — within replication latency. The TTL now only bounds how long a
 device can keep re-establishing a stream.
 
-This still is not a remote wipe: a device that is offline, or whose session is already dead, never
-receives the update.
+This still is not a remote wipe: a device that never comes back online never finds out.
 
 The local `config/config.yaml` uses HS256 with the same secret (base64) and kid, so backend-issued tokens are accepted.
 

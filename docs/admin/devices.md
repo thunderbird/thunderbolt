@@ -58,7 +58,7 @@ Uploads and sync-token renewal are refused at once, and the device's sign-in ses
 
 Personal access tokens are unaffected by any revocation. They are not tied to a device, so they keep working until they expire or the user deletes them.
 
-If the device is online when you revoke it, it signs out and clears its local copy on its own. A device that is offline, or whose session has already ended, is never reached and keeps what it has. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
+The device signs out and clears its local copy on its own the next time it connects. A device that never comes back online is never reached and keeps what it has. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
 
 > Revoking is not a remote wipe. Data already on that device stays there, so for a stolen device assume the local copy is still readable.
 

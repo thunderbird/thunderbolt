@@ -39,7 +39,7 @@ type RevokeDeviceDialogProps = {
  * reached. Promising more would mislead someone revoking a lost or stolen device.
  */
 const descriptions = {
-  trusted: msg`The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working.`,
+  trusted: msg`The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working.`,
   pending: msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,
   cli: msg`The CLI will be signed out and must sign in again before it can use your Thunderbolt account.`,
 }

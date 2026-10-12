@@ -46,7 +46,7 @@ describe('RevokeDeviceDialog', () => {
     expect(screen.getByText('Revoke this device?')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working.',
+        'The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working.',
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
@@ -62,13 +62,13 @@ describe('RevokeDeviceDialog', () => {
     expect(description.textContent).toContain('recovery phrase keeps working')
   })
 
-  it('does not promise a wipe of a device that is offline', () => {
+  it('does not promise a wipe of a device that never reconnects', () => {
     // Only a device the revocation reaches clears itself, so promising more would
     // mislead someone revoking a lost or stolen device.
     render(<RevokeDeviceDialog open onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="trusted" />)
 
     const description = screen.getByText(/will be signed out/)
-    expect(description.textContent).toContain('a device that is offline keeps what is already on it')
+    expect(description.textContent).toContain('a device that never comes back online keeps what is already on it')
   })
 
   it('renders CLI-specific revoke wording without sync claims', () => {

@@ -64,8 +64,8 @@ a compromised server could switch it off to collect plain text.
   it for them, unless you run organizational key escrow.
 - Revoking a device ends its sessions and replaces both the account key and the data key used for
   new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
-  A device that is online when revoked clears its local database and keys. One the revocation
-  cannot reach — offline, or with its session already ended — keeps its decrypted rows and old keys.
+  The device clears its local database and keys the next time it connects. One that never comes
+  back online keeps its decrypted rows and old keys.
 
 **What it covers**
 

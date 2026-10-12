@@ -42,6 +42,7 @@ import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
@@ -112,6 +113,7 @@ export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
     }
     const response = await base(input, { ...init, headers })
     handleAppVersionUnsupported(response.status)
+    await handleSessionRejected(response)
     return response
   }
   wrapped.preconnect = base.preconnect

@@ -5,15 +5,16 @@ pipeline. The wire is the [Agent Client Protocol](https://agentclientprotocol.co
 over a bidirectional byte stream. Client library: [`src/acp/`](../../../src/acp); the agent the CLI
 serves (`thunderbolt acp serve`) is in [cli/README.md](../../../cli/README.md).
 
-## Three kinds of agent, three places rows live
+## Four kinds of agent, three places rows live
 
-`AgentType` ([shared/acp-types.ts](../../../shared/acp-types.ts)) has three members.
+`AgentType` ([shared/acp-types.ts](../../../shared/acp-types.ts)) has four members.
 
-| Type          | What it is                                                     | Where the row lives                                                                                        |
-| ------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `built-in`    | The in-process Thunderbolt assistant. No ACP wire is involved. | Nowhere: a hardcoded constant, `builtInAgent` in [src/defaults/agents.ts](../../../src/defaults/agents.ts) |
-| `remote-acp`  | An agent the user added in Settings → Agents                   | Synced `agents` table; credentials in the local-only `agents_secrets`                                      |
-| `managed-acp` | An agent the backend itself serves (today: Haystack/Deepset)   | Local-only `agents_system`, re-hydrated from `GET /v1/agents` on every bootstrap                           |
+| Type           | What it is                                                      | Where the row lives                                                                                        |
+| -------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `built-in`     | The in-process Thunderbolt assistant. No ACP wire is involved.  | Nowhere: a hardcoded constant, `builtInAgent` in [src/defaults/agents.ts](../../../src/defaults/agents.ts) |
+| `remote-acp`   | An agent the user added in Settings → Agents                    | Synced `agents` table; credentials in the local-only `agents_secrets`                                      |
+| `managed-acp`  | An agent the backend itself serves (today: Haystack/Deepset)    | Local-only `agents_system`, re-hydrated from `GET /v1/agents` on every bootstrap                           |
+| `managed-http` | The backend's hosted agent (`POST /v1/agent/chat`), no ACP wire | Local-only `agents_system`, same as `managed-acp`                                                          |
 
 - Both local-only tables sit under `localOnlyTables` in
   [src/db/powersync/schema.ts](../../../src/db/powersync/schema.ts) and never leave the device:
@@ -28,9 +29,14 @@ serves (`thunderbolt acp serve`) is in [cli/README.md](../../../cli/README.md).
 
 | `GET /v1/agents` returns                  | Effect                                                                |
 | ----------------------------------------- | --------------------------------------------------------------------- |
-| 200                                       | Upsert and prune                                                      |
+| 200                                       | Upsert and prune; flag the row named by `defaultAgentId` `is_default` |
 | 401 / 403                                 | Clear the table; the caller cannot see system agents                  |
 | Anything else (network, 5xx, parse error) | Leave existing rows alone, so an offline user keeps the list they had |
+
+Anonymous sessions run discovery too: the backend answers with its `anonymousSafe` agents when
+`ALLOW_ANONYMOUS_AGENT_DISCOVERY` is on, and a 403 otherwise. Signing in starts a new refresh and
+aborts the anonymous one, which checks its signal before writing, so a late anonymous answer never
+overwrites the signed-in rows.
 
 A changed `url` or `transport` also clears that agent's stored ACP session ids and drops the warm
 connection from the adapter cache: ids minted by the old endpoint mean nothing to the new one.
@@ -39,8 +45,11 @@ connection from the adapter cache: ids minted by the old endpoint mean nothing t
 
 `connectToAgent` ([src/acp/connect.ts](../../../src/acp/connect.ts)) returns an `AgentAdapter` whose
 `fetch(init, ctx)` yields a streaming `Response` in AI-SDK shape. `built-in` short-circuits to
-`createBuiltInAdapter`, everything else to `connectAcpAdapter`
-([src/acp/acp-adapter.ts](../../../src/acp/acp-adapter.ts)).
+`createBuiltInAdapter`, `managed-http` to `createManagedHttpAdapter`
+([src/acp/managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts)), which posts the chat
+body through the authenticated app client and returns the endpoint's UI message stream unchanged,
+and everything else to `connectAcpAdapter` ([src/acp/acp-adapter.ts](../../../src/acp/acp-adapter.ts)).
+The rest of this section is about the ACP adapter.
 
 > One adapter owns one transport, one `ClientSideConnection`, and one `initialize`, and multiplexes
 > many per-thread ACP sessions over it.
@@ -232,10 +241,14 @@ cleared secret.
 ### `GET /v1/agents`
 
 [backend/src/agents/routes.ts](../../../backend/src/agents/routes.ts) answers with
-`{ version: '1', agents, allowCustomAgents }`.
+`{ version: '1', agents, allowCustomAgents, defaultAgentId? }`.
 
-- Unauthenticated callers get 401; anonymous sessions get 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` and
-  fall back to the built-in agent only.
+- Unauthenticated callers get 401. Anonymous sessions get 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` unless
+  `ALLOW_ANONYMOUS_AGENT_DISCOVERY` is on, in which case they see only descriptors flagged
+  `anonymousSafe` (today the hosted agent). On a 403 the client clears `agents_system` and falls
+  back to the agents it has without discovery.
+- `defaultAgentId` names the agent new chats should open on, and is present only when the caller
+  can see it: the hosted agent, when it is on and `ENABLED_AGENTS` allows it.
 - `version` exists so the shape can evolve.
 - `allowCustomAgents` mirrors the env below so a deployment can hide "+ Add Custom Agent" without a
   client build.
@@ -260,7 +273,7 @@ skipped.
 
 ### Haystack / Deepset
 
-The only managed-agent provider today. Each entry in the `HAYSTACK_PIPELINES` JSON array becomes a
+One of the two managed-agent providers today, alongside the hosted agent below. Each entry in the `HAYSTACK_PIPELINES` JSON array becomes a
 `managed-acp` descriptor pointing at `/v1/haystack/ws?pipeline=<id>`
 ([backend/src/haystack/](../../../backend/src/haystack)):
 
@@ -308,12 +321,30 @@ through. File ids are constrained to `^[\w-]+$` before the upstream call. An ups
 becomes a 502: it means a misconfigured server key, and passing it through would send the client to
 re-authenticate for no reason.
 
+### Hosted agent
+
+With `AGENT_ENABLED`, [backend/src/hosted-agent/provider.ts](../../../backend/src/hosted-agent/provider.ts)
+emits one `managed-http` descriptor whose `url` is the server-relative `/v1/agent/chat`, flagged
+`anonymousSafe` and named as `defaultAgentId`. There is no ACP wire: the client's
+[managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts) posts the chat (only `id`, `role`
+and `parts` per message) through the authenticated app client and hands the endpoint's AI SDK UI
+message stream to the chat unchanged. Both ends apply the same history rules from
+[shared/hosted-agent-history.ts](../../../shared/hosted-agent-history.ts). The adapter is only taken
+for a system agent, since a synced custom row's `type` is plaintext (see `customRowToAgent`).
+
+The hosted agent takes no attachments for now: the composer hides the attach action and ignores
+dropped and pasted files (`agentAcceptsAttachments`), files queued before the chat moved onto it stay
+visible but hold the send until they are removed, and the adapter replaces any file already in
+the history (a chat that switched agents) with one "could not be delivered" note per user turn. Its
+threads are created with `isEncrypted` 0: the content reaches the backend unencrypted, so the thread
+is never a private chat, and the private-chat model lock is skipped while the hosted agent answers.
+
 ## Where the code lives
 
 | Area                        | Path                                                                                                                                                                                                                             |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Public client surface       | [src/acp/index.ts](../../../src/acp/index.ts)                                                                                                                                                                                    |
-| Adapters                    | [acp-adapter.ts](../../../src/acp/acp-adapter.ts), [built-in-adapter.ts](../../../src/acp/built-in-adapter.ts)                                                                                                                   |
+| Adapters                    | [acp-adapter.ts](../../../src/acp/acp-adapter.ts), [built-in-adapter.ts](../../../src/acp/built-in-adapter.ts), [managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts)                                              |
 | Connection lifecycle        | [adapter-cache.ts](../../../src/acp/adapter-cache.ts), [adapter-slot.ts](../../../src/acp/adapter-slot.ts), [reconnect-scheduler.ts](../../../src/acp/reconnect-scheduler.ts), [termination.ts](../../../src/acp/termination.ts) |
 | Transports                  | [src/acp/transports/](../../../src/acp/transports), [src/acp/iroh/](../../../src/acp/iroh)                                                                                                                                       |
 | ACP → AI SDK translation    | [translators/acp-to-ai-sdk.ts](../../../src/acp/translators/acp-to-ai-sdk.ts)                                                                                                                                                    |
@@ -321,7 +352,7 @@ re-authenticate for no reason.
 | Settings UI                 | [src/components/settings/agents/](../../../src/components/settings/agents)                                                                                                                                                       |
 | Wire contract               | [shared/acp-types.ts](../../../shared/acp-types.ts), [shared/iroh.ts](../../../shared/iroh.ts), [shared/ws-bearer.ts](../../../shared/ws-bearer.ts)                                                                              |
 | Backend discovery           | [backend/src/agents/](../../../backend/src/agents)                                                                                                                                                                               |
-| Backend managed agent       | [backend/src/haystack/](../../../backend/src/haystack)                                                                                                                                                                           |
+| Backend managed agents      | [backend/src/haystack/](../../../backend/src/haystack), [backend/src/hosted-agent/](../../../backend/src/hosted-agent)                                                                                                           |
 | WebSocket relay             | [backend/src/proxy/ws.ts](../../../backend/src/proxy/ws.ts)                                                                                                                                                                      |
 | CLI bridge and served agent | [cli/src/iroh/](../../../cli/src/iroh), [cli/src/acp/](../../../cli/src/acp)                                                                                                                                                     |
 | wasm iroh client            | `crates/thunderbolt-acp-client` (built artifact committed at `src/acp/iroh/pkg`)                                                                                                                                                 |

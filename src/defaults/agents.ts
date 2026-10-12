@@ -31,3 +31,11 @@ export const builtInAgent: Agent = {
  * loading label — gate on this; ACP agents own their conversation mode upstream.
  */
 export const isBuiltInAgent = (agent: Agent): boolean => agent.type === 'built-in'
+
+/**
+ * Whether an agent is the backend's hosted agent (`managed-http`). It runs on
+ * the server with a model of its own, so the chat's selected model is unused,
+ * the chat's content reaches the backend unencrypted (its threads are never
+ * private), and it takes no attachments for now.
+ */
+export const isHostedAgent = (agent: Agent): boolean => agent.type === 'managed-http'

@@ -20,10 +20,12 @@ type RateLimitTier =
   | 'pro'
   | 'auth'
   | 'anonymous-sign-in'
+  | 'anonymous-sign-in-global'
+  | 'captcha-challenge'
   | 'debug-transcript'
   | 'debug-transcript-intake'
-/** Tiers with a hardcoded limit; 'anonymous-sign-in' is configured by the operator. */
-type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in'>
+/** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
+type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
@@ -162,16 +164,24 @@ const createIpRateLimitMiddleware = (
     })
     .as('scoped')
 
-/** IP-keyed middleware for one configured tier; fails closed like createAuthIpRateLimit. */
-export const createIpTierRateLimit = (
-  database: typeof DbType,
-  settings: IpRateLimitSettings,
-  tier: FixedRateLimitTier,
-) => {
+/**
+ * A tier and its limit: fixed tiers use `tierConfigs`; operator-sized tiers take their config
+ * from the caller ('captcha-challenge' the object that sizes 'anonymous-sign-in').
+ */
+type TierArgs =
+  | [tier: FixedRateLimitTier]
+  | [tier: 'captcha-challenge' | 'anonymous-sign-in-global', config: RateLimitTierConfig]
+
+/** Create the limiter for a tier, from `tierConfigs` or the caller's operator config. */
+const createTierLimiter = (database: typeof DbType, ...args: TierArgs) =>
+  args.length === 1 ? createLimiter(database, args[0], tierConfigs[args[0]]) : createLimiter(database, ...args)
+
+/** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
+export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: TierArgs) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  const limiter = createLimiter(database, tier, tierConfigs[tier])
+  const limiter = createTierLimiter(database, ...args)
   return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
 }
 
@@ -187,7 +197,9 @@ const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname ==
 /**
  * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own
  * operator-configured 'anonymous-sign-in' bucket so raising it never loosens any other
- * auth route; everything else draws from the fixed 'auth' tier.
+ * auth route; everything else draws from the fixed 'auth' tier. The deployment-wide
+ * 'anonymous-sign-in-global' budget is charged later, in the auth before-hook, once the
+ * captcha has passed.
  */
 export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
   if (!settings.enabled) {
@@ -201,20 +213,23 @@ export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: A
   )
 }
 
-type RateLimitSet = Parameters<typeof consumeOrReject>[2]
+export type RateLimitSet = Parameters<typeof consumeOrReject>[2]
 
 /** Consume one point for `key`; resolves to the 429 body when the limit is hit. */
 export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ error: string } | undefined>
 
-/** Rate limiting for routes whose key is not the session user (e.g. an intake client). */
+/**
+ * Rate limiting whose key is neither the session user nor the IP (an intake client, or the
+ * single key of the deployment-wide anonymous sign-in budget).
+ */
 export const createRateLimitConsumer = (
   database: typeof DbType,
   settings: RateLimitSettings,
-  tier: FixedRateLimitTier,
+  ...args: TierArgs
 ): RateLimitConsumer | null => {
   if (!settings.enabled) {
     return null
   }
-  const limiter = createLimiter(database, tier, tierConfigs[tier])
+  const limiter = createTierLimiter(database, ...args)
   return (key, set) => consumeOrReject(limiter, key, set)
 }

@@ -19,6 +19,7 @@ import type { TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
+import type { AgentTransport, AgentType } from '@shared/acp-types'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
@@ -47,10 +48,12 @@ export type AgentCapabilities = {
 export type Agent = {
   id: string
   name: string
-  type: 'built-in' | 'remote-acp' | 'managed-acp'
-  /** `iroh` is a remote-acp agent dialed peer-to-peer over an n0 relay; its
-   *  `url` carries the bridge's NodeId/ticket instead of a `ws(s)://` URL. */
-  transport: 'in-process' | 'websocket' | 'iroh'
+  type: AgentType
+  /** The wire transports plus `iroh`, which only a user-added remote-acp agent
+   *  uses: it is dialed peer-to-peer over an n0 relay, and its `url` carries the
+   *  bridge's NodeId/ticket instead of a `ws(s)://` URL. `http` is a managed-http
+   *  agent whose `url` is a server-relative path. */
+  transport: AgentTransport | 'iroh'
   url: string | null
   description: string | null
   icon: string | null

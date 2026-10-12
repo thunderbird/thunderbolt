@@ -8,8 +8,9 @@ import { collectPageErrors, loginViaOidc } from './helpers'
 /**
  * E2E for backend-driven system agent discovery.
  *
- * On bootstrap (`useBootstrapSystemAgents` in `src/app.tsx`) the app calls
- * `GET {cloudUrl}/agents` once the user has a non-anonymous session. We
+ * On bootstrap (`useBootstrapSystemAgents` in
+ * `src/hooks/use-bootstrap-system-agents.ts`) the app calls
+ * `GET {cloudUrl}/agents` once there is a session, anonymous or not. We
  * intercept that call with a synthetic Haystack entry and verify that:
  *
  * 1. The row materialises in `/settings/agents` with the system provenance line.

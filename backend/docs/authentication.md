@@ -37,7 +37,7 @@ Routes opt in with the `auth: true` macro from [`elysia-plugin.ts`](../src/auth/
 | Limiter                                      | Scope                                                                                | Budget                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
 | `createAuthIpRateLimit` (the `auth` IP tier) | DB-backed; holds across replicas                                                     | See [rate-limiting.md](./rate-limiting.md)        |
-| Better Auth's own                            | In-memory, single-instance defence only (THU-113 tracks a proof-of-work replacement) | 10 requests / 60s; `/get-session` relaxed to 30/s |
+| Better Auth's own                            | In-memory, single-instance defence only                                              | 10 requests / 60s; `/get-session` relaxed to 30/s |
 
 Both read the client IP through `TRUSTED_PROXY` (`getTrustedIpHeaders(settings.trustedProxy)` feeds Better Auth's `ipAddressHeaders`). `createAuth` warns at startup when it is unset in production: `x-forwarded-for` is spoofable without a proxy in front, so the limiter would key on attacker-supplied values.
 

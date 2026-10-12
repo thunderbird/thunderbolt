@@ -60,6 +60,10 @@ msgstr[2] "# ferramentas"
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "{agentName} can't take attachments. Remove the attached files to send."
+msgstr "{agentName} não aceita anexos. Remova os arquivos anexados para enviar."
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
@@ -3767,6 +3771,14 @@ msgid "The agent connection was lost during the previous turn. Retrying may repe
 msgstr "A conexão com o agente foi perdida no turno anterior. Tentar novamente pode repetir ações que o agente já realizou."
 
 #: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Try again in a minute."
+msgstr "O agente ainda está terminando sua mensagem anterior. Tente novamente em um minuto."
+
+#: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+msgstr "O agente ainda está terminando sua mensagem anterior. Tentando novamente ({retryCount}/{maxRetries})…"
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "O provedor de IA está com problemas neste momento. Tente novamente em instantes."
 
@@ -4616,6 +4628,10 @@ msgstr "Suas conversas e configurações continuarão neste dispositivo para a p
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Suas conversas e configurações continuarão neste dispositivo para uso offline."
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Your deployment's server"
+msgstr "O servidor da sua implantação"
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

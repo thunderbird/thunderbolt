@@ -44,7 +44,7 @@ import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
-import { classifyErrorKind } from '@/lib/error-utils'
+import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
@@ -1120,9 +1120,6 @@ export const aiFetchStreamingResponse = async ({
     console.error('aiFetchStreamingResponse error', error)
     const status =
       (error as { status?: number }).status ?? (error as { response?: { status?: number } }).response?.status
-    return new Response(JSON.stringify({ error: (error as Error).message, status, kind: classifyErrorKind(error) }), {
-      status: status ?? 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return createChatErrorResponse((error as Error).message, status, classifyErrorKind(error))
   }
 }

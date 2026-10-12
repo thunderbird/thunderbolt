@@ -81,8 +81,9 @@ confidential, and which provider routes it.
 
 ## Agents
 
-An agent is what actually answers a chat. Thunderbolt's built-in assistant is the default. You can
-point a chat at an external agent instead, over the open [Agent Client
+An agent is what actually answers a chat. Thunderbolt's built-in assistant is the default, unless
+your deployment names one of its own agents as the default for new chats; once you pick an agent or
+a model yourself, new chats keep your choice. You can point a chat at an external agent instead, over the open [Agent Client
 Protocol](https://agentclientprotocol.com), a published standard for connecting a chat client to an
 agent that someone else runs.
 

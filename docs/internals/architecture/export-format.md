@@ -72,7 +72,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 - `devices`: per-device trust state. Trust is between specific device keys, so the rows would be misleading on another device.
 - `integrations_secrets`: Google / Microsoft OAuth tokens. The importing user re-authenticates; tokens are usually expired or revoked anyway.
-- `agents_system`: system-provided ACP agents (e.g. Haystack) hydrated from the backend `/agents` discovery endpoint, not user content.
+- `agents_system`: system-provided agents (Haystack's ACP agents, the hosted agent) hydrated from the backend `/agents` discovery endpoint, not user content.
 
 ## Encryption
 

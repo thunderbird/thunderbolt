@@ -12,6 +12,16 @@
 
 export type AgentType = 'built-in' | 'remote-acp' | 'managed-acp' | 'managed-http'
 
+/** Kinds the backend serves itself, stored in the local-only `agents_system`
+ *  table. An allowlist: a newer backend's unknown kind is never stored. */
+export const systemAgentTypes = ['managed-acp', 'managed-http'] as const satisfies readonly AgentType[]
+export type SystemAgentType = (typeof systemAgentTypes)[number]
+
+/** Kinds a user-added row in the synced `agents` table may have. `type` syncs in
+ *  plaintext, so a row carrying any other kind is clamped back to `remote-acp`. */
+export const customAgentTypes = ['remote-acp', 'managed-acp'] as const satisfies readonly AgentType[]
+export type CustomAgentType = (typeof customAgentTypes)[number]
+
 export type AgentTransport = 'in-process' | 'websocket' | 'http'
 
 type AgentDescriptorBase = {
@@ -29,7 +39,8 @@ type AgentDescriptorBase = {
  *  server-managed (`managed-acp`) and server-hosted (`managed-http`) agents.
  *  The built-in agent is never on the wire — it is a hardcoded frontend
  *  constant in `src/defaults/agents.ts`. `managed-http` agents carry a
- *  same-origin path (e.g. `/v1/agent/chat`) as `url` rather than `ws(s)://`. */
+ *  server-relative path (e.g. `/v1/agent/chat`) as `url` rather than `ws(s)://`;
+ *  the client joins it under the backend root, so a reverse-proxy prefix survives. */
 export type RemoteAgentDescriptor =
   | (AgentDescriptorBase & { type: 'remote-acp' | 'managed-acp'; transport: 'websocket' })
   | (AgentDescriptorBase & { type: 'managed-http'; transport: 'http' })

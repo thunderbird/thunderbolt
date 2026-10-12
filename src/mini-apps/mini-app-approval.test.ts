@@ -49,6 +49,7 @@ const makeSession = (id: string): ChatSession =>
     retriesExhausted: false,
     stopping: false,
     selectedAgent: builtInAgent,
+    agentChosenByUser: false,
     selectedModel: { id: 'model-1' } as Model,
     projectId: null,
     miniAppId: app.id,

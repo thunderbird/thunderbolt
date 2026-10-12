@@ -25,3 +25,6 @@ export * from './otp-challenge-schema'
 
 // Re-export inference accounting tables (server-only, not synced via PowerSync)
 export * from './inference-usage-schema'
+
+// Re-export solved captcha challenges (server-only replay protection)
+export * from './captcha-schema'

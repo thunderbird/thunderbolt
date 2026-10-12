@@ -9,8 +9,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 
 /**
  * Model picker for the chat composer. Renders only for the built-in
- * Thunderbolt agent — managed-acp and remote-acp agents own their own model
- * selection upstream, so it is hidden for them.
+ * Thunderbolt agent. Managed-acp, managed-http and remote-acp agents own
+ * their own model selection upstream, so it is hidden for them.
  *
  * Uses the `composer` ModelSelector variant, opening down on desktop and up
  * on mobile (above the bottom-anchored composer).

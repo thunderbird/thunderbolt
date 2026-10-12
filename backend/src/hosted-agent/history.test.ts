@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { maxHistoryMessages, parseAgentChatRequest, type AgentChatParseResult, type AgentChatRequest } from './history'
+import { maxHostedAgentHistoryMessages as maxHistoryMessages } from '@shared/hosted-agent-history'
+import { parseAgentChatRequest, type AgentChatParseResult, type AgentChatRequest } from './history'
 
 const userMessage = (text: string, id = 'm1') => ({ id, role: 'user', parts: [{ type: 'text', text }] })
 const body = (messages: unknown[]) => ({ id: 'chat-1', messages, trigger: 'submit-message' })

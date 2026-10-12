@@ -179,7 +179,7 @@ Only rows with a client reason change app state ([src/db/powersync/connector.ts]
 | Status | Code                       | Meaning                                                 | Client reason                          |
 | ------ | -------------------------- | ------------------------------------------------------- | -------------------------------------- |
 | 410    | `ACCOUNT_DELETED`          | the user row is gone                                    | `account_deleted`: full reset          |
-| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                      | `device_revoked`: revoked-device modal |
+| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                      | `device_revoked`: full reset           |
 | 403    | `DEVICE_NOT_BOUND`         | the session is not bound to this `X-Device-ID`          | none: sync waits for the bind          |
 | 403    | `DEVICE_NOT_TRUSTED`       | a `cli-` prefixed id, or an unknown or untrusted device | none (expected while approval pends)   |
 | 403    | `ANONYMOUS_SYNC_FORBIDDEN` | anonymous session                                       | `sync_not_permitted`: sync disabled    |

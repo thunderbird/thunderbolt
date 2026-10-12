@@ -85,7 +85,7 @@ Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Win
 | **Revoke**  | Any other trusted device  | Sessions on it are ended, it stops syncing, and it can no longer decrypt synced data |
 | **Remove**  | A revoked bridge only     | Deletes the record so the same bridge can be paired again                            |
 
-The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out.
+If the device is online, it signs out and clears everything stored on it. A device that is offline keeps what is already on it.
 
 Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
 

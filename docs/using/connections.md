@@ -100,7 +100,7 @@ A disabled server is not connected and its tools are not offered. Deleting a ser
 
 ### Where server settings are stored
 
-MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both. Deleting your account erases them along with the rest of the local data. Signing out, or having the device revoked, offers to keep or delete that data: only the delete choice removes them.
+MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both. Deleting your account erases them along with the rest of the local data. Signing out offers to keep or delete that data, and only the delete choice removes them. Having the device revoked removes them if the device is online when it happens.
 
 ## External agents
 

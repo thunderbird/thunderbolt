@@ -7,9 +7,9 @@
 | Action         | Where                  | Backend / sync behavior                                                             | Other device behavior                                                                                               |
 | -------------- | ---------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Delete account | Settings > Preferences | User row hard-deleted (cascades); **410** `ACCOUNT_DELETED` on token refresh        | Full `clearLocalData()` and redirect to `/account-deleted`, triggered by the 410 or by its own device row vanishing |
-| Revoke device  | Settings > Devices     | Envelope deleted, `revoked_at` set, sessions revoked; **403** `DEVICE_DISCONNECTED` | Revoked-device modal from the synced row or the 403; local database kept unless the user chooses to delete it       |
+| Revoke device  | Settings > Devices     | Envelope deleted, `revoked_at` set, sessions revoked; **403** `DEVICE_DISCONNECTED` | Full `clearLocalData()` and redirect to `/device-revoked`, triggered by the synced row or the 403                   |
 
-The outcomes differ on purpose: a deleted account leaves the local copy nothing to belong to, while a revoked device's database is still usable offline, which is what the modal offers to keep (`src/components/revoked-device-modal.tsx:30-34`, `:53-68`).
+Both end the same way. Revocation is the action you take for a lost or stolen device, and asking the device itself whether to keep its data would hand that choice to whoever is holding it. A device that is offline, or whose session is already dead, never hears about the revocation and keeps what it has — revocation is not a remote wipe.
 
 ## User Flows
 
@@ -28,9 +28,9 @@ The outcomes differ on purpose: a deleted account leaves the local copy nothing 
 2. `useRevokeDevice` (`src/hooks/use-revoke-device.ts`) runs `revokeDeviceAndRotate` (`src/services/encryption.ts`) on a device holding the account keys, and a bare `revokeDeviceWithProof` on a pre-E2EE account.
 3. `POST /v1/account/devices/:id/revoke` carries a `revoke` challenge proof signed with the canary-derived key; pre-E2EE accounts and v1 leftovers send none. In one transaction the backend deletes the device's envelope, sets `revoked_at`, and revokes that device's sessions. PowerSync syncs the row to all clients.
 4. `POST /v1/encryption/rotate` then replaces the account key and mints a new primary data key, with envelopes for every device except the revoked one. If it fails, the server reports the device as awaiting lockout and any trusted device can finish it ([e2e-encryption.md](e2e-encryption.md#device-revocation)).
-5. The revoked device opens the modal on whichever comes first: the watched `revokedAt` on its synced row (`src/hooks/use-powersync-credentials-invalid-listener.ts:153-162`), or a **403** `code: 'DEVICE_DISCONNECTED'` on token refresh (`src/db/powersync/connector.ts:43-63`).
+5. The revoked device resets on whichever comes first: the watched `revokedAt` on its synced row (`src/hooks/use-powersync-credentials-invalid-listener.ts:153-162`), or a **403** `code: 'DEVICE_DISCONNECTED'` on token refresh (`src/db/powersync/connector.ts:43-63`).
 
-The modal cannot be dismissed. "Keep data on device" and "Delete data from device" both disable sync, wipe encryption keys, and clear the auth token and device id before redirecting to `/`; only the second drops the local database (`src/components/revoked-device-modal.tsx:30-34`, `src/lib/cleanup.ts:33-87`).
+It clears everything — database, encryption keys, auth token, device id and web storage — and lands on `/device-revoked`. Anything still queued for upload is lost, since uploads from a revoked device are refused.
 
 ## Backend Routes
 
@@ -45,7 +45,7 @@ The `devices` table (columns, state combinations, server-managed columns, and th
 Three properties of those routes drive the flows above:
 
 - **`X-Device-ID` is required, not optional.** Revocation is recorded on the device row, so the header is mandatory to stop a revoked device bypassing the check by dropping it.
-- **Revocation deletes the envelope.** The wrapped Content Key is gone, so the CK is unrecoverable even if the device's private key leaks. Hence "keep data" cannot resume sync.
+- **Revocation deletes the envelope.** The wrapped Content Key is gone, so the CK is unrecoverable even if the device's private key leaks.
 - **Revocation is idempotent.** `revokeDevice` matches only non-revoked rows, so a second revoke is a no-op rather than a second session purge.
 
 ## Frontend
@@ -58,17 +58,17 @@ The connector maps a rejected token request to a `CredentialsInvalidReason` (`sr
 | --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
 | `account_deleted`                       | `clearLocalData()`, then `window.location.replace('/account-deleted')` | nothing local                         |
 | `device_id_taken`, `device_id_required` | the same reset, redirecting to `/`                                     | nothing local                         |
-| `device_revoked`                        | revoked-device modal; the user decides whether the database goes       | everything, pending the user's choice |
+| `device_revoked`                        | the same reset, redirecting to `/device-revoked`                       | nothing local                         |
 | `session_expired`                       | `clearAuthToken()`, `setSyncEnabled(false)`, sign-in modal             | database, encryption keys, device id  |
 | `sync_not_permitted`                    | `setSyncEnabled(false)` only                                           | everything, including the auth token  |
 
-Revocation and deletion outrank session expiry: once the revoked or sign-in modal is dispatched, a later `session_expired` is ignored so no sign-in prompt lands on top of a reset. `sign_in_success` clears the latch after re-authentication, so a later expiry can prompt again (`src/hooks/use-powersync-credentials-invalid-listener.ts:85-139`).
+Revocation and deletion outrank session expiry: once a reset or the sign-in modal is under way, a later `session_expired` is ignored so no sign-in prompt lands on top of a reset. `sign_in_success` clears the latch after re-authentication, so a later expiry can prompt again (`src/hooks/use-powersync-credentials-invalid-listener.ts:85-139`).
 
-`clearLocalData` (`src/lib/cleanup.ts:33-87`) is the one teardown, shared by reset, sign-out and the revoked-device modal. It always clears identity-scoped memory and disposes warm ACP adapters, then runs four independently skippable groups:
+`clearLocalData` (`src/lib/cleanup.ts:33-87`) is the one teardown, shared by reset and sign-out. It always clears identity-scoped memory and disposes warm ACP adapters, then runs four independently skippable groups:
 
 1. Disable sync.
 2. Wipe encryption keys.
-3. `resetAppDir()` plus the local-settings store and cached locale.
+3. `resetAppDir()` plus the local-settings store, cached locale, and all of `localStorage` and `sessionStorage`.
 4. Clear the auth token, device id, user cache secret, iroh client secret and cached session.
 
 Each step logs and continues on failure so one bad step can't strand the user half-signed-out. Callers navigate, not `clearLocalData`; reset uses `window.location.replace` rather than a reload so the cleared state isn't reachable with Back.
@@ -77,7 +77,7 @@ Each step logs and continues on failure so one bad step can't strand the user ha
 
 The listener also watches the current device's synced row via `useQuery` over `getDevice(deviceId)` (`src/hooks/use-powersync-credentials-invalid-listener.ts:77-80`):
 
-- **`revokedAt` set**: open the revoked-device modal, exactly as the 403 does.
+- **`revokedAt` set**: reset to `/device-revoked`, exactly as the 403 does. The row survives the revocation because it also rides the ungated `device_self` bucket.
 - **Row missing**: reset, but only if the row was already seen this session (`hadDeviceOnceRef`). On a cold start the devices table may not have synced yet, and treating that as "account deleted" would clear storage and sign the user out after an ordinary refresh (`:38-45`, `:142-168`).
 
 ### Settings > Devices Page

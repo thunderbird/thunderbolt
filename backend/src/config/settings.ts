@@ -17,6 +17,20 @@ const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passt
 /**
  * Settings schema for environment variables validation
  */
+/**
+ * Whether `Intl` accepts `value` as a time zone: an IANA name, or a UTC offset such as `+01:00`.
+ * Asks `DateTimeFormat` rather than `Intl.supportedValuesOf('timeZone')`, whose list omits aliases
+ * such as `UTC` on some engines.
+ */
+const isTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
 const settingsSchema = z
   .object({
     // API Keys
@@ -258,6 +272,12 @@ const settingsSchema = z
     agentName: z.string().default('Assistant'),
     agentDescription: z.string().default(''),
     agentIcon: z.string().default(''),
+    // IANA zone for the date line in the agent's system prompt. The server runs in UTC; an event deployment sets
+    // the venue's zone. Checked at startup so a typo fails the boot instead of every request.
+    agentTimezone: z
+      .string()
+      .default('UTC')
+      .refine(isTimeZone, { message: 'AGENT_TIMEZONE must be an IANA time zone or a UTC offset' }),
     // When true, anonymous sessions may call `GET /agents` and see only anonymous-safe agents.
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
@@ -547,6 +567,7 @@ const parseSettings = (): Settings => {
     agentName: process.env.AGENT_NAME || undefined,
     agentDescription: process.env.AGENT_DESCRIPTION || '',
     agentIcon: process.env.AGENT_ICON || '',
+    agentTimezone: process.env.AGENT_TIMEZONE || undefined,
     allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
   }
 

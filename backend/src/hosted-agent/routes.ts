@@ -164,7 +164,12 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
         const result = streamText({
           model,
-          system: buildAgentSystemPrompt(settings.agentSystemPrompt, ctx.request.headers.get('X-App-Language')),
+          system: buildAgentSystemPrompt({
+            operatorPrompt: settings.agentSystemPrompt,
+            appLanguage: ctx.request.headers.get('X-App-Language'),
+            timeZone: settings.agentTimezone,
+            now: new Date(),
+          }),
           messages,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,

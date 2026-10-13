@@ -17,9 +17,10 @@ import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
 import { createTestSettings } from '@/test-utils/settings'
 import { getRegisteredProviders, resetAgentProvidersForTesting } from '@/agents/discovery'
+import { currentDateTimeLine } from '@shared/i18n/current-date-time'
 import { APICallError, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import {
@@ -470,11 +471,46 @@ describe('createHostedAgentRoutes', () => {
       expect(system).not.toContain('xx-YY')
     })
 
-    it('sends the language rule alone when AGENT_SYSTEM_PROMPT is empty', async () => {
+    it('starts with the language rule when AGENT_SYSTEM_PROMPT is empty', async () => {
       const app = createMockedApp({ settings: { agentSystemPrompt: '' } })
       const system = await sentSystemPrompt(app, model, { 'X-App-Language': 'ja' })
       expect(system).toStartWith('# Language\n')
       expect(system).toContain('or use Japanese if the conversation has none yet')
+    })
+  })
+
+  describe('current date', () => {
+    const sent = new Date('2026-10-20T15:30:00Z')
+
+    afterEach(() => {
+      setSystemTime()
+    })
+
+    it('ends the system prompt with the date line in AGENT_TIMEZONE', async () => {
+      setSystemTime(sent)
+      const system = await sentSystemPrompt(createMockedApp({ settings: { agentTimezone: 'Asia/Tokyo' } }), model)
+      expect(currentDateTimeLine(sent, 'Asia/Tokyo')).not.toBe(currentDateTimeLine(sent, 'UTC'))
+      expect(system).toEndWith(`\n\n${currentDateTimeLine(sent, 'Asia/Tokyo')}`)
+    })
+
+    it('writes the date line in UTC by default', async () => {
+      setSystemTime(sent)
+      expect(await sentSystemPrompt(createMockedApp(), model)).toEndWith(`\n\n${currentDateTimeLine(sent, 'UTC')}`)
+    })
+
+    it('keeps everything before the date line identical across requests, so the prefix stays cacheable', async () => {
+      const app = createMockedApp()
+      const prefix = (system: string | undefined) => system?.slice(0, system.lastIndexOf('\n\nCurrent date/time: '))
+      setSystemTime(sent)
+      const first = await sentSystemPrompt(app, model)
+      await settleRun()
+      setSystemTime(new Date(sent.getTime() + 3_600_000))
+      await (await postChat(app)).text()
+      const [message] = model.doStreamCalls[1].prompt
+      const second = message.role === 'system' ? message.content : undefined
+      expect(second).not.toBe(first)
+      expect(prefix(second)).toBe(prefix(first))
+      expect(prefix(first)).toEndWith('"responde em espanhol"')
     })
   })
 

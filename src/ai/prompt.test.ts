@@ -320,6 +320,22 @@ describe('createPrompt', () => {
     expect(result).toContain('Switch only on a clear signal')
   })
 
+  test('keeps the date/time line in its original format', () => {
+    // The options as they stood inline before the line moved to a shared helper. Comparing against them,
+    // rather than a literal, pins the format without pinning ICU-dependent CLDR output.
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const original = `Current date/time: ${sent.toLocaleString('en', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })}`
+    expect(createPromptParts(baseParams, sent).volatilePrompt).toBe(original)
+  })
+
   test('keeps the Language section byte-identical to its tuned wording', () => {
     // The eval baseline and the prompt cache are keyed on this exact text, so a change to the shared
     // helper must show up here. `\u2014` is the shipped dash, escaped to keep it out of the source.

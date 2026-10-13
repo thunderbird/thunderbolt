@@ -1165,6 +1165,7 @@ describe('Hosted agent settings', () => {
     'AGENT_NAME',
     'AGENT_DESCRIPTION',
     'AGENT_ICON',
+    'AGENT_TIMEZONE',
     'ALLOW_ANONYMOUS_AGENT_DISCOVERY',
   ]
   const saved: Record<string, string | undefined> = {}
@@ -1198,6 +1199,7 @@ describe('Hosted agent settings', () => {
     expect(settings.agentName).toBe('Assistant')
     expect(settings.agentDescription).toBe('')
     expect(settings.agentIcon).toBe('')
+    expect(settings.agentTimezone).toBe('UTC')
     expect(settings.allowAnonymousAgentDiscovery).toBe(false)
   })
 
@@ -1210,6 +1212,7 @@ describe('Hosted agent settings', () => {
     process.env.AGENT_NAME = 'test-name'
     process.env.AGENT_DESCRIPTION = 'test-description'
     process.env.AGENT_ICON = 'test-icon'
+    process.env.AGENT_TIMEZONE = 'Europe/Amsterdam'
     process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
     const settings = getSettings()
     expect(settings.agentEnabled).toBe(true)
@@ -1220,7 +1223,18 @@ describe('Hosted agent settings', () => {
     expect(settings.agentName).toBe('test-name')
     expect(settings.agentDescription).toBe('test-description')
     expect(settings.agentIcon).toBe('test-icon')
+    expect(settings.agentTimezone).toBe('Europe/Amsterdam')
     expect(settings.allowAnonymousAgentDiscovery).toBe(true)
+  })
+
+  it('accepts a UTC offset as AGENT_TIMEZONE', () => {
+    process.env.AGENT_TIMEZONE = '+01:00'
+    expect(getSettings().agentTimezone).toBe('+01:00')
+  })
+
+  it('refuses to start on an AGENT_TIMEZONE that is neither an IANA zone nor a UTC offset', () => {
+    process.env.AGENT_TIMEZONE = 'Mars/Olympus_Mons'
+    expect(() => getSettings()).toThrow('AGENT_TIMEZONE must be an IANA time zone or a UTC offset')
   })
 
   it('treats an empty AGENT_MAX_STEPS as unset', () => {

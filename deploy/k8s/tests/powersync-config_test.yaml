@@ -1,0 +1,14 @@
+suite: PowerSync sync rules
+templates:
+  - templates/configmaps.yaml
+tests:
+  - it: keeps the device's own row ungated and gates both account buckets on revocation
+    documentIndex: 0
+    asserts:
+      - equal: { path: metadata.name, value: powersync-config }
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "device_self:\\s+priority: 1\\s+parameters: SELECT request.jwt\\(\\) ->> 'device_id' as device_id"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "(?s)user_essentials:.*AND revoked_at IS NULL.*user_data:.*AND revoked_at IS NULL"

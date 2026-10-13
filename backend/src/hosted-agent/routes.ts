@@ -22,6 +22,7 @@ import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { createHostedAgentProvider } from './provider'
+import { buildAgentSystemPrompt } from './system-prompt'
 
 /** Longest reply per run. Generous for chat, and it bounds the worst-case cost of a single run. */
 export const agentMaxOutputTokens = 8192
@@ -58,6 +59,9 @@ const createRunInProgressResponse = (): Response =>
 const createFilesUnsupportedResponse = (): Response =>
   Response.json({ error: { code: 'AGENT_FILES_UNSUPPORTED' } }, { status: 400 })
 
+const createInstructionsTooLargeResponse = (): Response =>
+  Response.json({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }, { status: 400 })
+
 /**
  * Hosted agent routes: `POST /agent/chat` takes a `DefaultChatTransport` body and streams a UI message
  * response. Stateless: the browser owns the conversation and resends it each turn. Mounts nothing unless
@@ -76,7 +80,6 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
   const identity = getAgentIdentity(settings.agentModel)
-  const system = settings.agentSystemPrompt || undefined
   // Built at startup so an unset provider key fails the boot (see `createManagedProviderConnection`).
   const model = options.model ?? createAgentModel(identity, settings, { fetchFn, logger })
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
@@ -111,6 +114,14 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           )
           ctx.set.status = 400
           return createFilesUnsupportedResponse()
+        }
+        if (!chatRequest.ok && chatRequest.reason === 'instructions_too_large') {
+          logger?.info(
+            { event: 'agent_instructions_too_large', provider: identity.provider, model: identity.model },
+            'Agent request carried oversized instructions',
+          )
+          ctx.set.status = 400
+          return createInstructionsTooLargeResponse()
         }
         if (!chatRequest.ok) {
           ctx.set.status = 400
@@ -164,7 +175,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
         const result = streamText({
           model,
-          system,
+          system: buildAgentSystemPrompt(settings.agentSystemPrompt, chatRequest.value.instructions),
           messages,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,

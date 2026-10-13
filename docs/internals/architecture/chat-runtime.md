@@ -73,8 +73,9 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    `customFetch` puts `/slug` skill instructions and the project prompt section
    on the context. The built-in pipeline injects both itself in
    `src/ai/fetch.ts`, and ACP has no system channel. The project lookup is gated
-   on `session.projectId`. The hosted agent (`managed-http`) does not send
-   either yet, so skills and project instructions have no effect on it.
+   on `session.projectId`. The hosted agent (`managed-http`) sends both in the
+   request's `instructions` field, which the endpoint appends to its system
+   prompt.
 7. **Spend a request.** `turnBudget.tryConsumeRequest()` gates the call; denial
    throws the sentinel from `createTurnBudgetExhaustedError`, named
    `TurnBudgetExhaustedError` so both consuming layers classify it alike.

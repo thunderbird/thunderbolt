@@ -4645,6 +4645,10 @@ msgstr "Your old recovery phrase no longer works. Write down these 24 words in o
 msgid "Your private AI assistant"
 msgstr "Your private AI assistant"
 
+#: src/components/chat/error-message.tsx
+msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+msgstr "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"
 msgstr "Your recovery phrase was never saved"

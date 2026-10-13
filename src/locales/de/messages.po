@@ -4645,6 +4645,10 @@ msgstr ""
 msgid "Your private AI assistant"
 msgstr "Ihr privater KI-Assistent"
 
+#: src/components/chat/error-message.tsx
+msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+msgstr "Die Anweisungen Ihres Projekts und Ihrer Skills sind für diesen Agenten zu lang. Kürzen Sie einen langen Skill oder die Anweisungen des Projekts und versuchen Sie es dann erneut."
+
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"
 msgstr ""

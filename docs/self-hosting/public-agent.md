@@ -2,7 +2,7 @@
 
 A public agent deployment is Thunderbolt for visitors who never sign in: each one gets an anonymous session and chats with a single agent you configure, for example at an event. It is built from the Render Blueprint in [`deploy/render/public-agent.yaml`](../../deploy/render/public-agent.yaml). Nothing about a particular deployment lives in the repository; every per-deployment value is entered in Render.
 
-> **Not usable end to end yet.** The app does not talk to the hosted agent until its frontend adapter ships, and the agent has no tools. Until then, keep the built-in agent on (`DISABLE_BUILT_IN_AGENT=false`) and give it a Tinfoil key (`TINFOIL_API_KEY`), so visitors can chat.
+> **The hosted agent has no tools yet.** The app talks to it directly, and it answers from its model alone. To offer visitors the built-in agent as well, which has tools, keep `DISABLE_BUILT_IN_AGENT=false` and give it a Tinfoil key (`TINFOIL_API_KEY`).
 
 ## What it runs
 
@@ -64,6 +64,8 @@ The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`
 | Fixed material: an FAQ, venue facts, policies  | `AGENT_SYSTEM_PROMPT`. It is sent with every request, so write facts, not prose. Keep the source out of this repository.    |
 | Data that changes: a schedule, rooms, speakers | MCP servers listed in `AGENT_MCP_SERVERS`, once the agent has tools. Until then, have the prompt say where the schedule is. |
 
+Visitors' project and skill instructions are appended after `AGENT_SYSTEM_PROMPT`, under a header that ranks them below it. That ranking is a request to the model, not an enforced rule, so treat the prompt as readable by visitors and not as a hard guardrail.
+
 The agent is not told the current date or time yet, so questions such as "what's on this afternoon?" need the schedule tools.
 
 ## Headers
@@ -102,5 +104,5 @@ Deleting the database removes everything the deployment kept on the server: the 
 
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
 - Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
-- The hosted agent calls Anthropic only and has no tools yet.
+- The hosted agent calls one model, on Anthropic or Fireworks (see `AGENT_MODEL` in [Configuration](./configuration.md#hosted-agent)), and has no tools yet.
 - The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

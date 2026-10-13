@@ -157,6 +157,19 @@ describe('ErrorMessage', () => {
     })
   })
 
+  it('names oversized project and skill instructions when the hosted agent refuses them', () => {
+    const tooLarge = new Error(
+      JSON.stringify({ error: JSON.stringify({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }), status: 400 }),
+    )
+    render(<ErrorMessage retryCount={0} retriesExhausted={true} error={tooLarge} />)
+
+    expect(
+      screen.getByText(
+        "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again.",
+      ),
+    ).toBeTruthy()
+  })
+
   describe('auto-retry in progress', () => {
     it('should show retry spinner when retryCount > 0 and retries not exhausted', () => {
       render(<ErrorMessage retryCount={1} retriesExhausted={false} />)

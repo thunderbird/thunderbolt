@@ -328,7 +328,9 @@ emits one `managed-http` descriptor whose `url` is the server-relative `/v1/agen
 `anonymousSafe` and named as `defaultAgentId`. There is no ACP wire: the client's
 [managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts) posts the chat (only `id`, `role`
 and `parts` per message) through the authenticated app client and hands the endpoint's AI SDK UI
-message stream to the chat unchanged. Both ends apply the same history rules from
+message stream to the chat unchanged. The project section and `/slug` skill instructions ride in the
+body's `instructions` field, joined as `composeAcpPrompt` joins them, and the endpoint appends that to
+its system prompt. Both ends apply the same history rules from
 [shared/hosted-agent-history.ts](../../../shared/hosted-agent-history.ts). The adapter is only taken
 for a system agent, since a synced custom row's `type` is plaintext (see `customRowToAgent`).
 

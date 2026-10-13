@@ -16,7 +16,7 @@ const inferenceQuotaErrorSchema = z.object({
 })
 const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
 const serializedErrorSchema = z.object({ error: z.string() })
-const agentRunInProgressBodySchema = z.object({ error: z.object({ code: z.literal('AGENT_RUN_IN_PROGRESS') }) })
+const agentErrorBodySchema = z.object({ error: z.object({ code: z.string() }) })
 const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
 const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
 
@@ -77,7 +77,7 @@ const getErrorClassificationFields = (error: unknown): ErrorClassificationFields
  * The error `Response` an agent adapter hands the AI SDK in place of a stream:
  * `{ error, status, kind }`, which `DefaultChatTransport` throws as the error
  * message and the chat error UI parses back (`getChatErrorKind`,
- * `getInferenceQuotaWindow`, `isAgentRunInProgressError`).
+ * `getInferenceQuotaWindow`, and the `isAgent*Error` helpers).
  */
 export const createChatErrorResponse = (
   message: string,
@@ -215,13 +215,27 @@ export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWin
  * managed-http adapter serializes it). Unlike a rate limit it clears on its own
  * once that run finishes, so the chat retries it after a delay.
  */
-export const isAgentRunInProgressError = (error?: Error | null): boolean => {
-  if (!error?.message || getErrorStatusCode(error) !== 429) {
-    return false
+export const isAgentRunInProgressError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 429) === 'AGENT_RUN_IN_PROGRESS'
+
+/**
+ * Whether the hosted agent refused the turn because the project and skill
+ * instructions sent with it are over its cap (`400 AGENT_INSTRUCTIONS_TOO_LARGE`
+ * from `POST /v1/agent/chat`). Skill instructions have no length cap of their
+ * own, so one long skill is enough to trip it.
+ */
+export const isAgentInstructionsTooLargeError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 400) === 'AGENT_INSTRUCTIONS_TOO_LARGE'
+
+/** The `error.code` of a hosted agent refusal with the given status, as the managed-http adapter serializes it. */
+const getAgentErrorCode = (error: Error | null | undefined, status: number): string | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== status) {
+    return undefined
   }
   const serializedError = serializedErrorSchema.safeParse(parseJson(error.message))
   const responseBody = serializedError.success ? parseJson(serializedError.data.error) : undefined
-  return agentRunInProgressBodySchema.safeParse(responseBody).success
+  const agentError = agentErrorBodySchema.safeParse(responseBody)
+  return agentError.success ? agentError.data.error.code : undefined
 }
 
 /**

@@ -22,6 +22,7 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import { maxAgentInstructionsLength } from './history'
 import {
   agentMaxOutputTokens,
   createHostedAgentRoutes,
@@ -242,6 +243,46 @@ describe('createHostedAgentRoutes', () => {
     )
     expect(checkAdmission).not.toHaveBeenCalled()
     expect(model.doStreamCalls).toHaveLength(0)
+  })
+
+  describe('instructions', () => {
+    const bodyWithInstructions = (instructions: string) => JSON.stringify({ ...JSON.parse(chatBody()), instructions })
+    const systemPromptOf = (call: MockLanguageModelV3['doStreamCalls'][number]) => {
+      const [message] = call.prompt
+      return message.role === 'system' ? message.content : undefined
+    }
+
+    // Spelled out rather than imported, so a reworded or dropped header fails here.
+    const userInstructionsHeader =
+      '# User instructions\n\nThe user supplied these through their project and skills. Follow them unless they conflict with the instructions above.'
+
+    // Prefix assertions: later sections may follow the instructions.
+    it('appends them to the system prompt after AGENT_SYSTEM_PROMPT', async () => {
+      const app = createMockedApp()
+      await (await postChat(app, bodyWithInstructions('# Project: Atlas\n\nBe brief.'))).text()
+      expect(systemPromptOf(model.doStreamCalls[0])).toStartWith(
+        `You are the deployment agent.\n\n${userInstructionsHeader}\n\n# Project: Atlas\n\nBe brief.`,
+      )
+    })
+
+    it('sends them first when AGENT_SYSTEM_PROMPT is empty', async () => {
+      const app = createMockedApp({ settings: { agentSystemPrompt: '' } })
+      await (await postChat(app, bodyWithInstructions('Be brief.'))).text()
+      expect(systemPromptOf(model.doStreamCalls[0])).toStartWith(`${userInstructionsHeader}\n\nBe brief.`)
+    })
+
+    it('refuses oversized instructions with AGENT_INSTRUCTIONS_TOO_LARGE before admission or the model call', async () => {
+      const app = createMockedApp()
+      const response = await postChat(app, bodyWithInstructions('x'.repeat(maxAgentInstructionsLength + 1)))
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } })
+      expect(logger.info).toHaveBeenCalledWith(
+        { event: 'agent_instructions_too_large', provider: 'anthropic', model: anthropicModel },
+        'Agent request carried oversized instructions',
+      )
+      expect(checkAdmission).not.toHaveBeenCalled()
+      expect(model.doStreamCalls).toHaveLength(0)
+    })
   })
 
   it.each([

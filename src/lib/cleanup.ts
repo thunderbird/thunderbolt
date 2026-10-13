@@ -22,7 +22,7 @@ type ClearLocalDataOptions = {
   clearEncryptionKeys?: boolean
   /** Delete the database, app files, attachments and all web storage (default: true) */
   clearDatabase?: boolean
-  /** Clear auth token and device ID from localStorage (default: true) */
+  /** Clear auth token and device ID from localStorage (default: true). `clearDatabase` clears them anyway. */
   clearAuth?: boolean
 }
 

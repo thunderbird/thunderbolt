@@ -179,7 +179,8 @@ export const createClient = (config: HttpClientConfig = {}): HttpClient => {
 /** Create an authenticated client that attaches a Bearer token from localStorage on each request.
  * Skips setting the token if the caller already provided an Authorization header.
  * Dispatches `powersync_credentials_invalid` (reason: `session_expired`) when an authenticated
- * request to the app backend returns 401, so the app can prompt the user to re-authenticate.
+ * request to the app backend returns 401, so the app can prompt the user to re-authenticate,
+ * and `device_revoked` on a 403 `DEVICE_DISCONNECTED`, which wipes this device.
  * External-API 401s (e.g. Google/Microsoft OAuth) are ignored — those use the same client but
  * with caller-provided OAuth tokens, and are not signals of an expired app session. */
 export const createAuthenticatedClient = (
@@ -226,7 +227,7 @@ export const createAuthenticatedClient = (
         // would create a cycle (connector → sync-tracker → posthog → http).
         async (request, response) => {
           // Only app-backend responses are actionable — external APIs use this same
-          // client with caller-provided tokens, so their 401/426 are not signals about
+          // client with caller-provided tokens, so their 401/403/426 are not signals about
           // our app session or app version. Same prefix guard as the beforeRequest hook.
           if (!isBackendRequest(request.url, backendUrl)) {
             return

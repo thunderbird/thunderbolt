@@ -185,7 +185,7 @@ Photos over 10 MB are downscaled before the size check and PDFs get a best-effor
 | The attachment is gone when the chat is opened on another device  | Attachment contents never sync. Open the chat on the device that sent it                                                                                                                                            |
 | The attachment is missing from a data export                      | Exports carry the reference, not the file                                                                                                                                                                           |
 
-> Attachment contents live in the app's own local store. In a browser, clearing site data removes them from messages already sent. On desktop and mobile they outlast signing out, revoking the device and even deleting the account, and go only with the app's data.
+> Attachment contents live in the app's own local store. In a browser, clearing site data removes them from messages already sent. Signing out with "Delete local data", revoking the device and deleting the account clear them on every platform.
 
 ## Voice does not work
 

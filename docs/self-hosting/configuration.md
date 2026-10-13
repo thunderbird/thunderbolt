@@ -164,13 +164,13 @@ Enabling `CONFIDENTIAL_API_KEYS_ENABLED`, `false` by default, lets a personal ac
 
 The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync; the app still works on one device at a time.
 
-| Variable                         | Default         | What it does                                                                                                                                                                                          |
-| -------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | none            | URL of your sync service, as the browser reaches it. Setting it turns sync on.                                                                                                                        |
-| `POWERSYNC_INTERNAL_URL`         | `POWERSYNC_URL` | Address the API itself uses to check the sync service for `/v1/health/powersync`. Set it when the public URL does not resolve inside your network.                                                    |
-| `POWERSYNC_JWT_SECRET`           | none            | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.                                                                                                                   |
-| `POWERSYNC_JWT_KID`              | none            | Key identifier, so the sync service can pick between secrets during a rotation.                                                                                                                       |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`           | Lifetime, in seconds, of the token each client uses to connect to the sync service. Revoking a device cuts its sync at once; this only bounds how long a client can keep reconnecting. Keep it short. |
+| Variable                         | Default         | What it does                                                                                                                                                                                                                                     |
+| -------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POWERSYNC_URL`                  | none            | URL of your sync service, as the browser reaches it. Setting it turns sync on.                                                                                                                                                                   |
+| `POWERSYNC_INTERNAL_URL`         | `POWERSYNC_URL` | Address the API itself uses to check the sync service for `/v1/health/powersync`. Set it when the public URL does not resolve inside your network.                                                                                               |
+| `POWERSYNC_JWT_SECRET`           | none            | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.                                                                                                                                                              |
+| `POWERSYNC_JWT_KID`              | none            | Key identifier, so the sync service can pick between secrets during a rotation.                                                                                                                                                                  |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`           | Lifetime, in seconds, of the token each client uses to connect to the sync service. Revoking a device cuts its sync as soon as the revocation reaches the sync service; this only bounds how long a client can keep reconnecting. Keep it short. |
 
 The secret and key identifier must match the values your sync service loads. If you generate the secret in base64, use base64url: a value containing `+`, `/`, or `=` is rejected by the sync service.
 
@@ -317,7 +317,7 @@ Set `EMAIL_FROM` to an address on a domain your Resend account has verified: Res
 | `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Permitted HTTP methods.                                 |
 | `CORS_EXPOSE_HEADERS`    | a protocol-required list                                         | Response headers the browser makes readable to the app. |
 
-Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read. `CORS_ALLOW_HEADERS` is accepted but ignored, and kept only so that older configuration files keep working.
+Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read. Dropping `X-Proxy-Final-Url` in particular makes an upstream's 401 look like an expired session and signs users out. `CORS_ALLOW_HEADERS` is accepted but ignored, and kept only so that older configuration files keep working.
 
 ## Rate limiting
 

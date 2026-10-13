@@ -17,13 +17,13 @@ cookies, content type and framing must be neutralised).
 
 ## The wire contract
 
-| Header                       | Direction | Meaning                                                                              |
-| ---------------------------- | --------- | ------------------------------------------------------------------------------------ |
-| `X-Proxy-Target-Url`         | request   | The upstream URL. Required; `http://` is auto-upgraded to `https://`                 |
-| `X-Proxy-Follow-Redirects`   | request   | `true`/`false`, case-insensitive; anything else falls back to the per-method default |
-| `X-Proxy-Passthrough-<name>` | request   | A header to present to the upstream, with the prefix stripped                        |
-| `X-Proxy-Passthrough-<name>` | response  | An upstream response header, re-prefixed so the browser does not act on it           |
-| `X-Proxy-Final-Url`          | response  | The URL of the last hop, after any redirect following                                |
+| Header                       | Direction | Meaning                                                                                                                                                   |
+| ---------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `X-Proxy-Target-Url`         | request   | The upstream URL. Required; `http://` is auto-upgraded to `https://`                                                                                      |
+| `X-Proxy-Follow-Redirects`   | request   | `true`/`false`, case-insensitive; anything else falls back to the per-method default                                                                      |
+| `X-Proxy-Passthrough-<name>` | request   | A header to present to the upstream, with the prefix stripped                                                                                             |
+| `X-Proxy-Passthrough-<name>` | response  | An upstream response header, re-prefixed so the browser does not act on it                                                                                |
+| `X-Proxy-Final-Url`          | response  | The URL of the last hop, after any redirect following. Its absence marks a response from the proxy itself, so only that kind of 401 can sign the user out |
 
 Both ends import these names from [shared/proxy-protocol.ts](../../../shared/proxy-protocol.ts); drift
 is silent breakage.
@@ -240,8 +240,10 @@ Five entry points, not interchangeable:
 | An MCP SDK transport that offers no fetch injection                          | `TauriStreamableHTTPClientTransport` ([src/lib/tauri-http-transport.ts:27](../../../src/lib/tauri-http-transport.ts#L27))                                                                        |
 
 - **`createAuthenticatedClient` is the only path** injecting `X-Device-ID`, `X-Device-Name`,
-  `X-App-Version` and `X-App-Language`, and the only one turning a 401 into a
-  `powersync_credentials_invalid` event and a 426 into the upgrade blocker. Those headers and both
+  `X-App-Version` and `X-App-Language`, and the only one turning a 426 into the upgrade blocker. It
+  also turns a 401 into a `powersync_credentials_invalid` event; backend calls that bypass it (chat,
+  voice, the built-in agent, the proxy's own auth gate) do the same through `handleSessionRejected`
+  ([src/lib/session-rejected.ts](../../../src/lib/session-rejected.ts)). Those headers and both
   response hooks sit behind an origin-and-prefix guard (`isBackendRequest`), so the same client can
   call an external API without leaking identity headers or misreading a 401 as an expired session.
   The bearer is attached regardless of origin, and a caller-set `Authorization` is left alone.

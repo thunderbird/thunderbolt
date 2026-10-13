@@ -20,7 +20,7 @@ Both end the same way. Revocation is the action you take for a lost or stolen de
 3. The backend deletes the `user` row (`backend/src/dal/users.ts:28`); the synced tables cascade on `user_id`.
 4. Each **other signed-in device** clears local data and redirects to `/account-deleted`, triggered by whichever comes first:
    - A token refresh answered **410 Gone** with `code: 'ACCOUNT_DELETED'` (`backend/src/api/powersync.ts:229-232`).
-   - Sync removing the account's rows, so the device sees its own `devices` row is gone (`src/hooks/use-powersync-credentials-invalid-listener.ts:164-167`).
+   - Sync removing the account's rows, so the device sees its own `devices` row is gone (`src/hooks/use-powersync-credentials-invalid-listener.ts`).
 
 ### Revoke Device
 

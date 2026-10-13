@@ -174,6 +174,7 @@ const settingsSchema = z
     corsAllowMethods: z.string().default('GET,POST,PUT,DELETE,PATCH,OPTIONS'),
     corsAllowHeaders: z.string().default(''),
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
+    // X-Proxy-Final-Url also tells the client a 401 came from an upstream, not our session gate.
     corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
     // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every

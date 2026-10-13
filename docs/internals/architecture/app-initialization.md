@@ -76,6 +76,11 @@ newer rows we haven't received".
 `models`, `model_profiles`, `devices`, `chat_threads`. Lower-priority buckets (`chat_messages`,
 `tasks`, `skills`, ...) stream in after the app is interactive.
 
+It then waits for this device's own `devices` row. The account buckets are gated on that row, so a
+device trusted moments ago, whose row hasn't reached the sync service yet, gets a priority-1 sync that
+completes empty. The row arrives at the same moment the gated buckets unlock. Both waits share the
+10 s timeout.
+
 The coupling is by convention only: if the deployed sync rules stop declaring priorities, PowerSync
 falls back to the global `hasSynced` and the gate quietly waits for everything.
 

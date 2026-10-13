@@ -11,6 +11,7 @@ import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
 import { isSyncEnabled } from './sync-state'
+import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
@@ -60,6 +61,22 @@ const initialSyncTimeoutMs = 10_000
  * (see `SyncStatus.statusForPriority`).
  */
 const initialSyncPriority = 1
+
+/**
+ * Resolve once this device's own row is in the local `devices` table.
+ *
+ * The account buckets are gated on that row, so until it reaches the sync service a
+ * just-trusted device gets a priority-1 checkpoint that is complete but empty. The row
+ * arrives through `device_self` at the same moment the gated buckets unlock.
+ * @internal Exported for testing
+ */
+export const waitForOwnDeviceRow = async (powerSync: AbstractPowerSyncDatabase, signal: AbortSignal): Promise<void> => {
+  for await (const result of powerSync.watch('SELECT 1 FROM devices WHERE id = ?', [getDeviceId()], { signal })) {
+    if (result.rows?.length) {
+      return
+    }
+  }
+}
 
 /**
  * @internal Exported for testing
@@ -463,7 +480,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   /**
    * Wait for PowerSync's priority-1 buckets to complete their initial sync (`user_essentials` —
    * settings, models, model_profiles, devices, chat_threads — and `device_self`). Lower-priority data
-   * (chat_messages, tasks, etc.) continues streaming in the background.
+   * (chat_messages, tasks, etc.) continues streaming in the background. Also waits for this
+   * device's own row, without which priority 1 can complete empty (see `waitForOwnDeviceRow`).
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
@@ -481,14 +499,18 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     const timeoutPromise = new Promise<void>((resolve) => {
       timeoutId = setTimeout(() => {
         timedOut = true
-        console.warn(`[PowerSync] Priority-${initialSyncPriority} sync timed out after ${initialSyncTimeoutMs / 1000}s`)
+        console.warn(`[PowerSync] Initial sync timed out after ${initialSyncTimeoutMs / 1000}s`)
         resolve()
       }, initialSyncTimeoutMs)
     })
 
     try {
+      const powerSync = this.powerSync
       await Promise.race([
-        this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
+        (async () => {
+          await powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority })
+          await waitForOwnDeviceRow(powerSync, abortController.signal)
+        })(),
         timeoutPromise,
       ])
       if (timedOut) {

@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
+import type { AbstractPowerSyncDatabase, QueryResult } from '@powersync/common'
 
-const { getPowerSyncDatabaseConfig, getPowerSyncOptions } = await import('./database')
+const { getPowerSyncDatabaseConfig, getPowerSyncOptions, waitForOwnDeviceRow } = await import('./database')
 
 describe('getPowerSyncDatabaseConfig', () => {
   it('returns default for web + Chrome', () => {
@@ -124,5 +125,41 @@ describe('getPowerSyncOptions', () => {
       expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
       expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
     })
+  })
+})
+
+describe('waitForOwnDeviceRow', () => {
+  type Reads = { params?: unknown[]; count: number }
+
+  afterEach(() => {
+    localStorage.removeItem('thunderbolt_device_id')
+  })
+
+  const fakePowerSync = (rowCounts: number[], reads: Reads) =>
+    ({
+      watch: async function* (_sql: string, params: unknown[]) {
+        reads.params = params
+        for (const length of rowCounts) {
+          reads.count++
+          yield { rows: { length } } as QueryResult
+        }
+      },
+    }) as unknown as AbstractPowerSyncDatabase
+
+  it("waits past empty results for this device's row", async () => {
+    localStorage.setItem('thunderbolt_device_id', 'device-1')
+    const reads: Reads = { count: 0 }
+
+    await waitForOwnDeviceRow(fakePowerSync([0, 0, 1, 1], reads), new AbortController().signal)
+
+    expect(reads).toEqual({ params: ['device-1'], count: 3 })
+  })
+
+  it('returns when the watch ends without the row', async () => {
+    const reads: Reads = { count: 0 }
+
+    await waitForOwnDeviceRow(fakePowerSync([0], reads), new AbortController().signal)
+
+    expect(reads.count).toBe(1)
   })
 })

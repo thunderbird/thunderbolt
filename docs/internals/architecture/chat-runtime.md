@@ -59,7 +59,10 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    `agents_system` has no hosted row yet on this device or because the user
    switched agents in `setSelectedAgent`, gets the first model the picker
    enables for the thread instead, held in the session only. When no model
-   fits, the model stays and the composer holds the send with a notice.
+   fits, the model stays and the composer holds the send with a notice until
+   the model list changes: `setModels` (hydration, including a return to an
+   existing session, and adding a model) re-runs `resolveSessionModel` for
+   every chat.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality

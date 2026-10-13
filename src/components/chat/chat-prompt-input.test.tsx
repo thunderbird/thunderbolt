@@ -536,6 +536,20 @@ describe('ChatPromptInput', () => {
       expect(sendMessage).not.toHaveBeenCalled()
     })
 
+    it('clears the notice and selects a model once one that fits is added', async () => {
+      const confidentialModel = createMockModel({ isConfidential: 1 })
+      renderWithModel(confidentialModel)
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      const added = createMockModel({ id: 'added', provider: 'thunderbolt', isConfidential: 0 })
+      act(() => {
+        useChatStore.getState().setModels([confidentialModel, added])
+      })
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(added.id)
+    })
+
     it('sends when the model matches the thread', async () => {
       const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 0 }))
 

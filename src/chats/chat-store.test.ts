@@ -280,6 +280,42 @@ describe('chat-store', () => {
     })
   })
 
+  describe('setModels', () => {
+    it('re-resolves only a built-in session the private-chat lock holds, leaving the rest untouched', () => {
+      const hostedAgent: Agent = { ...builtInAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
+      const confidentialModel = createMockModel({
+        id: 'confidential',
+        provider: 'tinfoil',
+        isSystem: 1,
+        isConfidential: 1,
+      })
+      const fittingModel = createMockModel({ id: 'fitting', provider: 'thunderbolt' })
+      const addedModel = createMockModel({ id: 'added', provider: 'thunderbolt' })
+      const seed = (id: string, agent: Agent, selectedModel: Model) => {
+        hydrateStore({
+          chatInstance: createMockChatInstanceWithValidation(),
+          chatThread: createMockChatThread({ id, isEncrypted: 0 }),
+          id,
+          models: [confidentialModel],
+          selectedModel,
+          triggerData: null,
+        })
+        useChatStore.getState().updateSession(id, { selectedAgent: agent })
+      }
+      seed('hosted', hostedAgent, confidentialModel)
+      seed('fits', builtInAgent, fittingModel)
+      seed('blocked', builtInAgent, confidentialModel)
+      const before = useChatStore.getState().sessions
+
+      useChatStore.getState().setModels([confidentialModel, addedModel])
+
+      const after = useChatStore.getState().sessions
+      expect(after.get('hosted')).toBe(before.get('hosted'))
+      expect(after.get('fits')).toBe(before.get('fits'))
+      expect(after.get('blocked')?.selectedModel.id).toBe(addedModel.id)
+    })
+  })
+
   describe('setSelectedModel', () => {
     it('should throw error when model is not found', async () => {
       const model1 = createMockModel({ id: 'model-1' })

@@ -21,7 +21,8 @@ import type { Agent } from '@/types/acp'
  *
  * The replacement is the first of `models` the model picker leaves enabled
  * for the thread: same confidentiality, no missing API key. With none,
- * `currentModel` is kept and the composer holds the send instead.
+ * `currentModel` is kept and the composer holds the send until the model list
+ * changes: `setModels` runs this again for every chat.
  */
 export const resolveSessionModel = (
   agent: Agent,

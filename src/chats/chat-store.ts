@@ -162,6 +162,10 @@ type ChatStoreActions = {
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
+  /** Replace the model list and re-run `resolveSessionModel` for every chat,
+   *  so one held for want of a model that fits its private-chat lock takes the
+   *  first that does as soon as it exists. Called by hydration (including a
+   *  return to an existing session) and after adding a model. */
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
@@ -305,7 +309,20 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setModels: (models) => {
-    set({ models })
+    const swapped = [...get().sessions].flatMap(([id, session]) => {
+      const selectedModel = resolveSessionModel(
+        session.selectedAgent,
+        session.chatThread,
+        session.selectedModel,
+        models,
+      )
+      return selectedModel === session.selectedModel ? [] : [[id, { ...session, selectedModel }] as const]
+    })
+    if (swapped.length === 0) {
+      set({ models })
+      return
+    }
+    set({ models, sessions: new Map([...get().sessions, ...swapped]) })
   },
 
   setPendingPermission: (id, permission) => {

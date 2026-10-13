@@ -184,10 +184,10 @@ export const useAttachmentRemediation = ({
 
   // Only a genuine content rejection (the endpoint couldn't carry the file's
   // form — a 400/422) is worth remediating. Auth (401/403), not-found, timeouts,
-  // rate limits, context overflow, and structured tool-parameter errors are
-  // excluded by isContentRejectionError — converting native→text/images can't
-  // fix those, and churning the ladder
-  // would end in a misleading "couldn't read the file" message.
+  // rate limits, context overflow, structured tool-parameter errors, and the
+  // hosted agent's oversized-instructions 400 are excluded by
+  // isContentRejectionError. Converting native→text/images can't fix those, and
+  // churning the ladder would end in a misleading "couldn't read the file" message.
   const isRemediableError = isContentRejectionError(error)
 
   // If a content-rejection error is already present on the FIRST render, it's a

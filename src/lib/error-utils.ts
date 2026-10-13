@@ -307,12 +307,17 @@ const isToolParameterError = (message: string): boolean => {
  * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
  * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
  * (401/403), not-found (404), timeouts (408), rate limits (429), context overflow,
- * and structured tool-parameter errors — none of which attachment remediation
- * can fix by re-delivering as text/images. This is the ONLY signal that should
- * trigger remediation.
+ * structured tool-parameter errors, and the hosted agent's oversized-instructions
+ * 400. Attachment remediation can fix none of these by re-delivering as
+ * text/images. This is the ONLY signal that should trigger remediation.
  */
 export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (!error?.message || isRateLimitError(error) || isContextOverflowError(error)) {
+  if (
+    !error?.message ||
+    isRateLimitError(error) ||
+    isContextOverflowError(error) ||
+    isAgentInstructionsTooLargeError(error)
+  ) {
     return false
   }
   const status = getErrorStatusCode(error)

@@ -634,6 +634,11 @@ describe('hosted agent refusals', () => {
     expect(isAgentInstructionsTooLargeError(null)).toBe(false)
   })
 
+  it('keeps oversized instructions out of attachment remediation', () => {
+    expect(isContentRejectionError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(false)
+    expect(isContentRejectionError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(true)
+  })
+
   it('recognizes a run in progress only on the coded 429', () => {
     expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 429))).toBe(true)
     expect(isAgentRunInProgressError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)

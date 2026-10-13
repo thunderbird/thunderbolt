@@ -17,6 +17,7 @@ import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
+import { resolveSessionModel } from './resolve-session-model'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -402,7 +403,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setSelectedAgent: async (id, agent) => {
-    const { sessions } = get()
+    const { models, sessions } = get()
 
     const session = sessions.get(id)
 
@@ -414,7 +415,15 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
     const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent, agentChosenByUser: true })
+    // Session-only: the user picked an agent, not this model, so `selected_model` stays put.
+    const selectedModel = resolveSessionModel(agent, nextChatThread, session.selectedModel, models)
+    nextSessions.set(id, {
+      ...session,
+      chatThread: nextChatThread,
+      selectedAgent: agent,
+      selectedModel,
+      agentChosenByUser: true,
+    })
 
     set({ sessions: nextSessions })
 

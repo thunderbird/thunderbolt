@@ -35,8 +35,8 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, X } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
   forwardRef,
@@ -67,6 +67,8 @@ import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
@@ -326,7 +328,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
     const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
-    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend
+    // Only when no model fits the thread's confidentiality lock: otherwise
+    // `resolveSessionModel` already swapped one in for the built-in.
+    const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -855,51 +860,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </div>
             <AnimatePresence initial={false}>
               {attachError && (
-                <m.div
-                  key="attach-error"
-                  // marginBottom pulls the banner's bottom -12px below the composer's
-                  // top edge so it's hidden behind the composer's opaque z-10 body
-                  // (the "emerges from behind" look). Animated in lockstep with height
-                  // so dismiss collapses cleanly without over-pulling the chips.
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">{attachError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachError(null)}
-                      aria-label={t`Dismiss`}
-                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
+                  {attachError}
+                </ComposerAlert>
               )}
               {queuedAttachmentsBlockSend && (
-                <m.div
-                  key="attachments-unsupported"
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div
-                    role="alert"
-                    className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive"
-                  >
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
-                    </span>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attachments-unsupported">
+                  <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
+                </ComposerAlert>
+              )}
+              {noModelForThread && (
+                <ComposerAlert key="no-model-for-thread">
+                  <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
+                </ComposerAlert>
               )}
               {imageSupport.notice && (
                 <ImageSupportNotice

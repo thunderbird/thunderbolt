@@ -52,7 +52,14 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    default is taken only when it is one of those agents. It also re-runs
    `resolveSessionAgent` against the refreshed agent list for chats with no
    thread row, no messages, and no agent or model the user picked in them
-   (`agentChosenByUser`).
+   (`agentChosenByUser`). Once the agent is resolved, `resolveSessionModel`
+   (`src/chats/resolve-session-model.ts`) checks the model against the thread's
+   private-chat lock. A hosted-agent thread (`isEncrypted` 0) that lands on
+   the built-in while the session holds a confidential model, either because
+   `agents_system` has no hosted row yet on this device or because the user
+   switched agents in `setSelectedAgent`, gets the first model the picker
+   enables for the thread instead, held in the session only. When no model
+   fits, the model stays and the composer holds the send with a notice.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality
@@ -300,6 +307,7 @@ word is ready each paint.
 | Turn lifecycle, retries, stop, telemetry | `src/chats/chat-instance.ts`                                                       |
 | Session state                            | `src/chats/chat-store.ts`                                                          |
 | Hydration and the save functions         | `src/chats/use-hydrate-chat-store.ts`                                              |
+| Session agent and model resolution       | `src/chats/resolve-session-agent.ts`, `src/chats/resolve-session-model.ts`         |
 | Route entry, new-chat id                 | `src/chats/detail.tsx`                                                             |
 | Streaming crash-recovery saves           | `src/chats/save-partial-assistant-messages-handler.ts`                             |
 | Derived turn state for the UI            | `src/chats/turn-activity.ts`                                                       |

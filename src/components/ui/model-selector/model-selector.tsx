@@ -16,7 +16,7 @@ import { GradientLock } from '@/components/ui/gradient-lock'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
@@ -70,7 +70,7 @@ export const categorizeModels = (
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
-    const isDisabledByEncryption = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+    const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
     const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
 

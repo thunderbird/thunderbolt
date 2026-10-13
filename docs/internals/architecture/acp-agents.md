@@ -338,6 +338,8 @@ visible but hold the send until they are removed, and the adapter replaces any f
 the history (a chat that switched agents) with one "could not be delivered" note per user turn. Its
 threads are created with `isEncrypted` 0: the content reaches the backend unencrypted, so the thread
 is never a private chat, and the private-chat model lock is skipped while the hosted agent answers.
+When the built-in takes such a thread over, its model is swapped for one that fits the lock (see
+`resolveSessionModel` in [chat-runtime.md](chat-runtime.md)).
 
 ## Where the code lives
 

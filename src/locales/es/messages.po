@@ -1489,7 +1489,7 @@ msgstr "Desconectar"
 msgid "Disconnected"
 msgstr "Desconectado"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/composer-alert.tsx
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 #: src/components/update-notification.tsx
@@ -2575,6 +2575,10 @@ msgstr "No se encontraron tareas que coincidan con «{searchQuery}»"
 #: src/tasks/index.tsx
 msgid "No tasks yet"
 msgstr "Todavía no hay tareas"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "None of your models can be used in this chat. Choose another agent to send."
+msgstr "Ninguno de tus modelos se puede usar en este chat. Elige otro agente para enviar."
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."

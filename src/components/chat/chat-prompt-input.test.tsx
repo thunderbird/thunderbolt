@@ -509,6 +509,42 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('no model fits the thread', () => {
+    /** Built-in agent on a non-private thread whose session holds `selectedModel`. */
+    const renderWithModel = (selectedModel: Model) => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedModel })
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'hello' } })
+      const submit = async () => {
+        await act(async () => {
+          fireEvent.submit(container.querySelector('form')!)
+        })
+      }
+      return { sendMessage: mockChatInstance.sendMessage, submit }
+    }
+
+    it('says why and holds the send instead of throwing on it', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 1 }))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'None of your models can be used in this chat. Choose another agent to send.',
+      )
+      await submit()
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('sends when the model matches the thread', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 0 }))
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      await submit()
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('connection status', () => {
     it('shows connecting indicator when the session is mid-connect', () => {
       const { mockUseChat } = setupStore()

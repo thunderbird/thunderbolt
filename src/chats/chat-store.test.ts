@@ -647,6 +647,62 @@ describe('chat-store', () => {
       expect(settings.selectedAgent).toBe(customAgent.id)
     })
 
+    describe('model on a switch to the built-in agent', () => {
+      const hostedAgent: Agent = { ...customAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
+      const confidentialModel = createMockModel({
+        id: 'confidential',
+        provider: 'tinfoil',
+        isSystem: 1,
+        isConfidential: 1,
+      })
+      const standardModel = createMockModel({ id: 'standard', provider: 'thunderbolt', isConfidential: 0 })
+
+      /** A hosted-agent thread (never private) whose session holds `selectedModel`. */
+      const seedHostedThread = async (models: Model[], selectedModel: Model) => {
+        await getDb().insert(chatThreadsTable).values({ id: 'hosted-thread', title: 'x', agentId: hostedAgent.id })
+        hydrateStore({
+          chatInstance: createMockChatInstanceWithValidation(),
+          chatThread: createMockChatThread({ id: 'hosted-thread', agentId: hostedAgent.id, isEncrypted: 0 }),
+          id: 'hosted-thread',
+          mcpClients: [],
+          models,
+          selectedModel,
+          triggerData: null,
+        })
+        useChatStore.getState().updateSession('hosted-thread', { selectedAgent: hostedAgent })
+      }
+
+      it('swaps a confidential model for a compatible one so the next send goes through', async () => {
+        await seedHostedThread([confidentialModel, standardModel], confidentialModel)
+
+        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
+
+        expect(getCurrentSession()?.selectedModel.id).toBe(standardModel.id)
+        const chatInstance = getCurrentSession()!.chatInstance as ReturnType<
+          typeof createMockChatInstanceWithValidation
+        >
+        await chatInstance.sendMessage({ text: 'hello' })
+        expect(chatInstance._originalSendMessage).toHaveBeenCalledTimes(1)
+      })
+
+      it('leaves a model that already matches the thread alone', async () => {
+        const otherStandard = createMockModel({ id: 'other-standard', provider: 'thunderbolt' })
+        await seedHostedThread([standardModel, otherStandard], otherStandard)
+
+        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
+
+        expect(getCurrentSession()?.selectedModel.id).toBe(otherStandard.id)
+      })
+
+      it('keeps the model when no compatible one exists, for the composer to hold the send', async () => {
+        await seedHostedThread([confidentialModel], confidentialModel)
+
+        await useChatStore.getState().setSelectedAgent('hosted-thread', builtInAgent)
+
+        expect(getCurrentSession()?.selectedModel.id).toBe(confidentialModel.id)
+      })
+    })
+
     it('throws when the session is missing', async () => {
       await expect(useChatStore.getState().setSelectedAgent('nope', customAgent)).rejects.toThrow('No session found')
     })

@@ -51,8 +51,9 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   const isAnonymousAllowed = isAnonymousAuthEnabled() && !isSsoMode() && isWaitlistBypassed()
 
   const triedAnonRef = useRef(false)
-  // A double click on retry lands before the re-render that hides the button, so state cannot guard it.
-  const signInInFlightRef = useRef(false)
+  // The captcha attempt in flight, if any. A ref because a double click on retry lands before the
+  // re-render that hides the button; aborted on unmount so a stale attempt never signs in.
+  const attemptRef = useRef<AbortController | null>(null)
   const [anonError, setAnonError] = useState<Error | null>(null)
   const [captchaStatus, setCaptchaStatus] = useState<CaptchaStatus>('idle')
   if (anonError) {
@@ -60,18 +61,25 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   }
 
   /** Solve a fresh challenge and sign in with it; a refused solution or failed fetch offers a retry. */
-  const signInWithCaptcha = async () => {
+  const solveAndSignIn = async (signal: AbortSignal) => {
     setCaptchaStatus('verifying')
-    const token = await solveAltchaChallenge(httpClient).catch((err: unknown) => {
-      console.error('ALTCHA challenge failed:', err)
+    const token = await solveAltchaChallenge(httpClient, signal).catch((err: unknown) => {
+      if (!signal.aborted) {
+        console.error('ALTCHA challenge failed:', err)
+      }
       return null
     })
+    // Cancelled by unmount: the gate is gone, so neither sign in nor touch its state. The solve
+    // rejects on abort; this also catches one that resolved just before the abort landed.
+    if (signal.aborted) {
+      return null
+    }
     if (!token) {
       setCaptchaStatus('failed')
       return null
     }
     const result = await authClient.signIn.anonymous({
-      fetchOptions: { headers: authRequestHeaders({ [captchaTokenHeader]: token }) },
+      fetchOptions: { headers: authRequestHeaders({ [captchaTokenHeader]: token }), signal },
     })
     if (result?.error?.code === captchaVerificationFailedCode) {
       setCaptchaStatus('failed')
@@ -80,11 +88,23 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     return result
   }
 
-  const signInAnonymously = async () => {
-    if (signInInFlightRef.current) {
-      return
+  /** One captcha attempt at a time; a call while one is in flight is a no-op. */
+  const signInWithCaptcha = async () => {
+    if (attemptRef.current) {
+      return null
     }
-    signInInFlightRef.current = true
+    const attempt = new AbortController()
+    attemptRef.current = attempt
+    try {
+      return await solveAndSignIn(attempt.signal)
+    } finally {
+      if (attemptRef.current === attempt) {
+        attemptRef.current = null
+      }
+    }
+  }
+
+  const signInAnonymously = async () => {
     try {
       const result = isAltchaCaptchaEnabled() ? await signInWithCaptcha() : await authClient.signIn.anonymous()
       if (result?.error) {
@@ -92,8 +112,6 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
       }
     } catch (err) {
       setAnonError(err instanceof Error ? err : new Error(String(err)))
-    } finally {
-      signInInFlightRef.current = false
     }
   }
 
@@ -116,6 +134,20 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     triedAnonRef.current = true
     fireAnonSignIn()
   }, [isPending, isAuthenticated, require, isAnonymousAllowed])
+
+  // Unmount cancels a captcha attempt before it can sign in. It also re-arms the auto sign-in,
+  // because Strict Mode's simulated unmount keeps the refs and would otherwise leave nothing running.
+  useEffect(
+    () => () => {
+      if (!attemptRef.current) {
+        return
+      }
+      attemptRef.current.abort()
+      attemptRef.current = null
+      triedAnonRef.current = false
+    },
+    [],
+  )
 
   if (isPending) {
     return { status: 'loading' }

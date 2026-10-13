@@ -145,7 +145,7 @@ full env table are in [Self-hosting § Configuration](../../self-hosting/configu
 `VITE_BYPASS_WAITLIST=true` removes the `/waitlist` route from the tree
 ([src/app.tsx:240-246](../../../src/app.tsx)), but `useAuthGate` only skips the waitlist redirect when the
 anonymous overlay is _also_ enabled
-([use-auth-gate.ts:51,124-135](../../../src/components/auth-gate/use-auth-gate.ts)). With the flag alone the
+([use-auth-gate.ts:51,164-175](../../../src/components/auth-gate/use-auth-gate.ts)). With the flag alone the
 visitor is redirected to a route that no longer exists and lands on `/not-found` via the catch-all. Pair it
 with `VITE_AUTH_ENABLE_ANONYMOUS=true` (and the backend's `AUTH_ALLOW_ANONYMOUS`), or
 leave both off.

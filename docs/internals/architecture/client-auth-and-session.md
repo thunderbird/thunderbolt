@@ -77,7 +77,7 @@ than navigating from an effect.
   ([altcha.ts](../../../src/components/auth-gate/altcha.ts)), in web workers, and sends it as `x-captcha-token`.
   A failed challenge fetch or a `403 CAPTCHA_VERIFICATION_FAILED` offers a retry with a fresh challenge
   instead of throwing; every other error still reaches the error boundary.
-- **Both failure shapes are handled** ([use-auth-gate.ts:81-110](../../../src/components/auth-gate/use-auth-gate.ts)).
+- **Both failure shapes are handled** ([use-auth-gate.ts:107-136](../../../src/components/auth-gate/use-auth-gate.ts)).
   Better Auth methods resolve with `{ data, error }` rather than throwing on a 4xx, so a hook ignoring the
   resolved-error path leaves the gate in `loading` forever.
 

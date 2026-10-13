@@ -259,21 +259,24 @@ describe('useAuthGate — require="authenticated"', () => {
 const altchaKey = 'test-altcha-hmac-key-that-is-32-characters'
 const captchaFailed = { status: 403, code: 'CAPTCHA_VERIFICATION_FAILED', message: 'Captcha verification failed' }
 
-type SignInOptions = { fetchOptions?: { headers?: Record<string, string> } }
+type SignInOptions = { fetchOptions?: { headers?: Record<string, string>; signal?: AbortSignal } }
 
 /**
  * An auth client whose anonymous sign-in answers from `results` in order (`null` succeeds and
  * sets the anonymous session), plus an HttpClient serving real, easy ALTCHA challenges.
- * `failFetches` makes the first N challenge fetches answer 500; sign-in waits for `signInHeld`.
+ * `failFetches` makes the first N challenge fetches answer 500, challenge fetches wait for
+ * `challengeHeld`, and sign-in waits for `signInHeld`.
  */
 const createCaptchaClients = (params: {
   results: Array<typeof captchaFailed | null>
   failFetches?: number
   signInHeld?: Promise<void>
+  challengeHeld?: Promise<void>
 }) => {
   const sessionRef: { current: typeof anonymousSession | null } = { current: null }
   const signInCalls: Array<SignInOptions | undefined> = []
   const challenges: string[] = []
+  const challengeSignals: AbortSignal[] = []
   const authClient = {
     ...createMockAuthClient(),
     useSession: () => ({
@@ -296,7 +299,9 @@ const createCaptchaClients = (params: {
       },
     },
   } as unknown as AuthClient
-  const fetchChallenge = async () => {
+  const fetchChallenge = async (input: RequestInfo | URL) => {
+    challengeSignals.push((input as Request).signal)
+    await params.challengeHeld
     if (challenges.length < (params.failFetches ?? 0)) {
       challenges.push('failed')
       return new Response('down', { status: 500 })
@@ -306,7 +311,7 @@ const createCaptchaClients = (params: {
     return Response.json(challenge)
   }
   const httpClient = createClient({ fetch: fetchChallenge, prefixUrl: 'http://test-api.local' })
-  return { authClient, httpClient, signInCalls, challenges }
+  return { authClient, httpClient, signInCalls, challenges, challengeSignals }
 }
 
 describe('useAuthGate with VITE_CAPTCHA_PROVIDER=altcha', () => {
@@ -395,6 +400,42 @@ describe('useAuthGate with VITE_CAPTCHA_PROVIDER=altcha', () => {
     await waitFor(() => expect(result.current).toEqual({ status: 'allowed' }))
     expect(challenges).toHaveLength(2)
     expect(signInCalls).toHaveLength(2)
+  })
+
+  it('never signs in from an attempt whose gate unmounted during the challenge fetch', async () => {
+    const challengeHeld = Promise.withResolvers<void>()
+    const { authClient, httpClient, signInCalls, challenges, challengeSignals } = createCaptchaClients({
+      results: [null],
+      challengeHeld: challengeHeld.promise,
+    })
+    const wrapper = createTestProvider({ authClient, httpClient })
+    const { result, unmount } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+    await waitFor(() => expect(result.current).toEqual({ status: 'verifying' }))
+    unmount()
+    expect(challengeSignals[0]?.aborted).toBe(true)
+    challengeHeld.resolve()
+    await waitFor(() => expect(challenges).toHaveLength(1))
+    // Long enough for a surviving attempt to solve the easy challenge and sign in.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(signInCalls).toHaveLength(0)
+  })
+
+  it('cancels the sign-in request when the gate unmounts while it is in flight', async () => {
+    const signInHeld = Promise.withResolvers<void>()
+    const { authClient, httpClient, signInCalls } = createCaptchaClients({
+      results: [null],
+      signInHeld: signInHeld.promise,
+    })
+    const wrapper = createTestProvider({ authClient, httpClient })
+    const { unmount } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+
+    await waitFor(() => expect(signInCalls).toHaveLength(1), { timeout: 2000 })
+    const signal = signInCalls[0]?.fetchOptions?.signal
+    expect(signal?.aborted).toBe(false)
+    unmount()
+    expect(signal?.aborted).toBe(true)
+    signInHeld.resolve()
   })
 
   it('offers a retry without signing in when the challenge fetch fails', async () => {

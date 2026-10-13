@@ -163,7 +163,7 @@ envVarGroups:
       - key: AGENT_ICON
         sync: false
       - key: AGENT_TIMEZONE
-        sync: false # the venue's IANA zone, so the agent knows the local date and time
+        sync: false # the venue's IANA zone, so the agent knows the local date and hour
       - key: INFERENCE_QUOTA_ANONYMOUS_5H_CENTS
         sync: false
       - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS

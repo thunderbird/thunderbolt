@@ -481,36 +481,49 @@ describe('createHostedAgentRoutes', () => {
 
   describe('current date', () => {
     const sent = new Date('2026-10-20T15:30:00Z')
+    const minutesLater = new Date('2026-10-20T15:47:00Z')
+    const nextHour = new Date('2026-10-20T16:05:00Z')
+    const hourLine = (date: Date, timeZone: string) => currentDateTimeLine(date, { timeZone, granularity: 'hour' })
+
+    /** Send one turn per moment on a single app and return each system prompt, in order. */
+    const systemPromptsAt = async (app: Elysia, moments: Date[]) => {
+      const prompts: (string | undefined)[] = []
+      for (const moment of moments) {
+        setSystemTime(moment)
+        await (await postChat(app)).text()
+        await settleRun()
+        const [message] = model.doStreamCalls[prompts.length].prompt
+        prompts.push(message.role === 'system' ? message.content : undefined)
+      }
+      return prompts
+    }
 
     afterEach(() => {
       setSystemTime()
     })
 
-    it('ends the system prompt with the date line in AGENT_TIMEZONE', async () => {
+    it('ends the system prompt with the date and hour in AGENT_TIMEZONE', async () => {
       setSystemTime(sent)
       const system = await sentSystemPrompt(createMockedApp({ settings: { agentTimezone: 'Asia/Tokyo' } }), model)
-      expect(currentDateTimeLine(sent, 'Asia/Tokyo')).not.toBe(currentDateTimeLine(sent, 'UTC'))
-      expect(system).toEndWith(`\n\n${currentDateTimeLine(sent, 'Asia/Tokyo')}`)
+      expect(hourLine(sent, 'Asia/Tokyo')).not.toBe(hourLine(sent, 'UTC'))
+      expect(system).toEndWith(`\n\n${hourLine(sent, 'Asia/Tokyo')}`)
     })
 
     it('writes the date line in UTC by default', async () => {
       setSystemTime(sent)
-      expect(await sentSystemPrompt(createMockedApp(), model)).toEndWith(`\n\n${currentDateTimeLine(sent, 'UTC')}`)
+      expect(await sentSystemPrompt(createMockedApp(), model)).toEndWith(`\n\n${hourLine(sent, 'UTC')}`)
     })
 
-    it('keeps everything before the date line identical across requests, so the prefix stays cacheable', async () => {
-      const app = createMockedApp()
-      const prefix = (system: string | undefined) => system?.slice(0, system.lastIndexOf('\n\nCurrent date/time: '))
-      setSystemTime(sent)
-      const first = await sentSystemPrompt(app, model)
-      await settleRun()
-      setSystemTime(new Date(sent.getTime() + 3_600_000))
-      await (await postChat(app)).text()
-      const [message] = model.doStreamCalls[1].prompt
-      const second = message.role === 'system' ? message.content : undefined
+    it('sends a byte-identical system prompt for turns in the same hour, so cached history stays reusable', async () => {
+      const [first, second] = await systemPromptsAt(createMockedApp(), [sent, minutesLater])
+      expect(second).toBe(first)
+    })
+
+    it('changes only the date line when the hour turns', async () => {
+      const [first, second] = await systemPromptsAt(createMockedApp(), [sent, nextHour])
       expect(second).not.toBe(first)
-      expect(prefix(second)).toBe(prefix(first))
-      expect(prefix(first)).toEndWith('"responde em espanhol"')
+      expect(first).toEndWith(`\n\n${hourLine(sent, 'UTC')}`)
+      expect(second).toBe(`${first?.slice(0, -hourLine(sent, 'UTC').length)}${hourLine(nextHour, 'UTC')}`)
     })
   })
 

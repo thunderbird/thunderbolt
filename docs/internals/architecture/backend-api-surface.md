@@ -44,7 +44,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
-‡ Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED` (`hosted-agent/history.ts`). Reads `X-App-Language`, validated with `matchExactLocale`, to name the reply-language fallback in the system prompt; a missing or unshipped tag falls back to English (`hosted-agent/system-prompt.ts`). The prompt ends with the current date/time in `AGENT_TIMEZONE`.
+‡ Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED` (`hosted-agent/history.ts`). Reads `X-App-Language`, validated with `matchExactLocale`, to name the reply-language fallback in the system prompt; a missing or unshipped tag falls back to English (`hosted-agent/system-prompt.ts`). The prompt ends with the current date and hour (no minutes) in `AGENT_TIMEZONE`, so on a Fireworks model, whose prompt cache reuses the conversation per user, the cached history is invalidated at most once an hour. Anthropic models are sent without cache control.
 
 Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.test.ts`).
 

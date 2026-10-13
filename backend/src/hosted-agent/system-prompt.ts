@@ -19,7 +19,7 @@ type AgentSystemPromptInput = {
 /**
  * Build the hosted agent's system prompt for one request: the operator's `AGENT_SYSTEM_PROMPT` first, then
  * a language rule whose fallback names the app language from the request's `X-App-Language` header, then
- * the current date and time.
+ * the current date and hour.
  *
  * The header is client-controlled, so {@link matchExactLocale} validates it and only a shipped tag's English
  * name reaches the prompt; an absent or unknown tag falls back to English. The prompt body stays English,
@@ -27,7 +27,11 @@ type AgentSystemPromptInput = {
  */
 export const buildAgentSystemPrompt = ({ operatorPrompt, appLanguage, timeZone, now }: AgentSystemPromptInput) => {
   const language = languageInstruction(matchExactLocale(appLanguage) ?? sourceLocale, { toolResults: false })
-  // The date line changes every minute, so it goes last: everything before it is identical across requests in
-  // the same language and stays a cacheable prefix for the provider's prompt caching.
-  return [operatorPrompt, language, currentDateTimeLine(now, timeZone)].filter(Boolean).join('\n\n')
+  // The date goes last so everything before it is identical across requests in the same language. `system` is
+  // sent ahead of the messages, though, so on a Fireworks model, whose prompt cache reuses the conversation per
+  // user, a change here invalidates the cached history. Hour granularity limits that to once an hour; later turns
+  // within the hour reuse system plus history. Anthropic models are sent without cache control, so nothing is
+  // cached for them either way.
+  const date = currentDateTimeLine(now, { timeZone, granularity: 'hour' })
+  return [operatorPrompt, language, date].filter(Boolean).join('\n\n')
 }

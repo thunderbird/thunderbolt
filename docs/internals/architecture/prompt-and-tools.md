@@ -63,7 +63,10 @@ Two ordering invariants:
 hosted agent also uses, and a test in `src/ai/prompt.test.ts` pins it byte for byte. The prompt
 body and the injected date (`sourceLocale`) stay English ([AGENTS.md](../../../AGENTS.md)). The date
 line comes from [`shared/i18n/current-date-time.ts`](../../../shared/i18n/current-date-time.ts), which
-the hosted agent also uses, writing the date in `AGENT_TIMEZONE` rather than the device's zone.
+the hosted agent also uses, writing the date in `AGENT_TIMEZONE` rather than the device's zone and to
+the hour rather than the minute. Its `system` precedes the conversation, so on a Fireworks model, whose
+prompt cache reuses the conversation per user, every change to it invalidates the cached history; on an
+Anthropic model nothing is cached, because the hosted agent sends no cache control.
 
 ## Conditional fragments
 

@@ -65,7 +65,7 @@ The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`
 | Fixed material: an FAQ, venue facts, policies  | `AGENT_SYSTEM_PROMPT`. It is sent with every request, so write facts, not prose. Keep the source out of this repository.    |
 | Data that changes: a schedule, rooms, speakers | MCP servers listed in `AGENT_MCP_SERVERS`, once the agent has tools. Until then, have the prompt say where the schedule is. |
 
-The agent is not told the current date or time yet, so questions such as "what's on this afternoon?" need the schedule tools.
+The agent is told the current date and hour in `AGENT_TIMEZONE`, but it still needs the schedule tools to answer questions such as "what's on this afternoon?".
 
 ## Headers
 

@@ -53,7 +53,12 @@ Render prompts once for every value below and never overwrites them afterwards. 
 | `AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_ICON`                                | How the agent is presented.                                                                                                                      |
 | `AGENT_MAX_STEPS`, `AGENT_MCP_SERVERS`                                         | Blank. Neither has an effect until the agent has tools.                                                                                          |
 | `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`     | Each visitor's spending cap, in cents. Enter numbers: a blank value stops the API at startup.                                                    |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults, 10 per 60 seconds. Without a captcha provider the API refuses to start with more than 10 or a window under 60 seconds. |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults, 10 per 60 seconds. Without the captcha below, the API refuses to start with more than 10 or a window under 60 seconds. |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`                                      | Blank keeps 2000. Anonymous sign-ins allowed per window across every IP.                                                                         |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS`                              | Blank keeps 3600 seconds. Size the budget as described in [Anonymous sign-in](./configuration.md#anonymous-sign-in).                             |
+| `VITE_CAPTCHA_PROVIDER`                                                        | `altcha` to turn on the captcha, or blank. Set it together with `CAPTCHA_PROVIDER`: both or neither. A change means a rebuild.                   |
+| `CAPTCHA_PROVIDER`                                                             | `altcha` together with `VITE_CAPTCHA_PROVIDER`, or blank for none. See [ALTCHA](./configuration.md#altcha).                                      |
+| `ALTCHA_SECRET`                                                                | With `altcha`, a key of at least 32 characters: `openssl rand -hex 32`. Otherwise blank.                                                         |
 
 The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). It also sets `TRUSTED_PROXY=cloudflare`: all traffic to a Render web service passes through Cloudflare, which writes the caller's address to `CF-Connecting-IP`, so the rate limits key on each visitor's own address. Without it the API sees Render's proxy as every visitor, and they all share one sign-in budget. The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
 
@@ -101,6 +106,6 @@ Deleting the database removes everything the deployment kept on the server: the 
 ## Limits
 
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
-- Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
+- Unless the captcha is on, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly. Setting both `CAPTCHA_PROVIDER` and `VITE_CAPTCHA_PROVIDER` to `altcha` lifts the ceiling; see [ALTCHA](./configuration.md#altcha).
 - The hosted agent calls Anthropic only and has no tools yet.
 - The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

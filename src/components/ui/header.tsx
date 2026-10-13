@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
-import type { ReactNode } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { useState, type ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
@@ -20,6 +21,7 @@ import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
+import { exposesPrivateThread } from '@/chats/private-thread'
 import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
@@ -172,6 +174,7 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
+  const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
   // Both desktop apps hide the native title bar (macOS overlays it with traffic
@@ -189,7 +192,7 @@ export const Header = () => {
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, hasThread } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -198,7 +201,7 @@ export const Header = () => {
         selectedAgent: session?.selectedAgent,
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
-        hasThread: session?.chatThread != null,
+        chatThread: session?.chatThread,
       }
     }),
   )
@@ -209,6 +212,13 @@ export const Header = () => {
   // loading and the list is empty. Fall back to built-in only when the thread
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
+  const hasThread = chatThread != null
+  // A switch that would send a private chat off the device waits here for the
+  // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
+  // so the store action stays a plain write. The agent outlives `open` so the
+  // dialog keeps its name through the close animation.
+  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; open: boolean } | null>(null)
+  const agentName = privateSwitch?.agent.name ?? ''
 
   const isChatRoute = location.pathname.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
@@ -217,11 +227,35 @@ export const Header = () => {
     openCreateItem({ kind: 'agent' })
   }
 
-  const handleAgentSelect = (agent: Agent) => {
+  const switchAgent = (agent: Agent) => {
     if (chatThreadId) {
       setSelectedAgent(chatThreadId, agent).catch(console.error)
     }
   }
+
+  const handleAgentSelect = (agent: Agent) => {
+    if (agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
+      setPrivateSwitch({ agent, open: true })
+      return
+    }
+    switchAgent(agent)
+  }
+
+  const privateSwitchDialog = (
+    <ConfirmActionDialog
+      open={privateSwitch?.open ?? false}
+      title={t`Send this private chat to ${agentName}?`}
+      description={t`This conversation will be sent to ${agentName} unencrypted and will no longer be private.`}
+      confirmLabel={t`Switch Agent`}
+      onConfirm={() => {
+        if (privateSwitch) {
+          switchAgent(privateSwitch.agent)
+        }
+        setPrivateSwitch((current) => current && { ...current, open: false })
+      }}
+      onCancel={() => setPrivateSwitch((current) => current && { ...current, open: false })}
+    />
+  )
 
   const agentSelector = showAgentSelector && chatInstance && (
     <HeaderAgentSelector
@@ -267,6 +301,7 @@ export const Header = () => {
         </div>
 
         {agentSelector}
+        {privateSwitchDialog}
 
         {/* Empty right column — keeps the header row a drag surface on the
             Tauri desktop app. */}
@@ -308,6 +343,7 @@ export const Header = () => {
             the agent pill absolutely and has no room next to it. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
+      {privateSwitchDialog}
     </header>
   )
 }

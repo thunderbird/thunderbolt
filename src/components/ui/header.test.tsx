@@ -6,6 +6,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { agentsSystemTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -39,6 +40,21 @@ const customAgent: Agent = {
   userId: 'user-1',
 }
 
+/** The backend's hosted agent, which receives a chat's history unencrypted. */
+const hostedAgent: Agent = {
+  id: 'hosted-agent',
+  name: 'Assistant',
+  type: 'managed-http',
+  transport: 'http',
+  url: '/v1/agent/chat',
+  description: null,
+  icon: null,
+  isSystem: 1,
+  enabled: 1,
+  deletedAt: null,
+  userId: null,
+}
+
 /** Wraps the component in everything `Header` touches: a router (it reads
  *  `location.pathname`), the sidebar context (`useSidebar`), the DAL/query
  *  providers so `useAllAgents` can run against the test database, and the
@@ -66,14 +82,17 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
  *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
  *  simulate an unsaved new chat (no thread row yet). */
-const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: boolean } = {}) => {
+const setupWithAgent = (
+  agent: Agent,
+  { withThread = true, isEncrypted = 0 }: { withThread?: boolean; isEncrypted?: 0 | 1 } = {},
+) => {
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
     chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
-    chatThread: withThread ? createMockChatThread({ agentId: agent.id }) : null,
+    chatThread: withThread ? createMockChatThread({ agentId: agent.id, isEncrypted }) : null,
     id: 'thread-1',
     models: [createMockModel()],
     selectedModel: createMockModel(),
@@ -191,5 +210,61 @@ describe('Header', () => {
     fireEvent.click(await screen.findByText('Add Agent'))
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
+  })
+
+  describe('switching a private chat off the built-in agent', () => {
+    const seedHostedAgent = () =>
+      getDb().insert(agentsSystemTable).values({
+        id: hostedAgent.id,
+        name: hostedAgent.name,
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+      })
+
+    const pickHostedAgent = async () => {
+      render(<Header />, { wrapper: TestWrapper })
+      await flushAgentsQuery()
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      fireEvent.click(await screen.findByText(hostedAgent.name))
+    }
+
+    const currentAgentId = () => useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id
+
+    it('asks first, and Cancel keeps the built-in agent', async () => {
+      await seedHostedAgent()
+      setupWithAgent(builtInAgent, { isEncrypted: 1 })
+      await pickHostedAgent()
+
+      expect(await screen.findByText('Send this private chat to Assistant?')).toBeInTheDocument()
+      expect(currentAgentId()).toBe(builtInAgent.id)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await flushAgentsQuery()
+
+      expect(currentAgentId()).toBe(builtInAgent.id)
+    })
+
+    it('switches once the user confirms', async () => {
+      await seedHostedAgent()
+      setupWithAgent(builtInAgent, { isEncrypted: 1 })
+      await pickHostedAgent()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Switch Agent' }))
+      await flushAgentsQuery()
+
+      expect(currentAgentId()).toBe(hostedAgent.id)
+    })
+
+    it('switches a chat that is not private without asking', async () => {
+      await seedHostedAgent()
+      setupWithAgent(builtInAgent)
+      await pickHostedAgent()
+      await flushAgentsQuery()
+
+      expect(screen.queryByText('Send this private chat to Assistant?')).toBeNull()
+      expect(currentAgentId()).toBe(hostedAgent.id)
+    })
   })
 })

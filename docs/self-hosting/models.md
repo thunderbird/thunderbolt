@@ -99,7 +99,7 @@ The confidential models run inside a hardware enclave: an isolated, memory-encry
 
 In the app these models carry a **Private** badge, and a chat that uses one is called a private chat.
 
-A chat started on a confidential model stays confidential. Standard models are greyed out inside it, and the reverse, so a conversation cannot silently change mode mid-thread. Users start a new chat to switch.
+A chat started on a confidential model stays confidential. Standard models are greyed out inside it, and the reverse, so a conversation cannot silently change mode mid-thread. Users start a new chat to switch. Moving a private chat to an agent other than the built-in one asks the user to confirm first, since that agent receives the conversation unencrypted.
 
 Message content is what the enclave path protects, in both directions, from your server, from the operators of the relay, and from the inference provider's own operators. The metadata around it stays visible: your server records the account, the model name, token counts and timing, which reveals who is talking to the model and the fact that the conversation happened.
 

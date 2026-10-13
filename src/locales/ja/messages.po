@@ -3308,6 +3308,10 @@ msgstr "マジックリンクを送信"
 msgid "Send message"
 msgstr "メッセージを送信"
 
+#: src/components/ui/header.tsx
+msgid "Send this private chat to {agentName}?"
+msgstr "この非公開チャットを{agentName}に送信しますか？"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
 msgstr ""
@@ -3631,6 +3635,10 @@ msgstr "モデルから応答を取得できました。"
 msgid "Suggested"
 msgstr "おすすめ"
 
+#: src/components/ui/header.tsx
+msgid "Switch Agent"
+msgstr "エージェントを切り替える"
+
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
 msgstr "{suggestedLanguageLabel} に切り替える"
@@ -3868,6 +3876,10 @@ msgstr "このコードは有効期限が切れています。新しいコード
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "この会話はモデルのコンテキストウィンドウに対して大きすぎます。新しいチャットを開始する、添付ファイルを削除する、またはコンテキストウィンドウの大きいモデルに切り替えてください。"
 
+#: src/components/ui/header.tsx
+msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+msgstr "この会話は暗号化されずに{agentName}に送信され、非公開ではなくなります。"
+
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "このデバイス"
@@ -3923,6 +3935,14 @@ msgstr "このモデルはツールの利用に対応していないようです
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "取り消されたブリッジの登録を完全に削除します。ブリッジは後から再登録できます。"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This private chat won't run on {agentName}."
+msgstr "この非公開チャットは{agentName}では実行されません。"
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+msgstr "この非公開チャットは{agentName}では実行されません。実行するには{builtInAgentName}に切り替えてください。"
 
 #: src/projects/project-form.tsx
 msgid "this project"

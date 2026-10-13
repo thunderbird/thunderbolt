@@ -3332,6 +3332,10 @@ msgstr "Envoyer le lien magique"
 msgid "Send message"
 msgstr "Envoyer le message"
 
+#: src/components/ui/header.tsx
+msgid "Send this private chat to {agentName}?"
+msgstr "Envoyer cette conversation privée à {agentName} ?"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
 msgstr ""
@@ -3655,6 +3659,10 @@ msgstr "Réponse du modèle obtenue avec succès."
 msgid "Suggested"
 msgstr "Suggestions"
 
+#: src/components/ui/header.tsx
+msgid "Switch Agent"
+msgstr "Changer d'agent"
+
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
 msgstr "Passer à {suggestedLanguageLabel}"
@@ -3892,6 +3900,10 @@ msgstr "Ce code a expiré. Veuillez en demander un nouveau."
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "Cette conversation est trop volumineuse pour la fenêtre de contexte du modèle. Démarrez une nouvelle conversation, supprimez des pièces jointes ou passez à un modèle doté d'une fenêtre de contexte plus grande."
 
+#: src/components/ui/header.tsx
+msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+msgstr "Cette conversation sera envoyée à {agentName} sans chiffrement et ne sera plus privée."
+
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "Cet appareil"
@@ -3947,6 +3959,14 @@ msgstr "Ce modèle ne semble pas prendre en charge l'utilisation d'outils."
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "Cela supprime définitivement l'enregistrement du bridge révoqué. Le bridge pourra s'enregistrer à nouveau par la suite."
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This private chat won't run on {agentName}."
+msgstr "Cette conversation privée ne sera pas exécutée avec {agentName}."
+
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+msgstr "Cette conversation privée ne sera pas exécutée avec {agentName}. Passez à {builtInAgentName} pour l'exécuter."
 
 #: src/projects/project-form.tsx
 msgid "this project"

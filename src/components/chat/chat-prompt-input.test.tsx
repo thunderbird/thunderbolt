@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
@@ -506,6 +507,67 @@ describe('ChatPromptInput', () => {
 
       expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
+    })
+  })
+
+  describe('private chat held back from a non-built-in agent', () => {
+    const notice = "This private chat won't run on Assistant. Switch to Thunderbolt to run it."
+
+    /** An automation thread: private, ending on its unanswered prompt, resolved to `agent`. */
+    const renderAutomationThread = ({ isEncrypted = 1 }: { isEncrypted?: 0 | 1 } = {}) => {
+      const { mockUseChat, mockChatInstance } = setupStore('ready', [
+        { id: 'msg-1', role: 'user', parts: [{ type: 'text', text: 'Daily brief' }] },
+      ])
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', {
+          chatThread: createMockChatThread({ isEncrypted }),
+          selectedAgent: { ...hostedAgent, name: 'Assistant' },
+        })
+      })
+      const { container } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      return { container, sendMessage: mockChatInstance.sendMessage }
+    }
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {} })
+    })
+
+    it('says so and holds a typed send, which would carry the history out unencrypted', async () => {
+      const { container, sendMessage } = renderAutomationThread()
+
+      expect(screen.getByText(notice)).toBeInTheDocument()
+
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Go on' } })
+      await act(async () => {
+        fireEvent.submit(container.querySelector('form')!)
+      })
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('clears once the chat is back on the built-in agent', () => {
+      renderAutomationThread()
+
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: builtInAgent })
+      })
+
+      expect(screen.queryByText(notice)).toBeNull()
+    })
+
+    it('drops the switch advice where the deployment has no built-in agent', () => {
+      useConfigStore.setState({ config: { builtInAgentEnabled: false } })
+      renderAutomationThread()
+
+      expect(screen.getByText("This private chat won't run on Assistant.")).toBeInTheDocument()
+    })
+
+    it('stays quiet for a chat that is not private', () => {
+      renderAutomationThread({ isEncrypted: 0 })
+
+      expect(screen.queryByText(notice)).toBeNull()
     })
   })
 

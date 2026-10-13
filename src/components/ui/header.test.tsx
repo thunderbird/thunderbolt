@@ -257,6 +257,35 @@ describe('Header', () => {
       expect(currentAgentId()).toBe(hostedAgent.id)
     })
 
+    it('closes a pending prompt when the user moves to another chat, so it cannot switch that one', async () => {
+      await seedHostedAgent()
+      setupWithAgent(builtInAgent, { isEncrypted: 1 })
+      await pickHostedAgent()
+      expect(await screen.findByText('Send this private chat to Assistant?')).toBeInTheDocument()
+
+      act(() => {
+        hydrateStore({
+          chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-2' }),
+          chatThread: createMockChatThread({ id: 'thread-2' }),
+          id: 'thread-2',
+          selectedModel: createMockModel(),
+          triggerData: null,
+        })
+      })
+      await flushAgentsQuery()
+
+      expect(screen.queryByRole('button', { name: 'Switch Agent' })).toBeNull()
+      expect(useChatStore.getState().sessions.get('thread-2')?.selectedAgent.id).toBe(builtInAgent.id)
+
+      act(() => {
+        useChatStore.getState().setCurrentSessionId('thread-1')
+      })
+      await flushAgentsQuery()
+
+      expect(screen.queryByRole('button', { name: 'Switch Agent' })).toBeNull()
+      expect(currentAgentId()).toBe(builtInAgent.id)
+    })
+
     it('switches a chat that is not private without asking', async () => {
       await seedHostedAgent()
       setupWithAgent(builtInAgent)

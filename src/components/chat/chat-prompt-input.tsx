@@ -1015,7 +1015,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send
             // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
+            emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
             renderOverlay={(value) =>
               renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }

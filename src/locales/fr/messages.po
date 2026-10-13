@@ -3961,10 +3961,12 @@ msgid "This permanently removes the revoked bridge registration. The bridge can 
 msgstr "Cela supprime définitivement l'enregistrement du bridge révoqué. Le bridge pourra s'enregistrer à nouveau par la suite."
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
 msgid "This private chat won't run on {agentName}."
 msgstr "Cette conversation privée ne sera pas exécutée avec {agentName}."
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
 msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 msgstr "Cette conversation privée ne sera pas exécutée avec {agentName}. Passez à {builtInAgentName} pour l'exécuter."
 

@@ -217,8 +217,14 @@ export const Header = () => {
   // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
   // so the store action stays a plain write. The agent outlives `open` so the
   // dialog keeps its name through the close animation.
-  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; open: boolean } | null>(null)
+  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; threadId: string; open: boolean } | null>(null)
   const agentName = privateSwitch?.agent.name ?? ''
+  // The header outlives chat navigation, so a prompt raised in one chat closes
+  // when the user moves to another: its confirm must never land on the chat now
+  // shown. Adjusted during render, React's pattern for state that follows a prop.
+  if (privateSwitch?.open && privateSwitch.threadId !== chatThreadId) {
+    setPrivateSwitch({ ...privateSwitch, open: false })
+  }
 
   const isChatRoute = location.pathname.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
@@ -227,18 +233,18 @@ export const Header = () => {
     openCreateItem({ kind: 'agent' })
   }
 
-  const switchAgent = (agent: Agent) => {
-    if (chatThreadId) {
-      setSelectedAgent(chatThreadId, agent).catch(console.error)
+  const switchAgent = (threadId: string | undefined, agent: Agent) => {
+    if (threadId) {
+      setSelectedAgent(threadId, agent).catch(console.error)
     }
   }
 
   const handleAgentSelect = (agent: Agent) => {
-    if (agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
-      setPrivateSwitch({ agent, open: true })
+    if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
+      setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
       return
     }
-    switchAgent(agent)
+    switchAgent(chatThreadId, agent)
   }
 
   const privateSwitchDialog = (
@@ -249,7 +255,7 @@ export const Header = () => {
       confirmLabel={t`Switch Agent`}
       onConfirm={() => {
         if (privateSwitch) {
-          switchAgent(privateSwitch.agent)
+          switchAgent(privateSwitch.threadId, privateSwitch.agent)
         }
         setPrivateSwitch((current) => current && { ...current, open: false })
       }}

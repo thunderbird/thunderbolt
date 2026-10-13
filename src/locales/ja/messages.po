@@ -3937,10 +3937,12 @@ msgid "This permanently removes the revoked bridge registration. The bridge can 
 msgstr "取り消されたブリッジの登録を完全に削除します。ブリッジは後から再登録できます。"
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
 msgid "This private chat won't run on {agentName}."
 msgstr "この非公開チャットは{agentName}では実行されません。"
 
 #: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
 msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 msgstr "この非公開チャットは{agentName}では実行されません。実行するには{builtInAgentName}に切り替えてください。"
 

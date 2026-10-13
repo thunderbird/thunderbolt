@@ -535,10 +535,12 @@ describe('ChatPromptInput', () => {
       useConfigStore.setState({ config: {} })
     })
 
-    it('says so and holds a typed send, which would carry the history out unencrypted', async () => {
+    it('says so and holds typed and voice sends, which would carry the history out unencrypted', async () => {
       const { container, sendMessage } = renderAutomationThread()
 
       expect(screen.getByText(notice)).toBeInTheDocument()
+      // Voice sends straight through the chat, so it is held here too.
+      expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeDisabled()
 
       fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Go on' } })
       await act(async () => {

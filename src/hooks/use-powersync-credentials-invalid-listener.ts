@@ -108,8 +108,9 @@ export const usePowerSyncCredentialsInvalidListener = ({
         void setSyncEnabled(false)
         window.dispatchEvent(new CustomEvent(showSignInModalEvent))
         // A 401 can't tell an expired session from a revoked device (revocation deletes
-        // its sessions). Ask once: the session check answers a revoked device with a 403
-        // that the HttpClient turns into device_revoked, wiping it.
+        // its sessions). Ask now: the session check answers a revoked device with a 403
+        // that the HttpClient turns into device_revoked, wiping it. If this request is
+        // lost, the startup check asks again on the next launch.
         void httpClient.get('api/auth/get-session').catch(() => {})
         return
       }

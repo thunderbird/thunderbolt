@@ -303,6 +303,10 @@ const createCaptchaClients = (params: {
     },
   } as unknown as AuthClient
   const fetchChallenge = async (input: RequestInfo | URL) => {
+    // The AuthProvider's startup session check is not a challenge.
+    if ((input as Request).url.endsWith('/api/auth/get-session')) {
+      return Response.json(null)
+    }
     challengeSignals.push((input as Request).signal)
     await params.challengeHeld
     const failure = params.challengeFailures?.[challenges.length]

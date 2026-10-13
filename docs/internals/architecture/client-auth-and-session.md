@@ -107,7 +107,7 @@ order:
    `{ user: null, session: null }` can transit the atom on the initial `onSuccess` and must not be cached
    (a logged-out flash next boot); a real sign-out (`null`) is a deliberate no-op, since the 401 handler
    and `clearLocalData` own cache clearing.
-4. **Validate the stored token once, on mount**, through `HttpClient` rather than the auth client, so the
+4. **Check the session once, on mount, with or without a stored token**, through `HttpClient` rather than the auth client, so the
    check sidesteps Better Auth's retry path and lands on the `afterResponse` hook: a 401 means the session
    expired, a 403 `DEVICE_DISCONNECTED` means this device was revoked
    ([auth-context.tsx](../../../src/contexts/auth-context.tsx)).

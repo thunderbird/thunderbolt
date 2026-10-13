@@ -56,8 +56,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     localStorage.clear()
   })
 
-  // Mirror the beforeEach cleanup so the last test's auth token can't leak into
-  // the next test file (AuthProvider's mount effect fires get-session on any token).
+  // Mirror the beforeEach cleanup so the last test's auth token can't leak into the next test file.
   afterEach(() => {
     localStorage.clear()
   })

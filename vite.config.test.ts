@@ -54,9 +54,7 @@ describe('vite server.fs allowlist', () => {
         // Check both directions: the sensitive dir is an allowed path (or child),
         // AND no allowed path is a subdirectory of the sensitive dir.
         const isAllowed =
-          allowed === targetDir ||
-          targetDir.startsWith(allowed + path.sep) ||
-          allowed.startsWith(targetDir + path.sep)
+          allowed === targetDir || targetDir.startsWith(allowed + path.sep) || allowed.startsWith(targetDir + path.sep)
         expect(isAllowed).toBe(false)
       }
     })
@@ -73,6 +71,7 @@ describe('vite server.fs allowlist', () => {
 
   it('allows frontend source directories', () => {
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'src'))
+    expect(resolvedAllow).toContain(path.resolve(ROOT, 'admin'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'shared'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'public'))
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'node_modules'))

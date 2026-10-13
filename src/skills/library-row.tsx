@@ -13,6 +13,8 @@ import { isWidgetSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { skillDisplayName } from './display'
 
+export type SkillListItem = Pick<Skill, 'id' | 'name' | 'label' | 'description'>
+
 /**
  * Shared spring transition for the row's own layout shift AND for the
  * surrounding `<m.ul>` / `<m.div>` wrappers in `SkillsList`. They all
@@ -43,7 +45,7 @@ export const LibraryRow = ({
   onEdit,
   onDelete,
 }: {
-  skill: Skill
+  skill: SkillListItem
   enabled: boolean
   isActive: boolean
   onSelect: (id: string) => void

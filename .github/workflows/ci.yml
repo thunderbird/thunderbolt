@@ -84,6 +84,7 @@ jobs:
             # build: app source (strings + catalogs), shared/ (imported by the
             # frontend build), build/i18n config, deps, and this workflow.
             localization:
+              - 'admin/**'
               - 'src/**'
               - 'shared/**'
               - 'index.html'
@@ -158,6 +159,12 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      - name: Check source license boundaries
+        run: bun run license:check
+
+      - name: Build admin design proposal
+        run: bun run build:admin --outDir dist-admin-preview
 
       - name: Run tests
         run: bun run test:5x

@@ -21,6 +21,14 @@ msgstr ""
 msgid "\"{filename}\" isn't a supported file type."
 msgstr ""
 
+#. placeholder {0}: agent.agentSkillCount
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+bundled+skill%7D+other+%7B%23+bundled+skills%7D%7D&pluralize_on=0
+#: admin/screens/agent-preview.tsx
+msgid "# bundled skill"
+msgid_plural "# bundled skills"
+msgstr[0] ""
+msgstr[1] ""
+
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
@@ -42,6 +50,14 @@ msgstr[1] ""
 #: src/components/available-tools.tsx
 msgid "# tool"
 msgid_plural "# tools"
+msgstr[0] ""
+msgstr[1] ""
+
+#. placeholder {0}: 3
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+user+failure+in+the+sample%7D+other+%7B%23+user+failures+in+the+sample%7D%7D&pluralize_on=0
+#: admin/screens/agent-endpoint.tsx
+msgid "# user failure in the sample"
+msgid_plural "# user failures in the sample"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -96,6 +112,10 @@ msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
+msgstr ""
+
+#: admin/screens/agents-page.tsx
+msgid "{mode} · {category}"
 msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
@@ -184,6 +204,10 @@ msgstr ""
 msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 msgstr ""
 
+#: admin/screens/company-skill-editor.tsx
+msgid "A skill with this slug already exists."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr ""
@@ -192,13 +216,36 @@ msgstr ""
 msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#: admin/screens/agent-preview.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "About"
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
+msgid "Accepts"
+msgstr ""
+
+#: admin/screens/agent-preview.tsx
+msgid "Accepts audio"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Accepts connections from your devices"
+msgstr ""
+
+#: admin/screens/agent-preview.tsx
+msgid "Accepts images"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/agent-editor.tsx
+msgid "Access"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "Access level"
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -215,6 +262,10 @@ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Account menu"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "ACP URL"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -249,6 +300,10 @@ msgstr ""
 msgid "Add a skill"
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Add access"
+msgstr ""
+
 #: src/components/create-item/context.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/ui/agent-selector/agent-selector.tsx
@@ -263,10 +318,12 @@ msgstr ""
 msgid "Add instructions to chat"
 msgstr ""
 
+#: admin/screens/company-mcp-page.tsx
 #: src/settings/connections/index.tsx
 msgid "Add MCP Server"
 msgstr ""
 
+#: admin/screens/company-models-page.tsx
 #: src/components/create-item/context.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
@@ -275,9 +332,14 @@ msgstr ""
 msgid "Add Model"
 msgstr ""
 
+#: admin/screens/company-mcp-editor.tsx
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr ""
+
+#: admin/screens/company-skills.tsx
+#~ msgid "Add skill"
+#~ msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
@@ -298,14 +360,58 @@ msgstr ""
 msgid "Adding…"
 msgstr ""
 
+#: admin/screens/members-page.tsx
+#: src/layout/sidebar/nav-toggle.tsx
+msgid "Admin"
+msgstr ""
+
+#: admin/preview-notice.tsx
+#~ msgid "Admin design preview"
+#~ msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/agents-page.tsx
+msgid "Admin only"
+msgstr ""
+
+#: src/layout/sidebar/nav-toggle.tsx
+#~ msgid "Admin preview"
+#~ msgstr ""
+
+#: admin/screens/member-editor.tsx
+msgid "Administrator"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "Admins with access"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+msgid "Agent sections"
+msgstr ""
+
+#: admin/screens/agent-policy.tsx
+msgid "Agent settings"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/agents-page.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Agents"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Agents shared with this group"
+msgstr ""
+
+#: admin/screens/member-editor.tsx
+msgid "Agents with access"
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -323,6 +429,10 @@ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
+msgstr ""
+
+#: admin/screens/agent-policy.tsx
+msgid "Allow personal agents"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
@@ -510,6 +620,18 @@ msgstr ""
 msgid "Authorizing…"
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
+msgid "Available modes"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#~ msgid "Available to members"
+#~ msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Available to the organization"
+#~ msgstr ""
+
 #: src/components/available-tools.tsx
 msgid "Available Tools"
 msgstr ""
@@ -547,12 +669,21 @@ msgstr ""
 msgid "Build it from source instead (requires Bun):"
 msgstr ""
 
+#: admin/screens/agents-page.tsx
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Built-in · Everyone"
+msgstr ""
+
 #: src/settings/models/model-detail.tsx
 msgid "Built-in models can't be edited or removed"
 msgstr ""
 
 #: src/skills/skill-detail.tsx
 msgid "Built-in skill · Read-only"
+msgstr ""
+
+#: admin/screens/agent-policy.tsx
+msgid "Built-in Thunderbolt agent"
 msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
@@ -564,6 +695,8 @@ msgstr ""
 msgid "Calendar"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#: admin/screens/member-editor.tsx
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
@@ -591,6 +724,10 @@ msgstr ""
 
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Cannot change agent during reply"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Category"
 msgstr ""
 
 #: src/i18n/unit-labels.ts
@@ -705,6 +842,10 @@ msgstr ""
 msgid "Choose an option"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#~ msgid "Choose groups, or leave all unchecked to make this agent available to everyone."
+#~ msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
 msgstr ""
@@ -712,6 +853,14 @@ msgstr ""
 #: src/widgets/ask/display.tsx
 msgid "Choose one"
 msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Choose the connections your organization can use."
+#~ msgstr ""
+
+#: admin/screens/thunderbolt-resources.tsx
+#~ msgid "Choose what Thunderbolt can use. Changes are saved automatically."
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
@@ -830,6 +979,14 @@ msgstr ""
 msgid "Command Palette"
 msgstr ""
 
+#: admin/admin-sidebar.tsx
+#~ msgid "Company"
+#~ msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Company agent"
+msgstr ""
+
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
 msgstr ""
@@ -848,6 +1005,14 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
+msgstr ""
+
+#: admin/screens/company-model-editor.tsx
+msgid "Configuration is saved locally for this proposal. Provider connections and API keys aren't active yet."
+msgstr ""
+
+#: admin/screens/company-mcp-editor.tsx
+msgid "Configuration is saved locally for this proposal. Server connections and authentication aren't active yet."
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -952,12 +1117,22 @@ msgstr ""
 msgid "Connection successful!"
 msgstr ""
 
+#: admin/admin-sidebar.tsx
+#: admin/screens/thunderbolt-agent-panel.tsx
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
 #: src/settings/connections/connections-list.tsx
 msgid "Connections"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Connections available to the company's Thunderbolt agent."
+msgstr ""
+
+#: admin/screens/company-mcp-page.tsx
+msgid "Connections for the company's Thunderbolt agent."
 msgstr ""
 
 #: src/components/app-error-screen.tsx
@@ -979,6 +1154,10 @@ msgstr ""
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
 msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Control whether this resource is available to members of your organization."
+#~ msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
@@ -1171,6 +1350,7 @@ msgstr ""
 msgid "Create project"
 msgstr ""
 
+#: admin/screens/company-skills-page.tsx
 #: src/components/create-item/context.tsx
 #: src/search/commands/create-commands.ts
 #: src/skills/skills-view.tsx
@@ -1209,6 +1389,10 @@ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Custom — OpenAI-compatible endpoint"
+msgstr ""
+
+#: admin/screens/agents-page.tsx
+msgid "Custom agents"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -1401,6 +1585,18 @@ msgstr ""
 msgid "Description"
 msgstr ""
 
+#: admin/screens/company-skills.tsx
+#~ msgid "Description (optional)"
+#~ msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Design proposal"
+#~ msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Details"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
 msgid "Dev Settings"
@@ -1453,6 +1649,7 @@ msgstr ""
 msgid "Disable Telemetry"
 msgstr ""
 
+#: admin/screens/thunderbolt-resource-summary.tsx
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/skills/skills-list.tsx
@@ -1463,9 +1660,15 @@ msgstr ""
 msgid "Disabled agents stay out of the chat agent picker."
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/agent-editor.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/skills/discard-create-dialog.tsx
 msgid "Discard"
+msgstr ""
+
+#: admin/screens/resource-page-dialogs.tsx
+msgid "Discard unsaved changes?"
 msgstr ""
 
 #: src/components/connect-provider-button.tsx
@@ -1575,10 +1778,12 @@ msgstr ""
 msgid "Edit file"
 msgstr ""
 
+#: admin/screens/company-mcp-page.tsx
 #: src/settings/connections/index.tsx
 msgid "Edit MCP Server"
 msgstr ""
 
+#: admin/screens/company-models-page.tsx
 #: src/settings/models/index.tsx
 msgid "Edit Model"
 msgstr ""
@@ -1591,6 +1796,7 @@ msgstr ""
 msgid "Edit skill"
 msgstr ""
 
+#: admin/screens/company-skills-page.tsx
 #: src/components/create-item/context.tsx
 #: src/skills/skills-view.tsx
 msgid "Edit Skill"
@@ -1604,6 +1810,7 @@ msgstr ""
 msgid "Editing…"
 msgstr ""
 
+#: admin/screens/member-editor.tsx
 #: src/components/onboarding/onboarding-auth-step.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -1670,6 +1877,10 @@ msgstr ""
 msgid "Enter a different code"
 msgstr ""
 
+#: src/settings/models/use-add-model-form.ts
+msgid "Enter a valid http:// or https:// URL."
+msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Enter a valid URL"
 msgstr ""
@@ -1706,6 +1917,15 @@ msgstr ""
 msgid "Enter your verification code"
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/agents-page.tsx
+msgid "Everyone"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "Everyone in your organization can use this agent."
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
 msgstr ""
@@ -1728,6 +1948,11 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Exporting…"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#: admin/screens/agents-page.tsx
+msgid "Extensible"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -1852,6 +2077,10 @@ msgstr ""
 msgid "From {0}"
 msgstr ""
 
+#: admin/screens/agent-endpoint.tsx
+msgid "From ACP server"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -1894,6 +2123,14 @@ msgstr ""
 msgid "Getting weather…"
 msgstr ""
 
+#: admin/screens/agent-policy.tsx
+msgid "Give members the built-in assistant."
+msgstr ""
+
+#: admin/screens/groups-page.tsx
+msgid "Give teams access to the right agents through shared groups."
+msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 msgid "Gmail & Calendar"
 msgstr ""
@@ -1926,6 +2163,22 @@ msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Got it, working on that next."
+msgstr ""
+
+#. placeholder {0}: group.name
+#: admin/screens/agent-access-panel.tsx
+msgid "Group · {0}"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Group name"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/groups-page.tsx
+#: admin/screens/member-editor.tsx
+msgid "Groups"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -2050,6 +2303,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Individuals"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr ""
@@ -2076,6 +2333,7 @@ msgstr ""
 msgid "Instructions"
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Integrations"
 msgstr ""
@@ -2094,6 +2352,15 @@ msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Invalid verification link. Please request a new one."
+msgstr ""
+
+#: admin/screens/member-editor.tsx
+#: admin/screens/members-page.tsx
+msgid "Invite member"
+msgstr ""
+
+#: admin/screens/members-page.tsx
+msgid "Invited"
 msgstr ""
 
 #: src/components/settings/agents/validate-agent-url.ts
@@ -2170,6 +2437,14 @@ msgstr ""
 msgid "Leave without saving?"
 msgstr ""
 
+#: admin/screens/agent-policy.tsx
+msgid "Let members connect their own ACP agents."
+msgstr ""
+
+#: admin/screens/company-model-policy.tsx
+msgid "Let members use their own models with the built-in Thunderbolt agent."
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
 msgstr ""
@@ -2228,6 +2503,10 @@ msgstr ""
 msgid "Loading…"
 msgstr ""
 
+#: admin/preview-notice.tsx
+#~ msgid "Local sample organization · Changes saved on this device"
+#~ msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
 msgstr ""
@@ -2257,9 +2536,41 @@ msgstr ""
 msgid "Mainly clear"
 msgstr ""
 
+#: admin/admin-sidebar.tsx
+msgid "Manage"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Manage connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
 msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+#~ msgid "Manage MCP servers"
+#~ msgstr ""
+
+#: admin/screens/members-page.tsx
+msgid "Manage membership, administrator roles, and group access."
+msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Manage model profiles available to your organization."
+#~ msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Manage models"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Manage skills"
+msgstr ""
+
+#: admin/screens/agents-page.tsx
+#~ msgid "Manage the agents your organization can use and who has access."
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
@@ -2273,9 +2584,61 @@ msgstr ""
 msgid "Maximize"
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
+msgid "MCP"
+msgstr ""
+
+#: admin/screens/agent-endpoint.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+#~ msgid "MCP servers available to the company's Thunderbolt agent."
+#~ msgstr ""
+
+#: admin/screens/company-mcp-page.tsx
+#~ msgid "MCP servers for the company's Thunderbolt agent."
+#~ msgstr ""
+
+#: admin/screens/member-editor.tsx
+msgid "Member"
+msgstr ""
+
+#. placeholder {0}: member.name || member.email
+#: admin/screens/agent-access-panel.tsx
+msgid "Member · {0}"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/group-editor.tsx
+#: admin/screens/members-page.tsx
+msgid "Members"
+msgstr ""
+
+#: admin/screens/groups-page.tsx
+msgid "Members: {count}"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Members’ enabled library skills and integrations are available to this agent."
+msgstr ""
+
+#: admin/screens/agent-preview.tsx
+msgid "Members’ enabled library skills are available to this agent."
+msgstr ""
+
+#: admin/screens/agent-preview.tsx
+msgid "Members’ library skills are not shared with this agent."
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+#~ msgid "Membership changes apply immediately to the sample data."
+#~ msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Membership changes are saved automatically."
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -2326,11 +2689,28 @@ msgstr ""
 msgid "Model name is required."
 msgstr ""
 
+#: admin/screens/company-model-policy.tsx
+msgid "Model settings"
+msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/agent-endpoint.tsx
+#: admin/screens/agent-preview.tsx
+#: admin/screens/company-models-page.tsx
+#: admin/screens/thunderbolt-agent-panel.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
 #: src/settings/models/index.tsx
 msgid "Models"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Models available to the company's Thunderbolt agent."
+msgstr ""
+
+#: admin/screens/company-models-page.tsx
+msgid "Models for the company's Thunderbolt agent."
 msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
@@ -2375,13 +2755,19 @@ msgstr ""
 msgid "My Agent"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#: admin/screens/member-editor.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/projects/project-form.tsx
-#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/mcp-server-address-fields.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Name"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Name from the agent’s endpoint"
 msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx
@@ -2401,6 +2787,11 @@ msgstr ""
 #: src/settings/models/model-catalog.ts
 msgid "Network request failed (the browser blocked the request or the server is unreachable)."
 msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#: admin/screens/agents-page.tsx
+#~ msgid "New agent"
+#~ msgstr ""
 
 #: src/routes/settings/agents/index.tsx
 msgid "New Agent"
@@ -2430,6 +2821,12 @@ msgstr ""
 msgid "New device waiting"
 msgstr ""
 
+#: admin/screens/group-editor.tsx
+#: admin/screens/groups-page.tsx
+msgid "New group"
+msgstr ""
+
+#: admin/screens/company-models-page.tsx
 #: src/settings/models/index.tsx
 msgid "New Model"
 msgstr ""
@@ -2455,6 +2852,14 @@ msgstr ""
 msgid "No agents found"
 msgstr ""
 
+#: admin/screens/agents-page.tsx
+msgid "No agents registered yet."
+msgstr ""
+
+#: admin/screens/agents-page.tsx
+#~ msgid "No agents yet."
+#~ msgstr ""
+
 #: src/projects/project-detail-panel.tsx
 msgid "No artifacts yet."
 msgstr ""
@@ -2471,8 +2876,32 @@ msgstr ""
 msgid "No chats yet. Anything you ask beside this app shows up here."
 msgstr ""
 
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "No company connections yet."
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+#~ msgid "No company MCP servers yet."
+#~ msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "No company models yet."
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "No company skills yet."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "No groups or people found"
+msgstr ""
+
+#: admin/screens/groups-page.tsx
+msgid "No groups yet."
 msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
@@ -2501,6 +2930,10 @@ msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
+msgstr ""
+
+#: admin/screens/members-page.tsx
+msgid "No matching members."
 msgstr ""
 
 #: src/projects/index.tsx
@@ -2536,6 +2969,10 @@ msgstr ""
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "No one yet. Add a group or individual."
+msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr ""
@@ -2546,6 +2983,10 @@ msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
+msgstr ""
+
+#: admin/screens/agent-endpoint.tsx
+msgid "No sample response for this endpoint"
 msgstr ""
 
 #: src/skills/skills-list.tsx
@@ -2562,6 +3003,10 @@ msgstr ""
 
 #: src/tasks/index.tsx
 msgid "No tasks yet"
+msgstr ""
+
+#: admin/screens/agent-preview.tsx
+msgid "None"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
@@ -2581,6 +3026,7 @@ msgstr ""
 msgid "Not now"
 msgstr ""
 
+#: admin/screens/agent-endpoint.tsx
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
 msgstr ""
@@ -2754,6 +3200,22 @@ msgstr ""
 msgid "Or enter the 8-digit code"
 msgstr ""
 
+#: admin/screens/agents-page.tsx
+#~ msgid "Organization agents"
+#~ msgstr ""
+
+#: admin/screens/member-editor.tsx
+msgid "Organization membership"
+msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "Organization resource"
+#~ msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#~ msgid "Organization-managed agent"
+#~ msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
 msgstr ""
@@ -2798,6 +3260,10 @@ msgstr ""
 msgid "Permission Required"
 msgstr ""
 
+#: admin/screens/company-model-policy.tsx
+msgid "Personal models"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr ""
@@ -2840,6 +3306,7 @@ msgstr ""
 msgid "Preferred Name"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview"
 msgstr ""
@@ -2855,6 +3322,10 @@ msgstr ""
 #: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Preview not available for this file type. Use the download button to view it."
 msgstr ""
+
+#: admin/screens/member-editor.tsx
+#~ msgid "Preview only — no invitation is sent"
+#~ msgstr ""
 
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
@@ -2931,8 +3402,16 @@ msgstr ""
 msgid "Recent Chats"
 msgstr ""
 
+#: admin/screens/agents-page.tsx
+msgid "Recent connection failures in the sample"
+msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "Recent Projects"
+msgstr ""
+
+#: admin/screens/agent-endpoint.tsx
+msgid "Recorded sample responses from the original design. No connection is made."
 msgstr ""
 
 #: src/hooks/use-sync-setup.ts
@@ -2951,6 +3430,11 @@ msgstr ""
 msgid "Refreshing keys…"
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#: admin/screens/agents-page.tsx
+msgid "Register agent"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr ""
@@ -2960,9 +3444,28 @@ msgstr ""
 msgid "Reload"
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
+msgid "Remembers context across a session"
+msgstr ""
+
+#: admin/screens/resource-page-dialogs.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
 msgid "Remove"
+msgstr ""
+
+#. placeholder {0}: skill.name
+#: admin/screens/company-skills.tsx
+#~ msgid "Remove {0}"
+#~ msgstr ""
+
+#. placeholder {0}: agent.name
+#: admin/screens/agent-editor.tsx
+msgid "Remove {0}?"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "Remove agent"
 msgstr ""
 
 #: src/components/logout-modal.tsx
@@ -2970,17 +3473,47 @@ msgstr ""
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+#: admin/screens/group-editor.tsx
+#: admin/screens/member-editor.tsx
+#~ msgid "Remove from preview"
+#~ msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Remove from project"
+msgstr ""
+
+#: admin/screens/resource-page-dialogs.tsx
+msgid "Remove from Thunderbolt?"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Remove group"
 msgstr ""
 
 #: src/projects/emoji-picker.tsx
 msgid "Remove icon"
 msgstr ""
 
+#: admin/screens/member-editor.tsx
+msgid "Remove member"
+msgstr ""
+
+#: admin/screens/company-models-page.tsx
+msgid "Remove model"
+msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "Remove quote"
+msgstr ""
+
+#: admin/screens/company-mcp-page.tsx
+msgid "Remove server"
+msgstr ""
+
+#: admin/screens/company-skills-page.tsx
+msgid "Remove skill"
 msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
@@ -3054,6 +3587,14 @@ msgstr ""
 msgid "Reset Local Database?"
 msgstr ""
 
+#: admin/preview-notice.tsx
+#~ msgid "Reset preview"
+#~ msgstr ""
+
+#: admin/preview-reset-action.tsx
+msgid "Reset sample data"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr ""
@@ -3068,6 +3609,11 @@ msgstr ""
 
 #: src/components/upgrade-required.tsx
 msgid "Restart to update"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/agents-page.tsx
+msgid "Restricted"
 msgstr ""
 
 #: src/lib/tool-metadata.ts
@@ -3099,6 +3645,11 @@ msgstr ""
 msgid "Revoke {deviceName}"
 msgstr ""
 
+#. placeholder {0}: target.label
+#: admin/screens/agent-access-panel.tsx
+msgid "Revoke access for {0}"
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "Revoke this CLI?"
 msgstr ""
@@ -3116,6 +3667,10 @@ msgstr ""
 msgid "Revoking…"
 msgstr ""
 
+#: admin/screens/member-editor.tsx
+msgid "Role"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Rows that share an ID with existing data will be overwritten with the file's version and synced to your other devices. This can't be undone."
 msgstr ""
@@ -3128,10 +3683,27 @@ msgstr ""
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr ""
 
+#: admin/screens/agent-editor.tsx
+msgid "Runs only what it came with. Members’ library skills are not shared with it."
+msgstr ""
+
+#: admin/screens/agent-endpoint.tsx
+msgid "Sample connection refused"
+msgstr ""
+
+#: admin/screens/agent-endpoint.tsx
+msgid "Sample connection successful"
+msgstr ""
+
+#: admin/preview-notice.tsx
+#~ msgid "Sample data only. Changes stay in this preview."
+#~ msgstr ""
+
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
+#: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -3141,10 +3713,18 @@ msgstr ""
 msgid "Save a file from {appName}?"
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Save access"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#: admin/screens/group-editor.tsx
+#: admin/screens/member-editor.tsx
 #: src/projects/project-form.tsx
 msgid "Save changes"
 msgstr ""
 
+#: admin/screens/company-mcp-editor.tsx
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Save Changes"
 msgstr ""
@@ -3152,6 +3732,12 @@ msgstr ""
 #: src/settings/connections/index.tsx
 msgid "Save failed"
 msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#: admin/screens/group-editor.tsx
+#: admin/screens/member-editor.tsx
+#~ msgid "Save preview"
+#~ msgstr ""
 
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -3165,6 +3751,7 @@ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Saving…"
@@ -3180,6 +3767,11 @@ msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
 msgid "Scroll to bottom"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+#: admin/screens/agents-page.tsx
+msgid "Sealed"
 msgstr ""
 
 #: src/components/ui/page-search.tsx
@@ -3199,6 +3791,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
+msgstr ""
+
+#: admin/screens/members-page.tsx
+msgid "Search by name or email"
 msgstr ""
 
 #: src/search/palette/search-palette.tsx
@@ -3225,8 +3821,16 @@ msgstr ""
 msgid "Search for a command to run…"
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Search groups or people…"
+msgstr ""
+
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"
+msgstr ""
+
+#: admin/screens/members-page.tsx
+msgid "Search members"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
@@ -3351,7 +3955,7 @@ msgstr ""
 msgid "Sent as text"
 msgstr ""
 
-#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/mcp-server-address-fields.tsx
 msgid "Server name (used to prefix tools)"
 msgstr ""
 
@@ -3363,8 +3967,8 @@ msgstr ""
 msgid "Server responded with status {status} {statusText}"
 msgstr ""
 
+#: src/settings/connections/mcp-server-address-fields.tsx
 #: src/settings/connections/mcp-server-detail.tsx
-#: src/settings/connections/mcp-server-form.tsx
 msgid "Server URL"
 msgstr ""
 
@@ -3511,6 +4115,13 @@ msgstr ""
 msgid "Simple"
 msgstr ""
 
+#: admin/screens/company-skills.tsx
+#~ msgid "Skill name"
+#~ msgstr ""
+
+#: admin/admin-sidebar.tsx
+#: admin/screens/agent-preview.tsx
+#: admin/screens/thunderbolt-agent-panel.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -3521,6 +4132,14 @@ msgstr ""
 
 #: src/skills/skills-list.tsx
 msgid "Skills are reusable instruction templates you summon in chat with <0>/name</0>."
+msgstr ""
+
+#: admin/screens/company-skills-page.tsx
+msgid "Skills for the company's Thunderbolt agent."
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Skills the built-in Thunderbolt agent can use for everyone in your company."
 msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
@@ -3606,6 +4225,7 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
+#: admin/screens/agent-endpoint.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Status"
 msgstr ""
@@ -3711,6 +4331,7 @@ msgstr ""
 msgid "Temperature Unit"
 msgstr ""
 
+#: admin/screens/agent-endpoint.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -3900,6 +4521,10 @@ msgstr ""
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
 msgstr ""
 
+#: admin/screens/member-editor.tsx
+msgid "This email is already in the preview."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr ""
@@ -3908,8 +4533,20 @@ msgstr ""
 msgid "This helps us personalize your experience with local settings and features."
 msgstr ""
 
+#: admin/screens/agent-preview.tsx
+msgid "This is how the agent appears to your members in the Thunderbolt app."
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "This is what members read to learn what the agent does."
+msgstr ""
+
+#: admin/screens/resource-page-dialogs.tsx
+msgid "This item will no longer be available to the company's Thunderbolt agent."
 msgstr ""
 
 #: src/lib/otp-error-messages.ts
@@ -3932,12 +4569,20 @@ msgstr ""
 msgid "This model does not seem to support tool usage."
 msgstr ""
 
+#: admin/screens/use-company-model-editor-state.ts
+msgid "This model is already configured for this provider."
+msgstr ""
+
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "this project"
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "This removes the agent from the organization’s list."
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -3967,6 +4612,10 @@ msgstr ""
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr ""
+
+#: admin/screens/resources-page.tsx
+#~ msgid "This switch only changes the preview. Provider configuration and enforcement are not connected."
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "This transcript is too large to upload."
@@ -4020,6 +4669,13 @@ msgstr ""
 msgid "Thunderbolt (hosted, private)"
 msgstr ""
 
+#: admin/admin-sidebar.tsx
+#: admin/screens/company-mcp-page.tsx
+#: admin/screens/company-models-page.tsx
+#: admin/screens/company-skills-page.tsx
+msgid "Thunderbolt agent"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
 msgstr ""
@@ -4038,6 +4694,10 @@ msgstr ""
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
+msgstr ""
+
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Thunderbolt settings"
 msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
@@ -4114,11 +4774,15 @@ msgstr ""
 msgid "Tool input"
 msgstr ""
 
+#: admin/screens/agent-endpoint.tsx
+msgid "Tools"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
 
-#: src/settings/connections/mcp-server-form.tsx
+#: src/settings/connections/mcp-server-address-fields.tsx
 msgid "Transport"
 msgstr ""
 
@@ -4466,6 +5130,10 @@ msgstr ""
 msgid "Which language do you prefer?"
 msgstr ""
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Who can access"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Who can read it?"
 msgstr ""
@@ -4492,6 +5160,10 @@ msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Write down these 24 words in order and store them somewhere safe. You'll need them to recover your data if you lose access to all your devices. This phrase won't be shown again."
+msgstr ""
+
+#: admin/screens/agent-editor.tsx
+msgid "wss://agent.company.com/acp"
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx

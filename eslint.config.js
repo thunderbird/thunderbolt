@@ -21,7 +21,7 @@ export default [
   js.configs.recommended,
   prettier,
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', 'admin/**/*.{ts,tsx}'],
     ignores: ['node_modules', 'dist', 'dist-isolation', 'src-tauri', 'thunderbird-*', 'backend'],
     languageOptions: {
       parser: typescriptParser,

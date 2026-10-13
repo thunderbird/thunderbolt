@@ -60,5 +60,14 @@ if (!redirecting) {
 
   const root = document.getElementById('root') as HTMLElement
 
-  ReactDOM.createRoot(root).render(<App />)
+  /** Resolve development-only clients before mounting the real app. */
+  const renderApp = async () => {
+    const clients =
+      import.meta.env.DEV && import.meta.env.VITE_ADMIN_LOCAL_REVIEW === 'true'
+        ? (await import('../admin/local-review/clients')).prepareLocalReview()
+        : {}
+
+    ReactDOM.createRoot(root).render(<App {...clients} />)
+  }
+  void renderApp()
 }

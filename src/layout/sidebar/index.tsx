@@ -17,12 +17,19 @@ import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destinatio
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { useCallback, useMemo, useRef } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
+import { isAdminDesignPreview, loadAdminDesignPreview } from '@/lib/admin-preview'
+import { PageFallback } from '@/loading'
+import type { SidebarSection } from './types'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
 import { useSidebarSection } from './use-sidebar-section'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
+
+const AdminSidebar = isAdminDesignPreview
+  ? lazy(async () => ({ default: (await loadAdminDesignPreview()).AdminSidebar }))
+  : () => null
 
 /**
  * Main sidebar component that orchestrates between chat and settings sidebars
@@ -137,13 +144,25 @@ export default function Sidebar() {
     void navigateAndCloseSidebar(path)
   }
 
+  const handleSectionChange = (section: SidebarSection) => {
+    if (isAdminDesignPreview) {
+      handleNavigate({ chats: '/chats/new', settings: '/settings/preferences', admin: '/admin' }[section])
+      return
+    }
+    setActiveSection(section)
+  }
+
   return (
     <SidebarRoot collapsible={isMobile ? 'offcanvas' : 'icon'}>
       <TooltipProvider>
-        {activeSection === 'settings' ? (
+        {activeSection === 'admin' && isAdminDesignPreview ? (
+          <Suspense fallback={<PageFallback />}>
+            <AdminSidebar isCollapsed={isCollapsed} onSectionChange={handleSectionChange} onNavigate={handleNavigate} />
+          </Suspense>
+        ) : activeSection === 'settings' ? (
           <SettingsSidebarContent
             isCollapsed={isCollapsed}
-            onSectionChange={setActiveSection}
+            onSectionChange={handleSectionChange}
             onSettingsNavigate={handleNavigate}
           />
         ) : (
@@ -162,7 +181,7 @@ export default function Sidebar() {
             // (which explains itself if a deep link lands here anyway).
             showMiniApps={!isMobile}
             activeSection={activeSection}
-            onSectionChange={setActiveSection}
+            onSectionChange={handleSectionChange}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}

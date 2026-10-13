@@ -238,6 +238,7 @@ export default defineConfig({
       strict: true,
       allow: [
         path.resolve(__dirname, 'src'),
+        path.resolve(__dirname, 'admin'),
         path.resolve(__dirname, 'shared'),
         path.resolve(__dirname, 'public'),
         path.resolve(__dirname, 'node_modules'),

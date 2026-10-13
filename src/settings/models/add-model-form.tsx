@@ -26,6 +26,9 @@ import type { AddModelFormValues } from './use-add-model-form'
 const providerOptions = Object.keys(providerLabels) as Model['provider'][]
 
 type AddModelFormProps = {
+  mode?: 'create' | 'edit'
+  /** Configure metadata without collecting credentials or making a live connection. */
+  connectionMode?: 'live' | 'configuration'
   form: UseFormReturn<AddModelFormValues>
   modelItems: ComboboxItem[]
   selectedModelId: string | null
@@ -47,6 +50,8 @@ type AddModelFormProps = {
 
 /** Presentational add-model form; provider and mutation behavior stays in the page controller. */
 export const AddModelForm = ({
+  mode = 'create',
+  connectionMode = 'live',
   form,
   modelItems,
   selectedModelId,
@@ -66,6 +71,8 @@ export const AddModelForm = ({
   onTestConnection,
 }: AddModelFormProps) => {
   const { i18n, t } = useLingui()
+  const configurationOnly = connectionMode === 'configuration'
+  const { isDirty, isValid } = form.formState
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
@@ -77,7 +84,10 @@ export const AddModelForm = ({
 
   const showModelSelection =
     !catalogError &&
-    (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
+    (configurationOnly ||
+      providerAutoFetchesCatalog(provider) ||
+      Boolean(apiKey) ||
+      (provider === 'custom' && Boolean(url)))
 
   return (
     <Form {...form}>
@@ -90,25 +100,27 @@ export const AddModelForm = ({
               <FormLabel>
                 <Trans>Provider</Trans>
               </FormLabel>
-              <FormControl>
-                <Select
-                  onValueChange={(value: Model['provider']) => {
-                    onProviderChange(value)
-                  }}
-                  value={field.value}
-                >
+              <Select
+                onValueChange={(value: Model['provider']) => {
+                  onProviderChange(value)
+                }}
+                value={field.value}
+                disabled={mode === 'edit'}
+              >
+                <FormControl>
                   <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
-                  <SelectContent>
-                    {providerOptions.map((provider) => (
-                      <SelectItem key={provider} value={provider}>
-                        {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormControl>
+                </FormControl>
+                <SelectContent>
+                  {providerOptions.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <FormMessage />
             </FormItem>
           )}
@@ -144,7 +156,7 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
+        {!configurationOnly && provider !== 'thunderbolt' && (
           <FormField
             control={form.control}
             name="apiKey"
@@ -247,15 +259,17 @@ export const AddModelForm = ({
             description={t`This model does not seem to support tool usage.`}
           />
         )}
-        <ConnectionTestSection
-          provider={provider}
-          model={model}
-          apiKey={apiKey}
-          isTesting={isTesting}
-          onTest={onTestConnection}
-          status={connectionStatus}
-          error={connectionError}
-        />
+        {!configurationOnly && (
+          <ConnectionTestSection
+            provider={provider}
+            model={model}
+            apiKey={apiKey}
+            isTesting={isTesting}
+            onTest={onTestConnection}
+            status={connectionStatus}
+            error={connectionError}
+          />
+        )}
         {submitError && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}
@@ -268,15 +282,20 @@ export const AddModelForm = ({
           <Button
             type="submit"
             isLoading={isPending}
-            loadingLabel={t`Adding…`}
-            disabled={shouldDisableAddModel({
-              isPending,
-              isFormValid: form.formState.isValid,
-              provider,
-              connectionStatus,
-            })}
+            loadingLabel={mode === 'edit' ? t`Saving…` : t`Adding…`}
+            disabled={
+              (mode === 'edit' && !isDirty) ||
+              (configurationOnly
+                ? isPending || !isValid
+                : shouldDisableAddModel({
+                    isPending,
+                    isFormValid: isValid,
+                    provider,
+                    connectionStatus,
+                  }))
+            }
           >
-            <Trans>Add Model</Trans>
+            {mode === 'edit' ? <Trans>Save</Trans> : <Trans>Add Model</Trans>}
           </Button>
         </FormFooter>
       </form>

@@ -8,7 +8,7 @@ import type { UseMutationResult } from '@tanstack/react-query'
 import type { ReactNode, RefObject } from 'react'
 
 /** Top-level sidebar sections switchable via the nav toggle. */
-export type SidebarSection = 'chats' | 'settings'
+export type SidebarSection = 'chats' | 'settings' | 'admin'
 
 /** The sidebar's own narrowed view of a chat row — only what the list renders. */
 export type ChatThread = {

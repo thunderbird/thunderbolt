@@ -115,4 +115,6 @@ If you discover a security vulnerability, please report it responsibly via our [
 
 ## License
 
-Thunderbolt is licensed under the [Mozilla Public License 2.0](./LICENSE).
+Thunderbolt's community code is licensed under the [Mozilla Public License 2.0](./LICENSE).
+The admin design proposal in `admin/` is **UNLICENSED — license TBD**, explicitly outside MPL.
+See [Licensing](./LICENSING.md) for the directory boundary and enterprise contact.

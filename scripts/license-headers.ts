@@ -7,7 +7,7 @@
 /**
  * License Header Tool
  *
- * Adds the MPL 2.0 short-form header to source files that don't have it.
+ * Adds MPL notices to community source and UNLICENSED/TBD notices to admin/.
  * Idempotent — running it twice is a no-op.
  *
  * Modes:
@@ -22,15 +22,27 @@
 
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { extname, resolve } from 'node:path'
+import { extname, relative, resolve, sep } from 'node:path'
 
 const repoRoot = resolve(import.meta.dir, '..')
 
-const headerLines = [
+const mplHeaderLines = [
   'This Source Code Form is subject to the terms of the Mozilla Public',
   'License, v. 2.0. If a copy of the MPL was not distributed with this',
   'file, You can obtain one at http://mozilla.org/MPL/2.0/.',
 ]
+
+const adminHeaderLines = [
+  'UNLICENSED — license TBD. This file is not licensed under MPL-2.0.',
+  'All rights reserved. See admin/LICENSE.',
+  'Enterprise support and licensing: contact info@thunderbolt.io.',
+]
+
+/** Select a notice by repository-relative scope, including absolute hook paths. */
+export const headerLinesForPath = (path: string): string[] =>
+  relative(repoRoot, resolve(repoRoot, path)).split(sep).join('/').startsWith('admin/')
+    ? adminHeaderLines
+    : mplHeaderLines
 
 type CommentStyle = 'block' | 'hash' | 'dash' | 'html' | 'astro'
 
@@ -67,7 +79,7 @@ const skipPathPatterns: RegExp[] = [
 
 const directiveRe = /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/
 
-const renderHeader = (style: CommentStyle): string => {
+const renderHeader = (style: CommentStyle, headerLines: string[]): string => {
   switch (style) {
     case 'block':
       return `/* ${headerLines[0]}\n * ${headerLines[1]}\n * ${headerLines[2]} */\n`
@@ -83,8 +95,25 @@ const renderHeader = (style: CommentStyle): string => {
   }
 }
 
-const hasHeader = (content: string): boolean =>
-  content.includes('Mozilla Public License') || content.includes('mozilla.org/MPL')
+/** Inspect only the leading notice, not license names quoted inside source/tests. */
+export const headerStatus = (content: string, path: string): 'valid' | 'missing' | 'conflict' => {
+  const leading = content
+    .replace(/^#![^\n]*\n/, '')
+    .replace(/^\s*(['"])use (client|server|strict)\1\s*;?\s*/, '')
+    .trimStart()
+    .replace(/^---\r?\n/, '')
+  const comment = leading.match(/^(?:\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?:(?:#|--|\/\/)[^\n]*(?:\n|$))+)/)?.[0] ?? ''
+  const expected = headerLinesForPath(path)
+  const hasMpl = comment.includes('mozilla.org/MPL') || comment.includes('SPDX-License-Identifier: MPL-2.0')
+  const hasAdmin = comment.includes('UNLICENSED') || comment.includes('license TBD')
+  if ((expected === adminHeaderLines && hasMpl) || (expected === mplHeaderLines && hasAdmin)) {
+    return 'conflict'
+  }
+  if (expected.every((line) => comment.includes(line)) || (expected === mplHeaderLines && hasMpl)) {
+    return 'valid'
+  }
+  return /SPDX-License-Identifier|UNLICENSED|Mozilla Public License/.test(comment) ? 'conflict' : 'missing'
+}
 
 const isInScope = (path: string): boolean => {
   if (skipPathPatterns.some((re) => re.test(path))) {
@@ -93,15 +122,24 @@ const isInScope = (path: string): boolean => {
   return styleByExt[extname(path).toLowerCase()] !== undefined
 }
 
-const applyHeader = (content: string, path: string): string => {
+/** Add the scoped notice while preserving shebangs and source directives. */
+export const applyHeader = (content: string, path: string): string => {
+  const status = headerStatus(content, path)
+  if (status === 'valid') {
+    return content
+  }
+  if (status === 'conflict') {
+    throw new Error('Conflicting source notice: ' + path)
+  }
+
   const ext = extname(path).toLowerCase()
   const style = styleByExt[ext]
 
   if (style === 'astro') {
-    return applyAstroHeader(content)
+    return applyAstroHeader(content, headerLinesForPath(path))
   }
 
-  const header = renderHeader(style)
+  const header = renderHeader(style, headerLinesForPath(path))
   const lines = content.split('\n')
   let insertAt = 0
 
@@ -133,17 +171,19 @@ const applyHeader = (content: string, path: string): string => {
   )
 }
 
-const applyAstroHeader = (content: string): string => {
+const applyAstroHeader = (content: string, linesForPath: string[]): string => {
   const lines = content.split('\n')
   if (lines[0] === '---') {
-    return ['---', renderHeader('astro'), ...lines.slice(1)].join('\n')
+    return ['---', renderHeader('astro', linesForPath), ...lines.slice(1)].join('\n')
   }
   // No frontmatter — fall back to an HTML comment at the top
-  return renderHeader('html') + '\n' + content
+  return renderHeader('html', linesForPath) + '\n' + content
 }
 
 const listTrackedFiles = (): string[] =>
-  execSync('git ls-files', { cwd: repoRoot, encoding: 'utf8' }).split('\n').filter(Boolean)
+  execSync('git ls-files --cached --others --exclude-standard', { cwd: repoRoot, encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
 
 const main = () => {
   const args = process.argv.slice(2)
@@ -164,12 +204,13 @@ const main = () => {
       continue
     }
 
-    if (hasHeader(content)) {
+    const status = headerStatus(content, relPath)
+    if (status === 'valid') {
       continue
     }
 
-    if (checkOnly) {
-      missing.push(relPath)
+    if (checkOnly || status === 'conflict') {
+      missing.push(status === 'conflict' ? relPath + ' (conflicting notice; review required)' : relPath)
       continue
     }
 
@@ -177,12 +218,12 @@ const main = () => {
     touched++
   }
 
-  if (checkOnly) {
+  if (checkOnly || missing.length > 0) {
     if (missing.length === 0) {
       console.log(`License header check passed (${candidates.length} files).`)
       process.exit(0)
     }
-    console.error(`Missing MPL 2.0 license header in ${missing.length} file(s):`)
+    console.error(`Missing or conflicting scoped license header in ${missing.length} file(s):`)
     for (const p of missing) {
       console.error(`  ${p}`)
     }
@@ -193,8 +234,10 @@ const main = () => {
   if (touched === 0) {
     console.log(`License headers up to date (${candidates.length} files checked).`)
   } else {
-    console.log(`Added MPL 2.0 license header to ${touched} file(s).`)
+    console.log(`Added scoped license header to ${touched} file(s).`)
   }
 }
 
-main()
+if (import.meta.main) {
+  main()
+}

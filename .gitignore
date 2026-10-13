@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 dist-isolation
+dist-admin-preview
 *.local
 
 # Editor directories and files

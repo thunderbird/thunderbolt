@@ -25,6 +25,8 @@ import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
 import type { Integration } from './types'
 
+type ServerListItem = Pick<McpServer, 'id' | 'name' | 'url' | 'enabled'>
+
 /** Shared row shell for both integration and MCP-server rows. */
 const ConnectionRow = ({
   title,
@@ -107,7 +109,7 @@ const ServerRow = ({
   onEdit,
   onDelete,
 }: {
-  server: McpServer
+  server: ServerListItem
   status: StatusState
   isActive: boolean
   onSelect: () => void
@@ -154,7 +156,10 @@ const ServerRow = ({
  * Microsoft) at the top, user-added MCP servers below. Selection opens the
  * slide-in detail panel; the "+" opens the add-MCP-server flow there too.
  */
-export const ConnectionsList = ({
+export const ConnectionsList = <Server extends ServerListItem>({
+  title,
+  intro,
+  actions,
   integrations,
   areIntegrationsReady,
   servers,
@@ -168,14 +173,17 @@ export const ConnectionsList = ({
   onEditServer,
   onDeleteServer,
 }: {
+  title?: string
+  intro?: ReactNode
+  actions?: ReactNode
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
    *  resolved — used to remount the rows so their switches render directly in
    *  the loaded position instead of animating off→on. */
   areIntegrationsReady: boolean
-  servers: McpServer[]
+  servers: Server[]
   /** Live connection state for a server row's status dot. */
-  serverStatus: (server: McpServer) => StatusState
+  serverStatus: (server: Server) => StatusState
   /** `integration:<id>` / `server:<id>` of the row whose detail panel is open, or null. */
   activeKey: string | null
   onAdd: () => void
@@ -206,8 +214,9 @@ export const ConnectionsList = ({
   return (
     <SettingsListPane>
       <PageSearch onSearch={setSearch}>
-        <PageHeader title={t`Connections`}>
+        <PageHeader title={title ?? t`Connections`}>
           <PageSearch.Button />
+          {actions}
           <PageCreateAction label={t`New Connection`} onClick={onAdd} />
         </PageHeader>
 
@@ -215,6 +224,7 @@ export const ConnectionsList = ({
       </PageSearch>
 
       <SettingsListBody>
+        {intro}
         {filteredIntegrations.length > 0 && (
           <ul className="flex flex-col gap-4">
             {filteredIntegrations.map((integration) => (

@@ -14,15 +14,13 @@ import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { UseAddServerFormResult } from '@/hooks/use-add-server-form'
 import type { TestConnectionResult } from '@/lib/mcp-auth/auth-decision'
-import type { MCPTransportType } from '@/lib/mcp-transport'
 import type { validateMcpServerUrl } from '@/lib/mcp-url-validation'
+import { McpServerAddressFields } from './mcp-server-address-fields'
 
 /** Add-form mode: a single guided server form, or a raw JSON config paste. */
 export type AddServerMode = 'simple' | 'advanced'
@@ -164,10 +162,6 @@ export const McpServerForm = ({
     handleUrlBlur,
   } = form
 
-  // Adding a server — land ready to type its name. Edits keep focus free so
-  // the user can go straight to the field they came to change.
-  const nameInputRef = useAutofocusOnMount<HTMLInputElement>(!form.editingServerId)
-
   const failurePanel =
     testResult.kind !== 'success' && testResult.kind !== 'idle' ? testResultPanels[testResult.kind] : null
 
@@ -256,45 +250,25 @@ export const McpServerForm = ({
       <div className="flex-1">
         {mode === 'simple' ? (
           <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
-            <div className="grid grid-cols-1 gap-2">
-              <Label htmlFor="name">
-                <Trans>Name</Trans>
-              </Label>
-              <Input
-                id="name"
-                ref={nameInputRef}
-                placeholder={t`Server name (used to prefix tools)`}
-                value={newServerName}
-                onChange={(e) => form.changeName(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              <Label htmlFor="url">
-                <Trans>Server URL</Trans>
-              </Label>
-              <Input
-                id="url"
-                placeholder="http://localhost:8000/mcp/"
-                value={newServerUrl}
-                onChange={(e) => form.changeUrl(e.target.value)}
-                onBlur={handleUrlBlur}
-                onKeyDown={onUrlKeyDown}
-                aria-invalid={urlValidation?.ok === false}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              {urlValidation?.ok === false && (
-                <p className="text-[length:var(--font-size-xs)] text-destructive">{i18n._(urlValidation.reason)}</p>
-              )}
-              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+            <McpServerAddressFields
+              name={newServerName}
+              url={newServerUrl}
+              transport={newServerTransport}
+              onNameChange={form.changeName}
+              onUrlChange={form.changeUrl}
+              onTransportChange={form.changeTransport}
+              onUrlBlur={handleUrlBlur}
+              onUrlKeyDown={onUrlKeyDown}
+              urlValidation={urlValidation}
+              autofocus={!form.editingServerId}
+              showTransport={!isIroh}
+              urlHint={
                 <Trans>
                   A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works
                   only if the peer is discoverable).
                 </Trans>
-              </p>
-            </div>
+              }
+            />
 
             {/* iroh dials a peer bridge by NodeId/ticket — no transport
                 Select, credential, or probe (the link is encrypted and
@@ -303,24 +277,6 @@ export const McpServerForm = ({
               <IrohPairingPanel appNodeId={appNodeId} />
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-2">
-                  <Label htmlFor="transport">
-                    <Trans>Transport</Trans>
-                  </Label>
-                  <Select
-                    value={newServerTransport}
-                    onValueChange={(value) => form.changeTransport(value as MCPTransportType)}
-                  >
-                    <SelectTrigger id="transport" className="w-full rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="http">HTTP</SelectItem>
-                      <SelectItem value="sse">SSE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="grid grid-cols-1 gap-2">
                   <Label htmlFor="token">
                     <Trans>Credential (optional)</Trans>

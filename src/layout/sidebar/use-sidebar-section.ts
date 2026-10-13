@@ -17,7 +17,12 @@ import type { SidebarSection } from './types'
 export const useSidebarSection = (pathname: string) => {
   const [override, setOverride] = useState<{ section: SidebarSection; pathname: string } | null>(null)
 
-  const routeSection: SidebarSection = pathname.startsWith('/settings') ? 'settings' : 'chats'
+  const routeSection: SidebarSection =
+    pathname === '/admin' || pathname.startsWith('/admin/')
+      ? 'admin'
+      : pathname.startsWith('/settings')
+        ? 'settings'
+        : 'chats'
   const activeSection = override?.pathname === pathname ? override.section : routeSection
 
   const setActiveSection = (section: SidebarSection) => {

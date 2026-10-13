@@ -18,7 +18,7 @@ import { useDatabase } from '@/contexts'
 import { createModel, getAvailableModels } from '@/dal'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import type { CatalogRequest } from './model-catalog'
+import { isFetchableCatalogUrl, type CatalogRequest } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
@@ -28,12 +28,21 @@ const apiKeyRequired = msg`API Key is required for this provider`
 
 /** Built per render so the validation copy follows the active catalog — see the
  *  "Localization" section in AGENTS.md. */
-export const createAddModelFormSchema = (i18n: I18n) =>
+export const createAddModelFormSchema = (
+  i18n: I18n,
+  { configurationOnly = false }: { configurationOnly?: boolean } = {},
+) =>
   z
     .object({
       provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
-      name: z.string().min(1, { message: i18n._(nameRequired) }),
-      model: z.string().min(1, { message: i18n._(modelNameRequired) }),
+      name: z
+        .string()
+        .trim()
+        .min(1, { message: i18n._(nameRequired) }),
+      model: z
+        .string()
+        .trim()
+        .min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
       url: z.string().optional(),
       apiKey: z.string().optional(),
@@ -44,11 +53,16 @@ export const createAddModelFormSchema = (i18n: I18n) =>
     })
     .refine(
       (data) =>
+        configurationOnly ||
         data.provider === 'thunderbolt' ||
         data.provider === 'custom' ||
         (data.apiKey !== undefined && data.apiKey.length > 0),
       { message: i18n._(apiKeyRequired), path: ['apiKey'] },
     )
+    .refine((data) => !configurationOnly || data.provider !== 'custom' || isFetchableCatalogUrl(data.url?.trim()), {
+      message: i18n._(msg`Enter a valid http:// or https:// URL.`),
+      path: ['url'],
+    })
 
 export type AddModelFormValues = z.infer<ReturnType<typeof createAddModelFormSchema>>
 

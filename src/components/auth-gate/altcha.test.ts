@@ -6,7 +6,7 @@ import { createClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
 import { createChallenge } from 'altcha-lib/v1'
 import { describe, expect, it, mock } from 'bun:test'
-import { solveAltchaChallenge } from './altcha'
+import { AltchaTransientError, solveAltchaChallenge } from './altcha'
 
 const httpClient = createClient({
   fetch: async () => Response.json(await createChallenge({ hmacKey: 'test-key', maxnumber: 1000 })),
@@ -23,11 +23,11 @@ const stalledHttpClient = createClient({
   prefixUrl: 'http://test-api.local',
 })
 
-/** Settle a solve into its outcome, so a test can await it after advancing the fake clock. */
+/** Settle a solve into its error's name (and its cause's), so a test can await it after advancing the fake clock. */
 const settle = (solving: Promise<string>) =>
   solving.then(
     () => 'solved',
-    (err: Error) => err.name,
+    (err: Error) => (err.cause instanceof Error ? `${err.name} (${err.cause.name})` : err.name),
   )
 
 /** A worker that never posts a solution: it errors on `work` when `fails`, otherwise stays silent. */
@@ -53,16 +53,14 @@ describe('solveAltchaChallenge', () => {
     const error = await solveAltchaChallenge(httpClient, new AbortController().signal, createWorker).catch(
       (err: Error) => err,
     )
-    expect(error).toEqual(new Error('ALTCHA worker failed'))
+    expect(error).toEqual(new AltchaTransientError('ALTCHA worker failed'))
     expect(terminate).toHaveBeenCalledTimes(navigator.hardwareConcurrency || 1)
   })
 
   it('rejects and terminates the workers when no worker answers within 60 seconds', async () => {
     const { createWorker, terminate, created } = createStuckWorkers(false)
-    const solving = solveAltchaChallenge(httpClient, new AbortController().signal, createWorker)
-    const outcome = solving.then(
-      () => 'solved',
-      (err: Error) => err.message,
+    const outcome = solveAltchaChallenge(httpClient, new AbortController().signal, createWorker).catch(
+      (err: Error) => err,
     )
     // The timer starts once the challenge has been fetched, just before the first worker spawns.
     await created
@@ -70,7 +68,7 @@ describe('solveAltchaChallenge', () => {
     await getClock().tickAsync(59_999)
     expect(terminate).not.toHaveBeenCalled()
     await getClock().tickAsync(1)
-    expect(await outcome).toBe('ALTCHA solve timed out')
+    expect(await outcome).toEqual(new AltchaTransientError('ALTCHA solve timed out'))
     expect(terminate).toHaveBeenCalled()
   })
 
@@ -83,7 +81,7 @@ describe('solveAltchaChallenge', () => {
     await getClock().tickAsync(14_999)
     expect(progress.settled).toBe(false)
     await getClock().tickAsync(1)
-    expect(await outcome).toBe('TimeoutError')
+    expect(await outcome).toBe('AltchaTransientError (TimeoutError)')
     expect(terminate).not.toHaveBeenCalled()
   })
 

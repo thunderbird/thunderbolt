@@ -75,9 +75,13 @@ than navigating from an effect.
   dedups Strict Mode's double effect.
 - **With `VITE_CAPTCHA_PROVIDER=altcha` the sign-in solves a challenge first**
   ([altcha.ts](../../../src/components/auth-gate/altcha.ts)), in web workers, and sends it as `x-captcha-token`.
-  A failed challenge fetch or a `403 CAPTCHA_VERIFICATION_FAILED` offers a retry with a fresh challenge
-  instead of throwing; every other error still reaches the error boundary.
-- **Both failure shapes are handled** ([use-auth-gate.ts:107-136](../../../src/components/auth-gate/use-auth-gate.ts)).
+  A transient failure offers a retry with a fresh challenge: a network failure, timeout or 5xx on the challenge
+  fetch, a worker failure, the 60 s solve timeout, or a `403 CAPTCHA_VERIFICATION_FAILED` on sign-in. Everything
+  else, a 4xx on the challenge included, throws during render like any failed anonymous sign-in (with no error
+  boundary in the app, the window goes blank; see [Error handling](../development/error-handling.md)). Only
+  the challenge step's transient failures are retried: a failed sign-in request (network failure or 5xx) throws,
+  as it did before the captcha.
+- **Both failure shapes are handled** ([use-auth-gate.ts:117-146](../../../src/components/auth-gate/use-auth-gate.ts)).
   Better Auth methods resolve with `{ data, error }` rather than throwing on a 4xx, so a hook ignoring the
   resolved-error path leaves the gate in `loading` forever.
 

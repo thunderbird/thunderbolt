@@ -7,7 +7,7 @@ import { useAuth, useHttpClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
 import { isAltchaCaptchaEnabled, isAnonymousAuthEnabled, isSsoMode, isWaitlistBypassed } from '@/lib/auth-mode'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
-import { solveAltchaChallenge } from './altcha'
+import { AltchaTransientError, solveAltchaChallenge } from './altcha'
 
 export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
@@ -60,13 +60,23 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
     throw anonError
   }
 
-  /** Solve a fresh challenge and sign in with it; a refused solution or failed fetch offers a retry. */
+  /**
+   * Solve a fresh challenge and sign in with it. A transient failure of the challenge step
+   * (network, fetch timeout, 5xx, worker failure, solve timeout) or a 403 refusing the solution
+   * offers a retry; anything else, such as a 4xx on the challenge, throws during render like any
+   * failed anonymous sign-in. Only the challenge step's transient failures are retried: a failed
+   * sign-in request (network failure or 5xx) throws, as it did before the captcha.
+   */
   const solveAndSignIn = async (signal: AbortSignal) => {
     setCaptchaStatus('verifying')
     const token = await solveAltchaChallenge(httpClient, signal).catch((err: unknown) => {
-      if (!signal.aborted) {
-        console.error('ALTCHA challenge failed:', err)
+      if (signal.aborted) {
+        return null
       }
+      if (!(err instanceof AltchaTransientError)) {
+        throw err
+      }
+      console.error('ALTCHA challenge failed:', err)
       return null
     })
     // Cancelled by unmount: the gate is gone, so neither sign in nor touch its state. The solve

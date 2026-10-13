@@ -14,7 +14,7 @@ type BrowserCheckProps = {
 
 /** Full-screen state shown while the auth gate solves the ALTCHA challenge before anonymous sign-in. */
 export const BrowserCheck = ({ onRetry }: BrowserCheckProps) => (
-  <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center" role="status">
+  <div className="flex h-dvh flex-col items-center justify-center gap-4 px-6 text-center" role="status">
     {onRetry ? (
       <>
         <p className="text-[length:var(--font-size-body)] text-muted-foreground">

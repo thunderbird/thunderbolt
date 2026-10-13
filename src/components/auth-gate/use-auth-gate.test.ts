@@ -12,7 +12,7 @@ import { createChallenge, verifySolution } from 'altcha-lib/v1'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, renderHook, waitFor } from '@testing-library/react'
 import { Component, createElement, StrictMode, type ReactNode } from 'react'
-import { useAuthGate } from './use-auth-gate'
+import { useAuthGate, type AuthGateState } from './use-auth-gate'
 
 type ErrorCaptureState = { error: Error | null }
 
@@ -264,12 +264,15 @@ type SignInOptions = { fetchOptions?: { headers?: Record<string, string>; signal
 /**
  * An auth client whose anonymous sign-in answers from `results` in order (`null` succeeds and
  * sets the anonymous session), plus an HttpClient serving real, easy ALTCHA challenges.
- * `failFetches` makes the first N challenge fetches answer 500, challenge fetches wait for
- * `challengeHeld`, and sign-in waits for `signInHeld`.
+ * Challenge fetches fail in order with `challengeFailures` (a network error, a challenge the
+ * worker cannot hash, or that HTTP status) and wait for `challengeHeld`; sign-in waits for
+ * `signInHeld`.
  */
+type ChallengeFailure = 'network' | 'worker' | number
+
 const createCaptchaClients = (params: {
   results: Array<typeof captchaFailed | null>
-  failFetches?: number
+  challengeFailures?: ChallengeFailure[]
   signInHeld?: Promise<void>
   challengeHeld?: Promise<void>
 }) => {
@@ -302,16 +305,42 @@ const createCaptchaClients = (params: {
   const fetchChallenge = async (input: RequestInfo | URL) => {
     challengeSignals.push((input as Request).signal)
     await params.challengeHeld
-    if (challenges.length < (params.failFetches ?? 0)) {
-      challenges.push('failed')
-      return new Response('down', { status: 500 })
-    }
+    const failure = params.challengeFailures?.[challenges.length]
     const challenge = await createChallenge({ hmacKey: altchaKey, maxnumber: 1000, algorithm: 'SHA-256' })
-    challenges.push(challenge.challenge)
+    challenges.push(failure === undefined ? challenge.challenge : `failed:${failure}`)
+    if (failure === 'network') {
+      throw new TypeError('Failed to fetch')
+    }
+    if (failure === 'worker') {
+      // crypto.subtle rejects the algorithm inside the worker, which surfaces as its `error` event.
+      return Response.json({ ...challenge, algorithm: 'NOPE' })
+    }
+    if (typeof failure === 'number') {
+      return new Response('refused', { status: failure })
+    }
     return Response.json(challenge)
   }
   const httpClient = createClient({ fetch: fetchChallenge, prefixUrl: 'http://test-api.local' })
   return { authClient, httpClient, signInCalls, challenges, challengeSignals }
+}
+
+/** Render the gate under an error boundary, recording every status it renders and the latest state. */
+const renderGateWithBoundary = (clients: ReturnType<typeof createCaptchaClients>) => {
+  const Provider = createTestProvider({ authClient: clients.authClient, httpClient: clients.httpClient })
+  const capture: ErrorCaptureState = { error: null }
+  const statuses: string[] = []
+  const latest: { state: AuthGateState | null } = { state: null }
+  const Consumer = () => {
+    latest.state = useAuthGate('authenticated')
+    statuses.push(latest.state.status)
+    return null
+  }
+  render(
+    createElement(Provider, null, createElement(TestErrorBoundary, { capture, children: createElement(Consumer) })),
+  )
+  /** Click the retry button of the failed state the gate is showing. */
+  const retry = () => act(() => (latest.state as { retry: () => void }).retry())
+  return { capture, statuses, latest, retry }
 }
 
 describe('useAuthGate with VITE_CAPTCHA_PROVIDER=altcha', () => {
@@ -438,31 +467,43 @@ describe('useAuthGate with VITE_CAPTCHA_PROVIDER=altcha', () => {
     signInHeld.resolve()
   })
 
-  it('offers a retry without signing in when the challenge fetch fails', async () => {
-    const { authClient, httpClient, signInCalls } = createCaptchaClients({ results: [null], failFetches: 1 })
-    const wrapper = createTestProvider({ authClient, httpClient })
-    const { result } = renderHook(() => useAuthGate('authenticated'), { wrapper })
+  it('offers a retry without signing in when the challenge fetch hits a network error', async () => {
+    const clients = createCaptchaClients({ results: [null], challengeFailures: ['network'] })
+    const { capture, latest, retry } = renderGateWithBoundary(clients)
 
-    await waitFor(() => expect(result.current.status).toBe('verification-failed'))
-    expect(signInCalls).toHaveLength(0)
-    act(() => (result.current as { retry: () => void }).retry())
-    await waitFor(() => expect(signInCalls).toHaveLength(1), { timeout: 2000 })
+    await waitFor(() => expect(latest.state?.status).toBe('verification-failed'))
+    expect(clients.signInCalls).toHaveLength(0)
+    retry()
+    await waitFor(() => expect(clients.signInCalls).toHaveLength(1), { timeout: 2000 })
+    expect(capture.error).toBeNull()
   })
 
-  it('still sends unrelated sign-in errors to the error boundary', async () => {
+  it.each([503, 'worker'] as const)('offers a retry when the challenge fails transiently (%p)', async (failure) => {
+    const clients = createCaptchaClients({ results: [null], challengeFailures: [failure] })
+    const { capture, latest } = renderGateWithBoundary(clients)
+
+    await waitFor(() => expect(latest.state?.status).toBe('verification-failed'), { timeout: 2000 })
+    expect(clients.signInCalls).toHaveLength(0)
+    expect(capture.error).toBeNull()
+  })
+
+  it.each([404, 429])('sends a %d on the challenge to the error boundary, never offering a retry', async (status) => {
+    const clients = createCaptchaClients({ results: [null], challengeFailures: [status] })
+    const { capture, statuses } = renderGateWithBoundary(clients)
+
+    await waitFor(() => expect(capture.error).toBeInstanceOf(Error), { timeout: 2000 })
+    expect(statuses).not.toContain('verification-failed')
+    expect(clients.signInCalls).toHaveLength(0)
+  })
+
+  it('sends a sign-in error other than the captcha 403 (a 429) to the error boundary', async () => {
     const tooMany = { status: 429, code: 'TOO_MANY_REQUESTS', message: 'Too many requests' }
-    const { authClient, httpClient } = createCaptchaClients({ results: [tooMany as typeof captchaFailed] })
-    const Provider = createTestProvider({ authClient, httpClient })
-    const capture: ErrorCaptureState = { error: null }
-    const Consumer = () => {
-      useAuthGate('authenticated')
-      return null
-    }
-    render(
-      createElement(Provider, null, createElement(TestErrorBoundary, { capture, children: createElement(Consumer) })),
+    const { capture, statuses } = renderGateWithBoundary(
+      createCaptchaClients({ results: [tooMany as typeof captchaFailed] }),
     )
 
     await waitFor(() => expect(capture.error).toBeInstanceOf(Error), { timeout: 2000 })
+    expect(statuses).not.toContain('verification-failed')
   })
 })
 

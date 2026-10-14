@@ -245,6 +245,10 @@ msgstr "Fügen Sie <0>~/.local/bin</0> zu Ihrem PATH hinzu und starten Sie dann 
 msgid "Add a new task…"
 msgstr "Neue Aufgabe hinzufügen…"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+#~ msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Skill hinzufügen"
@@ -275,6 +279,10 @@ msgstr "MCP-Server hinzufügen"
 msgid "Add Model"
 msgstr "Modell hinzufügen"
 
+#: src/settings/passkeys.tsx
+#~ msgid "Add passkey"
+#~ msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Server hinzufügen"
@@ -284,6 +292,10 @@ msgstr "Server hinzufügen"
 msgid "Add to chat"
 msgstr "Zum Chat hinzufügen"
 
+#: src/settings/passkeys.tsx
+#~ msgid "Add your first passkey"
+#~ msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "Ersten Server hinzufügen"
@@ -291,6 +303,11 @@ msgstr "Ersten Server hinzufügen"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Erste Aufgabe hinzufügen"
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+#~ msgid "Added {0}"
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -583,6 +600,7 @@ msgstr "Kalender"
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
+#: src/settings/encryption/passkey-section.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -979,6 +997,7 @@ msgstr "Kontextfenster überschritten"
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
@@ -1069,6 +1088,18 @@ msgstr "Der Kopplungscode konnte nicht angezeigt werden."
 msgid "Could not save the project."
 msgstr "Das Projekt konnte nicht gespeichert werden."
 
+#: src/settings/passkeys.tsx
+#~ msgid "Couldn't add a passkey. Please try again."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can add one later when you set up sync."
+msgstr "Der Passkey konnte nicht hinzugefügt werden. Sie können ihn später beim Einrichten der Synchronisierung hinzufügen."
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Couldn't add a passkey. You can try again from Settings later."
+#~ msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr "Der Agent konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut."
@@ -1121,6 +1152,10 @@ msgstr ""
 msgid "Couldn't pin {name}."
 msgstr "{name} konnte nicht angepinnt werden."
 
+#: src/settings/encryption/use-remove-passkey.ts
+msgid "Couldn't remove the passkey. Please try again."
+msgstr "Der Passkey konnte nicht entfernt werden. Bitte versuchen Sie es erneut."
+
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
 #~ msgstr "Neustart zum Anwenden des Updates nicht möglich"
@@ -1144,6 +1179,23 @@ msgstr "Die neue Reihenfolge konnte nicht gespeichert werden."
 #: src/components/artifact/artifact-actions.tsx
 msgid "Couldn't save: {saveError}"
 msgstr ""
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Couldn't set up the passkey. Please try again."
+msgstr "Der Passkey konnte nicht eingerichtet werden. Bitte versuchen Sie es erneut."
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Couldn't sign in with your passkey. Please try again or use your email."
+msgstr "Die Anmeldung mit Ihrem Passkey ist fehlgeschlagen. Bitte versuchen Sie es erneut oder verwenden Sie Ihre E-Mail-Adresse."
+
+#: src/hooks/use-sync-setup.ts
+#~ msgid "Couldn't unlock sync with your passkey."
+#~ msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't unlock sync with your passkey. Please try again."
+msgstr "Die Synchronisierung konnte nicht mit Ihrem Passkey entsperrt werden. Bitte versuchen Sie es erneut."
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
@@ -1170,6 +1222,11 @@ msgstr "Agent erstellen"
 #: src/search/commands/create-commands.ts
 msgid "Create Model"
 msgstr "Modell erstellen"
+
+#: src/components/sync-setup/confirm-identity-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Create passkey"
+msgstr "Passkey erstellen"
 
 #: src/projects/create-project-panel.tsx
 msgid "Create project"
@@ -1694,6 +1751,10 @@ msgstr "Wiederherstellungsphrase eingeben"
 msgid "Enter the 24-word recovery phrase you saved when you first set up sync."
 msgstr "Geben Sie die 24-Wort-Wiederherstellungsphrase ein, die Sie beim Einrichten der Synchronisierung gespeichert haben."
 
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Enter the 8-digit code"
+msgstr "Geben Sie den 8-stelligen Code ein"
+
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
 msgstr "Geben Sie den in Ihrem Terminal angezeigten Code ein, um fortzufahren."
@@ -1812,6 +1873,7 @@ msgid "Failed to send the verification code"
 msgstr ""
 
 #: src/components/sign-in/use-sign-in-form-state.ts
+#: src/components/sync-setup/use-confirm-identity-state.ts
 msgid "Failed to send verification code. Please check your connection."
 msgstr "Der Bestätigungscode konnte nicht gesendet werden. Bitte prüfen Sie Ihre Verbindung."
 
@@ -2218,6 +2280,10 @@ msgstr "Geräte werden geladen…"
 msgid "Loading emoji…"
 msgstr "Emojis werden geladen…"
 
+#: src/settings/passkeys.tsx
+#~ msgid "Loading passkeys…"
+#~ msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "Vorschau wird geladen…"
@@ -2540,6 +2606,10 @@ msgstr "Keine Modelle gefunden."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "Keine Modelle zurückgegeben (Server nicht erreichbar oder listet keine Modelle auf). Geben Sie Modell- und Stimmen-IDs manuell ein."
 
+#: src/settings/passkeys.tsx
+#~ msgid "No passkeys yet"
+#~ msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr "Noch keine Projekte"
@@ -2585,6 +2655,8 @@ msgid "Not Found"
 msgstr "Nicht gefunden"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+#: src/components/sync-setup/confirm-identity-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Not now"
 msgstr "Jetzt nicht"
@@ -2754,6 +2826,11 @@ msgstr "Optional – für lokale Server ohne Authentifizierung leer lassen."
 msgid "Optional — what this project is for"
 msgstr "Optional – wofür dieses Projekt gedacht ist"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr "oder"
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "Oder klicken Sie auf den Magic Link in Ihrer E-Mail"
@@ -2781,6 +2858,29 @@ msgstr "Kopplungsidentität"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "Teilweise bewölkt"
+
+#: src/settings/encryption/passkey-section.tsx
+msgid "Passkey"
+msgstr "Passkey"
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Passkey added — you're all set."
+#~ msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+#~ msgid "Passkey sign-in failed. Please try again or use your email."
+#~ msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+#~ msgid "Passkeys"
+#~ msgstr ""
+
+#: src/settings/passkeys.tsx
+#~ msgid "Passkeys aren't available on this device."
+#~ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2970,8 +3070,13 @@ msgstr "Neu laden"
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
+#: src/settings/encryption/passkey-section.tsx
 msgid "Remove"
 msgstr "Entfernen"
+
+#: src/settings/passkeys.tsx
+#~ msgid "Remove {name}"
+#~ msgstr ""
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -2994,6 +3099,10 @@ msgstr "Zitat entfernen"
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
 msgstr "Diese Bridge entfernen?"
+
+#: src/settings/encryption/passkey-section.tsx
+msgid "Remove your passkey?"
+msgstr "Passkey entfernen?"
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/lib/tool-metadata.ts
@@ -3316,6 +3425,7 @@ msgstr "Anbieter auswählen"
 msgid "Select…"
 msgstr "Auswählen…"
 
+#: src/components/sync-setup/confirm-identity-step.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
@@ -3336,6 +3446,7 @@ msgstr "Diesen privaten Chat an {agentName} senden?"
 msgid "Send to the Thunderbolt team"
 msgstr ""
 
+#: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Sending code…"
@@ -3391,6 +3502,10 @@ msgstr "Dunkel einstellen"
 #: src/search/commands/use-commands.ts
 msgid "Set Light"
 msgstr "Hell einstellen"
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
+msgstr "Passkey einrichten"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
@@ -3467,6 +3582,10 @@ msgstr "Anmelden"
 msgid "Sign In"
 msgstr "Anmelden"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr "Beim nächsten Mal schneller anmelden"
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
@@ -3490,6 +3609,15 @@ msgstr "Bei der CLI anmelden"
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr "Bei Thunderbolt anmelden"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr "Mit Passkey anmelden"
+
+#: src/settings/passkeys.tsx
+#~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+#~ msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3956,6 +4084,18 @@ msgstr "Dieses Modell konnte die angehängte Datei nicht lesen. Versuchen Sie ei
 msgid "This model does not seem to support tool usage."
 msgstr "Dieses Modell scheint die Nutzung von Tools nicht zu unterstützen."
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
+msgstr "Mit diesem Passkey können Sie sich anmelden, aber nicht die Synchronisierung entsperren. Sie können neue Geräte weiterhin genehmigen oder Ihre Wiederherstellungsphrase verwenden."
+
+#: src/hooks/use-sync-setup.ts
+msgid "This passkey can't unlock sync for this account."
+msgstr "Dieser Passkey kann die Synchronisierung für dieses Konto nicht entsperren."
+
+#: src/hooks/use-sync-setup.ts
+msgid "This passkey can't unlock sync on this device."
+msgstr "Dieser Passkey kann die Synchronisierung auf diesem Gerät nicht entsperren."
+
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "Damit wird die widerrufene Bridge-Registrierung endgültig entfernt. Die Bridge kann sich danach erneut registrieren."
@@ -4122,6 +4262,10 @@ msgstr "Zeitformat"
 #~ msgid "to access your email and calendar"
 #~ msgstr "um auf Ihre E-Mails und Ihren Kalender zuzugreifen"
 
+#: src/components/sync-setup/confirm-identity-step.tsx
+msgid "To continue, we’ll email you a verification code."
+msgstr "Zum Fortfahren senden wir Ihnen einen Bestätigungscode per E-Mail."
+
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
 msgstr "Seitenleiste umschalten"
@@ -4188,6 +4332,14 @@ msgstr "TTS-Modell"
 msgid "TTS voice"
 msgstr "TTS-Stimme"
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."
+msgstr "Aktivieren Sie die Synchronisierung auf neuen Geräten einfach mit Ihrem Passkey, ganz ohne Genehmigung. Wer Zugriff auf Ihren Passkey hat, kann Ihre Daten entsperren."
+
+#: src/settings/encryption/use-remove-passkey.ts
+msgid "Turn on sync on this device to remove this passkey."
+msgstr "Aktivieren Sie die Synchronisierung auf diesem Gerät, um diesen Passkey zu entfernen."
+
 #: src/components/telemetry-warning-modal.tsx
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr "Wenn Sie die Telemetrie deaktivieren, werden alle Vorschaufunktionen deaktiviert. Möchten Sie wirklich fortfahren?"
@@ -4219,6 +4371,14 @@ msgstr "Unbekannt (Code {code})"
 #: src/widgets/weather-forecast/widget.tsx
 #~ msgid "Unknown error"
 #~ msgstr "Unbekannter Fehler"
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Unlock sync with a passkey"
+msgstr "Synchronisierung mit einem Passkey entsperren"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Unlock with passkey"
+msgstr "Mit Passkey entsperren"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
@@ -4304,6 +4464,10 @@ msgstr "Verwenden Sie https:// (http ist nur für localhost oder ein lokales Net
 msgid "Use my recovery key"
 msgstr "Meinen Wiederherstellungsschlüssel verwenden"
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Use passkey"
+msgstr "Passkey verwenden"
+
 #: src/search/commands/use-commands.ts
 msgid "Use System"
 msgstr "System verwenden"
@@ -4315,6 +4479,14 @@ msgstr "Nutzen Sie die Verbindungsaufforderung auf dem Bildschirm, um fortzufahr
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Use Thunderbolt from the command line."
 msgstr "Nutzen Sie Thunderbolt über die Befehlszeile."
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
+msgstr "Melden Sie sich mit Fingerabdruck, Gesicht oder Geräte-PIN an statt mit einem E-Mail-Code. Die Anmeldung per E-Mail funktioniert weiterhin."
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+#~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -4329,6 +4501,7 @@ msgid "Verification Failed"
 msgstr "Bestätigung fehlgeschlagen"
 
 #: src/components/sign-in/use-sign-in-form-state.ts
+#: src/components/sync-setup/use-confirm-identity-state.ts
 #: src/lib/otp-error-messages.ts
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
@@ -4569,6 +4742,10 @@ msgstr ""
 msgid "You must be signed in to import data."
 msgstr "Sie müssen angemeldet sein, um Daten zu importieren."
 
+#: src/settings/encryption/passkey-section.tsx
+msgid "You won't be able to sign in or unlock sync with this passkey anymore. Devices that are already set up keep working."
+msgstr "Sie können sich mit diesem Passkey nicht mehr anmelden oder die Synchronisierung entsperren. Bereits eingerichtete Geräte funktionieren weiterhin."
+
 #: src/skills/discard-create-dialog.tsx
 #: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
@@ -4679,6 +4856,18 @@ msgstr "Ihr Name"
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
+#~ msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
+#~ msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
+msgstr "Die Synchronisierungsschlüssel Ihres Passkeys konnten nicht überprüft werden. Entfernen Sie den Passkey in der Web-App unter Einstellungen → Einstellungen und versuchen Sie es dann erneut."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"

@@ -245,6 +245,10 @@ msgstr ""
 msgid "Add a new task…"
 msgstr ""
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+#~ msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr ""
@@ -275,6 +279,10 @@ msgstr ""
 msgid "Add Model"
 msgstr ""
 
+#: src/settings/passkeys.tsx
+#~ msgid "Add passkey"
+#~ msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr ""
@@ -284,6 +292,10 @@ msgstr ""
 msgid "Add to chat"
 msgstr ""
 
+#: src/settings/passkeys.tsx
+#~ msgid "Add your first passkey"
+#~ msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr ""
@@ -291,6 +303,11 @@ msgstr ""
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr ""
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+#~ msgid "Added {0}"
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -583,6 +600,7 @@ msgstr ""
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
+#: src/settings/encryption/passkey-section.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -979,6 +997,7 @@ msgstr ""
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
@@ -1069,6 +1088,18 @@ msgstr ""
 msgid "Could not save the project."
 msgstr ""
 
+#: src/settings/passkeys.tsx
+#~ msgid "Couldn't add a passkey. Please try again."
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can add one later when you set up sync."
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Couldn't add a passkey. You can try again from Settings later."
+#~ msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr ""
@@ -1121,6 +1152,10 @@ msgstr ""
 msgid "Couldn't pin {name}."
 msgstr ""
 
+#: src/settings/encryption/use-remove-passkey.ts
+msgid "Couldn't remove the passkey. Please try again."
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
 #~ msgstr ""
@@ -1143,6 +1178,23 @@ msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Couldn't save: {saveError}"
+msgstr ""
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Couldn't set up the passkey. Please try again."
+msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Couldn't sign in with your passkey. Please try again or use your email."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+#~ msgid "Couldn't unlock sync with your passkey."
+#~ msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't unlock sync with your passkey. Please try again."
 msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
@@ -1169,6 +1221,11 @@ msgstr ""
 
 #: src/search/commands/create-commands.ts
 msgid "Create Model"
+msgstr ""
+
+#: src/components/sync-setup/confirm-identity-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Create passkey"
 msgstr ""
 
 #: src/projects/create-project-panel.tsx
@@ -1694,6 +1751,10 @@ msgstr ""
 msgid "Enter the 24-word recovery phrase you saved when you first set up sync."
 msgstr ""
 
+#: src/components/sign-in/sign-in-otp-step.tsx
+msgid "Enter the 8-digit code"
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
 msgstr ""
@@ -1812,6 +1873,7 @@ msgid "Failed to send the verification code"
 msgstr ""
 
 #: src/components/sign-in/use-sign-in-form-state.ts
+#: src/components/sync-setup/use-confirm-identity-state.ts
 msgid "Failed to send verification code. Please check your connection."
 msgstr ""
 
@@ -2218,6 +2280,10 @@ msgstr ""
 msgid "Loading emoji…"
 msgstr ""
 
+#: src/settings/passkeys.tsx
+#~ msgid "Loading passkeys…"
+#~ msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr ""
@@ -2540,6 +2606,10 @@ msgstr ""
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr ""
 
+#: src/settings/passkeys.tsx
+#~ msgid "No passkeys yet"
+#~ msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr ""
@@ -2585,6 +2655,8 @@ msgid "Not Found"
 msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+#: src/components/sync-setup/confirm-identity-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Not now"
 msgstr ""
@@ -2754,6 +2826,11 @@ msgstr ""
 msgid "Optional — what this project is for"
 msgstr ""
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr ""
@@ -2781,6 +2858,29 @@ msgstr ""
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr ""
+
+#: src/settings/encryption/passkey-section.tsx
+msgid "Passkey"
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+#~ msgid "Passkey added — you're all set."
+#~ msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+#~ msgid "Passkey sign-in failed. Please try again or use your email."
+#~ msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+#~ msgid "Passkeys"
+#~ msgstr ""
+
+#: src/settings/passkeys.tsx
+#~ msgid "Passkeys aren't available on this device."
+#~ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2970,8 +3070,13 @@ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 #: src/settings/devices.tsx
+#: src/settings/encryption/passkey-section.tsx
 msgid "Remove"
 msgstr ""
+
+#: src/settings/passkeys.tsx
+#~ msgid "Remove {name}"
+#~ msgstr ""
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -2993,6 +3098,10 @@ msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
 msgid "Remove this bridge?"
+msgstr ""
+
+#: src/settings/encryption/passkey-section.tsx
+msgid "Remove your passkey?"
 msgstr ""
 
 #: src/components/remove-bridge-dialog.tsx
@@ -3316,6 +3425,7 @@ msgstr ""
 msgid "Select…"
 msgstr ""
 
+#: src/components/sync-setup/confirm-identity-step.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
@@ -3336,6 +3446,7 @@ msgstr ""
 msgid "Send to the Thunderbolt team"
 msgstr ""
 
+#: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Sending code…"
@@ -3390,6 +3501,10 @@ msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Set Light"
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -3467,6 +3582,10 @@ msgstr ""
 msgid "Sign In"
 msgstr ""
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
@@ -3490,6 +3609,15 @@ msgstr ""
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr ""
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+#~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+#~ msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3956,6 +4084,18 @@ msgstr ""
 msgid "This model does not seem to support tool usage."
 msgstr ""
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "This passkey can't unlock sync for this account."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "This passkey can't unlock sync on this device."
+msgstr ""
+
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr ""
@@ -4122,6 +4262,10 @@ msgstr ""
 #~ msgid "to access your email and calendar"
 #~ msgstr ""
 
+#: src/components/sync-setup/confirm-identity-step.tsx
+msgid "To continue, we’ll email you a verification code."
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Toggle sidebar"
 msgstr ""
@@ -4188,6 +4332,14 @@ msgstr ""
 msgid "TTS voice"
 msgstr ""
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."
+msgstr ""
+
+#: src/settings/encryption/use-remove-passkey.ts
+msgid "Turn on sync on this device to remove this passkey."
+msgstr ""
+
 #: src/components/telemetry-warning-modal.tsx
 msgid "Turning off telemetry will disable all preview features. Are you sure you want to continue?"
 msgstr ""
@@ -4219,6 +4371,14 @@ msgstr ""
 #: src/widgets/weather-forecast/widget.tsx
 #~ msgid "Unknown error"
 #~ msgstr ""
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Unlock sync with a passkey"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Unlock with passkey"
+msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
@@ -4304,6 +4464,10 @@ msgstr ""
 msgid "Use my recovery key"
 msgstr ""
 
+#: src/components/sync-setup/passkey-enroll-step.tsx
+msgid "Use passkey"
+msgstr ""
+
 #: src/search/commands/use-commands.ts
 msgid "Use System"
 msgstr ""
@@ -4315,6 +4479,14 @@ msgstr ""
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Use Thunderbolt from the command line."
 msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
+msgstr ""
+
+#: src/components/sync-setup/passkey-enroll-step.tsx
+#~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -4329,6 +4501,7 @@ msgid "Verification Failed"
 msgstr ""
 
 #: src/components/sign-in/use-sign-in-form-state.ts
+#: src/components/sync-setup/use-confirm-identity-state.ts
 #: src/lib/otp-error-messages.ts
 #: src/waitlist/use-waitlist-state.ts
 msgid "Verification failed. Please try again."
@@ -4569,6 +4742,10 @@ msgstr ""
 msgid "You must be signed in to import data."
 msgstr ""
 
+#: src/settings/encryption/passkey-section.tsx
+msgid "You won't be able to sign in or unlock sync with this passkey anymore. Devices that are already set up keep working."
+msgstr ""
+
 #: src/skills/discard-create-dialog.tsx
 #: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
@@ -4678,6 +4855,18 @@ msgstr ""
 
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
+#~ msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+#~ msgid "Your passkey's sync keys could not be verified. Remove your passkey under Settings → Preferences in the web app, then try again."
+#~ msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again."
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx

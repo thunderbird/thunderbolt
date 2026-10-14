@@ -42,7 +42,7 @@ jobs:
 
   release:
     needs: [e2e, changes]
-    if: needs.changes.outputs.changed == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.changed == 'true'
     permissions:
       actions: read
       contents: write

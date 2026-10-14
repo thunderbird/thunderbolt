@@ -17,9 +17,11 @@ type CurrentDateTimeOptions = {
  * Model-facing context, not display, so it formats in the source locale whatever the app language: an
  * English date is unambiguous for the model to read back.
  *
- * Both callers put it after everything else in the system prompt, so the text before it stays identical
- * across requests. That does not keep it out of a prefix cache: `system` is sent ahead of the conversation, so
- * whenever this line changes, a provider that caches the conversation can no longer reuse it.
+ * Both callers put it after the stable part of the system prompt, so the text before it stays identical
+ * across requests: the hosted agent ends its prompt with it, and the built-in pipeline opens its volatile
+ * section with it (`src/ai/fetch.ts`, `buildVolatileSystemNotes`). That does not keep it out of a prefix
+ * cache: `system` is sent ahead of the conversation, so whenever this line changes, a provider that caches the
+ * conversation can no longer reuse it.
  *
  * - The hosted agent (`backend/src/hosted-agent/system-prompt.ts`) passes `granularity: 'hour'` and
  *   `AGENT_TIMEZONE`. On a Fireworks model, whose prompt cache reuses the conversation per user, its prefix

@@ -217,10 +217,10 @@ export const fetchChallenge = async (
 
 /**
  * Atomic AK rotation: replaces every trusted device's envelope, re-anchors the
- * recovery slot, re-wraps the FULL keyring, replaces canary + signing key +
- * kdf_salt, bumps key_version. The server rejects partial keyring, envelope or
- * recovery-slot coverage — build the payload from live server state (see
- * services `rotateAccountKey` / `changeRecoveryPhrase`).
+ * recovery slot and the optional passkey slot (omitted = cleared), re-wraps the
+ * FULL keyring, replaces canary + signing key + kdf_salt, bumps key_version. The
+ * server rejects partial keyring, envelope or slot coverage — build the payload
+ * from live server state (see services `runAKRotation`).
  */
 export const postRotate = async (httpClient: HttpClient, body: RotateRequest): Promise<RotateResponse> =>
   httpClient.post('encryption/rotate', { json: body }).json<RotateResponse>()

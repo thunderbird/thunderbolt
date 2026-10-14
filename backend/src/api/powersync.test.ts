@@ -51,6 +51,7 @@ const powersyncSettings: Settings = {
   powersyncTokenExpirySeconds: 3600,
   authMode: 'consumer' as const,
   authAllowAnonymous: false,
+  anonymousUserIdleDays: 30,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',

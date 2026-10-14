@@ -1,4 +1,7 @@
 appId: net.thunderbird.thunderbolt.dev
+env:
+  # The confidential default every fresh account lands on; a model swap changes it here only.
+  DEFAULT_MODEL: DeepSeek V4.1 Flash
 ---
 - launchApp:
     clearState: true
@@ -25,7 +28,7 @@ appId: net.thunderbird.thunderbolt.dev
     timeout: 120000
 - inputText: 12345678
 - extendedWaitUntil:
-    visible: DeepSeek V4.1 Flash
+    visible: ${DEFAULT_MODEL}
     timeout: 120000
 - retry:
     maxRetries: 2
@@ -41,7 +44,7 @@ appId: net.thunderbird.thunderbolt.dev
           when:
             notVisible: Choose model
           commands:
-            - tapOn: 'GLM 5.3.*|Opus 5.5'
+            - tapOn: '${DEFAULT_MODEL}|Opus 5.5'
       - waitForAnimationToEnd
       - tapOn: Opus 5.5
       - assertNotVisible: Choose model

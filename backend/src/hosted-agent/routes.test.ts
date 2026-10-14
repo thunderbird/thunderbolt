@@ -6,11 +6,11 @@ import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
-import type {
-  checkManagedInferenceAdmission,
-  InferenceDatabase,
-  InferencePrice,
+import {
   recordInferenceUsage,
+  type checkManagedInferenceAdmission,
+  type InferenceDatabase,
+  type InferencePrice,
 } from '@/inference/usage-ledger'
 import { createTestDb } from '@/test-utils/db'
 import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
@@ -23,6 +23,7 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import { maxAgentInstructionsLength } from './history'
 import {
   agentMaxOutputTokens,
   createHostedAgentRoutes,
@@ -31,6 +32,8 @@ import {
 } from './routes'
 
 type CheckAdmission = typeof checkManagedInferenceAdmission
+/** The unmocked fetch, for tests that talk to a listening server (`test-setup.ts` stubs the global one). */
+const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
 const anthropicModel = 'claude-opus-5-5'
@@ -104,14 +107,28 @@ const upstreamHeaders = (fetchFn: ReturnType<typeof createRejectingFetch>, call 
 const chatBody = (messages: unknown[] = [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]) =>
   JSON.stringify({ id: 'chat-1', messages, trigger: 'submit-message' })
 
-const postChat = (app: Elysia, body = chatBody(), headers: Record<string, string> = {}) =>
+const postChat = (app: Elysia, body = chatBody(), headers: Record<string, string> = {}, signal?: AbortSignal) =>
   app.handle(
     new Request('http://localhost/agent/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body,
+      signal,
     }),
   )
+
+/** Read a streamed response until `needle` arrives, leaving the rest of the stream unread. */
+const readUntil = async (reader: ReadableStreamDefaultReader<Uint8Array>, needle: string) => {
+  const decoder = new TextDecoder()
+  let text = ''
+  while (!text.includes(needle)) {
+    const { done, value } = await reader.read()
+    if (done) {
+      throw new Error(`Stream ended before ${needle}`)
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+}
 
 /** Run one chat and return the system prompt the model received. */
 const sentSystemPrompt = async (app: Elysia, model: MockLanguageModelV3, headers: Record<string, string> = {}) => {
@@ -250,6 +267,53 @@ describe('createHostedAgentRoutes', () => {
     )
     expect(checkAdmission).not.toHaveBeenCalled()
     expect(model.doStreamCalls).toHaveLength(0)
+  })
+
+  describe('instructions', () => {
+    const bodyWithInstructions = (instructions: string) => JSON.stringify({ ...JSON.parse(chatBody()), instructions })
+    const systemPromptOf = (call: MockLanguageModelV3['doStreamCalls'][number]) => {
+      const [message] = call.prompt
+      return message.role === 'system' ? message.content : undefined
+    }
+
+    // Spelled out rather than imported, so a reworded or dropped header fails here.
+    const userInstructionsHeader =
+      '# User instructions\n\nThe user supplied these through their project and skills. Follow them unless they conflict with the instructions above.'
+
+    afterEach(() => {
+      setSystemTime()
+    })
+
+    it('places them after AGENT_SYSTEM_PROMPT and before the Language section and the date line', async () => {
+      const sent = new Date('2026-10-20T15:30:00Z')
+      setSystemTime(sent)
+      const app = createMockedApp()
+      await (await postChat(app, bodyWithInstructions('# Project: Atlas\n\nBe brief.'))).text()
+      const system = systemPromptOf(model.doStreamCalls[0])
+      expect(system).toStartWith(
+        `You are the deployment agent.\n\n${userInstructionsHeader}\n\n# Project: Atlas\n\nBe brief.\n\n# Language\n`,
+      )
+      expect(system).toEndWith(`\n\n${currentDateTimeLine(sent, { timeZone: 'UTC', granularity: 'hour' })}`)
+    })
+
+    it('sends them first when AGENT_SYSTEM_PROMPT is empty', async () => {
+      const app = createMockedApp({ settings: { agentSystemPrompt: '' } })
+      await (await postChat(app, bodyWithInstructions('Be brief.'))).text()
+      expect(systemPromptOf(model.doStreamCalls[0])).toStartWith(`${userInstructionsHeader}\n\nBe brief.`)
+    })
+
+    it('refuses oversized instructions with AGENT_INSTRUCTIONS_TOO_LARGE before admission or the model call', async () => {
+      const app = createMockedApp()
+      const response = await postChat(app, bodyWithInstructions('x'.repeat(maxAgentInstructionsLength + 1)))
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } })
+      expect(logger.info).toHaveBeenCalledWith(
+        { event: 'agent_instructions_too_large', provider: 'anthropic', model: anthropicModel },
+        'Agent request carried oversized instructions',
+      )
+      expect(checkAdmission).not.toHaveBeenCalled()
+      expect(model.doStreamCalls).toHaveLength(0)
+    })
   })
 
   it.each([
@@ -448,6 +512,10 @@ describe('createHostedAgentRoutes', () => {
         counts: { promptTokens: 12, completionTokens: 3, totalTokens: 15, cacheCreationTokens: 0, cacheReadTokens: 0 },
       }),
     ])
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'agent_usage_estimated' }),
+      expect.anything(),
+    )
   })
 
   describe('reply language', () => {
@@ -608,6 +676,143 @@ describe('createHostedAgentRoutes', () => {
       expect((await postChat(app)).status).toBe(200)
     })
 
+    it('aborts the upstream call when the client disconnects mid-reply, and frees the slot for a resend', async () => {
+      const upstreamSignals: (AbortSignal | undefined)[] = []
+      model = new MockLanguageModelV3({
+        // The first run sends one delta, then is silent until aborted, the way a fetch-backed provider
+        // behaves mid-reply. Later runs reply normally.
+        doStream: async ({ abortSignal }) => {
+          upstreamSignals.push(abortSignal)
+          if (upstreamSignals.length > 1) {
+            return { stream: simulateReadableStream({ chunks: replyChunks() }) }
+          }
+          return {
+            stream: new ReadableStream<StreamPart>({
+              start: (controller) => {
+                replyChunks()
+                  .slice(0, 2)
+                  .forEach((chunk) => controller.enqueue(chunk))
+                abortSignal?.addEventListener('abort', () => controller.error(abortSignal.reason))
+              },
+            }),
+          }
+        },
+      })
+      const app = createMockedApp()
+      const client = new AbortController()
+
+      const reader = (await postChat(app, chatBody(), {}, client.signal)).body!.getReader()
+      await readUntil(reader, 'Hello there')
+      // A real disconnect both aborts the request signal and cancels the response body.
+      client.abort()
+      await reader.cancel()
+      await settleRun()
+
+      expect(upstreamSignals[0]?.aborted).toBe(true)
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_run_aborted', provider: 'anthropic', model: anthropicModel }),
+        'Agent run aborted by the client',
+      )
+      expect(logger.error).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_run_timed_out' }),
+        expect.anything(),
+      )
+      // The provider never reported usage, so the run is billed by estimate: "Hello there" is 11 characters.
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      const [, { counts }] = recordUsage.mock.calls[0]
+      expect(counts).toEqual(expect.objectContaining({ completionTokens: 4, cacheReadTokens: 0 }))
+      expect(counts.promptTokens).toBeGreaterThan(0)
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'agent_usage_estimated',
+          reason: 'client',
+          promptTokens: counts.promptTokens,
+          completionTokens: 4,
+        }),
+        'Agent usage estimated',
+      )
+
+      const resend = await postChat(app)
+      expect(resend.status).toBe(200)
+      expect(await resend.text()).toContain('"delta":"Hello there"')
+    })
+
+    it('aborts the upstream call when a real HTTP client disconnects mid-reply, then serves a resend', async () => {
+      const upstreamAborted = Promise.withResolvers<void>()
+      let calls = 0
+      model = new MockLanguageModelV3({
+        // The first run sends one delta, then is silent until aborted; the resend replies normally.
+        doStream: async ({ abortSignal }) => {
+          calls += 1
+          if (calls > 1) {
+            return { stream: simulateReadableStream({ chunks: replyChunks() }) }
+          }
+          return {
+            stream: new ReadableStream<StreamPart>({
+              start: (controller) => {
+                replyChunks()
+                  .slice(0, 2)
+                  .forEach((chunk) => controller.enqueue(chunk))
+                abortSignal?.addEventListener('abort', () => {
+                  upstreamAborted.resolve()
+                  controller.error(abortSignal.reason)
+                })
+              },
+            }),
+          }
+        },
+      })
+      const usageRecorded = Promise.withResolvers<void>()
+      recordUsage = mock(async () => {
+        usageRecorded.resolve()
+        return 'inserted' as const
+      })
+      const server = createMockedApp().listen(0)
+      const url = `http://localhost:${server.server?.port}/agent/chat`
+      const post = (signal?: AbortSignal) =>
+        realFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: chatBody(), signal })
+
+      try {
+        const client = new AbortController()
+        const reader = (await post(client.signal)).body!.getReader()
+        await readUntil(reader, 'Hello there')
+        // Only the client's own fetch is aborted: the server learns of it from the closed connection.
+        client.abort()
+
+        await upstreamAborted.promise
+        // The slot is released right after the estimate is written.
+        await usageRecorded.promise
+        expect(recordUsage.mock.calls[0][1].counts).toEqual(expect.objectContaining({ completionTokens: 4 }))
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'agent_usage_estimated', reason: 'client' }),
+          'Agent usage estimated',
+        )
+
+        const resend = await post()
+        expect(resend.status).toBe(200)
+        expect(await resend.text()).toContain('"delta":"Hello there"')
+      } finally {
+        await server.stop(true)
+      }
+    })
+
+    // A control: the run finished before the client left, so nothing aborts and the provider usage is the one row.
+    it('records only the provider usage for a run the client leaves after it completed', async () => {
+      const app = createMockedApp()
+      const client = new AbortController()
+      await (await postChat(app, chatBody(), {}, client.signal)).text()
+      client.abort()
+      await settleRun()
+
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      expect(recordUsage.mock.calls[0][1].counts).toEqual(
+        expect.objectContaining({ promptTokens: 12, completionTokens: 3 }),
+      )
+      for (const event of ['agent_run_aborted', 'agent_usage_estimated']) {
+        expect(logger.info).not.toHaveBeenCalledWith(expect.objectContaining({ event }), expect.anything())
+      }
+    })
+
     it('times out a provider that never emits, then releases the slot', async () => {
       model = new MockLanguageModelV3({
         // Silent until aborted, the way a fetch-backed provider behaves on a hung connection.
@@ -628,7 +833,19 @@ describe('createHostedAgentRoutes', () => {
         expect.objectContaining({ event: 'agent_run_timed_out', upstreamTimeoutMs: 50 }),
         'Agent run timed out',
       )
-      expect(recordUsage).not.toHaveBeenCalled()
+      expect(logger.info).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_run_aborted' }),
+        expect.anything(),
+      )
+      // The prompt was sent and nothing streamed back, so only the prompt is estimated.
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      const [, { counts }] = recordUsage.mock.calls[0]
+      expect(counts.completionTokens).toBe(0)
+      expect(counts.promptTokens).toBeGreaterThan(0)
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_usage_estimated', reason: 'timeout', completionTokens: 0 }),
+        'Agent usage estimated',
+      )
       expect((await postChat(app)).status).toBe(200)
     })
 
@@ -708,6 +925,60 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
         costNanoUsd: 179_000n,
       }),
     )
+  })
+
+  it('commits an estimated row for a run the client aborts mid-reply before freeing the slot', async () => {
+    let calls = 0
+    const model = new MockLanguageModelV3({
+      // The first run sends one delta, then is silent until aborted; the resend replies normally.
+      doStream: async ({ abortSignal }) => {
+        calls += 1
+        if (calls > 1) {
+          return { stream: simulateReadableStream({ chunks: replyChunks() }) }
+        }
+        return {
+          stream: new ReadableStream<StreamPart>({
+            start: (controller) => {
+              replyChunks()
+                .slice(0, 2)
+                .forEach((chunk) => controller.enqueue(chunk))
+              abortSignal?.addEventListener('abort', () => controller.error(abortSignal.reason))
+            },
+          }),
+        }
+      },
+    })
+    // Holds the ledger write open, so the test can see the slot stay taken until the row is committed.
+    const ledgerGate = Promise.withResolvers<void>()
+    const recordUsage: typeof recordInferenceUsage = async (...args) => {
+      await ledgerGate.promise
+      return recordInferenceUsage(...args)
+    }
+    const app = createApp({ database, model, recordUsage })
+    const client = new AbortController()
+
+    const reader = (await postChat(app, chatBody(), {}, client.signal)).body!.getReader()
+    await readUntil(reader, 'Hello there')
+    client.abort()
+    await reader.cancel()
+    await settleRun()
+
+    const blocked = await postChat(app)
+    expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: { code: 'AGENT_RUN_IN_PROGRESS' } })
+
+    ledgerGate.resolve()
+    await settleRun()
+
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].completionTokens).toBe(4)
+    expect(rows[0].promptTokens).toBeGreaterThan(0)
+    expect(rows[0].costNanoUsd).toBe(BigInt(rows[0].promptTokens) * 1000n + 4n * 5000n)
+
+    const resend = await postChat(app)
+    expect(resend.status).toBe(200)
+    await resend.text()
   })
 
   it('bills a Fireworks run at the Fireworks price', async () => {

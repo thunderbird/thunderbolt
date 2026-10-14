@@ -679,6 +679,10 @@ msgstr "Checking sign-in request…"
 msgid "Checking whether {modelName} can read images…"
 msgstr "Checking whether {modelName} can read images…"
 
+#: src/components/auth-gate/browser-check.tsx
+msgid "Checking your browser…"
+msgstr "Checking your browser…"
+
 #: src/components/device-approval.tsx
 msgid "Checking your session."
 msgstr "Checking your session."
@@ -3826,6 +3830,10 @@ msgstr "The device lost access, but your account key was not replaced, so it can
 msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 
+#: src/components/chat/error-message.tsx
+msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+msgstr "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
 msgstr "The map couldn’t be loaded."
@@ -4160,6 +4168,7 @@ msgstr "Travel & places"
 msgid "Trusted devices"
 msgstr "Trusted devices"
 
+#: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -4393,6 +4402,10 @@ msgstr "Want early access?"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr "We could not send the transcript. Please check your connection and try again."
+
+#: src/components/auth-gate/browser-check.tsx
+msgid "We couldn't verify your browser. Check your connection and try again."
+msgstr "We couldn't verify your browser. Check your connection and try again."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "We don't keep logs of your conversations."
@@ -4670,6 +4683,10 @@ msgstr "Your old recovery phrase no longer works. Write down these 24 words in o
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr "Your private AI assistant"
+
+#: src/components/chat/error-message.tsx
+#~ msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+#~ msgstr "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"

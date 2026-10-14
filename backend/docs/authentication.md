@@ -179,6 +179,7 @@ The `anonymous` plugin is registered only when `AUTH_ALLOW_ANONYMOUS=true`; othe
 
 - The before-hook rejects `/sign-in/anonymous` when the caller already holds a non-anonymous session (session fixation).
 - `disableDeleteAnonymousUser: true` closes Better Auth's unauthenticated `/delete-anonymous-user`; the anonymous row is deleted from `onLinkAccount` when the account is promoted.
+- With Better Auth's cleanup off, `sweepIdleAnonymousUsers` ([idle-anonymous-users.ts](../src/auth/idle-anonymous-users.ts)) hard-deletes anonymous users idle for more than `ANONYMOUS_USER_IDLE_DAYS` (default 30, `0` disables) at startup and hourly, through the same cascading `user` delete as account deletion. Activity is defined in `deleteIdleAnonymousUsers` ([users.ts](../src/dal/users.ts)).
 
 Anonymous sign-in is intentionally _not_ waitlist-gated: trying the app without an account is the feature.
 

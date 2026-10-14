@@ -463,6 +463,27 @@ describe('inference usage ledger', () => {
         .where(eq(inferenceUsage.id, 'fireworks-unpriced-cache-usage'))
       expect(row.costNanoUsd).toBe(3_600_000n)
     })
+
+    it('rejects cached prompt tokens above the prompt total before insertion', async () => {
+      const userId = 'fireworks-excess-cache-user'
+      await insertUser(database, userId)
+      const price = await loadRequiredPrice(database, fireworksGlmIdentity)
+
+      await expect(
+        recordInferenceUsage(
+          database,
+          usageInput('fireworks-excess-cache-usage', userId, price, {
+            promptTokens: 1_000,
+            completionTokens: 500,
+            totalTokens: 1_500,
+            cacheReadTokens: 1_001,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(InferenceTokenCountOutOfRangeError)
+      expect(
+        await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, 'fireworks-excess-cache-usage')),
+      ).toHaveLength(0)
+    })
   })
 
   describe('recording', () => {

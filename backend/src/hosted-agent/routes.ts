@@ -4,7 +4,12 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { admitManagedRequest, createUsageCallbacks, recordLanguageModelUsage } from '@/inference/managed-request'
+import {
+  admitManagedRequest,
+  createUsageCallbacks,
+  recordLanguageModelUsage,
+  recordTokenCounts,
+} from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import { streamingResponseHeaders } from '@/inference/routes'
 import type { checkManagedInferenceAdmission, InferenceDatabase, recordInferenceUsage } from '@/inference/usage-ledger'
@@ -16,13 +21,21 @@ import {
 } from '@/middleware/error-handling'
 import { registerAgentProvider } from '@/agents'
 import { readBoundedJson } from '@/utils/request-body'
-import { APICallError, convertToModelMessages, RetryError, streamText, type LanguageModel } from 'ai'
+import {
+  APICallError,
+  convertToModelMessages,
+  RetryError,
+  streamText,
+  type LanguageModel,
+  type LanguageModelUsage,
+} from 'ai'
 import { Elysia, type AnyElysia } from 'elysia'
 import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { createHostedAgentProvider } from './provider'
 import { buildAgentSystemPrompt } from './system-prompt'
+import { getAbortedRunCounts } from './usage-estimate'
 
 /** Longest reply per run. Generous for chat, and it bounds the worst-case cost of a single run. */
 export const agentMaxOutputTokens = 8192
@@ -58,6 +71,9 @@ const createRunInProgressResponse = (): Response =>
 
 const createFilesUnsupportedResponse = (): Response =>
   Response.json({ error: { code: 'AGENT_FILES_UNSUPPORTED' } }, { status: 400 })
+
+const createInstructionsTooLargeResponse = (): Response =>
+  Response.json({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }, { status: 400 })
 
 /**
  * Hosted agent routes: `POST /agent/chat` takes a `DefaultChatTransport` body and streams a UI message
@@ -112,6 +128,14 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           ctx.set.status = 400
           return createFilesUnsupportedResponse()
         }
+        if (!chatRequest.ok && chatRequest.reason === 'instructions_too_large') {
+          logger?.info(
+            { event: 'agent_instructions_too_large', provider: identity.provider, model: identity.model },
+            'Agent request carried oversized instructions',
+          )
+          ctx.set.status = 400
+          return createInstructionsTooLargeResponse()
+        }
         if (!chatRequest.ok) {
           ctx.set.status = 400
           return createErrorResponse(getSafeErrorMessage(400))
@@ -162,32 +186,86 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           },
         })
 
+        const system = buildAgentSystemPrompt({
+          operatorPrompt: settings.agentSystemPrompt,
+          instructions: chatRequest.value.instructions,
+          appLanguage: ctx.request.headers.get('X-App-Language'),
+          timeZone: settings.agentTimezone,
+          now: new Date(),
+        })
+        // Kept to bill an aborted run once it settles: it usually never reports usage, so it is estimated from
+        // what was sent and what streamed back.
+        let streamedOutput = ''
+        let abortedRunUsage: LanguageModelUsage | undefined
+        let abortReason: 'client' | 'timeout' | undefined
+
         const result = streamText({
           model,
-          system: buildAgentSystemPrompt({
-            operatorPrompt: settings.agentSystemPrompt,
-            appLanguage: ctx.request.headers.get('X-App-Language'),
-            timeZone: settings.agentTimezone,
-            now: new Date(),
-          }),
+          system,
           messages,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,
+          // streamText merges the two: whichever fires first aborts the upstream call.
+          abortSignal: ctx.request.signal,
           timeout: { totalMs: upstreamTimeoutMs },
-          onFinish: ({ totalUsage }) => recordLanguageModelUsage(usageCallbacks, totalUsage),
+          onChunk: ({ chunk }) => {
+            if (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta') {
+              streamedOutput += chunk.text
+            }
+          },
+          onFinish: ({ totalUsage }) => {
+            // After an abort, recordAbortedRunUsage writes the run's one row. Deferring to it here is the first
+            // guard against a second row; the ledger's idempotent insert (onConflictDoNothing on the run's
+            // eventId, in recordInferenceUsage) is the second, but it alone would keep whichever write landed first.
+            if (abortReason) {
+              abortedRunUsage = totalUsage
+              return
+            }
+            return recordLanguageModelUsage(usageCallbacks, totalUsage)
+          },
           onError: ({ error }) => logRunFailure(error),
-          // A timeout aborts the run without reaching onError. It is the only abort source: the client's
-          // disconnect is deliberately not wired in, so the run (and its usage) outlives the socket.
+          // A client disconnect (Stop, or a dropped connection) or the timeout aborts the run without reaching
+          // onError. onAbort runs first; onFinish follows only when the abort lands after the run's last step.
           onAbort: () => {
+            abortReason = ctx.request.signal.aborted ? 'client' : 'timeout'
+            if (abortReason === 'client') {
+              logger?.info({ event: 'agent_run_aborted', ...logContext }, 'Agent run aborted by the client')
+              return
+            }
             logger?.error({ event: 'agent_run_timed_out', ...logContext, upstreamTimeoutMs }, 'Agent run timed out')
           },
         })
-        // Drive the run to completion even if the client disconnects, so usage is recorded. consumeStream
-        // settles after onFinish, on a stream error, or once an abandoned run ends, so the slot is always
-        // released.
+        /** Bill an aborted run once every stream callback has run; see `getAbortedRunCounts`. */
+        const recordAbortedRunUsage = async (reason: 'client' | 'timeout') => {
+          const { counts, estimated } = getAbortedRunCounts({
+            reportedUsage: abortedRunUsage,
+            system,
+            messages,
+            outputText: streamedOutput,
+          })
+          if (estimated) {
+            logger?.info(
+              {
+                event: 'agent_usage_estimated',
+                ...logContext,
+                reason,
+                promptTokens: counts.promptTokens,
+                completionTokens: counts.completionTokens,
+              },
+              'Agent usage estimated',
+            )
+          }
+          await recordTokenCounts(usageCallbacks, counts)
+        }
+        // Read the run on the server so it settles and is billed whether or not the client reads the response.
+        // consumeStream settles after onFinish, on a stream error, or once an abort ends the run, so the slot
+        // is always released, after the run's usage is written.
         const runToCompletion = async () => {
           try {
             await result.consumeStream({ onError: logRunFailure })
+            if (abortReason) {
+              await recordAbortedRunUsage(abortReason)
+            }
           } finally {
             usersWithRunInFlight.delete(userId)
           }

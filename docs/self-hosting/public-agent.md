@@ -67,6 +67,8 @@ The rest is fixed by the Blueprint. On the API it turns on anonymous sessions (`
 | Fixed material: an FAQ, venue facts, policies  | `AGENT_SYSTEM_PROMPT`. It is sent with every request, so write facts, not prose. Keep the source out of this repository.    |
 | Data that changes: a schedule, rooms, speakers | MCP servers listed in `AGENT_MCP_SERVERS`, once the agent has tools. Until then, have the prompt say where the schedule is. |
 
+Visitors' project and skill instructions are appended after `AGENT_SYSTEM_PROMPT`, under a header that ranks them below it. That ranking is a request to the model, not an enforced rule, so treat the prompt as readable by visitors and not as a hard guardrail.
+
 The agent is told the current date and hour in `AGENT_TIMEZONE`, but it still needs the schedule tools to answer questions such as "what's on this afternoon?".
 
 ## Headers
@@ -106,5 +108,6 @@ Before teardown, the API already deletes each visitor about `ANONYMOUS_USER_IDLE
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
 - Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly. Setting both `CAPTCHA_PROVIDER` and `VITE_CAPTCHA_PROVIDER` to `altcha` lifts the ceiling; see [ALTCHA](./configuration.md#altcha).
 - On top of that, the whole deployment admits 2000 anonymous sign-ins an hour by default (`ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`).
-- The hosted agent calls one model, on Anthropic or Fireworks, and has no tools yet.
+- The hosted agent calls one model, on Anthropic or Fireworks (see `AGENT_MODEL` in [Configuration](./configuration.md#hosted-agent)), and has no tools yet.
+- A reply that a visitor stops, or that hits the 2-minute limit, usually ends before the provider reports its token usage, so it is charged against the visitor's spending cap by an estimate that errs high, and the usage row does not mark it as one ([Configuration](./configuration.md#hosted-agent)).
 - The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

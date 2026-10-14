@@ -33,7 +33,7 @@ const inferenceQuotaMessages = {
 } satisfies Record<InferenceQuotaWindow, MessageDescriptor>
 
 const agentRunInProgressMessage = msg`The agent is still finishing your previous message. Try again in a minute.`
-const agentInstructionsTooLargeMessage = msg`Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again.`
+const agentInstructionsTooLargeMessage = msg`The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.`
 
 /** Resolve final chat error copy after automatic retries stop. */
 const getFinalChatErrorMessage = (error?: Error | null): MessageDescriptor => {

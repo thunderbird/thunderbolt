@@ -165,7 +165,7 @@ describe('ErrorMessage', () => {
 
     expect(
       screen.getByText(
-        "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again.",
+        "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.",
       ),
     ).toBeTruthy()
   })

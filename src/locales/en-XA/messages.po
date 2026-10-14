@@ -3830,6 +3830,10 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 msgstr ""
 
+#: src/components/chat/error-message.tsx
+msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+msgstr ""
+
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
 msgstr ""
@@ -4681,8 +4685,8 @@ msgid "Your private AI assistant"
 msgstr ""
 
 #: src/components/chat/error-message.tsx
-msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
-msgstr ""
+#~ msgid "Your project and skill instructions are too long for this agent. Shorten a long skill or the project's instructions, then try again."
+#~ msgstr ""
 
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 msgid "Your recovery phrase was never saved"

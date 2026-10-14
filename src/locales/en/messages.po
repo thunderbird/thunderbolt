@@ -1481,7 +1481,7 @@ msgstr "Disconnect"
 msgid "Disconnected"
 msgstr "Disconnected"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/composer-alert.tsx
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 #: src/components/update-notification.tsx
@@ -2568,6 +2568,10 @@ msgstr "No tasks found matching \"{searchQuery}\""
 msgid "No tasks yet"
 msgstr "No tasks yet"
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "None of your models can be used in this chat. Choose another agent to send."
+msgstr "None of your models can be used in this chat. Choose another agent to send."
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "Not available in private chats."
@@ -3324,6 +3328,10 @@ msgstr "Send Magic Link"
 msgid "Send message"
 msgstr "Send message"
 
+#: src/components/ui/header.tsx
+msgid "Send this private chat to {agentName}?"
+msgstr "Send this private chat to {agentName}?"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
 msgstr "Send to the Thunderbolt team"
@@ -3647,6 +3655,10 @@ msgstr "Successfully got a response from the model."
 msgid "Suggested"
 msgstr "Suggested"
 
+#: src/components/ui/header.tsx
+msgid "Switch Agent"
+msgstr "Switch Agent"
+
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
 msgstr "Switch to {suggestedLanguageLabel}"
@@ -3884,6 +3896,10 @@ msgstr "This code has expired. Please request a new one."
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 
+#: src/components/ui/header.tsx
+msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+msgstr "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "This device"
@@ -3939,6 +3955,16 @@ msgstr "This model does not seem to support tool usage."
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "This permanently removes the revoked bridge registration. The bridge can register again afterward."
+
+#: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
+msgid "This private chat won't run on {agentName}."
+msgstr "This private chat won't run on {agentName}."
+
+#: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
+msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+msgstr "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 
 #: src/projects/project-form.tsx
 msgid "this project"

@@ -202,6 +202,8 @@ The agent is also offered through agent discovery, and the discovery response na
 
 A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that), and a reply stops at 8,192 output tokens or after 2 minutes upstream. The agent takes text only, whatever the model: a request carrying a file attachment is refused with `400 AGENT_FILES_UNSUPPORTED`.
 
+The agent replies in the language of the conversation. When the conversation does not establish one, it falls back to the app language the client sends in the `X-App-Language` header, or to English when the header is missing or names a language the app does not ship. This rule is appended after `AGENT_SYSTEM_PROMPT`, so your prompt still comes first. The current date and hour come last, written in `AGENT_TIMEZONE`, so everything before them stays the same between requests. Because the system prompt is sent ahead of the conversation, a new hour means the provider cannot reuse that user's cached conversation for the next turn. Leaving out the minutes limits that to once an hour. This applies to Fireworks models, whose prompt cache reuses the conversation per user; Anthropic models are sent without cache control, so nothing is cached for them.
+
 | Variable                          | Default     | What it does                                                                                                               |
 | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.                                                            |
@@ -212,6 +214,7 @@ A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that),
 | `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                                                                |
 | `AGENT_DESCRIPTION`               | empty       | Description shown when clients discover the agent.                                                                         |
 | `AGENT_ICON`                      | empty       | Icon shown for the agent: `bot`, `brain`, `globe`, `message-circle`, `server` or `sparkles`. Anything else shows `server`. |
+| `AGENT_TIMEZONE`                  | `UTC`       | IANA time zone (or a UTC offset such as `+01:00`) for the date in the agent's system prompt. Invalid stops startup.        |
 | `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false`     | Lets anonymous sessions discover agents; they see only anonymous-safe ones.                                                |
 
 ### Deepset (Haystack) pipelines

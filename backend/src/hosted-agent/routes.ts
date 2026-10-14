@@ -22,6 +22,7 @@ import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { createHostedAgentProvider } from './provider'
+import { buildAgentSystemPrompt } from './system-prompt'
 
 /** Longest reply per run. Generous for chat, and it bounds the worst-case cost of a single run. */
 export const agentMaxOutputTokens = 8192
@@ -76,7 +77,6 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
   const identity = getAgentIdentity(settings.agentModel)
-  const system = settings.agentSystemPrompt || undefined
   // Built at startup so an unset provider key fails the boot (see `createManagedProviderConnection`).
   const model = options.model ?? createAgentModel(identity, settings, { fetchFn, logger })
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
@@ -164,7 +164,12 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
         const result = streamText({
           model,
-          system,
+          system: buildAgentSystemPrompt({
+            operatorPrompt: settings.agentSystemPrompt,
+            appLanguage: ctx.request.headers.get('X-App-Language'),
+            timeZone: settings.agentTimezone,
+            now: new Date(),
+          }),
           messages,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,

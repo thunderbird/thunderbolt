@@ -46,8 +46,8 @@ export const isExempt = (pathname: string, method: string): boolean => {
 /**
  * Global gate that hard-blocks clients running below `settings.minAppVersion`.
  * Empty `minAppVersion` disables the gate. Mounted after CORS so short-circuited
- * 426s still carry `Access-Control-Allow-Origin`, and after HTTP logging so
- * they're access-logged.
+ * 426s still carry `Access-Control-Allow-Origin`. The access log wraps the whole
+ * request handler, so the 426s are logged whatever the mount order.
  *
  * Fails closed: a missing or unparseable `X-App-Version` header is treated as
  * unsupported (`compareSemver` returns 0 for unparseable input, so it cannot

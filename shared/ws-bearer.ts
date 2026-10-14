@@ -21,6 +21,8 @@
  * ends is silent breakage, so the prefix, carrier, and codec live in one place.
  */
 
+import { decodeBase64Url, encodeBase64Url } from './base64url'
+
 /**
  * Carrier subprotocol the client offers alongside the bearer and the server
  * echoes back as `Sec-WebSocket-Protocol`, satisfying RFC 6455 (the server must
@@ -34,39 +36,8 @@ export const wsCarrierSubprotocol = 'thunderbolt.v1'
 export const wsBearerSubprotocolPrefix = 'thunderbolt.bearer.'
 
 /** Encode a raw bearer token to an RFC 6455 subprotocol-safe base64url string. */
-export const encodeWsBearer = (token: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(token, 'utf-8').toString('base64url')
-  }
-  const bytes = new TextEncoder().encode(token)
-  let binary = ''
-  for (const b of bytes) {
-    binary += String.fromCharCode(b)
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
+export const encodeWsBearer = (token: string): string => encodeBase64Url(token)
 
 /** Decode a base64url-encoded bearer subprotocol entry back to the raw token.
  *  Returns null when the payload is empty or not valid base64url. */
-export const decodeWsBearer = (encoded: string): string | null => {
-  if (!encoded) {
-    return null
-  }
-  if (typeof Buffer !== 'undefined') {
-    try {
-      const decoded = Buffer.from(encoded, 'base64url').toString('utf-8')
-      return decoded || null
-    } catch {
-      return null
-    }
-  }
-  try {
-    const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/')
-    const binary = atob(normalized)
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-    const decoded = new TextDecoder().decode(bytes)
-    return decoded || null
-  } catch {
-    return null
-  }
-}
+export const decodeWsBearer = (encoded: string): string | null => (encoded ? decodeBase64Url(encoded) || null : null)

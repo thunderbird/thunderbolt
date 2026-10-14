@@ -95,6 +95,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   agentName: 'Assistant',
   agentDescription: '',
   agentIcon: '',
+  agentTimezone: 'UTC',
   allowAnonymousAgentDiscovery: false,
   minAppVersion: '',
   ...overrides,

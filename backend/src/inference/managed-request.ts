@@ -25,7 +25,7 @@ type AdmitManagedRequestOptions = {
   settings: Parameters<typeof getInferenceQuotaLimits>[0]
   identity: ManagedInferenceIdentity
   user: ManagedRequestUser
-  /** The route's `ctx.set`. The access log reads its status, which a returned raw Response does not touch. */
+  /** The route's `ctx.set`, given the rejection status too. The access log reads the status from the returned Response. */
   set: Pick<Context['set'], 'status'>
   logger?: InferenceLogger
   checkAdmission?: typeof checkManagedInferenceAdmission

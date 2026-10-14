@@ -319,7 +319,7 @@ To release only desktop without mobile:
 gh workflow run release.yml -f platform=desktop -f version_type=auto
 ```
 
-**Note**: Creates RC tag like `v1.2.3-desktop-rc`. The build is attached to that tag's GitHub release, which stays a prerelease and so never becomes Latest. CrabNebula still publishes the build, so the desktop auto-updater offers it to users.
+**Note**: Creates RC tag like `v1.2.3-desktop-rc`. The build is attached to that tag's GitHub release, which stays a prerelease and so never becomes Latest. CrabNebula still publishes the build, so the desktop auto-updater offers it to users. That makes a desktop-only RC the desktop release of `1.2.3`: `desktop-release.yml` has no separate promotion step. Give the next unified release a new version, because CrabNebula has already published `1.2.3` and rejects uploads to a published release.
 
 RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+$"`, so `v1.2.3-ios-rc` is not treated as a release boundary and its commits stay pending for the next unified release. `create-release.ts` skips `CHANGELOG.md` entirely for platform releases for the same reason. The CLI also sits out single-platform dispatches — it belongs to the unified tag, not to an RC.
 

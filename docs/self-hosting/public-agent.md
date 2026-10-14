@@ -78,7 +78,7 @@ The API can report users, turns, tokens and spend for any window, split between 
 bun run usage-report --from 2026-10-26 --to 2026-11-02 --tz Europe/London
 ```
 
-`--from` is inclusive and `--to` exclusive. Add `--json` for machine-readable output. Usage rows are deleted along with their user, and the API deletes visitors idle for more than `ANONYMOUS_USER_IDLE_DAYS` days (default 30), so run the report within that many days of the window's end, or set it to `0` for the event.
+`--from` is inclusive and `--to` exclusive. Add `--json` for machine-readable output. Usage rows are deleted along with their user, and the API deletes each visitor about `ANONYMOUS_USER_IDLE_DAYS` days (default 30) after their own last activity, so a visitor who left on the first day can be gone before a report run weeks later. For an event, set it to `0` until the report has been run, or to at least the event's length plus the days until the report runs.
 
 ## Freeze before the event
 
@@ -96,7 +96,7 @@ Ship a fix during the event the same way, by deploying its commit.
 2. Disconnect the Blueprint. While it is connected, Render recreates a deleted resource on the next sync.
 3. Delete both services and the database.
 
-Before teardown, the API already deletes each visitor idle for more than `ANONYMOUS_USER_IDLE_DAYS` days, with their sessions and usage records (see [Anonymous sign-in](./configuration.md#anonymous-sign-in)), so run the usage report within that many days of the event or set it to `0`. Deleting the database removes everything the deployment kept on the server: the anonymous accounts and sessions, the usage records and the rate-limit counters. The server keeps no conversations, since the hosted agent is stateless and nothing syncs. Visitors' chats stay in their browsers until they clear the site's data. PostHog data, if you collected any, lives in that project and is removed there.
+Before teardown, the API already deletes each visitor about `ANONYMOUS_USER_IDLE_DAYS` days after their last activity, with their sessions and usage records (see [Anonymous sign-in](./configuration.md#anonymous-sign-in)). Keep it at `0` until the usage report has been run, or at least the event's length plus the days until the report runs. Deleting the database removes everything the deployment kept on the server: the anonymous accounts and sessions, the usage records and the rate-limit counters. The server keeps no conversations, since the hosted agent is stateless and nothing syncs. Visitors' chats stay in their browsers until they clear the site's data. PostHog data, if you collected any, lives in that project and is removed there.
 
 ## Limits
 

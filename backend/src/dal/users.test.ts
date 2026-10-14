@@ -127,7 +127,7 @@ describe('users DAL', () => {
       expect(await db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'idle'))).toHaveLength(0)
     })
 
-    it('keeps an anonymous user with recent session or usage activity, or an unexpired session', async () => {
+    it('keeps an anonymous user with a recent sign-in, session refresh or usage row, or an unexpired session', async () => {
       await insertAnonymousUser('recent-session', daysAgo(40))
       await insertSession('recent-session', daysAgo(2))
       await insertAnonymousUser('live-session', daysAgo(40))

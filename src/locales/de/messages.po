@@ -679,6 +679,10 @@ msgstr "Anmeldeanfrage wird geprüft…"
 msgid "Checking whether {modelName} can read images…"
 msgstr "Prüfe, ob {modelName} Bilder lesen kann…"
 
+#: src/components/auth-gate/browser-check.tsx
+msgid "Checking your browser…"
+msgstr "Ihr Browser wird geprüft…"
+
 #: src/components/device-approval.tsx
 msgid "Checking your session."
 msgstr "Ihre Sitzung wird geprüft."
@@ -4160,6 +4164,7 @@ msgstr "Reisen & Orte"
 msgid "Trusted devices"
 msgstr "Vertrauenswürdige Geräte"
 
+#: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -4393,6 +4398,10 @@ msgstr "Sie möchten früher Zugriff?"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr ""
+
+#: src/components/auth-gate/browser-check.tsx
+msgid "We couldn't verify your browser. Check your connection and try again."
+msgstr "Wir konnten Ihren Browser nicht verifizieren. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "We don't keep logs of your conversations."

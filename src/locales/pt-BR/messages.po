@@ -691,6 +691,10 @@ msgstr "Verificando a solicitação de login…"
 msgid "Checking whether {modelName} can read images…"
 msgstr "Verificando se {modelName} consegue ler imagens…"
 
+#: src/components/auth-gate/browser-check.tsx
+msgid "Checking your browser…"
+msgstr "Verificando seu navegador…"
+
 #: src/components/device-approval.tsx
 msgid "Checking your session."
 msgstr "Verificando sua sessão."
@@ -4172,6 +4176,7 @@ msgstr "Viagens e lugares"
 msgid "Trusted devices"
 msgstr "Dispositivos confiáveis"
 
+#: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -4405,6 +4410,10 @@ msgstr "Quer acesso antecipado?"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr ""
+
+#: src/components/auth-gate/browser-check.tsx
+msgid "We couldn't verify your browser. Check your connection and try again."
+msgstr "Não conseguimos verificar seu navegador. Verifique sua conexão e tente novamente."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "We don't keep logs of your conversations."

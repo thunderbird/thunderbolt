@@ -96,8 +96,8 @@ Our project has multiple version files with different update strategies:
 
 1. **Committed with the version bump** — everything marked 🤖 above is written by `scripts/create-release.ts` (`updateVersionFiles`, `scripts/create-release.ts:289`) and staged by `commitAndTag` (`scripts/create-release.ts:377`). `CHANGELOG.md` joins the commit only when `--platform all`; platform RC releases skip it.
 2. **Platform-specific versions, applied at build time and never committed**:
-   - **iOS**: `ios-release.yml` rewrites `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml` (`.github/workflows/ios-release.yml:150`). `CFBundleVersion` is the git commit count — it must increase monotonically within a marketing-version train.
-   - **Android**: `android-release.yml` writes the calculated `versionCode` into `tauri.conf.json` (`.github/workflows/android-release.yml:123`) and then into `tauri.properties` (`.github/workflows/android-release.yml:159`).
+   - **iOS**: `ios-release.yml` rewrites `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml` (step "Set build version locally for TestFlight"). `CFBundleVersion` is the git commit count — it must increase monotonically within a marketing-version train.
+   - **Android**: `android-release.yml` writes the calculated `versionCode` into `tauri.conf.json` (step "Set build version and versionCode locally for Android") and then into `tauri.properties` (step "Update tauri.properties with correct version").
 
 **Important:** `tauri.conf.json` is the source of truth. Platform workflows read from it and update their platform-specific files as needed.
 

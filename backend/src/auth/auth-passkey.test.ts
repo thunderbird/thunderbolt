@@ -4,6 +4,7 @@
 
 import { createAuth } from '@/auth/auth'
 import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { deleteUser } from '@/dal/users'
 import { clearSettingsCache } from '@/config/settings'
 import { passkey as passkeyTable, session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
@@ -187,6 +188,19 @@ describe('passkey rules (one per account, slot-safe delete)', () => {
     })
     expect(res.status).toBe(409)
     expect(await db.select().from(passkeyTable).where(eq(passkeyTable.userId, userId))).toHaveLength(1)
+  })
+
+  // The slot's foreign key must not block the cascade when the account goes.
+  it('deletes an account whose passkey holds the sync slot', async () => {
+    await insertPasskey(`cred-${userId}`)
+    await insertMetadataWithSlot(`cred-${userId}`)
+
+    await deleteUser(db, userId)
+
+    expect(await db.select().from(passkeyTable).where(eq(passkeyTable.userId, userId))).toHaveLength(0)
+    expect(
+      await db.select().from(encryptionMetadataTable).where(eq(encryptionMetadataTable.userId, userId)),
+    ).toHaveLength(0)
   })
 
   it('deletes a passkey that holds no sync slot', async () => {

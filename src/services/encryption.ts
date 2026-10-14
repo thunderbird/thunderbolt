@@ -606,6 +606,7 @@ const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKe
     passkeyMlkemPublicKey: metadata.passkey_mlkem_public_key,
   })
   if (!verified) {
+    await throwIfRotatedElsewhere(httpClient, metadata.key_version)
     throw new PasskeyAnchorError()
   }
   // The signature proves who wrote the keys, not that they're usable. Unusable
@@ -616,6 +617,20 @@ const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKe
     throw new PasskeyAnchorError()
   }
   return { mode: 'slot', credentialId: metadata.passkey_credential_id, publicKeys }
+}
+
+/**
+ * A slot signed by a newer epoch than ours means another device rotated since we
+ * read our canary key, not that the slot is bad. Refresh and let the caller retry,
+ * instead of telling the user to remove a working passkey.
+ */
+const throwIfRotatedElsewhere = async (httpClient: HttpClient, serverKeyVersion: number): Promise<void> => {
+  const localKeyVersion = await getKeyVersion()
+  if (localKeyVersion === null || serverKeyVersion <= localKeyVersion) {
+    return
+  }
+  await refreshAKForRotation(httpClient)
+  throw new RotationStaleError()
 }
 
 /** Import a slot's public keys, or null when either can't be used to wrap the AK. */
@@ -702,12 +717,12 @@ export const ensureSessionBound = async (httpClient: HttpClient): Promise<void> 
     await bindSession(httpClient, { deviceId: getDeviceId(), nonce })
     lastBoundToken = token
   }
-  const promise = bind()
-  inflightBind = { token, promise }
+  const entry = { token, promise: bind() }
+  inflightBind = entry
   try {
-    await promise
+    await entry.promise
   } finally {
-    if (inflightBind?.promise === promise) {
+    if (inflightBind === entry) {
       inflightBind = null
     }
   }

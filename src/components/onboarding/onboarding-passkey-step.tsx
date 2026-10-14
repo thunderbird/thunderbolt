@@ -3,16 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts'
-import { getDeviceDisplayName } from '@/lib/platform'
-import { accountPasskeyQueryKey, isPasskeyCancellation, registerPasskey } from '@/lib/passkey'
-import { useQueryClient } from '@tanstack/react-query'
 import { Trans } from '@lingui/react/macro'
 import { Fingerprint, Loader2 } from 'lucide-react'
-import { useState } from 'react'
 import { OnboardingStepHeader } from './onboarding-step-header'
-
-type Status = 'idle' | 'registering' | 'error'
+import { useOnboardingPasskeyStepState } from './use-onboarding-passkey-step-state'
 
 /**
  * Onboarding passkey step — offers to create the account's passkey right after
@@ -22,26 +16,7 @@ type Status = 'idle' | 'registering' | 'error'
  * account already has its passkey.
  */
 export const OnboardingPasskeyStep = () => {
-  const authClient = useAuth()
-  const queryClient = useQueryClient()
-  const [status, setStatus] = useState<Status>('idle')
-
-  const handleRegister = async () => {
-    setStatus('registering')
-    try {
-      await registerPasskey(authClient, getDeviceDisplayName())
-      // Once the query sees the new passkey the wizard skips past this step,
-      // so the spinner stays up until then.
-      await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
-    } catch (error) {
-      if (isPasskeyCancellation(error)) {
-        setStatus('idle')
-        return
-      }
-      console.error('Passkey registration failed:', error)
-      setStatus('error')
-    }
-  }
+  const { status, register } = useOnboardingPasskeyStepState()
 
   return (
     <div className="flex w-full flex-1 flex-col justify-center">
@@ -62,7 +37,7 @@ export const OnboardingPasskeyStep = () => {
           variant="outline"
           className="w-full rounded-xl"
           disabled={status === 'registering'}
-          onClick={handleRegister}
+          onClick={register}
         >
           {status === 'registering' ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

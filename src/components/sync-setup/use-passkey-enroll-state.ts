@@ -28,7 +28,14 @@ type EnrollStatus = 'idle' | 'working' | 'no-prf' | 'needs-reauth' | 'error'
  * State for the sync-setup passkey step: create the account's passkey (or use the
  * one it already has), get its PRF output, and enroll it as the passkey slot.
  */
-export const usePasskeyEnrollState = ({ onEnrolled }: { onEnrolled: () => void }) => {
+export const usePasskeyEnrollState = ({
+  onEnrolled,
+  onBusyChange,
+}: {
+  onEnrolled: () => void
+  /** Lets the modal block dismissal while an enrollment is in flight. */
+  onBusyChange: (isBusy: boolean) => void
+}) => {
   const authClient = useAuth()
   const httpClient = useHttpClient()
   const queryClient = useQueryClient()
@@ -54,6 +61,7 @@ export const usePasskeyEnrollState = ({ onEnrolled }: { onEnrolled: () => void }
 
   const enroll = async () => {
     setStatus('working')
+    onBusyChange(true)
     try {
       // A re-authentication starts a new session, which must be bound to this
       // device. Done first, so a bind failure can't strand a passkey prompt.
@@ -79,6 +87,8 @@ export const usePasskeyEnrollState = ({ onEnrolled }: { onEnrolled: () => void }
       // refused as a duplicate): refresh, so a retry uses it instead of looping.
       await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
       setStatus('error')
+    } finally {
+      onBusyChange(false)
     }
   }
 

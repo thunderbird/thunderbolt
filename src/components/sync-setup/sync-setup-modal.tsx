@@ -20,7 +20,7 @@ import { IconCircle } from '@/components/onboarding/icon-circle'
 import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -51,8 +51,10 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
   prevOpen.current = open
 
+  // Closing mid-enrollment would hide its result, success or failure.
+  const [isPasskeyEnrolling, setIsPasskeyEnrolling] = useState(false)
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
-  const canDismiss = !isRecoveryKeyStep && !setup.isLoading
+  const canDismiss = !isRecoveryKeyStep && !setup.isLoading && !isPasskeyEnrolling
 
   // Stable identity so the yield listener isn't torn down and re-added every render.
   const completeAndClose = useCallback(() => {
@@ -235,7 +237,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           />
         )}
 
-        {setup.step === 'passkey-enroll' && <PasskeyEnrollStep onDone={handlePasskeyStepDone} />}
+        {setup.step === 'passkey-enroll' && (
+          <PasskeyEnrollStep onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
+        )}
 
         {setup.step === 'recovery-key-entry' && (
           <RecoveryKeyEntryStep

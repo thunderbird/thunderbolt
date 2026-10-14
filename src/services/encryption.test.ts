@@ -1716,6 +1716,22 @@ describe('encryption service (v2)', () => {
       expect(server.metadata!.keyVersion).toBe(keyVersion)
     })
 
+    // Another device rotated between reading our canary key and reading the slot:
+    // the slot is signed by a newer epoch. That's a retry, not a bad passkey.
+    it('asks for a retry, not a passkey removal, when the slot is from a newer epoch', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      server.metadata!.passkeyAttestation = 'signed-by-a-newer-epoch'
+      server.metadata!.keyVersion += 1
+      const keyVersion = server.metadata!.keyVersion
+
+      await expect(rotateAccountKey(clientFor(server), { listTrustedDevices })).rejects.toBeInstanceOf(
+        RotationStaleError,
+      )
+      expect(server.metadata!.keyVersion).toBe(keyVersion)
+      expect(storedKeyVersion).toBe(keyVersion)
+    })
+
     it('removes the slot with a rotation that never reads it', async () => {
       const { server, listTrustedDevices } = await establishedDevice()
       await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })

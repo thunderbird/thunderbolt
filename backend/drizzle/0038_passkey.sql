@@ -23,4 +23,5 @@ ALTER TABLE "encryption_metadata" ADD COLUMN "passkey_wrapped_ak" text;--> state
 ALTER TABLE "encryption_metadata" ADD COLUMN "passkey_attestation" text;--> statement-breakpoint
 ALTER TABLE "passkey" ADD CONSTRAINT "passkey_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "passkey_userId_idx" ON "passkey" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "passkey_credentialID_idx" ON "passkey" USING btree ("credential_id");
+CREATE UNIQUE INDEX "passkey_credentialID_idx" ON "passkey" USING btree ("credential_id");--> statement-breakpoint
+ALTER TABLE "encryption_metadata" ADD CONSTRAINT "encryption_metadata_passkey_credential_id_passkey_credential_id_fk" FOREIGN KEY ("passkey_credential_id") REFERENCES "public"."passkey"("credential_id") ON DELETE no action ON UPDATE no action;

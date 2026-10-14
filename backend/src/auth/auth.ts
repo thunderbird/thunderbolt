@@ -353,7 +353,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           }
           // A passkey holding the sync slot can still unlock the AK, so deleting
           // its row first would leave a working slot nobody can see or remove.
-          // The client clears the slot with an AK rotation, then deletes.
+          // The client clears the slot with an AK rotation, then deletes. This
+          // gives a clear error; the slot's foreign key also covers a racing enroll.
           const passkeyId = (ctx.body as { id?: string } | undefined)?.id
           if (
             ctx.path === '/passkey/delete-passkey' &&

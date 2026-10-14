@@ -24,6 +24,8 @@ export type AppConfig = {
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
   passkeyEnabled?: boolean
+  /** The WebAuthn RP ID passkeys are registered under. Absent = the page's hostname. */
+  passkeyRpId?: string
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string

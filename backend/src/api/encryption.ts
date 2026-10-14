@@ -393,11 +393,9 @@ const servedPasskeySlot = (
 }
 
 /**
- * Check the rotation's passkey slot against the account's passkey rows. A NEW
- * slot must name one of the user's passkeys. A re-anchored slot whose passkey row
- * has since disappeared is dropped instead of refused: refusing would wedge every
- * later rotation (revocation included) on a slot the user can no longer see, and
- * dropping it only takes access away.
+ * Check that the rotation's passkey slot names one of the user's passkeys. A
+ * re-anchored slot always passes: the foreign key on `passkey_credential_id`
+ * keeps its passkey row from being deleted while the slot exists.
  */
 const resolvePasskeySlot = async (
   txDb: QueryableDatabase,
@@ -406,11 +404,6 @@ const resolvePasskeySlot = async (
 ): Promise<PasskeySlot | null> => {
   if (!slot || (await isUserPasskeyCredential(txDb, userId, slot.passkeyCredentialId))) {
     return slot
-  }
-  const stored = await getEncryptionMetadata(txDb, userId)
-  if (stored?.passkeyCredentialId === slot.passkeyCredentialId) {
-    console.warn('[e2ee] dropping a passkey slot whose passkey no longer exists')
-    return null
   }
   throw new BadRequestError('passkeyCredentialId does not name a passkey on this account')
 }

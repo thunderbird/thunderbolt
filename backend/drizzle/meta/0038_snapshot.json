@@ -1,5 +1,5 @@
 {
-  "id": "85da0ca5-d3bc-4bfa-b53c-9d78988f1969",
+  "id": "b8a97a66-a0d3-4c40-8a11-1901e0a67fc9",
   "prevId": "a62b7d19-3a7b-4193-b526-1aaf7d4272f3",
   "version": "7",
   "dialect": "postgresql",
@@ -2795,6 +2795,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "encryption_metadata_passkey_credential_id_passkey_credential_id_fk": {
+          "name": "encryption_metadata_passkey_credential_id_passkey_credential_id_fk",
+          "tableFrom": "encryption_metadata",
+          "tableTo": "passkey",
+          "columnsFrom": [
+            "passkey_credential_id"
+          ],
+          "columnsTo": [
+            "credential_id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

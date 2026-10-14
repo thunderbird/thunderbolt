@@ -66,11 +66,13 @@ describe('Config Routes', () => {
     it('reports passkeys off by default', async () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.passkeyEnabled).toBe(false)
+      expect(body.passkeyRpId).toBeUndefined()
     })
 
     it('reports passkeys on when the operator enables them', async () => {
       const { body } = await fetchConfig(createTestSettings({ passkeyEnabled: true, passkeyRpId: 'localhost' }))
       expect(body.passkeyEnabled).toBe(true)
+      expect(body.passkeyRpId).toBe('localhost')
     })
 
     it('keeps passkeys off in SSO modes even when enabled', async () => {

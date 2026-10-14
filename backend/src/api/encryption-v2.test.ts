@@ -1414,15 +1414,20 @@ describe('Encryption API (v2)', () => {
         expect((await readMetadata()).keyVersion).toBe(1)
       })
 
-      it('drops a re-anchored slot whose passkey row is gone instead of wedging rotation', async () => {
+      // The delete hook's check and Better Auth's delete aren't atomic, so a
+      // delete racing an enrollment relies on the foreign key to fail.
+      it('refuses to delete a passkey row while its slot exists', async () => {
         const keypair = await setupRotatable([initialKeyId])
         await insertPasskeyRow(p('u'), p('cred-1'))
         expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
-        await db.delete(passkeyTable).where(eq(passkeyTable.userId, p('u')))
 
-        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
-        expect(res.status).toBe(200)
-        expect((await readMetadata()).passkeyCredentialId).toBeNull()
+        await expect(
+          db
+            .delete(passkeyTable)
+            .where(eq(passkeyTable.userId, p('u')))
+            .execute(),
+        ).rejects.toThrow()
+        expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
       })
 
       it('drops the slot and stops serving it once passkeys are turned off', async () => {

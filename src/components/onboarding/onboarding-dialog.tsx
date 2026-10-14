@@ -24,6 +24,7 @@ import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -157,6 +158,11 @@ export const OnboardingDialog = () => {
               <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 5 && <OnboardingLanguageStep />}
+            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
             {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
             {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
           </div>
@@ -181,7 +187,9 @@ export const OnboardingDialog = () => {
                       ? !state.isNameValid
                       : state.currentStep === 4
                         ? !state.isLocationValid
-                        : isCelebration && isCompleting
+                        : state.currentStep === passkeyStep
+                          ? !accountPasskey.isSettled
+                          : isCelebration && isCompleting
               }
               continueText={
                 isCelebration ? (

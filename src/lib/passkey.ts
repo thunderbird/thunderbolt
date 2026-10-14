@@ -9,13 +9,9 @@ import { selectPasskeyEnabled, useConfigStore } from '@/api/config-store'
 import { isSsoMode } from '@/lib/auth-mode'
 import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 import { getPlatform } from '@/lib/platform'
-import {
-  bufferToBase64URLString,
-  startAuthentication,
-  startRegistration,
-  WebAuthnError,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type PublicKeyCredentialRequestOptionsJSON,
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser'
 
 /**
@@ -26,6 +22,13 @@ import {
  * `passkeyClient()`, and run the browser side with `@simplewebauthn/browser`.
  * That's what lets us add the PRF extension to the ceremony options.
  */
+
+/**
+ * The browser ceremony library loads on first use: the sign-in form and onboarding
+ * are in the entry bundle, and desktop builds or deployments with passkeys off
+ * never run a ceremony. Every caller is a user action, so the chunk fetch is free.
+ */
+const loadWebAuthn = () => import('@simplewebauthn/browser')
 
 /** One registered credential, as returned by the plugin's list endpoint. */
 export type PasskeyRecord = {
@@ -90,9 +93,14 @@ export const usePasskeyAvailable = (): boolean => {
   return enabled && isPasskeyCapable()
 }
 
-/** True when a ceremony rejection is the user dismissing/cancelling the prompt. */
+/**
+ * True when a ceremony rejection is the user dismissing/cancelling the prompt.
+ * Checked by shape rather than `instanceof WebAuthnError`, which would pull the
+ * lazily loaded library into the entry bundle.
+ */
 export const isPasskeyCancellation = (error: unknown): boolean =>
-  error instanceof WebAuthnError && (error.name === 'NotAllowedError' || error.code === 'ERROR_CEREMONY_ABORTED')
+  error instanceof Error &&
+  (error.name === 'NotAllowedError' || (error as { code?: unknown }).code === 'ERROR_CEREMONY_ABORTED')
 
 /**
  * True when the server refused to register a passkey because the session is more
@@ -144,6 +152,7 @@ export const registerPasskey = async (
     { method: 'GET', withChallengeCookie: true },
   )
 
+  const { startRegistration } = await loadWebAuthn()
   const attResp = await startRegistration({
     optionsJSON: { ...optionsJSON, extensions: { ...optionsJSON.extensions, ...prfExtension } },
   })
@@ -167,10 +176,14 @@ export const registerPasskey = async (
  * @param credentialId - base64url credential id; limits the prompt to that passkey
  */
 export const getPasskeyPrfOutput = async (credentialId: string): Promise<Uint8Array | null> => {
+  const { bufferToBase64URLString, startAuthentication } = await loadWebAuthn()
   const response = await startAuthentication({
     optionsJSON: {
       challenge: bufferToBase64URLString(crypto.getRandomValues(new Uint8Array(32)).buffer),
       allowCredentials: [{ id: credentialId, type: 'public-key' }],
+      // Sign-in gets its RP ID from the server's options; this assertion never
+      // reaches the server, so it reads it from config.
+      rpId: useConfigStore.getState().config.passkeyRpId,
       userVerification: 'required',
       extensions: prfExtension,
     },
@@ -184,7 +197,11 @@ export const getPasskeyPrfOutput = async (credentialId: string): Promise<Uint8Ar
 export const getAccountPasskey = async (authClient: AuthClient): Promise<PasskeyRecord | null> =>
   (await listPasskeys(authClient))[0] ?? null
 
-/** Shared cache key for the account's passkey — invalidate it after creating or removing one. */
+/**
+ * Cache key prefix for the account's passkey — invalidate it after creating or
+ * removing one. The query appends the user id, so a different account signing in
+ * never sees the previous one's passkey.
+ */
 export const accountPasskeyQueryKey = ['account-passkey'] as const
 
 /**
@@ -202,13 +219,13 @@ export const useAccountPasskey = () => {
   const { data: session, isPending: isSessionPending } = authClient.useSession()
   const isFullUser = !!session?.user && session.user.isAnonymous !== true
   const query = useQuery({
-    queryKey: accountPasskeyQueryKey,
+    queryKey: [...accountPasskeyQueryKey, session?.user.id],
     queryFn: () => getAccountPasskey(authClient),
     enabled: passkeyAvailable && isFullUser,
   })
   const isUnavailable = !passkeyAvailable || (!isSessionPending && !isFullUser)
   const isSettled = isUnavailable || query.isSuccess || query.isError
-  return { passkey: query.data ?? null, isUnavailable, isSettled, isLoading: !isSettled }
+  return { passkey: isUnavailable ? null : (query.data ?? null), isUnavailable, isSettled, isLoading: !isSettled }
 }
 
 /**
@@ -227,6 +244,7 @@ export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userI
   // the authenticator: its output is the passkey slot's secret. Results are
   // stripped too, so a PRF output can never ride the verify request.
   const { extensions: _serverExtensions, ...signInOptions } = optionsJSON
+  const { startAuthentication } = await loadWebAuthn()
   const asseResp = await startAuthentication({ optionsJSON: signInOptions })
   const { prf: _prf, ...clientExtensionResults } = asseResp.clientExtensionResults as Record<string, unknown>
 

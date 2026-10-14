@@ -12,14 +12,19 @@ import { usePasskeyEnrollState } from './use-passkey-enroll-state'
 type PasskeyEnrollStepProps = {
   /** Leaves the step — after enrolling, after skipping, or after a passkey that can't unlock sync. */
   onDone: () => void
+  /** Reports an enrollment in flight, so the modal can't be closed mid-way. */
+  onBusyChange: (isBusy: boolean) => void
 }
 
 /**
  * Optional sync-setup step: turn the account's passkey into a way to unlock sync
  * on new devices, so they don't need approval from another device.
  */
-export const PasskeyEnrollStep = ({ onDone }: PasskeyEnrollStepProps) => {
-  const { hasPasskey, isLoading, status, enroll, onReauthenticated } = usePasskeyEnrollState({ onEnrolled: onDone })
+export const PasskeyEnrollStep = ({ onDone, onBusyChange }: PasskeyEnrollStepProps) => {
+  const { hasPasskey, isLoading, status, enroll, onReauthenticated } = usePasskeyEnrollState({
+    onEnrolled: onDone,
+    onBusyChange,
+  })
 
   if (status === 'needs-reauth') {
     return <ConfirmIdentityStep onConfirmed={onReauthenticated} onSkip={onDone} />

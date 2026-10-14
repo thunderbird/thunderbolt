@@ -31,6 +31,9 @@ export const createConfigRoutes = (settings: Settings) =>
     orgEscrowEnabled: settings.orgEscrowEnabled,
     debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
     passkeyEnabled: isPasskeyEnabled(settings),
+    // The client's sync-unlock assertion must name the same RP ID as sign-in, or
+    // an apex PASSKEY_RP_ID wouldn't find the passkey from a subdomain.
+    passkeyRpId: isPasskeyEnabled(settings) ? settings.passkeyRpId : undefined,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,

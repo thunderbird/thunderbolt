@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { WebAuthnError } from '@simplewebauthn/browser'
+import { bufferToBase64URLString, WebAuthnError } from '@simplewebauthn/browser'
+import { useConfigStore } from '@/api/config-store'
+import type { AuthClient } from '@/contexts'
 
 // Mock the browser ceremony primitives so tests never touch a real authenticator.
 const prfBytes = new Uint8Array(32).fill(5)
@@ -16,6 +18,7 @@ const startAuthentication = mock(async () => ({ id: 'cred-auth', clientExtension
 mock.module('@simplewebauthn/browser', () => ({
   startRegistration,
   startAuthentication,
+  bufferToBase64URLString,
   WebAuthnError,
 }))
 
@@ -30,8 +33,10 @@ const {
 
 type FetchCall = { path: string; options: { method: string; body?: unknown; credentials?: string } }
 
+type FetchResult = { data?: unknown; error?: unknown }
+
 /** Minimal AuthClient stand-in: records $fetch calls and returns queued results. */
-const makeAuthClient = (results: Array<{ data?: unknown; error?: unknown }>) => {
+const makeAuthClient = (results: FetchResult[], session: FetchResult = { data: { user: { id: 'user-1' } } }) => {
   const calls: FetchCall[] = []
   let i = 0
   return {
@@ -40,10 +45,9 @@ const makeAuthClient = (results: Array<{ data?: unknown; error?: unknown }>) => 
       calls.push({ path, options })
       return results[i++] ?? { data: null, error: null }
     }),
-    getSession: mock(async () => ({ data: { user: { id: 'user-1' } } })),
+    getSession: mock(async () => session),
     $store: { atoms: { session: { get: () => ({ isPending: true }), set: mock(() => {}) } } },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any
+  } as unknown as AuthClient & { calls: FetchCall[] }
 }
 
 afterEach(() => {
@@ -167,8 +171,10 @@ describe('challenge cookie scoping', () => {
 
 describe('signInWithPasskey — session refresh', () => {
   it('fails when the session comes back empty', async () => {
-    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }])
-    authClient.getSession = mock(async () => ({ data: null, error: null }))
+    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }], {
+      data: null,
+      error: null,
+    })
 
     await expect(signInWithPasskey(authClient)).rejects.toThrow('no session was returned')
   })
@@ -193,8 +199,10 @@ describe('signInWithPasskey — session refresh', () => {
   })
 
   it('fails instead of reporting success when the session cannot be loaded', async () => {
-    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }])
-    authClient.getSession = mock(async () => ({ data: null, error: { message: 'network' } }))
+    const authClient = makeAuthClient([{ data: { challenge: 'abc' } }, { data: { verified: true } }], {
+      data: null,
+      error: { message: 'network' },
+    })
 
     await expect(signInWithPasskey(authClient)).rejects.toEqual({ message: 'network' })
   })
@@ -219,5 +227,17 @@ describe('getPasskeyPrfOutput', () => {
 
   it('returns null when the provider has no PRF support', async () => {
     expect(await getPasskeyPrfOutput('cred-1')).toBeNull()
+  })
+
+  it('asserts under the configured RP ID, so an apex RP ID works from a subdomain', async () => {
+    const { config } = useConfigStore.getState()
+    useConfigStore.getState().updateConfig({ ...config, passkeyRpId: 'example.com' })
+    try {
+      await getPasskeyPrfOutput('cred-1')
+      const [{ optionsJSON }] = startAuthentication.mock.calls[0] as unknown as [{ optionsJSON: { rpId?: string } }]
+      expect(optionsJSON.rpId).toBe('example.com')
+    } finally {
+      useConfigStore.getState().updateConfig(config)
+    }
   })
 })

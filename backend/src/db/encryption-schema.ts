@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { boolean, index, integer, pgTable, primaryKey, smallint, text, timestamp } from 'drizzle-orm/pg-core'
-import { user } from './auth-schema'
+import { passkey, user } from './auth-schema'
 import { devicesTable } from './powersync-schema'
 
 /**
@@ -111,7 +111,9 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   recoveryMlkemPublicKey: text('recovery_mlkem_public_key'),
   recoveryWrappedAk: text('recovery_wrapped_ak'),
   recoveryAttestation: text('recovery_attestation'),
-  passkeyCredentialId: text('passkey_credential_id'),
+  // A foreign key, so the passkey can't be deleted while its slot still opens
+  // the AK — not even by a delete racing an enrollment.
+  passkeyCredentialId: text('passkey_credential_id').references(() => passkey.credentialID),
   passkeyEcdhPublicKey: text('passkey_ecdh_public_key'),
   passkeyMlkemPublicKey: text('passkey_mlkem_public_key'),
   passkeyWrappedAk: text('passkey_wrapped_ak'),

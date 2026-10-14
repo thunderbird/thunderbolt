@@ -11,6 +11,10 @@
  * `--tz` (default UTC) only decides which day and hour a turn lands in.
  * `--json` prints the report as JSON instead of Markdown.
  *
+ * Usage rows are deleted along with their user, and the API deletes visitors idle for more
+ * than `ANONYMOUS_USER_IDLE_DAYS` days (default 30), so run the report within that many days
+ * of the window's end, or set it to `0` for the event.
+ *
  * The package script blanks `OTEL_EXPORTER_OTLP_ENDPOINT`, because with tracing
  * on, the bunfig.toml preload prints its banner to stdout, ahead of the report.
  *

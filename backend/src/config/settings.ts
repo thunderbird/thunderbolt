@@ -61,6 +61,8 @@ const settingsSchema = z
     // is NOT registered so /v1/api/auth/sign-in/anonymous returns 404. Defense-in-depth
     // against a malicious client bypassing the frontend gate via direct curl.
     authAllowAnonymous: z.boolean().default(false),
+    // Anonymous users idle this many days are hard-deleted by an hourly sweep; 0 keeps them forever.
+    anonymousUserIdleDays: z.coerce.number().int().nonnegative().default(30),
     oidcClientId: z.string().default(''),
     oidcClientSecret: z.string().default(''),
     oidcIssuer: z.string().default(''),
@@ -460,6 +462,7 @@ const parseSettings = (): Settings => {
     microsoftBaseUrl: loopbackOrigin(process.env.MICROSOFT_BASE_URL) ?? 'https://login.microsoftonline.com',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
+    anonymousUserIdleDays: process.env.ANONYMOUS_USER_IDLE_DAYS || undefined,
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
     oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
     oidcIssuer: process.env.OIDC_ISSUER || '',

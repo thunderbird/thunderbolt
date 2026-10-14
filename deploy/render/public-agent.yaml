@@ -167,6 +167,10 @@ services:
         sync: false
       - key: ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
         sync: false
+      # Days before an idle visitor's account and usage records are deleted,
+      # 30 by default; 0 keeps them until the database is deleted.
+      - key: ANONYMOUS_USER_IDLE_DAYS
+        sync: false
     autoDeployTrigger: commit
 
 databases:

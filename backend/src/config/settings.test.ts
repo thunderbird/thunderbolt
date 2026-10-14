@@ -437,6 +437,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
     let savedEnv: Partial<Record<string, string>>
@@ -607,6 +608,19 @@ describe('Config Settings', () => {
       const settings = getSettings()
       expect(settings.altchaDifficulty).toBe(100_000)
       expect(settings.altchaTtlSecs).toBe(600)
+    })
+
+    it('should default ANONYMOUS_USER_IDLE_DAYS to 30, accept 0 and refuse garbage', () => {
+      delete process.env.ANONYMOUS_USER_IDLE_DAYS
+      expect(getSettings().anonymousUserIdleDays).toBe(30)
+      clearSettingsCache()
+      process.env.ANONYMOUS_USER_IDLE_DAYS = '0'
+      expect(getSettings().anonymousUserIdleDays).toBe(0)
+      for (const value of ['-1', '1.5', 'thirty']) {
+        clearSettingsCache()
+        process.env.ANONYMOUS_USER_IDLE_DAYS = value
+        expect(() => getSettings()).toThrow()
+      }
     })
 
     it('should read the altcha settings from env', () => {

@@ -316,6 +316,8 @@ A second, deployment-wide budget applies on top whenever `AUTH_ALLOW_ANONYMOUS=t
 
 The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. The `altcha` provider will lift this once the app supports it; until then an anonymous deployment keeps the defaults.
 
+Every anonymous sign-in creates a user record. With `AUTH_ALLOW_ANONYMOUS=true`, the API deletes an anonymous user once it has been idle for more than `ANONYMOUS_USER_IDLE_DAYS` days (default `30`), together with its sessions, devices and usage records, just as when an account is deleted. A user counts as idle when it has no session still valid, and nothing in the last `ANONYMOUS_USER_IDLE_DAYS` days: no sign-in, no session refresh and no metered request. The check runs at startup and then every hour. `0` keeps anonymous users forever, and anything other than a whole number of days stops the API at startup. A visitor who signed in with an account keeps it, however long they stay away. Because the usage records go too, a usage report over a window older than this setting no longer counts the visitors who have since been deleted.
+
 ### ALTCHA
 
 > The API supports ALTCHA, but the app does not yet. It never fetches or solves a challenge, so with `CAPTCHA_PROVIDER=altcha` every anonymous sign-in is refused with `403`. Leave `CAPTCHA_PROVIDER` unset (or `none`) until a release of the app adds ALTCHA support.

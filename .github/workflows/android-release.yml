@@ -34,6 +34,8 @@ on:
         default: false
         type: boolean
 
+# One group for every caller: builds run one at a time and each takes over a minute,
+# so no two get the same minute-based versionCode.
 concurrency:
   group: android-release
   cancel-in-progress: false
@@ -102,6 +104,7 @@ jobs:
         run: |
           # Minutes since a fixed cutover keep codes increasing across all
           # entry points and re-runs; GITHUB_RUN_NUMBER belongs to the top-level caller.
+          # 49718 follows 49717, the code release run #464 built on 2026-10-06.
           NOW=$(date +%s)
           VERSION_CODE=$((49718 + (NOW - 1791244800) / 60))
           echo "versionCode=$VERSION_CODE" >> "$GITHUB_OUTPUT"

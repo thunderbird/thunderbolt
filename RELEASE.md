@@ -193,7 +193,7 @@ bun run scripts/create-release.ts --type minor --push
 - Does everything above
 - Pushes commit and tag to remote
 
-The script prints "this will trigger the release workflow", but nothing listens for the tag. Pushing it publishes the version bump and the tag only; you still have to dispatch `release.yml` (or a per-platform workflow) yourself.
+The script prints "this will trigger the release workflow", but nothing listens for the tag. Pushing it publishes the version bump and the tag only, with no GitHub release. To build it, create the draft release and dispatch the platform workflows as in [Recovering a Failed Release](#recovering-a-failed-release); `release.yml` cannot build an existing tag, because its version bump refuses one.
 
 **Why local-first is useful:**
 
@@ -224,8 +224,9 @@ git push origin main
 git tag v1.2.3
 git push origin v1.2.3
 
-# 4. Start the builds — the tag alone does nothing
-gh workflow run release.yml -f version=1.2.3
+# 4. Start the builds. The tag alone does nothing, and release.yml refuses an
+#    existing tag, so create the draft release and dispatch the platform
+#    workflows as in "Recovering a Failed Release" (tag without a release).
 ```
 
 Missing `cli/package.json` is the easy one to get wrong: the CLI binaries attach to the same `v1.2.3` release, so a stale bump ships a `thunderbolt` that reports the previous version. `src-tauri/gen/apple/project.yml` is not in the list — `ios-release.yml` rewrites it during the build.
@@ -318,7 +319,7 @@ RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pa
 ## Nightly Pipeline
 
 `nightly-pipeline.yml` runs daily at 04:00 UTC and on manual dispatch. It runs Nightly E2E first, then Release for all platforms only if E2E passes and the run is on `main`.
-The release is skipped when main has no new commits since the last release.
+The release is skipped when the HEAD of `main` already carries a `vX.Y.Z` tag, which means nothing has landed since the last version bump. The pipeline never retries a failed release; see [Recovering a Failed Release](#recovering-a-failed-release).
 
 Every release bumps the patch version with a commit on `main`, tags `vX.Y.Z` and publishes a normal GitHub release marked Latest with a "may be unstable" warning. It ships to the CrabNebula updater, TestFlight and the Play internal track.
 
@@ -400,6 +401,23 @@ Common issues:
 - **Signing certificates expired**: Update secrets in GitHub repository settings
 - **Provisioning profile issues**: Regenerate and update `APP_STORE_PROVISIONING_PROFILE` secret
 - **Xcode version**: Workflow uses Xcode 26.2 (iOS 26 SDK)
+
+### Recovering a Failed Release
+
+`version_bump` pushes the bump commit and the `vX.Y.Z` tag before it creates the GitHub release and before any build starts. If anything fails after that push, the tag stays on the HEAD of `main` and the next nights skip the release until a new commit lands, which then ships as the next patch version. Nothing retries on its own. Recover by hand, according to the state the release was left in:
+
+1. **Tag without a release.** `version_bump` failed after its push, for example in "Create GitHub Release". Re-running it fails, because `create-release.ts` refuses a tag that already exists, and `cli-release.yml` fails at `gh release upload` while there is no release to upload to. Create the draft first, then dispatch the four platform workflows as in [Re-running One Platform](#re-running-one-platform). Add `-f latest=true` for desktop if `v1.2.3` is still the newest release:
+
+   ```bash
+   git checkout v1.2.3
+   { echo '**Warning:** This is an automated build and may be unstable. Use at your own risk.'; echo; git-cliff --current --strip header; } > changelog.txt
+   gh release create v1.2.3 --verify-tag --draft --prerelease --title "Release v1.2.3" --notes-file changelog.txt
+   ```
+
+2. **Release still a draft.** The desktop `draft` job or its `publish` job failed. Open the pipeline run and use "Re-run failed jobs". GitHub re-runs the failed jobs and the jobs that depend on them, so a `version_bump` that succeeded does not run again, and `publish` marks the release Latest.
+3. **Release published with assets missing.** A desktop, iOS, Android or CLI build failed; the desktop `publish` job runs even when some builds fail. Use "Re-run failed jobs" on the pipeline run, or dispatch that platform alone. A rebuilt desktop asset reaches the GitHub release but not the CrabNebula updater, because the release is already published, so the updater for that platform misses this version (see [Auto-Updater Distribution](#auto-updater-distribution)).
+
+Re-run the failed jobs only while the failed version is still the newest release. The re-run publishes desktop as Latest, so after a newer release it would move Latest back; dispatch the platform workflow without `latest` instead. A re-run that passes also closes the `CI failing: Nightly Pipeline Release` incident, unless a newer pipeline run has failed. A direct dispatch never closes it, so close that one by hand.
 
 ### Re-running One Platform
 
@@ -495,7 +513,7 @@ Repository variables (not secrets):
 2. Run the script without `--push` to commit and tag locally
 3. Review the changes
 4. Push when ready (manually or with `--push` flag)
-5. Dispatch `release.yml` to build and publish
+5. Create the draft release and dispatch the platform workflows to build and publish, as in [Recovering a Failed Release](#recovering-a-failed-release)
 
 ## Rollback
 

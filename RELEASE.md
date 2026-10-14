@@ -157,7 +157,7 @@ gh workflow run release.yml -f version=1.2.3    # Explicit version for a minor/m
 
 3. **Final Release**:
    - All builds upload artifacts to the GitHub release
-   - `desktop-release.yml`'s `publish` job publishes the shared draft as a normal release marked Latest (`--prerelease=false --latest`)
+   - `desktop-release.yml`'s `publish` job publishes the shared draft as a normal release (`--prerelease=false`), marked Latest when `platform=all`
 
 ### Method 2: Local Script (Best for Testing)
 
@@ -413,6 +413,8 @@ gh workflow run cli-release.yml -f version=1.2.3
 ```
 
 `version` is required on all four — they check out `v{version}` rather than the dispatched ref's HEAD.
+
+A desktop dispatch publishes the release without marking it Latest unless you add `-f latest=true`. Add it when `1.2.3` is the newest release, so a recovered current release still becomes Latest. Leave it off when rebuilding an older version, or Latest moves back to it. If a nightly release publishes while a `latest=true` dispatch is still building, the dispatch takes Latest back when it publishes, so don't start one while a nightly release is running.
 
 ## Required GitHub Secrets
 

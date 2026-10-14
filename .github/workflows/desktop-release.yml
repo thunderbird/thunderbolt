@@ -8,12 +8,22 @@ on:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
+      latest:
+        description: 'Mark the published release as Latest'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
+      latest:
+        description: 'Mark the published release as Latest. Only for the newest version.'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-release-${{ inputs.version }}
@@ -352,7 +362,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ inputs.version }}
-          LATEST: ${{ github.workflow != 'Desktop Release' }}
+          LATEST: ${{ inputs.latest }}
         run: |
           gh release edit "v${RELEASE_VERSION}" --repo "$REPO" --draft=false --prerelease=false --latest="$LATEST"
 

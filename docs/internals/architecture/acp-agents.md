@@ -338,6 +338,8 @@ visible but hold the send until they are removed, and the adapter replaces any f
 the history (a chat that switched agents) with one "could not be delivered" note per user turn. Its
 threads are created with `isEncrypted` 0: the content reaches the backend unencrypted, so the thread
 is never a private chat, and the private-chat model lock is skipped while the hosted agent answers.
+Moving an existing private chat onto it, or onto any ACP agent, asks the user first
+([chat-runtime.md](chat-runtime.md#one-send-end-to-end)).
 
 ## Where the code lives
 

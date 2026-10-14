@@ -34,6 +34,7 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, X } from 'lucide-react'
@@ -66,7 +67,8 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
-import { isBuiltInAgent } from '@/defaults/agents'
+import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
@@ -326,7 +328,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
     const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
-    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend
+    // `useChatAutomation` holds back the unanswered last turn of a private chat
+    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
+    // the private history to that agent unencrypted.
+    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
+      chatThread,
+      agent: selectedAgent,
+      status,
+      stopping,
+      lastRole: messages.at(-1)?.role,
+    })
+    const builtInAgentName = builtInAgent.name
+    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend || privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -901,6 +915,32 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                   </div>
                 </m.div>
               )}
+              {privateAutoRunBlocked && (
+                <m.div
+                  key="private-auto-run-blocked"
+                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
+                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
+                  className="pointer-events-auto overflow-hidden"
+                >
+                  <div
+                    role="alert"
+                    className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive"
+                  >
+                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1">
+                      {builtInAgentEnabled ? (
+                        <Trans>
+                          This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
+                        </Trans>
+                      ) : (
+                        <Trans>This private chat won&apos;t run on {agentName}.</Trans>
+                      )}
+                    </span>
+                  </div>
+                </m.div>
+              )}
               {imageSupport.notice && (
                 <ImageSupportNotice
                   key="image-support"
@@ -975,7 +1015,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send
             // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
+            emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
             renderOverlay={(value) =>
               renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }

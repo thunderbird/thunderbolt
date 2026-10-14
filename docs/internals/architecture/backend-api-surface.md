@@ -71,11 +71,11 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 
 ## Global middleware, in order
 
-Order in `backend/src/index.ts:123-238` is load-bearing:
+Order in `backend/src/index.ts:123-237` is load-bearing:
 
 1. `createCorsMiddleware`: short-circuited responses still carry `Access-Control-Allow-Origin`.
-2. `createLoggerMiddleware` and `createHttpLoggingMiddleware`: rejected requests are still access-logged.
-3. `createAppVersionMiddleware`: the 426 gate, after CORS and logging for those two reasons.
+2. `createHttpLoggingMiddleware`: the one entry whose position does not matter. It wraps the whole request handler with `.wrap()`, so the access log records every response, including the 426s below, 404s and guard rejections.
+3. `createAppVersionMiddleware`: the 426 gate, after CORS for that reason.
 4. `createErrorHandlingMiddleware`: the root `onError`.
 5. The Better Auth plugin, then the route groups.
 

@@ -17,7 +17,7 @@
 #
 # The file names no project or environment, so nothing event-specific lives
 # in it. After creating the Blueprint, make the event's environment under the
-# Thunderbolt project in the dashboard and move these four resources into it.
+# Thunderbolt project in the dashboard and move these three resources into it.
 # Render keeps a top-level resource's environment across later syncs.
 #
 # Validate: render blueprints validate deploy/render/public-agent.yaml
@@ -92,22 +92,6 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: "1" # one worker; see numInstances
-      - fromGroup: public-agent
-    autoDeployTrigger: commit
-
-databases:
-  - name: public-agent-db
-    databaseName: thunderbolt
-    user: thunderbolt
-    plan: basic-1gb
-    region: ohio
-    postgresMajorVersion: "18"
-    diskSizeGB: 15
-    ipAllowList: [] # private network only; the backend connects internally
-
-envVarGroups:
-  - name: public-agent
-    envVars:
       # What makes this a public, anonymous, single-agent deployment.
       - key: NODE_ENV
         value: production
@@ -123,7 +107,8 @@ envVarGroups:
       # anonymous sign-in budget.
       - key: TRUSTED_PROXY
         value: cloudflare
-      # Per deployment, asked for once at creation.
+      # Per deployment, asked for once at creation. They sit on the service, not
+      # in an env group, because Render ignores `sync: false` in a group.
       - key: APP_URL
         sync: false # the site's public URL
       - key: BETTER_AUTH_URL
@@ -135,13 +120,13 @@ envVarGroups:
       - key: TINFOIL_API_KEY
         sync: false # the built-in agent's default model runs on Tinfoil
       - key: FIREWORKS_API_KEY
-        sync: false
+        sync: false # when AGENT_MODEL is a Fireworks model
       - key: POSTHOG_API_KEY
         sync: false # this deployment's own PostHog project, never production's
       - key: POSTHOG_HOST
         sync: false
-      # The hosted agent. sync: false because these change over a
-      # deployment's life (switched on once the agent ships, tuned mid-event).
+      # The hosted agent. sync: false because these are set per deployment and
+      # tuned mid-event.
       - key: AGENT_ENABLED
         sync: false
       - key: DISABLE_BUILT_IN_AGENT
@@ -175,3 +160,21 @@ envVarGroups:
         sync: false
       - key: ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
         sync: false
+      # Anonymous sign-ins across the whole deployment, 2000 per 3600 s by
+      # default. Once it runs out, no new visitor can start a session until the
+      # window resets.
+      - key: ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+        sync: false
+      - key: ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
+        sync: false
+    autoDeployTrigger: commit
+
+databases:
+  - name: public-agent-db
+    databaseName: thunderbolt
+    user: thunderbolt
+    plan: basic-1gb
+    region: ohio
+    postgresMajorVersion: "18"
+    diskSizeGB: 15
+    ipAllowList: [] # private network only; the backend connects internally

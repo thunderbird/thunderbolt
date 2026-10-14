@@ -84,6 +84,14 @@ export const envelopesTable = pgTable(
  * Nullable for the same pre-flip reason (and for v2 rows written before this
  * column existed, which fail closed on their next rotation).
  *
+ * The `passkey_*` columns are a second virtual device built the same way: a
+ * passkey's PRF output deterministically derives a hybrid keypair, the AK is
+ * wrapped to its public halves, and `passkey_attestation` anchors them exactly
+ * like `recovery_attestation`. Unlike the recovery slot it is optional — all
+ * five are null until the user enrolls their passkey, and cleared again when it
+ * is removed. `passkey_credential_id` names the `passkey` row the slot belongs
+ * to (one passkey per account).
+ *
  * `canary_secret_hash` is RETAINED (Decision B): it is the v1 CK-possession
  * anchor consumed by `/upgrade` — the migrator CK-decrypts `canary_ctext` to
  * recover `canarySecret` and the server verifies `hash(canarySecret)` against
@@ -103,6 +111,11 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   recoveryMlkemPublicKey: text('recovery_mlkem_public_key'),
   recoveryWrappedAk: text('recovery_wrapped_ak'),
   recoveryAttestation: text('recovery_attestation'),
+  passkeyCredentialId: text('passkey_credential_id'),
+  passkeyEcdhPublicKey: text('passkey_ecdh_public_key'),
+  passkeyMlkemPublicKey: text('passkey_mlkem_public_key'),
+  passkeyWrappedAk: text('passkey_wrapped_ak'),
+  passkeyAttestation: text('passkey_attestation'),
   keyVersion: integer('key_version').default(1).notNull(),
   primaryKeyId: text('primary_key_id').default('0').notNull(),
   schemeVersion: smallint('scheme_version').default(1).notNull(),

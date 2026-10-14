@@ -9,7 +9,8 @@ import { useState } from 'react'
 import { ResponsiveActionMenu, type ResponsiveActionMenuAction } from '@/components/ui/responsive-action-menu'
 
 type ChatAddMenuProps = {
-  onUploadFile: () => void
+  /** Omitted when the selected agent takes no attachments, which hides the action. */
+  onUploadFile?: () => void
   onOpenConnections: () => void
 }
 
@@ -21,12 +22,17 @@ export const ChatAddMenu = ({ onUploadFile, onOpenConnections }: ChatAddMenuProp
   const { t } = useLingui()
   const [open, setOpen] = useState(false)
 
+  const uploadAction: ResponsiveActionMenuAction[] = onUploadFile
+    ? [
+        {
+          label: t`Upload file`,
+          icon: <Paperclip className="size-[var(--icon-size-sm)] text-muted-foreground" />,
+          onSelect: onUploadFile,
+        },
+      ]
+    : []
   const actions: ResponsiveActionMenuAction[] = [
-    {
-      label: t`Upload file`,
-      icon: <Paperclip className="size-[var(--icon-size-sm)] text-muted-foreground" />,
-      onSelect: onUploadFile,
-    },
+    ...uploadAction,
     {
       label: t`Connections`,
       icon: <Plug className="size-[var(--icon-size-sm)] text-muted-foreground" />,

@@ -11,7 +11,7 @@
 import '@/testing-library'
 
 import { act } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type {
   Agent as AcpSdkAgent,
@@ -25,6 +25,8 @@ import type {
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { createSpyHttpClient } from '@/test-utils/http-client-spy'
 import { connectToAgent } from './connect'
 
 const builtInAgent: Agent = {
@@ -98,6 +100,68 @@ describe('connectToAgent — built-in dispatch', () => {
       { aiFetch: (async () => new Response('ok')) as never },
     )
     expect(() => adapter.disconnect()).not.toThrow()
+  })
+})
+
+describe('connectToAgent: managed-http dispatch', () => {
+  const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+  const originalPageUrl = window.location.href
+  // The app always runs on a real origin; happy-dom's default `about:blank` has none.
+  beforeEach(() => {
+    window.location.href = 'https://app.example.com/chats/new'
+  })
+  afterEach(() => {
+    window.location.href = originalPageUrl
+    useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+  })
+
+  const hostedAgent: Agent = {
+    ...builtInAgent,
+    id: 'hosted-agent',
+    type: 'managed-http',
+    transport: 'http',
+    url: '/v1/agent/chat',
+  }
+  const refuseAcpTransport = () =>
+    mock(async () => {
+      throw new Error('managed-http must not open an ACP transport')
+    })
+
+  it('returns a handshake-free adapter that posts the turn through the context client', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
+    const openTransport = refuseAcpTransport()
+    const { httpClient: contextClient, fetchSpy } = createSpyHttpClient(async () => new Response('streamed'))
+
+    const adapter = await connectToAgent(hostedAgent, { httpClient, getProxyFetch }, { openTransport })
+    const response = await adapter.fetch(promptInit('hi'), baseAdapterContext({ httpClient: contextClient }))
+
+    expect(adapter.capabilities).toBeNull()
+    expect(await response.text()).toBe('streamed')
+    expect((fetchSpy.mock.calls[0]![0] as Request).url).toBe('http://localhost:8000/v1/agent/chat')
+    expect(openTransport).not.toHaveBeenCalled()
+  })
+
+  it('refuses managed-http for a user-added agent, whose type syncs in plaintext', async () => {
+    const openTransport = refuseAcpTransport()
+
+    await expect(
+      connectToAgent({ ...hostedAgent, isSystem: 0, userId: 'u1' }, { httpClient, getProxyFetch }, { openTransport }),
+    ).rejects.toThrow('Refusing managed-http for non-system agent')
+    expect(openTransport).not.toHaveBeenCalled()
+  })
+})
+
+describe('connectToAgent: unknown agent type', () => {
+  it('throws instead of falling through to ACP', async () => {
+    const openTransport = mock(async () => {
+      throw new Error('an unknown kind must not open an ACP transport')
+    })
+    const futureAgent = { ...remoteAgent, type: 'future-kind' } as unknown as Agent
+
+    await expect(connectToAgent(futureAgent, { httpClient, getProxyFetch }, { openTransport })).rejects.toThrow(
+      'Unknown agent type future-kind',
+    )
+    expect(openTransport).not.toHaveBeenCalled()
   })
 })
 

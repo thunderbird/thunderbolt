@@ -4,64 +4,50 @@
 
 import type { Settings } from '@/config/settings'
 import { extractClientIp } from '@/utils/request'
-import { Elysia } from 'elysia'
+import { Elysia, InvertedStatusMap } from 'elysia'
+import type { Logger } from 'pino'
+
+/** What Elysia's compiled request handler actually returns; its `HigherOrderFunction` type says `Function`. */
+type RequestHandler = (request: Request) => Response | Promise<Response>
+
+/** Health/static and most PostHog endpoints (except config) are too noisy to access-log. */
+const isExcluded = (pathname: string) =>
+  pathname === '/v1/health' ||
+  pathname.startsWith('/static/') ||
+  (pathname.startsWith('/v1/posthog/') && pathname !== '/v1/posthog/config')
 
 /**
  * HTTP request/response logging middleware
  * Logs requests in Apache Common Log format with response time
+ *
+ * Wraps the whole request handler (`.wrap`, which Elysia hoists to the root app on `.use`)
+ * instead of using a lifecycle hook, because no hook sees every response: `onAfterHandle`
+ * misses 404s and thrown errors, `onAfterResponse` misses `onRequest` short-circuits (the
+ * app-version 426) and, once any plugin registers an `onError`, 404s, and both skip routes
+ * registered before this plugin (the CORS preflight).
+ * A WebSocket upgrade logs as 200: Elysia still maps a Response, which Bun discards after upgrading.
+ * Elysia marks `.wrap` private, so `http-logging.test.ts`, including its listening-server case, is the upgrade guard.
  */
-export const createHttpLoggingMiddleware = (trustedProxy: Settings['trustedProxy'] = '') => {
-  return new Elysia({ name: 'http-logging' })
-    .onRequest((ctx) => {
-      const url = new URL(ctx.request.url)
-      // Skip health/static endpoints
-      if (url.pathname === '/v1/health' || url.pathname.startsWith('/static/')) {
-        return
-      }
-      ;(ctx as any)._startTime = Date.now()
-    })
-    .onAfterHandle((ctx) => {
-      const url = new URL(ctx.request.url)
-
-      // Skip health/static and most PostHog endpoints (except config)
-      if (url.pathname === '/v1/health' || url.pathname.startsWith('/static/')) {
-        return
-      }
-      if (url.pathname.startsWith('/v1/posthog/') && url.pathname !== '/v1/posthog/config') {
-        return
+export const createHttpLoggingMiddleware = (
+  logger: Pick<Logger, 'info'>,
+  trustedProxy: Settings['trustedProxy'] = '',
+) =>
+  new Elysia({ name: 'http-logging' }).wrap((fn) => {
+    const handle = fn as unknown as RequestHandler
+    return async (request: Request) => {
+      const startedAt = Date.now()
+      const response = await handle(request)
+      const { pathname } = new URL(request.url)
+      if (isExcluded(pathname)) {
+        return response
       }
 
-      const startTime = (ctx as any)._startTime
-      const responseTime = startTime ? Date.now() - startTime : undefined
-      const status = ctx.set.status || 200
+      const statusText = (InvertedStatusMap as Record<number, string>)[response.status]
+      const client = extractClientIp(request.headers, '-', trustedProxy)
 
-      // HTTP status code to text mapping
-      const statusTextMap: Record<string, string> = {
-        200: 'OK',
-        201: 'Created',
-        204: 'No Content',
-        400: 'Bad Request',
-        401: 'Unauthorized',
-        403: 'Forbidden',
-        404: 'Not Found',
-        405: 'Method Not Allowed',
-        409: 'Conflict',
-        422: 'Unprocessable Entity',
-        429: 'Too Many Requests',
-        500: 'Internal Server Error',
-        503: 'Service Unavailable',
-      }
-
-      // Determine client address (best-effort behind proxies)
-      const client = extractClientIp(ctx.request.headers, '-', trustedProxy)
-      const httpVersion = 'HTTP/1.1'
-      const statusText = statusTextMap[String(status)] || ''
-      const rt = responseTime !== undefined ? ` ${responseTime}ms` : ''
-
-      // Apache Common Log format with response time
-      const logLine = `${client} - "${ctx.request.method} ${url.pathname} ${httpVersion}" ${status}${statusText ? ` ${statusText}` : ''}${rt}`
-
-      // Log using the decorated logger
-      ;(ctx as any).log?.info(logLine)
-    })
-}
+      logger.info(
+        `${client} - "${request.method} ${pathname} HTTP/1.1" ${response.status}${statusText ? ` ${statusText}` : ''} ${Date.now() - startedAt}ms`,
+      )
+      return response
+    }
+  })

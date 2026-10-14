@@ -25,6 +25,7 @@ import {
   targetUrlHeader,
   wsTargetPrefix,
 } from '@shared/proxy-protocol'
+import { encodeBase64Url } from '@shared/base64url'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { appVersionHeader } from './app-version'
 import { handleAppVersionUnsupported } from './app-version-unsupported'
@@ -266,7 +267,7 @@ export const createProxyWebSocket = (options: {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')
-    const targetSubprotocol = `${wsTargetPrefix}${b64UrlEncode(url)}`
+    const targetSubprotocol = `${wsTargetPrefix}${encodeBase64Url(url)}`
     const token = readAuthToken()
     const authEntries = token ? [`${wsBearerSubprotocolPrefix}${encodeWsBearer(token)}`] : []
     return new WebSocket(`${wsBase}/proxy/ws`, [
@@ -276,16 +277,4 @@ export const createProxyWebSocket = (options: {
       ...(protocols ?? []),
     ])
   }
-}
-
-const b64UrlEncode = (text: string): string => {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(text, 'utf-8').toString('base64url')
-  }
-  const bytes = new TextEncoder().encode(text)
-  let binary = ''
-  for (const b of bytes) {
-    binary += String.fromCharCode(b)
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

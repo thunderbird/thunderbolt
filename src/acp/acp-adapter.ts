@@ -54,7 +54,7 @@ import {
   supportsWireSkills,
   type SkillDefinition,
 } from '@shared/agent-core/skills'
-import { blobToBase64, getAttachments, type HydratedAttachment } from '@/lib/attachments'
+import { blobToBase64, getAttachments, undeliverableAttachmentsNote, type HydratedAttachment } from '@/lib/attachments'
 import { renderMessageQuotesAsText } from '@/lib/quotes'
 import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
@@ -228,9 +228,7 @@ export const buildPromptBlocks = async (
 
 /** A trailing prompt note listing files that couldn't be delivered, or '' when none. */
 const undeliverableNote = (filenames: string[]): string =>
-  filenames.length > 0
-    ? `\n\n${filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')}`
-    : ''
+  filenames.length > 0 ? `\n\n${undeliverableAttachmentsNote(filenames)}` : ''
 
 /**
  * Resolve one attachment for the embedded-context path: native bytes as a

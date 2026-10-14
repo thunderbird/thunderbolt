@@ -164,6 +164,21 @@ describe('Inference Routes', () => {
       })
     })
 
+    it('admits a personal access token past the guard', async () => {
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
+
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': 'valid-personal-access-token' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      expect(mockCreateCompletion).toHaveBeenCalledTimes(1)
+    })
+
     it.each([
       ['omitted', undefined],
       ['disabled', { include_usage: false }],

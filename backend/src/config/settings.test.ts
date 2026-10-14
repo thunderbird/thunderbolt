@@ -43,6 +43,72 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Google base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.GOOGLE_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.GOOGLE_BASE_URL
+      } else {
+        process.env.GOOGLE_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Google token host when the override is unset', () => {
+      delete process.env.GOOGLE_BASE_URL
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+
+    it('honours a loopback GOOGLE_BASE_URL', () => {
+      process.env.GOOGLE_BASE_URL = 'http://localhost:9880/'
+      expect(getSettings().googleBaseUrl).toBe('http://localhost:9880')
+    })
+
+    it('ignores a GOOGLE_BASE_URL on any other host', () => {
+      process.env.GOOGLE_BASE_URL = 'https://evil.example'
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+  })
+
+  describe('Microsoft base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MICROSOFT_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MICROSOFT_BASE_URL
+      } else {
+        process.env.MICROSOFT_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Microsoft token host when the override is unset', () => {
+      delete process.env.MICROSOFT_BASE_URL
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+
+    it('honours a loopback MICROSOFT_BASE_URL', () => {
+      process.env.MICROSOFT_BASE_URL = 'http://127.0.0.1:9881/'
+      expect(getSettings().microsoftBaseUrl).toBe('http://127.0.0.1:9881')
+    })
+
+    it('ignores a MICROSOFT_BASE_URL on any other host', () => {
+      process.env.MICROSOFT_BASE_URL = 'https://evil.example'
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+  })
+
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
@@ -364,7 +430,12 @@ describe('Config Settings', () => {
       'TRUSTED_PROXY',
       'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
       'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS',
       'CAPTCHA_PROVIDER',
+      'ALTCHA_SECRET',
+      'ALTCHA_DIFFICULTY',
+      'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
     ] as const
 
@@ -496,9 +567,81 @@ describe('Config Settings', () => {
     })
 
     it.each([
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '11'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', '59'],
+    ])('should allow %s=%s with anonymous auth on and altcha', (key, value) => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      process.env.CAPTCHA_PROVIDER = 'altcha'
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
+      process.env[key] = value
+      expect(getSettings().captchaProvider).toBe('altcha')
+    })
+
+    it('should default the deployment-wide anonymous sign-in budget to 2000 per hour', () => {
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
+      const settings = getSettings()
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(2000)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(3600)
+    })
+
+    it('should read the deployment-wide anonymous sign-in budget from env', () => {
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '500'
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '1800'
+      const settings = getSettings()
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(500)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(1800)
+    })
+
+    it('should refuse an ALTCHA difficulty below the 50000 floor and accept the floor itself', () => {
+      process.env.ALTCHA_DIFFICULTY = '49999'
+      expect(() => getSettings()).toThrow()
+      clearSettingsCache()
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      expect(getSettings().altchaDifficulty).toBe(50_000)
+    })
+
+    it('should default the ALTCHA difficulty and TTL', () => {
+      delete process.env.ALTCHA_DIFFICULTY
+      delete process.env.ALTCHA_TTL_SECS
+      const settings = getSettings()
+      expect(settings.altchaDifficulty).toBe(100_000)
+      expect(settings.altchaTtlSecs).toBe(600)
+    })
+
+    it('should read the altcha settings from env', () => {
+      process.env.CAPTCHA_PROVIDER = 'ALTCHA'
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      process.env.ALTCHA_TTL_SECS = '120'
+      const settings = getSettings()
+      expect(settings.captchaProvider).toBe('altcha')
+      expect(settings.altchaSecret).toBe('a'.repeat(32))
+      expect(settings.altchaDifficulty).toBe(50_000)
+      expect(settings.altchaTtlSecs).toBe(120)
+    })
+
+    it.each([
+      ['unset', undefined],
+      ['shorter than 32 characters', 'a'.repeat(31)],
+    ])('should reject CAPTCHA_PROVIDER=altcha with ALTCHA_SECRET %s', (_label, secret) => {
+      process.env.CAPTCHA_PROVIDER = 'altcha'
+      if (secret === undefined) {
+        delete process.env.ALTCHA_SECRET
+      } else {
+        process.env.ALTCHA_SECRET = secret
+      }
+      expect(() => getSettings()).toThrow('ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha')
+    })
+
+    it.each([
       ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '0'],
       ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', 'abc'],
-      ['CAPTCHA_PROVIDER', 'altcha'],
+      ['CAPTCHA_PROVIDER', 'turnstile'],
+      ['ALTCHA_DIFFICULTY', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['ALTCHA_TTL_SECS', 'abc'],
     ])('should reject %s=%s', (key, value) => {
       process.env[key] = value
       expect(() => getSettings()).toThrow()
@@ -869,8 +1012,8 @@ describe('Config Settings', () => {
 
       const settings = getSettings()
 
+      // toBe compares with Object.is, so the string '1800' would fail here.
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
-      expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
     })
 
     it('should reject zero token expiry', () => {
@@ -1022,6 +1165,7 @@ describe('Hosted agent settings', () => {
     'AGENT_NAME',
     'AGENT_DESCRIPTION',
     'AGENT_ICON',
+    'AGENT_TIMEZONE',
     'ALLOW_ANONYMOUS_AGENT_DISCOVERY',
   ]
   const saved: Record<string, string | undefined> = {}
@@ -1055,6 +1199,7 @@ describe('Hosted agent settings', () => {
     expect(settings.agentName).toBe('Assistant')
     expect(settings.agentDescription).toBe('')
     expect(settings.agentIcon).toBe('')
+    expect(settings.agentTimezone).toBe('UTC')
     expect(settings.allowAnonymousAgentDiscovery).toBe(false)
   })
 
@@ -1067,6 +1212,7 @@ describe('Hosted agent settings', () => {
     process.env.AGENT_NAME = 'test-name'
     process.env.AGENT_DESCRIPTION = 'test-description'
     process.env.AGENT_ICON = 'test-icon'
+    process.env.AGENT_TIMEZONE = 'Europe/Amsterdam'
     process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
     const settings = getSettings()
     expect(settings.agentEnabled).toBe(true)
@@ -1077,7 +1223,18 @@ describe('Hosted agent settings', () => {
     expect(settings.agentName).toBe('test-name')
     expect(settings.agentDescription).toBe('test-description')
     expect(settings.agentIcon).toBe('test-icon')
+    expect(settings.agentTimezone).toBe('Europe/Amsterdam')
     expect(settings.allowAnonymousAgentDiscovery).toBe(true)
+  })
+
+  it('accepts a UTC offset as AGENT_TIMEZONE', () => {
+    process.env.AGENT_TIMEZONE = '+01:00'
+    expect(getSettings().agentTimezone).toBe('+01:00')
+  })
+
+  it('refuses to start on an AGENT_TIMEZONE that is neither an IANA zone nor a UTC offset', () => {
+    process.env.AGENT_TIMEZONE = 'Mars/Olympus_Mons'
+    expect(() => getSettings()).toThrow('AGENT_TIMEZONE must be an IANA time zone or a UTC offset')
   })
 
   it('treats an empty AGENT_MAX_STEPS as unset', () => {

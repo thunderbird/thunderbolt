@@ -34,15 +34,51 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
 1. **Hydration** (`src/chats/use-hydrate-chat-store.ts`). A soft-deleted thread
    redirects to `/not-found`. Existing session: refresh models and MCP getters,
    prewarm the built-in agent, return. Otherwise one `Promise.all` for messages,
-   models, agents and trigger data, then `createSession`. Agent fallback chain:
-   thread `agentId` → `selected_agent` setting → first available agent →
-   `builtInAgent`, so `disableBuiltInAgent` deployments and deleted custom
-   agents degrade quietly.
+   models, agents and trigger data, then `createSession`. Agent fallback chain
+   (`resolveSessionAgent`, `src/chats/resolve-session-agent.ts`):
+   thread `agentId` → `selected_agent` setting → the built-in when
+   `selected_model` is set (a model pick is a built-in pick) → the agent
+   discovery names as default (`agents_system.is_default`, brand-new chats
+   only) → first available agent → `builtInAgent`, so a deliberate choice wins,
+   a first-time visitor lands on the default, and `disableBuiltInAgent`
+   deployments and deleted custom agents degrade quietly. Discovery can finish
+   while a new chat is hydrating or after it has resolved its agent, as on a
+   first visit. `applyDiscoveredDefaultAgent` records the result in the chat
+   store's `agentDiscovery`: `pending` from the start of each discovery run (a new
+   account or server resets it), then `done` with the default, or `null` after a
+   401/403 or none named, plus the agent list that run loaded. Hydration reads it
+   after its last await: `done` wins over the cached `is_default` row and adds its
+   list to the agents hydration read, and only `pending` falls back to the row. A
+   default is taken only when it is one of those agents. It also re-runs
+   `resolveSessionAgent` against the refreshed agent list for chats with no
+   thread row, no messages, and no agent or model the user picked in them
+   (`agentChosenByUser`). Once the agent is resolved, `resolveSessionModel`
+   (`src/chats/resolve-session-model.ts`) checks the model against the thread's
+   private-chat lock. A hosted-agent thread (`isEncrypted` 0) that lands on
+   the built-in while the session holds a confidential model, either because
+   `agents_system` has no hosted row yet on this device or because the user
+   switched agents in `setSelectedAgent`, gets the first model the picker
+   enables for the thread instead, held in the session only. When no model
+   fits, the model stays and the composer holds the send with a notice until
+   the model list changes: `setModels` (hydration, including a return to an
+   existing session, and adding a model) re-runs `resolveSessionModel` for
+   every chat.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality
-   mismatches `chatThread.isEncrypted`, stamp `modelId` and debug-transcript
-   metadata on the message, emit `chat_send_prompt`.
+   mismatches `chatThread.isEncrypted` (skipped for the hosted agent, which
+   ignores the model and whose threads are created with `isEncrypted` 0), stamp `modelId` and debug-transcript
+   metadata on the message, emit `chat_send_prompt`. That lock covers models
+   only. Agent changes are guarded where they happen, with
+   `exposesPrivateThread` (`src/chats/private-thread.ts`): the header picker's
+   `handleAgentSelect` (`src/components/ui/header.tsx`) asks before moving a
+   thread with `isEncrypted` 1 to a non-built-in agent, and `useChatAutomation`
+   will not auto-send such a thread. The composer shows a notice and holds the
+   send on the same check (`isPrivateAutoRunBlocked`), since a typed message
+   would carry the history out just the same. An automation thread has no
+   `agentId`, so it takes the fallback chain's agent without any confirmation
+   and needs that second check.
+   `setSelectedAgent` itself does not check.
 3. **Transport.** One `DefaultChatTransport({ fetch: customFetch })`, where
    `customFetch` is `createAgentRoutingFetch`. Every send, every agent type.
 4. **Persist the user turn first.** `customFetch` awaits `saveMessages` before
@@ -57,7 +93,8 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    `customFetch` puts `/slug` skill instructions and the project prompt section
    on the context. The built-in pipeline injects both itself in
    `src/ai/fetch.ts`, and ACP has no system channel. The project lookup is gated
-   on `session.projectId`.
+   on `session.projectId`. The hosted agent (`managed-http`) does not send
+   either yet, so skills and project instructions have no effect on it.
 7. **Spend a request.** `turnBudget.tryConsumeRequest()` gates the call; denial
    throws the sentinel from `createTurnBudgetExhaustedError`, named
    `TurnBudgetExhaustedError` so both consuming layers classify it alike.
@@ -263,6 +300,9 @@ word is ready each paint.
 
 - A new auto-send path must consult `stopping` (or `stopRequested`), or Stop
   stops working.
+- A new auto-send path or a new way to change a thread's agent must check
+  `exposesPrivateThread`, or a private chat leaves the device unencrypted
+  without the user agreeing to it.
 - A new request in the send path must draw from the turn budget, or it escapes
   the per-turn spend ceiling.
 - A new terminal state must decide explicitly whether `onFinish` persists; the
@@ -283,10 +323,12 @@ word is ready each paint.
 | Turn lifecycle, retries, stop, telemetry | `src/chats/chat-instance.ts`                                                       |
 | Session state                            | `src/chats/chat-store.ts`                                                          |
 | Hydration and the save functions         | `src/chats/use-hydrate-chat-store.ts`                                              |
+| Session agent and model resolution       | `src/chats/resolve-session-agent.ts`, `src/chats/resolve-session-model.ts`         |
 | Route entry, new-chat id                 | `src/chats/detail.tsx`                                                             |
 | Streaming crash-recovery saves           | `src/chats/save-partial-assistant-messages-handler.ts`                             |
 | Derived turn state for the UI            | `src/chats/turn-activity.ts`                                                       |
 | Auto-run for automations                 | `src/chats/use-chat-automation.tsx`                                                |
+| Private-chat agent guard                 | `src/chats/private-thread.ts`                                                      |
 | Render throttle tiers                    | `src/chats/chat-throttle.ts`                                                       |
 | Warming an ACP agent's slash commands    | `src/chats/use-warm-acp-commands.ts`                                               |
 | Composer quote-reply channel             | `src/chats/pending-quotes-store.ts`                                                |

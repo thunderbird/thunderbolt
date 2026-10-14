@@ -192,8 +192,11 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   // NodeId/ticket in it too (`src/acp/transports/index.ts`) — so encrypting it
   // is what stops a server choosing where an agent connects. `type`,
   // `transport` and `enabled` stay plaintext: they are closed enums/flags that
-  // carry no user-authored content and are inert without `url`. `icon` matches
-  // the `skills` rule above.
+  // carry no user-authored content. `type` is not inert on its own, since it
+  // picks the adapter, so the client never trusts it: `customRowToAgent`
+  // (`src/dal/agents.ts`) clamps it to the custom kinds and `connectToAgent`
+  // takes the backend-bound `managed-http` path for system agents only.
+  // `icon` matches the `skills` rule above.
   //
   // Rows written before this entry existed synced as cleartext; the
   // `reencrypt-agents` data migration (THU-874) re-saves them through the

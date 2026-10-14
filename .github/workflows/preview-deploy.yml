@@ -66,6 +66,7 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           EVENT_BASE_REPO: ${{ github.repository }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
@@ -94,6 +95,13 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$IS_FORK" = "true" ]; then
             echo "proceed=false" >> $GITHUB_OUTPUT
             echo "Fork PR — pull_request_target will handle this; exiting."
+            exit 0
+          fi
+          # Draft fixes from the weekly QA agent (qa-fix/*) are AI-written: no automatic preview with the
+          # preview secrets before a person has read them. A maintainer can still deploy one by dispatch.
+          if [ "$EVENT_NAME" = "pull_request" ] && [[ "$EVENT_HEAD_REF" == qa-fix/* ]]; then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "QA agent fix branch — no automatic preview; exiting."
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$IS_FORK" = "false" ]; then

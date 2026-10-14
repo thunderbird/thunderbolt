@@ -331,6 +331,8 @@ describe('anonymous sign-in: rate limit', () => {
     'TRUSTED_PROXY',
     'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
     'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
+    'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX',
+    'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS',
   ] as const
   let savedEnv: Partial<Record<string, string>>
   let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
@@ -347,6 +349,8 @@ describe('anonymous sign-in: rate limit', () => {
     process.env.TRUSTED_PROXY = 'cloudflare'
     delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
     delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
+    delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+    delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
     clearSettingsCache()
     await db.delete(rateLimits)
   })
@@ -410,6 +414,46 @@ describe('anonymous sign-in: rate limit', () => {
     const responses = await signInThroughApp(11, '198.51.100.4')
     expect(responses[10]!.status).toBe(429)
     expect(Number(responses[10]!.headers.get('retry-after'))).toBeGreaterThan(60)
+  })
+
+  // 2000 real sign-ins would outrun the test timeout, so the bucket starts at 1999 used points,
+  // in the row shape rate-limiter-flexible writes.
+  it('rejects the 2001st anonymous sign-in in an hour by default, whatever the IP', async () => {
+    await db.insert(rateLimits).values({
+      key: 'anonymous-sign-in-global:all',
+      points: 1999,
+      expire: new Date(Date.now() + 3600_000),
+    })
+    const app = await createApp({ database: db })
+
+    const twoThousandth = await app.handle(
+      signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.6'),
+    )
+    expect(twoThousandth.status).toBe(200)
+    const next = await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.7'))
+    expect(next.status).toBe(429)
+    expect(next.headers.get('ratelimit-limit')).toBe('2000')
+  })
+
+  it('charges the deployment-wide budget on every sign-in when the captcha provider is none', async () => {
+    const app = await createApp({ database: db })
+    for (const ip of ['198.51.100.11', '198.51.100.12', '198.51.100.13']) {
+      expect((await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip))).status).toBe(200)
+    }
+    const [row] = await db.select().from(rateLimits).where(eq(rateLimits.key, 'anonymous-sign-in-global:all'))
+    expect(row?.points).toBe(3)
+  })
+
+  it('follows the ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_* pair', async () => {
+    process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '2'
+    process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '120'
+    clearSettingsCache()
+    const app = await createApp({ database: db })
+    const statuses: number[] = []
+    for (const ip of ['198.51.100.8', '198.51.100.9', '198.51.100.10']) {
+      statuses.push((await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip))).status)
+    }
+    expect(statuses).toEqual([200, 200, 429])
   })
 
   it('does not route a lookalike path to Better Auth, and still counts the real path', async () => {

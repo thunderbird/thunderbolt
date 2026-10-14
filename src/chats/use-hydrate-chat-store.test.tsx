@@ -10,7 +10,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable } from '@/db/tables'
+import { agentsSystemTable, modelsTable } from '@/db/tables'
+import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
@@ -21,6 +22,8 @@ import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
+import { DatabaseProvider } from '@/contexts/database-context'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -108,6 +111,31 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
 })
 
 /**
+ * The test database, except that building a read of `agents_system` first calls
+ * `onRead`: discovery landing while hydration is mid-way through its queries.
+ */
+const withAgentsSystemRead = (db: AnyDrizzleDatabase, onRead: () => void): AnyDrizzleDatabase =>
+  new Proxy(db, {
+    get: (target, property) => {
+      const value = Reflect.get(target, property, target)
+      if (property !== 'select') {
+        return typeof value === 'function' ? value.bind(target) : value
+      }
+      return (...args: Parameters<AnyDrizzleDatabase['select']>) => {
+        const builder = target.select(...args)
+        const from = builder.from.bind(builder)
+        builder.from = ((table: Parameters<typeof from>[0]) => {
+          if (table === agentsSystemTable) {
+            onRead()
+          }
+          return from(table)
+        }) as typeof builder.from
+        return builder
+      }
+    },
+  })
+
+/**
  * Wrapper that includes Router context for useNavigate and MCPProvider
  */
 const TestWrapper = ({ children }: { children: ReactNode }) => {
@@ -118,6 +146,18 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
     createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
   )
 }
+
+/** The hosted agent's row as discovery writes it, named as the default. */
+const seedDiscoveredDefault = () =>
+  getDb().insert(agentsSystemTable).values({
+    id: 'hosted-agent',
+    name: 'Assistant',
+    type: 'managed-http',
+    transport: 'http',
+    url: '/v1/agent/chat',
+    fetchedAt: new Date().toISOString(),
+    isDefault: 1,
+  })
 
 describe('useHydrateChatStore', () => {
   beforeAll(async () => {
@@ -307,6 +347,171 @@ describe('useHydrateChatStore', () => {
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe('custom-last-used')
     })
+
+    const hydrateNewChat = async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+    }
+
+    it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
+      await createAgent(getDb(), {
+        id: 'custom-last-used',
+        name: 'Last Used Agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      await updateSettings(getDb(), { selected_agent: 'custom-last-used' })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    it('opens on the discovered default when discovery lands while hydration is reading', async () => {
+      // Discovery reports its default as hydration reads `agents_system`: too late
+      // for the rows (none are written yet), too early to move a session (none exists).
+      const hostedAgent = {
+        ...builtInAgent,
+        id: 'hosted-agent',
+        type: 'managed-http' as const,
+        transport: 'http' as const,
+        url: '/v1/agent/chat',
+      }
+      const db = withAgentsSystemRead(getDb(), () =>
+        useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, [builtInAgent, hostedAgent], {}),
+      )
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(TestWrapper, null, createElement(DatabaseProvider, { db, children }))
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), { wrapper })
+
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('keeps a persisted thread with no agent of its own off the discovered default', async () => {
+      // Automation runs and threads from before `agent_id` existed have none.
+      const threadId = await createTestThread(await createTestModel())
+      await seedDiscoveredDefault()
+
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('keeps a new chat on the built-in agent when the user has picked a model', async () => {
+      await updateSettings(getDb(), { selected_model: await createTestModel() })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('opens a returning visitor on the cached default row while discovery has not answered yet', async () => {
+      await seedDiscoveredDefault()
+      expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'pending' })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('ignores a stale cached default row once discovery has reported no default', async () => {
+      // Discovery cleared the default (a 403, or none named) before this chat
+      // opened, but hydration still reads the row it removed.
+      await seedDiscoveredDefault()
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('uses the cached default row again once discovery restarts for a new account or server', async () => {
+      await seedDiscoveredDefault()
+      // The previous server answered 403; the run for the new one has just started.
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+      useChatStore.getState().resetAgentDiscovery()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
+    })
+  })
+
+  describe('model for a thread that falls back to the built-in agent', () => {
+    /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
+    const createConfidentialModel = async () => {
+      const modelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: modelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'kimi-k2',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        toolUsage: 1,
+        startWithReasoning: 0,
+      })
+      return modelId
+    }
+
+    /** Hydrates a persisted thread on a device whose `selected_model` is confidential. */
+    const hydrateThread = async (thread: { agentId?: string; isEncrypted: 0 | 1 }) => {
+      const confidentialModelId = await createConfidentialModel()
+      await updateSettings(getDb(), { selected_model: confidentialModelId })
+      const threadId = uuidv7()
+      await createChatThread(
+        getDb(),
+        { id: threadId, title: 'Synced', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0, ...thread },
+        (await getModel(getDb(), confidentialModelId))!,
+      )
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      return getCurrentSession()
+    }
+
+    it('swaps in a non-confidential model when a hosted thread opens before discovery seeds its agent', async () => {
+      // Fresh device: the thread synced, `agents_system` has no hosted row yet.
+      const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
+
+      expect(session?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
+    })
+
+    it('keeps the model of a thread whose confidentiality already matches it', async () => {
+      const session = await hydrateThread({ isEncrypted: 1 })
+
+      expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
+    })
   })
 
   describe('project assignment', () => {
@@ -384,6 +589,45 @@ describe('useHydrateChatStore', () => {
       // Verify messages were saved (we can check by hydrating again or querying the database)
       // For now, we just verify the function completed without error
       expect(result.current.saveMessages).toBeDefined()
+    })
+
+    it.each([
+      ['the hosted agent, never private, since its content reaches the backend', true, 0],
+      ['the built-in agent, private on a confidential model', false, 1],
+    ])('creates a new thread on %s', async (_label, onHostedAgent, isEncrypted) => {
+      const confidentialModelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: confidentialModelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'confidential-model',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        contextWindow: 131072,
+        toolUsage: 1,
+        startWithReasoning: 0,
+        deletedAt: null,
+        url: null,
+        defaultHash: null,
+      })
+      if (onHostedAgent) {
+        await seedDiscoveredDefault()
+      }
+      const threadId = uuidv7()
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      const confidentialModel = await getModel(getDb(), confidentialModelId)
+      useChatStore.getState().updateSession(threadId, { selectedModel: confidentialModel! })
+
+      await act(async () => {
+        await result.current.saveMessages({ id: threadId, messages: [createTestMessage()] })
+      })
+
+      expect(getCurrentSession()?.selectedAgent.type).toBe(onHostedAgent ? 'managed-http' : 'built-in')
+      expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
     })
 
     it('should throw error if no session is found when saving messages', async () => {

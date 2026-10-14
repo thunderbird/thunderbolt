@@ -92,7 +92,7 @@ const resolveUrl = (url: string, prefixUrl?: string): string => {
 }
 
 /** Match a request against the configured backend origin and path prefix. */
-const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
+export const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
   const request = new URL(requestUrl)
   const backendPath = backendUrl.pathname.replace(/\/+$/, '')
 

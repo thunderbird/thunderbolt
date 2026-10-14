@@ -71,7 +71,7 @@ FIREWORKS_API_KEY=
 EXA_API_KEY=
 ```
 
-`EXA_API_KEY` enables web search rather than a chat model. The [Configuration](./configuration.md) page lists every provider setting.
+`EXA_API_KEY` enables web search rather than a chat model, and `FIREWORKS_API_KEY` only serves the [hosted agent](./configuration.md#hosted-agent) when `AGENT_MODEL` names a Fireworks model. The [Configuration](./configuration.md) page lists every provider setting.
 
 ## Verify it works
 

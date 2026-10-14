@@ -6,7 +6,14 @@ import { MisconfiguredOAuthError, type OAuthConfig, type OAuthTokens } from '@/l
 import type { HttpClient } from '@/lib/http'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
+import { loopbackOrigin } from '@shared/url'
 import type { MicrosoftUserInfo } from './types'
+
+// A loopback VITE_MICROSOFT_BASE_URL (a QA build's fake Microsoft) serves every Microsoft host from one origin. Any
+// other value is ignored, so a misconfigured build never sends user tokens elsewhere.
+const microsoftBaseUrl = loopbackOrigin(import.meta.env.VITE_MICROSOFT_BASE_URL)
+export const microsoftLoginUrl = microsoftBaseUrl ?? 'https://login.microsoftonline.com'
+export const microsoftGraphUrl = microsoftBaseUrl ?? 'https://graph.microsoft.com'
 
 let cachedConfig: AuthProviderBackendConfig | null = null
 
@@ -49,7 +56,7 @@ export const buildAuthUrl = async (
     const missing = config.clientId === '' ? 'both' : 'secret'
     throw new MisconfiguredOAuthError('microsoft', missing)
   }
-  const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
+  const authUrl = new URL(`${microsoftLoginUrl}/common/oauth2/v2.0/authorize`)
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)
   authUrl.searchParams.set('response_type', 'code')
@@ -76,7 +83,7 @@ export const exchangeCodeForTokens = async (
 }
 
 export const getUserInfo = async (accessToken: string): Promise<MicrosoftUserInfo> => {
-  const response = await fetch('https://graph.microsoft.com/v1.0/me', {
+  const response = await fetch(`${microsoftGraphUrl}/v1.0/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) {

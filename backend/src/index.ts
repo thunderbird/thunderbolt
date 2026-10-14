@@ -5,16 +5,19 @@
 import { createMainRoutes } from '@/api/routes'
 import { createHealthRoutes } from '@/api/health'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { createCaptchaRoutes } from '@/auth/captcha-routes'
+import { createCaptchaProvider } from '@/auth/captcha'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
-import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
+import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -92,17 +95,17 @@ export const createApp = async (deps?: AppDeps) => {
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
   const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
+  // Sizes both the anonymous sign-in bucket and the captcha challenge bucket: every anonymous
+  // sign-in needs one challenge, so the two must stay alike.
+  const anonymousSignInLimit = {
+    max: settings.anonymousSignInRateLimitMax,
+    durationSecs: settings.anonymousSignInRateLimitWindowSecs,
+  }
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
-    createAuthPluginIpRateLimit(database, {
-      ...ipRateLimitSettings,
-      anonymousSignIn: {
-        max: settings.anonymousSignInRateLimitMax,
-        durationSecs: settings.anonymousSignInRateLimitWindowSecs,
-      },
-    }),
+    createAuthPluginIpRateLimit(database, { ...ipRateLimitSettings, anonymousSignIn: anonymousSignInLimit }),
   )
   const auth = deps?.auth ?? createdAuth
 
@@ -120,12 +123,19 @@ export const createApp = async (deps?: AppDeps) => {
   return (
     configuredApp
       .use(createCorsMiddleware(settings))
-      .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
       .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(betterAuthPlugin)
+      .use(
+        createCaptchaRoutes({
+          provider: createCaptchaProvider(settings, database),
+          authAllowAnonymous: settings.authAllowAnonymous,
+          createIpRateLimit: () =>
+            createIpTierRateLimit(database, ipRateLimitSettings, 'captcha-challenge', anonymousSignInLimit),
+        }),
+      )
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
       .use(createHealthRoutes({ settings, database, fetchFn, logger: appLogger }))
@@ -253,21 +263,26 @@ const startServer = async () => {
 
     const app = await createApp()
 
-    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7).
-    // No cron infra — a startup sweep plus an hourly interval keeps the table
-    // bounded (nonces have a ~5-minute TTL). Lazily imported to preserve the
-    // "no db init at module load" invariant that keeps tests/CI clean.
-    const { db: nonceDb } = await import('@/db/client')
-    const { deleteExpiredOrConsumedNonces } = await import('@/dal')
-    const sweepChallengeNonces = async () => {
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7) and
+    // expired solved captcha challenges. There is no cron infra, so a startup sweep plus an hourly
+    // interval keeps both tables bounded (nonces have a ~5-minute TTL, captcha challenges
+    // ALTCHA_TTL_SECS). The db is lazily imported to preserve the "no db init at module
+    // load" invariant that keeps tests/CI clean.
+    const { db: sweepDb } = await import('@/db/client')
+    const sweepExpiredRows = async () => {
       try {
-        await deleteExpiredOrConsumedNonces(nonceDb)
+        await deleteExpiredOrConsumedNonces(sweepDb)
       } catch (err) {
         log.error({ err }, 'Failed to sweep expired challenge nonces')
       }
+      try {
+        await deleteExpiredCaptchaChallenges(sweepDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to sweep expired captcha challenges')
+      }
     }
-    void sweepChallengeNonces()
-    const nonceSweepTimer = setInterval(() => void sweepChallengeNonces(), 60 * 60 * 1000)
+    void sweepExpiredRows()
+    const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)
 
     const hostname = process.env.HOST
       ? process.env.HOST
@@ -309,14 +324,14 @@ const startServer = async () => {
     // Graceful shutdown
     process.on('SIGINT', async () => {
       tinfoilKeepWarm.stop()
-      clearInterval(nonceSweepTimer)
+      clearInterval(sweepTimer)
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
       tinfoilKeepWarm.stop()
-      clearInterval(nonceSweepTimer)
+      clearInterval(sweepTimer)
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

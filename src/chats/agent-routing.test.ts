@@ -23,6 +23,11 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import type { Chat } from '@ai-sdk/react'
+import {
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
 import { createAgentRoutingFetch } from './chat-instance'
 
 const remoteAgent: Agent = {
@@ -96,6 +101,7 @@ const hydrateSessionWith = (
     retriesExhausted: false,
     stopping: false,
     selectedAgent: agent,
+    agentChosenByUser: false,
     selectedModel: mockModel,
     projectId,
     miniAppId: null,
@@ -110,6 +116,37 @@ const hydrateSessionWith = (
 }
 
 describe('createAgentRoutingFetch', () => {
+  it.each([
+    ['managed-http', 'hosted'],
+    ['remote-acp', 'acp'],
+  ] as const)('records a %s turn in the debug transcript as engine %p', async (type, engine) => {
+    resetStore()
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(true)
+    const agent: Agent = { ...remoteAgent, type, isSystem: type === 'managed-http' ? 1 : 0 }
+    const { adapter } = buildFakeAdapter(agent)
+    hydrateSessionWith('t-engine', agent)
+    const customFetch = createAgentRoutingFetch(
+      't-engine',
+      saveMessages,
+      httpClient,
+      getProxyFetch,
+      { connectToAgent: mock(async () => adapter) as never },
+      { getDebugTranscriptTraceId: () => 'trace-engine' },
+    )
+
+    try {
+      await customFetch('/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+      })
+
+      expect(getDebugTranscriptNotes('t-engine')[0]?.engine).toBe(engine)
+    } finally {
+      setDebugTranscriptCaptureEnabled(false)
+    }
+  })
+
   it('reuses a web-tool budget across revision-incrementing retries and refreshes it for restarted turns', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)

@@ -4,7 +4,7 @@
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
-export type DebugTranscriptEngine = 'pi' | 'legacy' | 'acp'
+export type DebugTranscriptEngine = 'pi' | 'legacy' | 'acp' | 'hosted'
 export type DebugTranscriptTurnSource = 'live' | 'persisted'
 export type DebugTranscriptTurnOutcome = 'success' | 'error' | 'abort'
 export type DebugTranscriptToolStatus = 'ok' | 'error' | 'incomplete'

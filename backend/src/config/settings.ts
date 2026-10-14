@@ -5,6 +5,7 @@
 import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
@@ -16,6 +17,20 @@ const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passt
 /**
  * Settings schema for environment variables validation
  */
+/**
+ * Whether `Intl` accepts `value` as a time zone: an IANA name, or a UTC offset such as `+01:00`.
+ * Asks `DateTimeFormat` rather than `Intl.supportedValuesOf('timeZone')`, whose list omits aliases
+ * such as `UTC` on some engines.
+ */
+const isTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
 const settingsSchema = z
   .object({
     // API Keys
@@ -35,8 +50,10 @@ const settingsSchema = z
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
+    googleBaseUrl: z.string().default('https://oauth2.googleapis.com'),
     microsoftClientId: z.string().trim().default(''),
     microsoftClientSecret: z.string().trim().default(''),
+    microsoftBaseUrl: z.string().default('https://login.microsoftonline.com'),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
@@ -196,8 +213,23 @@ const settingsSchema = z
       .int()
       .positive()
       .default(defaultAnonymousSignInRateLimitWindowSecs),
-    // Providers are added together with their verifier (backend/src/auth/captcha.ts).
-    captchaProvider: z.enum(['none']).default('none'),
+    // Deployment-wide anonymous sign-in budget: one constant-key bucket shared by every IP, so
+    // a raised per-IP limit cannot mint unbounded accounts. It bounds worst-case anonymous
+    // inference spend at this many accounts times the per-account quota, per window.
+    anonymousSignInGlobalRateLimitMax: z.coerce.number().int().positive().default(2000),
+    anonymousSignInGlobalRateLimitWindowSecs: z.coerce.number().int().positive().default(3600),
+    // Each value maps to a provider in createCaptchaProvider (backend/src/auth/captcha.ts).
+    captchaProvider: z.enum(['none', 'altcha']).default('none'),
+    // ALTCHA_* settings apply only when CAPTCHA_PROVIDER=altcha.
+    // HMAC key signing ALTCHA challenges; required (32+ characters) when the provider is altcha.
+    altchaSecret: z.string().default(''),
+    // ALTCHA maxnumber: a client tries maxnumber/2 SHA-256 hashes on average, so this trades
+    // bot cost against how long a low-end phone spins before sign-in. The 100000 default solves
+    // in about 80 ms (median, single thread) in Bun on Apple silicon; phones are slower.
+    // The floor is a sanity bound, not the control: a native solver needs only milliseconds at
+    // any sane difficulty, so the global anonymous sign-in budget is what caps a scripted run.
+    altchaDifficulty: z.coerce.number().int().min(50_000).default(100_000),
+    altchaTtlSecs: z.coerce.number().int().positive().default(600),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -240,6 +272,12 @@ const settingsSchema = z
     agentName: z.string().default('Assistant'),
     agentDescription: z.string().default(''),
     agentIcon: z.string().default(''),
+    // IANA zone for the date line in the agent's system prompt. The server runs in UTC; an event deployment sets
+    // the venue's zone. Checked at startup so a typo fails the boot instead of every request.
+    agentTimezone: z
+      .string()
+      .default('UTC')
+      .refine(isTimeZone, { message: 'AGENT_TIMEZONE must be an IANA time zone or a UTC offset' }),
     // When true, anonymous sessions may call `GET /agents` and see only anonymous-safe agents.
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
@@ -255,8 +293,13 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
-    // With 'none' the only accepted provider, this refuses every raised limit while anonymous
-    // auth is on. The captchaProvider check starts mattering once a real provider ships.
+    if (data.captchaProvider === 'altcha' && data.altchaSecret.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha',
+        path: ['altchaSecret'],
+      })
+    }
     const anonymousSignInLimitRaised =
       data.anonymousSignInRateLimitMax > defaultAnonymousSignInRateLimitMax ||
       data.anonymousSignInRateLimitWindowSecs < defaultAnonymousSignInRateLimitWindowSecs
@@ -264,7 +307,7 @@ const settingsSchema = z
       ctx.addIssue({
         code: 'custom',
         message:
-          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#anonymous-sign-in).',
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set. The app cannot complete the altcha captcha yet, so keep the defaults (see docs/self-hosting/configuration.md#anonymous-sign-in).',
         path: ['captchaProvider'],
       })
     }
@@ -409,8 +452,12 @@ const parseSettings = (): Settings => {
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    // Only a loopback override (a QA stack's fake provider) is honoured, so the client secret never leaves for
+    // another host.
+    googleBaseUrl: loopbackOrigin(process.env.GOOGLE_BASE_URL) ?? 'https://oauth2.googleapis.com',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    microsoftBaseUrl: loopbackOrigin(process.env.MICROSOFT_BASE_URL) ?? 'https://login.microsoftonline.com',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',
@@ -494,7 +541,12 @@ const parseSettings = (): Settings => {
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
     anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
+    anonymousSignInGlobalRateLimitMax: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX || undefined,
+    anonymousSignInGlobalRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS || undefined,
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
+    altchaSecret: process.env.ALTCHA_SECRET || '',
+    altchaDifficulty: process.env.ALTCHA_DIFFICULTY || undefined,
+    altchaTtlSecs: process.env.ALTCHA_TTL_SECS || undefined,
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,
@@ -515,6 +567,7 @@ const parseSettings = (): Settings => {
     agentName: process.env.AGENT_NAME || undefined,
     agentDescription: process.env.AGENT_DESCRIPTION || '',
     agentIcon: process.env.AGENT_ICON || '',
+    agentTimezone: process.env.AGENT_TIMEZONE || undefined,
     allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
   }
 

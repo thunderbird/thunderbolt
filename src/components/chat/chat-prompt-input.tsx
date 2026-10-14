@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
@@ -22,7 +22,7 @@ import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
-import { useWarmAcpCommands } from '@/chats/use-warm-acp-commands'
+import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -34,9 +34,10 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, X } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
   forwardRef,
@@ -66,7 +67,10 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
-import { isBuiltInAgent } from '@/defaults/agents'
+import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
@@ -182,6 +186,8 @@ type ChatPromptInputProps = {
   /** Inject for tests that need to drive the unavailable-agent fallback. */
   isAgentAvailable?: typeof isAgentAvailable_default
   useImageSupportCheck?: typeof useImageSupportCheck_default
+  /** Inject for tests that select a non-built-in agent, so the warm-up never dials it. */
+  useWarmAcpCommands?: typeof useWarmAcpCommands_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -197,6 +203,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useEnabledSkills = useEnabledSkills_default,
       isAgentAvailable = isAgentAvailable_default,
       useImageSupportCheck = useImageSupportCheck_default,
+      useWarmAcpCommands = useWarmAcpCommands_default,
     },
     ref,
   ) => {
@@ -319,6 +326,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const acceptsAttachments = agentAcceptsAttachments(selectedAgent)
+    // Files queued before the chat landed on an agent that takes none (discovery moved
+    // it, or the user switched) stay visible so they can be removed, but hold the send.
+    const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
+    // Only when no model fits the thread's confidentiality lock: otherwise
+    // `resolveSessionModel` already swapped one in for the built-in.
+    const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    // `useChatAutomation` holds back the unanswered last turn of a private chat
+    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
+    // the private history to that agent unencrypted.
+    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
+      chatThread,
+      agent: selectedAgent,
+      status,
+      stopping,
+      lastRole: messages.at(-1)?.role,
+    })
+    const builtInAgentName = builtInAgent.name
+    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const sendBlocked =
+      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -602,13 +630,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           .filter((item) => item.kind === 'file')
           .map((item) => item.getAsFile())
           .filter((file): file is File => file != null)
-        if (files.length === 0) {
+        // An agent that takes no attachments lets the paste fall through untouched.
+        if (!acceptsAttachments || files.length === 0) {
           return
         }
         e.preventDefault()
         void addFiles(files.map(withClipboardFilename))
       },
-      [addFiles],
+      [acceptsAttachments, addFiles],
     )
 
     const removeAttachment = useCallback((localFileId: string) => {
@@ -620,7 +649,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       try {
         // Prevent submitting while a turn is in flight, or with no text, attachments, or quotes.
         const textToSend = normalizedInput.trim()
-        if (isBusy || imageSupportBlocksSend || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
+        if (isBusy || sendBlocked || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -694,7 +723,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const footerStartElements = (
       <div className="flex items-center gap-2">
         <ChatAddMenu
-          onUploadFile={() => fileInputRef.current?.click()}
+          onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={() => navigate('/settings/connections')}
         />
         {isConnecting ? (
@@ -791,15 +820,20 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <>
         <div
           className="relative flex w-full flex-col rounded-3xl"
+          // Default is still prevented for an agent that takes no attachments,
+          // so a dropped file is ignored rather than opened by the browser in
+          // place of the app.
           onDragOver={(e) => {
             e.preventDefault()
-            setIsDragging(true)
+            setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            void addFiles(Array.from(e.dataTransfer.files))
+            if (acceptsAttachments) {
+              void addFiles(Array.from(e.dataTransfer.files))
+            }
           }}
         >
           {isDragging && (
@@ -841,31 +875,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </div>
             <AnimatePresence initial={false}>
               {attachError && (
-                <m.div
-                  key="attach-error"
-                  // marginBottom pulls the banner's bottom -12px below the composer's
-                  // top edge so it's hidden behind the composer's opaque z-10 body
-                  // (the "emerges from behind" look). Animated in lockstep with height
-                  // so dismiss collapses cleanly without over-pulling the chips.
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">{attachError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachError(null)}
-                      aria-label={t`Dismiss`}
-                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
+                  {attachError}
+                </ComposerAlert>
+              )}
+              {queuedAttachmentsBlockSend && (
+                <ComposerAlert key="attachments-unsupported">
+                  <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
+                </ComposerAlert>
+              )}
+              {noModelForThread && (
+                <ComposerAlert key="no-model-for-thread">
+                  <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
+                </ComposerAlert>
+              )}
+              {privateAutoRunBlocked && (
+                <ComposerAlert key="private-auto-run-blocked">
+                  {builtInAgentEnabled ? (
+                    <Trans>
+                      This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
+                    </Trans>
+                  ) : (
+                    <Trans>This private chat won&apos;t run on {agentName}.</Trans>
+                  )}
+                </ComposerAlert>
               )}
               {imageSupport.notice && (
                 <ImageSupportNotice
@@ -920,9 +953,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={
-              !imageSupportBlocksSend && (input.trim().length > 0 || attachments.length > 0 || quotes.length > 0)
-            }
+            canSubmit={!sendBlocked && (input.trim().length > 0 || attachments.length > 0 || quotes.length > 0)}
             isLoading={isBusy || isConnecting}
             isStreaming={isBusy}
             isStopping={isStopping}
@@ -943,7 +974,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send
             // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
+            emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
             renderOverlay={(value) =>
               renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }

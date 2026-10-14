@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--headless",
+        "--isolated",
+        "--browser",
+        "chromium",
+        "--viewport-size",
+        "${QA_MCP_VIEWPORT:-1280x800}",
+        "--console-level",
+        "error",
+        "--image-responses",
+        "omit",
+        "--snapshot-mode",
+        "none",
+        "--output-dir",
+        "${QA_OUT:-qa-out}/mcp"
+      ]
+    }
+  }
+}

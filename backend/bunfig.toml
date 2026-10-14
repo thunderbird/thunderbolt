@@ -2,6 +2,13 @@
 # before any instrumented modules are imported (when OTEL is configured)
 preload = ["./src/config/instrumentation.ts"]
 
+# Mirror the repo root's supply-chain quarantine: hold every new dependency version
+# for 7 days before it is installable, which blunts a compromised-release window.
+# Bun reads bunfig.toml from the current working directory, so install from backend/
+# uses this file, not the root's; hence the duplication (cli/bunfig.toml does the same).
+[install]
+minimumReleaseAge = 604800 # 7 days in seconds
+
 [test]
 # Preload test setup to initialize database before any tests run
 # This ensures expensive initialization happens outside of test timeouts

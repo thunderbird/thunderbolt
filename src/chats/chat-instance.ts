@@ -19,7 +19,8 @@ import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
-import { isBuiltInAgent } from '@/defaults/agents'
+import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -42,6 +43,7 @@ import {
   getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
+  isAgentRunInProgressError,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -50,6 +52,7 @@ import type { HttpClient } from '@/lib/http'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Agent } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
@@ -66,6 +69,28 @@ const emptyTurnRetryDelayMs = 250
  * Jitter prevents synchronized retries from overwhelming servers.
  */
 const getRetryDelay = (attempt: number) => baseRetryDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random())
+
+/** Base delay before re-sending a turn the hosted agent refused because a reply
+ *  is still running. The backend holds the run slot for up to two minutes, so
+ *  the three backed-off attempts (about 10s, 20s, 40s) span most of that. */
+const agentRunInProgressRetryDelayMs = 10_000
+
+/** How long to wait before auto-retry `attempt` of a failed turn. */
+const getTurnRetryDelay = (attempt: number, turn: { isEmptyTurn: boolean; isRunInProgress: boolean }): number => {
+  if (turn.isRunInProgress) {
+    return (agentRunInProgressRetryDelayMs / baseRetryDelayMs) * getRetryDelay(attempt)
+  }
+  return turn.isEmptyTurn && attempt === 1 ? emptyTurnRetryDelayMs : getRetryDelay(attempt)
+}
+
+/** The engine a debug transcript records for a turn: the built-in agent reports
+ *  its own, the hosted agent is `hosted`, and every other agent speaks ACP. */
+const debugTranscriptEngineFor = (agent: Agent, telemetry: TurnTelemetry | undefined): DebugTranscriptEngine => {
+  if (isBuiltInAgent(agent)) {
+    return telemetry?.getEngine() ?? 'legacy'
+  }
+  return isHostedAgent(agent) ? 'hosted' : 'acp'
+}
 
 const generatedContentPayloadSchema = z.object({
   type: z.enum(['text-delta', 'reasoning-delta']),
@@ -353,7 +378,7 @@ export const createAgentRoutingFetch = (
         beginDebugTranscriptTurn({
           threadId: id,
           traceId: debugTranscriptTraceId,
-          engine: isBuiltInAgent(selectedAgent) ? (telemetry?.getEngine() ?? 'legacy') : 'acp',
+          engine: debugTranscriptEngineFor(selectedAgent, telemetry),
           model: {
             id: selectedModel.id,
             name: selectedModel.model,
@@ -666,7 +691,7 @@ export const createChatInstance = (
     }
     turn.agentId = session.selectedAgent.id
     if (!isBuiltInAgent(session.selectedAgent)) {
-      turn.engine = 'acp'
+      turn.engine = debugTranscriptEngineFor(session.selectedAgent, undefined)
       turn.traceId = uuidv7()
       return
     }
@@ -917,8 +942,12 @@ export const createChatInstance = (
         return
       }
 
+      // The hosted agent refuses a turn while the previous reply still runs. That
+      // clears on its own, so it takes the retry loop below on a longer delay.
+      const isRunInProgress = isAgentRunInProgressError(lastError)
+
       // Don't auto-retry rate limit errors — retrying immediately makes it worse
-      if (isRateLimitError(lastError)) {
+      if (isRateLimitError(lastError) && !isRunInProgress) {
         markRetriesExhausted(finishedTurn)
         lastError = null
         return
@@ -974,7 +1003,7 @@ export const createChatInstance = (
         useChatStore.getState().updateSession(id, { retryCount })
         console.info(`Auto-retrying (${retryCount}/${maxRetries})...`)
 
-        const retryDelayMs = isEmptyTurn && retryCount === 1 ? emptyTurnRetryDelayMs : getRetryDelay(retryCount)
+        const retryDelayMs = getTurnRetryDelay(retryCount, { isEmptyTurn, isRunInProgress })
 
         trackEvent('chat_auto_retry', {
           attempt: retryCount,
@@ -1074,13 +1103,15 @@ export const createChatInstance = (
       throw new Error('No session found')
     }
 
-    const { chatThread, selectedModel } = session
+    const { chatThread, selectedAgent, selectedModel } = session
 
     if (!selectedModel) {
       throw new Error('No selected model')
     }
 
-    if (chatThread && chatThread.isEncrypted !== selectedModel.isConfidential) {
+    // The hosted agent doesn't use the selected model, and its threads are never
+    // private, so the model/thread confidentiality lock doesn't apply to it.
+    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )

@@ -166,7 +166,7 @@ session, null when anonymous
 - `identity.userId` and `identity.email` are nullable.
 - `turns` holds `DebugTranscriptTurnV1` objects in thread order
   ([`types.ts`](../../../src/debug-transcript/types.ts)), each carrying `traceId`,
-  `source`, `engine` (`pi` | `legacy` | `acp`), model, message ids, `userPrompt`,
+  `source`, `engine` (`pi` | `legacy` | `acp` | `hosted`), model, message ids, `userPrompt`,
   `systemPrompts` (tagged with the attempt they belonged to), `assistantOutput`,
   `toolCalls`, `failures`, timings and `outcome`.
 - Timestamps pair wall clock with a monotonic offset from turn start

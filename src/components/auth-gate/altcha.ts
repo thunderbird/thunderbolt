@@ -6,6 +6,7 @@ import { HttpError, type HttpClient } from '@/lib/http'
 import { solveChallengeWorkers } from 'altcha-lib/v1'
 import type { Challenge } from 'altcha-lib/v1/types'
 
+/** Create a module worker running `altcha.worker.ts`, which solves one slice of the challenge's search space. */
 const createAltchaWorker = () => new Worker(new URL('./altcha.worker.ts', import.meta.url), { type: 'module' })
 
 /**

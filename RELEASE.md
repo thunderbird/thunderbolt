@@ -374,7 +374,7 @@ git push origin my-workflow-change
 gh workflow run release.yml --ref my-workflow-change
 ```
 
-A dispatch against a non-default ref runs that ref's copy of the workflow, so this is a real test — but it is also a real release: `version-bump.yml` commits, tags and pushes to the branch you dispatched from. When you only need to prove a desktop platform still builds, dispatch `test-build.yml` instead; it builds one platform and uploads the bundle as a workflow artifact, with no tagging or release side effects.
+With the current repository settings, that dispatch stops at the first job. `version-bump.yml` runs in the `thunderbolt_release` environment, and that environment's deployment branch policy allows only `main`. The policy is a repository setting and does not appear in the YAML. GitHub rejects the `version_bump` job before its first step and skips the platform jobs that depend on it, so nothing is committed, tagged, built or published. Dispatching a child workflow from a branch is no safer as a test. Its build jobs hit the same rule, but `desktop-release.yml`'s `draft` and `publish` jobs and all of `cli-release.yml` run outside the environment and act on the real release for that version. When you only need to prove a desktop platform still builds, dispatch `test-build.yml` instead; it builds one platform and uploads the bundle as a workflow artifact, with no tagging or release side effects.
 
 ## Troubleshooting
 

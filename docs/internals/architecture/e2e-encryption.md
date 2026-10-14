@@ -314,7 +314,7 @@ Asking for a bind challenge is harmless — anyone may name any device and learn
 Implementation notes that matter:
 
 - `bind` is deliberately **not** a member of `challengeOperations`: that list gates `GET /encryption/challenge`, which returns nonces in cleartext, and types `ChallengeProof`. Keeping them disjoint means a bind nonce can never be minted in the clear nor replayed as a signature proof. The handshake is ECDH-only by design — the sealed value is an ephemeral liveness nonce, not stored ciphertext, so a hybrid KEM would buy nothing, and v1-era devices (no ML-KEM key) would be permanently unbindable.
-- Two client triggers, both calling the idempotent `ensureSessionBound` (deduped per bearer token): app init runs it before `startKeyRequestResponder`, so a keyring fetch cannot 403 into a fail-closed codec; and `useDeviceSessionBinding` re-runs it whenever the session id changes, which covers re-authentication (that flow never reloads the page).
+- Three client triggers, all calling the idempotent `ensureSessionBound` (deduped per bearer token, and concurrent callers share one handshake): app init runs it before `startKeyRequestResponder`, so a keyring fetch cannot 403 into a fail-closed codec; `useDeviceSessionBinding` re-runs it whenever the session id changes, which covers re-authentication (that flow never reloads the page); and passkey enrollment awaits it before its rotation, since enrolling can follow a re-authentication straight away.
 - `POST /devices` no longer links a session for an already-trusted device — that branch took an unverified client-supplied id, so linking there was a rebind bypass. It still links at **first registration**, where the device is created as pending and the link grants nothing.
 - **The sync routes are pinned too.** `GET /powersync/token` and `PUT /powersync/upload` resolve their device the same way. They answer with a distinct `DEVICE_NOT_BOUND` code, deliberately absent from `getCredentialsInvalidReason`: the client logs it quietly, defers sync, and retries once `ensureSessionBound` completes — it must never be mistaken for a revocation, which would trigger a full local reset. The converse also holds: a *revoked* device is the one caller that can never rebind, so the bind routes answer it with the distinct `DEVICE_DISCONNECTED` code (the same code the sync path uses for the same fact) and the client hands off to the revocation flow instead of deferring on "Connecting…" forever.
 - The cost to weigh: a headless client that syncs but holds no device keypair (a server-side integration, an API-key job) cannot bind, and so cannot sync — a deliberate constraint; enrolling as a device with its own keypair is the supported path. A keyless device (a bridge, a v1 device that never published hybrid keys) cannot bind at all, which is safe because nothing keyless reaches a caller-resolving route; an API-key/PAT session can never drive a key operation.
@@ -459,7 +459,7 @@ The attestation authenticates the **account** — any keyring holder signs a val
 - **Step-up gate (server-enforced).** `POST /encryption/rotate` compares the request's recovery public keys against the stored ones — intent derived from *effect*, never from a client-declared mode, since the client may be the attacker. Differing keys (a phrase change) require `stepUpOtp`: an 8-digit code minted server-side and emailed to the **session's** email. Refusals are `403 { code: 'step_up_required' | 'step_up_invalid' }`; the client maps them to `StepUpVerificationError` (never `RotationStaleError` — no refresh, just re-prompt). The code is consumed only after the rotation **commits**, so a rotation that fails midway retries with the same code. Matching keys — revocation's silent re-anchor — never see the gate: one-click revoke stays one-click. `POST /encryption/step-up/request` mints + emails the code (trusted devices only, 30s cooldown). The cooldown is enforced *inside the mint's transaction*, against the outstanding row's own `createdAt` under a per-identifier advisory lock — shared by every replica, atomic with the mint (an in-process map was per-replica, raceable across the email send, and never evicted), and clocked from the mint rather than a successful send, so a mail-provider failure cannot leave a live code behind with no cooldown recorded. The UI flow is confirm → code entry → phrase display. The interim factor is an email OTP; a passkey/PRF assertion is the planned upgrade.
 
   The code shares Better Auth's `verification` table but is **not** a Better Auth OTP: `backend/src/lib/step-up-otp.ts` stores it under `e2ee-step-up-otp-<email>`, outside the `<type>-otp-<email>` grammar Better Auth builds every identifier from over a closed type enum. That is load-bearing — Better Auth's own `POST /email-otp/check-verification-otp` is **unauthenticated** and email-keyed, so a shared row would let anyone who knows the address spend its attempt budget and durably block the owner's phrase change. Owning the row means the app owns code generation, the 3-attempt budget, the timing-safe compare, and expiry; requests rotate the code rather than reusing it, since the only door to this row is authenticated, trusted-device, and cooldown-gated.
-- **Security emails (out-of-band).** Every event where the recovery anchor moves or a device gains access notifies the account email — the channel an in-origin attacker cannot suppress: recovery phrase changed, recovery phrase *used* (a device self-approved via phrase), device approved (with the approver's name), bridge connected (first registration only), and encryption set up / upgraded. Senders live in `backend/src/lib/security-notifications.tsx` and fire AFTER the transaction commits, fire-and-forget — a mail failure never fails a committed security operation.
+- **Security emails (out-of-band).** Every event where the recovery anchor moves or a device gains access notifies the account email — the channel an in-origin attacker cannot suppress: recovery phrase changed, recovery phrase *used* (a device self-approved via phrase), device approved (with the approver's name), bridge connected (first registration only), and encryption set up / upgraded. Senders live in `backend/src/lib/security-notifications.tsx` and fire AFTER the transaction commits, fire-and-forget — a mail failure never fails a committed security operation. (Enrolling a passkey slot is the exception: it sends no email — see [the passkey slot](#the-passkey-slot-a-second-virtual-device).)
 
 ### Recovering on a fresh device
 
@@ -486,6 +486,40 @@ sequenceDiagram
 ```
 
 Every earlier concept shows up: the derivation is deterministic, so a correct phrase reproduces the stored public keys byte-for-byte — that's the free typo check. The canary verifies the whole chain before anything is persisted. The self-approval is the "pending device that legitimately holds keys" case — the phrase, not another device's blessing, is what opened the account. One deliberate exception: recovery is *not* gated by the local witness — the phrase is the account's break-glass, and a break-glass that the thing it rescues you from can disable would be no break-glass at all. (It re-mints the witness only on a device that held no AK; on a device that still holds one, the witness is left alone — the phrase does not authenticate the AK, so re-minting there would turn "talk the user into a recovery" into a witness bypass.)
+
+---
+
+## The passkey slot: a second virtual device
+
+An account can enroll its **one passkey** (sign-in and sync share it) as a second virtual device, so a new device can unlock sync without approval from another one. It is built exactly like the recovery slot; the only difference is where the secret comes from:
+
+```
+passkey + fixed PRF salt --WebAuthn PRF--> 32 bytes
+        --HKDF-SHA256 (info '…passkey-ecdh-v1' / '…passkey-mlkem-v1')--> hybrid keypair
+```
+
+No PBKDF2 stretch: the PRF output is already uniformly random, and nobody can compute it without the passkey — not the server, not a stolen session. The PRF salt is fixed for the app and not secret; the authenticator mixes it with a per-credential secret. Like the recovery labels, the salt and the HKDF labels are wire contracts (`src/lib/passkey.ts`, `src/crypto/passkey-key.ts`).
+
+| Recovery slot | Passkey slot |
+| --- | --- |
+| `recovery_*` columns on `encryption_metadata` | `passkey_*` columns (including `passkey_credential_id`) |
+| Always present on v2 | Optional — all five null until enrolled |
+| Attested over `userId ␟ kdf_salt ␟ public keys` | Attested over `userId ␟ credentialId ␟ public keys`, own domain tag |
+| Re-wrapped by every rotation after the attestation verifies (`RecoveryAnchorError`) | Same (`PasskeyAnchorError`) |
+| Changed by a rotation with a new plan, behind the step-up code | **Enrolled** by a rotation with a new plan — no step-up; **removed** by a rotation that omits it |
+| Opened by `recoverWithKey` | Opened by `unlockWithPasskey` — the same self-approval tail |
+
+- **Enrollment** happens in the sync setup modal — after the recovery phrase on the first device, or after a joining device gets in — and only while the account has no slot. `enrollPasskey` runs `runAKRotation` with the new passkey plan and the stored recovery plan, so the phrase survives.
+- **Unlock** is offered on the approval screen when a slot exists. The PRF output comes from a *local* assertion (random challenge, nothing verified server-side): the output itself is the proof.
+- **Removal** (Preferences → Passkey) rotates the slot away first — minting a new primary DEK, so someone who unwrapped the slot without enrolling a device cannot read later writes — then deletes the passkey. It stops *future* unlocks only: a device that already unlocked through the slot is a trusted device and keeps access until it is revoked. The server refuses to delete a passkey that still holds the slot, because the slot would keep opening the AK with no row left to show or remove it.
+- **Never blocks revocation.** Device revocation (and finishing a lockout) drops a passkey slot whose attestation fails, or whose keys can't be wrapped to, instead of refusing to rotate: revocation is the emergency path, and dropping the slot only removes access. Every other rotation still fails closed on it (`PasskeyAnchorError`), and removing the passkey is the way out.
+- **An orphaned slot is dropped, not refused.** If the slot's passkey row has disappeared, a rotation that re-anchors it clears it rather than returning an error that would wedge every later rotation. A *new* slot must still name one of the user's passkeys.
+- **Omission clears.** A rotation that carries no passkey fields clears the slot. A client that knows nothing about passkeys therefore fails safe — it revokes passkey unlock rather than becoming unable to rotate.
+- **The slot doesn't authenticate the AK.** Like the phrase, the passkey opens whatever is wrapped to the stored public keys, so first adoption is trust-on-first-use and unlock shares recovery's witness rule.
+- **Security emails:** the server cannot tell a passkey self-approval from a phrase one, so it sends the same "recovery phrase used" notification. Enrolling a passkey slot sends no email.
+- **Off by default.** `PASSKEY_ENABLED=true` turns passkeys on, and only in consumer auth mode — an SSO deployment leaves credentials to its IdP.
+
+The trust this adds — whoever controls the passkey, including its synced provider, can unlock the data — and the missing step-up on enrollment are listed in the [threat model](e2ee-threat-model.md#known-and-accepted).
 
 ---
 
@@ -620,14 +654,14 @@ All routes are under `/v1`, require an authenticated session, and most also requ
 | `POST /devices` | session | Register a device with its two public keys. Returns `trusted + envelope`, or `pending`. 10-device cap. |
 | `POST /devices/:id/envelope` | bootstrap *or* proof `approve` | Two shapes: atomic first-device setup (no metadata exists), or store an envelope for approval / self-recovery. Every stored envelope carries the recipient's [device attestation](#verifying-the-device-list-device-attestations). |
 | `GET /devices/me/envelope` | session + device | Fetch this device's own AK envelope. |
-| `GET /encryption/canary` | session | Account metadata: canary (sealed under the AK), `kdf_salt`, signing public key, recovery slot + attestation, `key_version`, `primary_key_id`, `scheme_version`. The polling heartbeat for detecting rotations and the v2 flip. |
+| `GET /encryption/canary` | session | Account metadata: canary (sealed under the AK), `kdf_salt`, signing public key, recovery slot + attestation, the optional [passkey slot](#the-passkey-slot-a-second-virtual-device), `key_version`, `primary_key_id`, `scheme_version`. The polling heartbeat for detecting rotations and the v2 flip. |
 | `GET /encryption/keys` / `/keys/:keyId` | non-revoked device | The wrapped-DEK keyring. Pending devices may read (recovery needs it); wrapped keys are inert without the AK. |
 | `GET /encryption/envelope-targets` | non-revoked device | The exact device set (+ public keys + attestations) a rotation/upgrade must cover — served from the same predicate the validator uses. The attestation is nullable on the wire (pre-column rows); the client refuses a null, since the server has no verdict to offer about its own list. |
 | `GET /encryption/lockout-pending` | non-revoked device | Device ids revoked whose AK rotation never landed, so any device can offer to finish the lockout. Device-gated on purpose — the canary route is not, and widening what an unbound session learns would deepen a tracked gap. |
 | `GET /encryption/challenge?operation=` | non-revoked device | Issue a single-use nonce bound to (user, operation, device), ~5 min TTL. |
 | `GET /devices/me/bind-challenge` | session | Single-use bind nonce, **sealed** to the claimed device's ECDH public key. |
 | `POST /devices/me/bind` | session + opened nonce | Consume the opened nonce and link the session to the device. |
-| `POST /encryption/rotate` | trusted + proof `rotate` | Atomic AK rotation: envelopes (with sealed pointer, each with its recipient's attestation) + keyring re-wrap + attested recovery slot + canary + signing key + optional `newPrimaryKey` DEK mint, `key_version++`. Recovery keys that *differ* from the stored ones additionally require `stepUpOtp`. |
+| `POST /encryption/rotate` | trusted + proof `rotate` | Atomic AK rotation: envelopes (with sealed pointer, each with its recipient's attestation) + keyring re-wrap + attested recovery slot + optional attested passkey slot (omitted = cleared) + canary + signing key + optional `newPrimaryKey` DEK mint, `key_version++`. Recovery keys that *differ* from the stored ones additionally require `stepUpOtp`. |
 | `POST /encryption/step-up/request` | trusted device | Mint + email the 8-digit step-up code for a phrase change (30s cooldown). |
 | `POST /encryption/upgrade` | trusted + CK-possession proof + nonce | v1 → v2 migration; CAS-flips `scheme_version`. Loser gets 409. |
 | `POST /devices/:id/deny` | trusted + proof `deny` | Reject a pending device. |
@@ -643,7 +677,7 @@ Defined in `backend/src/db/encryption-schema.ts`. None of these sync via PowerSy
 | Table | Holds |
 | --- | --- |
 | `envelopes` | One row per trusted device: the AK (+ sealed pointer) wrapped to that device's keys (`wrapped_ck`), plus the [device attestation](#verifying-the-device-list-device-attestations) over its id and public keys. Both are rewritten on every AK rotation — the attestation's signing key is epoch-scoped, which is why it lives here rather than on `devices`. Each device fetches only its own. |
-| `encryption_metadata` | One row per account: the canary (sealed under the AK), `canary_secret_hash` (v1 possession anchor), signing public key, `kdf_salt`, the recovery slot (public keys + wrapped AK) plus its `recovery_attestation`, `key_version`, `primary_key_id`, `scheme_version`. |
+| `encryption_metadata` | One row per account: the canary (sealed under the AK), `canary_secret_hash` (v1 possession anchor), signing public key, `kdf_salt`, the recovery slot (public keys + wrapped AK) plus its `recovery_attestation`, the optional passkey slot (`passkey_*`), `key_version`, `primary_key_id`, `scheme_version`. |
 | `wrapped_keys` | The DEK keyring: one row per `(key_id, user)`, the DEK wrapped under the current AK with the key_id bound as AAD. Rows are never deleted; wrappings are rewritten on AK rotation. |
 | `challenge_nonces` | Single-use nonces bound to (user, operation, device) with expiry + consumed flag — both the signed challenge ops and the sealed `bind` nonces. |
 | `org_envelopes` | One row per user when escrow is on: the AK wrapped to the pinned operator public key. Deliberately no fingerprint column — which key an envelope was wrapped to is proven only by unwrapping it. |

@@ -40,8 +40,10 @@ import {
   revokeDeviceSessions,
   upsertOrgEnvelope,
   withUserDeviceRegistrationLock,
+  isUserPasskeyCredential,
+  type PasskeySlot,
 } from '@/dal'
-import type { Settings } from '@/config/settings'
+import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
@@ -52,6 +54,7 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
   type ChallengeOperation,
+  type PasskeySlotRequest,
   type RecoverySlotRequest,
   type WrappedKeyEntry,
   bindOperation,
@@ -331,6 +334,85 @@ const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
       'recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK and recoveryAttestation must be supplied together',
     )
   }
+}
+
+/**
+ * Passkey-slot coverage (AK rotation): the optional counterpart of
+ * {@link assertRecoveryCoverage}. The credential id, the PRF-derived public keys,
+ * the AK wrapped to them and the attestation arrive all together or not at all —
+ * a partial slot would name a passkey that cannot open it. Omitting all five is
+ * legal and clears the slot (removal is a rotation); differing keys are an
+ * enrollment, gated like everything else here by the 'rotate' proof.
+ *
+ * Returns the slot to persist, or null for "no slot".
+ */
+const assertPasskeyCoverage = (body: Partial<PasskeySlotRequest>): PasskeySlot | null => {
+  const fields = [
+    body.passkeyCredentialId,
+    body.passkeyEcdhPublicKey,
+    body.passkeyMlkemPublicKey,
+    body.passkeyWrappedAK,
+    body.passkeyAttestation,
+  ]
+  if (fields.every((field) => !field)) {
+    return null
+  }
+  if (
+    !body.passkeyCredentialId ||
+    !body.passkeyEcdhPublicKey ||
+    !body.passkeyMlkemPublicKey ||
+    !body.passkeyWrappedAK ||
+    !body.passkeyAttestation
+  ) {
+    throw new BadRequestError(
+      'passkeyCredentialId, passkeyEcdhPublicKey, passkeyMlkemPublicKey, passkeyWrappedAK and passkeyAttestation must be supplied together',
+    )
+  }
+  return {
+    passkeyCredentialId: body.passkeyCredentialId,
+    passkeyEcdhPublicKey: body.passkeyEcdhPublicKey,
+    passkeyMlkemPublicKey: body.passkeyMlkemPublicKey,
+    passkeyWrappedAk: body.passkeyWrappedAK,
+    passkeyAttestation: body.passkeyAttestation,
+  }
+}
+
+/** The passkey-slot fields of GET /encryption/canary — all null while passkeys are off. */
+const servedPasskeySlot = (
+  settings: Settings,
+  metadata: NonNullable<Awaited<ReturnType<typeof getEncryptionMetadata>>>,
+) => {
+  const enabled = isPasskeyEnabled(settings)
+  return {
+    passkey_credential_id: enabled ? metadata.passkeyCredentialId : null,
+    passkey_ecdh_public_key: enabled ? metadata.passkeyEcdhPublicKey : null,
+    passkey_mlkem_public_key: enabled ? metadata.passkeyMlkemPublicKey : null,
+    passkey_wrapped_ak: enabled ? metadata.passkeyWrappedAk : null,
+    passkey_attestation: enabled ? metadata.passkeyAttestation : null,
+  }
+}
+
+/**
+ * Check the rotation's passkey slot against the account's passkey rows. A NEW
+ * slot must name one of the user's passkeys. A re-anchored slot whose passkey row
+ * has since disappeared is dropped instead of refused: refusing would wedge every
+ * later rotation (revocation included) on a slot the user can no longer see, and
+ * dropping it only takes access away.
+ */
+const resolvePasskeySlot = async (
+  txDb: QueryableDatabase,
+  userId: string,
+  slot: PasskeySlot | null,
+): Promise<PasskeySlot | null> => {
+  if (!slot || (await isUserPasskeyCredential(txDb, userId, slot.passkeyCredentialId))) {
+    return slot
+  }
+  const stored = await getEncryptionMetadata(txDb, userId)
+  if (stored?.passkeyCredentialId === slot.passkeyCredentialId) {
+    console.warn('[e2ee] dropping a passkey slot whose passkey no longer exists')
+    return null
+  }
+  throw new BadRequestError('passkeyCredentialId does not name a passkey on this account')
 }
 
 /**
@@ -801,9 +883,9 @@ export const createEncryptionRoutes = (
               if (updated.length === 0) {
                 throw new ForbiddenError('Device has been revoked')
               }
-              // Bootstrap is its own wording; otherwise caller==target is the
-              // recovery-phrase self-approval (Shape 2 admits nothing else
-              // untrusted), and caller≠target is a normal approval.
+              // Bootstrap is its own wording; otherwise caller==target is a
+              // recovery-phrase or passkey self-approval (Shape 2 admits nothing
+              // else untrusted), and caller≠target is a normal approval.
               accessGained = !metadata ? 'bootstrap' : callerDeviceId === deviceId ? 'recovery' : 'approved'
             }
           })
@@ -939,6 +1021,9 @@ export const createEncryptionRoutes = (
           recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
           recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
           recovery_wrapped_ak: metadata.recoveryWrappedAk,
+          // Not served while passkeys are off, so clients treat the account as
+          // having no slot and their next rotation clears it.
+          ...servedPasskeySlot(settings, metadata),
           key_version: metadata.keyVersion,
           primary_key_id: metadata.primaryKeyId,
           scheme_version: metadata.schemeVersion,
@@ -1129,6 +1214,7 @@ export const createEncryptionRoutes = (
         // recovery slot stays a 400 rather than masquerading as a step-up 403.
         try {
           assertRecoveryCoverage(body)
+          assertPasskeyCoverage(body)
         } catch (err) {
           return mapEncryptionError(err, set)
         }
@@ -1178,6 +1264,10 @@ export const createEncryptionRoutes = (
             const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
             assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
             assertRecoveryCoverage(body)
+            // With passkeys off nothing can show or remove a slot, so drop it.
+            const passkeySlot = isPasskeyEnabled(settings)
+              ? await resolvePasskeySlot(txDb, userId, assertPasskeyCoverage(body))
+              : null
 
             for (const envelope of body.envelopes) {
               await upsertEnvelope(txDb, {
@@ -1237,6 +1327,7 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              passkeySlot,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
@@ -1284,6 +1375,12 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          // WebAuthn caps credential ids at 1023 bytes: ~1364 base64url characters.
+          passkeyCredentialId: t.Optional(t.String({ maxLength: 1400 })),
+          passkeyEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
+          passkeyMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
+          passkeyWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
+          passkeyAttestation: t.Optional(t.String({ maxLength: 200 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },

@@ -7,19 +7,35 @@ import { expect, type Page } from '@playwright/test'
 // Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
 const e2eSignInCode = '12345678'
 
+const otpRequestTimes = new Map<string, number>()
+
+/** The backend refuses a second code for the same email within 15 s (`defaultCooldownMs` in waitlist/routes.ts). */
+const waitForOtpCooldown = async (email: string) => {
+  const lastRequest = otpRequestTimes.get(email)
+  const remaining = lastRequest ? 15_250 - (Date.now() - lastRequest) : 0
+  if (remaining > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remaining))
+  }
+}
+
 /**
  * Request an email code through the entry page, complete verification, and
  * wait for the authenticated chat UI (onboarding is disabled in the e2e config).
+ * Pass the email a previous call returned to sign a second browser context into the same account.
  */
-export const loginViaEmailCode = async (page: Page) => {
-  const email = `e2e-${crypto.randomUUID()}@thunderbolt.test`
+export const loginViaEmailCode = async (page: Page, email = `e2e-${crypto.randomUUID()}@thunderbolt.test`) => {
   // Returning users can see this dialog after the chat has already rendered.
   await page.addLocatorHandler(page.getByRole('dialog', { name: 'Welcome', exact: true }), async (dialog) => {
     await dialog.getByRole('button', { name: 'Continue', exact: true }).click()
   })
   await page.goto('/')
+  await waitForOtpCooldown(email)
   await page.getByPlaceholder('Email', { exact: true }).fill(email)
+  const codeRequested = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/waitlist/join')
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await codeRequested
+  // Stamped after the response, so it is never earlier than the server's own cooldown timestamp.
+  otpRequestTimes.set(email, Date.now())
   await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
   await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
   return email

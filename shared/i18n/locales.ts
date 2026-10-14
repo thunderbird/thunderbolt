@@ -6,9 +6,10 @@
  * Single source of truth for the locale set, shared by `lingui.config.ts`
  * (extraction/compilation) and the frontend runtime in `src/i18n`. Lives in
  * `shared/` rather than `src/` because the backend validates the
- * `X-App-Language` header against the same list — for the email locale in
+ * `X-App-Language` header against the same list (for the email locale in
  * `backend/src/emails/i18n.ts`, and via {@link matchExactLocale} for the
- * outbound `Accept-Language` in `backend/src/utils/accept-language.ts` — and it
+ * outbound `Accept-Language` in `backend/src/utils/accept-language.ts` and the
+ * hosted agent's reply language in `backend/src/hosted-agent/system-prompt.ts`), and it
  * cannot import from `src/`. Kept free of runtime imports so the Lingui CLI can
  * load it outside Vite.
  */

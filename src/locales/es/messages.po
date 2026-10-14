@@ -1489,7 +1489,7 @@ msgstr "Desconectar"
 msgid "Disconnected"
 msgstr "Desconectado"
 
-#: src/components/chat/chat-prompt-input.tsx
+#: src/components/chat/composer-alert.tsx
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/ui/mobile-blur-backdrop.tsx
 #: src/components/update-notification.tsx
@@ -2576,6 +2576,10 @@ msgstr "No se encontraron tareas que coincidan con «{searchQuery}»"
 msgid "No tasks yet"
 msgstr "Todavía no hay tareas"
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "None of your models can be used in this chat. Choose another agent to send."
+msgstr "Ninguno de tus modelos se puede usar en este chat. Elige otro agente para enviar."
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
 msgstr "No disponible en chats privados."
@@ -3332,6 +3336,10 @@ msgstr "Enviar enlace mágico"
 msgid "Send message"
 msgstr "Enviar mensaje"
 
+#: src/components/ui/header.tsx
+msgid "Send this private chat to {agentName}?"
+msgstr "¿Enviar este chat privado a {agentName}?"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
 msgstr ""
@@ -3655,6 +3663,10 @@ msgstr "Se obtuvo una respuesta del modelo correctamente."
 msgid "Suggested"
 msgstr "Sugeridos"
 
+#: src/components/ui/header.tsx
+msgid "Switch Agent"
+msgstr "Cambiar agente"
+
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
 msgstr "Cambiar a {suggestedLanguageLabel}"
@@ -3892,6 +3904,10 @@ msgstr "Este código ha caducado. Solicita uno nuevo."
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "Esta conversación es demasiado grande para la ventana de contexto del modelo. Empieza un chat nuevo, quita algunos adjuntos o cambia a un modelo con una ventana de contexto mayor."
 
+#: src/components/ui/header.tsx
+msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+msgstr "Esta conversación se enviará a {agentName} sin cifrar y dejará de ser privada."
+
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "Este dispositivo"
@@ -3947,6 +3963,16 @@ msgstr "Parece que este modelo no admite el uso de herramientas."
 #: src/components/remove-bridge-dialog.tsx
 msgid "This permanently removes the revoked bridge registration. The bridge can register again afterward."
 msgstr "Esto elimina de forma permanente el registro del bridge revocado. El bridge podrá volver a registrarse después."
+
+#: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
+msgid "This private chat won't run on {agentName}."
+msgstr "Este chat privado no se ejecutará con {agentName}."
+
+#: src/components/chat/chat-prompt-input.tsx
+#: src/voice/ui/use-voice-session.ts
+msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+msgstr "Este chat privado no se ejecutará con {agentName}. Cambia a {builtInAgentName} para ejecutarlo."
 
 #: src/projects/project-form.tsx
 msgid "this project"

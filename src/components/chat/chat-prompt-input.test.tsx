@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
@@ -506,6 +507,119 @@ describe('ChatPromptInput', () => {
 
       expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
+    })
+  })
+
+  describe('no model fits the thread', () => {
+    /** Built-in agent on a non-private thread whose session holds `selectedModel`. */
+    const renderWithModel = (selectedModel: Model) => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedModel })
+      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'hello' } })
+      const submit = async () => {
+        await act(async () => {
+          fireEvent.submit(container.querySelector('form')!)
+        })
+      }
+      return { sendMessage: mockChatInstance.sendMessage, submit }
+    }
+
+    it('says why and holds the send instead of throwing on it', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 1 }))
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'None of your models can be used in this chat. Choose another agent to send.',
+      )
+      await submit()
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('clears the notice and selects a model once one that fits is added', async () => {
+      const confidentialModel = createMockModel({ isConfidential: 1 })
+      renderWithModel(confidentialModel)
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+
+      const added = createMockModel({ id: 'added', provider: 'thunderbolt', isConfidential: 0 })
+      act(() => {
+        useChatStore.getState().setModels([confidentialModel, added])
+      })
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(added.id)
+    })
+
+    it('sends when the model matches the thread', async () => {
+      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 0 }))
+
+      expect(screen.queryByRole('alert')).toBeNull()
+      await submit()
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('private chat held back from a non-built-in agent', () => {
+    const notice = "This private chat won't run on Assistant. Switch to Thunderbolt to run it."
+
+    /** An automation thread: private, ending on its unanswered prompt, resolved to `agent`. */
+    const renderAutomationThread = ({ isEncrypted = 1 }: { isEncrypted?: 0 | 1 } = {}) => {
+      const { mockUseChat, mockChatInstance } = setupStore('ready', [
+        { id: 'msg-1', role: 'user', parts: [{ type: 'text', text: 'Daily brief' }] },
+      ])
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', {
+          chatThread: createMockChatThread({ isEncrypted }),
+          selectedAgent: { ...hostedAgent, name: 'Assistant' },
+        })
+      })
+      const { container } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      return { container, sendMessage: mockChatInstance.sendMessage }
+    }
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {} })
+    })
+
+    it('says so and holds typed and voice sends, which would carry the history out unencrypted', async () => {
+      const { container, sendMessage } = renderAutomationThread()
+
+      expect(screen.getByText(notice)).toBeInTheDocument()
+      // Voice sends straight through the chat, so it is held here too.
+      expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeDisabled()
+
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Go on' } })
+      await act(async () => {
+        fireEvent.submit(container.querySelector('form')!)
+      })
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('clears once the chat is back on the built-in agent', () => {
+      renderAutomationThread()
+
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: builtInAgent })
+      })
+
+      expect(screen.queryByText(notice)).toBeNull()
+    })
+
+    it('drops the switch advice where the deployment has no built-in agent', () => {
+      useConfigStore.setState({ config: { builtInAgentEnabled: false } })
+      renderAutomationThread()
+
+      expect(screen.getByText("This private chat won't run on Assistant.")).toBeInTheDocument()
+    })
+
+    it('stays quiet for a chat that is not private', () => {
+      renderAutomationThread({ isEncrypted: 0 })
+
+      expect(screen.queryByText(notice)).toBeNull()
     })
   })
 

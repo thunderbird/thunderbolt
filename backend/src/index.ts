@@ -11,7 +11,7 @@ import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
-import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
@@ -123,8 +123,7 @@ export const createApp = async (deps?: AppDeps) => {
   return (
     configuredApp
       .use(createCorsMiddleware(settings))
-      .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
       .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)

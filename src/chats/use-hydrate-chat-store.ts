@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
+import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 
 type UseHydrateChatStoreParams = {
@@ -262,6 +263,7 @@ export const useHydrateChatStore = ({
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
     })
+    const selectedModel = resolveSessionModel(selectedAgent, chatThread, defaultModel, models)
 
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
@@ -296,7 +298,7 @@ export const useHydrateChatStore = ({
       // agent when the persisted id no longer matches).
       selectedAgent,
       agentChosenByUser: false,
-      selectedModel: defaultModel,
+      selectedModel,
       projectId,
       miniAppId,
       triggerData,
@@ -312,7 +314,7 @@ export const useHydrateChatStore = ({
 
     setIsReady(true)
     trackChatReadyOnce()
-    maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
+    maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

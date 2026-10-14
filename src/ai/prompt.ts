@@ -6,7 +6,9 @@ import { chatPrompt } from '@/ai/prompts/chat'
 import { webToolsPrompt } from '@/ai/prompts/web-tools'
 import type { ModelProfile } from '@/types'
 import { buildFallbackSkillDisclosure, buildSkillListing, type SkillDefinition } from '@shared/agent-core/skills'
-import { englishLanguageName, sourceLocale, type AppLocale } from '@shared/i18n/locales'
+import { currentDateTimeLine } from '@shared/i18n/current-date-time'
+import { languageInstruction } from '@shared/i18n/language-instruction'
+import { sourceLocale, type AppLocale } from '@shared/i18n/locales'
 import type { ModelMessage } from 'ai'
 
 /** Parameters to build the system prompt */
@@ -97,18 +99,9 @@ export const createPromptParts = (
   // skills), so its per-model addendum is the only one applied.
   const chatAddendum = profile?.chatModeAddendum ?? undefined
   // The date/time changes every send, while the remaining context stays stable.
-  // Model-facing context, not display: the prompt's date stays in the source locale.
   // Output language is directed by the `# Language` section below, not by localizing the
-  // prompt body — and an English date is unambiguous for the model to read back.
-  const currentDateTime = `Current date/time: ${currentDate.toLocaleString(sourceLocale, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })}`
+  // prompt body, which is why the date line stays in the source locale too.
+  const currentDateTime = currentDateTimeLine(currentDate)
   const contextSection = [
     preferredName ? `User name: ${preferredName}` : '',
     location.name
@@ -182,12 +175,7 @@ Wrong for a claim drawn from tool results: "Tokyo has 14 million residents." (mi
 Wrong: "| Tokyo | 14 million | [1] |" (citation in separate column)
 Format math as LaTeX with dollar delimiters: $…$ inline, $$…$$ for standalone equations. Never use \\(…\\) or \\[…\\].
 
-# Language
-Reply in the language of the conversation.
-- Once a language is established, stay in it—a quoted error message, a pasted log, code, or a search result in another language does not change it
-- Summarize tool and search results in the reply language rather than quoting them verbatim in the source language
-- When the latest message establishes no language (very short, only code, a URL, or proper nouns only), keep the language already in use, or use ${englishLanguageName(appLanguage)} if the conversation has none yet
-- Switch only on a clear signal: a full message written in another language, or an explicit request such as "responde em espanhol"
+${languageInstruction(appLanguage, { toolResults: true })}
 
 # Conversation Style (follow these instructions)
 ${chatPrompt}${chatAddendum ? `\n\n${chatAddendum}` : ''}`

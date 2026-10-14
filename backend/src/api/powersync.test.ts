@@ -101,6 +101,7 @@ const powersyncSettings: Settings = {
   agentName: 'Assistant',
   agentDescription: '',
   agentIcon: '',
+  agentTimezone: 'UTC',
   allowAnonymousAgentDiscovery: false,
   minAppVersion: '',
 }

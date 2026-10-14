@@ -462,6 +462,58 @@ describe('useHydrateChatStore', () => {
     })
   })
 
+  describe('model for a thread that falls back to the built-in agent', () => {
+    /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
+    const createConfidentialModel = async () => {
+      const modelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: modelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'kimi-k2',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        toolUsage: 1,
+        startWithReasoning: 0,
+      })
+      return modelId
+    }
+
+    /** Hydrates a persisted thread on a device whose `selected_model` is confidential. */
+    const hydrateThread = async (thread: { agentId?: string; isEncrypted: 0 | 1 }) => {
+      const confidentialModelId = await createConfidentialModel()
+      await updateSettings(getDb(), { selected_model: confidentialModelId })
+      const threadId = uuidv7()
+      await createChatThread(
+        getDb(),
+        { id: threadId, title: 'Synced', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0, ...thread },
+        (await getModel(getDb(), confidentialModelId))!,
+      )
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      return getCurrentSession()
+    }
+
+    it('swaps in a non-confidential model when a hosted thread opens before discovery seeds its agent', async () => {
+      // Fresh device: the thread synced, `agents_system` has no hosted row yet.
+      const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
+
+      expect(session?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
+    })
+
+    it('keeps the model of a thread whose confidentiality already matches it', async () => {
+      const session = await hydrateThread({ isEncrypted: 1 })
+
+      expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
+    })
+  })
+
   describe('project assignment', () => {
     it('starts a new chat in the project it was opened from', async () => {
       const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true, projectId: 'project-a' }), {

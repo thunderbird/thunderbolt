@@ -8,9 +8,9 @@ What a built-in model sees on a send: the system prompt
 
 ## Stable half vs volatile half
 
-`createPromptParts` (`src/ai/prompt.ts:69`) returns `{ stablePrompt, volatilePrompt, fullPrompt }`
-(`:47`). Everything the model is told lives in the stable half; the volatile half is the current
-date/time and nothing else (`:95`, `:187`). Two engines consume the same `PromptParts`:
+`createPromptParts` (`src/ai/prompt.ts:78`) returns `{ stablePrompt, volatilePrompt, fullPrompt }`
+(`:56`). Everything the model is told lives in the stable half; the volatile half is the current
+date/time and nothing else (`:104`, `:184`). Two engines consume the same `PromptParts`:
 
 | Engine                                     | Assembled by                                        | Shape                                                                                                      |
 | ------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -58,8 +58,15 @@ Two ordering invariants:
   still rewrites `\(…\)` / `\[…\]`, because models drift. Dropping either regresses equation
   rendering.
 
-`# Language` directs the _reply_ language. The prompt body and the injected date (`sourceLocale`)
-stay English ([AGENTS.md](../../../AGENTS.md)).
+`# Language` directs the _reply_ language. Its text lives in
+[`shared/i18n/language-instruction.ts`](../../../shared/i18n/language-instruction.ts), which the
+hosted agent also uses, and a test in `src/ai/prompt.test.ts` pins it byte for byte. The prompt
+body and the injected date (`sourceLocale`) stay English ([AGENTS.md](../../../AGENTS.md)). The date
+line comes from [`shared/i18n/current-date-time.ts`](../../../shared/i18n/current-date-time.ts), which
+the hosted agent also uses, writing the date in `AGENT_TIMEZONE` rather than the device's zone and to
+the hour rather than the minute. Its `system` precedes the conversation, so on a Fireworks model, whose
+prompt cache reuses the conversation per user, every change to it invalidates the cached history; on an
+Anthropic model nothing is cached, because the hosted agent sends no cache control.
 
 ## Conditional fragments
 

@@ -17,6 +17,7 @@ import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
+import { resolveSessionModel } from './resolve-session-model'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -161,6 +162,10 @@ type ChatStoreActions = {
   setCurrentSessionId(id: string): void
   setGetMcpClients(getMcpClients: () => NamedMCPClient[]): void
   setReconnectClient(reconnectClient: ReconnectClient): void
+  /** Replace the model list and re-run `resolveSessionModel` for every chat,
+   *  so one held for want of a model that fits its private-chat lock takes the
+   *  first that does as soon as it exists. Called by hydration (including a
+   *  return to an existing session) and after adding a model. */
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
@@ -304,7 +309,20 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setModels: (models) => {
-    set({ models })
+    const swapped = [...get().sessions].flatMap(([id, session]) => {
+      const selectedModel = resolveSessionModel(
+        session.selectedAgent,
+        session.chatThread,
+        session.selectedModel,
+        models,
+      )
+      return selectedModel === session.selectedModel ? [] : [[id, { ...session, selectedModel }] as const]
+    })
+    if (swapped.length === 0) {
+      set({ models })
+      return
+    }
+    set({ models, sessions: new Map([...get().sessions, ...swapped]) })
   },
 
   setPendingPermission: (id, permission) => {
@@ -402,7 +420,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   setSelectedAgent: async (id, agent) => {
-    const { sessions } = get()
+    const { models, sessions } = get()
 
     const session = sessions.get(id)
 
@@ -414,7 +432,15 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
     const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent, agentChosenByUser: true })
+    // Session-only: the user picked an agent, not this model, so `selected_model` stays put.
+    const selectedModel = resolveSessionModel(agent, nextChatThread, session.selectedModel, models)
+    nextSessions.set(id, {
+      ...session,
+      chatThread: nextChatThread,
+      selectedAgent: agent,
+      selectedModel,
+      agentChosenByUser: true,
+    })
 
     set({ sessions: nextSessions })
 

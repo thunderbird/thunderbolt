@@ -44,7 +44,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
-‡ Body: `id`, `messages`, and an optional `instructions` string appended to the system prompt after `AGENT_SYSTEM_PROMPT`, under a `# User instructions` header that ranks it below the operator's rules (`hosted-agent/system-prompt.ts`). Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED`, and `instructions` over 50,000 UTF-16 code units gets `400` with code `AGENT_INSTRUCTIONS_TOO_LARGE` (`hosted-agent/history.ts`).
+‡ Body: `id`, `messages`, and an optional `instructions` string appended to the system prompt after `AGENT_SYSTEM_PROMPT`, under a `# User instructions` header that ranks it below the operator's rules (`hosted-agent/system-prompt.ts`). Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED`, and `instructions` over 50,000 UTF-16 code units gets `400` with code `AGENT_INSTRUCTIONS_TOO_LARGE` (`hosted-agent/history.ts`). Reads `X-App-Language`, validated with `matchExactLocale`, to name the reply-language fallback in the system prompt; a missing or unshipped tag falls back to English (`hosted-agent/system-prompt.ts`). The prompt ends with the current date and hour (no minutes) in `AGENT_TIMEZONE`, so on a Fireworks model, whose prompt cache reuses the conversation per user, the cached history is invalidated at most once an hour. Anthropic models are sent without cache control.
 
 Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.test.ts`).
 
@@ -71,11 +71,11 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 
 ## Global middleware, in order
 
-Order in `backend/src/index.ts:123-238` is load-bearing:
+Order in `backend/src/index.ts:123-237` is load-bearing:
 
 1. `createCorsMiddleware`: short-circuited responses still carry `Access-Control-Allow-Origin`.
-2. `createLoggerMiddleware` and `createHttpLoggingMiddleware`: rejected requests are still access-logged.
-3. `createAppVersionMiddleware`: the 426 gate, after CORS and logging for those two reasons.
+2. `createHttpLoggingMiddleware`: the one entry whose position does not matter. It wraps the whole request handler with `.wrap()`, so the access log records every response, including the 426s below, 404s and guard rejections.
+3. `createAppVersionMiddleware`: the 426 gate, after CORS for that reason.
 4. `createErrorHandlingMiddleware`: the root `onError`.
 5. The Better Auth plugin, then the route groups.
 

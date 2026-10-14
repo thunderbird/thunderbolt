@@ -317,12 +317,19 @@ RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pa
 
 ## Nightly Pipeline
 
-`nightly-pipeline.yml` runs daily at 04:00 UTC and on manual dispatch. It runs Nightly E2E first, then Release for all platforms only if E2E passes and the run is on `main`, with one failure alert for the pipeline.
+`nightly-pipeline.yml` runs daily at 04:00 UTC and on manual dispatch. It runs Nightly E2E first, then Release for all platforms only if E2E passes and the run is on `main`.
 The release is skipped when main has no new commits since the last release.
 
 Every release bumps the patch version with a commit on `main`, tags `vX.Y.Z` and publishes a normal GitHub release marked Latest with a "may be unstable" warning. It ships to the CrabNebula updater, TestFlight and the Play internal track.
 
 Dispatch `release.yml` directly to skip E2E. It uses the same patch bump; pass an explicit `version` for a deliberate minor or major bump.
+
+With alerts turned on (the `CI_ALERTS_ENABLED` repository variable, read by `notify-on-failure.yml`), the pipeline alerts through two incidents:
+
+- `CI failing: Nightly Pipeline E2E` opens when E2E fails and closes on the next run where E2E passes, whether or not that run releases.
+- `CI failing: Nightly Pipeline Release` opens when the release, or the `changes` check before it, fails. It closes only when a later pipeline release succeeds, including a re-run of the failed jobs, because a night that skips the release says nothing about the last one.
+
+A recovery is ignored while a newer pipeline run has failed; close the incident by hand then. Incidents titled `CI failing: Nightly E2E` or `CI failing: Release` come from standalone runs of those workflows, and the pipeline never closes them. A standalone run on `main` where every job passes closes its own (for `Release`, a `platform=all` run); otherwise close it by hand.
 
 ## Auto-Updater Distribution
 

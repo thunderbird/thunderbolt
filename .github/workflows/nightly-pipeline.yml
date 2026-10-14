@@ -51,15 +51,32 @@ jobs:
       platform: all
     secrets: inherit
 
-  notify:
-    needs: [e2e, changes, release]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || needs.release.result == 'success') }}
+  # E2E and release raise separate incidents. A night that skips the release
+  # proves E2E recovered, but says nothing about an earlier failed release.
+  notify-e2e:
+    needs: [e2e]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.e2e.result == 'success' || needs.e2e.result == 'failure') }}
     permissions:
       actions: read
       contents: read
     uses: ./.github/workflows/notify-on-failure.yml
     with:
-      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+      conclusion: ${{ needs.e2e.result }}
+      incident: Nightly Pipeline E2E
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+
+  notify-release:
+    needs: [changes, release]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (needs.changes.result == 'failure' || needs.release.result == 'failure' || needs.release.result == 'success') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.release.result == 'success' && 'success' || 'failure' }}
+      incident: Nightly Pipeline Release
     secrets:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

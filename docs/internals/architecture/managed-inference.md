@@ -26,7 +26,7 @@ Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../
 
 ## Admission: price first, then quota
 
-Both tiers call `checkManagedInferenceAdmission` (`usage-ledger.ts:157`) before any upstream request. Price and spend load concurrently; price failures win, so a missing price row reports configuration, not quota.
+Both tiers call `checkManagedInferenceAdmission` (`usage-ledger.ts:180`) before any upstream request. Price and spend load concurrently; price failures win, so a missing price row reports configuration, not quota.
 
 | Outcome             | Status | Body                                                               |
 | ------------------- | ------ | ------------------------------------------------------------------ |
@@ -43,7 +43,7 @@ Bodies come from [`usage-responses.ts`](../../../backend/src/inference/usage-res
 - **A new managed model needs a price migration** and its `backend/drizzle/meta/_journal.json` entry. Drizzle finds migrations through the journal; an unlisted SQL file never runs.
 - Catalog in TypeScript, prices in Postgres, so drift runs one way: the model ships, the price does not, every request 503s.
 - Prices are quota weighting, not billing. 0029 sets GLM 5.3 to `1500 / 5250`, glm-5-2's numbers rather than Tinfoil's list `1800 / 5750`, so a model swap does not change how fast users burn their allowance.
-- `calculateInferenceCost` (`usage-ledger.ts:78`) applies Anthropic prompt-cache multipliers (5-minute write ×1.25, 1-hour write ×2, cache read ×0.1) only when `provider === 'anthropic'`; the confidential receipt contract has no cache fields ([`shared/inference-usage.ts:9`](../../../shared/inference-usage.ts)).
+- `calculateInferenceCost` (`usage-ledger.ts:101`) applies Anthropic's cache-write multipliers (5-minute ×1.25, 1-hour ×2) only when `provider === 'anthropic'`. Cache reads bill at the row's nullable `cache_read_nano_usd_per_token` when it is set, for any provider; a null rate falls back to ×0.1 of input for Anthropic and to the full input rate for everyone else. Migration `0037` sets it for the two Fireworks rows; the Anthropic rows leave it null. The confidential receipt contract has no cache fields ([`shared/inference-usage.ts:9`](../../../shared/inference-usage.ts)).
 - Cache tokens above the prompt-token total, or a cost above Postgres `bigint` max, throw (`InferenceTokenCountOutOfRangeError` / `InferenceCostOverflowError`).
 
 ### The two rolling windows
@@ -55,9 +55,9 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 | 5 h    | 10¢               | 1500¢              |
 | 7 d    | 60¢               | 7500¢              |
 
-- `checkInferenceQuota` (`usage-ledger.ts:127`) sums `inference_usage.cost_nano_usd` over both windows in one aggregate using Postgres's own `now()`, keeping windows consistent across replicas.
-- Limits are integer cents, split anonymous from registered (`getInferenceQuotaLimits`, `usage-ledger.ts:184`), because anonymous sessions are free to create. Knobs: [configuration.md](../../self-hosting/configuration.md#managed-inference-quotas).
-- The ledger insert is idempotent on the event id (`onConflictDoNothing`, `usage-ledger.ts:120`), returning `'inserted'` or `'duplicate'`. That makes receipt retries safe.
+- `checkInferenceQuota` (`usage-ledger.ts:150`) sums `inference_usage.cost_nano_usd` over both windows in one aggregate using Postgres's own `now()`, keeping windows consistent across replicas.
+- Limits are integer cents, split anonymous from registered (`getInferenceQuotaLimits`, `usage-ledger.ts:207`), because anonymous sessions are free to create. Knobs: [configuration.md](../../self-hosting/configuration.md#managed-inference-quotas).
+- The ledger insert is idempotent on the event id (`onConflictDoNothing`, `usage-ledger.ts:143`), returning `'inserted'` or `'duplicate'`. That makes receipt retries safe.
 
 ## Direct tier: `/v1/chat/*`
 

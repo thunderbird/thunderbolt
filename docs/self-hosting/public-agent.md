@@ -53,6 +53,9 @@ Render prompts once for every value below and never overwrites them afterwards. 
 | `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`                   | Each visitor's spending cap, in cents. Enter numbers: a blank value stops the API at startup.                                                                                                  |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`               | Blank keeps the defaults, 10 per 60 seconds. Without a captcha provider the API refuses to start with more than 10 or a window under 60 seconds.                                               |
 | `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults, 2000 per 3600 seconds across the whole deployment. Size it to the visitors you expect: once it runs out, no new visitor can start a session until the window resets. |
+| `VITE_CAPTCHA_PROVIDER`                                                                      | `altcha` to turn on the captcha, or blank. Set it together with `CAPTCHA_PROVIDER`: both or neither. A change means a rebuild.                                                                 |
+| `CAPTCHA_PROVIDER`                                                                           | `altcha` together with `VITE_CAPTCHA_PROVIDER`, or blank for none. See [ALTCHA](./configuration.md#altcha).                                                                                    |
+| `ALTCHA_SECRET`                                                                              | With `altcha`, a key of at least 32 characters: `openssl rand -hex 32`. Otherwise blank.                                                                                                       |
 
 The rest is fixed by the Blueprint. On the API it turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). It also sets `TRUSTED_PROXY=cloudflare`: all traffic to a Render web service passes through Cloudflare, which writes the caller's address to `CF-Connecting-IP`, so the rate limits key on each visitor's own address. Without it the API sees Render's proxy as every visitor, and they all share one sign-in budget. The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
 
@@ -62,6 +65,8 @@ The rest is fixed by the Blueprint. On the API it turns on anonymous sessions (`
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Fixed material: an FAQ, venue facts, policies  | `AGENT_SYSTEM_PROMPT`. It is sent with every request, so write facts, not prose. Keep the source out of this repository.    |
 | Data that changes: a schedule, rooms, speakers | MCP servers listed in `AGENT_MCP_SERVERS`, once the agent has tools. Until then, have the prompt say where the schedule is. |
+
+Visitors' project and skill instructions are appended after `AGENT_SYSTEM_PROMPT`, under a header that ranks them below it. That ranking is a request to the model, not an enforced rule, so treat the prompt as readable by visitors and not as a hard guardrail.
 
 The agent is told the current date and hour in `AGENT_TIMEZONE`, but it still needs the schedule tools to answer questions such as "what's on this afternoon?".
 
@@ -100,8 +105,8 @@ Deleting the database removes everything the deployment kept on the server: the 
 ## Limits
 
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
-- Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
+- Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly. Setting both `CAPTCHA_PROVIDER` and `VITE_CAPTCHA_PROVIDER` to `altcha` lifts the ceiling; see [ALTCHA](./configuration.md#altcha).
 - On top of that, the whole deployment admits 2000 anonymous sign-ins an hour by default (`ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`).
-- The hosted agent calls one model, on Anthropic or Fireworks, and has no tools yet.
+- The hosted agent calls one model, on Anthropic or Fireworks (see `AGENT_MODEL` in [Configuration](./configuration.md#hosted-agent)), and has no tools yet.
 - A reply that a visitor stops, or that hits the 2-minute limit, usually ends before the provider reports its token usage, so it is charged against the visitor's spending cap by an estimate that errs high, and the usage row does not mark it as one ([Configuration](./configuration.md#hosted-agent)).
 - The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

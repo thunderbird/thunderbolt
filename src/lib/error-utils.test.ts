@@ -12,6 +12,8 @@ import {
   getErrorRetryable,
   getErrorStatusCode,
   getInferenceQuotaWindow,
+  isAgentInstructionsTooLargeError,
+  isAgentRunInProgressError,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -614,5 +616,32 @@ describe('isContextOverflowError', () => {
 
   it('returns false for null', () => {
     expect(isContextOverflowError(null)).toBe(false)
+  })
+})
+
+describe('hosted agent refusals', () => {
+  /** A refusal as the managed-http adapter serializes the endpoint's coded response. */
+  const agentError = (code: string, status: number) =>
+    new Error(JSON.stringify({ error: JSON.stringify({ error: { code } }), status }))
+
+  it('recognizes oversized instructions only on the coded 400', () => {
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(true)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(
+      false,
+    )
+    expect(isAgentInstructionsTooLargeError(null)).toBe(false)
+  })
+
+  it('keeps oversized instructions out of attachment remediation', () => {
+    expect(isContentRejectionError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(false)
+    expect(isContentRejectionError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(true)
+  })
+
+  it('recognizes a run in progress only on the coded 429', () => {
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 429))).toBe(true)
+    expect(isAgentRunInProgressError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 400))).toBe(false)
   })
 })

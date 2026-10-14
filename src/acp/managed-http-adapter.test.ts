@@ -192,6 +192,34 @@ describe('createManagedHttpAdapter', () => {
     expect(() => createManagedHttpAdapter({ ...hostedAgent, url: null })).toThrow('has no url')
   })
 
+  describe('instructions', () => {
+    /** Run one turn with the given chat-layer context and return the body it posted. */
+    const postedWith = async (context: Partial<AgentAdapterContext>) => {
+      const { httpClient, fetchSpy } = createSpyHttpClient(async () => new Response('ok'))
+      const fullContext = { ...contextWith(httpClient), ...context }
+      await createManagedHttpAdapter(hostedAgent).fetch({ method: 'POST', body: chatBody('hi') }, fullContext)
+      return JSON.parse(await (fetchSpy.mock.calls[0]![0] as Request).text())
+    }
+
+    it('sends the project section, then each skill, joined like the ACP prompt', async () => {
+      const body = await postedWith({
+        projectSection: '# Project: Atlas',
+        skillInstructions: ['Write a haiku.', 'Be brief.'],
+      })
+      expect(body.instructions).toBe('# Project: Atlas\n\nWrite a haiku.\n\nBe brief.')
+    })
+
+    it('sends skills alone outside a project, and a project alone without skills', async () => {
+      expect((await postedWith({ skillInstructions: ['Be brief.'] })).instructions).toBe('Be brief.')
+      expect((await postedWith({ projectSection: '# Project: Atlas' })).instructions).toBe('# Project: Atlas')
+    })
+
+    it('leaves the field out when there is nothing to send', async () => {
+      expect(await postedWith({})).not.toHaveProperty('instructions')
+      expect(await postedWith({ skillInstructions: [], projectSection: undefined })).not.toHaveProperty('instructions')
+    })
+  })
+
   it('never sends message metadata, which is an encrypted column', async () => {
     const body = JSON.stringify({
       id: 't1',

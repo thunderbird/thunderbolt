@@ -26,6 +26,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   microsoftBaseUrl: 'https://login.microsoftonline.com',
   authMode: 'consumer' as const,
   authAllowAnonymous: false,
+  anonymousUserIdleDays: 30,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',

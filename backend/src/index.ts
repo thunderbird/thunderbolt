@@ -18,6 +18,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
+import { sweepIdleAnonymousUsers } from '@/auth/idle-anonymous-users'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -263,11 +264,12 @@ const startServer = async () => {
 
     const app = await createApp()
 
-    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7) and
-    // expired solved captcha challenges. There is no cron infra, so a startup sweep plus an hourly
-    // interval keeps both tables bounded (nonces have a ~5-minute TTL, captcha challenges
-    // ALTCHA_TTL_SECS). The db is lazily imported to preserve the "no db init at module
-    // load" invariant that keeps tests/CI clean.
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
+    // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
+    // sweep plus an hourly interval keeps these tables bounded (nonces have a ~5-minute TTL,
+    // captcha challenges ALTCHA_TTL_SECS, anonymous users ANONYMOUS_USER_IDLE_DAYS). The db is
+    // lazily imported to preserve the "no db init at module load" invariant that keeps tests/CI
+    // clean.
     const { db: sweepDb } = await import('@/db/client')
     const sweepExpiredRows = async () => {
       try {
@@ -280,6 +282,7 @@ const startServer = async () => {
       } catch (err) {
         log.error({ err }, 'Failed to sweep expired captcha challenges')
       }
+      await sweepIdleAnonymousUsers(sweepDb, settings, log)
     }
     void sweepExpiredRows()
     const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)

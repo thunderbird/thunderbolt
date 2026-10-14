@@ -19,9 +19,11 @@ type Workflow = {
   jobs: { [name: string]: { needs?: string | string[]; with?: { tag?: string }; steps?: Step[] } }
 }
 
+/** Parses a workflow file from `.github/workflows/`. */
 const loadWorkflow = (file: string) =>
   Bun.YAML.parse(readFileSync(join(import.meta.dir, '../.github/workflows', file), 'utf8')) as Workflow
 
+/** Collects the steps of every job in a workflow. */
 const allSteps = (workflow: Workflow) => Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
 
 // A single-platform release tags vX.Y.Z-<platform>-rc, so a child that rebuilds the tag from the

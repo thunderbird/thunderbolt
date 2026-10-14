@@ -68,7 +68,17 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    telemetry, clear the Stop suppression), reject a model whose confidentiality
    mismatches `chatThread.isEncrypted` (skipped for the hosted agent, which
    ignores the model and whose threads are created with `isEncrypted` 0), stamp `modelId` and debug-transcript
-   metadata on the message, emit `chat_send_prompt`.
+   metadata on the message, emit `chat_send_prompt`. That lock covers models
+   only. Agent changes are guarded where they happen, with
+   `exposesPrivateThread` (`src/chats/private-thread.ts`): the header picker's
+   `handleAgentSelect` (`src/components/ui/header.tsx`) asks before moving a
+   thread with `isEncrypted` 1 to a non-built-in agent, and `useChatAutomation`
+   will not auto-send such a thread. The composer shows a notice and holds the
+   send on the same check (`isPrivateAutoRunBlocked`), since a typed message
+   would carry the history out just the same. An automation thread has no
+   `agentId`, so it takes the fallback chain's agent without any confirmation
+   and needs that second check.
+   `setSelectedAgent` itself does not check.
 3. **Transport.** One `DefaultChatTransport({ fetch: customFetch })`, where
    `customFetch` is `createAgentRoutingFetch`. Every send, every agent type.
 4. **Persist the user turn first.** `customFetch` awaits `saveMessages` before
@@ -290,6 +300,9 @@ word is ready each paint.
 
 - A new auto-send path must consult `stopping` (or `stopRequested`), or Stop
   stops working.
+- A new auto-send path or a new way to change a thread's agent must check
+  `exposesPrivateThread`, or a private chat leaves the device unencrypted
+  without the user agreeing to it.
 - A new request in the send path must draw from the turn budget, or it escapes
   the per-turn spend ceiling.
 - A new terminal state must decide explicitly whether `onFinish` persists; the
@@ -315,6 +328,7 @@ word is ready each paint.
 | Streaming crash-recovery saves           | `src/chats/save-partial-assistant-messages-handler.ts`                             |
 | Derived turn state for the UI            | `src/chats/turn-activity.ts`                                                       |
 | Auto-run for automations                 | `src/chats/use-chat-automation.tsx`                                                |
+| Private-chat agent guard                 | `src/chats/private-thread.ts`                                                      |
 | Render throttle tiers                    | `src/chats/chat-throttle.ts`                                                       |
 | Warming an ACP agent's slash commands    | `src/chats/use-warm-acp-commands.ts`                                               |
 | Composer quote-reply channel             | `src/chats/pending-quotes-store.ts`                                                |

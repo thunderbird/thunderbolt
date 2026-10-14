@@ -34,6 +34,7 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence } from 'framer-motion'
 import { AlertCircle, Loader2 } from 'lucide-react'
@@ -66,7 +67,8 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
-import { isBuiltInAgent } from '@/defaults/agents'
+import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
@@ -331,7 +333,20 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Only when no model fits the thread's confidentiality lock: otherwise
     // `resolveSessionModel` already swapped one in for the built-in.
     const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
-    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread
+    // `useChatAutomation` holds back the unanswered last turn of a private chat
+    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
+    // the private history to that agent unencrypted.
+    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
+      chatThread,
+      agent: selectedAgent,
+      status,
+      stopping,
+      lastRole: messages.at(-1)?.role,
+    })
+    const builtInAgentName = builtInAgent.name
+    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const sendBlocked =
+      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -874,6 +889,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                   <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
                 </ComposerAlert>
               )}
+              {privateAutoRunBlocked && (
+                <ComposerAlert key="private-auto-run-blocked">
+                  {builtInAgentEnabled ? (
+                    <Trans>
+                      This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
+                    </Trans>
+                  ) : (
+                    <Trans>This private chat won&apos;t run on {agentName}.</Trans>
+                  )}
+                </ComposerAlert>
+              )}
               {imageSupport.notice && (
                 <ImageSupportNotice
                   key="image-support"
@@ -948,7 +974,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send
             // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
+            emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
             renderOverlay={(value) =>
               renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
             }

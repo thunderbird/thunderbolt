@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Elysia } from 'elysia'
 import { pino, type Logger } from 'pino'
 import type { Settings } from './settings'
 
@@ -54,12 +53,4 @@ const createStandaloneLogger = (settings: Settings): Logger => {
   return pino({ level })
 }
 
-/**
- * Minimal logger middleware: only decorates ctx.log with pino
- */
-const createLoggerMiddleware = (settings: Settings) => {
-  const logger = createStandaloneLogger(settings)
-  return new Elysia({ name: 'logger' }).decorate('log', logger)
-}
-
-export { createLoggerMiddleware, createStandaloneLogger }
+export { createStandaloneLogger }

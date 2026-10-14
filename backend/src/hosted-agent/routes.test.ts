@@ -31,6 +31,8 @@ import {
 } from './routes'
 
 type CheckAdmission = typeof checkManagedInferenceAdmission
+/** The unmocked fetch, for tests that talk to a listening server (`test-setup.ts` stubs the global one). */
+const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
 const anthropicModel = 'claude-opus-5-5'
@@ -685,6 +687,65 @@ describe('createHostedAgentRoutes', () => {
       const resend = await postChat(app)
       expect(resend.status).toBe(200)
       expect(await resend.text()).toContain('"delta":"Hello there"')
+    })
+
+    it('aborts the upstream call when a real HTTP client disconnects mid-reply, then serves a resend', async () => {
+      const upstreamAborted = Promise.withResolvers<void>()
+      let calls = 0
+      model = new MockLanguageModelV3({
+        // The first run sends one delta, then is silent until aborted; the resend replies normally.
+        doStream: async ({ abortSignal }) => {
+          calls += 1
+          if (calls > 1) {
+            return { stream: simulateReadableStream({ chunks: replyChunks() }) }
+          }
+          return {
+            stream: new ReadableStream<StreamPart>({
+              start: (controller) => {
+                replyChunks()
+                  .slice(0, 2)
+                  .forEach((chunk) => controller.enqueue(chunk))
+                abortSignal?.addEventListener('abort', () => {
+                  upstreamAborted.resolve()
+                  controller.error(abortSignal.reason)
+                })
+              },
+            }),
+          }
+        },
+      })
+      const usageRecorded = Promise.withResolvers<void>()
+      recordUsage = mock(async () => {
+        usageRecorded.resolve()
+        return 'inserted' as const
+      })
+      const server = createMockedApp().listen(0)
+      const url = `http://localhost:${server.server?.port}/agent/chat`
+      const post = (signal?: AbortSignal) =>
+        realFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: chatBody(), signal })
+
+      try {
+        const client = new AbortController()
+        const reader = (await post(client.signal)).body!.getReader()
+        await readUntil(reader, 'Hello there')
+        // Only the client's own fetch is aborted: the server learns of it from the closed connection.
+        client.abort()
+
+        await upstreamAborted.promise
+        // The slot is released right after the estimate is written.
+        await usageRecorded.promise
+        expect(recordUsage.mock.calls[0][1].counts).toEqual(expect.objectContaining({ completionTokens: 4 }))
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'agent_usage_estimated', reason: 'client' }),
+          'Agent usage estimated',
+        )
+
+        const resend = await post()
+        expect(resend.status).toBe(200)
+        expect(await resend.text()).toContain('"delta":"Hello there"')
+      } finally {
+        await server.stop(true)
+      }
     })
 
     // A control: the run finished before the client left, so nothing aborts and the provider usage is the one row.

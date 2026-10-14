@@ -31,6 +31,26 @@ describe('getAbortedRunCounts', () => {
     })
   })
 
+  it('counts each Chinese, Japanese or Korean character as a token', () => {
+    const japanese = '今日はとても良い天気ですね散歩に行きましょうか駅まで歩いて行'
+    expect([...japanese]).toHaveLength(30)
+    const { counts } = getAbortedRunCounts({ system: japanese, messages: [], outputText: japanese })
+    expect(counts.completionTokens).toBe(30)
+    // The system prompt's 30, plus one for the empty message list's `[]`.
+    expect(counts.promptTokens).toBe(31)
+  })
+
+  it('counts the rest of a mixed string at three characters a token', () => {
+    const { counts } = getAbortedRunCounts({ system: '', messages: [], outputText: 'Tokyo は東京、 ok' })
+    // は東京 are three tokens; "Tokyo ", "、 ok" are 10 characters, so four.
+    expect(counts.completionTokens).toBe(7)
+  })
+
+  it('counts Hangul and characters outside the Basic Multilingual Plane as one token each', () => {
+    const { counts } = getAbortedRunCounts({ system: '', messages, outputText: '안녕하세요𠮷' })
+    expect(counts.completionTokens).toBe(6)
+  })
+
   it('estimates no output tokens for a run that streamed nothing', () => {
     const { counts } = getAbortedRunCounts({ system: '', messages, outputText: '' })
     expect(counts.completionTokens).toBe(0)

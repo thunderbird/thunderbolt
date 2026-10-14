@@ -103,4 +103,5 @@ Deleting the database removes everything the deployment kept on the server: the 
 - Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
 - On top of that, the whole deployment admits 2000 anonymous sign-ins an hour by default (`ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`).
 - The hosted agent calls one model, on Anthropic or Fireworks, and has no tools yet.
+- A reply that a visitor stops, or that hits the 2-minute limit, usually ends before the provider reports its token usage, so it is charged against the visitor's spending cap by an estimate that errs high, and the usage row does not mark it as one ([Configuration](./configuration.md#hosted-agent)).
 - The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

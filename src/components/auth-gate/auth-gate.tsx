@@ -5,6 +5,7 @@
 import { Navigate, Outlet } from 'react-router'
 
 import Loading from '@/loading'
+import { BrowserCheck } from './browser-check'
 import { useAuthGate, type AuthRequirement, type RedirectTarget } from './use-auth-gate'
 
 type AuthGateProps = {
@@ -24,7 +25,8 @@ const redirectPaths: Record<RedirectTarget, string> = {
  *
  * The gate decides redirect targets internally from `VITE_AUTH_MODE` and the
  * `VITE_AUTH_ENABLE_ANONYMOUS` / `VITE_BYPASS_WAITLIST` overlays — no caller
- * configuration needed.
+ * configuration needed. With `VITE_CAPTCHA_PROVIDER=altcha` the anonymous
+ * sign-in first shows a browser check while it solves the captcha.
  *
  * @example
  * // Require authentication — redirects to /sso-redirect (SSO mode) or /waitlist (consumer mode),
@@ -45,6 +47,12 @@ export const AuthGate = ({ require }: AuthGateProps) => {
 
   if (state.status === 'loading') {
     return <Loading />
+  }
+  if (state.status === 'verifying') {
+    return <BrowserCheck />
+  }
+  if (state.status === 'verification-failed') {
+    return <BrowserCheck onRetry={state.retry} />
   }
   if (state.status === 'redirect') {
     return <Navigate to={redirectPaths[state.target]} replace />

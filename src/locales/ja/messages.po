@@ -667,6 +667,10 @@ msgstr "サインインリクエストを確認しています…"
 msgid "Checking whether {modelName} can read images…"
 msgstr "{modelName} が画像を読み取れるか確認しています…"
 
+#: src/components/auth-gate/browser-check.tsx
+msgid "Checking your browser…"
+msgstr "ブラウザを確認しています…"
+
 #: src/components/device-approval.tsx
 msgid "Checking your session."
 msgstr "セッションを確認しています。"
@@ -4148,6 +4152,7 @@ msgstr "旅行と場所"
 msgid "Trusted devices"
 msgstr "信頼済みのデバイス"
 
+#: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -4381,6 +4386,10 @@ msgstr "早期アクセスをご希望ですか？"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr ""
+
+#: src/components/auth-gate/browser-check.tsx
+msgid "We couldn't verify your browser. Check your connection and try again."
+msgstr "ブラウザを確認できませんでした。接続を確認して、もう一度お試しください。"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "We don't keep logs of your conversations."

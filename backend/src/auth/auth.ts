@@ -21,6 +21,7 @@ import { resolveEmailLocale } from '@/emails/i18n'
 import { getSettings } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
+import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
@@ -33,7 +34,7 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { captchaTokenHeader, createCaptchaProvider } from './captcha'
+import { createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
@@ -209,10 +210,9 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only. Today this
-    // limiter and the DB-backed `auth` IP tier are the controls; the captcha on anonymous
-    // sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once the app supports
-    // ALTCHA.
+    // horizontally-scaled deployments. Provides single-instance defence only. The DB-backed
+    // `auth` IP tier holds across instances, and CAPTCHA_PROVIDER=altcha (with an app built with
+    // VITE_CAPTCHA_PROVIDER=altcha) is the distributed bot control on anonymous sign-in.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
@@ -290,7 +290,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           if (!captchaSolved) {
             throw ctx.error('FORBIDDEN', {
               message: 'Captcha verification failed',
-              code: 'CAPTCHA_VERIFICATION_FAILED',
+              code: captchaVerificationFailedCode,
             })
           }
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })

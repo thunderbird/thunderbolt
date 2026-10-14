@@ -54,6 +54,7 @@ Operator view: [Self-hosting § Configuration](../../self-hosting/configuration.
 | `VITE_AUTH_MODE=sso`         | Enterprise SSO. Auth requests switch to `credentials: 'include'`; unauthenticated users go to `/sso-redirect`                   |
 | `VITE_AUTH_ENABLE_ANONYMOUS` | Anonymous-session overlay. Needs the backend's `AUTH_ALLOW_ANONYMOUS` too, or the UI offers a route the server answers with 404 |
 | `VITE_BYPASS_WAITLIST`       | Skips the client-side waitlist redirect. UI only; the backend still gates sign-in                                               |
+| `VITE_CAPTCHA_PROVIDER`      | `altcha` solves a proof-of-work challenge before anonymous sign-in. Must match the backend's `CAPTCHA_PROVIDER`                 |
 
 Email-code sign-in runs `credentials: 'omit'`
 ([auth-context.tsx:134](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
@@ -62,16 +63,25 @@ fetching a sync JWT ([connector.ts:104-105](../../../src/db/powersync/connector.
 
 ### Which routes a session may reach
 
-`useAuthGate` ([use-auth-gate.ts:35](../../../src/components/auth-gate/use-auth-gate.ts)) turns session state
-plus those flags into `loading` / `allowed` / `redirect`; `AuthGate` renders `<Navigate replace />` rather
+`useAuthGate` ([use-auth-gate.ts:45](../../../src/components/auth-gate/use-auth-gate.ts)) turns session state
+plus those flags into `loading` / `allowed` / `redirect`, and `verifying` / `verification-failed` while an
+ALTCHA build solves its captcha; `AuthGate` renders `<Navigate replace />` rather
 than navigating from an effect.
 
 - **Anonymous users count as authenticated for routing**, with a real `user` row carrying
   `isAnonymous: true`. Capability gating belongs to the route.
 - **Anonymous auto-sign-in needs all three of** `isAnonymousAuthEnabled()`, `!isSsoMode()` and
-  `isWaitlistBypassed()` ([use-auth-gate.ts:40](../../../src/components/auth-gate/use-auth-gate.ts)); a ref
+  `isWaitlistBypassed()` ([use-auth-gate.ts:51](../../../src/components/auth-gate/use-auth-gate.ts)); a ref
   dedups Strict Mode's double effect.
-- **Both failure shapes are handled** ([use-auth-gate.ts:48-73](../../../src/components/auth-gate/use-auth-gate.ts)).
+- **With `VITE_CAPTCHA_PROVIDER=altcha` the sign-in solves a challenge first**
+  ([altcha.ts](../../../src/components/auth-gate/altcha.ts)), in web workers, and sends it as `x-captcha-token`.
+  A transient failure offers a retry with a fresh challenge: a network failure, timeout or 5xx on the challenge
+  fetch, a worker failure, the 60 s solve timeout, or a `403 CAPTCHA_VERIFICATION_FAILED` on sign-in. Everything
+  else, a 4xx on the challenge included, throws during render like any failed anonymous sign-in (with no error
+  boundary in the app, the window goes blank; see [Error handling](../development/error-handling.md)). Only
+  the challenge step's transient failures are retried: a failed sign-in request (network failure or 5xx) throws,
+  as it did before the captcha.
+- **Both failure shapes are handled** ([use-auth-gate.ts:117-146](../../../src/components/auth-gate/use-auth-gate.ts)).
   Better Auth methods resolve with `{ data, error }` rather than throwing on a 4xx, so a hook ignoring the
   resolved-error path leaves the gate in `loading` forever.
 

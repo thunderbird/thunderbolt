@@ -8,9 +8,6 @@ import type { QueryableDatabase } from '@/db/client'
 import { createChallenge, extractParams, verifySolution } from 'altcha-lib/v1'
 import { z } from 'zod'
 
-/** Request header carrying the client's captcha solution. */
-export const captchaTokenHeader = 'x-captcha-token'
-
 /**
  * Request details beyond the solution. `clientIp` is resolved once by the caller from the
  * trusted proxy setting, so providers never decide which header to trust (Turnstile's

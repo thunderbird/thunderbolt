@@ -10,15 +10,17 @@ import {
   deletePersistedSignInOtp,
   getUserByEmail,
   getWaitlistByEmail,
+  passkeyHoldsSyncSlot,
+  userHasPasskey,
   markUserNotNew,
   validateOtpChallenge,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { cliRegistrationPendingDeviceId, isCliGrantSession } from '@/dal/sessions'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
-import { getSettings } from '@/config/settings'
+import { getSettings, isPasskeyEnabled } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
@@ -28,6 +30,7 @@ import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
+import { passkey } from '@better-auth/passkey'
 import { computeDiscoveryUrl, sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
@@ -71,6 +74,12 @@ export const signInOtpOptions = ({
 const otpSignInPath = '/sign-in/email-otp'
 const deviceTokenPath = '/device/token'
 const authTokenHeader = 'set-auth-token'
+
+/** The caller fields the passkey before-hook rules need. */
+type SessionLookup = {
+  user: { id: string; isAnonymous?: boolean | null }
+  session: { deviceId?: string | null }
+} | null
 
 /**
  * Create a Better Auth instance with the provided database
@@ -195,7 +204,12 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   // `email_verified` claim.
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
 
-  return betterAuth({
+  // This before-hook runs ahead of every plugin hook, bearer included, so
+  // `getSessionFromCtx` can't see a bearer-only session here. Going through the
+  // real `getSession` endpoint runs the full pipeline. Assigned once `auth` exists.
+  let resolveSession: (headers: Headers) => Promise<SessionLookup> = async () => null
+
+  const auth = betterAuth({
     basePath: authBasePath,
     database: drizzleAdapter(database, {
       provider: 'pg',
@@ -303,6 +317,50 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             if (rejected) {
               throw ctx.error('TOO_MANY_REQUESTS', { message: rejected.error }, toHeaderRecord(set.headers))
             }
+          }
+          return
+        }
+
+        // Passkey management (register/list/update/delete) requires a real account:
+        // an anonymous user's credential would bind to a throwaway identity that is
+        // deleted on promotion. The two authentication paths stay open — they're how
+        // sign-in works and need no session at all.
+        if (
+          ctx.path.startsWith('/passkey/') &&
+          ctx.path !== '/passkey/generate-authenticate-options' &&
+          ctx.path !== '/passkey/verify-authentication'
+        ) {
+          const headers = ctx.headers ?? new Headers()
+          const existing = await resolveSession(headers)
+          if (!existing) {
+            return
+          }
+          if (existing.user.isAnonymous) {
+            throw ctx.error('FORBIDDEN', { message: 'Passkeys are not available for anonymous users' })
+          }
+          // API keys and CLI device grants are delegated, non-interactive
+          // credentials; letting one register a passkey would turn it into a
+          // permanent interactive sign-in that outlives the key.
+          if (headers.has('x-api-key') || isCliGrantSession(existing.session.deviceId)) {
+            throw ctx.error('FORBIDDEN', { message: 'Passkeys need an interactive session' })
+          }
+          // One passkey per account — it is also the account's single E2EE
+          // passkey slot. The unique index on passkey.user_id backs this up.
+          const isRegistration =
+            ctx.path === '/passkey/generate-register-options' || ctx.path === '/passkey/verify-registration'
+          if (isRegistration && (await userHasPasskey(database, existing.user.id))) {
+            throw ctx.error('CONFLICT', { message: 'This account already has a passkey' })
+          }
+          // A passkey holding the sync slot can still unlock the AK, so deleting
+          // its row first would leave a working slot nobody can see or remove.
+          // The client clears the slot with an AK rotation, then deletes.
+          const passkeyId = (ctx.body as { id?: string } | undefined)?.id
+          if (
+            ctx.path === '/passkey/delete-passkey' &&
+            passkeyId &&
+            (await passkeyHoldsSyncSlot(database, existing.user.id, passkeyId))
+          ) {
+            throw ctx.error('CONFLICT', { message: 'Remove this passkey from sync before deleting it' })
           }
           return
         }
@@ -487,6 +545,18 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
         rateLimit: { enabled: false },
       }),
+      // Changing the RP ID orphans every registered passkey. `origin` comes from
+      // the trusted-origins list, never the request's Origin header. The challenge
+      // rides a signed cookie, so the frontend's ceremony calls send credentials.
+      ...(isPasskeyEnabled(settings)
+        ? [
+            passkey({
+              rpID: settings.passkeyRpId,
+              rpName: settings.passkeyRpName,
+              origin: trustedOrigins,
+            }),
+          ]
+        : []),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
       // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.
@@ -506,6 +576,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       ...buildSsoPlugins(),
     ],
   })
+
+  resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })
+
+  return auth
 }
 
 export type Auth = ReturnType<typeof createAuth>

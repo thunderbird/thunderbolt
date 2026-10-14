@@ -12,6 +12,17 @@ const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
 })
 const defaultAnonymousSignInRateLimitMax = 10
 const defaultAnonymousSignInRateLimitWindowSecs = 60
+
+/**
+ * Derive a WebAuthn Relying Party ID (a bare hostname) from the app URL. The RP ID
+ * must equal the web origin's host (or a parent of it), so the app's own URL is the
+ * correct default for every deployment — dev, prod, and self-hosted alike.
+ */
+const rpIdFromAppUrl = (appUrl: string): string => (URL.canParse(appUrl) ? new URL(appUrl).hostname : '')
+
+/** WebAuthn forbids IP addresses as a Relying Party ID; it must be a domain name. */
+const isIpLiteral = (host: string): boolean => /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')
+
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
@@ -173,6 +184,15 @@ const settingsSchema = z
     // operator-held private key.
     orgEscrowEnabled: z.boolean().default(false),
 
+    // Passkey (WebAuthn) sign-in and passkey sync unlock. Off unless PASSKEY_ENABLED,
+    // and never in SSO modes (see `isPasskeyEnabled`). The Relying Party ID derives
+    // from APP_URL's hostname unless PASSKEY_RP_ID overrides it (e.g. an apex to
+    // share passkeys across subdomains). It is permanent per deployment: changing it
+    // — including by changing APP_URL — orphans every registered credential.
+    passkeyEnabled: z.boolean().default(false),
+    passkeyRpId: z.string().trim().default(''),
+    passkeyRpName: z.string().trim().default('Thunderbolt'),
+
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
     // Relay role: where this deployment forwards user transcripts, and its client key.
@@ -284,6 +304,14 @@ const settingsSchema = z
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.passkeyEnabled && (!data.passkeyRpId || isIpLiteral(data.passkeyRpId))) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'PASSKEY_ENABLED needs a domain-name Relying Party ID: set APP_URL to an absolute https URL on a domain, or set PASSKEY_RP_ID',
+        path: ['passkeyRpId'],
+      })
+    }
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
       ctx.addIssue({
         code: 'too_small',
@@ -443,6 +471,7 @@ export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): Publ
  */
 const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
+  const appUrl = process.env.APP_URL || 'http://localhost:1420'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -478,7 +507,7 @@ const parseSettings = (): Settings => {
     apiKeyDefaultExpiresInSeconds: process.env.API_KEY_DEFAULT_EXPIRES_IN,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
-    appUrl: process.env.APP_URL || 'http://localhost:1420',
+    appUrl,
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -534,6 +563,11 @@ const parseSettings = (): Settings => {
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
+    passkeyEnabled: process.env.PASSKEY_ENABLED === 'true',
+    // Derived only when passkeys are on, so an APP_URL that isn't a full URL can
+    // never break a deployment that doesn't use them.
+    passkeyRpId: process.env.PASSKEY_RP_ID || (process.env.PASSKEY_ENABLED === 'true' ? rpIdFromAppUrl(appUrl) : ''),
+    passkeyRpName: process.env.PASSKEY_RP_NAME || 'Thunderbolt',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
     debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',
@@ -596,6 +630,14 @@ export const getSettings = (): Settings => {
 export const clearSettingsCache = (): void => {
   settings = null
 }
+
+/**
+ * Whether passkeys are offered: the operator turned them on and the deployment
+ * uses consumer auth. SSO deployments leave credentials to the IdP, so a passkey
+ * there would be a sign-in factor the IdP cannot revoke.
+ */
+export const isPasskeyEnabled = (settings: Pick<Settings, 'passkeyEnabled' | 'authMode'>): boolean =>
+  settings.passkeyEnabled && settings.authMode === 'consumer'
 
 /** Parse comma-separated CORS origins into a list. */
 export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {

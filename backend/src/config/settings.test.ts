@@ -336,6 +336,50 @@ describe('Config Settings', () => {
       }
     })
 
+    describe('passkey Relying Party ID', () => {
+      const keys = ['APP_URL', 'PASSKEY_ENABLED', 'PASSKEY_RP_ID'] as const
+      const withEnv = (env: Partial<Record<(typeof keys)[number], string>>, run: () => void) => {
+        const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+        try {
+          for (const key of keys) {
+            delete process.env[key]
+          }
+          Object.assign(process.env, env)
+          clearSettingsCache()
+          run()
+        } finally {
+          for (const key of keys) {
+            if (saved[key] === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = saved[key]
+            }
+          }
+          clearSettingsCache()
+        }
+      }
+
+      it('never parses APP_URL while passkeys are off', () => {
+        withEnv({ APP_URL: 'app.example.com' }, () => {
+          expect(getSettings().passkeyRpId).toBe('')
+        })
+      })
+
+      it("derives the RP ID from APP_URL's hostname when passkeys are on", () => {
+        withEnv({ APP_URL: 'https://app.example.com', PASSKEY_ENABLED: 'true' }, () => {
+          expect(getSettings().passkeyRpId).toBe('app.example.com')
+        })
+      })
+
+      it('refuses an RP ID WebAuthn would reject', () => {
+        for (const appUrl of ['http://192.168.1.10:1420', 'app.example.com']) {
+          withEnv({ APP_URL: appUrl, PASSKEY_ENABLED: 'true' }, () => {
+            expect(() => getSettings()).toThrow()
+          })
+        }
+      })
+    })
+
     it('should have valid default values in schema', () => {
       // Test that the schema itself has sensible defaults
       // This tests the schema definition without env var manipulation

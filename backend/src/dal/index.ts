@@ -78,3 +78,7 @@ export {
   consumeChallengeNonce,
   deleteExpiredOrConsumedNonces,
 } from './encryption'
+export type { PasskeySlot } from './encryption'
+
+// Passkeys
+export { userHasPasskey, passkeyHoldsSyncSlot, isUserPasskeyCredential } from './passkeys'

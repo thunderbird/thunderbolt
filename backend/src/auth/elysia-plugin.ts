@@ -50,6 +50,38 @@ export const createAuthMacro = (auth: Auth) =>
     },
   })
 
+// Better Auth adds the `__Secure-` prefix whenever cookies are secure (HTTPS or
+// production), so both spellings must match.
+const sessionCookiePattern = /^(__Secure-)?better-auth\.session_token=/
+
+/**
+ * Passkey ceremonies send cookies (the WebAuthn challenge rides one), so any old
+ * Better Auth session cookie the browser still holds comes along. The bearer
+ * plugin appends its own session cookie after it, Better Auth reads the first
+ * one, and a valid bearer request 401s. A Better Auth hook can't fix this (the
+ * bearer plugin reads the original headers), so the stale cookie is stripped
+ * here. Only on bearer requests, so cookie-based flows like SSO are untouched.
+ */
+export const stripStaleSessionCookie = (request: Request): Request => {
+  const authorization = request.headers.get('authorization')
+  const cookie = request.headers.get('cookie')
+  if (!cookie || !authorization?.toLowerCase().startsWith('bearer ')) {
+    return request
+  }
+  const parts = cookie.split(';').map((part) => part.trim())
+  if (!parts.some((part) => sessionCookiePattern.test(part))) {
+    return request
+  }
+  const filtered = parts.filter((part) => part && !sessionCookiePattern.test(part)).join('; ')
+  const headers = new Headers(request.headers)
+  if (filtered) {
+    headers.set('cookie', filtered)
+  } else {
+    headers.delete('cookie')
+  }
+  return new Request(request, { headers })
+}
+
 /** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
@@ -63,7 +95,12 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   // Mounted at Better Auth's basePath (under the app's /v1 prefix), not '/*': Better Auth
   // routes on whatever follows the first /api/auth, so a catch-all would let a lookalike
   // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
-  plugin.all('/api/auth/*', ({ request }) => auth.handler(request), { parse: 'none' })
+  plugin.all(
+    '/api/auth/*',
+    ({ request }) =>
+      auth.handler(new URL(request.url).pathname.includes('/passkey/') ? stripStaleSessionCookie(request) : request),
+    { parse: 'none' },
+  )
 
   return { plugin, auth }
 }

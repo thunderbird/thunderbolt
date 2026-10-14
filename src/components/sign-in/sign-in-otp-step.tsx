@@ -24,6 +24,8 @@ type SignInOtpStepProps = {
   onResend: () => Promise<boolean>
   onCancel: () => void
   variant: 'modal' | 'page'
+  /** Mention the magic link in the email (modal variant). Off where only the code can finish the flow. */
+  showMagicLinkHint?: boolean
 }
 
 /**
@@ -43,6 +45,7 @@ export const SignInOtpStep = ({
   onResend,
   onCancel,
   variant,
+  showMagicLinkHint = true,
 }: SignInOtpStepProps) => {
   const { t } = useLingui()
   const isVerifying = status === 'verifying'
@@ -157,7 +160,7 @@ export const SignInOtpStep = ({
 
         <div className="mt-6 flex w-full flex-col items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            <Trans>Or enter the 8-digit code</Trans>
+            {showMagicLinkHint ? <Trans>Or enter the 8-digit code</Trans> : <Trans>Enter the 8-digit code</Trans>}
           </p>
           {renderOtpInput('off')}
 
@@ -172,7 +175,7 @@ export const SignInOtpStep = ({
 
           {renderResendButton()}
 
-          {!isLocalhost && (
+          {showMagicLinkHint && !isLocalhost && (
             <p className="text-xs text-muted-foreground">
               <Trans>Or click the magic link in your email</Trans>
             </p>

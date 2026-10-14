@@ -165,7 +165,7 @@ gh workflow run release.yml -f version=1.2.3      # Explicit version
 
 3. **Final Release**:
    - All builds upload artifacts to the GitHub release
-   - `desktop-release.yml`'s `publish` job flips the shared draft to public and clears the prerelease flag (`--prerelease` stays set only for nightlies)
+   - `desktop-release.yml`'s `publish` job flips the shared draft to public and clears the prerelease flag (`--prerelease` stays set for nightlies and for single-platform RC tags)
 
 ### Method 2: Local Script (Best for Testing)
 
@@ -252,7 +252,7 @@ The `release.yml` workflow handles the entire release process:
 
 ### Platform Builds
 
-Each child workflow checks out the `v{version}` tag, so all of them build the same commit:
+Each child workflow checks out the tag `version-bump.yml` created (`v{version}` here), so all of them build the same commit:
 
 - **Desktop**:
   - **Linux**: `.deb`, `.AppImage`, `.rpm`
@@ -275,7 +275,7 @@ Desktop builds are `fail-fast: false`, and the `publish` job runs on `!cancelled
 
 ## Platform-Specific Releases
 
-`release.yml` takes a `platform` input (`all`, `ios`, `android`, `desktop`) and gates each child job on it, so `gh workflow run release.yml -f platform=ios` is the one-step route: it bumps, tags and builds. Dispatching `version-bump.yml` on its own only bumps and tags — the fan-out lives in `release.yml`, so you then dispatch the platform workflow yourself.
+`release.yml` takes a `platform` input (`all`, `ios`, `android`, `desktop`) and gates each child job on it, so `gh workflow run release.yml -f platform=ios` is the one-step route: it bumps, creates the RC tag and builds that tag. Dispatching `version-bump.yml` on its own only bumps and tags — the fan-out lives in `release.yml`, so you then dispatch the platform workflow yourself and pass the RC tag, for example `-f version=1.2.3 -f tag=v1.2.3-ios-rc`.
 
 ### iOS-Only Releases
 
@@ -288,7 +288,7 @@ gh workflow run release.yml -f platform=ios -f version_type=auto
 # Or bump and tag only
 gh workflow run version-bump.yml -f platform=ios -f version_type=auto
 
-# Or build an already-tagged version
+# Or build an already-tagged version (add -f tag=v1.2.3-ios-rc for an RC tag)
 gh workflow run ios-release.yml -f version=1.2.3 -f notify_testers=true
 ```
 
@@ -305,7 +305,7 @@ gh workflow run release.yml -f platform=android -f version_type=auto
 # Or bump and tag only
 gh workflow run version-bump.yml -f platform=android -f version_type=auto
 
-# Or build an already-tagged version
+# Or build an already-tagged version (add -f tag=v1.2.3-android-rc for an RC tag)
 gh workflow run android-release.yml -f version=1.2.3 -f notify_testers=true
 ```
 
@@ -319,7 +319,7 @@ To release only desktop without mobile:
 gh workflow run release.yml -f platform=desktop -f version_type=auto
 ```
 
-**Note**: Creates RC tag like `v1.2.3-desktop-rc`
+**Note**: Creates RC tag like `v1.2.3-desktop-rc`. The build is attached to that tag's GitHub release, which stays a prerelease and so never becomes Latest. CrabNebula still publishes the build, so the desktop auto-updater offers it to users.
 
 RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+$"`, so `v1.2.3-ios-rc` is not treated as a release boundary and its commits stay pending for the next unified release. `create-release.ts` skips `CHANGELOG.md` entirely for platform releases for the same reason. The CLI also sits out single-platform dispatches — it belongs to the unified tag, not to an RC.
 
@@ -382,7 +382,7 @@ A dispatch against a non-default ref runs that ref's copy of the workflow, so th
 
 Nothing in the pipeline validates that the version files agree with the tag, so a mismatch does not fail fast — it ships. The symptoms are downstream: an app reporting the wrong version, or a `thunderbolt` CLI whose `--version` lags the release it was attached to because `cli/package.json` was missed.
 
-What does fail visibly is a missing tag. Every child workflow checks out `ref: v{version}`, so dispatching a platform workflow for a version that was never tagged fails at checkout.
+What does fail visibly is a missing tag. Every child workflow checks out `v{version}`, or the `tag` input when the desktop, iOS or Android workflow receives one, so dispatching a platform workflow for a tag that does not exist fails at checkout.
 
 **Solution:** re-run `scripts/create-release.ts` with an explicit `--version` on a clean tree so every file moves together. The older `create-version-tag.yml` helper still exists but bumps only `package.json`, `Cargo.toml`, `tauri.conf.json` and `gen/apple/project.yml` — it predates the CLI and the changelog, and its success message about triggering a release is no longer true.
 
@@ -413,7 +413,7 @@ gh workflow run android-release.yml -f version=1.2.3
 gh workflow run cli-release.yml -f version=1.2.3
 ```
 
-`version` is required on all four — they check out `v{version}` rather than the dispatched ref's HEAD.
+`version` is required on all four — they check out `v{version}` rather than the dispatched ref's HEAD. To rebuild a single-platform RC, also pass its tag to the desktop, iOS or Android workflow, for example `-f tag=v1.2.3-ios-rc`.
 
 ## Required GitHub Secrets
 

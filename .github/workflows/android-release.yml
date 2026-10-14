@@ -17,6 +17,10 @@ on:
         required: false
         default: false
         type: boolean
+      tag:
+        description: 'Tag to build (defaults to v{version})'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -38,6 +42,10 @@ on:
         required: false
         default: false
         type: boolean
+      tag:
+        description: 'Tag to build (defaults to v{version})'
+        required: false
+        type: string
 
 concurrency:
   group: android-release-${{ inputs.version }}
@@ -45,6 +53,9 @@ concurrency:
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
 
 jobs:
   build_and_deploy_android:
@@ -54,6 +65,15 @@ jobs:
       build_version: ${{ steps.determine_version.outputs.build_version }}
 
     steps:
+      - name: Check the tag matches the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && [ "$RELEASE_TAG" != "v$VERSION-android-rc" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match version $VERSION"
+            exit 1
+          fi
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet
@@ -68,7 +88,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node.js

@@ -57,6 +57,7 @@ jobs:
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
 
@@ -67,6 +68,7 @@ jobs:
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
 
@@ -77,6 +79,7 @@ jobs:
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
 

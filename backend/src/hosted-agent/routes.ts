@@ -25,24 +25,42 @@ import {
   APICallError,
   convertToModelMessages,
   RetryError,
+  stepCountIs,
   streamText,
   type LanguageModel,
   type LanguageModelUsage,
+  type StepResult,
+  type ToolSet,
 } from 'ai'
 import { Elysia, type AnyElysia } from 'elysia'
 import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
+import { createAgentMcpClients, parseAgentMcpServers, type AgentMcpClients } from './mcp'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { createHostedAgentProvider } from './provider'
 import { buildAgentSystemPrompt } from './system-prompt'
-import { getAbortedRunCounts } from './usage-estimate'
+import { createToolTimingMetadata } from './tool-timing'
+import { getAbortedRunCounts, getSettledRunCounts } from './usage-estimate'
 
-/** Longest reply per run. Generous for chat, and it bounds the worst-case cost of a single run. */
+/**
+ * Longest output per model step. Generous for chat; with `AGENT_MAX_STEPS` it bounds the worst-case cost of a run,
+ * since a run that calls tools makes one model call per step.
+ */
 export const agentMaxOutputTokens = 8192
 /** Largest request body. Comfortably fits a long text conversation. */
 export const maxRequestBytes = 2_000_000
-/** Longest a run may take upstream. It bounds how long a hung provider can hold a user's in-flight slot. */
+/**
+ * Longest a run may take, its tool calls included. It bounds how long a hung provider or MCP server can hold a
+ * user's in-flight slot.
+ */
 export const agentUpstreamTimeoutMs = 120_000
+
+/**
+ * The last step's nudge once tools are withheld, so a run that is still calling tools at the cap answers instead
+ * of ending on a call. The built-in pipeline does the same on its final step (`buildStepOverrides`,
+ * `src/ai/step-logic.ts`).
+ */
+const finalStepNudge = 'RESPOND NOW with the information gathered. Do not ask questions.'
 
 export type CreateHostedAgentRoutesOptions = {
   auth: Auth
@@ -58,6 +76,8 @@ export type CreateHostedAgentRoutesOptions = {
   recordUsage?: typeof recordInferenceUsage
   /** Defaults to `agentUpstreamTimeoutMs`. */
   upstreamTimeoutMs?: number
+  /** Defaults to clients for the servers in `AGENT_MCP_SERVERS`, over `fetchFn`. */
+  mcpClients?: AgentMcpClients
 }
 
 /** Upstream HTTP status of a failed run. Retried failures arrive wrapped in a `RetryError`. */
@@ -77,8 +97,9 @@ const createInstructionsTooLargeResponse = (): Response =>
 
 /**
  * Hosted agent routes: `POST /agent/chat` takes a `DefaultChatTransport` body and streams a UI message
- * response. Stateless: the browser owns the conversation and resends it each turn. Mounts nothing unless
- * `AGENT_ENABLED` is set, and registers the agent with discovery.
+ * response. Stateless: the browser owns the conversation and resends it each turn. The run may call the read-only
+ * tools of the MCP servers in `AGENT_MCP_SERVERS`, for at most `AGENT_MAX_STEPS` model steps, the last of which
+ * offers no tools. Mounts nothing unless `AGENT_ENABLED` is set, and registers the agent with discovery.
  */
 export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions) => {
   const { auth, database, settings, fetchFn, logger, rateLimit, checkAdmission, recordUsage } = options
@@ -95,6 +116,9 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
   const identity = getAgentIdentity(settings.agentModel)
   // Built at startup so an unset provider key fails the boot (see `createManagedProviderConnection`).
   const model = options.model ?? createAgentModel(identity, settings, { fetchFn, logger })
+  // Parsed at startup so a malformed AGENT_MCP_SERVERS fails the boot; the servers connect on first use.
+  const mcpClients =
+    options.mcpClients ?? createAgentMcpClients(parseAgentMcpServers(settings.agentMcpServers), { logger, fetchFn })
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
   // One run per user closes that gap. The set is per process, which is sufficient while the agent runs
   // as a single instance; a multi-instance deployment needs a shared lock.
@@ -141,6 +165,13 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           return createErrorResponse(getSafeErrorMessage(400))
         }
         const messages = await convertToModelMessages(chatRequest.value.messages)
+        // Before admission: admission, the in-flight check and taking the slot must run back to back, and a first
+        // connect can take seconds.
+        const { tools, toolDefinitions, unavailableServers } = await mcpClients.loadTools()
+        // A visitor who left while the tools loaded gets no run, so nothing is billed for a prompt never sent.
+        if (ctx.request.signal.aborted) {
+          return new Response(null, { status: 499 })
+        }
 
         const userId = ctx.user.id
         const admission = await admitManagedRequest({
@@ -186,16 +217,20 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           },
         })
 
+        const hasTools = Object.keys(tools).length > 0
         const system = buildAgentSystemPrompt({
           operatorPrompt: settings.agentSystemPrompt,
           instructions: chatRequest.value.instructions,
+          hasTools,
+          unavailableServers,
           appLanguage: ctx.request.headers.get('X-App-Language'),
           timeZone: settings.agentTimezone,
           now: new Date(),
         })
-        // Kept to bill an aborted run once it settles: it usually never reports usage, so it is estimated from
-        // what was sent and what streamed back.
+        // Kept to bill an aborted run once it settles: the step in flight usually never reports usage, so it is
+        // estimated from what it was sent and what it streamed, on top of what the finished steps reported.
         let streamedOutput = ''
+        let finishedSteps: StepResult<ToolSet>[] = []
         let abortedRunUsage: LanguageModelUsage | undefined
         let abortReason: 'client' | 'timeout' | undefined
 
@@ -203,6 +238,14 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           model,
           system,
           messages,
+          tools,
+          stopWhen: stepCountIs(settings.agentMaxSteps),
+          // The last step offers no tools, so a run still calling them at the cap answers instead of stopping on a
+          // call. A run without tools is left alone.
+          prepareStep: ({ stepNumber, messages: stepMessages }) =>
+            hasTools && stepNumber >= settings.agentMaxSteps - 1
+              ? { activeTools: [], messages: [...stepMessages, { role: 'user', content: finalStepNudge }] }
+              : undefined,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,
           // streamText merges the two: whichever fires first aborts the upstream call.
@@ -212,8 +255,14 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
             if (chunk.type === 'text-delta' || chunk.type === 'reasoning-delta') {
               streamedOutput += chunk.text
             }
+            if (chunk.type === 'tool-input-delta') {
+              streamedOutput += chunk.delta
+            }
           },
-          onFinish: ({ totalUsage }) => {
+          onStepFinish: () => {
+            streamedOutput = ''
+          },
+          onFinish: ({ totalUsage, steps }) => {
             // After an abort, recordAbortedRunUsage writes the run's one row. Deferring to it here is the first
             // guard against a second row; the ledger's idempotent insert (onConflictDoNothing on the run's
             // eventId, in recordInferenceUsage) is the second, but it alone would keep whichever write landed first.
@@ -221,12 +270,20 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
               abortedRunUsage = totalUsage
               return
             }
-            return recordLanguageModelUsage(usageCallbacks, totalUsage)
+            const counts = getSettledRunCounts(
+              totalUsage,
+              steps.map(({ usage }) => usage),
+            )
+            return counts
+              ? recordTokenCounts(usageCallbacks, counts)
+              : recordLanguageModelUsage(usageCallbacks, totalUsage)
           },
           onError: ({ error }) => logRunFailure(error),
           // A client disconnect (Stop, or a dropped connection) or the timeout aborts the run without reaching
-          // onError. onAbort runs first; onFinish follows only when the abort lands after the run's last step.
-          onAbort: () => {
+          // onError. onAbort runs first, with the steps that finished. onFinish follows once any step had finished,
+          // with the run's total only when the abort landed after its last step.
+          onAbort: ({ steps }) => {
+            finishedSteps = steps
             abortReason = ctx.request.signal.aborted ? 'client' : 'timeout'
             if (abortReason === 'client') {
               logger?.info({ event: 'agent_run_aborted', ...logContext }, 'Agent run aborted by the client')
@@ -239,8 +296,11 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         const recordAbortedRunUsage = async (reason: 'client' | 'timeout') => {
           const { counts, estimated } = getAbortedRunCounts({
             reportedUsage: abortedRunUsage,
+            finishedSteps: finishedSteps.map(({ usage }) => usage),
             system,
-            messages,
+            toolDefinitions,
+            // A step's response messages are cumulative: the last finished step's hold every earlier step's too.
+            messages: [...messages, ...(finishedSteps.at(-1)?.response.messages ?? [])],
             outputText: streamedOutput,
           })
           if (estimated) {
@@ -277,6 +337,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         return result.toUIMessageStreamResponse({
           headers: streamingResponseHeaders(ctx.set.headers),
           sendReasoning: false,
+          messageMetadata: createToolTimingMetadata(),
         })
       },
       // The handler reads the raw stream itself under a byte cap.

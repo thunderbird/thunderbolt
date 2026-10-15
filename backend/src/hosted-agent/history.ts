@@ -38,9 +38,11 @@ const containsFilePart = (body: unknown): boolean => {
 }
 
 /**
- * Parts dropped from the replay. The server registers no tools and never streams reasoning to the client
- * (`sendReasoning: false`), so tool and reasoning parts were not produced by it (a replayed reasoning part also
- * lacks the signature Anthropic requires). `step-start` is a UI step marker that carries no content.
+ * Parts dropped from the replay. Tool parts the server streamed come back from the client, which could have
+ * written any result into them, and the model would take a forged result as the server's own, so a later turn
+ * calls the tools again instead. Reasoning never streams to the client (`sendReasoning: false`), so a replayed
+ * reasoning part was not produced here (and lacks the signature Anthropic requires). `step-start` is a UI step
+ * marker that carries no content.
  */
 const droppedPartSchema = z
   .object({ type: z.string().regex(/^(tool-.+|dynamic-tool|reasoning|step-start)$/) })

@@ -27,20 +27,29 @@ const estimateTokens = (text: string): number => {
   return denseCharacters + Math.ceil(otherCharacters / charsPerToken)
 }
 
-type RunUsageEstimateInput = {
+type StepUsageEstimateInput = {
   system: string
+  /** The tools' definitions as JSON, which a step that offers tools is billed for too. */
+  toolDefinitions?: string
+  /** What the step in flight was sent: the conversation, then the tool calls and results of the steps before it. */
   messages: ModelMessage[]
-  /** Text and reasoning the provider streamed before the run ended. */
+  /** Text, reasoning and tool-call input the step in flight streamed before the run ended. */
   outputText: string
 }
 
 /**
- * Ledger counts for a run that ended before the provider reported usage. The prompt is the system prompt plus
- * the messages serialized as JSON, whose quoting and punctuation push the count higher still. Cache tokens are
- * zero, so a prompt the provider served from cache is charged at the uncached rate.
+ * Ledger counts for a step that ended before the provider reported usage. The prompt is the system prompt, the
+ * tool definitions and the messages serialized as JSON, whose quoting and punctuation push the count higher still.
+ * Cache tokens are zero, so a prompt the provider served from cache is charged at the uncached rate.
  */
-const estimateRunUsage = ({ system, messages, outputText }: RunUsageEstimateInput): InferenceTokenCounts => {
-  const promptTokens = estimateTokens(system) + estimateTokens(JSON.stringify(messages))
+const estimateStepUsage = ({
+  system,
+  toolDefinitions = '',
+  messages,
+  outputText,
+}: StepUsageEstimateInput): InferenceTokenCounts => {
+  const promptTokens =
+    estimateTokens(system) + estimateTokens(toolDefinitions) + estimateTokens(JSON.stringify(messages))
   const completionTokens = estimateTokens(outputText)
   return {
     promptTokens,
@@ -51,20 +60,60 @@ const estimateRunUsage = ({ system, messages, outputText }: RunUsageEstimateInpu
   }
 }
 
+/** Field-by-field sum of the counts of a run's steps. */
+const sumCounts = (steps: InferenceTokenCounts[]): InferenceTokenCounts => {
+  const total = (field: keyof InferenceTokenCounts) => steps.reduce((sum, counts) => sum + (counts[field] ?? 0), 0)
+  return {
+    promptTokens: total('promptTokens'),
+    completionTokens: total('completionTokens'),
+    totalTokens: total('totalTokens'),
+    cacheCreationTokens: total('cacheCreationTokens'),
+    cacheCreation1hTokens: total('cacheCreation1hTokens'),
+    cacheReadTokens: total('cacheReadTokens'),
+  }
+}
+
+/** The counts of the steps that reported usage. A step without it is left out, as a run without it would be. */
+const reportedStepCounts = (steps: LanguageModelUsage[]) => steps.map(toTokenCounts).filter((counts) => counts !== null)
+
 /**
- * Counts to bill an aborted run. An abort that lands after the run's last step still reaches onFinish, and if
- * the provider's usage arrived by then it wins, so the run is billed once at its real usage. Otherwise the run
- * is estimated: the provider consumed the tokens either way.
+ * Counts to bill a run that ended without an abort. A run that finished reports its total. One whose later step
+ * failed upstream (a 529 after retries, or a context overflow once tool results grew the prompt) reports none, so
+ * it is billed at what its finished steps reported: the provider charged for those either way. Null when no step
+ * reported usage.
+ */
+export const getSettledRunCounts = (
+  totalUsage: LanguageModelUsage,
+  steps: LanguageModelUsage[],
+): InferenceTokenCounts | null => {
+  const reported = toTokenCounts(totalUsage)
+  if (reported) {
+    return reported
+  }
+  const finished = reportedStepCounts(steps)
+  return finished.length > 0 ? sumCounts(finished) : null
+}
+
+/**
+ * Counts to bill an aborted run. When the abort lands after the run's last step the provider's total has arrived,
+ * and it wins, so the run is billed once at its real usage. Otherwise the run is billed at what its finished steps
+ * reported, plus an estimate for the step in flight: the provider consumed those tokens either way. A step stays in
+ * flight until its tool calls settle, so an abort while a tool runs estimates the step that called it.
  */
 export const getAbortedRunCounts = ({
   reportedUsage,
+  finishedSteps = [],
   ...estimateInput
-}: RunUsageEstimateInput & { reportedUsage?: LanguageModelUsage }): {
+}: StepUsageEstimateInput & { reportedUsage?: LanguageModelUsage; finishedSteps?: LanguageModelUsage[] }): {
   counts: InferenceTokenCounts
   estimated: boolean
 } => {
   const reported = reportedUsage && toTokenCounts(reportedUsage)
-  return reported
-    ? { counts: reported, estimated: false }
-    : { counts: estimateRunUsage(estimateInput), estimated: true }
+  if (reported) {
+    return { counts: reported, estimated: false }
+  }
+  return {
+    counts: sumCounts([...reportedStepCounts(finishedSteps), estimateStepUsage(estimateInput)]),
+    estimated: true,
+  }
 }

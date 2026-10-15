@@ -85,21 +85,9 @@ import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provi
 import { isMcpDiscoveryError } from '@/lib/mcp-errors'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
+import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
 import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
-
-/**
- * Sanitizes a server name into a valid tool prefix.
- * Server names are already meaningful (set by user or auto-generated),
- * so this just lowercases and replaces non-alphanumeric chars with underscores.
- * `mcp_servers.name` is a nullable synced column, so a null/missing name falls
- * back to the generic `mcp` prefix rather than crashing the chat send.
- */
-export const sanitizeToolPrefix = (serverName: string | null | undefined): string =>
-  (serverName ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '') || 'mcp'
 
 /** Wrap fetch to include credentials in SSO mode so session cookies are sent to the backend. */
 const fetch: typeof baseFetch = (input, init) =>

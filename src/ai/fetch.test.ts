@@ -42,7 +42,6 @@ import {
   recordLegacyEmptyResponseRetry,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
-  sanitizeToolPrefix,
   selectPromptSkillDefinitions,
   withAppVersionHeader,
 } from './fetch'
@@ -119,27 +118,6 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
   name,
   url: `https://${name}.example.com`,
   client: { tools, close: () => {} } as unknown as MCPClient,
-})
-
-describe('sanitizeToolPrefix', () => {
-  const cases: Array<[string | null | undefined, string]> = [
-    ['Render', 'render'],
-    ['render.com', 'render_com'],
-    ['My Server', 'my_server'],
-    ['api.github.com', 'api_github_com'],
-    ['  spaced  ', 'spaced'],
-    ['UPPER_snake', 'upper_snake'],
-    ['weird!!!name', 'weird_name'],
-    ['---', 'mcp'],
-    ['', 'mcp'],
-    [null, 'mcp'],
-    [undefined, 'mcp'],
-    ['localhost-3000', 'localhost_3000'],
-  ]
-
-  it.each(cases)('sanitizes %p → %p', (input, expected) => {
-    expect(sanitizeToolPrefix(input)).toBe(expected)
-  })
 })
 
 describe('addSkillTool', () => {

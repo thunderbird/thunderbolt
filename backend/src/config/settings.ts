@@ -263,13 +263,14 @@ const settingsSchema = z
     haystackPipelines: z.string().default(''),
 
     // Hosted agent settings (see `@/hosted-agent/routes`). Name, description, icon and anonymous discovery
-    // feed `GET /agents` (see `@/hosted-agent/provider`). The max-steps and MCP settings have no effect yet.
+    // feed `GET /agents` (see `@/hosted-agent/provider`).
     agentEnabled: z.boolean().default(false),
     agentModel: z.string().default(''),
-    // No effect until MCP tools land (GTM-28): without tools every run is a single step.
+    // Most model steps per run, each tool round trip being one more. Without tools every run is a single step.
     agentMaxSteps: z.coerce.number().int().positive().default(8),
     agentSystemPrompt: z.string().default(''),
-    // JSON array of MCP server descriptors the hosted agent may call.
+    // JSON array of MCP servers whose read-only tools the hosted agent may call, parsed by `parseAgentMcpServers`
+    // (`@/hosted-agent/mcp`) when the agent mounts, so a malformed value fails the boot.
     agentMcpServers: z.string().default(''),
     agentName: z.string().default('Assistant'),
     agentDescription: z.string().default(''),

@@ -54,6 +54,7 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
+      latest: ${{ inputs.platform == 'all' }}
 
   ios:
     name: iOS Release

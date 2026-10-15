@@ -6,6 +6,10 @@ on:
       conclusion:
         required: true
         type: string
+      incident:
+        description: 'Incident name, for a workflow that raises more than one. Defaults to the workflow name.'
+        required: false
+        type: string
     secrets:
       LINEAR_API_KEY:
         required: true
@@ -24,7 +28,7 @@ jobs:
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
-      group: notify-on-failure-${{ github.workflow }}
+      group: notify-on-failure-${{ inputs.incident || github.workflow }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,6 +42,7 @@ jobs:
         run: bun scripts/notify-on-failure.ts
         env:
           WORKFLOW_NAME: ${{ github.workflow }}
+          INCIDENT_NAME: ${{ inputs.incident }}
           WORKFLOW_RUN_ID: ${{ github.run_id }}
           WORKFLOW_CONCLUSION: ${{ inputs.conclusion }}
           GITHUB_TOKEN: ${{ github.token }}

@@ -355,9 +355,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Signal completed Nightly run
+        # A missed ping already alerts in Better Stack; it must not fail the release gate.
+        continue-on-error: true
         env:
           HEARTBEAT_URL: ${{ secrets.BETTERSTACK_HEARTBEAT_URL }}
-        run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
+        run: curl --fail --silent --show-error --retry 3 --max-time 30 "$HEARTBEAT_URL"
 
   notify:
     needs: [linux, macos, native-ios, native-linux]

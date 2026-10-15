@@ -292,6 +292,9 @@ jobs:
             xcrun simctl boot "$simulator_udid"
           fi
           xcrun simctl bootstatus "$simulator_udid" -b
+          # Puts the page's console in the simulator log that Maestro saves under ios/logs/.
+          xcrun simctl spawn "$simulator_udid" defaults write -g \
+            WebKitDebugLogsPageMessagesToSystemConsoleEnabled -bool true
           echo "IOS_SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
 
       - name: Run native iOS smoke
@@ -333,12 +336,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Upload native iOS failure diagnostics
-        if: failure() && steps.smoke.outputs.attempted == 'true'
+      # Also on green runs: a retry block can hide a failed first attempt, whose evidence Maestro keeps.
+      - name: Upload native iOS diagnostics
+        if: always() && steps.smoke.outputs.attempted == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-ios-diagnostics
           path: |
+            /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/logs/*.log
             /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/commands.json
             /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/screen-hierarchy/*.json
             /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/screenshots/*.png

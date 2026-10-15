@@ -27,7 +27,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-# Like `bun run`: vite.config.ts calls package binaries such as powersync-web.
+# Like `bun run`: puts package binaries such as vite on PATH.
 export PATH=$PWD/node_modules/.bin:$PATH
 
 backend_url=http://localhost:8005

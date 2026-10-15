@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { bufferToBase64URLString, WebAuthnError } from '@simplewebauthn/browser'
+import * as tauriCore from '@tauri-apps/api/core'
+import * as os from '@tauri-apps/plugin-os'
 import { useConfigStore } from '@/api/config-store'
 import type { AuthClient } from '@/contexts'
+import * as platformModule from '@/lib/platform'
 
 // Mock the browser ceremony primitives so tests never touch a real authenticator.
 const prfBytes = new Uint8Array(32).fill(5)
@@ -27,6 +30,7 @@ const {
   signInWithPasskey,
   listPasskeys,
   isPasskeyCancellation,
+  isPasskeyCapable,
   isSessionNotFresh,
   getPasskeyPrfOutput,
 } = await import('./passkey')
@@ -53,7 +57,19 @@ const makeAuthClient = (results: FetchResult[], session: FetchResult = { data: {
 afterEach(() => {
   startRegistration.mockClear()
   startAuthentication.mockClear()
+  mock.restore()
 })
+
+/** Run `fn` with the config's passkey RP ID set to `rpId`, restoring it afterwards. */
+const withPasskeyRpId = async (rpId: string | undefined, fn: () => unknown) => {
+  const { config } = useConfigStore.getState()
+  useConfigStore.getState().updateConfig({ ...config, passkeyRpId: rpId })
+  try {
+    await fn()
+  } finally {
+    useConfigStore.getState().updateConfig(config)
+  }
+}
 
 describe('isPasskeyCancellation', () => {
   it('is true for a NotAllowedError WebAuthnError (user dismissed the prompt)', () => {
@@ -64,6 +80,14 @@ describe('isPasskeyCancellation', () => {
       name: 'NotAllowedError',
     })
     expect(isPasskeyCancellation(err)).toBe(true)
+  })
+
+  it('is true for the native bridge rejecting a cancelled sheet', () => {
+    expect(isPasskeyCancellation('passkey ceremony cancelled')).toBe(true)
+  })
+
+  it('is false for a native failure whose OS message mentions a cancel', () => {
+    expect(isPasskeyCancellation('passkey ceremony failed: The operation was canceled.')).toBe(false)
   })
 
   it('is false for a generic error', () => {
@@ -230,14 +254,100 @@ describe('getPasskeyPrfOutput', () => {
   })
 
   it('asserts under the configured RP ID, so an apex RP ID works from a subdomain', async () => {
-    const { config } = useConfigStore.getState()
-    useConfigStore.getState().updateConfig({ ...config, passkeyRpId: 'example.com' })
-    try {
+    await withPasskeyRpId('example.com', async () => {
       await getPasskeyPrfOutput('cred-1')
       const [{ optionsJSON }] = startAuthentication.mock.calls[0] as unknown as [{ optionsJSON: { rpId?: string } }]
       expect(optionsJSON.rpId).toBe('example.com')
+    })
+  })
+})
+
+describe('isPasskeyCapable', () => {
+  it('is true in a browser with WebAuthn', () => {
+    const original = window.PublicKeyCredential
+    window.PublicKeyCredential = class {} as unknown as typeof PublicKeyCredential
+    try {
+      expect(isPasskeyCapable()).toBe(true)
     } finally {
-      useConfigStore.getState().updateConfig(config)
+      window.PublicKeyCredential = original
     }
+  })
+
+  it('is true on the Apple apps only for the RP ID their entitlements name', async () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('ios')
+    spyOn(os, 'version').mockReturnValue('18.2')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
+    await withPasskeyRpId('passkeys.example.com', () => expect(isPasskeyCapable()).toBe(false))
+  })
+
+  it('is false on iOS 15, which has no platform passkeys', async () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('ios')
+    spyOn(os, 'version').mockReturnValue('15.8')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(false))
+  })
+
+  it('needs macOS 13 for platform passkeys', async () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('macos')
+    const version = spyOn(os, 'version').mockReturnValue('12.7.6')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(false))
+    version.mockReturnValue('13.0.0')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
+  })
+
+  it('is false on the Tauri platforms without a native bridge', () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('windows')
+    expect(isPasskeyCapable()).toBe(false)
+  })
+})
+
+describe('native ceremonies on the Apple apps', () => {
+  type NativeRequest = { request: { prfSalt: number[]; allowCredentials?: number[][] } }
+  const assertion = {
+    id: 'cred-auth',
+    rawId: 'cred-auth',
+    clientDataJson: 'cdj',
+    authenticatorData: 'ad',
+    signature: 'sig',
+    userHandle: '',
+    prfOutput: 'BQUF',
+  }
+
+  /** Route ceremonies to the native bridge and capture what it is asked for. */
+  const useNativeBridge = () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('macos')
+    spyOn(os, 'version').mockReturnValue('15.1.0')
+    const invoke = spyOn(tauriCore, 'invoke').mockResolvedValue(assertion)
+    invoke.mockClear()
+    return invoke
+  }
+
+  it('never asks for a PRF output on sign-in, whatever the server requests', async () => {
+    const invoke = useNativeBridge()
+    const authClient = makeAuthClient([
+      { data: { challenge: 'abc', rpId: 'app.thunderbolt.io', extensions: { prf: { eval: { first: 'x' } } } } },
+      { data: { verified: true } },
+    ])
+
+    await signInWithPasskey(authClient)
+
+    const [, args] = invoke.mock.calls[0] as [string, NativeRequest]
+    expect(args.request.prfSalt).toEqual([])
+    expect(authClient.calls[1]?.options.body).toEqual({
+      response: expect.objectContaining({ id: 'cred-auth', clientExtensionResults: {} }),
+    })
+  })
+
+  it('asks the given passkey for its PRF output under the configured RP ID', async () => {
+    const invoke = useNativeBridge()
+
+    await withPasskeyRpId('app.thunderbolt.io', async () => {
+      expect(await getPasskeyPrfOutput('AQID')).toEqual(new Uint8Array([5, 5, 5]))
+    })
+
+    const [command, args] = invoke.mock.calls[0] as [string, NativeRequest & { request: { rpId: string } }]
+    expect(command).toBe('plugin:passkey|authenticate')
+    expect(args.request.rpId).toBe('app.thunderbolt.io')
+    expect(args.request.allowCredentials).toEqual([[1, 2, 3]])
+    expect(args.request.prfSalt.length).toBeGreaterThan(0)
   })
 })

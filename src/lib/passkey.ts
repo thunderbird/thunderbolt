@@ -7,11 +7,20 @@ import { authRequestHeaders } from '@/contexts/auth-context'
 import { useQuery } from '@tanstack/react-query'
 import { selectPasskeyEnabled, useConfigStore } from '@/api/config-store'
 import { isSsoMode } from '@/lib/auth-mode'
+import {
+  authenticatePasskeyNative,
+  isNativePasskeyPlatform,
+  nativeCancelledMessage,
+  nativePasskeyRpId,
+  registerPasskeyNative,
+} from '@/lib/passkey-native'
 import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 import { getPlatform } from '@/lib/platform'
 import type {
+  AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
 } from '@simplewebauthn/browser'
 
 /**
@@ -19,8 +28,9 @@ import type {
  * account's E2EE passkey slot.
  *
  * We call the plugin's endpoints ourselves instead of using Better Auth's
- * `passkeyClient()`, and run the browser side with `@simplewebauthn/browser`.
- * That's what lets us add the PRF extension to the ceremony options.
+ * `passkeyClient()`, and run the ceremony with `@simplewebauthn/browser` on web or
+ * natively on the Apple Tauri apps (`passkey-native.ts`). That's what lets us add
+ * the PRF extension to the ceremony options.
  */
 
 /**
@@ -72,16 +82,21 @@ const ceremonyFetch = async <T>(authClient: AuthClient, path: string, request: C
 }
 
 /**
- * True when this runtime can perform a WebAuthn ceremony at all. Feature detection
- * alone is not enough: a Tauri webview may expose `PublicKeyCredential` yet fail the
- * ceremony (there is no native passkey bridge for Tauri yet), so we also require the
- * plain web platform. SSO deployments swap the whole auth surface, so exclude them.
+ * True when this runtime can perform a WebAuthn ceremony: the browser on web, or
+ * the native bridge on the Apple Tauri apps. Other Tauri webviews may expose
+ * `PublicKeyCredential` yet fail the ceremony, so they're excluded. SSO
+ * deployments swap the whole auth surface, so exclude them too.
  */
-export const isPasskeyCapable = (): boolean =>
-  typeof window !== 'undefined' &&
-  typeof window.PublicKeyCredential === 'function' &&
-  getPlatform() === 'web' &&
-  !isSsoMode()
+export const isPasskeyCapable = (): boolean => {
+  if (isSsoMode()) {
+    return false
+  }
+  if (isNativePasskeyPlatform()) {
+    // A self-hosted server's own RP ID isn't in the apps' associated domains.
+    return useConfigStore.getState().config.passkeyRpId === nativePasskeyRpId
+  }
+  return typeof window !== 'undefined' && typeof window.PublicKeyCredential === 'function' && getPlatform() === 'web'
+}
 
 /**
  * Whether passkey UI should be offered: the operator turned passkeys on
@@ -96,11 +111,18 @@ export const usePasskeyAvailable = (): boolean => {
 /**
  * True when a ceremony rejection is the user dismissing/cancelling the prompt.
  * Checked by shape rather than `instanceof WebAuthnError`, which would pull the
- * lazily loaded library into the entry bundle.
+ * lazily loaded library into the entry bundle. The native bridge rejects with a
+ * plain string.
  */
-export const isPasskeyCancellation = (error: unknown): boolean =>
-  error instanceof Error &&
-  (error.name === 'NotAllowedError' || (error as { code?: unknown }).code === 'ERROR_CEREMONY_ABORTED')
+export const isPasskeyCancellation = (error: unknown): boolean => {
+  if (typeof error === 'string') {
+    return error === nativeCancelledMessage
+  }
+  return (
+    error instanceof Error &&
+    (error.name === 'NotAllowedError' || (error as { code?: unknown }).code === 'ERROR_CEREMONY_ABORTED')
+  )
+}
 
 /**
  * True when the server refused to register a passkey because the session is more
@@ -130,6 +152,59 @@ const readPrfOutput = (results: AuthenticationExtensionsClientOutputs): Uint8Arr
 }
 
 /**
+ * Split a browser ceremony result into the response for the server, with the PRF
+ * result removed, and the PRF output that must never leave this device.
+ */
+const splitPrfOutput = <T extends { clientExtensionResults: AuthenticationExtensionsClientOutputs }>(
+  credential: T,
+): { response: T; prfOutput: Uint8Array | null } => {
+  const { prf: _prf, ...clientExtensionResults } = credential.clientExtensionResults as Record<string, unknown>
+  return {
+    response: { ...credential, clientExtensionResults },
+    prfOutput: readPrfOutput(credential.clientExtensionResults),
+  }
+}
+
+/** Run a registration ceremony, natively on the Apple Tauri apps and in the browser elsewhere. */
+const runRegistration = async (
+  optionsJSON: PublicKeyCredentialCreationOptionsJSON,
+): Promise<{ response: RegistrationResponseJSON; prfOutput: Uint8Array | null }> => {
+  if (isNativePasskeyPlatform()) {
+    return registerPasskeyNative(optionsJSON, passkeyPrfSalt)
+  }
+  const { startRegistration } = await loadWebAuthn()
+  return splitPrfOutput(
+    await startRegistration({
+      optionsJSON: { ...optionsJSON, extensions: { ...optionsJSON.extensions, ...prfExtension } },
+    }),
+  )
+}
+
+/**
+ * Run an assertion ceremony, natively on the Apple Tauri apps and in the browser
+ * elsewhere. `withPrf` asks for the PRF output; sign-in never does.
+ */
+const runAssertion = async (
+  optionsJSON: PublicKeyCredentialRequestOptionsJSON,
+  withPrf: boolean,
+): Promise<{ response: AuthenticationResponseJSON; prfOutput: Uint8Array | null }> => {
+  if (isNativePasskeyPlatform()) {
+    return authenticatePasskeyNative(optionsJSON, withPrf ? passkeyPrfSalt : new Uint8Array())
+  }
+  const { startAuthentication } = await loadWebAuthn()
+  return splitPrfOutput(
+    await startAuthentication({ optionsJSON: withPrf ? { ...optionsJSON, extensions: prfExtension } : optionsJSON }),
+  )
+}
+
+/** A random base64url challenge, for assertions that never reach the server. */
+const localChallenge = (): string =>
+  btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+
+/**
  * Register a new passkey for the currently authenticated (non-anonymous) user,
  * requesting the PRF extension so the same passkey can unlock sync. Some
  * providers return the PRF output during creation and some only during an
@@ -152,16 +227,11 @@ export const registerPasskey = async (
     { method: 'GET', withChallengeCookie: true },
   )
 
-  const { startRegistration } = await loadWebAuthn()
-  const attResp = await startRegistration({
-    optionsJSON: { ...optionsJSON, extensions: { ...optionsJSON.extensions, ...prfExtension } },
-  })
-  const prfOutput = readPrfOutput(attResp.clientExtensionResults)
-  const { prf: _prf, ...clientExtensionResults } = attResp.clientExtensionResults as Record<string, unknown>
+  const { response, prfOutput } = await runRegistration(optionsJSON)
 
   const passkey = await ceremonyFetch<PasskeyRecord>(authClient, '/passkey/verify-registration', {
     method: 'POST',
-    body: { response: { ...attResp, clientExtensionResults }, name },
+    body: { response, name },
     withChallengeCookie: true,
   })
   return { passkey, prfOutput }
@@ -176,19 +246,18 @@ export const registerPasskey = async (
  * @param credentialId - base64url credential id; limits the prompt to that passkey
  */
 export const getPasskeyPrfOutput = async (credentialId: string): Promise<Uint8Array | null> => {
-  const { bufferToBase64URLString, startAuthentication } = await loadWebAuthn()
-  const response = await startAuthentication({
-    optionsJSON: {
-      challenge: bufferToBase64URLString(crypto.getRandomValues(new Uint8Array(32)).buffer),
+  const { prfOutput } = await runAssertion(
+    {
+      challenge: localChallenge(),
       allowCredentials: [{ id: credentialId, type: 'public-key' }],
       // Sign-in gets its RP ID from the server's options; this assertion never
       // reaches the server, so it reads it from config.
       rpId: useConfigStore.getState().config.passkeyRpId,
       userVerification: 'required',
-      extensions: prfExtension,
     },
-  })
-  return readPrfOutput(response.clientExtensionResults)
+    true,
+  )
+  return prfOutput
 }
 
 /**
@@ -250,13 +319,11 @@ export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userI
   // the authenticator: its output is the passkey slot's secret. Results are
   // stripped too, so a PRF output can never ride the verify request.
   const { extensions: _serverExtensions, ...signInOptions } = optionsJSON
-  const { startAuthentication } = await loadWebAuthn()
-  const asseResp = await startAuthentication({ optionsJSON: signInOptions })
-  const { prf: _prf, ...clientExtensionResults } = asseResp.clientExtensionResults as Record<string, unknown>
+  const { response } = await runAssertion(signInOptions, false)
 
   await ceremonyFetch(authClient, '/passkey/verify-authentication', {
     method: 'POST',
-    body: { response: { ...asseResp, clientExtensionResults } },
+    body: { response },
     withChallengeCookie: true,
   })
 

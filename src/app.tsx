@@ -28,6 +28,7 @@ import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
+import { useLinuxEdgeResize } from '@/hooks/use-linux-edge-resize'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -143,6 +144,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useBootstrapSystemAgents()
   useAppLanguage()
   useUnitDefaults()
+  useLinuxEdgeResize()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()

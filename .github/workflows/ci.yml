@@ -589,8 +589,9 @@ jobs:
         run: |
           cd src-tauri
           cargo build --all-targets
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          # --workspace also covers the local plugins (default-members is the app only).
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
 
       # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
       # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build

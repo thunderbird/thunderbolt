@@ -365,7 +365,7 @@ Three points about the build that are easy to break:
 
 **Never push workflow changes directly to `main`.** Open a PR and let the `pull_request`-triggered workflows exercise the change: `ci.yml`, `e2e.yml` and `security.yml` all run on PRs against any branch.
 
-Release workflows can't be tested from a branch, because `version-bump.yml` and the desktop, iOS and Android builds run in the `thunderbolt_release` environment, which accepts only `main`. Test a desktop build with `test-build.yml`. `scripts/release-workflows.test.ts` checks how the release workflows connect. The rest is validated only after the merge.
+Release workflows can't be tested from a branch, because `version-bump.yml` and the desktop, iOS and Android builds run in the `thunderbolt_release` environment, which accepts only `main`. Don't dispatch a child workflow from a branch either: `desktop-release.yml`'s `draft` and `publish` jobs and all of `cli-release.yml` run outside that environment and act on the real release. Test a desktop build with `test-build.yml`. `scripts/release-workflows.test.ts` checks how the release workflows connect. The rest is validated only after the merge.
 
 ## Troubleshooting
 

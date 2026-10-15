@@ -53,6 +53,7 @@ jobs:
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
       latest: ${{ inputs.platform == 'all' }}
 
@@ -63,6 +64,7 @@ jobs:
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
 
   android:
@@ -72,6 +74,7 @@ jobs:
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:
+      tag: ${{ needs.version_bump.outputs.tag_name }}
       version: ${{ needs.version_bump.outputs.new_version }}
 
   # The CLI rides the unified `v{version}` release tag: its binaries attach to the

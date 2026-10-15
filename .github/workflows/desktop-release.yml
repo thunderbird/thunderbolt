@@ -4,6 +4,10 @@ run-name: Desktop release for v${{ inputs.version }}
 on:
   workflow_call:
     inputs:
+      tag:
+        description: 'Tag to build and release (defaults to v{version})'
+        required: false
+        type: string
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
@@ -15,6 +19,10 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
+      tag:
+        description: 'Tag to build and release (defaults to v{version})'
+        required: false
+        type: string
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
@@ -32,15 +40,27 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  RELEASE_TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
+
 jobs:
   draft:
     name: Create Draft Release
     runs-on: ubuntu-24.04
 
     steps:
+      - name: Check the tag matches the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && [ "$RELEASE_TAG" != "v$VERSION-desktop-rc" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match version $VERSION"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Create CrabNebula Draft Release
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
@@ -78,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -285,7 +305,7 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/release/bundle/deb/*.deb
@@ -298,7 +318,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
@@ -318,7 +338,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
@@ -361,10 +381,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          # An RC tag stays a prerelease, so it never becomes Latest.
+          PRERELEASE: ${{ endsWith(env.RELEASE_TAG, '-rc') }}
           LATEST: ${{ inputs.latest }}
         run: |
-          gh release edit "v${RELEASE_VERSION}" --repo "$REPO" --draft=false --prerelease=false --latest="$LATEST"
+          gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false --prerelease="${PRERELEASE}" --latest="$LATEST"
 
       - name: Publish to CrabNebula Cloud
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6

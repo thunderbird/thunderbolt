@@ -202,6 +202,40 @@ jobs:
           echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
 
+      # Passkeys need the Associated Domains entitlement, which macOS only honours
+      # with this profile embedded. Both are added here, not in tauri.conf.json, so
+      # local builds without the profile still launch.
+      - name: Install macOS provisioning profile
+        if: matrix.os == 'macos-latest'
+        env:
+          PROFILE_B64: ${{ secrets.APP_STORE_MACOS_PROVISIONING_PROFILE }}
+        run: |
+          if [ -z "$PROFILE_B64" ]; then
+            echo "APP_STORE_MACOS_PROVISIONING_PROFILE is not set"
+            exit 1
+          fi
+          PROFILE="$RUNNER_TEMP/embedded.provisionprofile"
+          echo "$PROFILE_B64" | tr -d '[:space:]' | base64 --decode > "$PROFILE"
+          security cms -D -i "$PROFILE" > "$RUNNER_TEMP/profile.plist"
+          echo "Profile: $(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          # Only Developer ID profiles cover every Mac; an App Store one won't launch.
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$RUNNER_TEMP/profile.plist" 2>/dev/null)" != "true" ]; then
+            echo "Not a Developer ID provisioning profile"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$RUNNER_TEMP/profile.plist" \
+            || { echo "Profile doesn't authorize Associated Domains"; exit 1; }
+          # macOS.files copies the profile into Contents/ before signing. Older tags
+          # have no Entitlements.plist, so it's only added when present.
+          ENTITLEMENTS=""
+          if [ -f src-tauri/Entitlements.plist ]; then
+            ENTITLEMENTS="Entitlements.plist"
+          fi
+          CONFIG=$(jq -nc --arg profile "$PROFILE" --arg entitlements "$ENTITLEMENTS" \
+            '{bundle: {macOS: ({files: {"embedded.provisionprofile": $profile}}
+              + if $entitlements == "" then {} else {entitlements: $entitlements} end)}}')
+          echo "TAURI_MACOS_PROFILE_CONFIG=$CONFIG" >> "$GITHUB_ENV"
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-24.04'
         run: |
@@ -266,7 +300,7 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install --frozen-lockfile
-          bun tauri build --target aarch64-apple-darwin
+          bun tauri build --target aarch64-apple-darwin --config "$TAURI_MACOS_PROFILE_CONFIG"
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -286,7 +320,7 @@ jobs:
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
           bun install --frozen-lockfile
-          bun tauri build --target x86_64-apple-darwin
+          bun tauri build --target x86_64-apple-darwin --config "$TAURI_MACOS_PROFILE_CONFIG"
         env:
           # Override the target-cpu=native flag
           RUSTFLAGS: '-C target-cpu=x86-64'

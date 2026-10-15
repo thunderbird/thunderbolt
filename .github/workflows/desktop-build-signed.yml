@@ -21,12 +21,9 @@
 # build — only build branches you trust. The updater signing key is deliberately
 # NOT provided (see the build step).
 #
-# Entitlements (e.g. passkeys / Associated Domains, THU-790) come from the
-# SELECTED BRANCH's `src-tauri` config — this workflow doesn't add them. Build a
-# branch that carries the entitlement, or the signed app won't have it.
-#
-# Associated Domains is restricted on macOS: the app won't launch without the
-# embedded Developer ID profile (APP_STORE_MACOS_PROVISIONING_PROFILE).
+# Passkeys need the Associated Domains entitlement, which macOS only honours with
+# an embedded Developer ID profile (APP_STORE_MACOS_PROVISIONING_PROFILE). The
+# workflow adds both when the selected branch has `src-tauri/Entitlements.plist`.
 #
 # Installed test builds still point at the production updater endpoint and may be
 # offered a newer prod release; decline the update to keep the test build.
@@ -205,8 +202,13 @@ jobs:
           # build code (reduces the secret surface flagged in review). The app is
           # still fully code-signed + notarized via the Apple cert above.
           # macOS.files copies the profile into Contents/ before signing.
-          CONFIG=$(jq -nc --arg profile "$PROVISIONING_PROFILE" \
-            '{bundle: {createUpdaterArtifacts: false, macOS: {files: {"embedded.provisionprofile": $profile}}}}')
+          ENTITLEMENTS=""
+          if [ -f src-tauri/Entitlements.plist ]; then
+            ENTITLEMENTS="Entitlements.plist"
+          fi
+          CONFIG=$(jq -nc --arg profile "$PROVISIONING_PROFILE" --arg entitlements "$ENTITLEMENTS" \
+            '{bundle: {createUpdaterArtifacts: false, macOS: ({files: {"embedded.provisionprofile": $profile}}
+              + if $entitlements == "" then {} else {entitlements: $entitlements} end)}}')
           bun tauri build --target "$TARGET" --config "$CONFIG"
 
       - name: Verify the profile is embedded

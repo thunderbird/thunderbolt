@@ -72,6 +72,15 @@ const appLanguageHeaders = async (requests: Request[]): Promise<string[]> => {
   return headers
 }
 
+/** A request's `x-app-language`, or `unreadable` if it was torn down before its headers could be read. */
+const readAppLanguage = async (request: Request): Promise<string | null> => {
+  try {
+    return await request.headerValue('x-app-language')
+  } catch {
+    return 'unreadable'
+  }
+}
+
 /**
  * Every captured backend request as `time method path x-app-language`, one per
  * line. Passed as the message of the header assertions so a failure shows which
@@ -83,7 +92,7 @@ const describeBackendRequests = async (requests: Request[]): Promise<string> => 
       .filter((request) => request.url().startsWith(backendOrigin))
       .map(async (request) => {
         const time = new Date(request.timing().startTime).toISOString().slice(11, 23)
-        const language = await request.headerValue('x-app-language').catch(() => 'unreadable')
+        const language = await readAppLanguage(request)
         return `${time} ${request.method()} ${new URL(request.url()).pathname} ${language}`
       }),
   )

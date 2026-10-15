@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test, type Page, type Request, type Route } from './test'
+import { deTest, expect, test, type Page, type Request, type Route } from './test'
 import { collectPageErrors, loginViaOidc, openSidebarOnMobile } from './helpers'
 
 /**
@@ -70,6 +70,24 @@ const appLanguageHeaders = async (requests: Request[]): Promise<string[]> => {
     }
   }
   return headers
+}
+
+/**
+ * Every captured backend request as `time method path x-app-language`, one per
+ * line. Passed as the message of the header assertions so a failure shows which
+ * request carried the wrong tag; the CI traces keep no network records.
+ */
+const describeBackendRequests = async (requests: Request[]): Promise<string> => {
+  const lines = await Promise.all(
+    requests
+      .filter((request) => request.url().startsWith(backendOrigin))
+      .map(async (request) => {
+        const time = new Date(request.timing().startTime).toISOString().slice(11, 23)
+        const language = await request.headerValue('x-app-language').catch(() => 'unreadable')
+        return `${time} ${request.method()} ${new URL(request.url()).pathname} ${language}`
+      }),
+  )
+  return `backend requests:\n${lines.join('\n')}`
 }
 
 /**
@@ -173,8 +191,9 @@ test.describe('language picker — X-App-Language', () => {
     // destroyed again on every load. Not one request may announce
     // English — first of all not the first.
     const headers = await appLanguageHeaders(requests)
-    expect(headers[0]).toBe('de')
-    expect(headers).not.toContain('en')
+    const requestLog = await describeBackendRequests(requests)
+    expect(headers[0], requestLog).toBe('de')
+    expect(headers, requestLog).not.toContain('en')
   })
 
   test('resetting to auto returns the header to the negotiated language', async ({ page }) => {
@@ -231,14 +250,12 @@ test.describe('language picker — X-App-Language', () => {
     const requests = collectRequests(page)
     await loginViaOidc(page)
     await expect.poll(async () => (await appLanguageHeaders(requests)).length, { timeout: 30_000 }).toBeGreaterThan(0)
-    expect(await appLanguageHeaders(requests)).not.toContain('de')
+    expect(await appLanguageHeaders(requests), await describeBackendRequests(requests)).not.toContain('de')
   })
 })
 
-test.describe('language picker — fresh non-English browser, no stored setting', () => {
-  test.use({ locale: 'de-DE' })
-
-  test('negotiates the browser language before any setting exists, never announcing English', async ({ page }) => {
+deTest.describe('language picker — fresh non-English browser, no stored setting', () => {
+  deTest('negotiates the browser language before any setting exists, never announcing English', async ({ page }) => {
     const errors = collectPageErrors(page)
     const requests = collectRequests(page)
 
@@ -253,8 +270,9 @@ test.describe('language picker — fresh non-English browser, no stored setting'
     // English between hydration and the async seed write. From the
     // very first request, negotiation must already have won.
     const headers = await appLanguageHeaders(requests)
-    expect(headers[0]).toBe('de')
-    expect(headers).not.toContain('en')
+    const requestLog = await describeBackendRequests(requests)
+    expect(headers[0], requestLog).toBe('de')
+    expect(headers, requestLog).not.toContain('en')
 
     // Negotiation seeded, but did not fake an edit: the trigger shows Deutsch
     // while the row still reads as a default (seeding writes `recomputeHash`).

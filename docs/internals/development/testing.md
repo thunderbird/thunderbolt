@@ -253,6 +253,8 @@ Each anchor records a breakage:
 - **`openSidebarOnMobile(page)`**: opens the mobile drawer before a test selects sidebar content; a no-op on desktop, which already renders it.
 - **`collectPageErrors(page)`**: subscribes to `pageerror` and returns an errors array, filtering harmless Tauri-only noise (`__TAURI__`, `convertFileSrc`).
 
+For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ locale: 'de-DE' })`. Chromium applies `locale` only to pages Playwright is attached to, so the page a redirect leaves reads the host's languages (`en-US` on CI) and can write them into storage for the next page. `deTest` also passes `--accept-lang=de-DE,de`, which makes the browser itself German. A test for another non-English locale needs the same launch option.
+
 ### Current Specs
 
 `oidc` project:

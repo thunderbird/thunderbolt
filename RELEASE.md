@@ -365,16 +365,7 @@ Three points about the build that are easy to break:
 
 **Never push workflow changes directly to `main`.** Open a PR and let the `pull_request`-triggered workflows exercise the change: `ci.yml`, `e2e.yml` and `security.yml` all run on PRs against any branch.
 
-The release workflows cannot be reached that way — nothing in the release path listens for `pull_request`. `release.yml` and the four child workflows use `workflow_dispatch`/`workflow_call`. To test a change to one of them, push the branch to `origin` and dispatch against that ref:
-
-```bash
-git push origin my-workflow-change
-gh workflow run release.yml --ref my-workflow-change
-```
-
-With the current repository settings, that dispatch stops at the first job. `version-bump.yml` runs in the `thunderbolt_release` environment, and that environment's deployment branch policy allows only `main`. The policy is a repository setting and does not appear in the YAML. GitHub rejects the `version_bump` job before its first step and skips the platform jobs that depend on it, so nothing is committed, tagged, built or published. Dispatching a child workflow from a branch is no safer as a test. Its build jobs hit the same rule, but `desktop-release.yml`'s `draft` and `publish` jobs and all of `cli-release.yml` run outside the environment and act on the real release for that version. When you only need to prove a desktop platform still builds, dispatch `test-build.yml` instead; it builds one platform and uploads the bundle as a workflow artifact, with no tagging or release side effects.
-
-The new `nightly-pipeline.yml` must exist on `main` before it can be dispatched.
+Release workflows can't be tested from a branch, because `version-bump.yml` and the desktop, iOS and Android builds run in the `thunderbolt_release` environment, which accepts only `main`. Test a desktop build with `test-build.yml`. `scripts/release-workflows.test.ts` checks how the release workflows connect. The rest is validated only after the merge.
 
 ## Troubleshooting
 
@@ -391,8 +382,7 @@ What does fail visibly is a missing tag. Every child workflow checks out `v{vers
 1. **Check GitHub Actions logs** for detailed error messages
 2. **Check the run's annotations** — a failed CrabNebula upload is a warning, not a failure
 3. **Verify secrets are configured** (especially for iOS/Android signing)
-4. **Test the workflow** from a pushed branch before merging (see [Testing Workflow Changes](#testing-workflow-changes))
-5. **Check recent changes** that might have broken the build
+4. **Check recent changes** that might have broken the build
 
 ### iOS Build Issues
 
@@ -492,13 +482,12 @@ Repository variables (not secrets):
 ## Best Practices
 
 1. ✅ **Always use the workflow or the script** for version bumps — they update every file for you
-2. ✅ **Test workflow changes from a pushed branch** before merging (see [Testing Workflow Changes](#testing-workflow-changes))
-3. ✅ **Use semantic versioning** (major.minor.patch)
-4. ✅ **Write good commit messages** for auto-detection to work
-5. ✅ **Check version files** are in sync before manually tagging
-6. ✅ **Check the run's annotations** for a CrabNebula upload warning before calling a release done
-7. ❌ **Never force push** to main or version tags
-8. ❌ **Don't hand-edit** `gen/android/app/tauri.properties` — the release script and the Android build own it
+2. ✅ **Use semantic versioning** (major.minor.patch)
+3. ✅ **Write good commit messages** for auto-detection to work
+4. ✅ **Check version files** are in sync before manually tagging
+5. ✅ **Check the run's annotations** for a CrabNebula upload warning before calling a release done
+6. ❌ **Never force push** to main or version tags
+7. ❌ **Don't hand-edit** `gen/android/app/tauri.properties` — the release script and the Android build own it
 
 **TL;DR on version updates:**
 

@@ -1264,6 +1264,36 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
     expect(rows[0].promptTokens).toBeLessThan(24 + 3900)
   })
 
+  it('leaves the tool definitions out of the estimate for an aborted last step, which is sent none', async () => {
+    // At three steps, two say a line and call a tool; the last, offered none, sends one delta, then is silent.
+    const model = new MockLanguageModelV3({
+      doStream: async ({ prompt, abortSignal }) =>
+        prompt.filter(({ role }) => role === 'tool').length < 2
+          ? { stream: simulateReadableStream({ chunks: toolCallChunks() }) }
+          : { stream: stalledReplyStream(abortSignal) },
+    })
+    const longResult = 'x'.repeat(3000)
+    const mcpClients = createStubMcpClients(
+      { search_sessions: createSearchTool(async () => ({ content: [{ type: 'text', text: longResult }] })) },
+      // 10,000 tokens, which an estimate that counted them would put far above the bounds below.
+      { toolDefinitions: 'd'.repeat(30_000) },
+    )
+    const app = createApp({ database, model, mcpClients, settings: { agentMaxSteps: 3 } })
+    const client = new AbortController()
+
+    const reader = (await postChat(app, chatBody(), {}, client.signal)).body!.getReader()
+    await readUntil(reader, 'Hello there')
+    client.abort()
+    await reader.cancel()
+    await settleRun()
+
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+    expect(rows).toHaveLength(1)
+    // The finished steps' reported 12 each, plus a last prompt carrying both results (1,000 tokens each) and the nudge.
+    expect(rows[0].promptTokens).toBeGreaterThan(24 + 2000)
+    expect(rows[0].promptTokens).toBeLessThan(24 + 3000)
+  })
+
   it('bills a Fireworks run at the Fireworks price', async () => {
     const fetchFn = mock(async () => createFireworksStream({ prompt_tokens: 100, completion_tokens: 10 }))
     const app = createApp({

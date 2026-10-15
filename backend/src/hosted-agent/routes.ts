@@ -21,6 +21,7 @@ import {
 } from '@/middleware/error-handling'
 import { registerAgentProvider } from '@/agents'
 import { readBoundedJson } from '@/utils/request-body'
+import { finalStepNudge } from '@shared/final-step-nudge'
 import {
   APICallError,
   convertToModelMessages,
@@ -29,6 +30,7 @@ import {
   streamText,
   type LanguageModel,
   type LanguageModelUsage,
+  type ModelMessage,
   type StepResult,
   type ToolSet,
 } from 'ai'
@@ -55,12 +57,8 @@ export const maxRequestBytes = 2_000_000
  */
 export const agentUpstreamTimeoutMs = 120_000
 
-/**
- * The last step's nudge once tools are withheld, so a run that is still calling tools at the cap answers instead
- * of ending on a call. The built-in pipeline does the same on its final step (`buildStepOverrides`,
- * `src/ai/step-logic.ts`).
- */
-const finalStepNudge = 'RESPOND NOW with the information gathered. Do not ask questions.'
+/** The last step's nudge once tools are withheld, worded as the built-in pipeline's (see `finalStepNudge`). */
+const finalStepMessage: ModelMessage = { role: 'user', content: finalStepNudge }
 
 export type CreateHostedAgentRoutesOptions = {
   auth: Auth
@@ -218,6 +216,9 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         })
 
         const hasTools = Object.keys(tools).length > 0
+        // The last step offers no tools, so a run still calling them at the cap answers instead of stopping on a
+        // call. A run without tools is left alone.
+        const isFinalStep = (stepNumber: number) => hasTools && stepNumber >= settings.agentMaxSteps - 1
         const system = buildAgentSystemPrompt({
           operatorPrompt: settings.agentSystemPrompt,
           instructions: chatRequest.value.instructions,
@@ -240,12 +241,8 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           messages,
           tools,
           stopWhen: stepCountIs(settings.agentMaxSteps),
-          // The last step offers no tools, so a run still calling them at the cap answers instead of stopping on a
-          // call. A run without tools is left alone.
           prepareStep: ({ stepNumber, messages: stepMessages }) =>
-            hasTools && stepNumber >= settings.agentMaxSteps - 1
-              ? { activeTools: [], messages: [...stepMessages, { role: 'user', content: finalStepNudge }] }
-              : undefined,
+            isFinalStep(stepNumber) ? { activeTools: [], messages: [...stepMessages, finalStepMessage] } : undefined,
           headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,
           // streamText merges the two: whichever fires first aborts the upstream call.
@@ -294,13 +291,19 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         })
         /** Bill an aborted run once every stream callback has run; see `getAbortedRunCounts`. */
         const recordAbortedRunUsage = async (reason: 'client' | 'timeout') => {
+          // The step in flight follows the ones that finished. The final step was sent the nudge, not the tools.
+          const wasFinalStep = isFinalStep(finishedSteps.length)
           const { counts, estimated } = getAbortedRunCounts({
             reportedUsage: abortedRunUsage,
             finishedSteps: finishedSteps.map(({ usage }) => usage),
             system,
-            toolDefinitions,
+            toolDefinitions: wasFinalStep ? '' : toolDefinitions,
             // A step's response messages are cumulative: the last finished step's hold every earlier step's too.
-            messages: [...messages, ...(finishedSteps.at(-1)?.response.messages ?? [])],
+            messages: [
+              ...messages,
+              ...(finishedSteps.at(-1)?.response.messages ?? []),
+              ...(wasFinalStep ? [finalStepMessage] : []),
+            ],
             outputText: streamedOutput,
           })
           if (estimated) {

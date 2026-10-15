@@ -384,13 +384,53 @@ describe('createAgentMcpClients', () => {
     expect(logger.error).not.toHaveBeenCalled()
   })
 
-  it('leaves a newer connection alone when a call on the one it replaced fails', async () => {
-    const server = startServer([{ name: 'search_sessions', readOnly: true, httpStatus: 502 }])
+  it("moves another run's calls to a new connection once a failure retires the one it loaded", async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true },
+      { name: 'broken_search', readOnly: true, httpStatus: 503 },
+    ])
     const clients = create([{ name: 'schedule', url: server.url }])
-    const old = await clients.loadTools()
-    await expect(callTool(old.tools.schedule_search_sessions)).rejects.toThrow()
+    const [first, second] = await Promise.all([clients.loadTools(), clients.loadTools()])
+    await expect(callTool(first.tools.schedule_broken_search)).rejects.toThrow('could not be reached')
+    expect(await callTool(second.tools.schedule_search_sessions)).toMatchObject({ isError: false })
+    expect(server.connectionCount()).toBe(2)
+  })
+
+  it('tells the model only that the server could not be reached when a call cannot reconnect', async () => {
+    const server = startServer([{ name: 'broken_search', readOnly: true, httpStatus: 503 }])
+    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached (HTTP 503)')
+    server.state.isFailing = true
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow(/^schedule could not be reached\.$/)
+  })
+
+  it('refuses a call once a reconnect finds the tool is no longer read-only', async () => {
+    const listed: FakeMcpTool[] = [
+      { name: 'search_sessions', readOnly: true },
+      { name: 'broken_search', readOnly: true, httpStatus: 503 },
+    ]
+    const server = startServer(listed)
+    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
+    listed[0].readOnly = false
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(
+      'schedule no longer offers schedule_search_sessions.',
+    )
+    expect(server.requests.filter(({ rpcMethod }) => rpcMethod === 'tools/call')).toHaveLength(1)
+  })
+
+  it('leaves a newer connection alone when a call on the one it replaced fails', async () => {
+    const server = startServer([
+      { name: 'slow_search', readOnly: true, call: neverAnswers },
+      { name: 'broken_search', readOnly: true, httpStatus: 502 },
+    ])
+    const clients = create([{ name: 'schedule', url: server.url }], { toolCallTimeoutMs: 200 })
+    const { tools } = await clients.loadTools()
+    const inFlight = callTool(tools.schedule_slow_search)
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
     await clients.loadTools()
-    await expect(callTool(old.tools.schedule_search_sessions)).rejects.toThrow()
+    // Times out on the retired connection after the new one is cached.
+    await expect(inFlight).rejects.toThrow('did not answer')
     await clients.loadTools()
     expect(server.connectionCount()).toBe(2)
   })

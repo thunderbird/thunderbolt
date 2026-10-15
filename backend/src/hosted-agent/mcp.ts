@@ -125,6 +125,9 @@ type Connection = {
   isClosed: boolean
 }
 
+/** A connection, and the cached promise it came from, which `forget` matches to leave a newer one alone. */
+type CachedConnection = { pending: Promise<Connection>; connection: Connection }
+
 /** A server that could not be reached or listed. Anything else thrown while connecting is a bug, and propagates. */
 class McpServerUnavailableError extends Error {
   constructor(serverName: string, options: ErrorOptions) {
@@ -219,9 +222,10 @@ type CreateAgentMcpClientsOptions = {
  * deadline, on the first run that needs it; concurrent runs share that connect. Tools are namespaced by server and
  * filtered to the read-only ones the allowlist names. A tool list is fixed for the connection's life.
  *
- * A connection is retired, so the next run reconnects, when its transport fails or a call times out. It is closed
- * only once no call is using it, since closing aborts every request still in flight on the client. A call the run's
- * own abort cancels, and an error the server returns for that call alone, keep it.
+ * A connection is retired when its transport fails or a call times out, and the next call, from any run, reconnects:
+ * each call goes to the server's current connection, not the one its run loaded. A retired connection is closed only
+ * once no call is using it, since closing aborts every request still in flight on the client. A call the run's own
+ * abort cancels, and an error the server returns for that call alone, keep it.
  */
 export const createAgentMcpClients = (
   servers: AgentMcpServer[],
@@ -355,6 +359,40 @@ export const createAgentMcpClients = (
     }
   }
 
+  /**
+   * `server`'s cached connection, connecting it if there is none, or `undefined` while the server cannot be reached.
+   * Anything else thrown while connecting is a bug, and propagates.
+   */
+  const currentConnection = async (server: AgentMcpServer, prefix: string): Promise<CachedConnection | undefined> => {
+    const pending = getOrConnect(server, prefix)
+    try {
+      return { pending, connection: await pending }
+    } catch (error) {
+      forget(server, pending)
+      if (error instanceof McpServerUnavailableError) {
+        return undefined
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Take a call on `server`'s current connection, which keeps it open until the call settles. One that a failure
+   * retired, and may have closed, while this waited is passed over for its replacement.
+   */
+  const claimConnection = async (server: AgentMcpServer, prefix: string): Promise<CachedConnection | undefined> => {
+    const current = await currentConnection(server, prefix)
+    if (!current) {
+      return undefined
+    }
+    if (current.connection.isRetired) {
+      return claimConnection(server, prefix)
+    }
+    // In the same tick as the check above, so the connection cannot close in between.
+    current.connection.calls += 1
+    return current
+  }
+
   const closeIfIdle = (connection: Connection) => {
     if (!connection.isRetired || connection.calls > 0 || connection.isClosed) {
       return
@@ -388,11 +426,58 @@ export const createAgentMcpClients = (
     }
   }
 
-  /** `tool` as one run calls it: under the per-call timeout and the run's call budget, with a model-safe result. */
+  /**
+   * Call `name` on a claimed connection under the per-call timeout. A timeout or a failed transport retires the
+   * connection.
+   */
+  const callOn = async (
+    server: AgentMcpServer,
+    { pending, connection }: CachedConnection,
+    name: string,
+    input: unknown,
+    options: ToolExecutionOptions,
+  ) => {
+    const tool = connection.tools.get(name)
+    // A reconnect lists the tools again, so this one may have gone or lost its read-only hint since the run loaded it.
+    if (!tool) {
+      throw new Error(`${server.name} no longer offers ${name}.`)
+    }
+    const timeout = AbortSignal.timeout(toolCallTimeoutMs)
+    const signal = options.abortSignal ? AbortSignal.any([options.abortSignal, timeout]) : timeout
+    try {
+      return toToolOutput(await tool.execute(input, { ...options, abortSignal: signal }))
+    } catch (error) {
+      // The run is ending anyway, and nothing will read what the model would have been told.
+      if (options.abortSignal?.aborted) {
+        throw error
+      }
+      const { message, shouldRetire } = describeFailure(server, error, timeout.aborted)
+      logger?.error(
+        {
+          event: 'agent_mcp_tool_call_failed',
+          server: server.name,
+          tool: name,
+          errorName: errorNameOf(error),
+          ...errorCodesOf(error),
+          timedOut: timeout.aborted,
+          retired: shouldRetire,
+        },
+        'Agent MCP tool call failed',
+      )
+      if (shouldRetire) {
+        retire(server, pending, connection)
+      }
+      throw new Error(message, { cause: error })
+    }
+  }
+
+  /**
+   * `tool` as one run calls it: under the run's call budget, on the server's current connection, with a model-safe
+   * result. The run keeps `tool`'s definition, but never its client, which another run's failure may have closed.
+   */
   const forRun = (
     server: AgentMcpServer,
-    pending: Promise<Connection>,
-    connection: Connection,
+    prefix: string,
     name: string,
     tool: McpTool,
     budget: { calls: number },
@@ -403,60 +488,35 @@ export const createAgentMcpClients = (
         throw new Error(`This reply has used its ${maxToolCallsPerReply} tool calls. Answer with what you have.`)
       }
       budget.calls += 1
-      connection.calls += 1
-      const timeout = AbortSignal.timeout(toolCallTimeoutMs)
-      const signal = options.abortSignal ? AbortSignal.any([options.abortSignal, timeout]) : timeout
+      const claimed = await claimConnection(server, prefix)
+      if (!claimed) {
+        throw new Error(`${server.name} could not be reached.`)
+      }
       try {
-        return toToolOutput(await tool.execute(input, { ...options, abortSignal: signal }))
-      } catch (error) {
-        // The run is ending anyway, and nothing will read what the model would have been told.
-        if (options.abortSignal?.aborted) {
-          throw error
-        }
-        const { message, shouldRetire } = describeFailure(server, error, timeout.aborted)
-        logger?.error(
-          {
-            event: 'agent_mcp_tool_call_failed',
-            server: server.name,
-            tool: name,
-            errorName: errorNameOf(error),
-            ...errorCodesOf(error),
-            timedOut: timeout.aborted,
-            retired: shouldRetire,
-          },
-          'Agent MCP tool call failed',
-        )
-        if (shouldRetire) {
-          retire(server, pending, connection)
-        }
-        throw new Error(message, { cause: error })
+        return await callOn(server, claimed, name, input, options)
       } finally {
-        connection.calls -= 1
-        closeIfIdle(connection)
+        claimed.connection.calls -= 1
+        closeIfIdle(claimed.connection)
       }
     },
   })
 
   const loadTools = async (): Promise<AgentMcpToolsResult> => {
-    const pending = entries.map(({ server, prefix }) => ({ server, connection: getOrConnect(server, prefix) }))
-    const settled = await Promise.allSettled(pending.map(({ connection }) => connection))
+    const loaded = await Promise.all(
+      entries.map(async ({ server, prefix }) => ({ server, prefix, current: await currentConnection(server, prefix) })),
+    )
     const budget = { calls: 0 }
     // A Map, then `Object.fromEntries`, so a tool named like an object property stays an ordinary tool.
     const tools = new Map<string, Tool>()
     const definitions: string[] = []
     const unavailableServers: string[] = []
-    for (const [index, outcome] of settled.entries()) {
-      const { server, connection: pendingConnection } = pending[index]
-      if (outcome.status === 'rejected') {
-        forget(server, pendingConnection)
-        if (!(outcome.reason instanceof McpServerUnavailableError)) {
-          throw outcome.reason
-        }
+    for (const { server, prefix, current } of loaded) {
+      if (!current) {
         unavailableServers.push(server.name)
         continue
       }
-      definitions.push(outcome.value.definitions)
-      for (const [name, tool] of outcome.value.tools) {
+      definitions.push(current.connection.definitions)
+      for (const [name, tool] of current.connection.tools) {
         if (tools.has(name)) {
           if (!loggedNameClashes.has(name)) {
             loggedNameClashes.add(name)
@@ -467,7 +527,7 @@ export const createAgentMcpClients = (
           }
           continue
         }
-        tools.set(name, forRun(server, pendingConnection, outcome.value, name, tool, budget))
+        tools.set(name, forRun(server, prefix, name, tool, budget))
       }
     }
     return { tools: Object.fromEntries(tools), toolDefinitions: definitions.join('\n'), unavailableServers }

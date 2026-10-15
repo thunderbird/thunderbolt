@@ -54,6 +54,7 @@ import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
+import { AgentExecutionControls } from '../agent-execution-controls'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
@@ -726,6 +727,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={() => navigate('/settings/connections')}
         />
+        {isBuiltInAgent(selectedAgent) && (
+          <AgentExecutionControls key={chatThreadId} threadId={chatThreadId} disabled={isBusy || isConnecting} />
+        )}
         {isConnecting ? (
           <div
             role="status"

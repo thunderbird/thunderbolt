@@ -28,18 +28,15 @@
  * re-seeding. The cache is tagged with a config SIGNATURE (model / provider / api
  * key / stable system prompt / thinking level / reasoning / regenerate revision):
  * switching any of these mid-thread rebuilds the harness from request-body history
- * (the workspace, keyed by `threadId`, is kept so its files survive the rebuild). Each thread's
- * harness is bound to its own isolated OPFS workspace (`/workspace/<threadId>`),
- * jailed so a thread's coding tools and shell can't reach another thread's files.
- * Built-in tools auto-run by product decision, restoring the pre-#1032 baseline
- * where the legacy pipeline ran every tool ungated. The harness also runs
- * network-capable app, integration, and MCP tools that are not sandboxed;
- * OPFS/ZenFS isolation is not the safety rationale for auto-run.
+ * (the workspace is kept so its files survive the rebuild). The device-local
+ * execution choice also participates in that signature: Local sandbox uses a
+ * jailed OPFS workspace; This computer uses desktop IPC for real files and bash.
+ * Both engines gate tools through the selected approval policy. OPFS isolation
+ * does not contain network-capable app, integration, or MCP tools.
  *
  * No ACP handshake either way; `capabilities` is null and `ensureSession` is a
  * no-op (no wire to warm). `disconnect` is real: it disposes every cached harness
- * and removes its workspace, so no thread's session or files leak past the
- * adapter's teardown (agent delete / config edit / sign-out).
+ * and removes only sandbox workspaces. Computer files are always preserved.
  */
 
 import {
@@ -66,7 +63,12 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
-import { getPlatform } from '@/lib/platform'
+import { getPlatform, isTauriDesktop } from '@/lib/platform'
+import { invoke } from '@tauri-apps/api/core'
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
+import { createToolAuthorizer } from '@/agent-execution/approval'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
@@ -555,14 +557,25 @@ export const harnessSignature = (
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
 // Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
 // Exported so tests can assert the real stable prompt survives into this engine's shape.
-export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string => {
+export const composeAppHarnessSystemPrompt = (
+  config: AppHarnessSystemPromptConfig,
+  execution: AgentExecution = defaultAgentExecution,
+): string => {
   const platform = getPlatform()
   const environment = platform === 'web' || platform === 'ios' || platform === 'android' ? platform : 'desktop'
   const clientIdentity = buildClientIdentityBlock({
     environment,
     appVersion: import.meta.env.VITE_APP_VERSION,
   })
-  const environmentBlock = config.supportsTools ? `\n\n${appHarnessEnvironmentPrompt}` : ''
+  const executionPrompt =
+    execution.location === 'computer'
+      ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
+      : appHarnessEnvironmentPrompt
+  const accessPrompt =
+    execution.access === 'ask'
+      ? 'File changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.'
+      : 'The user enabled full access. Tools execute without an approval prompt.'
+  const environmentBlock = config.supportsTools ? `\n\n${executionPrompt}\n${accessPrompt}` : ''
   return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
 }
 
@@ -579,18 +592,24 @@ const buildHarnessRecord = async (
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
 ): Promise<HarnessRecord> => {
-  const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
+  const execution = context.execution ?? defaultAgentExecution
+  const native =
+    execution.location === 'computer'
+      ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke), cwd: execution.cwd }
+      : undefined
+  const systemPrompt = { current: composeAppHarnessSystemPrompt(config, execution) }
   const harness = await agentCore.buildAppHarness({
     model: resolved.descriptor,
     systemPrompt: () => systemPrompt.current,
     thinkingLevel: resolved.thinkingLevel,
     threadId: context.threadId,
+    execution: native,
     history,
   })
   return {
     harness,
     baseTools: harness.getTools(),
-    removeWorkspace: () => agentCore.removeAgentWorkspace(context.threadId),
+    removeWorkspace: native ? async () => {} : () => agentCore.removeAgentWorkspace(context.threadId),
     systemPrompt,
     receiptHttpClient: resolved.receiptHttpClient,
   }
@@ -601,14 +620,22 @@ const prepareHarnessForSend = async (
   agentCore: AgentCoreModule,
   record: HarnessRecord,
   config: PreparedAiRequestConfig,
-  httpClient: AgentAdapterContext['httpClient'],
+  context: AgentAdapterContext,
 ): Promise<void> => {
-  record.systemPrompt.current = composeAppHarnessSystemPrompt(config)
+  record.systemPrompt.current = composeAppHarnessSystemPrompt(config, context.execution)
   if (record.receiptHttpClient) {
-    record.receiptHttpClient.current = httpClient
+    record.receiptHttpClient.current = context.httpClient
   }
   const tools = await agentCore.toPiAgentTools(config.toolset)
-  const allTools = [...record.baseTools, ...tools]
+  const authorize = createToolAuthorizer(context.execution ?? defaultAgentExecution, context)
+  const ungatedTools: AgentHarnessTool<undefined>[] = [...record.baseTools, ...tools]
+  const allTools: AgentHarnessTool<undefined>[] = ungatedTools.map((tool) => ({
+    ...tool,
+    execute: async (...args: Parameters<typeof tool.execute>) => {
+      await authorize(tool.name, args[1], args[0], args[2])
+      return tool.execute(...args)
+    },
+  }))
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
   await record.harness.setTools(allTools, activeToolNames)
 }
@@ -786,10 +813,14 @@ const fetchViaHarness = async (
     // prompt, which `harnessSignature` fingerprints — so editing a project
     // mid-thread rebuilds the harness on the next send by itself.
     chatThreadId: context.threadId,
+    toolApprovalHandled: true,
     telemetry: context.telemetry,
   })
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   if (!resolved) {
+    if (context.execution?.location === 'computer') {
+      throw new Error(i18n._(msg`This model cannot run on this computer. Choose a tool-capable supported model.`))
+    }
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
   }
@@ -802,7 +833,7 @@ const fetchViaHarness = async (
   const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
-      composeAppHarnessSystemPrompt(config),
+      composeAppHarnessSystemPrompt(config, context.execution),
       ...skillInstructions,
     ])
   }
@@ -811,11 +842,11 @@ const fetchViaHarness = async (
   // every later turn whose config signature is unchanged, and rebuild it when the
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
-  const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
+  const signature = `${harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)}|execution:${JSON.stringify(context.execution ?? defaultAgentExecution)}`
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config),
   )
-  await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  await prepareHarnessForSend(agentCore, record, config, context)
   context.telemetry?.endPhase('harness_build')
   const { harness } = record
   context.telemetry?.setDimensions({ engine: 'pi' })
@@ -892,6 +923,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const fetchViaLegacyPipeline = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
     aiFetch({
       init,
+      authorizeTool: createToolAuthorizer(context.execution ?? defaultAgentExecution, context),
       modelId: context.selectedModel.id,
       mcpClients: context.mcpClients,
       reconnectClient: context.reconnectClient,
@@ -908,7 +940,22 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
 
   // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes
   // this route; other providers still fall back when their id/config is unusable.
-  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+  const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    const execution = context.execution ?? defaultAgentExecution
+    if (execution.location === 'cloud') {
+      throw new Error(i18n._(msg`Cloud execution is not available yet`))
+    }
+    if (execution.location === 'computer') {
+      if (!isTauriDesktop()) {
+        throw new Error(i18n._(msg`Computer execution requires the desktop app`))
+      }
+      if (!execution.cwd) {
+        throw new Error(i18n._(msg`Choose a working folder before using this computer`))
+      }
+      if (context.selectedModel.toolUsage === 0 || !isPiModelCandidate(context.selectedModel)) {
+        throw new Error(i18n._(msg`Choose a tool-capable model to use this computer`))
+      }
+    }
     if (isPiModelCandidate(context.selectedModel)) {
       return fetchViaHarness(
         init,

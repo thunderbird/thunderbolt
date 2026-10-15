@@ -3,31 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * {@link BrowserExecutionEnv}-backed operations for the four browser coding tools
- * (bash/read/write/edit, see `../coding-tools`). They redirect each tool's I/O
- * onto the same process-global ZenFS mount the harness runs over, replacing the
- * Node shell + `node:fs` backend the CLI tools assume.
- *
- * The bash operation delegates to {@link BrowserExecutionEnv.exec} (just-bash
- * over ZenFS); the file operations call `@zenfs/core/promises` directly — the
- * very same singleton — so a file the shell writes is instantly visible to the
- * read tool and vice versa. All four therefore share one consistent mount.
- *
- * The env is never-throwing (it encodes failures in a `Result`); the bash tool,
- * by contrast, decodes failures from a thrown error (and detects timeouts via a
- * `timeout:<seconds>` message). The bash adapter re-throws the env's
- * `ExecutionError` — whose `.message` already carries that exact framing — so the
- * tool's error/timeout handling works unchanged. This is the architectural
- * boundary translation, not defensive wrapping.
- *
- * Runtime note: the read/edit operations and the bash output bridge construct
- * Node `Buffer`s (the operation contracts are typed in terms of `Buffer`). The
- * app entry must ensure a global `Buffer` polyfill exists in the browser (the
- * standard `buffer` package shim) before driving the harness.
+ * Adapts the selected CodingEnvironment to the coding tools' throwing operation
+ * contracts. Every file and shell operation uses that environment, so native
+ * tools cannot accidentally read from or write to the OPFS singleton.
  */
 
-import * as fsp from '@zenfs/core/promises'
-import type { BrowserExecutionEnv } from './browser-execution-env.ts'
+import type { CodingEnvironment } from '../execution-environment.ts'
+import type { Result, FileError } from '@earendil-works/pi-agent-core'
 
 /** Streamed-execution backend for the bash tool. Throws on failure (aborted /
  *  `timeout:<seconds>` / other), matching the tool's error-decoding contract. */
@@ -48,7 +30,6 @@ export type ReadOperations = {
 /** File-write backend for the write tool. */
 export type WriteOperations = {
   writeFile: (absolutePath: string, content: string) => Promise<void>
-  mkdir: (dir: string) => Promise<void>
 }
 
 /** File read/write backend for the edit tool. */
@@ -65,7 +46,7 @@ export type EditOperations = {
  *
  * @param env - the browser execution environment bound to the agent's cwd
  */
-export const createBashOperations = (env: BrowserExecutionEnv): BashOperations => ({
+export const createBashOperations = (env: CodingEnvironment): BashOperations => ({
   exec: async (command, cwd, { onData, signal, timeout }) => {
     const result = await env.exec(command, {
       cwd,
@@ -83,31 +64,31 @@ export const createBashOperations = (env: BrowserExecutionEnv): BashOperations =
   },
 })
 
-/** Build read operations over the shared ZenFS mount. */
-export const createReadOperations = (): ReadOperations => ({
-  readFile: async (absolutePath) => Buffer.from(await fsp.readFile(absolutePath)),
-  access: async (absolutePath) => {
-    await fsp.access(absolutePath)
+/** Decode the environment's Result at the throwing tool boundary. */
+const unwrap = <T>(result: Result<T, FileError>): T => {
+  if (!result.ok) {
+    throw result.error
+  }
+  return result.value
+}
+
+/** Build file reads over the selected execution environment. */
+export const createReadOperations = (env: CodingEnvironment): ReadOperations => ({
+  readFile: async (path) => Buffer.from(unwrap(await env.readBinaryFile(path))),
+  access: async (path) => {
+    unwrap(await env.readBinaryFile(path))
   },
 })
 
-/** Build write operations over the shared ZenFS mount. */
-export const createWriteOperations = (): WriteOperations => ({
-  writeFile: async (absolutePath, content) => {
-    await fsp.writeFile(absolutePath, content)
-  },
-  mkdir: async (dir) => {
-    await fsp.mkdir(dir, { recursive: true })
+/** Build file writes; the environment creates parent directories. */
+export const createWriteOperations = (env: CodingEnvironment): WriteOperations => ({
+  writeFile: async (path, content) => {
+    unwrap(await env.writeFile(path, content))
   },
 })
 
-/** Build edit operations over the shared ZenFS mount. */
-export const createEditOperations = (): EditOperations => ({
-  readFile: async (absolutePath) => Buffer.from(await fsp.readFile(absolutePath)),
-  writeFile: async (absolutePath, content) => {
-    await fsp.writeFile(absolutePath, content)
-  },
-  access: async (absolutePath) => {
-    await fsp.access(absolutePath)
-  },
+/** Build edits over the same environment as reads and shell commands. */
+export const createEditOperations = (env: CodingEnvironment): EditOperations => ({
+  ...createReadOperations(env),
+  ...createWriteOperations(env),
 })

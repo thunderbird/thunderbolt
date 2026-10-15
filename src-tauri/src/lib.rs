@@ -4,6 +4,7 @@
 
 // These modules are used by Tauri's command system through macros
 // The compiler can't see the usage, so we allow dead_code warnings
+pub mod agent_execution;
 pub mod cli_installer;
 #[allow(dead_code)]
 pub mod commands;
@@ -25,6 +26,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
     // Single-instance: focus existing window when a second instance is launched (desktop only)
     #[cfg(desktop)]
     {
+        builder = builder.plugin(tauri_plugin_dialog::init());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -35,6 +37,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
 
     // Core plugins that are always enabled
     builder = builder
+        .manage(agent_execution::Commands::default())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -45,6 +48,12 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
+            agent_execution::agent_pick_workspace,
+            agent_execution::agent_fs,
+            agent_execution::agent_prepare_command,
+            agent_execution::agent_cancel_command,
+            agent_execution::agent_forget_command,
+            agent_execution::agent_exec,
             commands::toggle_dock_icon,
             commands::capabilities,
             commands::set_interface_style,

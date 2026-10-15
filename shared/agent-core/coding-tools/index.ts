@@ -4,7 +4,7 @@
 
 /**
  * The four coding tools (bash/read/write/edit) as PLAIN Pi {@link AgentTool}
- * objects bound directly to a {@link BrowserExecutionEnv}.
+ * objects bound directly to a {@link CodingEnvironment}.
  *
  * This is the in-browser replacement for Pi's `@earendil-works/pi-coding-agent`
  * tool factories. Those factories are a Node CLI: importing them transitively
@@ -32,10 +32,8 @@
 
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core'
 import type { TextContent } from '@earendil-works/pi-ai'
-import { dirname } from '@zenfs/core/path'
 import { Type, type Static } from 'typebox'
-import type { BrowserExecutionEnv } from '../browser-env/browser-execution-env.ts'
-import { resolveInWorkspace } from '../browser-env/workspace-jail.ts'
+import type { CodingEnvironment } from '../execution-environment.ts'
 import {
   createBashOperations,
   createEditOperations,
@@ -66,6 +64,15 @@ const throwIfAborted = (signal?: AbortSignal): void => {
   }
 }
 
+/** Resolve host-specific paths; filesystem access is enforced by the environment. */
+const resolveToolPath = async (env: CodingEnvironment, path: string): Promise<string> => {
+  const result = await env.absolutePath(path)
+  if (!result.ok) {
+    throw result.error
+  }
+  return result.value
+}
+
 // ---------------------------------------------------------------------------
 // bash
 // ---------------------------------------------------------------------------
@@ -77,7 +84,7 @@ const bashSchema = Type.Object({
 
 /** Persist full (untruncated) bash output to a ZenFS temp file so the model can
  *  `cat` it; returns the path, or undefined if the write failed. */
-const persistFullOutput = async (env: BrowserExecutionEnv, output: string): Promise<string | undefined> => {
+const persistFullOutput = async (env: CodingEnvironment, output: string): Promise<string | undefined> => {
   const tmp = await env.createTempFile({ prefix: 'pi-bash-', suffix: '.log' })
   if (!tmp.ok) {
     return undefined
@@ -88,7 +95,7 @@ const persistFullOutput = async (env: BrowserExecutionEnv, output: string): Prom
 
 /** Tail-truncate bash output and, when truncated, append Pi's "[Showing lines …]"
  *  footer pointing at the persisted full-output file. */
-const formatBashOutput = async (env: BrowserExecutionEnv, output: string, emptyText: string): Promise<string> => {
+const formatBashOutput = async (env: CodingEnvironment, output: string, emptyText: string): Promise<string> => {
   const truncation = truncateTail(output)
   if (!truncation.truncated) {
     return truncation.content || emptyText
@@ -109,7 +116,7 @@ const formatBashOutput = async (env: BrowserExecutionEnv, output: string, emptyT
 /** `${text}\n\n${status}`, or just `status` when there is no captured output. */
 const appendStatus = (text: string, status: string): string => `${text ? `${text}\n\n` : ''}${status}`
 
-const buildBashTool = (env: BrowserExecutionEnv, cwd: string): AgentTool<typeof bashSchema> => {
+const buildBashTool = (env: CodingEnvironment, cwd: string): AgentTool<typeof bashSchema> => {
   const operations = createBashOperations(env)
   return {
     name: 'bash',
@@ -199,15 +206,15 @@ const formatReadOutput = (
   return truncation.content
 }
 
-const buildReadTool = (cwd: string): AgentTool<typeof readSchema> => {
-  const operations = createReadOperations()
+const buildReadTool = (env: CodingEnvironment): AgentTool<typeof readSchema> => {
+  const operations = createReadOperations(env)
   return {
     name: 'read',
     label: 'read',
     description: `Read the contents of a file. For text files, output is truncated to ${defaultMaxLines} lines or ${defaultMaxBytes / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     parameters: readSchema,
     async execute(_toolCallId, { path, offset, limit }, signal) {
-      const absolutePath = resolveInWorkspace(cwd, path)
+      const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
       await operations.access(absolutePath)
       throwIfAborted(signal)
@@ -226,8 +233,8 @@ const writeSchema = Type.Object({
   content: Type.String({ description: 'Content to write to the file' }),
 })
 
-const buildWriteTool = (cwd: string): AgentTool<typeof writeSchema> => {
-  const operations = createWriteOperations()
+const buildWriteTool = (env: CodingEnvironment): AgentTool<typeof writeSchema> => {
+  const operations = createWriteOperations(env)
   return {
     name: 'write',
     label: 'write',
@@ -237,9 +244,7 @@ const buildWriteTool = (cwd: string): AgentTool<typeof writeSchema> => {
     // Serialize against other file mutations in the same batch (no per-path queue).
     executionMode: 'sequential',
     async execute(_toolCallId, { path, content }, signal) {
-      const absolutePath = resolveInWorkspace(cwd, path)
-      throwIfAborted(signal)
-      await operations.mkdir(dirname(absolutePath))
+      const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
       await operations.writeFile(absolutePath, content)
       return textResult(`Successfully wrote ${Buffer.byteLength(content, 'utf-8')} bytes to ${path}`)
@@ -323,8 +328,8 @@ const validateEditInput = (input: EditInput): { path: string; edits: EditReplace
   return { path: input.path, edits: input.edits }
 }
 
-const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
-  const operations = createEditOperations()
+const buildEditTool = (env: CodingEnvironment): AgentTool<typeof editSchema> => {
+  const operations = createEditOperations(env)
   return {
     name: 'edit',
     label: 'edit',
@@ -336,12 +341,13 @@ const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
     prepareArguments: prepareEditArguments,
     async execute(_toolCallId, input, signal) {
       const { path, edits } = validateEditInput(input)
-      const absolutePath = resolveInWorkspace(cwd, path)
+      const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
       try {
         await operations.access(absolutePath)
       } catch (error) {
-        const reason = error instanceof Error && 'code' in error ? `Error code: ${error.code}` : String(error)
+        const reason =
+          error instanceof Error && 'code' in error ? `Error code: ${error.code}. ${error.message}` : String(error)
         throw new Error(`Could not edit file: ${path}. ${reason}.`, { cause: error })
       }
       throwIfAborted(signal)
@@ -364,7 +370,10 @@ const buildEditTool = (cwd: string): AgentTool<typeof editSchema> => {
  * @param env - the ZenFS-backed execution environment the tools operate over
  * @param options - `cwd` the tools resolve relative paths against
  */
-export const createBrowserCodingTools = (env: BrowserExecutionEnv, options: { cwd: string }): AgentTool[] => {
+export const createCodingTools = (env: CodingEnvironment, options: { cwd: string }): AgentTool[] => {
   const { cwd } = options
-  return [buildBashTool(env, cwd), buildReadTool(cwd), buildWriteTool(cwd), buildEditTool(cwd)]
+  return [buildBashTool(env, cwd), buildReadTool(env), buildWriteTool(env), buildEditTool(env)]
 }
+
+/** Compatibility name for callers that provide the browser environment. */
+export const createBrowserCodingTools = createCodingTools

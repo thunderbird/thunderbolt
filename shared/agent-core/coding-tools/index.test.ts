@@ -244,7 +244,7 @@ describe('edit tool – execution', () => {
 
   it('reports a friendly error (with the FS error code) when the file does not exist', async () => {
     await expect(run(edit, { path: 'missing.txt', edits: [{ oldText: 'a', newText: 'b' }] })).rejects.toThrow(
-      /Could not edit file: missing\.txt\..*ENOENT/,
+      /Could not edit file: missing\.txt\..*not_found/,
     )
   })
 

@@ -1090,7 +1090,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const firstSystemPrompt = buildCalls[0]?.systemPrompt as () => string
     const secondSystemPrompt = buildCalls[1]?.systemPrompt as () => string
     const expectedPrompt = (timestamp: string): string =>
-      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\n\n${timestamp}`
+      `stable prompt\n\nClient environment: web\n\n${appHarnessEnvironmentPrompt}\nFile changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.\n\n${timestamp}`
     expect(seededSystemPrompts).toEqual([expectedPrompt('timestamp 1'), expectedPrompt('timestamp 3')])
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
@@ -1222,6 +1222,7 @@ const createBudgetAdapter = (
   })
   const context = {
     threadId: 'budget-regression',
+    execution: { location: 'sandbox', access: 'full' },
     selectedModel: model,
     mcpClients: [],
     reconnectClient: async () => null,
@@ -1256,6 +1257,42 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
   name: 'search',
   args: { query: `query-${index}`, max_results: 10 },
 }))
+
+describe('real Pi approvals', () => {
+  it('blocks a refused tool before execution and permits a later approved action', async () => {
+    const run = createBudgetAdapter([
+      [{ name: 'save_report', args: { text: 'denied' } }],
+      'I did not save the report.',
+      [{ name: 'save_report', args: { text: 'approved' } }],
+      'Saved.',
+    ])
+    run.context.execution = { location: 'sandbox', access: 'ask' }
+    run.context.requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: 'deny' } }))
+    try {
+      await run.send()
+      expect(run.writes).toEqual([])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      run.context.requestPermission = mock(async () => ({
+        outcome: { outcome: 'selected' as const, optionId: 'allow' },
+      }))
+      await run.send()
+      expect(run.writes).toEqual(['approved'])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('rejects native and cloud execution on web before any provider request', async () => {
+    const run = createBudgetAdapter([])
+    run.context.execution = { location: 'computer', access: 'full', cwd: '/real' }
+    await expect(run.send()).rejects.toThrow('desktop app')
+    run.context.execution = { location: 'cloud', access: 'ask' }
+    await expect(run.send()).rejects.toThrow('not available')
+    expect(run.requests).toHaveLength(0)
+    run.adapter.disconnect()
+  })
+})
 
 describe('real Pi web-budget payload', () => {
   it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {

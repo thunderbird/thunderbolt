@@ -290,6 +290,14 @@ msgstr "追加中…"
 msgid "Advanced (JSON)"
 msgstr "詳細設定（JSON）"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent access"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent location"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -312,6 +320,14 @@ msgstr "すべてのプロジェクト"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
 msgstr "すべてのスキルがピン留めされています"
+
+#: src/agent-execution/approval.ts
+msgid "Allow once"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Allow tools to act without asking"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -443,6 +459,14 @@ msgstr "確認"
 
 #: src/components/embedded/selection-popover.tsx
 msgid "Ask about this"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask before changes, commands, and external actions"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask for approval"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -681,9 +705,25 @@ msgstr "セッションを確認しています。"
 msgid "Checking…"
 msgstr "確認中…"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Choose a starting folder. The agent can access files and run commands on your computer, including outside this folder."
+#~ msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Choose a tool-capable model to use this computer"
+msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Choose a working folder before using this computer"
+msgstr ""
+
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
 msgstr "エージェントを選択"
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+#~ msgid "Choose an existing folder using its full path."
+#~ msgstr ""
 
 #: src/projects/emoji-picker.tsx
 msgid "Choose an icon"
@@ -798,6 +838,14 @@ msgstr "ナビゲーションを閉じる"
 msgid "Close reorder"
 msgstr "並べ替えを閉じる"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Cloud"
+msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Cloud execution is not available yet"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
 msgstr "クラウド同期"
@@ -813,6 +861,10 @@ msgstr "コードが使えませんでした"
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Collapse Sidebar"
 msgstr "サイドバーを折りたたむ"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Coming soon"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
@@ -837,6 +889,10 @@ msgstr "セットアップを完了して Thunderbolt を使い始めましょ�
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "完了しています…"
+
+#: src/acp/built-in-adapter.ts
+msgid "Computer execution requires the desktop app"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1056,6 +1112,10 @@ msgstr "ペアリングコードを表示できませんでした。"
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "プロジェクトを保存できませんでした。"
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Could not select a working folder. Please try again."
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
@@ -1360,6 +1420,7 @@ msgstr "強い霧雨"
 msgid "Dense freezing drizzle"
 msgstr "強い着氷性の霧雨"
 
+#: src/agent-execution/approval.ts
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -1844,6 +1905,14 @@ msgstr "食べ物と飲み物"
 msgid "From {0}"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Full access"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Full path, or leave empty for your home folder"
+#~ msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2219,6 +2288,10 @@ msgstr "このアプリのペアリング ID を読み込んでいます…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "読み込んでいます…"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Local sandbox"
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
@@ -2864,6 +2937,10 @@ msgstr "プライバシー"
 msgid "Private"
 msgstr "非公開"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Private workspace inside Thunderbolt"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "処理中…"
@@ -2914,6 +2991,10 @@ msgstr "{fileName} を読み込み中…"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr "送信できます"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Real files and commands on your computer"
+msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
@@ -3884,6 +3965,10 @@ msgstr "このチャットは {agentName} を使用していますが、この�
 msgid "This code has expired. Please request a new one."
 msgstr "このコードは有効期限が切れています。新しいコードをリクエストしてください。"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "This computer"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "この会話はモデルのコンテキストウィンドウに対して大きすぎます。新しいチャットを開始する、添付ファイルを削除する、またはコンテキストウィンドウの大きいモデルに切り替えてください。"
@@ -3935,6 +4020,10 @@ msgstr "このリンクは無効です。新しいリンクをリクエストし
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "このリンクのアドレスはアプリで開けません。"
+
+#: src/acp/built-in-adapter.ts
+msgid "This model cannot run on this computer. Choose a tool-capable supported model."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4284,6 +4373,10 @@ msgstr "http:// または https:// の URL を使用してください"
 msgid "Use Cloud Proxy"
 msgstr "クラウドプロキシを使用"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Use folder"
+#~ msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Use https:// (http is only allowed for localhost or a local network)"
 msgstr "https:// を使用してください（http は localhost またはローカルネットワークでのみ許可されます）"
@@ -4504,6 +4597,14 @@ msgstr "ウィンドウの操作"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "単語1 単語2 単語3 ..."
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Work on this computer"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Working folder"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"

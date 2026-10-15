@@ -7,10 +7,14 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Download, RefreshCw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import { useDesktopUpdate, type DesktopUpdateState, type UpdateStatus } from '@/hooks/use-desktop-update'
+import {
+  isDesktopUpdateEnabled,
+  useDesktopUpdate,
+  type DesktopUpdateState,
+  type UpdateStatus,
+} from '@/hooks/use-desktop-update'
 import { Button } from '@/components/ui/button'
 import { NotificationCard } from '@/components/ui/notification-card'
-import { isDesktop } from '@/lib/platform'
 
 const statusConfig = {
   initial: { icon: CheckCircle, message: null, showActions: false },
@@ -94,5 +98,5 @@ export const UpdateNotificationContent = ({ desktop, updateState }: UpdateNotifi
 export const UpdateNotification = () => {
   const updateState = useDesktopUpdate()
 
-  return <UpdateNotificationContent desktop={isDesktop()} updateState={updateState} />
+  return <UpdateNotificationContent desktop={isDesktopUpdateEnabled()} updateState={updateState} />
 }

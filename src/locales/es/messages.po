@@ -314,6 +314,14 @@ msgstr "Añadiendo…"
 msgid "Advanced (JSON)"
 msgstr "Avanzado (JSON)"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent access"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Agent location"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -336,6 +344,14 @@ msgstr "Todos los proyectos"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
 msgstr "Todas las habilidades están fijadas"
+
+#: src/agent-execution/approval.ts
+msgid "Allow once"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Allow tools to act without asking"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -467,6 +483,14 @@ msgstr "Preguntar"
 
 #: src/components/embedded/selection-popover.tsx
 msgid "Ask about this"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask before changes, commands, and external actions"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Ask for approval"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -705,9 +729,25 @@ msgstr "Comprobando tu sesión."
 msgid "Checking…"
 msgstr "Comprobando…"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Choose a starting folder. The agent can access files and run commands on your computer, including outside this folder."
+#~ msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Choose a tool-capable model to use this computer"
+msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Choose a working folder before using this computer"
+msgstr ""
+
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
 msgstr "Elegir agente"
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+#~ msgid "Choose an existing folder using its full path."
+#~ msgstr ""
 
 #: src/projects/emoji-picker.tsx
 msgid "Choose an icon"
@@ -822,6 +862,14 @@ msgstr "Cerrar la navegación"
 msgid "Close reorder"
 msgstr "Cerrar la reordenación"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Cloud"
+msgstr ""
+
+#: src/acp/built-in-adapter.ts
+msgid "Cloud execution is not available yet"
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
 msgstr "Sincronización en la nube"
@@ -837,6 +885,10 @@ msgstr "El código no funcionó"
 #: src/layout/sidebar/sidebar-header.tsx
 msgid "Collapse Sidebar"
 msgstr "Contraer la barra lateral"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Coming soon"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Command / arguments"
@@ -861,6 +913,10 @@ msgstr "Completa la configuración para empezar con Thunderbolt"
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
 msgstr "Completando…"
+
+#: src/acp/built-in-adapter.ts
+msgid "Computer execution requires the desktop app"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
@@ -1080,6 +1136,10 @@ msgstr "No se pudo mostrar el código de emparejamiento."
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "No se pudo guardar el proyecto."
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Could not select a working folder. Please try again."
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
@@ -1384,6 +1444,7 @@ msgstr "Llovizna densa"
 msgid "Dense freezing drizzle"
 msgstr "Llovizna helada densa"
 
+#: src/agent-execution/approval.ts
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -1868,6 +1929,14 @@ msgstr "Comida y bebida"
 msgid "From {0}"
 msgstr ""
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Full access"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Full path, or leave empty for your home folder"
+#~ msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2243,6 +2312,10 @@ msgstr "Cargando la identidad de emparejamiento de esta app…"
 #: src/widgets/connect-integration/widget.tsx
 msgid "Loading…"
 msgstr "Cargando…"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Local sandbox"
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Local Storage"
@@ -2888,6 +2961,10 @@ msgstr "Privacidad"
 msgid "Private"
 msgstr "Privado"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Private workspace inside Thunderbolt"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Procesando…"
@@ -2938,6 +3015,10 @@ msgstr "Leyendo {fileName}…"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr "Listo para enviar"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Real files and commands on your computer"
+msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
@@ -3908,6 +3989,10 @@ msgstr "Este chat usa {agentName}, que no está disponible en esta plataforma."
 msgid "This code has expired. Please request a new one."
 msgstr "Este código ha caducado. Solicita uno nuevo."
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "This computer"
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr "Esta conversación es demasiado grande para la ventana de contexto del modelo. Empieza un chat nuevo, quita algunos adjuntos o cambia a un modelo con una ventana de contexto mayor."
@@ -3959,6 +4044,10 @@ msgstr "Este enlace no es válido. Solicita uno nuevo."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Esta dirección no se puede abrir en la app."
+
+#: src/acp/built-in-adapter.ts
+msgid "This model cannot run on this computer. Choose a tool-capable supported model."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4308,6 +4397,10 @@ msgstr "Usa una URL http:// o https://"
 msgid "Use Cloud Proxy"
 msgstr "Usar el proxy en la nube"
 
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Use folder"
+#~ msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Use https:// (http is only allowed for localhost or a local network)"
 msgstr "Usa https:// (http solo se permite en localhost o en una red local)"
@@ -4528,6 +4621,14 @@ msgstr "Controles de la ventana"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "palabra1 palabra2 palabra3 ..."
+
+#: src/components/agent-execution-controls/use-agent-execution-controls-state.ts
+msgid "Work on this computer"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+#~ msgid "Working folder"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"

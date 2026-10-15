@@ -9,7 +9,7 @@ on:
         type: string
         default: 'all'
       version:
-        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
+        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for a patch bump.'
         required: false
         type: string
   workflow_dispatch:
@@ -25,7 +25,7 @@ on:
           - android
           - desktop
       version:
-        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
+        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for a patch bump.'
         required: false
         type: string
 

@@ -34,11 +34,11 @@ type FakeMcpServerOptions = {
  *
  * It records every request so a test can check what the client sent. Its `state` switches behaviour mid-test:
  * `isFailing` answers every POST with a 500, `isPagingForever` hands out a next cursor on every `tools/list` page,
- * and `redirectTo` answers every request with a redirect there.
+ * `redirectTo` answers every request with a redirect there, and `answerAfter` holds every POST until it resolves.
  */
 export const startFakeMcpServer = (tools: FakeMcpTool[], { pageSize }: FakeMcpServerOptions = {}) => {
   const requests: FakeMcpRequest[] = []
-  const state: { isFailing: boolean; isPagingForever: boolean; redirectTo?: string } = {
+  const state: { isFailing: boolean; isPagingForever: boolean; redirectTo?: string; answerAfter?: Promise<void> } = {
     isFailing: false,
     isPagingForever: false,
   }
@@ -105,6 +105,7 @@ export const startFakeMcpServer = (tools: FakeMcpTool[], { pageSize }: FakeMcpSe
       }
       const message = (await request.json()) as JsonRpcMessage
       requests.push({ httpMethod: request.method, rpcMethod: message.method, headers: request.headers })
+      await state.answerAfter
       if (state.redirectTo) {
         return Response.redirect(state.redirectTo, 307)
       }

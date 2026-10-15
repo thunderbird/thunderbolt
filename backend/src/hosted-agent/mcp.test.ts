@@ -396,12 +396,62 @@ describe('createAgentMcpClients', () => {
     expect(server.connectionCount()).toBe(2)
   })
 
-  it('tells the model only that the server could not be reached when a call cannot reconnect', async () => {
-    const server = startServer([{ name: 'broken_search', readOnly: true, httpStatus: 503 }])
-    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+  it('tries one reconnect per reply to a server that stays down, and tells the model only that it is unreachable', async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true },
+      { name: 'broken_search', readOnly: true, httpStatus: 503 },
+    ])
+    const clients = create([{ name: 'schedule', url: server.url }])
+    const { tools } = await clients.loadTools()
     await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached (HTTP 503)')
     server.state.isFailing = true
-    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow(/^schedule could not be reached\.$/)
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(/^schedule could not be reached\.$/)
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(/^schedule could not be reached\.$/)
+    expect(server.connectionCount()).toBe(2)
+    server.state.isFailing = false
+    expect((await clients.loadTools()).unavailableServers).toEqual([])
+  })
+
+  it('stops waiting for a reconnect when the run is aborted, and lets the connect finish for later runs', async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true },
+      { name: 'broken_search', readOnly: true, httpStatus: 503 },
+    ])
+    // A connect deadline past the test's own timeout, so a call that waited for it would fail the test.
+    const clients = create([{ name: 'schedule', url: server.url }], { connectTimeoutMs: 10_000 })
+    const { tools } = await clients.loadTools()
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
+    const held = Promise.withResolvers<void>()
+    server.state.answerAfter = held.promise
+    const stop = new AbortController()
+    const call = callTool(tools.schedule_search_sessions, stop.signal)
+    stop.abort()
+    await expect(call).rejects.toThrow('could not be reached')
+    server.state.answerAfter = undefined
+    held.resolve()
+    const next = await clients.loadTools()
+    expect(await callTool(next.tools.schedule_search_sessions)).toMatchObject({ isError: false })
+    expect(server.connectionCount()).toBe(2)
+  })
+
+  it("counts a reconnect against the call's time limit", async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true },
+      { name: 'broken_search', readOnly: true, httpStatus: 503 },
+    ])
+    const clients = create([{ name: 'schedule', url: server.url }], {
+      toolCallTimeoutMs: 500,
+      connectTimeoutMs: 10_000,
+    })
+    const { tools } = await clients.loadTools()
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
+    const held = Promise.withResolvers<void>()
+    server.state.answerAfter = held.promise
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(/^schedule could not be reached\.$/)
+    server.state.answerAfter = undefined
+    held.resolve()
+    // Let the reconnect finish here rather than log into the next test.
+    expect((await clients.loadTools()).unavailableServers).toEqual([])
   })
 
   it('refuses a call once a reconnect finds the tool is no longer read-only', async () => {
@@ -424,7 +474,7 @@ describe('createAgentMcpClients', () => {
       { name: 'slow_search', readOnly: true, call: neverAnswers },
       { name: 'broken_search', readOnly: true, httpStatus: 502 },
     ])
-    const clients = create([{ name: 'schedule', url: server.url }], { toolCallTimeoutMs: 200 })
+    const clients = create([{ name: 'schedule', url: server.url }], { toolCallTimeoutMs: 500 })
     const { tools } = await clients.loadTools()
     const inFlight = callTool(tools.schedule_slow_search)
     await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')

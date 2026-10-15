@@ -147,7 +147,7 @@ gh workflow run release.yml -f version=1.2.3    # Explicit version for a minor/m
    - Updates the version files and regenerates `CHANGELOG.md` via `scripts/create-release.ts`
    - Commits changes and creates unified tag `v1.2.3`
    - Pushes to remote
-   - Creates the GitHub release as a **draft** with the changelog and a "may be unstable" warning
+   - Creates the GitHub release as a **draft prerelease** with the changelog and a "may be unstable" warning
 
 2. **Platform Builds** (runs in parallel):
    - **Desktop**: Builds all platforms (Linux, macOS, Windows)
@@ -241,7 +241,7 @@ The `release.yml` workflow handles the entire release process:
 2. Commits with a message like "chore: bump version to 1.2.3 for release"
 3. Creates tag `v1.2.3`
 4. Pushes commit and tag to remote
-5. Creates a draft release on GitHub with the changelog and a "may be unstable" warning
+5. Creates a draft prerelease on GitHub with the changelog and a "may be unstable" warning
 
 ### Platform Builds
 
@@ -483,7 +483,7 @@ Repository variables (not secrets):
 
 1. ✅ **Always use the workflow or the script** for version bumps — they update every file for you
 2. ✅ **Use semantic versioning** (major.minor.patch)
-3. ✅ **Write good commit messages** for auto-detection to work
+3. ✅ **Write good commit messages**: they become the changelog. `release.yml` always bumps the patch version, but a `version-bump.yml` dispatch and the local script pick the bump type from them by default
 4. ✅ **Check version files** are in sync before manually tagging
 5. ✅ **Check the run's annotations** for a CrabNebula upload warning before calling a release done
 6. ❌ **Never force push** to main or version tags

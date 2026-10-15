@@ -381,9 +381,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          # An RC tag stays a prerelease, so it never becomes Latest.
+          # An RC tag stays a prerelease, and GitHub rejects a prerelease marked Latest (HTTP 422).
           PRERELEASE: ${{ endsWith(env.RELEASE_TAG, '-rc') }}
-          LATEST: ${{ inputs.latest }}
+          LATEST: ${{ inputs.latest && !endsWith(env.RELEASE_TAG, '-rc') }}
         run: |
           gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false --prerelease="${PRERELEASE}" --latest="$LATEST"
 

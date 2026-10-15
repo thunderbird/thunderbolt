@@ -161,7 +161,7 @@ openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
 | Client  | Requirement                                                                                 |
 | ------- | ------------------------------------------------------------------------------------------- |
 | Web     | A current desktop browser, served over HTTPS. The app keeps a local database in the browser |
-| Desktop | macOS 15 or later (Apple Silicon or Intel), Windows (x64 or arm64), or Linux x64            |
+| Desktop | macOS 10.15 or later (Apple Silicon or Intel), Windows (x64 or arm64), or Linux x64         |
 | Mobile  | iOS through TestFlight, Android through a Play Store internal track. Neither is public yet  |
 
 The published desktop and mobile apps connect to Thunderbolt's hosted service. Pointing them at a self-hosted deployment means building them yourself with your own server URL, because the URL is fixed when the app is built.

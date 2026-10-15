@@ -225,7 +225,13 @@ export const useAccountPasskey = () => {
   })
   const isUnavailable = !passkeyAvailable || (!isSessionPending && !isFullUser)
   const isSettled = isUnavailable || query.isSuccess || query.isError
-  return { passkey: isUnavailable ? null : (query.data ?? null), isUnavailable, isSettled, isLoading: !isSettled }
+  return {
+    passkey: isUnavailable ? null : (query.data ?? null),
+    isUnavailable,
+    isSettled,
+    isLoading: !isSettled,
+    isError: query.isError,
+  }
 }
 
 /**

@@ -245,6 +245,10 @@ msgstr ""
 msgid "Activity"
 msgstr "Actividad"
 
+#: src/settings/encryption/passkey-section.tsx
+msgid "Add"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add & Authorize"
 msgstr "Añadir y autorizar"
@@ -256,6 +260,10 @@ msgstr "Añade <0>~/.local/bin</0> a tu PATH y reinicia la shell:"
 #: src/tasks/index.tsx
 msgid "Add a new task…"
 msgstr "Añadir una tarea nueva…"
+
+#: src/settings/encryption/add-passkey-dialog.tsx
+msgid "Add a passkey"
+msgstr ""
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
 #~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
@@ -3595,6 +3603,7 @@ msgid "Sign In"
 msgstr "Iniciar sesión"
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Sign in faster next time"
 msgstr "Inicia sesión más rápido la próxima vez"
 
@@ -3630,6 +3639,10 @@ msgstr "Iniciar sesión con llave de acceso"
 #: src/settings/passkeys.tsx
 #~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
 #~ msgstr ""
+
+#: src/settings/encryption/passkey-section.tsx
+msgid "Sign in with your fingerprint, face, or device PIN."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -4493,6 +4506,7 @@ msgid "Use Thunderbolt from the command line."
 msgstr "Usa Thunderbolt desde la línea de comandos."
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
+#: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
 msgstr "Inicia sesión con tu huella, tu cara o el PIN del dispositivo en lugar de un código por correo. También puedes seguir usando el correo."
 

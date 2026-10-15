@@ -25,13 +25,17 @@ import { useState } from 'react'
 type EnrollStatus = 'idle' | 'working' | 'no-prf' | 'needs-reauth' | 'error'
 
 /**
- * State for the sync-setup passkey step: create the account's passkey (or use the
- * one it already has), get its PRF output, and enroll it as the passkey slot.
+ * State for the passkey step: create the account's passkey (or use the one it
+ * already has) and, when `unlocksSync`, get its PRF output and enroll it as the
+ * passkey slot. Otherwise the passkey is for sign-in only.
  */
 export const usePasskeyEnrollState = ({
+  unlocksSync,
   onEnrolled,
   onBusyChange,
 }: {
+  /** Enroll the passkey slot; needs this device's sync keys (an AK rotation). */
+  unlocksSync: boolean
   onEnrolled: () => void
   /** Lets the modal block dismissal while an enrollment is in flight. */
   onBusyChange: (isBusy: boolean) => void
@@ -42,6 +46,12 @@ export const usePasskeyEnrollState = ({
   const { passkey: accountPasskey, isLoading } = useAccountPasskey()
   const [status, setStatus] = useState<EnrollStatus>('idle')
 
+  const createPasskey = async () => {
+    const result = await registerPasskey(authClient, getDeviceDisplayName())
+    await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
+    return result
+  }
+
   /** Create the passkey, or reuse the existing one, and return its credential + PRF output. */
   const getCredentialAndPrf = async (): Promise<{ credentialId: string; prfOutput: Uint8Array | null }> => {
     if (accountPasskey) {
@@ -50,8 +60,7 @@ export const usePasskeyEnrollState = ({
         prfOutput: await getPasskeyPrfOutput(accountPasskey.credentialID),
       }
     }
-    const { passkey, prfOutput } = await registerPasskey(authClient, getDeviceDisplayName())
-    await queryClient.invalidateQueries({ queryKey: accountPasskeyQueryKey })
+    const { passkey, prfOutput } = await createPasskey()
     // Some providers only release the PRF output on an assertion, not at creation.
     return {
       credentialId: passkey.credentialID,
@@ -63,6 +72,13 @@ export const usePasskeyEnrollState = ({
     setStatus('working')
     onBusyChange(true)
     try {
+      if (!unlocksSync) {
+        if (!accountPasskey) {
+          await createPasskey()
+        }
+        onEnrolled()
+        return
+      }
       // A re-authentication starts a new session, which must be bound to this
       // device. Done first, so a bind failure can't strand a passkey prompt.
       await ensureSessionBound(httpClient)

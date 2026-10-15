@@ -238,7 +238,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         )}
 
         {setup.step === 'passkey-enroll' && (
-          <PasskeyEnrollStep onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
+          <PasskeyEnrollStep unlocksSync onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
         )}
 
         {setup.step === 'recovery-key-entry' && (

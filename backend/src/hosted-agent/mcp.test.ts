@@ -6,10 +6,13 @@ import { startFakeMcpServer, type FakeMcpServer, type FakeMcpTool } from '@/test
 import { realFetch } from '@/test-utils/real-fetch'
 import type { Tool, ToolExecutionOptions } from 'ai'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { maxToolCallsPerReply } from './limits'
 import {
   createAgentMcpClients,
-  maxToolCallsPerReply,
+  maxMcpResponseBytes,
+  maxToolDefinitionChars,
   maxToolResultChars,
+  maxToolsPerServer,
   parseAgentMcpServers,
   type AgentMcpServer,
 } from './mcp'
@@ -102,7 +105,7 @@ describe('createAgentMcpClients', () => {
   })
 
   it('loads no tools and names no server when none are configured', async () => {
-    expect(await create([]).loadTools()).toEqual({ tools: {}, toolDefinitions: '', unavailableServers: [] })
+    expect(await create([]).loadTools()).toMatchObject({ tools: {}, toolDefinitions: '', unavailableServers: [] })
   })
 
   it("namespaces each tool under its server's name, and keeps its title", async () => {
@@ -185,10 +188,66 @@ describe('createAgentMcpClients', () => {
     expect(Object.keys(tools)).toEqual(['schedule_search_sessions', 'schedule_list_rooms', 'schedule_get_session'])
   })
 
+  it('skips a tool whose definition is too large to carry on every step, and keeps the rest', async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true, description: 'x'.repeat(maxToolDefinitionChars) },
+      { name: 'list_rooms', readOnly: true },
+    ])
+    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+    expect(Object.keys(tools)).toEqual(['schedule_list_rooms'])
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ tooLarge: ['search_sessions'] }),
+      expect.any(String),
+    )
+  })
+
+  it(`offers at most ${maxToolsPerServer} tools from one server, the first listed`, async () => {
+    const listed = Array.from({ length: maxToolsPerServer + 2 }, (_, index) => ({
+      name: `tool_${index}`,
+      readOnly: true,
+    }))
+    const server = startServer(listed)
+    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+    expect(Object.keys(tools)).toEqual(listed.slice(0, maxToolsPerServer).map(({ name }) => `schedule_${name}`))
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ pastToolLimit: [`tool_${maxToolsPerServer}`, `tool_${maxToolsPerServer + 1}`] }),
+      expect.any(String),
+    )
+  })
+
   it('gives up on a server whose tool list never ends, so it cannot hang every reply', async () => {
     const server = startServer([{ name: 'search_sessions', readOnly: true }])
     server.state.isPagingForever = true
     expect((await create([{ name: 'schedule', url: server.url }]).loadTools()).unavailableServers).toEqual(['schedule'])
+  })
+
+  it.each(['initialize', 'tools/list'])(
+    'gives up on a server that never answers %s, within the connect deadline',
+    async (method) => {
+      const server = startServer([{ name: 'search_sessions', readOnly: true }])
+      server.state.stallOn = method
+      const started = performance.now()
+      const result = await create([{ name: 'schedule', url: server.url }], { connectTimeoutMs: 200 }).loadTools()
+      expect(result.unavailableServers).toEqual(['schedule'])
+      expect(performance.now() - started).toBeLessThan(1_000)
+    },
+  )
+
+  it('stops waiting on a first connect once the visitor leaves, and lets it finish for later runs', async () => {
+    const server = startServer([{ name: 'search_sessions', readOnly: true }])
+    const held = Promise.withResolvers<void>()
+    server.state.answerAfter = held.promise
+    const clients = create([{ name: 'schedule', url: server.url }], { connectTimeoutMs: 10_000 })
+    const visitor = new AbortController()
+    const started = performance.now()
+    const loading = clients.loadTools(visitor.signal)
+    visitor.abort()
+    expect((await loading).unavailableServers).toEqual(['schedule'])
+    expect(performance.now() - started).toBeLessThan(1_000)
+    server.state.answerAfter = undefined
+    held.resolve()
+    expect((await clients.loadTools()).unavailableServers).toEqual([])
+    expect(server.connectionCount()).toBe(1)
   })
 
   it('sends the configured headers with every request', async () => {
@@ -218,6 +277,39 @@ describe('createAgentMcpClients', () => {
     })
   })
 
+  it.each([
+    [
+      'text beside other parts, naming them and keeping its structured content and metadata out',
+      {
+        content: [
+          { type: 'text', text: 'Robots: Room 2, 14:00' },
+          { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+        ],
+        structuredContent: { room: 'Room 2' },
+        _meta: { trace: 'trace-1' },
+      },
+      'Robots: Room 2, 14:00\n[image content omitted]',
+    ],
+    [
+      'structured content alone as no text',
+      { structuredContent: { room: 'Room 2' }, _meta: { trace: 'trace-1' } },
+      '[no text content]',
+    ],
+    ['no parts as no text', { content: [] }, '[no text content]'],
+    [
+      'the old toolResult shape as that value alone',
+      { toolResult: { sessions: 2 }, _meta: { trace: 'trace-1' } },
+      '{"sessions":2}',
+    ],
+  ])('reads a result with %s', async (_label, result, text) => {
+    const server = startServer([{ name: 'search_sessions', readOnly: true, result }])
+    const { tools } = await create([{ name: 'schedule', url: server.url }]).loadTools()
+    expect(await callTool(tools.schedule_search_sessions)).toEqual({
+      content: [{ type: 'text', text }],
+      isError: false,
+    })
+  })
+
   it('caps a long result', async () => {
     const long = 'x'.repeat(maxToolResultChars + 5)
     const server = startServer([{ name: 'search_sessions', readOnly: true, call: () => ({ text: long }) }])
@@ -228,16 +320,33 @@ describe('createAgentMcpClients', () => {
     )
   })
 
-  it('refuses calls past the per-reply budget, and starts a fresh budget for the next reply', async () => {
+  it('refuses calls past the per-reply budget, says when it is spent, and starts a fresh one for the next reply', async () => {
     const server = startServer([{ name: 'search_sessions', readOnly: true }])
     const clients = create([{ name: 'schedule', url: server.url }])
-    const { tools } = await clients.loadTools()
-    await Promise.all(Array.from({ length: maxToolCallsPerReply }, () => callTool(tools.schedule_search_sessions)))
+    const { tools, isCallBudgetSpent } = await clients.loadTools()
+    await Promise.all(Array.from({ length: maxToolCallsPerReply - 1 }, () => callTool(tools.schedule_search_sessions)))
+    expect(isCallBudgetSpent()).toBe(false)
+    await callTool(tools.schedule_search_sessions)
+    expect(isCallBudgetSpent()).toBe(true)
     await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(
       `used its ${maxToolCallsPerReply} tool calls`,
     )
     const next = await clients.loadTools()
+    expect(next.isCallBudgetSpent()).toBe(false)
     expect(await callTool(next.tools.schedule_search_sessions)).toMatchObject({ isError: false })
+  })
+
+  it('refuses a result larger than a response may be, and keeps the connection', async () => {
+    const server = startServer([
+      { name: 'search_sessions', readOnly: true, call: () => ({ text: 'x'.repeat(maxMcpResponseBytes) }) },
+    ])
+    const clients = create([{ name: 'schedule', url: server.url }])
+    const { tools } = await clients.loadTools()
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(
+      'schedule returned more than 1 MB, which is too much to read.',
+    )
+    await clients.loadTools()
+    expect(server.connectionCount()).toBe(1)
   })
 
   it('connects once for concurrent first runs and reuses the connection after', async () => {
@@ -360,6 +469,32 @@ describe('createAgentMcpClients', () => {
     expect(await inFlight).toMatchObject({ content: [{ text: 'finished' }] })
   })
 
+  it('gives up on ending a session the server never answers, so a retired connection holds nothing open', async () => {
+    const server = startServer([{ name: 'broken_search', readOnly: true, httpStatus: 503 }])
+    server.state.stallOn = 'DELETE'
+    const sessionEnd = Promise.withResolvers<Response>()
+    const fetchFn = Object.assign(
+      (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const response = realFetch(input, init)
+        if (init?.method === 'DELETE') {
+          sessionEnd.resolve(response)
+        }
+        return response
+      },
+      { preconnect: realFetch.preconnect },
+    )
+    const clients = createAgentMcpClients([{ name: 'schedule', url: server.url }], {
+      logger,
+      fetchFn,
+      closeTimeoutMs: 100,
+    })
+    const { tools } = await clients.loadTools()
+    const started = performance.now()
+    await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
+    await expect(sessionEnd.promise).rejects.toThrow('timed out')
+    expect(performance.now() - started).toBeLessThan(1_000)
+  })
+
   it('tells the model a slow call timed out, and reconnects for the next run', async () => {
     const server = startServer([{ name: 'search_sessions', readOnly: true, call: neverAnswers }])
     const clients = create([{ name: 'schedule', url: server.url }], { toolCallTimeoutMs: 50 })
@@ -417,16 +552,18 @@ describe('createAgentMcpClients', () => {
       { name: 'search_sessions', readOnly: true },
       { name: 'broken_search', readOnly: true, httpStatus: 503 },
     ])
-    // A connect deadline past the test's own timeout, so a call that waited for it would fail the test.
     const clients = create([{ name: 'schedule', url: server.url }], { connectTimeoutMs: 10_000 })
     const { tools } = await clients.loadTools()
     await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
     const held = Promise.withResolvers<void>()
     server.state.answerAfter = held.promise
     const stop = new AbortController()
+    const started = performance.now()
     const call = callTool(tools.schedule_search_sessions, stop.signal)
     stop.abort()
     await expect(call).rejects.toThrow('could not be reached')
+    // Well short of the connect deadline, which a call that waited for the reconnect would have run into.
+    expect(performance.now() - started).toBeLessThan(1_000)
     server.state.answerAfter = undefined
     held.resolve()
     const next = await clients.loadTools()
@@ -447,7 +584,10 @@ describe('createAgentMcpClients', () => {
     await expect(callTool(tools.schedule_broken_search)).rejects.toThrow('could not be reached')
     const held = Promise.withResolvers<void>()
     server.state.answerAfter = held.promise
+    const started = performance.now()
     await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(/^schedule could not be reached\.$/)
+    // The call's own 500 ms limit, not the connect deadline.
+    expect(performance.now() - started).toBeLessThan(2_000)
     server.state.answerAfter = undefined
     held.resolve()
     // Let the reconnect finish here rather than log into the next test.

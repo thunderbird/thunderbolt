@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
 import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
@@ -266,8 +267,14 @@ const settingsSchema = z
     // feed `GET /agents` (see `@/hosted-agent/provider`).
     agentEnabled: z.boolean().default(false),
     agentModel: z.string().default(''),
-    // Most model steps per run, each tool round trip being one more. Without tools every run is a single step.
-    agentMaxSteps: z.coerce.number().int().positive().default(8),
+    // Most model steps per run, each tool round trip being one more. Without tools every run is a single step. At most
+    // `maxAgentSteps`, the most a reply can take under its tool-call budget.
+    agentMaxSteps: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(maxAgentSteps, { message: `AGENT_MAX_STEPS must be at most ${maxAgentSteps}` })
+      .default(8),
     agentSystemPrompt: z.string().default(''),
     // JSON array of MCP servers whose read-only tools the hosted agent may call, parsed by `parseAgentMcpServers`
     // (`@/hosted-agent/mcp`) when the agent mounts, so a malformed value fails the boot.

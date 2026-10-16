@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import {
@@ -1254,5 +1255,15 @@ describe('Hosted agent settings', () => {
   it('treats an empty AGENT_MAX_STEPS as unset', () => {
     process.env.AGENT_MAX_STEPS = ''
     expect(getSettings().agentMaxSteps).toBe(8)
+  })
+
+  it('accepts AGENT_MAX_STEPS up to one step per tool call a reply may make, plus the answer', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps)
+    expect(getSettings().agentMaxSteps).toBe(maxAgentSteps)
+  })
+
+  it('refuses to start on an AGENT_MAX_STEPS past that', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps + 1)
+    expect(() => getSettings()).toThrow(`AGENT_MAX_STEPS must be at most ${maxAgentSteps}`)
   })
 })

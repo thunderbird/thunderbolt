@@ -20,7 +20,7 @@ import { cliRegistrationPendingDeviceId, isCliGrantSession } from '@/dal/session
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
-import { getSettings, isPasskeyEnabled } from '@/config/settings'
+import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
@@ -547,7 +547,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         rateLimit: { enabled: false },
       }),
       // Changing the RP ID orphans every registered passkey. `origin` comes from
-      // the trusted-origins list, never the request's Origin header. The challenge
+      // the trusted-origins list plus the Android app's signing-key origins, never
+      // the request's Origin header. The challenge
       // rides a signed cookie, which `elysia-plugin.ts` relays through the
       // `X-Passkey-Challenge` header.
       ...(isPasskeyEnabled(settings)
@@ -555,7 +556,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             passkey({
               rpID: settings.passkeyRpId,
               rpName: settings.passkeyRpName,
-              origin: trustedOrigins,
+              origin: [...trustedOrigins, ...getPasskeyAndroidOriginsList(settings)],
             }),
           ]
         : []),

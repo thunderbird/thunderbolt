@@ -4,7 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useConfigStore } from '@/api/config-store'
 import { builtInAgent } from '@/defaults/agents'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
@@ -38,6 +38,10 @@ const customAgent: Agent = {
   deletedAt: null,
   userId: 'user-42',
 }
+
+beforeEach(() => {
+  useConfigStore.setState({ config: {}, configLoaded: false })
+})
 
 afterEach(() => {
   cleanup()

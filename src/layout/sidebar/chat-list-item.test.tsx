@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { useChat as useChat_default } from '@ai-sdk/react'
 import { useConfigStore } from '@/api/config-store'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -44,6 +44,10 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
   onRename: mock(),
   onMoveToProject: mock(),
   ...overrides,
+})
+
+beforeEach(() => {
+  useConfigStore.setState({ config: {}, configLoaded: false })
 })
 
 afterEach(() => {

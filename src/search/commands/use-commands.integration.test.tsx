@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
@@ -32,6 +32,10 @@ const settingsCommandIds = (commands: ReturnType<typeof useCommands>) =>
 describe('useCommands config wiring', () => {
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
+  beforeEach(() => {
+    useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
   afterEach(() => {
     cleanup()
     useConfigStore.setState({ config: {}, configLoaded: false })

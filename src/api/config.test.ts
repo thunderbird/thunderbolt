@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, afterEach } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { useConfigStore } from './config-store'
 import { fetchConfig } from './config'
@@ -21,6 +21,10 @@ const failingClientFor = () => {
 }
 
 describe('fetchConfig', () => {
+  beforeEach(() => {
+    useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
   afterEach(() => {
     useConfigStore.setState({ config: {}, configLoaded: false })
   })

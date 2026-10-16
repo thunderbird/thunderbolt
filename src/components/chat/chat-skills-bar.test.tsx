@@ -334,6 +334,20 @@ describe('ChatSkillsBar', () => {
       expect(screen.getByText('Daily Brief')).toBeTruthy()
     })
 
+    it('renders from a persisted config before the fetch answers', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: false })
+      renderPinned()
+
+      expect(screen.getByText('Daily Brief')).toBeTruthy()
+    })
+
+    it('renders nothing from a persisted minimal config before the fetch answers', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: false })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
+
     it('renders nothing until the config has loaded', () => {
       useConfigStore.setState({ config: {}, configLoaded: false })
       const { container } = renderPinned()

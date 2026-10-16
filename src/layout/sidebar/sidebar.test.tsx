@@ -146,6 +146,10 @@ describe('Sidebar reactivity', () => {
   describe('section toggle', () => {
     const minimalConfig = { config: { minimalMode: true }, configLoaded: true }
 
+    beforeEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
     afterEach(() => {
       useConfigStore.setState({ config: {}, configLoaded: false })
     })
@@ -200,6 +204,23 @@ describe('Sidebar reactivity', () => {
         expect(screen.queryByText('Projects')).not.toBeInTheDocument()
         expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
       })
+    })
+
+    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
+      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
+      expect(screen.queryByText('Projects') !== null).toBe(!minimal)
+    })
+
+    it('shows the toggle once the first-ever fetch answers', () => {
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.getByLabelText('Settings')).toBeInTheDocument()
     })
 
     it('shows no section toggle until the config has loaded', () => {

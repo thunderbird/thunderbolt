@@ -21,7 +21,7 @@ import { type ReactNode, useState, useTransition } from 'react'
 
 import type { User } from '@shared/types/auth'
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { LogoutModal } from '@/components/logout-modal'
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
@@ -168,7 +168,7 @@ export const syncStatusText = (
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { i18n, t } = useLingui()
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
-  const configLoaded = useConfigStore((state) => state.configLoaded)
+  const configLoaded = useConfigStore(selectConfigSettled)
   const formatters = useFormatters()
   const authClient = useAuth()
   const { isMobile, closeMobileSidebar, setOpenMobile, state } = useSidebar()

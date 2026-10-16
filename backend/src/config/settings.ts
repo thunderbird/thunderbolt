@@ -274,7 +274,7 @@ const settingsSchema = z
     // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
     disableBuiltInAgent: z.boolean().default(false),
     // When true, the app shows a chat-only shell for public deployments: no Settings, Projects,
-    // skill chips, account control or agent menu, just a language picker.
+    // skill chips, account control or agent menu.
     // Surfaced to the UI via GET /config as `minimalMode`.
     minimalMode: z.boolean().default(false),
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).

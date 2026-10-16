@@ -46,8 +46,8 @@ export type AppConfig = {
 type ConfigStore = {
   config: AppConfig
   /** Transient (never persisted): true once `/config` has answered this session.
-   *  Until then `config` is `{}` or last session's cache, and gates that would
-   *  flash a control in or out wait for it rather than guess. */
+   *  Until then `config` is `{}` or last session's cache. Gates read it through
+   *  `selectConfigSettled`, which also accepts a non-empty cache. */
   configLoaded: boolean
   updateConfig: (config: AppConfig) => void
   /** Transient (never persisted): set when the backend hard-rejects this build
@@ -74,6 +74,14 @@ export const useConfigStore = create<ConfigStore>()(
     { name: 'thunderbolt-config', partialize: (state) => ({ config: state.config }) },
   ),
 )
+
+/** Whether the UI can render deployment-gated controls (Settings toggle, skill
+ *  chips, Projects, account control) without risk of flashing them in and out.
+ *  A persisted config is good enough to render from immediately, since the gates
+ *  read `minimalMode` from that same value; only a first-ever visit, with
+ *  nothing persisted, waits for the `/config` fetch, bounded by its timeout. */
+export const selectConfigSettled = (state: Pick<ConfigStore, 'config' | 'configLoaded'>): boolean =>
+  state.configLoaded || Object.keys(state.config).length > 0
 
 /** Whether the built-in Thunderbolt agent appears in the agent list. Absent
  *  config (offline/standalone) defaults to enabled, so the app always has at

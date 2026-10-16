@@ -33,6 +33,7 @@ const seedSession = (projectId: string | null) => {
 }
 
 beforeEach(() => {
+  useConfigStore.setState({ config: {}, configLoaded: false })
   seedSession('p1')
 })
 

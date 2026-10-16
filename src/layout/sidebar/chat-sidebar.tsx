@@ -7,7 +7,7 @@ import { chatTitleLabel } from '@/lib/title-generator'
 import { Trans, useLingui } from '@lingui/react/macro'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -157,7 +157,7 @@ export const ChatSidebarContent = ({
   const location = useLocation()
   const moveChatToProject = useMoveChatToProject()
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
-  const configLoaded = useConfigStore((state) => state.configLoaded)
+  const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
   const showProjects = configLoaded && !minimalMode
   // The chat whose project is being picked from a row's action menu. One dialog

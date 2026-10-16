@@ -79,6 +79,7 @@ describe('SearchPalette commands', () => {
   beforeEach(async () => {
     await resetTestDatabase()
     mockTrackEvent.mockClear()
+    useConfigStore.setState({ config: {}, configLoaded: false })
     buildCommands = () => []
     searchResults = []
   })

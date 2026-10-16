@@ -4,7 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 
 import { useConfigStore } from '@/api/config-store'
@@ -38,6 +38,10 @@ const renderAt = (path: string) => {
 describe('ProjectsPage in minimal mode', () => {
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
+  beforeEach(() => {
+    useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
   afterEach(() => {
     cleanup()
     useConfigStore.setState({ config: {}, configLoaded: false })

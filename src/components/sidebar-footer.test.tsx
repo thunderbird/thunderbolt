@@ -6,7 +6,7 @@ import 'fake-indexeddb/auto'
 import { i18n } from '@/i18n'
 import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
@@ -179,6 +179,23 @@ describe('SidebarFooter', () => {
       renderWithProviders(createMockAuthClient({ session: null }))
 
       expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
+      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' }) !== null).toBe(!minimal)
+    })
+
+    it('paints the control once the first-ever fetch answers', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
 
     it('renders the control when minimal mode is off', () => {

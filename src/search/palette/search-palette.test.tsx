@@ -18,7 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { type ReactNode, useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
-import type { SearchResult } from '../types'
+import type { SearchResult, UseSearch } from '../types'
 import { SearchPalette } from './search-palette'
 
 // The palette's data/analytics dependencies are injected as props (no shared
@@ -27,6 +27,7 @@ import { SearchPalette } from './search-palette'
 const mockTrackEvent = mock((_event: string, _props?: Record<string, unknown>) => {})
 let buildCommands: (opts: UseCommandsOptions) => PaletteCommand[] = () => []
 let searchResults: SearchResult[] = []
+let lastSearchOptions: Parameters<UseSearch>[1]
 
 const LocationProbe = () => {
   const location = useLocation()
@@ -56,7 +57,10 @@ const renderPalette = () => {
       open
       onOpenChange={() => {}}
       useCommands={(opts) => buildCommands(opts)}
-      useSearch={() => ({ results: searchResults, isLoading: false })}
+      useSearch={(_query, options) => {
+        lastSearchOptions = options
+        return { results: searchResults, isLoading: false }
+      }}
       trackEvent={mockTrackEvent}
     />,
     { wrapper: Wrapper },
@@ -101,18 +105,25 @@ describe('SearchPalette commands', () => {
       })
     }
 
-    it('lists Settings and Projects results by default', async () => {
+    it('excludes nothing from the query by default and lists every result', async () => {
       await search()
 
+      expect(lastSearchOptions?.excludeTypes).toEqual([])
       expect(screen.getAllByRole('option')).toHaveLength(4)
     })
 
-    it('hides Settings and Projects results and keeps the rest', async () => {
+    it('excludes Settings and Projects types in the query itself', async () => {
       useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
       await search()
 
-      expect(screen.getAllByRole('option')).toHaveLength(1)
-      expect(screen.getByRole('option', { name: /chat/ })).toBeInTheDocument()
+      expect([...(lastSearchOptions?.excludeTypes ?? [])].sort()).toEqual([
+        'agent',
+        'device',
+        'mcp',
+        'model',
+        'project',
+        'skill',
+      ])
     })
   })
 

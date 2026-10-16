@@ -212,4 +212,30 @@ describe('AgentSelector', () => {
     expect(screen.queryByText('My Remote Agent')).not.toBeInTheDocument()
     expect(screen.queryByText('Add Agent')).not.toBeInTheDocument()
   })
+
+  describe('when the only available agent is not the selected one', () => {
+    // A chat created before hosted-agent discovery finished keeps the built-in
+    // fallback, so the hosted agent is the one choice and must stay reachable.
+    const openAndPick = () => {
+      const onSelect = mock()
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[systemAgent]} onSelect={onSelect} />)
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      return onSelect
+    }
+
+    it('keeps the menu outside minimal mode', () => {
+      const onSelect = openAndPick()
+
+      fireEvent.click(screen.getByText('RAG Chat'))
+      expect(onSelect).toHaveBeenCalledWith(systemAgent)
+    })
+
+    it('keeps the menu in minimal mode', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      const onSelect = openAndPick()
+
+      fireEvent.click(screen.getByText('RAG Chat'))
+      expect(onSelect).toHaveBeenCalledWith(systemAgent)
+    })
+  })
 })

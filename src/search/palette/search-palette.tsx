@@ -98,7 +98,11 @@ export const SearchPalette = ({
 
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
 
-  const { results } = useSearch(hasQuery ? trimmedQuery : '')
+  // Settings and Projects results are left out of the query in minimal mode:
+  // those routes redirect away, and filtering after the query's LIMIT would let
+  // them crowd out the chats that can be shown.
+  const excludeTypes = useMemo(() => (minimalMode ? [...minimalModeHiddenEntityTypes] : []), [minimalMode])
+  const { results } = useSearch(hasQuery ? trimmedQuery : '', { excludeTypes })
   const groups = useMemo(() => {
     if (!hasQuery) {
       return []
@@ -109,13 +113,8 @@ export const SearchPalette = ({
     const withTasks = experimentalFeatureTasks.value
       ? results
       : results.filter((result) => result.entityType !== 'task')
-    // Likewise Settings and Projects results in minimal mode: those routes
-    // redirect away, so a click would land on a new chat.
-    const visible = minimalMode
-      ? withTasks.filter((result) => !minimalModeHiddenEntityTypes.has(result.entityType))
-      : withTasks
-    return groupByEntity(visible)
-  }, [hasQuery, results, experimentalFeatureTasks.value, minimalMode])
+    return groupByEntity(withTasks)
+  }, [hasQuery, results, experimentalFeatureTasks.value])
 
   // Results and the command list share one scroll container, so a query change
   // swaps the content underneath a scroll offset that belonged to the old set:

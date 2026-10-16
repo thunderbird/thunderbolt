@@ -96,8 +96,16 @@ export const AgentSelector = ({
   // trigger renders as a plain label: no chevron, no menu, and no dimming
   // while a reply streams, since there is no switch to hold back. Minimal mode
   // (see `selectMinimalMode`) takes the menu away whatever the agent count.
+  //
+  // Both only hold when the sole available agent is the selected one. An
+  // existing chat can still hold the built-in fallback it was given before
+  // hosted-agent discovery finished (discovery skips existing chats), so with
+  // the hosted agent as the only agent on offer the menu stays, in both modes,
+  // as the one way to switch. The chat's agent is deliberately not switched
+  // for the user: that is a persisted write.
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
-  const isLabel = minimalMode || (agents.length <= 1 && !onAddAgent)
+  const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
+  const isLabel = !soleAgentIsOther && (minimalMode || (agents.length <= 1 && !onAddAgent))
   const dimmed = disabled && !isLabel
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {

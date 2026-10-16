@@ -312,6 +312,15 @@ describe('isPasskeyCapable', () => {
     await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
   })
 
+  it('needs Android 9 for Credential Manager passkeys', async () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('android')
+    const version = spyOn(os, 'version').mockReturnValue('8.1.0')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(false))
+    version.mockReturnValue('9')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
+    await withPasskeyRpId('passkeys.example.com', () => expect(isPasskeyCapable()).toBe(false))
+  })
+
   it('is false on the Tauri platforms without a native bridge', () => {
     spyOn(platformModule, 'getPlatform').mockReturnValue('windows')
     expect(isPasskeyCapable()).toBe(false)

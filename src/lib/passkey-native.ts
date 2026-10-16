@@ -13,15 +13,16 @@ import type {
 } from '@simplewebauthn/browser'
 
 /**
- * Native passkey ceremonies for the Apple Tauri apps. WKWebView has no
- * `navigator.credentials`, so `tauri-plugin-passkey` runs the ceremony natively.
+ * Native passkey ceremonies for the Apple and Android Tauri apps. Their webviews
+ * can't run WebAuthn for our RP ID, so `tauri-plugin-passkey` runs the ceremony natively.
  * This maps the server's WebAuthn options to the plugin's byte-level request and
  * rebuilds the standard response JSON, so server verification is the same as web.
  */
 
 /**
- * The only RP ID the Apple apps can use: their `webcredentials` associated domain
- * (src-tauri/Entitlements.plist and the iOS entitlements). The OS refuses any other.
+ * The only RP ID the native apps can use: their `webcredentials` associated domain
+ * (src-tauri/Entitlements.plist and the iOS entitlements) on Apple, and
+ * public/.well-known/assetlinks.json on Android. The OS refuses any other.
  */
 export const nativePasskeyRpId = 'app.thunderbolt.io'
 
@@ -49,12 +50,12 @@ const invokePasskey = async <T>(command: 'register' | 'authenticate', request: R
 }
 
 /** The first OS versions with platform passkeys; the apps themselves support older ones. */
-const minimumPasskeyVersion = { ios: 16, macos: 13 }
+const minimumPasskeyVersion = { ios: 16, macos: 13, android: 9 }
 
 /** True on the Tauri platforms with a native passkey bridge. */
 export const isNativePasskeyPlatform = (): boolean => {
   const platform = getPlatform()
-  if (platform !== 'ios' && platform !== 'macos') {
+  if (platform !== 'ios' && platform !== 'macos' && platform !== 'android') {
     return false
   }
   return Number.parseInt(version(), 10) >= minimumPasskeyVersion[platform]

@@ -10,6 +10,7 @@ import {
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
+  getPasskeyAndroidOriginsList,
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
@@ -144,6 +145,18 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual([])
+    })
+  })
+
+  describe('getPasskeyAndroidOriginsList', () => {
+    it('splits, trims, and drops empty entries', () => {
+      const settings = { passkeyAndroidOrigins: ' android:apk-key-hash:aaa ,,android:apk-key-hash:bbb, ' }
+
+      expect(getPasskeyAndroidOriginsList(settings)).toEqual(['android:apk-key-hash:aaa', 'android:apk-key-hash:bbb'])
+    })
+
+    it('is empty when unset', () => {
+      expect(getPasskeyAndroidOriginsList({ passkeyAndroidOrigins: '' })).toEqual([])
     })
   })
 

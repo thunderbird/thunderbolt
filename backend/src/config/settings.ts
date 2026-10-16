@@ -193,6 +193,9 @@ const settingsSchema = z
     passkeyEnabled: z.boolean().default(false),
     passkeyRpId: z.string().trim().default(''),
     passkeyRpName: z.string().trim().default('Thunderbolt'),
+    // Comma-separated `android:apk-key-hash:<base64url sha256 of the signing cert>`
+    // origins: Android puts that, not a web origin, in the passkey's clientDataJSON.
+    passkeyAndroidOrigins: z.string().default(''),
 
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
@@ -576,6 +579,7 @@ const parseSettings = (): Settings => {
     // never break a deployment that doesn't use them.
     passkeyRpId: process.env.PASSKEY_RP_ID || (process.env.PASSKEY_ENABLED === 'true' ? rpIdFromAppUrl(appUrl) : ''),
     passkeyRpName: process.env.PASSKEY_RP_NAME || 'Thunderbolt',
+    passkeyAndroidOrigins: process.env.PASSKEY_ANDROID_ORIGINS || '',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
     debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',
@@ -692,6 +696,13 @@ export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 
     return false
   }
 }
+
+/** Parse comma-separated PASSKEY_ANDROID_ORIGINS into a list. */
+export const getPasskeyAndroidOriginsList = (settings: Pick<Settings, 'passkeyAndroidOrigins'>): string[] =>
+  settings.passkeyAndroidOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
 
 export const getCorsMethodsList = (settings: Settings): string[] => {
   return settings.corsAllowMethods

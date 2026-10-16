@@ -65,6 +65,7 @@ const powersyncSettings: Settings = {
   passkeyEnabled: false,
   passkeyRpId: '',
   passkeyRpName: 'Thunderbolt',
+  passkeyAndroidOrigins: '',
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',

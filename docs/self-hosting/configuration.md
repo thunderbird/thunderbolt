@@ -117,17 +117,18 @@ Users create personal access tokens in the app so a script or the command-line c
 
 Lets users sign in with a passkey, and unlock sync on a new device with it instead of approving it from another device. Consumer sign-in only; ignored under OIDC and SAML.
 
-| Variable          | Default              | What it does                                                                                      |
-| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------- |
-| `PASSKEY_ENABLED` | `false`              | Turns passkeys on.                                                                                |
-| `PASSKEY_RP_ID`   | `APP_URL`'s hostname | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain). |
-| `PASSKEY_RP_NAME` | `Thunderbolt`        | Name shown in the browser's passkey prompt.                                                       |
+| Variable                  | Default              | What it does                                                                                                                                            |
+| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSKEY_ENABLED`         | `false`              | Turns passkeys on.                                                                                                                                      |
+| `PASSKEY_RP_ID`           | `APP_URL`'s hostname | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
+| `PASSKEY_RP_NAME`         | `Thunderbolt`        | Name shown in the browser's passkey prompt.                                                                                                             |
+| `PASSKEY_ANDROID_ORIGINS` | empty                | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
 
 > [!WARNING]
 > The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
 
 > [!NOTE]
-> The official macOS and iOS apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
+> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
 
 ## Models and inference
 

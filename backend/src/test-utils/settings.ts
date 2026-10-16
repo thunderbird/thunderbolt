@@ -63,6 +63,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   passkeyEnabled: false,
   passkeyRpId: '',
   passkeyRpName: 'Thunderbolt',
+  passkeyAndroidOrigins: '',
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',

@@ -150,12 +150,11 @@ describe('Sidebar reactivity', () => {
       useConfigStore.setState({ config: {}, configLoaded: false })
     })
 
-    it('offers the Settings section and no language picker by default', () => {
+    it('offers the Settings section by default', () => {
       useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
-      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
     })
 
     it('offers Projects outside minimal mode and hides it in minimal mode', () => {
@@ -203,44 +202,40 @@ describe('Sidebar reactivity', () => {
       })
     })
 
-    it('shows neither control until the config has loaded', () => {
+    it('shows no section toggle until the config has loaded', () => {
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
-      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
     })
 
-    it('puts the language picker in its place in minimal mode', () => {
+    it('leaves the toggle slot empty in minimal mode', () => {
       useConfigStore.setState(minimalConfig)
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
-      expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent('English')
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     })
 
-    it('keeps the language in an icon-only picker, with no chevron, in the collapsed rail', () => {
+    it('leaves the collapsed rail without a toggle in minimal mode', () => {
       useConfigStore.setState(minimalConfig)
       renderWithReactivity(<Sidebar />, {
         tables: ['chat_threads'],
         wrapper: createSidebarWrapper({ defaultOpen: false }),
       })
 
-      // Icon-only: the current language is named for assistive tech and its
-      // visible text is screen-reader-only, leaving just the globe.
-      const picker = screen.getByRole('combobox', { name: 'Language: English' })
-      expect(screen.getByText('English').parentElement).toHaveClass('sr-only')
-      expect(picker.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument()
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     })
 
-    it('puts the picker in the mobile header slot and leaves Settings out', () => {
+    it('leaves the mobile header without a toggle in minimal mode', () => {
       forceMobileViewport()
       useConfigStore.setState(minimalConfig)
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
       const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
-      expect(mobileHeader).toContainElement(screen.getByRole('combobox', { name: 'Language' }))
+      expect(mobileHeader).toBeInTheDocument()
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(mobileHeader?.firstElementChild?.nextElementSibling?.firstElementChild).toHaveClass('justify-end')
     })
 
     it('pulls an open Settings section back to chats when minimal mode arrives', () => {
@@ -248,11 +243,12 @@ describe('Sidebar reactivity', () => {
         tables: ['chat_threads'],
         wrapper: createSidebarWrapper({ path: '/settings/models' }),
       })
-      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
+      expect(screen.getByText('Preferences')).toBeInTheDocument()
 
       act(() => useConfigStore.getState().updateConfig({ minimalMode: true }))
 
-      expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument()
+      expect(screen.queryByText('Preferences')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Chats')).not.toBeInTheDocument()
     })
 
     it('keeps the Settings section open when the loaded config is not minimal', () => {
@@ -263,7 +259,6 @@ describe('Sidebar reactivity', () => {
 
       act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
 
-      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
       // Settings-only navigation, absent from the chats sidebar.
       expect(screen.getByText('Preferences')).toBeInTheDocument()
     })

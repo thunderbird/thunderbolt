@@ -8,7 +8,6 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { LanguagePicker } from '@/components/language-picker'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -174,30 +173,13 @@ export const ChatSidebarContent = ({
   // long-press all still fire (same constraint the tasks list uses).
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // With no Settings section to switch to (see `selectMinimalMode`), the
-  // toggle's slots carry the language picker instead: the one preference a
-  // visitor can still set. The rail gets a 32px globe like its other icon
-  // buttons; expanded, a pill at the footer account control's height.
-  // Until `/config` answers neither is known to be right, so the slot stays
-  // empty rather than showing a control that then swaps out.
-  const sectionControl = (vertical = false) => {
-    if (!configLoaded) {
-      return null
-    }
-    if (!minimalMode) {
-      return <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
-    }
-    return vertical ? (
-      <div className="-mt-2 mb-2 flex justify-center">
-        <LanguagePicker iconOnly className="w-[var(--touch-height-sm)] rounded-full hover:bg-sidebar-accent" />
-      </div>
-    ) : (
-      <LanguagePicker
-        size="default"
-        className="rounded-full px-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-      />
-    )
-  }
+  // Minimal mode has no Settings section to switch to (see `selectMinimalMode`),
+  // so the toggle's slots stay empty. They also stay empty until `/config`
+  // answers, rather than showing a control that then disappears.
+  const sectionControl = (vertical = false) =>
+    configLoaded && !minimalMode ? (
+      <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
+    ) : null
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })

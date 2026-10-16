@@ -470,6 +470,7 @@ export const createAgentMcpClients = (
     return current
   }
 
+  /** Close a retired connection once no call is using it: closing aborts every request still in flight on it. */
   const closeIfIdle = (connection: Connection) => {
     if (!connection.isRetired || connection.calls > 0 || connection.isClosed) {
       return
@@ -479,18 +480,23 @@ export const createAgentMcpClients = (
     void connection.client.close()
   }
 
+  /** Take a broken connection out of use: the next call reconnects, and it closes once its last call settles. */
   const retire = (server: AgentMcpServer, pending: Promise<Connection>, connection: Connection) => {
     forget(server, pending)
     connection.isRetired = true
     closeIfIdle(connection)
   }
 
+  const didNotAnswer = (server: AgentMcpServer) =>
+    `${server.name} did not answer within ${toolCallTimeoutMs / 1000} seconds.`
+
+  /**
+   * What the model is told about a failed call, and whether the connection goes with it. Only a timeout or a failed
+   * transport retires it; the server's own error, or a response too large to read, leaves it for other calls.
+   */
   const describeFailure = (server: AgentMcpServer, error: unknown, timedOut: boolean): CallFailure => {
     if (timedOut) {
-      return {
-        message: `${server.name} did not answer within ${toolCallTimeoutMs / 1000} seconds.`,
-        shouldRetire: true,
-      }
+      return { message: didNotAnswer(server), shouldRetire: true }
     }
     // Only this response was cut off; the session is fine.
     if (error instanceof McpResponseTooLargeError) {
@@ -573,8 +579,11 @@ export const createAgentMcpClients = (
           ? undefined
           : await claimConnection(server, prefix, deadline.signal)
         if (!claimed) {
-          run.unreachable.add(server.name)
-          throw new Error(`${server.name} could not be reached.`)
+          // A wait the call's limit or Stop cut short says nothing of the server: its reconnect may just be slow.
+          if (!deadline.signal.aborted) {
+            run.unreachable.add(server.name)
+          }
+          throw new Error(timeout.aborted ? didNotAnswer(server) : `${server.name} could not be reached.`)
         }
         try {
           return await callOn(server, claimed, name, input, options, deadline)

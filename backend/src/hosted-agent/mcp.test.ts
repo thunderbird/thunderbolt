@@ -571,7 +571,7 @@ describe('createAgentMcpClients', () => {
     expect(server.connectionCount()).toBe(2)
   })
 
-  it("counts a reconnect against the call's time limit", async () => {
+  it("counts a reconnect against the call's time limit, and lets the reply's later calls use it once it lands", async () => {
     const server = startServer([
       { name: 'search_sessions', readOnly: true },
       { name: 'broken_search', readOnly: true, httpStatus: 503 },
@@ -585,13 +585,16 @@ describe('createAgentMcpClients', () => {
     const held = Promise.withResolvers<void>()
     server.state.answerAfter = held.promise
     const started = performance.now()
-    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(/^schedule could not be reached\.$/)
+    await expect(callTool(tools.schedule_search_sessions)).rejects.toThrow(
+      'schedule did not answer within 0.5 seconds.',
+    )
     // The call's own 500 ms limit, not the connect deadline.
     expect(performance.now() - started).toBeLessThan(2_000)
     server.state.answerAfter = undefined
     held.resolve()
-    // Let the reconnect finish here rather than log into the next test.
-    expect((await clients.loadTools()).unavailableServers).toEqual([])
+    // The reconnect was only slow, so the same reply's next call waits for it rather than skipping the server.
+    expect(await callTool(tools.schedule_search_sessions)).toMatchObject({ isError: false })
+    expect(server.connectionCount()).toBe(2)
   })
 
   it('refuses a call once a reconnect finds the tool is no longer read-only', async () => {

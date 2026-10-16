@@ -55,8 +55,9 @@ export const createAuthMacro = (auth: Auth) =>
 const sessionCookiePattern = /^(__Secure-)?better-auth\.session_token=/
 
 /**
- * Passkey ceremonies send cookies (the WebAuthn challenge rides one), so any old
- * Better Auth session cookie the browser still holds comes along. The bearer
+ * Older web builds send cookies on passkey ceremonies (before the challenge
+ * header, the WebAuthn challenge rode one), so any old Better Auth session
+ * cookie the browser still holds comes along. The bearer
  * plugin appends its own session cookie after it, Better Auth reads the first
  * one, and a valid bearer request 401s. A Better Auth hook can't fix this (the
  * bearer plugin reads the original headers), so the stale cookie is stripped
@@ -82,6 +83,62 @@ export const stripStaleSessionCookie = (request: Request): Request => {
   return new Request(request, { headers })
 }
 
+export const passkeyChallengeHeader = 'X-Passkey-Challenge'
+
+// The passkey plugin's challenge cookie, `__Secure-` prefixed on HTTPS like the session cookie.
+const passkeyChallengeCookiePattern = /^(__Secure-)?better-auth\.better-auth-passkey=[^;,\s]+$/
+
+const challengeIssuingPaths = ['/passkey/generate-register-options', '/passkey/generate-authenticate-options']
+const challengeVerifyingPaths = ['/passkey/verify-registration', '/passkey/verify-authentication']
+
+/**
+ * The WebAuthn challenge rides a signed cookie, which the Apple apps' webview
+ * never stores: `tauri://localhost` makes every API call cross-site. So the
+ * challenge-issuing responses also carry the cookie in a header, for the client
+ * to send back on the verify call.
+ */
+export const exposePasskeyChallenge = (pathname: string, response: Response): Response => {
+  if (!challengeIssuingPaths.some((path) => pathname.endsWith(path))) {
+    return response
+  }
+  const cookie = response.headers
+    .getSetCookie()
+    .map((setCookie) => setCookie.split(';')[0].trim())
+    .find((pair) => passkeyChallengeCookiePattern.test(pair))
+  if (!cookie) {
+    return response
+  }
+  const headers = new Headers(response.headers)
+  headers.set(passkeyChallengeHeader, cookie)
+  // The response's own list wins over the CORS defaults, so merge rather than overwrite.
+  const exposed = headers.get('access-control-expose-headers')
+  headers.set(
+    'access-control-expose-headers',
+    exposed ? `${exposed}, ${passkeyChallengeHeader}` : passkeyChallengeHeader,
+  )
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
+/**
+ * On the verify calls, turn a relayed challenge header back into the cookie
+ * Better Auth reads. Only the challenge cookie is accepted, so the header can't
+ * smuggle in any other.
+ */
+export const restorePasskeyChallenge = (pathname: string, request: Request): Request => {
+  if (!challengeVerifyingPaths.some((path) => pathname.endsWith(path))) {
+    return request
+  }
+  const challenge = request.headers.get(passkeyChallengeHeader)
+  if (!challenge || !passkeyChallengeCookiePattern.test(challenge)) {
+    return request
+  }
+  const headers = new Headers(request.headers)
+  const cookie = headers.get('cookie')
+  headers.set('cookie', cookie ? `${cookie}; ${challenge}` : challenge)
+  headers.delete(passkeyChallengeHeader)
+  return new Request(request, { headers })
+}
+
 /** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
@@ -97,8 +154,16 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
   plugin.all(
     '/api/auth/*',
-    ({ request }) =>
-      auth.handler(new URL(request.url).pathname.includes('/passkey/') ? stripStaleSessionCookie(request) : request),
+    async ({ request }) => {
+      const { pathname } = new URL(request.url)
+      if (!pathname.includes('/passkey/')) {
+        return auth.handler(request)
+      }
+      return exposePasskeyChallenge(
+        pathname,
+        await auth.handler(stripStaleSessionCookie(restorePasskeyChallenge(pathname, request))),
+      )
+    },
     { parse: 'none' },
   )
 

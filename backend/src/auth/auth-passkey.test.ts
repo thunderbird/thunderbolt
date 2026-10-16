@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
+import { createBetterAuthPlugin, passkeyChallengeHeader } from '@/auth/elysia-plugin'
 import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import { deleteUser } from '@/dal/users'
 import { clearSettingsCache } from '@/config/settings'
@@ -12,6 +13,7 @@ import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { createHmac } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { Elysia } from 'elysia'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 const authUrl = 'http://localhost:8000/v1/api/auth'
@@ -163,6 +165,28 @@ describe('passkey rules (one per account, slot-safe delete)', () => {
     )
     expect(res.status).toBe(403)
     expect((await res.json()).message).toBe('Passkeys need an interactive session')
+  })
+
+  // The Apple apps' webview drops the cross-site challenge cookie; the header carries it instead.
+  it('finds the challenge from the relayed header when no cookie comes back', async () => {
+    const app = new Elysia({ prefix: '/v1' }).use(createBetterAuthPlugin(db).plugin)
+    const options = await app.handle(new Request(`${authUrl}/passkey/generate-authenticate-options`))
+    const challenge = options.headers.get(passkeyChallengeHeader)
+    expect(challenge).toBe(options.headers.getSetCookie()[0].split(';')[0])
+
+    const verify = (headers: Record<string, string>) =>
+      app.handle(
+        new Request(`${authUrl}/passkey/verify-authentication`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...headers },
+          body: JSON.stringify({ response: { id: 'unknown-credential' } }),
+        }),
+      )
+    expect(await (await verify({})).json()).toMatchObject({ code: 'CHALLENGE_NOT_FOUND' })
+    // Past the challenge lookup, the unknown credential is what fails.
+    expect(await (await verify({ [passkeyChallengeHeader]: challenge! })).json()).toMatchObject({
+      code: 'PASSKEY_NOT_FOUND',
+    })
   })
 
   it('serves no passkey routes when passkeys are off', async () => {

@@ -548,7 +548,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       }),
       // Changing the RP ID orphans every registered passkey. `origin` comes from
       // the trusted-origins list, never the request's Origin header. The challenge
-      // rides a signed cookie, so the frontend's ceremony calls send credentials.
+      // rides a signed cookie, which `elysia-plugin.ts` relays through the
+      // `X-Passkey-Challenge` header.
       ...(isPasskeyEnabled(settings)
         ? [
             passkey({

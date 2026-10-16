@@ -35,9 +35,18 @@ const {
   getPasskeyPrfOutput,
 } = await import('./passkey')
 
-type FetchCall = { path: string; options: { method: string; body?: unknown; credentials?: string } }
+type FetchCall = {
+  path: string
+  options: {
+    method: string
+    body?: unknown
+    credentials?: string
+    headers?: Record<string, string>
+    onResponse?: (context: { response: Response }) => void
+  }
+}
 
-type FetchResult = { data?: unknown; error?: unknown }
+type FetchResult = { data?: unknown; error?: unknown; headers?: Record<string, string> }
 
 /** Minimal AuthClient stand-in: records $fetch calls and returns queued results. */
 const makeAuthClient = (results: FetchResult[], session: FetchResult = { data: { user: { id: 'user-1' } } }) => {
@@ -45,9 +54,11 @@ const makeAuthClient = (results: FetchResult[], session: FetchResult = { data: {
   let i = 0
   return {
     calls,
-    $fetch: mock(async (path: string, options: { method: string; body?: unknown }) => {
+    $fetch: mock(async (path: string, options: FetchCall['options']) => {
       calls.push({ path, options })
-      return results[i++] ?? { data: null, error: null }
+      const { headers, ...result } = results[i++] ?? { data: null, error: null }
+      options.onResponse?.({ response: new Response(null, { headers }) })
+      return result
     }),
     getSession: mock(async () => session),
     $store: { atoms: { session: { get: () => ({ isPending: true }), set: mock(() => {}) } } },
@@ -176,12 +187,27 @@ describe('listPasskeys', () => {
   })
 })
 
-describe('challenge cookie scoping', () => {
-  it('ceremony calls opt into cookies; management calls do not', async () => {
-    const registerClient = makeAuthClient([{ data: { challenge: 'a' } }, { data: { id: 'pk' } }])
-    await registerPasskey(registerClient)
-    expect(registerClient.calls[0]?.options.credentials).toBe('include')
-    expect(registerClient.calls[1]?.options.credentials).toBe('include')
+describe('challenge relay', () => {
+  const challenge = { 'X-Passkey-Challenge': 'better-auth.better-auth-passkey=token.sig' }
+
+  it('sends the options call challenge back with verify-registration, without cookies', async () => {
+    const authClient = makeAuthClient([{ data: { challenge: 'a' }, headers: challenge }, { data: { id: 'pk' } }])
+    await registerPasskey(authClient)
+    expect(authClient.calls[1]?.options.headers).toMatchObject(challenge)
+    expect(authClient.calls.map((call) => call.options.credentials)).toEqual([undefined, undefined])
+  })
+
+  it('sends the options call challenge back with verify-authentication, without cookies', async () => {
+    const authClient = makeAuthClient([{ data: { challenge: 'a' }, headers: challenge }, { data: { verified: true } }])
+    await signInWithPasskey(authClient)
+    expect(authClient.calls[1]?.options.headers).toMatchObject(challenge)
+    expect(authClient.calls.map((call) => call.options.credentials)).toEqual([undefined, undefined])
+  })
+
+  it('sends no challenge header when the options call relayed none', async () => {
+    const authClient = makeAuthClient([{ data: { challenge: 'a' } }, { data: { id: 'pk' } }])
+    await registerPasskey(authClient)
+    expect(authClient.calls[1]?.options.headers).not.toHaveProperty('X-Passkey-Challenge')
   })
 })
 

@@ -194,7 +194,7 @@ The `passkey` plugin is registered only when `isPasskeyEnabled` holds (`PASSKEY_
 - lets the plugin's own rule stand that registration needs a session under a day old (`SESSION_NOT_FRESH`, Better Auth's default `freshAge`). When sync setup hits it, the user confirms with a code sent to the account's own email and signs in again in place. The email can't be changed, so it's the same account and the device keeps its keys and data;
 - refuses to delete a passkey that still holds the account's E2EE passkey slot (`passkeyHoldsSyncSlot`); the client clears the slot with an AK rotation first.
 
-Passkey ceremonies send cookies (the WebAuthn challenge rides one), so `elysia-plugin.ts` strips any stale Better Auth session cookie — both the plain and `__Secure-` names — from passkey requests that carry a bearer token. The E2EE side of the passkey is in [e2e-encryption.md](../../docs/internals/architecture/e2e-encryption.md#the-passkey-slot-a-second-virtual-device).
+The plugin keeps the WebAuthn challenge in a signed cookie, but the Apple apps' webview never stores it: every API call from `tauri://localhost` is cross-site. So `elysia-plugin.ts` copies the cookie into an `X-Passkey-Challenge` header on the two options responses, and turns that header back into the cookie on the verify calls; the client sends no cookies at all. Older web builds still send cookies on ceremonies, so the plugin also strips any stale Better Auth session cookie — both the plain and `__Secure-` names — from passkey requests that carry a bearer token. The E2EE side of the passkey is in [e2e-encryption.md](../../docs/internals/architecture/e2e-encryption.md#the-passkey-slot-a-second-virtual-device).
 
 ## Tests
 

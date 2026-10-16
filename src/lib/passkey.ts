@@ -50,34 +50,54 @@ export type PasskeyRecord = {
   aaguid?: string
 }
 
+// Mirrors `passkeyChallengeHeader` in the backend's auth plugin.
+const passkeyChallengeHeader = 'X-Passkey-Challenge'
+
 type CeremonyRequest = {
   method: 'GET' | 'POST'
   body?: Record<string, unknown>
-  /**
-   * Send cookies. Only the generate/verify pairs need it, because the WebAuthn
-   * challenge rides a signed cookie; the app otherwise omits credentials and
-   * authenticates by bearer token. Elsewhere a stale session cookie could ride
-   * along and 401 the request (see `stripStaleSessionCookie` on the backend).
-   */
-  withChallengeCookie?: boolean
+  /** The challenge from the matching options call; see {@link fetchCeremonyOptions}. */
+  challenge?: string
+  onResponse?: (context: { response: Response }) => void
 }
 
 /**
  * Call a passkey endpoint through the auth client's `$fetch` and unwrap its
  * `{ data, error }` result, throwing on error. Bearer auth and app headers come
- * from the client config; only challenge-carrying ceremony calls opt into cookies.
+ * from the client config.
  */
 const ceremonyFetch = async <T>(authClient: AuthClient, path: string, request: CeremonyRequest): Promise<T> => {
   const { data, error } = await authClient.$fetch<T>(path, {
     method: request.method,
     ...(request.body ? { body: request.body } : {}),
-    ...(request.withChallengeCookie ? { credentials: 'include' as RequestCredentials } : {}),
-    headers: authRequestHeaders(),
+    ...(request.onResponse ? { onResponse: request.onResponse } : {}),
+    headers: authRequestHeaders(request.challenge ? { [passkeyChallengeHeader]: request.challenge } : {}),
   })
   if (error) {
     throw error
   }
   return data as T
+}
+
+/**
+ * Fetch a ceremony's options and the challenge relayed with them, which the
+ * verify call sends back. The backend keeps the challenge in a signed cookie,
+ * but the Apple apps' webview never stores it (every API call from
+ * `tauri://localhost` is cross-site), so the backend repeats it in a header and
+ * no cookies are used at all.
+ */
+const fetchCeremonyOptions = async <T>(
+  authClient: AuthClient,
+  path: string,
+): Promise<{ options: T; challenge: string | undefined }> => {
+  let challenge: string | undefined
+  const options = await ceremonyFetch<T>(authClient, path, {
+    method: 'GET',
+    onResponse: ({ response }) => {
+      challenge = response.headers.get(passkeyChallengeHeader) ?? undefined
+    },
+  })
+  return { options, challenge }
 }
 
 /**
@@ -214,10 +234,9 @@ export const registerPasskey = async (
   authClient: AuthClient,
   name?: string,
 ): Promise<{ passkey: PasskeyRecord; prfOutput: Uint8Array | null }> => {
-  const optionsJSON = await ceremonyFetch<PublicKeyCredentialCreationOptionsJSON>(
+  const { options: optionsJSON, challenge } = await fetchCeremonyOptions<PublicKeyCredentialCreationOptionsJSON>(
     authClient,
     '/passkey/generate-register-options',
-    { method: 'GET', withChallengeCookie: true },
   )
 
   const { response, prfOutput } = await runRegistration(optionsJSON)
@@ -225,7 +244,7 @@ export const registerPasskey = async (
   const passkey = await ceremonyFetch<PasskeyRecord>(authClient, '/passkey/verify-registration', {
     method: 'POST',
     body: { response, name },
-    withChallengeCookie: true,
+    challenge,
   })
   return { passkey, prfOutput }
 }
@@ -302,10 +321,9 @@ export const useAccountPasskey = () => {
  * session atom is refreshed so the app flips to the authenticated state.
  */
 export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userId: string }> => {
-  const optionsJSON = await ceremonyFetch<PublicKeyCredentialRequestOptionsJSON>(
+  const { options: optionsJSON, challenge } = await fetchCeremonyOptions<PublicKeyCredentialRequestOptionsJSON>(
     authClient,
     '/passkey/generate-authenticate-options',
-    { method: 'GET', withChallengeCookie: true },
   )
 
   // Sign-in needs no extensions, and a server-chosen PRF request must never reach
@@ -317,7 +335,7 @@ export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userI
   await ceremonyFetch(authClient, '/passkey/verify-authentication', {
     method: 'POST',
     body: { response },
-    withChallengeCookie: true,
+    challenge,
   })
 
   // Better Auth only refreshes the session atom for its own sign-in methods, so

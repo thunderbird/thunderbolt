@@ -20,6 +20,8 @@ export type AppConfig = {
    *  built-in agent shown, custom agents allowed. */
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
+  /** Chat-only shell for public deployments; see `selectMinimalMode`. */
+  minimalMode?: boolean
   debugTranscriptsEnabled?: boolean
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
@@ -43,6 +45,10 @@ export type AppConfig = {
 
 type ConfigStore = {
   config: AppConfig
+  /** Transient (never persisted): true once `/config` has answered this session.
+   *  Until then `config` is `{}` or last session's cache, and gates that would
+   *  flash a control in or out wait for it rather than guess. */
+  configLoaded: boolean
   updateConfig: (config: AppConfig) => void
   /** Transient (never persisted): set when the backend hard-rejects this build
    *  with HTTP 426. Flips the app into the upgrade blocker for the current
@@ -54,13 +60,13 @@ type ConfigStore = {
   setForceUpgrade: (minVersion?: string) => void
 }
 
-const initialState = { config: {} as AppConfig }
+const initialState = { config: {} as AppConfig, configLoaded: false }
 
 export const useConfigStore = create<ConfigStore>()(
   persist(
     (set) => ({
       ...initialState,
-      updateConfig: (config) => set({ config }),
+      updateConfig: (config) => set({ config, configLoaded: true }),
       setForceUpgrade: (minVersion) => set({ forceUpgrade: true, forceUpgradeMinVersion: minVersion }),
     }),
     // Persist only `config` — the transient upgrade flag must not survive a
@@ -73,6 +79,14 @@ export const useConfigStore = create<ConfigStore>()(
  *  config (offline/standalone) defaults to enabled, so the app always has at
  *  least the built-in to fall back on. */
 export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.builtInAgentEnabled !== false
+
+/** Whether the deployment runs in minimal mode (`MINIMAL_MODE=true`): the
+ *  chat-only shell for public deployments. It hides Settings and its routes, the
+ *  starter skill chips, Projects, the account/cloud control, the agent menu and
+ *  the Settings destinations in the palette and search. The language picker is
+ *  the one preference it keeps. Absent means off. Role-based visibility is
+ *  expected to replace this predicate. */
+export const selectMinimalMode = (config: AppConfig): boolean => config.minimalMode === true
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false

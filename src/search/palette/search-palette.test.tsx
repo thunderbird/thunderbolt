@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { useConfigStore } from '@/api/config-store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createModel } from '@/dal'
 import { getDb } from '@/db/database'
@@ -81,6 +82,38 @@ describe('SearchPalette commands', () => {
   afterEach(() => {
     cleanup()
     restoreViewport()
+    useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
+  describe('in minimal mode', () => {
+    const settingsHits: SearchResult[] = [
+      { id: 'm1', entityType: 'model', title: 'Settings thing', snippet: '', to: '/settings/models' },
+      { id: 's1', entityType: 'skill', title: 'Settings thing', snippet: '', to: '/settings/skills' },
+      { id: 'p1', entityType: 'project', title: 'Settings thing project', snippet: '', to: '/projects/p1' },
+      { id: 'c1', entityType: 'chat', title: 'Settings thing chat', snippet: '', to: '/chats/c1' },
+    ]
+    const search = async () => {
+      searchResults = settingsHits
+      renderPalette()
+      fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'settings' } })
+      await act(async () => {
+        await getClock().tickAsync(debounceMs)
+      })
+    }
+
+    it('lists Settings and Projects results by default', async () => {
+      await search()
+
+      expect(screen.getAllByRole('option')).toHaveLength(4)
+    })
+
+    it('hides Settings and Projects results and keeps the rest', async () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      await search()
+
+      expect(screen.getAllByRole('option')).toHaveLength(1)
+      expect(screen.getByRole('option', { name: /chat/ })).toBeInTheDocument()
+    })
   })
 
   it('renders commands grouped by section', () => {

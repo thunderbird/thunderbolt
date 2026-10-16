@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
+import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -22,23 +24,27 @@ import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
 
-const SidebarTestWrapper = ({ children }: { children: ReactNode }) => (
-  <DatabaseProvider db={getDb()}>
-    <HttpClientProvider httpClient={createMockHttpClient([])}>
-      <AuthProvider authClient={createMockAuthClient()}>
-        <SignInModalProvider>
-          <MemoryRouter initialEntries={['/chats/new']}>
-            <SidebarProvider>
-              <Routes>
-                <Route path="/*" element={children} />
-              </Routes>
-            </SidebarProvider>
-          </MemoryRouter>
-        </SignInModalProvider>
-      </AuthProvider>
-    </HttpClientProvider>
-  </DatabaseProvider>
-)
+const createSidebarWrapper =
+  ({ path = '/chats/new', defaultOpen = true } = {}) =>
+  ({ children }: { children: ReactNode }) => (
+    <DatabaseProvider db={getDb()}>
+      <HttpClientProvider httpClient={createMockHttpClient([])}>
+        <AuthProvider authClient={createMockAuthClient()}>
+          <SignInModalProvider>
+            <MemoryRouter initialEntries={[path]}>
+              <SidebarProvider defaultOpen={defaultOpen}>
+                <Routes>
+                  <Route path="/*" element={children} />
+                </Routes>
+              </SidebarProvider>
+            </MemoryRouter>
+          </SignInModalProvider>
+        </AuthProvider>
+      </HttpClientProvider>
+    </DatabaseProvider>
+  )
+
+const SidebarTestWrapper = createSidebarWrapper()
 
 describe('Sidebar reactivity', () => {
   // The chat list is virtualized (virtua) — give it real-looking measurements
@@ -135,5 +141,131 @@ describe('Sidebar reactivity', () => {
     )
     expect(scrollArea?.className).not.toContain('shadow-[')
     expect(sidebarFooter?.className).not.toContain('shadow-[')
+  })
+
+  describe('section toggle', () => {
+    const minimalConfig = { config: { minimalMode: true }, configLoaded: true }
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it('offers the Settings section and no language picker by default', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
+    })
+
+    it('offers Projects outside minimal mode and hides it in minimal mode', () => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.getByText('Projects')).toBeInTheDocument()
+
+      cleanup()
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByText('Projects')).not.toBeInTheDocument()
+    })
+
+    describe('with a project', () => {
+      const renderWithProject = async (state: { config: { minimalMode?: boolean }; configLoaded: boolean }) => {
+        await createProject(getDb(), { name: 'Alpha' })
+        useConfigStore.setState(state)
+        renderWithReactivity(<Sidebar />, { tables: ['chat_threads', 'projects'], wrapper: SidebarTestWrapper })
+      }
+
+      it('lists the project drop targets outside minimal mode', async () => {
+        await renderWithProject({ config: {}, configLoaded: true })
+
+        expect(await waitForElement(() => screen.queryByText('Recent Projects'))).toBeInTheDocument()
+      })
+
+      it('hides the project drop targets in minimal mode', async () => {
+        await renderWithProject(minimalConfig)
+        await act(async () => {
+          await getClock().runAllAsync()
+        })
+
+        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Alpha')).not.toBeInTheDocument()
+      })
+
+      it('hides Projects and its drop targets until the config has loaded', async () => {
+        await renderWithProject({ config: {}, configLoaded: false })
+        await act(async () => {
+          await getClock().runAllAsync()
+        })
+
+        expect(screen.queryByText('Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+      })
+    })
+
+    it('shows neither control until the config has loaded', () => {
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
+    })
+
+    it('puts the language picker in its place in minimal mode', () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent('English')
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+    })
+
+    it('keeps the language in an icon-only picker, with no chevron, in the collapsed rail', () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ defaultOpen: false }),
+      })
+
+      // Icon-only: the current language is named for assistive tech and its
+      // visible text is screen-reader-only, leaving just the globe.
+      const picker = screen.getByRole('combobox', { name: 'Language: English' })
+      expect(screen.getByText('English').parentElement).toHaveClass('sr-only')
+      expect(picker.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+    })
+
+    it('puts the picker in the mobile header slot and leaves Settings out', () => {
+      forceMobileViewport()
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
+      expect(mobileHeader).toContainElement(screen.getByRole('combobox', { name: 'Language' }))
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+    })
+
+    it('pulls an open Settings section back to chats when minimal mode arrives', () => {
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/settings/models' }),
+      })
+      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: true }))
+
+      expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument()
+    })
+
+    it('keeps the Settings section open when the loaded config is not minimal', () => {
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/settings/models' }),
+      })
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument()
+      // Settings-only navigation, absent from the chats sidebar.
+      expect(screen.getByText('Preferences')).toBeInTheDocument()
+    })
   })
 })

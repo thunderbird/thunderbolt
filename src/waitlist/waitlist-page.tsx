@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { LanguagePicker } from '@/components/language-picker'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +17,6 @@ import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
-import { WaitlistLanguagePicker } from './waitlist-language-picker'
 
 /**
  * Unified entry page at /waitlist.
@@ -188,7 +188,7 @@ export const WaitlistPage = () => {
               .
             </Trans>
           </p>
-          <WaitlistLanguagePicker />
+          <LanguagePicker />
         </div>
       </div>
     </WaitlistCard>

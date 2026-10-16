@@ -273,6 +273,10 @@ const settingsSchema = z
     // list (not just disabled) — for deployments that ship only their own agents (e.g. Deepset).
     // Surfaced to the UI via GET /config as `builtInAgentEnabled`.
     disableBuiltInAgent: z.boolean().default(false),
+    // When true, the app shows a chat-only shell for public deployments: no Settings, Projects,
+    // skill chips, account control or agent menu, just a language picker.
+    // Surfaced to the UI via GET /config as `minimalMode`.
+    minimalMode: z.boolean().default(false),
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
@@ -592,6 +596,7 @@ const parseSettings = (): Settings => {
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
     disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
+    minimalMode: process.env.MINIMAL_MODE === 'true',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',

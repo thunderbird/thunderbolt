@@ -2214,11 +2214,15 @@ msgstr "Keep your data in sync across all your devices. Everything is encrypted 
 msgid "Keep your data synced across devices."
 msgstr "Keep your data synced across devices."
 
+#: src/components/language-picker/language-picker.tsx
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
-#: src/waitlist/waitlist-language-picker.tsx
 msgid "Language"
 msgstr "Language"
+
+#: src/components/language-picker/language-picker.tsx
+msgid "Language: {currentLanguage}"
+msgstr "Language: {currentLanguage}"
 
 #: src/settings/devices.tsx
 msgid "Last seen {lastSeen}"

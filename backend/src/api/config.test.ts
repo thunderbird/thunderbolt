@@ -45,6 +45,14 @@ describe('Config Routes', () => {
       expect(disabled.body.builtInAgentEnabled).toBe(false)
     })
 
+    it('exposes minimalMode: false by default and true when set', async () => {
+      const offByDefault = await fetchConfig(createTestSettings())
+      expect(offByDefault.body.minimalMode).toBe(false)
+
+      const minimal = await fetchConfig(createTestSettings({ minimalMode: true }))
+      expect(minimal.body.minimalMode).toBe(true)
+    })
+
     it('exposes allowCustomAgents', async () => {
       const allowed = await fetchConfig(createTestSettings({ allowCustomAgents: true }))
       expect(allowed.body.allowCustomAgents).toBe(true)

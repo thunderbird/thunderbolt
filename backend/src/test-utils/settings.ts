@@ -87,6 +87,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   enabledAgents: '',
   allowCustomAgents: true,
   disableBuiltInAgent: false,
+  minimalMode: false,
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',

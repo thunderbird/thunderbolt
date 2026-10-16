@@ -191,7 +191,8 @@ exercises the real send path. When the configured cloud URL is localhost the OTP
 | [backend/src/auth/auth.ts](../../../backend/src/auth/auth.ts)                         | The second gate copy in `sendVerificationOTP`, both OTP hooks |
 | [backend/src/dal/otp-challenge.ts](../../../backend/src/dal/otp-challenge.ts)         | Challenge issue / validate / cleanup                          |
 | [backend/src/dal/waitlist.ts](../../../backend/src/dal/waitlist.ts)                   | Waitlist reads and the approve write                          |
-| [src/waitlist/](../../../src/waitlist)                                                | The `/waitlist` page, its state hook and language picker      |
+| [src/waitlist/](../../../src/waitlist)                                                | The `/waitlist` page and its state hook                       |
+| [src/components/language-picker/](../../../src/components/language-picker)            | The language picker, shared with the sidebar                  |
 | [src/components/sign-in/](../../../src/components/sign-in)                            | The reusable form, its three steps and state hook             |
 | [src/components/magic-link-verify.tsx](../../../src/components/magic-link-verify.tsx) | `/auth/verify`                                                |
 | [src/lib/auth-mode.ts](../../../src/lib/auth-mode.ts)                                 | The build-time flags                                          |

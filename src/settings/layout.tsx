@@ -2,13 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { FloatingHeader } from '@/components/floating-header'
 import { SidebarInset } from '@/components/ui/sidebar'
 import { PageFallback } from '@/loading'
 import { Suspense, type CSSProperties } from 'react'
-import { Outlet } from 'react-router'
+import { Navigate, Outlet } from 'react-router'
 
+/**
+ * Chrome around the settings pages. In minimal mode (see `selectMinimalMode`)
+ * Settings is hidden and the sidebar offers no way in, so a deep link returns
+ * to the chat home.
+ */
 const SettingsLayout = () => {
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  if (minimalMode) {
+    return <Navigate to="/chats/new" replace />
+  }
+
   // Universal header: settings shows the same floating bar as chat (on mobile
   // it also carries the sidebar burger). The header overlays the content and a
   // top scrim keeps its controls legible while pages scroll beneath it; the

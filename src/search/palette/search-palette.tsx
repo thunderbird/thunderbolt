@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
@@ -20,7 +21,7 @@ import { buildActionNav } from '../actions/entity-actions'
 import type { PaletteCommand } from '../commands/types'
 import { useCommands as useCommandsImpl } from '../commands/use-commands'
 import { foldForMatch } from '../fold'
-import { searchEntities } from '../registry'
+import { searchEntities, minimalModeHiddenEntityTypes } from '../registry'
 import type { SearchEntityType, SearchResult } from '../types'
 import { useSearch as useSearchImpl } from '../use-search'
 import { CommandActionItem } from './command-item'
@@ -95,6 +96,8 @@ export const SearchPalette = ({
 
   const { experimentalFeatureTasks } = useSettings({ experimental_feature_tasks: false })
 
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+
   const { results } = useSearch(hasQuery ? trimmedQuery : '')
   const groups = useMemo(() => {
     if (!hasQuery) {
@@ -103,9 +106,16 @@ export const SearchPalette = ({
     // Tasks stay indexed, but the Tasks result group is hidden when the feature
     // flag is off — `/tasks` isn't mounted then (app.tsx), so a click would 404.
     // Mirrors the flag-gating on the Tasks nav/create commands.
-    const visible = experimentalFeatureTasks.value ? results : results.filter((result) => result.entityType !== 'task')
+    const withTasks = experimentalFeatureTasks.value
+      ? results
+      : results.filter((result) => result.entityType !== 'task')
+    // Likewise Settings and Projects results in minimal mode: those routes
+    // redirect away, so a click would land on a new chat.
+    const visible = minimalMode
+      ? withTasks.filter((result) => !minimalModeHiddenEntityTypes.has(result.entityType))
+      : withTasks
     return groupByEntity(visible)
-  }, [hasQuery, results, experimentalFeatureTasks.value])
+  }, [hasQuery, results, experimentalFeatureTasks.value, minimalMode])
 
   // Results and the command list share one scroll container, so a query change
   // swaps the content underneath a scroll offset that belonged to the old set:

@@ -209,6 +209,9 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `ENABLED_AGENTS`         | empty   | Comma-separated list of agent identifiers to offer. Empty means offer all of them.                 |
 | `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the option to add a custom agent, so users cannot connect their own.                 |
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
+| `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
+
+`MINIMAL_MODE=true` hides the Settings section, Projects, the starter skill chips, the account control and the agent menu, and surfaces a language picker in the sidebar.
 
 ### Hosted agent
 

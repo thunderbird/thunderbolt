@@ -93,6 +93,7 @@ const powersyncSettings: Settings = {
   enabledAgents: '',
   allowCustomAgents: true,
   disableBuiltInAgent: false,
+  minimalMode: false,
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',

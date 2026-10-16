@@ -135,6 +135,8 @@ services:
         sync: false
       - key: DISABLE_BUILT_IN_AGENT
         sync: false
+      - key: MINIMAL_MODE
+        sync: false # `true` for the chat-only shell
       - key: ENABLED_AGENTS
         sync: false # `hosted-agent` to offer only the hosted agent
       - key: AGENT_MODEL

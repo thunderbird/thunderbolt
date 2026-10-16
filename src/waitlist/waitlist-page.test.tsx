@@ -21,6 +21,23 @@ describe('WaitlistPage', () => {
     restoreViewport()
   })
 
+  it('puts the language picker below the legal text', () => {
+    const TestProvider = createTestProvider({ mockResponse: { success: true } })
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <TestProvider>
+        <MemoryRouter>{children}</MemoryRouter>
+      </TestProvider>
+    )
+    render(<WaitlistPage />, { wrapper: Wrapper })
+
+    const terms = screen.getByText(/By continuing, you agree to our/)
+    const picker = screen.getByRole('combobox', { name: 'Language' })
+
+    // `compareDocumentPosition` returns FOLLOWING when `picker` comes after
+    // `terms` in document order.
+    expect(terms.compareDocumentPosition(picker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('centers the mobile code entry directly below the email instructions', async () => {
     forceMobileViewport()
     const TestProvider = createTestProvider({

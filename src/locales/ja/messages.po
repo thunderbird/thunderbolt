@@ -2202,11 +2202,15 @@ msgstr "すべてのデバイスでデータを同期します。すべてエン
 msgid "Keep your data synced across devices."
 msgstr "デバイス間でデータを同期しましょう。"
 
+#: src/components/language-picker/language-picker.tsx
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
-#: src/waitlist/waitlist-language-picker.tsx
 msgid "Language"
 msgstr "言語"
+
+#: src/components/language-picker/language-picker.tsx
+msgid "Language: {currentLanguage}"
+msgstr "言語: {currentLanguage}"
 
 #: src/settings/devices.tsx
 msgid "Last seen {lastSeen}"

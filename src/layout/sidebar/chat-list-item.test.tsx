@@ -5,6 +5,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { useChat as useChat_default } from '@ai-sdk/react'
+import { useConfigStore } from '@/api/config-store'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
@@ -47,6 +48,41 @@ const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps 
 
 afterEach(() => {
   restoreViewport()
+  useConfigStore.setState({ config: {}, configLoaded: false })
+})
+
+describe('ChatListItem in minimal mode', () => {
+  const dragRow = () => document.querySelector('[data-sidebar="menu-item"]')
+
+  it('offers Move to project and a live drag handle by default', async () => {
+    renderWithProviders(createProps())
+    expect(dragRow()).toHaveAttribute('aria-disabled', 'false')
+
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    await waitForElement(() => screen.queryByText('Rename'))
+    expect(screen.getByText('Move to project')).toBeInTheDocument()
+  })
+
+  it('drops Move to project from the context menu and disables dragging', async () => {
+    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    renderWithProviders(createProps())
+    expect(dragRow()).toHaveAttribute('aria-disabled', 'true')
+
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    await waitForElement(() => screen.queryByText('Rename'))
+    expect(screen.queryByText('Move to project')).not.toBeInTheDocument()
+    expect(screen.getByText('Delete')).toBeInTheDocument()
+  })
+
+  it('drops Move to project from the mobile action sheet', async () => {
+    forceMobileViewport()
+    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    renderWithProviders(createProps({ isMobile: true }))
+
+    fireEvent.contextMenu(screen.getByText('My Chat'))
+    await waitForElement(() => screen.queryByText('Rename'))
+    expect(screen.queryByText('Move to project')).not.toBeInTheDocument()
+  })
 })
 
 describe('ChatListItem', () => {

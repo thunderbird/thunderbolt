@@ -6,11 +6,15 @@ import '@testing-library/jest-dom'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
+import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import type { Project } from '@/types'
 import { ProjectBadge } from './project-badge'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  useConfigStore.setState({ config: {}, configLoaded: false })
+})
 
 const projects = [{ id: 'p1', name: 'Q3 Planning', icon: '📊' }] as unknown as Project[]
 
@@ -43,6 +47,14 @@ describe('ProjectBadge', () => {
   it('names the project it is in', () => {
     renderBadge()
     expect(screen.getByText('Q3 Planning')).toBeInTheDocument()
+  })
+
+  it('renders nothing in minimal mode, though the chat keeps its project', () => {
+    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    const { container } = renderBadge()
+
+    expect(container).toBeEmptyDOMElement()
+    expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
   })
 
   it('renders nothing for a chat with no project', () => {

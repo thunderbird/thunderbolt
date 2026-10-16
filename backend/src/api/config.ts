@@ -38,6 +38,7 @@ export const createConfigRoutes = (settings: Settings) =>
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,
     allowCustomAgents: settings.allowCustomAgents,
+    minimalMode: settings.minimalMode,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
     defaults: {

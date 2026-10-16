@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
+import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { defaultSkillWeather } from '@/defaults/skills'
@@ -75,6 +76,10 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, sho
 }
 
 describe('ChatSkillsBar', () => {
+  beforeEach(() => {
+    useConfigStore.setState({ config: {}, configLoaded: true })
+  })
+
   afterEach(() => {
     cleanup()
     restoreViewport()
@@ -312,6 +317,36 @@ describe('ChatSkillsBar', () => {
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
     expect(screen.getByTestId('create-request')).toHaveAttribute('data-skill-id', 'a')
+  })
+
+  describe('in minimal mode', () => {
+    const a = skill('a', 'daily-brief')
+    const renderPinned = () =>
+      renderBar({
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+      })
+
+    it('shows the pinned chips outside minimal mode', () => {
+      renderPinned()
+
+      expect(screen.getByText('Daily Brief')).toBeTruthy()
+    })
+
+    it('renders nothing until the config has loaded', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
+
+    it('renders nothing in minimal mode', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
   })
 
   // The chip's click → onAddToChat path is exercised end-to-end at the

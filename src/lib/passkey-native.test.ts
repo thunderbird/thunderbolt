@@ -4,6 +4,7 @@
 
 import * as tauriCore from '@tauri-apps/api/core'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { isPasskeyCancellation } from './passkey'
 import { authenticatePasskeyNative, registerPasskeyNative } from './passkey-native'
 
 const salt = new Uint8Array([1, 2, 3])
@@ -109,5 +110,37 @@ describe('authenticatePasskeyNative', () => {
 
     await expect(authenticatePasskeyNative({ challenge: 'BAUG' }, salt)).rejects.toThrow('needs an RP ID')
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('native ceremony errors', () => {
+  const options = { challenge: 'BAUG', rpId: 'app.example.com' }
+  const reject = (error: unknown) => spyOn(tauriCore, 'invoke').mockRejectedValue(error)
+
+  it('turns a dismissed sheet into the cancellation a browser ceremony throws', async () => {
+    reject({ code: 'cancelled', message: 'passkey ceremony cancelled' })
+
+    const error = await authenticatePasskeyNative(options, salt).catch((caught: unknown) => caught)
+
+    expect(isPasskeyCancellation(error)).toBe(true)
+  })
+
+  it('keeps a failure an error, whatever its OS message says', async () => {
+    reject({ code: 'failed', message: 'passkey ceremony failed: The operation was canceled.' })
+
+    const error = await authenticatePasskeyNative(options, salt).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(Error)
+    expect(isPasskeyCancellation(error)).toBe(false)
+    expect((error as Error).message).toBe('passkey ceremony failed: The operation was canceled.')
+  })
+
+  it('turns a rejection from Tauri itself into an error', async () => {
+    reject('passkey.authenticate not allowed')
+
+    const error = await authenticatePasskeyNative(options, salt).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe('passkey.authenticate not allowed')
   })
 })

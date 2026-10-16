@@ -82,14 +82,6 @@ describe('isPasskeyCancellation', () => {
     expect(isPasskeyCancellation(err)).toBe(true)
   })
 
-  it('is true for the native bridge rejecting a cancelled sheet', () => {
-    expect(isPasskeyCancellation('passkey ceremony cancelled')).toBe(true)
-  })
-
-  it('is false for a native failure whose OS message mentions a cancel', () => {
-    expect(isPasskeyCancellation('passkey ceremony failed: The operation was canceled.')).toBe(false)
-  })
-
   it('is false for a generic error', () => {
     expect(isPasskeyCancellation(new Error('network down'))).toBe(false)
     expect(isPasskeyCancellation(null)).toBe(false)

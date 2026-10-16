@@ -25,8 +25,28 @@ import type {
  */
 export const nativePasskeyRpId = 'app.thunderbolt.io'
 
-/** What the plugin rejects with when the user dismisses the sheet (its `Error::Cancelled`). */
-export const nativeCancelledMessage = 'passkey ceremony cancelled'
+/** How the plugin rejects (its `Error`, src-tauri/plugins/tauri-plugin-passkey/src/error.rs). */
+type NativePasskeyError = { code: 'cancelled' | 'failed' | 'unavailable'; message: string }
+
+/** Whether a rejection is the plugin's own `{ code, message }` error. */
+const isNativePasskeyError = (error: unknown): error is NativePasskeyError =>
+  typeof error === 'object' && error !== null && 'code' in error && 'message' in error
+
+/**
+ * Run a plugin ceremony. Rejections become `Error`s, and a dismissed sheet the
+ * same `NotAllowedError` a browser ceremony throws, so callers check one shape.
+ */
+const invokePasskey = async <T>(command: 'register' | 'authenticate', request: Record<string, unknown>) => {
+  try {
+    return await invoke<T>(`plugin:passkey|${command}`, { request })
+  } catch (error) {
+    // Tauri's own failures (ACL, deserialization) reject with a plain string.
+    if (!isNativePasskeyError(error)) {
+      throw new Error(String(error), { cause: error })
+    }
+    throw Object.assign(new Error(error.message), { name: error.code === 'cancelled' ? 'NotAllowedError' : 'Error' })
+  }
+}
 
 /** The first OS versions with platform passkeys; the apps themselves support older ones. */
 const minimumPasskeyVersion = { ios: 16, macos: 13 }
@@ -82,15 +102,13 @@ export const registerPasskeyNative = async (
   if (!options.rp.id) {
     throw new Error('A native passkey registration needs an RP ID')
   }
-  const result = await invoke<NativeRegistration>('plugin:passkey|register', {
-    request: {
-      rpId: options.rp.id,
-      challenge: base64UrlToBytes(options.challenge),
-      userId: base64UrlToBytes(options.user.id),
-      userName: options.user.name,
-      excludeCredentials: (options.excludeCredentials ?? []).map((credential) => base64UrlToBytes(credential.id)),
-      prfSalt: Array.from(prfSalt),
-    },
+  const result = await invokePasskey<NativeRegistration>('register', {
+    rpId: options.rp.id,
+    challenge: base64UrlToBytes(options.challenge),
+    userId: base64UrlToBytes(options.user.id),
+    userName: options.user.name,
+    excludeCredentials: (options.excludeCredentials ?? []).map((credential) => base64UrlToBytes(credential.id)),
+    prfSalt: Array.from(prfSalt),
   })
   return {
     response: {
@@ -120,13 +138,11 @@ export const authenticatePasskeyNative = async (
   if (!options.rpId) {
     throw new Error('A native passkey assertion needs an RP ID')
   }
-  const result = await invoke<NativeAssertion>('plugin:passkey|authenticate', {
-    request: {
-      rpId: options.rpId,
-      challenge: base64UrlToBytes(options.challenge),
-      allowCredentials: (options.allowCredentials ?? []).map((credential) => base64UrlToBytes(credential.id)),
-      prfSalt: Array.from(prfSalt),
-    },
+  const result = await invokePasskey<NativeAssertion>('authenticate', {
+    rpId: options.rpId,
+    challenge: base64UrlToBytes(options.challenge),
+    allowCredentials: (options.allowCredentials ?? []).map((credential) => base64UrlToBytes(credential.id)),
+    prfSalt: Array.from(prfSalt),
   })
   return {
     response: {

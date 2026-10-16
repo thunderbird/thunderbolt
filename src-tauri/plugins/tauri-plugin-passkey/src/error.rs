@@ -20,11 +20,31 @@ pub enum Error {
     Tauri(#[from] tauri::Error),
 }
 
-// Serialize as the plain message; the webview matches `Cancelled`'s exact text
-// (`nativeCancelledMessage` in src/lib/passkey-native.ts) to treat it as a no-op.
+impl Error {
+    /// The stable code the webview branches on; the message is for logs only.
+    fn code(&self) -> &'static str {
+        match self {
+            Error::Cancelled => "cancelled",
+            Error::Unavailable => "unavailable",
+            Error::Ceremony(_) | Error::Tauri(_) => "failed",
+        }
+    }
+}
+
+/// What the webview receives (`NativePasskeyError` in src/lib/passkey-native.ts).
+#[derive(Serialize)]
+struct ErrorPayload {
+    code: &'static str,
+    message: String,
+}
+
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.to_string().as_ref())
+        ErrorPayload {
+            code: self.code(),
+            message: self.to_string(),
+        }
+        .serialize(serializer)
     }
 }
 

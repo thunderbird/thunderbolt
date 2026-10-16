@@ -10,7 +10,6 @@ import { isSsoMode } from '@/lib/auth-mode'
 import {
   authenticatePasskeyNative,
   isNativePasskeyPlatform,
-  nativeCancelledMessage,
   nativePasskeyRpId,
   registerPasskeyNative,
 } from '@/lib/passkey-native'
@@ -111,18 +110,12 @@ export const usePasskeyAvailable = (): boolean => {
 /**
  * True when a ceremony rejection is the user dismissing/cancelling the prompt.
  * Checked by shape rather than `instanceof WebAuthnError`, which would pull the
- * lazily loaded library into the entry bundle. The native bridge rejects with a
- * plain string.
+ * lazily loaded library into the entry bundle. The native adapter throws the same
+ * `NotAllowedError` for a dismissed sheet.
  */
-export const isPasskeyCancellation = (error: unknown): boolean => {
-  if (typeof error === 'string') {
-    return error === nativeCancelledMessage
-  }
-  return (
-    error instanceof Error &&
-    (error.name === 'NotAllowedError' || (error as { code?: unknown }).code === 'ERROR_CEREMONY_ABORTED')
-  )
-}
+export const isPasskeyCancellation = (error: unknown): boolean =>
+  error instanceof Error &&
+  (error.name === 'NotAllowedError' || (error as { code?: unknown }).code === 'ERROR_CEREMONY_ABORTED')
 
 /**
  * True when the server refused to register a passkey because the session is more

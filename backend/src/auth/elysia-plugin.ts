@@ -6,6 +6,7 @@ import type { db as DbType } from '@/db/client'
 import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
+import { passkeyVerifyPaths } from './paths'
 
 /**
  * Resolve a session while translating credential rejection into an unauthenticated result.
@@ -89,7 +90,6 @@ export const passkeyChallengeHeader = 'X-Passkey-Challenge'
 const passkeyChallengeCookiePattern = /^(__Secure-)?better-auth\.better-auth-passkey=[^;,\s]+$/
 
 const challengeIssuingPaths = ['/passkey/generate-register-options', '/passkey/generate-authenticate-options']
-const challengeVerifyingPaths = ['/passkey/verify-registration', '/passkey/verify-authentication']
 
 /**
  * The WebAuthn challenge rides a signed cookie, which the Apple apps' webview
@@ -125,7 +125,7 @@ export const exposePasskeyChallenge = (pathname: string, response: Response): Re
  * smuggle in any other.
  */
 export const restorePasskeyChallenge = (pathname: string, request: Request): Request => {
-  if (!challengeVerifyingPaths.some((path) => pathname.endsWith(path))) {
+  if (!passkeyVerifyPaths.some((path) => pathname.endsWith(path))) {
     return request
   }
   const challenge = request.headers.get(passkeyChallengeHeader)

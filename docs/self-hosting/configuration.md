@@ -46,13 +46,13 @@ Don't use the embedded `pglite` driver outside evaluation and testing. The sync 
 
 Pick one mode.
 
-| Variable               | Default                                   | What it does                                                                                                           |
-| ---------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`            | `consumer`                                | `consumer` for email sign-in codes, `oidc` or `saml` for enterprise SSO.                                               |
-| `AUTH_ALLOW_ANONYMOUS` | `false`                                   | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
-| `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
+| Variable               | Default                                                          | What it does                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`            | `consumer`                                                       | `consumer` for email sign-in codes, `oidc` or `saml` for enterprise SSO.                                               |
+| `AUTH_ALLOW_ANONYMOUS` | `false`                                                          | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
+| `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
 
-`tauri://localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
+`tauri://localhost` and `http://tauri.localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
 
 ### First-time email sign-in
 

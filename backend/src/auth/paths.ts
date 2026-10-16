@@ -7,3 +7,6 @@ export const authBasePath = '/v1/api/auth'
 
 /** Anonymous sign-in, relative to `authBasePath` (the form Better Auth hooks see). */
 export const anonymousSignInPath = '/sign-in/anonymous'
+
+/** The passkey calls that verify a relayed WebAuthn challenge. */
+export const passkeyVerifyPaths = ['/passkey/verify-registration', '/passkey/verify-authentication']

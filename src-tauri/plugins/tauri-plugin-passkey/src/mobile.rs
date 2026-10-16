@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//! iOS passkey backend: forwards each ceremony to the native Swift plugin
-//! (`ios/Sources/PasskeyPlugin`) through the Tauri mobile plugin bridge. The
-//! Swift side runs the same `ASAuthorizationController` flow as macOS, anchored on
-//! the app's `UIWindow`, and returns the base64url fields the webview assembles
-//! into a WebAuthn response JSON.
+//! Mobile passkey backends, both through the Tauri mobile plugin bridge: the
+//! Swift plugin (`ios/Sources/PasskeyPlugin`) runs `ASAuthorizationController`
+//! like macOS, and the Kotlin plugin (`android/.../PasskeyPlugin.kt`) runs
+//! Credential Manager. Both take the same request and return the base64url fields
+//! the webview assembles into a WebAuthn response JSON.
 
 use tauri::{
     plugin::{
@@ -20,15 +20,19 @@ use crate::error::{Error, Result};
 use crate::models::{AssertionResult, AuthenticateRequest, RegisterRequest, RegistrationResult};
 
 // Links the Swift plugin registered as `PasskeyPlugin` (see ios/Sources).
+#[cfg(target_os = "ios")]
 tauri::ios_plugin_binding!(init_plugin_passkey);
 
-/// The code the Swift plugin rejects a dismissed sheet with.
+/// The code both native plugins reject a dismissed sheet with.
 const CANCELLED_CODE: &str = "cancelled";
 
 pub fn init<R: Runtime>(_app: &AppHandle<R>, api: PluginApi<R, ()>) -> crate::Result<Passkey<R>> {
-    let handle = api
-        .register_ios_plugin(init_plugin_passkey)
-        .map_err(|err| Error::Ceremony(err.to_string()))?;
+    #[cfg(target_os = "ios")]
+    let handle = api.register_ios_plugin(init_plugin_passkey);
+    #[cfg(target_os = "android")]
+    let handle =
+        api.register_android_plugin("net.thunderbird.thunderbolt.passkey", "PasskeyPlugin");
+    let handle = handle.map_err(|err| Error::Ceremony(err.to_string()))?;
     Ok(Passkey(handle))
 }
 

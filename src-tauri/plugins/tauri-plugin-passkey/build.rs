@@ -29,6 +29,9 @@ fn main() {
     }
 
     // Registers the plugin + its command permissions with the Tauri build system,
-    // and (on iOS) wires up the mobile plugin's native project.
-    tauri_plugin::Builder::new(COMMANDS).ios_path("ios").build();
+    // and wires up the mobile plugins' native projects.
+    tauri_plugin::Builder::new(COMMANDS)
+        .ios_path("ios")
+        .android_path("android")
+        .build();
 }

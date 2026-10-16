@@ -4,8 +4,8 @@
 
 //! Native WebAuthn passkey ceremonies for Thunderbolt's Tauri apps.
 //!
-//! WKWebView doesn't expose `navigator.credentials` to the app, so passkey
-//! register/authenticate must run natively. This plugin runs the ceremony through
+//! The app's webviews don't expose `navigator.credentials` for its RP ID, so
+//! passkey register/authenticate must run natively. This plugin runs the ceremony through
 //! the OS API and returns the raw material the webview needs to assemble a standard
 //! WebAuthn response JSON:
 //!
@@ -13,6 +13,7 @@
 //!   (`src/desktop.rs` + `swift-lib/`), adapted from yminghua/tauri-plugin-macos-passkey.
 //! - **iOS**: the Tauri mobile plugin bridge to the same `AuthenticationServices`
 //!   API (`src/mobile.rs` + `ios/`).
+//! - **Android**: the same bridge to Credential Manager (`src/mobile.rs` + `android/`).
 //! - **other platforms**: every call fails with `Error::Unavailable`; the app never
 //!   offers passkeys there.
 
@@ -32,16 +33,16 @@ pub use models::*;
 
 #[cfg(target_os = "macos")]
 mod desktop;
-#[cfg(target_os = "ios")]
+#[cfg(mobile)]
 mod mobile;
 
 #[cfg(target_os = "macos")]
 use desktop::Passkey;
-#[cfg(target_os = "ios")]
+#[cfg(mobile)]
 use mobile::Passkey;
 
 /// Fallback handle for platforms with no native passkey support.
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+#[cfg(not(any(target_os = "macos", mobile)))]
 mod unsupported {
     use std::marker::PhantomData;
     use tauri::{Runtime, Window};
@@ -69,7 +70,7 @@ mod unsupported {
         }
     }
 }
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+#[cfg(not(any(target_os = "macos", mobile)))]
 use unsupported::Passkey;
 
 /// Access to the passkey APIs, added to `AppHandle`/`Window`/`App` by the plugin.
@@ -93,9 +94,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .setup(|app, _api| {
             #[cfg(target_os = "macos")]
             let passkey = desktop::init(app, _api)?;
-            #[cfg(target_os = "ios")]
+            #[cfg(mobile)]
             let passkey = mobile::init(app, _api)?;
-            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            #[cfg(not(any(target_os = "macos", mobile)))]
             let passkey = Passkey::<R>(std::marker::PhantomData);
 
             app.manage(passkey);

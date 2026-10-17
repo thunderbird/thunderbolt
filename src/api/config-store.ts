@@ -91,7 +91,8 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 /** Whether the deployment runs in minimal mode (`MINIMAL_MODE=true`): the
  *  chat-only shell for public deployments. It hides Settings and its routes, the
  *  starter skill chips, Projects, the account/cloud control, the agent menu and
- *  the Settings destinations in the palette and search. Absent means off. Role-based visibility is
+ *  the Settings destinations in the palette and search. Slash commands are off too:
+ *  `/` is plain text, and no skill is offered to any agent. Absent means off. Role-based visibility is
  *  expected to replace this predicate. */
 export const selectMinimalMode = (config: AppConfig): boolean => config.minimalMode === true
 

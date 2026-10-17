@@ -487,14 +487,14 @@ export type PrepareAiRequestConfigOptions = {
   readonly telemetry?: TurnTelemetry
 }
 
-/** Register progressive skill loading only for models that support tools. */
+/** Register progressive skill loading only for tool-capable models with at least one skill to load. */
 export const addSkillTool = (
   toolset: Record<string, Tool>,
   skills: readonly SkillDefinition[],
   supportsTools: boolean,
   webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
-  if (supportsTools) {
+  if (supportsTools && skills.length > 0) {
     toolset.skill = createSkillTool(skills, (name) => {
       webToolBudget?.promote(resolveSkillWebToolIntent(name))
     })

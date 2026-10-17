@@ -108,8 +108,8 @@ export const ChatSkillsBar = ({
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
-  // Minimal mode (see `selectMinimalMode`) hides the chips. Typed `/skill`
-  // tokens still resolve.
+  // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
+  // text is plain text there.
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
   // Hidden too until `/config` answers, so the chips never flash in and out.
   const configLoaded = useConfigStore(selectConfigSettled)

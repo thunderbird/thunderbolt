@@ -19,6 +19,7 @@ import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/a
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { useConfigStore } from '@/api/config-store'
 import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
 import { createMCPClient } from '@ai-sdk/mcp'
@@ -218,6 +219,19 @@ describe('selectPromptSkillDefinitions', () => {
     expect(prompt).not.toContain('WIDGET_CONTRACT_BODY')
     expect(prompt).not.toContain('TASK_SKILL_BODY')
     expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+  })
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])('minimalMode %s: skill listing and skill tool present: %s', (minimalMode, present) => {
+    useConfigStore.setState({ config: { minimalMode } })
+    const skills = selectPromptSkillDefinitions(storedSkills, true)
+    const tools = addSkillTool({}, selectEnabledSkillDefinitions(storedSkills), true)
+
+    expect(createSkillPrompt(true).includes('## Skills')).toBe(present)
+    expect('skill' in tools).toBe(present)
+    expect(skills.length > 0).toBe(present)
   })
 
   it('keeps every enabled skill in the slash-token resolution map', () => {

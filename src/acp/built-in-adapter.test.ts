@@ -20,6 +20,7 @@ import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } fr
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
 import { updateSkill } from '@/dal/skills'
+import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -1350,6 +1351,28 @@ it('injects explicit research before the Pi turn without loading a skill tool or
       'EXPLICIT_RESEARCH_BODY',
     )
     expect(context.webToolBudget).toMatchObject({ intent: 'research', initialCap: 30, cap: 30, promoted: false })
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
+})
+
+it('sends a /research token verbatim, without its instruction, in minimal mode', async () => {
+  await setupTestDatabase()
+  useConfigStore.setState({ config: { minimalMode: true } })
+  const run = createBudgetAdapter(['Done.'], prepareAiRequestConfig)
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    await updateSkill(getDb(), defaultSkillResearch.id, { enabled: 1, instruction: 'EXPLICIT_RESEARCH_BODY' })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'research-user', role: 'user', parts: [{ type: 'text', text: '/research a topic' }] },
+    ]
+    const context = createEvalAdapterContext({ ...run.context, messages })
+    await (await run.adapter.fetch({ body: JSON.stringify({ messages }) }, context)).text()
+    const userMessages = JSON.stringify(run.requests[0].messages.filter(({ role }) => role === 'user'))
+    expect(userMessages).toContain('/research a topic')
+    expect(userMessages).not.toContain('EXPLICIT_RESEARCH_BODY')
   } finally {
     run.adapter.disconnect()
     await teardownTestDatabase()

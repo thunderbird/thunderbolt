@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resolveSkill, type SkillDefinition } from '@shared/agent-core/skills'
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
@@ -14,12 +15,20 @@ type StoredSkillDefinition = SkillDefinition & {
  * Select enabled skills and discard persistence-only fields.
  *
  * @param skills - skill rows from any app data source
- * @returns enabled skill definitions suitable for prompt and tool injection
+ * @returns enabled skill definitions suitable for prompt and tool injection;
+ *   empty in minimal mode, where no skill is offered to any agent
+ *
+ * The single source for the built-in system prompt's skill listing, the `skill`
+ * tool, and the skills sent to ACP agents as wire metadata, so gating here keeps
+ * all three in step. Reads the store imperatively, like
+ * `resolveSkillTokenInstructions`, because the callers sit outside React.
  */
 export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefinition[]): SkillDefinition[] =>
-  skills
-    .filter((skill) => skill.enabled === 1)
-    .map(({ name, description, instruction }) => ({ name, description, instruction }))
+  selectMinimalMode(useConfigStore.getState().config)
+    ? []
+    : skills
+        .filter((skill) => skill.enabled === 1)
+        .map(({ name, description, instruction }) => ({ name, description, instruction }))
 
 /**
  * Create AI SDK tool that loads one enabled skill's full instructions.

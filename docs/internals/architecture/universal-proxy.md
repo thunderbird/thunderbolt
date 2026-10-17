@@ -79,12 +79,20 @@ document. The client strips the two `proxyFramingHeaders` when rebuilding.
 
 ## SSRF and the redirect loop
 
-`validateAndPin` ([backend/src/utils/url-validation.ts:77-118](../../../backend/src/utils/url-validation.ts#L77))
+`validateAndPin` ([backend/src/utils/url-validation.ts:91-136](../../../backend/src/utils/url-validation.ts#L91))
 resolves the hostname, rejects if _any_ resolved address is private, internal or reserved, then
 connects to that IP with the original `Host` header. Pinning closes the DNS-rebinding window
 between check and connect.
 
-- An IP-literal target skips the lookup but is classified the same way.
+A pinned HTTPS request needs a second half: Bun's `tls: { serverName }` fetch option, which
+`validateAndPin` returns alongside the headers. It names the original hostname for TLS SNI and
+certificate verification, which would otherwise follow the IP in the URL. Bun derived SNI from
+the `Host` header through 1.4.0; from 1.4.1 every pinned HTTPS request fails the handshake
+without it. Both the route and `createSafeFetch` pass it through, and the real-handshake test in
+`url-validation.test.ts` guards it across Bun upgrades.
+
+- An IP-literal target skips the lookup but is classified the same way, and gets no `tls`
+  override since the URL was not rewritten.
 - Userinfo is stripped by both the route and `validateAndPin`.
 - `ensureHttps` normalises first and rejects any non-`http(s)` scheme.
 

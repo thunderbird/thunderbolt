@@ -14,6 +14,7 @@ import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { useConfigStore } from '@/api/config-store'
+import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { skillsCapabilityMeta } from '@shared/agent-core/skills'
 import type {
@@ -239,24 +240,28 @@ describe('connectToAgent: skills in session metadata', () => {
   it.each([
     [false, true],
     [true, false],
-  ])('minimalMode %s: session/new carries skills: %s', async (minimalMode, carriesSkills) => {
-    await setupTestDatabase()
-    try {
-      useConfigStore.setState({ config: { minimalMode } })
-      const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({ capabilities: { skills: true } })
-      const adapter = await connectToAgent(
-        remoteAgent,
-        { httpClient, getProxyFetch },
-        { openTransport, ClientSideConnection: FakeConnection as never },
-      )
-      await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: null }))
+  ])(
+    'minimalMode %s: session/new carries user-invocable skills: %s, and widget contracts either way',
+    async (minimalMode, userSkills) => {
+      await setupTestDatabase()
+      try {
+        useConfigStore.setState({ config: { minimalMode } })
+        const { calls, FakeConnection, openTransport } = buildFakeAcpDeps({ capabilities: { skills: true } })
+        const adapter = await connectToAgent(
+          remoteAgent,
+          { httpClient, getProxyFetch },
+          { openTransport, ClientSideConnection: FakeConnection as never },
+        )
+        await adapter.fetch(promptInit('hi'), baseAdapterContext({ acpSessionId: null }))
 
-      const meta = JSON.stringify(calls.newSession[0]?._meta ?? {})
-      expect(meta.includes('"skills"') && meta.includes('instruction')).toBe(carriesSkills)
-    } finally {
-      await teardownTestDatabase()
-    }
-  })
+        const meta = JSON.stringify(calls.newSession[0]?._meta ?? {})
+        expect(meta.includes(`"name":"${defaultSkillResearch.name}"`)).toBe(userSkills)
+        expect(meta.includes(`"name":"${defaultSkillWeather.name}"`)).toBe(true)
+      } finally {
+        await teardownTestDatabase()
+      }
+    },
+  )
 })
 
 describe('connectToAgent — remote-acp dispatch', () => {

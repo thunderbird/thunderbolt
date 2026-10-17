@@ -1379,6 +1379,30 @@ it('sends a /research token verbatim, without its instruction, in minimal mode',
   }
 })
 
+it.each([
+  [false, true],
+  [true, false],
+])('minimalMode %s: the skill listing and skill tool reach the model: %s', async (minimalMode, offered) => {
+  await setupTestDatabase()
+  useConfigStore.setState({ config: { minimalMode } })
+  const run = createBudgetAdapter(['Done.'], prepareAiRequestConfig)
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await run.send()
+    const request = run.requests[0]
+    const system = JSON.stringify(request.messages.filter(({ role }) => role === 'system'))
+    expect(request.tools?.some(({ function: { name } }) => name === 'skill') ?? false).toBe(offered)
+    expect(system.includes('Use the `skill` tool')).toBe(offered)
+    expect(system.includes('already loaded')).toBe(offered)
+    expect(system.includes('### weather')).toBe(!offered)
+    expect(system.includes('- research:')).toBe(offered)
+    expect(system.includes('### research')).toBe(false)
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
+})
+
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
   const run = createBudgetAdapter(

@@ -222,16 +222,13 @@ describe('selectPromptSkillDefinitions', () => {
   })
 
   it.each([
-    [false, true],
-    [true, false],
-  ])('minimalMode %s: skill listing and skill tool present: %s', (minimalMode, present) => {
+    [false, ['weather', 'research', 'user-authored']],
+    [true, ['weather']],
+  ])('minimalMode %s keeps these skills in the selection: %j', (minimalMode, expected) => {
     useConfigStore.setState({ config: { minimalMode } })
-    const skills = selectPromptSkillDefinitions(storedSkills, true)
-    const tools = addSkillTool({}, selectEnabledSkillDefinitions(storedSkills), true)
 
-    expect(createSkillPrompt(true).includes('## Skills')).toBe(present)
-    expect('skill' in tools).toBe(present)
-    expect(skills.length > 0).toBe(present)
+    expect(selectPromptSkillDefinitions(storedSkills, true).map(({ name }) => name)).toEqual(expected)
+    expect(selectPromptSkillDefinitions(storedSkills, false).map(({ name }) => name)).toEqual(['weather'])
   })
 
   it('keeps every enabled skill in the slash-token resolution map', () => {

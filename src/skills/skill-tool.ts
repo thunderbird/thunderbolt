@@ -4,10 +4,12 @@
 
 import { resolveSkill, type SkillDefinition } from '@shared/agent-core/skills'
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { isWidgetSkillId } from '@/defaults/skills'
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
 type StoredSkillDefinition = SkillDefinition & {
+  readonly id: string
   readonly enabled: number
 }
 
@@ -16,19 +18,21 @@ type StoredSkillDefinition = SkillDefinition & {
  *
  * @param skills - skill rows from any app data source
  * @returns enabled skill definitions suitable for prompt and tool injection;
- *   empty in minimal mode, where no skill is offered to any agent
+ *   in minimal mode only the widget rendering contracts
  *
- * The single source for the built-in system prompt's skill listing, the `skill`
- * tool, and the skills sent to ACP agents as wire metadata, so gating here keeps
- * all three in step. Reads the store imperatively, like
+ * Minimal mode withholds every user-invocable skill (the listing, the `skill`
+ * tool and the ACP skills metadata are built from this list) but keeps the
+ * widget skills: they are model-facing rendering contracts, not slash commands,
+ * and without them weather, map and link-preview cards would stop rendering.
+ * The ACP metadata keeps them for the same reason, so a remote agent can still
+ * emit widgets the app renders. Reads the store imperatively, like
  * `resolveSkillTokenInstructions`, because the callers sit outside React.
  */
 export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefinition[]): SkillDefinition[] =>
-  selectMinimalMode(useConfigStore.getState().config)
-    ? []
-    : skills
-        .filter((skill) => skill.enabled === 1)
-        .map(({ name, description, instruction }) => ({ name, description, instruction }))
+  skills
+    .filter((skill) => skill.enabled === 1)
+    .filter((skill) => !selectMinimalMode(useConfigStore.getState().config) || isWidgetSkillId(skill.id))
+    .map(({ name, description, instruction }) => ({ name, description, instruction }))
 
 /**
  * Create AI SDK tool that loads one enabled skill's full instructions.

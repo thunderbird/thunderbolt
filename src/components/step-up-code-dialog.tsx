@@ -105,7 +105,10 @@ export const StepUpCodeDialog = ({
             onClick={onSubmit}
             isLoading={isSubmitting ?? isBusy}
             loadingLabel={submitLoadingLabel}
-            disabled={otp.length !== stepUpOtpLength}
+            // Disable on `isBusy`, not just `isSubmitting`: a resend in flight is
+            // about to replace the code in the box, so submitting it would only
+            // burn an attempt.
+            disabled={isBusy || otp.length !== stepUpOtpLength}
           >
             {submitLabel}
           </Button>

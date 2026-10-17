@@ -48,6 +48,15 @@ describe('StepUpCodeDialog', () => {
     expect(screen.getByRole('button', { name: 'Delete account' })).toBeEnabled()
   })
 
+  // A resend sets `isBusy` without `isSubmitting`; the button must still lock,
+  // or a full code about to be replaced could be submitted and burn an attempt.
+  it('disables submit while a resend is in flight, even with a full code', () => {
+    renderDialog({ otp: '1'.repeat(stepUpOtpLength), isBusy: true, isSubmitting: false })
+    const submit = screen.getByRole('button', { name: 'Delete account' })
+    expect(submit).toBeDisabled()
+    expect(submit).not.toHaveTextContent('Deleting…')
+  })
+
   it('surfaces an error to assistive tech', () => {
     renderDialog({ error: 'That code is invalid or expired.' })
     expect(screen.getByRole('alert')).toHaveTextContent('That code is invalid or expired.')

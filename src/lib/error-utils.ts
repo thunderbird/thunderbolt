@@ -99,10 +99,10 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   const normalizedMessage = message?.toLowerCase()
   const isContentRejectionStatus = status === 400 || status === 422
 
-  if (name === 'TinfoilAttestationTimeoutError') {
+  if (name === 'TinfoilAttestationTimeoutError' || name === 'TrustedRouterAttestationTimeoutError') {
     return 'timeout'
   }
-  if (name === 'TinfoilAttestationError') {
+  if (name === 'TinfoilAttestationError' || name === 'TrustedRouterAttestationError') {
     return 'attestation'
   }
   if (status === 429) {

@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { defaultModels } from '@shared/defaults/models'
 import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
   catalogRowSupportsImages,
+  fetchModelsForProvider,
   thunderboltModelCatalog,
 } from './model-catalog'
 
@@ -47,6 +48,8 @@ describe('model catalog policy', () => {
     it('blocks key-gated providers until an API key is present', () => {
       expect(canFetchCatalog({ provider: 'openai' })).toBe(false)
       expect(canFetchCatalog({ provider: 'openrouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'trustedrouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'trustedrouter', apiKey: 'sk-tr-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'anthropic', apiKey: 'sk-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'openai', apiKey: 'sk-test' })).toBe(true)
     })
@@ -72,6 +75,48 @@ describe('model catalog policy', () => {
     it('leaves support unknown when the catalog lists no modalities', () => {
       expect(catalogRowSupportsImages({ id: 'c' })).toBeUndefined()
       expect(catalogRowSupportsImages({ id: 'd', architecture: {} })).toBeUndefined()
+    })
+  })
+
+  describe('fetchModelsForProvider (trustedrouter)', () => {
+    const originalFetch = globalThis.fetch
+    afterEach(() => {
+      globalThis.fetch = originalFetch
+    })
+
+    it('loads the public catalog without sending the key and reads tool and image support', async () => {
+      const requests: Request[] = []
+      globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requests.push(new Request(input, init))
+          return Response.json({
+            data: [
+              {
+                id: 'trustedrouter/auto',
+                supported_parameters: ['tools', 'temperature'],
+                architecture: { input_modalities: ['text', 'image'] },
+              },
+              {
+                id: 'acme/text-only',
+                supported_parameters: ['temperature'],
+                architecture: { input_modalities: ['text'] },
+              },
+            ],
+          })
+        },
+        { preconnect: originalFetch.preconnect },
+      )
+
+      const models = await fetchModelsForProvider({ provider: 'trustedrouter', apiKey: 'sk-tr-test' })
+
+      expect(requests.map((request) => request.url)).toEqual(['https://api.trustedrouter.com/v1/models'])
+      expect(requests[0]?.headers.get('authorization')).toBeNull()
+      expect(
+        models.map(({ id, supports_tools, supports_images }) => ({ id, supports_tools, supports_images })),
+      ).toEqual([
+        { id: 'acme/text-only', supports_tools: false, supports_images: false },
+        { id: 'trustedrouter/auto', supports_tools: true, supports_images: true },
+      ])
     })
   })
 })

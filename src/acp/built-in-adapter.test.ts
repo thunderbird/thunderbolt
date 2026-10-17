@@ -10,12 +10,14 @@
  * rebuilds the harness instead of silently reusing the first turn's config.
  */
 
-import '@/testing-library'
+import { getClock } from '@/testing-library'
 
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
+import { createTrustedRouterAttestation } from '@/ai/trustedrouter-attestation'
+import { getChatErrorKind } from '@/lib/error-utils'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
@@ -83,10 +85,10 @@ const openaiCompat = (
 describe('isPiModelCandidate', () => {
   it('matches the production provider and tool-usage routing boundary', () => {
     expect(
-      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'].map((provider) =>
+      ['anthropic', 'openai', 'custom', 'openrouter', 'trustedrouter', 'thunderbolt'].map((provider) =>
         isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
       ),
-    ).toEqual([true, true, true, true, true])
+    ).toEqual([true, true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
@@ -1776,5 +1778,95 @@ describe('Mini App reads on the persistent harness', () => {
     expect(requested).toEqual([{ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] }])
     expect(hooks.context).toBeUndefined()
     expect(toolCallMetadata).toEqual({ modelId: model.id, embeddedSurface: 'mini-app' })
+  })
+})
+
+describe('TrustedRouter attestation failures on the Pi path', () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  /** The Error chat receives: the adapter's rejection, or the stream's terminal
+   *  error chunk raised as `new Error(errorText)` the way the AI SDK does. */
+  const chatErrorFrom = async (response: Promise<Response>): Promise<Error> => {
+    let output: string
+    try {
+      output = await (await response).text()
+    } catch (error) {
+      return error as Error
+    }
+    const errorChunk = output
+      .split('\n\n')
+      .filter((line) => line.startsWith('data: {'))
+      .map((line) => JSON.parse(line.slice(6)) as { type: string; errorText?: string })
+      .find((chunk) => chunk.type === 'error')
+    return new Error(errorChunk?.errorText ?? 'stream finished without an error')
+  }
+
+  const sendTrustedRouterTurn = (
+    verifyGateway: Parameters<typeof createTrustedRouterAttestation>[0]['verifyGateway'],
+  ) => {
+    // Any real network call fails, so a check that only runs inside the stream
+    // fails there the way it does in production.
+    globalThis.fetch = (async () => {
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof globalThis.fetch
+    const model = {
+      id: 'trustedrouter-model',
+      name: 'TrustedRouter model',
+      provider: 'trustedrouter',
+      model: 'openai/gpt-test',
+      apiKey: 'sk-tr-test',
+      toolUsage: 1,
+    } as Model
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+    } satisfies PreparedAiRequestConfig
+    const aiFetch = mock(async () => new Response('legacy'))
+    const { ensureVerified } = createTrustedRouterAttestation({
+      verifyGateway,
+      timeoutMs: 1,
+      trackAttestation: () => {},
+    })
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch,
+      loadAgentCore: async () => realAgentCore,
+      prepareConfig: async () => config,
+      ensureTrustedRouterVerified: ensureVerified,
+    })
+    const messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }]
+    const response = adapter.fetch(
+      { body: JSON.stringify({ messages }) },
+      tinfoilContext(model, { threadId: `trustedrouter-${crypto.randomUUID()}` }),
+    )
+    return { response, aiFetch }
+  }
+
+  it('keeps the attestation kind when verification fails', async () => {
+    const { response, aiFetch } = sendTrustedRouterTurn(async () => {
+      throw new Error('image digest is not pinned')
+    })
+
+    expect(getChatErrorKind(await chatErrorFrom(response))).toBe('attestation')
+    expect(aiFetch).toHaveBeenCalledTimes(0)
+  })
+
+  it('keeps the timeout kind when verification does not settle', async () => {
+    const { response, aiFetch } = sendTrustedRouterTurn(() => new Promise(() => {}))
+    const chatError = chatErrorFrom(response)
+    await getClock().runAllAsync()
+
+    expect(getChatErrorKind(await chatError)).toBe('timeout')
+    expect(aiFetch).toHaveBeenCalledTimes(0)
   })
 })

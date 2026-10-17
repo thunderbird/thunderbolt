@@ -5,7 +5,7 @@
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
-import { Server } from 'lucide-react'
+import { Server, ShieldCheck } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
 import openRouterLogoSrc from '@/assets/openrouter.svg'
@@ -25,6 +25,7 @@ export const providerLabels: Record<Model['provider'], string> = {
   tinfoil: 'Tinfoil',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
+  trustedrouter: 'TrustedRouter',
   anthropic: 'Anthropic',
   custom: 'Custom',
 }
@@ -44,6 +45,8 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
       return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
+    case 'trustedrouter':
+      return <ShieldCheck className="size-5 text-muted-foreground" aria-hidden="true" />
     case 'tinfoil':
       return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
     case 'custom':

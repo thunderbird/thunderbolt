@@ -87,6 +87,7 @@
     "@journeyapps/wa-sqlite": "^1.7.0",
     "@lingui/core": "^6.6.0",
     "@lingui/react": "^6.6.0",
+    "@lore-hex/trusted-router": "0.9.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@noble/curves": "~2.2.0",
     "@noble/post-quantum": "^0.6.0",

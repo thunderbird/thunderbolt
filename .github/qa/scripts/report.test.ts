@@ -207,8 +207,10 @@ describe('renderReport', () => {
       probe: new Map([['c8-phone', { loads: 4, missing: 1 }]]),
     })
     expect(report).toContain('- **c8-phone**: 1 of 4 screens without a measurement')
-    expect(report).not.toContain('**c2-chat-desktop**: 0 of')
-    expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('layout probe')
+    expect(report.split('## Layout probe')[1]).not.toContain('c2-chat-desktop')
+    expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain(
+      'screens without a measurement',
+    )
   })
 
   it('has no incomplete banner when every session finished', () => {
@@ -621,7 +623,7 @@ describe('native coverage', () => {
   const header = 'appId: net.thunderbird.thunderbolt.dev\n---\n'
   const tap = `${header}- tapOn: Add\n`
   const relaunch = `${header}- stopApp\n- launchApp\n`
-  const files = (id: string) => [
+  const files = (id: string, observed: string) => [
     {
       id: '1',
       attempt: {
@@ -629,19 +631,27 @@ describe('native coverage', () => {
         setup: 'fresh app',
         action: 'did it',
         expected: 'it works',
-        observed: 'text":"Skill Alpha One","role":"button',
+        observed,
         status: 'passed' as const,
       },
     },
   ]
-  const verdict = (id: string, calls: Call[]) => {
+  const verdict = (id: string, calls: Call[], observed = 'text":"Skill Alpha One","role":"button') => {
     const [v] = checkCoverage(
       [{ id, outcome: 'works', reload: id.endsWith('!') }],
-      files(id),
+      files(id, observed),
       transcriptOf(calls),
     ).verdicts
     return [v.state, v.reason]
   }
+  const noQuote = ['unsupported', 'quote not in a browser tool result of this attempt']
+  // What the gate returns for a run: the Maestro envelope, then the probe lines.
+  const gated = run(
+    tap,
+    '{"success":true,"device_id":"D","commands_executed":1,"message":"Flow executed successfully","env_vars":{}}\n' +
+      '[qa-gate] layout probe not seen since launch\n[qa-layout] ready keyboard=none',
+  )
+  const denied = (yaml: string, problem: string) => run(yaml, `denied: ${problem}`)
 
   it('covers a function whose quote comes from an inspect_screen after a run', () => {
     expect(verdict('edit', [run(tap), inspect(screen), record])).toEqual(['passed', undefined])
@@ -673,6 +683,31 @@ describe('native coverage', () => {
     expect(
       verdict('persist!', [run(tap), run(`${header}- killApp\n- launchApp: null\n`), inspect(screen), record]),
     ).toEqual(['passed', undefined])
+  })
+
+  it('does not count a run the gate denied as an action, a reload or a quote source', () => {
+    const echoed = denied(`${header}- Skill Alpha Saved Ok: x\n`, 'commands[0].Skill Alpha Saved Ok: key not allowed')
+    expect(verdict('edit', [run(tap), echoed, record], 'Skill Alpha Saved Ok')).toEqual(noQuote)
+    const fakeReload = denied(`${relaunch}- runScript: x.js\n`, 'commands[2].runScript: command not allowed')
+    expect(verdict('persist!', [run(tap), fakeReload, inspect(screen), record])).toEqual([
+      'unsupported',
+      'no reload between the change and the quoted result',
+    ])
+    expect(verdict('edit', [fakeReload, inspect(screen), record])).toEqual([
+      'unsupported',
+      'no browser action before the quoted result',
+    ])
+  })
+
+  it('does not take the gate text, a cheat sheet or a screenshot reply for what the app showed', () => {
+    expect(verdict('edit', [gated, record], 'Flow executed successfully')).toEqual(noQuote)
+    expect(verdict('edit', [gated, record], 'layout probe not seen since launch')).toEqual(noQuote)
+    const sheet = { name: 'mcp__maestro__cheat_sheet', result: '- tapOn: Custom name for the flow' }
+    expect(verdict('edit', [run(tap), sheet, record], 'Custom name for the flow')).toEqual(noQuote)
+    const shot = { name: 'mcp__maestro__take_screenshot', result: 'Saved to /out/maestro/shot-1.jpg' }
+    expect(verdict('edit', [run(tap), shot, record], 'Saved to /out/maestro/shot-1.jpg')).toEqual(noQuote)
+    // The probe's own line still backs a quote.
+    expect(verdict('edit', [gated, record], '[qa-layout] ready keyboard=none')).toEqual(['passed', undefined])
   })
 
   it('does not take a launchApp inside a selector text for a reload', () => {
@@ -737,6 +772,15 @@ describe('probeGaps', () => {
       ['mcp__maestro__read_logs', 'no lines'],
     ] as const
     expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 1 })
+  })
+
+  it('leaves a denied run out, even when its reply holds the ready text', async () => {
+    const steps = [
+      ['mcp__maestro__run', 'denied: commands[0].[qa-layout] ready: key not allowed'],
+      ['mcp__maestro__run', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__run', 'text on screen [qa-layout] ready keyboard=none'],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 2 })
   })
 
   it('reads a link written under another root or relative to another cwd from the session dir', async () => {

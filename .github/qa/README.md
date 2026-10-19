@@ -115,7 +115,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    result whose gate output has no `[qa-layout] ready` line counts the same way, and the report says "screens
    without a measurement" for both. Maestro tools count in coverage like browser tools: `run` is an action,
    `inspect_screen`, `take_screenshot`, `read_logs` and `cheat_sheet` are reads, and a reload on native is a `run`
-   whose `yaml` has `launchApp` after `stopApp` or `killApp`. `noise.txt` turns
+   whose `yaml` has `launchApp` after `stopApp` or `killApp`. A `run` the gate denied (reply starts with `denied:`)
+   is dropped with its reply. A quote must come from what the app showed: the `run` success envelope, `[qa-gate]`
+   lines, `Saved to` lines and the whole `cheat_sheet` and `take_screenshot` replies do not count. `noise.txt` turns
    a `[qa-layout]` line filed as a `console-error` into an observation. The explorer also takes a screenshot of
    every new screen and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is
    a `visual` finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is

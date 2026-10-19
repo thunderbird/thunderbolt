@@ -153,9 +153,20 @@ type Step =
   | { kind: 'call'; tool: string; path?: string; yaml?: string }
   | { kind: 'result'; tool: string; text: string }
 
+const maestroPrefix = 'mcp__maestro__'
+
 const toSteps = (transcript: TranscriptMessage[]): Step[] => {
-  const blocks = transcript.flatMap((m) => m.message.content)
-  const names = new Map(blocks.flatMap((b) => (b.type === 'tool_use' ? [[b.id, b.name] as const] : [])))
+  const all = transcript.flatMap((m) => m.message.content)
+  const names = new Map(all.flatMap((b) => (b.type === 'tool_use' ? [[b.id, b.name] as const] : [])))
+  // A run the gate refused did nothing and its reply echoes the model's own text, so call and reply both go.
+  const denied = new Set(
+    all.flatMap((b) =>
+      b.type === 'tool_result' && names.get(b.tool_use_id)?.startsWith(maestroPrefix) && b.content.startsWith('denied:')
+        ? [b.tool_use_id]
+        : [],
+    ),
+  )
+  const blocks = all.filter((b) => !denied.has(b.type === 'tool_use' ? b.id : b.tool_use_id))
   return blocks.map(
     (b): Step =>
       b.type === 'tool_use'
@@ -170,6 +181,8 @@ const toSteps = (transcript: TranscriptMessage[]): Step[] => {
  */
 const browserTool = (tool: string) => /^mcp__(?:playwright(?:_b)?__browser_|maestro__)(\w+)$/.exec(tool)?.[1]
 const readyLine = '[qa-layout] ready'
+/** The gate puts the probe's ready line on a line of its own, so text inside another line does not match. */
+const nativeReady = /^\[qa-layout\] ready/m
 const readOnlyTools = new Set([
   'snapshot',
   'console_messages',
@@ -226,7 +239,7 @@ export const probeGaps = async (
 ): Promise<{ loads: number; missing: number }> => {
   const screens = toSteps(transcript).flatMap((step) => {
     if (step.kind !== 'result') return []
-    if (browserTool(step.tool) === 'run') return [Promise.resolve(step.text.includes(readyLine))]
+    if (browserTool(step.tool) === 'run') return [Promise.resolve(nativeReady.test(step.text))]
     return ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
       ? [probeRan(step.text, sessionDir, readLog)]
       : []
@@ -258,7 +271,20 @@ const normalize = (text: string) =>
     .trim()
 /** A browser tool echoes the code it ran, typed text included, which says nothing about the page. */
 const echoedCode = /### Ran Playwright code\n```\w*\n[\s\S]*?\n```/g
+/** What the gate adds to a Maestro reply on its own: the `run` success envelope, `[qa-gate]` notes, the saved path. */
+const gateText = /^(?:\{"success":|\[qa-gate\]|Saved to ).*$/gm
 const minQuote = 10
+
+/**
+ * The part of a tool result that a quote may come from: what the app or the page showed. Native `cheat_sheet` and
+ * `take_screenshot` replies say nothing about the app, and the gate's own text is fixed, so none of it counts.
+ */
+const quotable = (step: Step) => {
+  const tool = browserTool(step.tool)
+  if (step.kind !== 'result' || tool === undefined) return ''
+  if (!step.tool.startsWith(maestroPrefix)) return step.text.replace(echoedCode, '')
+  return ['cheat_sheet', 'take_screenshot'].includes(tool) ? '' : step.text.replace(gateText, '')
+}
 
 /**
  * Why an attempt's `observed` quote is not backed by the transcript, or undefined when it is. The quote must be in a
@@ -276,13 +302,7 @@ const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: 
     1 +
     steps.findLastIndex((step, i) => i < end && recordWritten(step) !== undefined && steps.slice(i, end).some(isAction))
   const quoted = steps.flatMap((step, i) =>
-    i >= start &&
-    i < end &&
-    step.kind === 'result' &&
-    browserTool(step.tool) !== undefined &&
-    normalize(step.text.replace(echoedCode, '')).includes(quote)
-      ? [i]
-      : [],
+    i >= start && i < end && normalize(quotable(step)).includes(quote) ? [i] : [],
   )
   if (quoted.length === 0) return 'quote not in a browser tool result of this attempt'
   const first = (pick: (step: Step) => boolean) => steps.findIndex((step, i) => i >= start && pick(step))

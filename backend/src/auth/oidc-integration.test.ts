@@ -16,6 +16,9 @@ import { ssoProvider } from '@/db/schema'
 
 const oidcIssuerUrl = 'https://oidc.test'
 
+/** Issuer of a provider row left in `sso_provider` by an earlier self-registration. */
+const storedIssuerUrl = 'https://stored-idp.test'
+
 /**
  * Issuer carrying a path, the shape Authentik and similar providers publish. A
  * double slash only survives to the wire when the issuer has a path — `betterFetch`
@@ -56,19 +59,44 @@ const baseSettings = createTestSettings({
   oidcClientSecret: 'thunderbolt-dev-secret',
 })
 
+const storedProviderId = 'stored-idp'
+const storedOidcConfig = JSON.stringify({
+  issuer: storedIssuerUrl,
+  clientId: baseSettings.oidcClientId,
+  clientSecret: 'stored-secret',
+  pkce: true,
+})
+
+/** Seed the kind of row `/sso/register` wrote while it was open to any signed-in user. */
+const insertStoredProvider = (database: IsolatedTestDb['db'], userId: string | null = null) =>
+  database.insert(ssoProvider).values({
+    id: crypto.randomUUID(),
+    providerId: storedProviderId,
+    issuer: storedIssuerUrl,
+    domain: 'stored-idp.test',
+    userId,
+    oidcConfig: storedOidcConfig,
+  })
+
 /** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
 const withOidcFetch = async <T>(fn: () => Promise<T>, idpFetch: typeof fetch = oidcDiscoveryFetch) => {
   const savedFetch = globalThis.fetch
   const savedOrigins = process.env.TRUSTED_ORIGINS
   globalThis.fetch = idpFetch
-  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
+  // Trusting both IdPs skips Better Auth's DNS check, which would otherwise resolve them for real.
+  process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl},${storedIssuerUrl}`
   requestedDiscoveryUrls.length = 0
 
   try {
     return await fn()
   } finally {
     globalThis.fetch = savedFetch
-    process.env.TRUSTED_ORIGINS = savedOrigins
+    // Assigning undefined would store the string "undefined" on newer Bun.
+    if (savedOrigins === undefined) {
+      delete process.env.TRUSTED_ORIGINS
+    } else {
+      process.env.TRUSTED_ORIGINS = savedOrigins
+    }
   }
 }
 
@@ -85,6 +113,13 @@ describe('OIDC Integration', () => {
   afterEach(() => {
     getSettingsSpy?.mockRestore()
   })
+
+  /** Sign a fresh verified user in by email code; returns them with their session cookie. */
+  const signInByEmailCode = async (auth: Parameters<typeof createSessionCookie>[0]) => {
+    const cookie = await createSessionCookie(auth, db)
+    const session = await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) })
+    return { cookie, user: session!.user }
+  }
 
   describe('OIDC sign-in endpoint', () => {
     beforeEach(() => {
@@ -226,20 +261,23 @@ describe('OIDC Integration', () => {
       })
     })
 
-    /** Complete an OIDC sign-in in which the IdP vouches for `email` with a signed id_token. */
-    const signInThroughIdp = async (email: string) => {
+    /**
+     * Complete an OIDC sign-in in which the IdP vouches for `email` with a signed id_token. Returns
+     * where the callback redirects, or the sign-in status when sign-in refuses to start.
+     */
+    const signInThroughIdp = async (email: string, { providerId = 'sso', issuer = oidcIssuerUrl } = {}) => {
       const idToken = await new SignJWT({ email, name: 'SSO User' })
         .setProtectedHeader({ alg: 'RS256' })
-        .setIssuer(oidcIssuerUrl)
+        .setIssuer(issuer)
         .setAudience(baseSettings.oidcClientId)
         .setSubject(crypto.randomUUID())
         .setIssuedAt()
         .setExpirationTime('5m')
         .sign(signingKey)
-      const discovery = discoveryDocumentFor(oidcIssuerUrl)
+      const discovery = discoveryDocumentFor(issuer)
       const idpFetch = async (...[input]: Parameters<typeof fetch>) => {
         const url = input instanceof Request ? input.url : input.toString()
-        if (url === `${oidcIssuerUrl}/.well-known/openid-configuration`) {
+        if (url === `${issuer}/.well-known/openid-configuration`) {
           return Response.json(discovery)
         }
         if (url === discovery.token_endpoint) {
@@ -259,9 +297,12 @@ describe('OIDC Integration', () => {
             new Request('http://localhost/v1/api/auth/sign-in/sso', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ providerId: 'sso', callbackURL }),
+              body: JSON.stringify({ providerId, callbackURL }),
             }),
           )
+          if (!start.ok) {
+            return start.status
+          }
           const state = new URL(((await start.json()) as { url: string }).url).searchParams.get('state')
           const cookie = start.headers
             .getSetCookie()
@@ -269,7 +310,7 @@ describe('OIDC Integration', () => {
             .join('; ')
 
           const callback = await app.handle(
-            new Request(`http://localhost/v1/api/auth/sso/callback/sso?code=idp-code&state=${state}`, {
+            new Request(`http://localhost/v1/api/auth/sso/callback/${providerId}?code=idp-code&state=${state}`, {
               headers: { Cookie: cookie },
             }),
           )
@@ -284,9 +325,7 @@ describe('OIDC Integration', () => {
 
     it('signs an existing email-OTP user in and links the IdP identity to them', async () => {
       const { createAuth } = await import('./auth')
-      const auth = createAuth(db)
-      const cookie = await createSessionCookie(auth, db)
-      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) }))!.user
+      const { user: existing } = await signInByEmailCode(createAuth(db))
 
       expect(await signInThroughIdp(existing.email)).toBe(callbackURL)
       expect(await ssoAccountCount(existing.id)).toBe(1)
@@ -301,6 +340,35 @@ describe('OIDC Integration', () => {
 
       expect(await signInThroughIdp(email)).toContain('error=account+not+linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    describe('through a provider row stored in the database', () => {
+      const storedIdp = { providerId: storedProviderId, issuer: storedIssuerUrl }
+
+      beforeEach(async () => {
+        await insertStoredProvider(db)
+      })
+
+      afterEach(async () => {
+        await db.delete(ssoProvider)
+      })
+
+      it('refuses to sign an existing verified user in', async () => {
+        const { createAuth } = await import('./auth')
+        const { user: existing } = await signInByEmailCode(createAuth(db))
+
+        expect(await signInThroughIdp(existing.email, storedIdp)).toBe(403)
+        expect(
+          await db.$count(account, and(eq(account.userId, existing.id), eq(account.providerId, storedProviderId))),
+        ).toBe(0)
+      })
+
+      it('refuses to create a new user', async () => {
+        const email = `newcomer-${crypto.randomUUID()}@example.com`
+
+        expect(await signInThroughIdp(email, storedIdp)).toBe(403)
+        expect(await db.$count(user, eq(user.email, email))).toBe(0)
+      })
     })
   })
 
@@ -379,6 +447,10 @@ describe('OIDC Integration', () => {
       })
     })
 
+    afterEach(async () => {
+      await db.delete(ssoProvider)
+    })
+
     it('refuses an ordinary session and stores no provider', async () => {
       const { createAuth } = await import('./auth')
       const auth = createAuth(db)
@@ -407,6 +479,29 @@ describe('OIDC Integration', () => {
 
       expect(res.status).toBe(403)
       expect(await db.select().from(ssoProvider)).toHaveLength(0)
+    })
+
+    it('refuses the owner of a stored provider row an edit', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+      const { cookie, user: owner } = await signInByEmailCode(auth)
+      await insertStoredProvider(db, owner.id)
+
+      const res = await app.handle(
+        new Request('http://localhost/v1/api/auth/sso/update-provider', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            providerId: storedProviderId,
+            oidcConfig: { tokenEndpoint: 'https://elsewhere.example.com/token' },
+          }),
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      const [stored] = await db.select().from(ssoProvider).where(eq(ssoProvider.providerId, storedProviderId))
+      expect(stored?.oidcConfig).toBe(storedOidcConfig)
     })
 
     it('still signs in through the operator-configured provider', async () => {

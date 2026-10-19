@@ -81,6 +81,32 @@ type SessionLookup = {
   session: { deviceId?: string | null }
 } | null
 
+/** The provider `buildSsoPlugins` builds from env: the only one SSO sign-in may use. */
+const configuredSsoProviderId = 'sso'
+
+type SsoRequest = Partial<Record<'body' | 'params' | 'query', { providerId?: unknown }>>
+
+/** The SSO routes the app uses, each with the part of the request that names the provider. */
+const ssoRouteProviderPart = new Map<string, keyof SsoRequest>([
+  ['/sign-in/sso', 'body'],
+  ['/sso/callback/:providerId', 'params'],
+  ['/sso/saml2/sp/acs/:providerId', 'params'],
+  ['/sso/saml2/sp/metadata', 'query'],
+])
+
+/**
+ * Better Auth still reads `sso_provider` rows that older releases let any signed-in user
+ * register, and a row's owner holds its IdP. Any SSO route outside the table above, or naming
+ * another provider, is refused so such a row can neither sign in nor be edited.
+ */
+const isForeignSsoRequest = (path: string, request: SsoRequest) => {
+  if (path !== '/sign-in/sso' && !path.startsWith('/sso/')) {
+    return false
+  }
+  const part = ssoRouteProviderPart.get(path)
+  return part === undefined || request[part]?.providerId !== configuredSsoProviderId
+}
+
 /**
  * Signs an SSO identity into the existing user with the same verified email. We trust the
  * operator's env-configured IdP once Better Auth has checked the SAML signature or OIDC
@@ -93,6 +119,13 @@ const linkSsoToVerifiedEmailOwner: NonNullable<SSOOptions['resolveUser']> = asyn
   })
   return existing?.emailVerified ? { action: 'link', userId: existing.id, profile: 'preserve' } : { action: 'continue' }
 }
+
+/** What every SSO mode needs, so a new mode cannot leave one out. */
+const sharedSsoOptions = {
+  // Stops new rows; isForeignSsoRequest refuses the ones older releases stored.
+  providersLimit: 0,
+  resolveUser: linkSsoToVerifiedEmailOwner,
+} satisfies SSOOptions
 
 /**
  * Create a Better Auth instance with the provided database
@@ -117,11 +150,10 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
-        // A falsy limit makes /sso/register answer 403, so only the env-configured provider exists.
-        providersLimit: 0,
+        ...sharedSsoOptions,
         defaultSSO: [
           {
-            providerId: 'sso',
+            providerId: configuredSsoProviderId,
             domain: new URL(settings.betterAuthUrl).host,
             oidcConfig: {
               issuer: settings.oidcIssuer,
@@ -137,7 +169,6 @@ const buildSsoPlugins = () => {
             },
           },
         ],
-        resolveUser: linkSsoToVerifiedEmailOwner,
       }),
     ]
   }
@@ -152,13 +183,12 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
-        // A falsy limit makes /sso/register answer 403, so only the env-configured provider exists.
-        providersLimit: 0,
+        ...sharedSsoOptions,
         // Without a callback, a response with no RelayState (IdP-initiated) lands on the API origin, not the app.
         saml: { allowIdpInitiated: settings.samlAllowIdpInitiated, idpInitiatedCallbackUrl: settings.appUrl },
         defaultSSO: [
           {
-            providerId: 'sso',
+            providerId: configuredSsoProviderId,
             domain: new URL(settings.betterAuthUrl).host,
             samlConfig: {
               // `issuer` names our service provider; the IdP is identified by idpMetadata.entityID.
@@ -171,7 +201,6 @@ const buildSsoPlugins = () => {
             },
           },
         ],
-        resolveUser: linkSsoToVerifiedEmailOwner,
       }),
     ]
   }
@@ -299,6 +328,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
+          throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
+        }
+
         // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
         // able to acquire a new anonymous session that could shadow their real session.
         // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous

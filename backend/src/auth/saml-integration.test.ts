@@ -256,6 +256,10 @@ describe('SAML Integration', () => {
     })
 
     describe('response with no matching login request', () => {
+      afterEach(async () => {
+        await db.delete(ssoProvider)
+      })
+
       it('is refused by default', async () => {
         const existing = await existingUser()
 
@@ -272,6 +276,49 @@ describe('SAML Integration', () => {
 
         expect(await signInThroughIdp(existing.email, { unsolicited: true })).toBe(baseSettings.appUrl)
         expect(await ssoAccountCount(existing.id)).toBe(1)
+      })
+
+      it('is refused through a provider row stored in the database', async () => {
+        getSettingsSpy.mockReturnValue({ ...baseSettings, samlCert: idpCert, samlAllowIdpInitiated: true })
+        const existing = await existingUser()
+        const storedProviderId = 'stored-idp'
+        // An earlier self-registration could store a row signed with a certificate its owner holds.
+        await db.insert(ssoProvider).values({
+          id: crypto.randomUUID(),
+          providerId: storedProviderId,
+          issuer: baseSettings.samlIdpIssuer,
+          domain: 'stored-idp.test',
+          samlConfig: JSON.stringify({
+            issuer: baseSettings.samlEntityId,
+            entryPoint: baseSettings.samlEntryPoint,
+            cert: idpCert,
+            idpMetadata: { entityID: baseSettings.samlIdpIssuer },
+          }),
+        })
+
+        const { createAuth } = await import('./auth')
+        const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+        const acsUrl = `http://localhost/v1/api/auth/sso/saml2/sp/acs/${storedProviderId}`
+        const sp = samlify.ServiceProvider({
+          entityID: baseSettings.samlEntityId,
+          assertionConsumerService: [{ Binding: samlify.Constants.namespace.binding.post, Location: acsUrl }],
+        })
+        const { context: samlResponse } = await idp.createLoginResponse(sp, { extract: {} }, 'post', {
+          email: existing.email,
+        })
+
+        const res = await app.handle(
+          new Request(acsUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ SAMLResponse: samlResponse }),
+          }),
+        )
+
+        expect(res.status).toBe(403)
+        expect(
+          await db.$count(account, and(eq(account.userId, existing.id), eq(account.providerId, storedProviderId))),
+        ).toBe(0)
       })
     })
   })

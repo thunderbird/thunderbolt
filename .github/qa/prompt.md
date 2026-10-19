@@ -118,8 +118,9 @@ status, or the text on screen):
 - `layout`: the page checks its own layout in every screen and reports a problem in a console error that starts with
   `[qa-layout]`, once per problem and page load: `[qa-layout] <kind> <role> "<name>"`. The kind is `overflow-page`
   (the page scrolls sideways), `overflow-text` (text wider than its box and not shortened with an ellipsis),
-  `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center) or
-  `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog). It reports a problem
+  `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center),
+  `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog) or `focus-covered`
+  (a fixed or sticky box, or the keyboard, hides part of the focused text field). It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A tool's
   result shows only a count of console errors, never the lines. After every navigation, wait about 1 s and call
   `browser_console_messages`, and call it again whenever the error count grows. A `[qa-layout]` line other than

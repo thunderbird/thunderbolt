@@ -65,7 +65,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
    keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
    root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
-   `[qa-layout] <kind> <target>` line per layout problem, all with `console.error`, so they pass the MCP's
+   `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
+   `covered`, `behind-keyboard` and `focus-covered`, a fixed or sticky box or the keyboard over part of the focused
+   text field), all with `console.error`, so they pass the MCP's
    `--console-level error`. A problem line is a `layout` finding. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with

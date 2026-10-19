@@ -121,17 +121,20 @@
     return null
   }
 
+  const isExcusedCover = (hit) =>
+    // A toast floats in a live region and leaves on its own. An inline alert over a control is still a bug.
+    Boolean(hit.closest('[aria-live], [role=status], [role=alert], [role=log]') && containersOf(hit).fixed) ||
+    // Popovers and tooltips open next to their trigger on purpose, over whatever sits beside it.
+    Boolean(hit.closest('[data-radix-popper-content-wrapper], [role=tooltip]'))
+
+  const isInside = (x, y, box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
+
   const isCovered = (el, rect, area, containers) => {
     const x = (rect.left + rect.right) / 2
     const y = (rect.top + rect.bottom) / 2
-    const clip = clipArea(containers, area)
-    if (x < clip.left || x > clip.right || y < clip.top || y > clip.bottom) return false
+    if (!isInside(x, y, clipArea(containers, area))) return false
     const hit = document.elementFromPoint(x, y)
-    if (!hit || hit === el || el.contains(hit) || hit.contains(el)) return false
-    // A toast floats in a live region and leaves on its own. An inline alert over a control is still a bug.
-    if (hit.closest('[aria-live], [role=status], [role=alert], [role=log]') && containersOf(hit).fixed) return false
-    // Popovers and tooltips open next to their trigger on purpose, over whatever sits beside it.
-    if (hit.closest('[data-radix-popper-content-wrapper], [role=tooltip]')) return false
+    if (!hit || hit === el || el.contains(hit) || hit.contains(el) || isExcusedCover(hit)) return false
     // A sticky header or fixed footer is fine when the page can still scroll el all the way out from under it.
     const cover = pinnedCover(hit, el)?.getBoundingClientRect()
     if (!cover) return true
@@ -158,6 +161,32 @@
       const shift = el.getBoundingClientRect().bottom - line
       return shift > 1 && scrollRoom(containersOf(el), 'down') < shift
     })
+  }
+
+  const textField =
+    'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
+
+  // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under a pinned box or the
+  // keyboard. Its center can be free: the iOS keyboard's bar hides only the field's lower edge.
+  const isFocusCovered = (vv, area, keyboardReported) => {
+    const el = document.activeElement
+    if (!el?.matches(textField) || !isCandidate(el)) return false
+    const rect = el.getBoundingClientRect()
+    const clip = clipArea(containersOf(el), area)
+    // One bug, one line: a field behind-keyboard reports does not become a second finding for the same keyboard.
+    const line = keyboardOpen(vv) && !keyboardReported.includes(el) ? vv.offsetTop + vv.height : Infinity
+    const xs = [0, 1, 2, 3, 4].map((i) => rect.left + 2 + (i * (rect.width - 4)) / 4)
+    const ys = [0, 1, 2].map((i) => rect.top + 2 + (i * (rect.height - 4)) / 2)
+    return xs.some((x) =>
+      ys.some((y) => {
+        if (!isInside(x, y, clip)) return false
+        if (y > line) return true
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || el.contains(hit) || hit.contains(el) || isExcusedCover(hit)) return false
+        // An icon drawn over the field scrolls with it; only a fixed or sticky box stays over it.
+        return Boolean(pinnedCover(hit, el))
+      }),
+    )
   }
 
   // The `overflow` check the explore prompt used to run by hand, now at every width.
@@ -191,8 +220,12 @@
         isCovered(el, rect, area, containers) && { kind: 'covered', target: describe(el) },
       ].filter(Boolean)
     })
-    const keyboard = behindKeyboard(vv, candidates).map((el) => ({ kind: 'behind-keyboard', target: describe(el) }))
-    return [...found, ...keyboard, ...overflows()]
+    const keyboardReported = behindKeyboard(vv, candidates)
+    const keyboard = keyboardReported.map((el) => ({ kind: 'behind-keyboard', target: describe(el) }))
+    const focus = isFocusCovered(vv, area, keyboardReported)
+      ? [{ kind: 'focus-covered', target: describe(document.activeElement) }]
+      : []
+    return [...found, ...keyboard, ...focus, ...overflows()]
   }
 
   const check = () => {

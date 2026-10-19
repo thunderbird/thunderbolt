@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test'
 
 /** One problem the layout probe confirmed; `target` is `<role> "<accessible name>"`. */
 export type LayoutProblem = {
-  kind: 'overflow-page' | 'overflow-text' | 'offscreen' | 'covered' | 'behind-keyboard'
+  kind: 'overflow-page' | 'overflow-text' | 'offscreen' | 'covered' | 'behind-keyboard' | 'focus-covered'
   target: string
 }
 

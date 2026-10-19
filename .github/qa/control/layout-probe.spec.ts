@@ -78,6 +78,19 @@ test('with no dialog open, the focused field form buttons count', async ({ page 
     { kind: 'behind-keyboard', target: 'button "Subscribe"' },
   ]))
 
+test('a fixed bar over the lower edge of the focused field is focus-covered, though its center is free', async ({
+  page,
+}) =>
+  expect(await problemsOf(page, 'focus-covered.html')).toEqual([{ kind: 'focus-covered', target: 'textbox "Name"' }]))
+
+test('an icon inside a focused search field is not a cover', async ({ page }) =>
+  expect(await problemsOf(page, 'in-field-icon.html')).toEqual([]))
+
+test('a focused field partly under the keyboard is focus-covered', async ({ page }) => {
+  // keyboard-form.html with the field moved so its bottom 10 px sit below the fake keyboard line.
+  expect((await problemsOf(page, 'keyboard-partial.html')).map((p) => p.kind)).toContain('focus-covered')
+})
+
 test('a page that never stops changing is still measured', async ({ page }) => {
   await page.setContent(`
     <span id="clock"></span>

@@ -729,7 +729,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <div className="flex items-center gap-2">
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
-          onOpenConnections={() => navigate('/settings/connections')}
+          onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
         {isConnecting ? (
           <div

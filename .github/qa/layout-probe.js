@@ -169,33 +169,53 @@
     return [...new Set([focused, ...buttons])].filter((el) => {
       if (!candidates.includes(el)) return false
       const shift = el.getBoundingClientRect().bottom - line
-      return shift > 1 && scrollRoom(containersOf(el), 'down') < shift
+      // The app must scroll the field you type in into view itself, so room to scroll it is no excuse.
+      return shift > 1 && (el === focused || scrollRoom(containersOf(el), 'down') < shift)
     })
   }
 
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
-  // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under the keyboard or a pinned
-  // box it cannot scroll out from under. Its center can be free: the iOS keyboard's bar hides only its lower edge.
-  const isFocusCovered = (vv, area, keyboardReported) => {
+  const focusedField = () => {
     const el = document.activeElement
-    if (!el?.matches(textField) || !isCandidate(el)) return false
+    return el?.matches(textField) && isCandidate(el) ? el : null
+  }
+
+  // With the keyboard open the focused field must show in full. One problem per cause: behind-keyboard owns the part
+  // under the keyboard, this check owns the part above it that a clipping ancestor or the screen edge cuts off, and
+  // focus-covered owns what a pinned box hides. A scroll box with room left is no excuse: the app failed to scroll.
+  const isFocusedClipped = (vv, el) => {
+    if (!keyboardOpen(vv)) return false
+    const rect = el.getBoundingClientRect()
+    const line = vv.offsetTop + vv.height
+    if (rect.top >= line) return false
+    const screen = { left: vv.offsetLeft, top: vv.offsetTop, right: vv.offsetLeft + vv.width, bottom: innerHeight }
+    const clip = clipArea(containersOf(el), screen)
+    return (
+      rect.left < clip.left - 1 ||
+      rect.top < clip.top - 1 ||
+      rect.right > clip.right + 1 ||
+      Math.min(rect.bottom, line) > clip.bottom + 1
+    )
+  }
+
+  // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under a pinned box. Its center
+  // can be free: the iOS keyboard's bar hides only its lower edge. Only without a keyboard may the page excuse the
+  // cover by being able to scroll the field out from under it.
+  const isFocusCovered = (vv, area, el) => {
     const rect = el.getBoundingClientRect()
     const containers = containersOf(el)
     const clip = clipArea(containers, area)
-    // One bug, one line: a field behind-keyboard reports does not become a second finding for the same keyboard.
-    const line = keyboardOpen(vv) && !keyboardReported.includes(el) ? vv.offsetTop + vv.height : Infinity
     const xs = [0, 1, 2, 3, 4].map((i) => rect.left + 2 + (i * (rect.width - 4)) / 4)
     const ys = [0, 1, 2].map((i) => rect.top + 2 + (i * (rect.height - 4)) / 2)
     return xs.some((x) =>
       ys.some((y) => {
         if (!isInside(x, y, clip)) return false
-        if (y > line) return true
         const hit = coverAt(x, y, el)
         // An icon drawn over the field scrolls with it; only a fixed or sticky box stays over it.
         const pinned = hit && pinnedCover(hit, el)
-        return Boolean(pinned) && isStuckUnder(pinned, rect, containers)
+        return Boolean(pinned) && (keyboardOpen(vv) || isStuckUnder(pinned, rect, containers))
       }),
     )
   }
@@ -231,10 +251,13 @@
         isCovered(el, rect, area, containers) && { kind: 'covered', target: describe(el) },
       ].filter(Boolean)
     })
-    const keyboardReported = behindKeyboard(vv, candidates)
-    const keyboard = keyboardReported.map((el) => ({ kind: 'behind-keyboard', target: describe(el) }))
-    const focus = isFocusCovered(vv, area, keyboardReported)
-      ? [{ kind: 'focus-covered', target: describe(document.activeElement) }]
+    const keyboard = behindKeyboard(vv, candidates).map((el) => ({ kind: 'behind-keyboard', target: describe(el) }))
+    const field = focusedField()
+    const focus = field
+      ? [
+          isFocusedClipped(vv, field) && { kind: 'focused-clipped', target: describe(field) },
+          isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
+        ].filter(Boolean)
       : []
     return [...found, ...keyboard, ...focus, ...overflows()]
   }

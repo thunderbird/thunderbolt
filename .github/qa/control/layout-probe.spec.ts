@@ -86,11 +86,33 @@ test('a fixed bar over the lower edge of the focused field is focus-covered, tho
 test('an icon inside a focused search field is not a cover', async ({ page }) =>
   expect(await problemsOf(page, 'in-field-icon.html')).toEqual([]))
 
-test('a focused field partly under the keyboard is focus-covered', async ({ page }) =>
-  // The field's lower 10 px sit under the keyboard on a page that could scroll it clear, so behind-keyboard is quiet.
+test('a focused field partly under the keyboard is behind-keyboard, though the page could scroll it clear', async ({
+  page,
+}) =>
   expect(await problemsOf(page, 'keyboard-partial.html')).toEqual([
-    { kind: 'focus-covered', target: 'textbox "Email"' },
+    { kind: 'behind-keyboard', target: 'textbox "Email"' },
   ]))
+
+test('a focused field its scroll box cuts off with the keyboard open is focused-clipped, though the box has room', async ({
+  page,
+}) =>
+  expect(await problemsOf(page, 'focused-clipped.html')).toEqual([
+    { kind: 'focused-clipped', target: 'textbox "Enter your name"' },
+  ]))
+
+test('a focused field scrolled fully into its box is not clipped', async ({ page }) => {
+  await problemsOf(page, 'focused-clipped.html')
+  await page.evaluate(() => document.querySelector('input')?.scrollIntoView({ block: 'nearest' }))
+  expect(await layoutProblems(page)).toEqual([])
+})
+
+test('a focused field clipped only while it scrolls into view is never reported', async ({ page }) => {
+  const lines = consoleLines(page)
+  await page.addInitScript({ path: probePath })
+  await page.goto(`${fixture('focused-clipped.html')}#scrolls`)
+  expect(await layoutProblems(page)).toEqual([])
+  expect(lines).toEqual(['[qa-layout] ready'])
+})
 
 test('a fixed box over a field behind-keyboard reports is still focus-covered', async ({ page }) =>
   expect(await problemsOf(page, 'keyboard-cover.html')).toEqual([
@@ -98,20 +120,31 @@ test('a fixed box over a field behind-keyboard reports is still focus-covered', 
     { kind: 'focus-covered', target: 'textbox "Name"' },
   ]))
 
+// The field's top 10 px sit under the header, and the page has 140 px of room to scroll back up.
+const stickyHeaderPage = `
+  <body style="margin: 0">
+    <header style="position: sticky; top: 0; height: 60px; background: #ddd">Header</header>
+    <div style="height: 140px"></div>
+    <input placeholder="Title" style="display: block; height: 44px" />
+    <div style="height: 2000px"></div>
+    <script>
+      document.querySelector('input').focus()
+      scrollTo(0, 150)
+    </script>
+  </body>`
+
 test('a sticky header over a focused field is fine while the page can scroll it clear', async ({ page }) => {
-  // The field's top 10 px sit under the header, and the page has 140 px of room to scroll back up.
-  await page.setContent(`
-    <body style="margin: 0">
-      <header style="position: sticky; top: 0; height: 60px; background: #ddd">Header</header>
-      <div style="height: 140px"></div>
-      <input placeholder="Title" style="display: block; height: 44px" />
-      <div style="height: 2000px"></div>
-      <script>
-        document.querySelector('input').focus()
-        scrollTo(0, 150)
-      </script>
-    </body>`)
+  await page.setContent(stickyHeaderPage)
   expect(await layoutProblems(page)).toEqual([])
+})
+
+test('with the keyboard open, a sticky header over the focused field is focus-covered despite the room', async ({
+  page,
+}) => {
+  await page.setContent(stickyHeaderPage)
+  await page.addScriptTag({ path: resolve(import.meta.dirname, '../fixtures/layout/fake-keyboard.js') })
+  await page.evaluate(() => scrollTo(0, 150))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'focus-covered', target: 'textbox "Title"' }])
 })
 
 test('a page that never stops changing is still measured', async ({ page }) => {

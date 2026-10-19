@@ -1,0 +1,43 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Focused clipped</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #steps {
+        height: 100px;
+        margin-top: 100px;
+        overflow-y: auto;
+      }
+      input {
+        display: block;
+        height: 54px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The iOS onboarding name step with the keyboard open: the step's own scroll box cuts the lower 18 px of the
+         field while it still has room to scroll, and the page itself does not scroll. -->
+    <div id="steps">
+      <div style="height: 64px"></div>
+      <input placeholder="Enter your name" />
+      <div style="height: 34px"></div>
+    </div>
+    <footer><button>Continue</button></footer>
+    <script src="fake-keyboard.js"></script>
+    <script>
+      // Chromium scrolls a field into view as it takes focus, and that scroll is the fix the app lacks.
+      const steps = document.getElementById('steps')
+      steps.scrollTop = 0
+      if (location.hash === '#scrolls')
+        setTimeout(() => document.querySelector('input').scrollIntoView({ block: 'nearest' }), 250)
+    </script>
+  </body>
+</html>

@@ -129,18 +129,28 @@
 
   const isInside = (x, y, box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
 
+  // What sits over el at (x, y), unless it is el's own content or an excused overlay.
+  const coverAt = (x, y, el) => {
+    const hit = document.elementFromPoint(x, y)
+    return hit && !el.contains(hit) && !hit.contains(el) && !isExcusedCover(hit) ? hit : null
+  }
+
+  // A sticky header or fixed footer is fine when the page can still scroll el all the way out from under it.
+  const isStuckUnder = (pinned, rect, containers) => {
+    const cover = pinned.getBoundingClientRect()
+    return cover.top + cover.height / 2 > innerHeight / 2
+      ? scrollRoom(containers, 'down') < rect.bottom - cover.top
+      : scrollRoom(containers, 'up') < cover.bottom - rect.top
+  }
+
   const isCovered = (el, rect, area, containers) => {
     const x = (rect.left + rect.right) / 2
     const y = (rect.top + rect.bottom) / 2
     if (!isInside(x, y, clipArea(containers, area))) return false
-    const hit = document.elementFromPoint(x, y)
-    if (!hit || hit === el || el.contains(hit) || hit.contains(el) || isExcusedCover(hit)) return false
-    // A sticky header or fixed footer is fine when the page can still scroll el all the way out from under it.
-    const cover = pinnedCover(hit, el)?.getBoundingClientRect()
-    if (!cover) return true
-    return cover.top + cover.height / 2 > innerHeight / 2
-      ? scrollRoom(containers, 'down') < rect.bottom - cover.top
-      : scrollRoom(containers, 'up') < cover.bottom - rect.top
+    const hit = coverAt(x, y, el)
+    if (!hit) return false
+    const pinned = pinnedCover(hit, el)
+    return !pinned || isStuckUnder(pinned, rect, containers)
   }
 
   // The focused element, and the buttons of every open dialog (the screen's main button may sit in the dialog under
@@ -166,13 +176,14 @@
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
-  // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under a pinned box or the
-  // keyboard. Its center can be free: the iOS keyboard's bar hides only the field's lower edge.
+  // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under the keyboard or a pinned
+  // box it cannot scroll out from under. Its center can be free: the iOS keyboard's bar hides only its lower edge.
   const isFocusCovered = (vv, area, keyboardReported) => {
     const el = document.activeElement
     if (!el?.matches(textField) || !isCandidate(el)) return false
     const rect = el.getBoundingClientRect()
-    const clip = clipArea(containersOf(el), area)
+    const containers = containersOf(el)
+    const clip = clipArea(containers, area)
     // One bug, one line: a field behind-keyboard reports does not become a second finding for the same keyboard.
     const line = keyboardOpen(vv) && !keyboardReported.includes(el) ? vv.offsetTop + vv.height : Infinity
     const xs = [0, 1, 2, 3, 4].map((i) => rect.left + 2 + (i * (rect.width - 4)) / 4)
@@ -181,10 +192,10 @@
       ys.some((y) => {
         if (!isInside(x, y, clip)) return false
         if (y > line) return true
-        const hit = document.elementFromPoint(x, y)
-        if (!hit || el.contains(hit) || hit.contains(el) || isExcusedCover(hit)) return false
+        const hit = coverAt(x, y, el)
         // An icon drawn over the field scrolls with it; only a fixed or sticky box stays over it.
-        return Boolean(pinnedCover(hit, el))
+        const pinned = hit && pinnedCover(hit, el)
+        return Boolean(pinned) && isStuckUnder(pinned, rect, containers)
       }),
     )
   }

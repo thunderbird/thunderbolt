@@ -49,7 +49,7 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 
 ### Better Auth is mounted with `.all('/api/auth/*')`, not `.mount()`
 
-`mount()` short-circuits the pipeline before `onBeforeHandle`, bypassing the IP limiter. The comment at [auth/elysia-plugin.ts:61](../src/auth/elysia-plugin.ts) records this so nobody "tidies" it back.
+`mount()` short-circuits the pipeline before `onBeforeHandle`, bypassing the IP limiter. The comment at [auth/elysia-plugin.ts:168](../src/auth/elysia-plugin.ts) records this so nobody "tidies" it back.
 
 ### IP resolution fails closed
 
@@ -76,7 +76,7 @@ Counters live in `rate_limits` ([db/rate-limit-schema.ts](../src/db/rate-limit-s
 
 ## Better Auth has a second, weaker limiter
 
-Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:223](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is built to be the cross-replica control on anonymous sign-in, with replay records shared in Postgres, but the app cannot complete it yet, so it stays off.
+Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:237](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is the cross-replica control on anonymous sign-in, with replay records shared in Postgres. It works end to end once the app is built with `VITE_CAPTCHA_PROVIDER=altcha`.
 
 ## Adding a limit to a new route
 

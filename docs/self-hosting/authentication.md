@@ -169,7 +169,7 @@ Anonymous sessions ship disabled, and an SSO-built app never offers them. The se
 
 ## Sessions and devices
 
-A session belongs to the device that created it. With sync on, users see every signed-in device under Settings, Devices, and can revoke any of them. Without sync a device only ever sees itself, so revoking a lost one needs sync. Revoking ends that device's sessions and stops it syncing, and the revoked device is told why the next time it reaches the server.
+A session belongs to the device that created it. With sync on, users see every signed-in device under Settings, Devices, and can revoke any of them. Without sync a device only ever sees itself, so revoking a lost one needs sync. Revoking ends that device's sessions and stops it syncing. The next time the revoked device reaches the server it clears its local data and shows why.
 
 ## Troubleshooting
 

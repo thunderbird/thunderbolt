@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -91,6 +92,22 @@ export const AgentSelector = ({
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
+  // One agent and no way to add another leaves nothing to choose, so the
+  // trigger renders as a plain label: no chevron, no menu, and no dimming
+  // while a reply streams, since there is no switch to hold back. Minimal mode
+  // (see `selectMinimalMode`) takes the menu away whatever the agent count.
+  //
+  // Both only hold when the sole available agent is the selected one. An
+  // existing chat can still hold the built-in fallback it was given before
+  // hosted-agent discovery finished (discovery skips existing chats), so with
+  // the hosted agent as the only agent on offer the menu stays, in both modes,
+  // as the one way to switch. The chat's agent is deliberately not switched
+  // for the user: that is a persisted write.
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
+  const isLabel = !soleAgentIsOther && (minimalMode || (agents.length <= 1 && !onAddAgent))
+  const dimmed = disabled && !isLabel
+
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {
     const agent = item.data?.agent
     if (!agent) {
@@ -106,10 +123,12 @@ export const AgentSelector = ({
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
-        aria-disabled={disabled}
+        aria-disabled={dimmed}
         className={cn(
           'group relative h-[var(--touch-height-sm)] max-w-[50vw] text-[length:var(--font-size-body)] max-md:h-[var(--touch-height-lg)] md:max-w-none',
-          disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+          isLabel && 'cursor-default',
+          dimmed && 'opacity-60 cursor-not-allowed',
+          !isLabel && !dimmed && 'cursor-pointer',
         )}
       >
         {/* The fixed-width labeled pill is never resized. On mobile it simply
@@ -122,9 +141,11 @@ export const AgentSelector = ({
             'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
             mobileHeaderControlFillClass,
             collapsed ? 'opacity-0' : 'opacity-100',
-            !disabled && isOpen
+            !dimmed && isOpen
               ? 'bg-secondary'
-              : !collapsed && 'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
+              : !collapsed &&
+                  !isLabel &&
+                  'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
         >
           <Icon
@@ -138,12 +159,14 @@ export const AgentSelector = ({
           </span>
           {/* Hidden on mobile: the menu opens as an animated card there, so the
               chevron affordance is redundant. */}
-          <ChevronDown
-            className={cn(
-              'ml-2 size-3.5 shrink-0 text-muted-foreground transition-transform max-md:hidden',
-              !disabled && isOpen && 'rotate-180',
-            )}
-          />
+          {!isLabel && (
+            <ChevronDown
+              className={cn(
+                'ml-2 size-3.5 shrink-0 text-muted-foreground transition-transform max-md:hidden',
+                !dimmed && isOpen && 'rotate-180',
+              )}
+            />
+          )}
         </div>
 
         {/* Independent logo-only circle beneath the pill. Crossfading these
@@ -169,7 +192,7 @@ export const AgentSelector = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{triggerInner}</TooltipTrigger>
-          {disabled && (
+          {dimmed && (
             <TooltipContent side="bottom">
               <Trans>Cannot change agent during reply</Trans>
             </TooltipContent>
@@ -180,6 +203,10 @@ export const AgentSelector = ({
   }
 
   const footerAction = onAddAgent ? { label: t`Add Agent`, onAction: onAddAgent } : undefined
+
+  if (isLabel) {
+    return renderTrigger(undefined, false)
+  }
 
   return (
     <SearchableMenu

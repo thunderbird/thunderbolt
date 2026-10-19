@@ -1,5 +1,5 @@
 {
-  "id": "bcbf5968-4c26-423b-84c1-6495631b1ccf",
+  "id": "a62b7d19-3a7b-4193-b526-1aaf7d4272f3",
   "prevId": "3ea32f7f-e236-4a26-8e5e-f1d7079dd55e",
   "version": "7",
   "dialect": "postgresql",
@@ -388,8 +388,8 @@
         }
       },
       "indexes": {
-        "device_code_deviceCode_uidx": {
-          "name": "device_code_deviceCode_uidx",
+        "device_code_deviceCode_idx": {
+          "name": "device_code_deviceCode_idx",
           "columns": [
             {
               "expression": "device_code",
@@ -398,13 +398,13 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
         },
-        "device_code_userCode_uidx": {
-          "name": "device_code_userCode_uidx",
+        "device_code_userCode_idx": {
+          "name": "device_code_userCode_idx",
           "columns": [
             {
               "expression": "user_code",
@@ -413,7 +413,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3123,6 +3123,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "cache_read_nano_usd_per_token": {
+          "name": "cache_read_nano_usd_per_token",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -3152,6 +3158,10 @@
         "inference_prices_output_nonnegative": {
           "name": "inference_prices_output_nonnegative",
           "value": "\"inference_prices\".\"output_nano_usd_per_token\" >= 0"
+        },
+        "inference_prices_cache_read_nonnegative": {
+          "name": "inference_prices_cache_read_nonnegative",
+          "value": "\"inference_prices\".\"cache_read_nano_usd_per_token\" >= 0"
         }
       },
       "isRLSEnabled": false

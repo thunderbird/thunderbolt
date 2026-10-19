@@ -142,7 +142,7 @@ up to two layers:
 - **Budget accounting**, for the names in `webToolNames` (`:80`). A third web tool must be added to
   that set or it spends nothing and reports nothing.
 
-MCP tools merge last, namespaced `<prefix>_<tool>` via `sanitizeToolPrefix` (`src/ai/fetch.ts:89`),
+MCP tools merge last, namespaced `<prefix>_<tool>` via `sanitizeToolPrefix` (`shared/mcp-tool-names.ts`),
 so two servers exposing `list_services` stay distinct. Colliding prefixes probe upward (`render`,
 `render_2`, …); a name that still collides is skipped, first registered winning. Failed discovery
 skips the server this send; it reconnects in the background.

@@ -25,6 +25,8 @@ COPY index.html ./
 # lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
 # time to locate and compile the .po catalogs (THU-806).
 COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
+# vite.config.ts imports it to copy the PowerSync worker assets into public/.
+COPY scripts/copy-powersync-assets.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 

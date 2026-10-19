@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
-import { session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
+import { passkey as passkeyTable, session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
 import {
   challengeNoncesTable,
   encryptionMetadataTable,
@@ -78,7 +78,8 @@ describe('Encryption API (v2)', () => {
   }
 
   /** Mint a step-up code server-side, exactly as `POST /encryption/step-up/request` does. */
-  const mintStepUpCode = (userId: string): Promise<string> => mintStepUpOtp(db, `${userId}@test.com`)
+  const mintStepUpCode = (userId: string): Promise<string> =>
+    mintStepUpOtp(db, 'recovery-phrase-change', `${userId}@test.com`)
 
   /** Notifications are fired post-response via a floating promise — let it settle. */
   const flushNotifications = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -1314,6 +1315,148 @@ describe('Encryption API (v2)', () => {
         expect(res.status).toBe(422)
       },
     )
+
+    describe('passkey slot', () => {
+      const appWith = (passkeyEnabled: boolean) =>
+        new Elysia().use(
+          createEncryptionRoutes(
+            auth,
+            db,
+            createTestSettings({ passkeyEnabled, passkeyRpId: 'localhost' }),
+            mockNotifications,
+          ),
+        ) as unknown as ReturnType<typeof createEncryptionRoutes>
+
+      beforeEach(() => {
+        app = appWith(true)
+      })
+
+      // Credential ids are unique across the shared test DB, so scope them per test.
+      const passkeySlot = () => ({
+        passkeyCredentialId: p('cred-1'),
+        passkeyEcdhPublicKey: 'passkey-ecdh',
+        passkeyMlkemPublicKey: 'passkey-mlkem',
+        passkeyWrappedAK: 'passkey-wrapped-ak',
+        passkeyAttestation: 'passkey-attestation',
+      })
+
+      const insertPasskeyRow = async (userId: string, credentialId: string) =>
+        db.insert(passkeyTable).values({
+          id: p(`pk-${credentialId}`),
+          userId,
+          publicKey: 'pk',
+          credentialID: credentialId,
+          counter: 0,
+          deviceType: 'multiDevice',
+          backedUp: true,
+        })
+
+      const rotate = async (body: Record<string, unknown>) =>
+        app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      const readMetadata = async () =>
+        db
+          .select()
+          .from(encryptionMetadataTable)
+          .where(eq(encryptionMetadataTable.userId, p('u')))
+          .then((rows) => rows[0])
+
+      it('enrolls the slot on a rotation that carries it — no step-up', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBe(p('cred-1'))
+        expect(metadata.passkeyEcdhPublicKey).toBe('passkey-ecdh')
+        expect(metadata.passkeyMlkemPublicKey).toBe('passkey-mlkem')
+        expect(metadata.passkeyWrappedAk).toBe('passkey-wrapped-ak')
+        expect(metadata.passkeyAttestation).toBe('passkey-attestation')
+
+        const canary = await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        const served = await canary.json()
+        expect(served.passkey_credential_id).toBe(p('cred-1'))
+        expect(served.passkey_wrapped_ak).toBe('passkey-wrapped-ak')
+        expect(served.passkey_attestation).toBe('passkey-attestation')
+      })
+
+      it('clears the slot on a rotation that omits it (removal)', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        const res = await rotate(await rotateBody(keypair, [initialKeyId]))
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBeNull()
+        expect(metadata.passkeyEcdhPublicKey).toBeNull()
+        expect(metadata.passkeyMlkemPublicKey).toBeNull()
+        expect(metadata.passkeyWrappedAk).toBeNull()
+        expect(metadata.passkeyAttestation).toBeNull()
+      })
+
+      it('rejects a partial slot — and nothing moves', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const { passkeyAttestation: _omitted, ...partial } = passkeySlot()
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...partial })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('must be supplied together')
+        expect((await readMetadata()).keyVersion).toBe(1)
+      })
+
+      // The delete hook's check and Better Auth's delete aren't atomic, so a
+      // delete racing an enrollment relies on the foreign key to fail.
+      it('refuses to delete a passkey row while its slot exists', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        await expect(
+          db
+            .delete(passkeyTable)
+            .where(eq(passkeyTable.userId, p('u')))
+            .execute(),
+        ).rejects.toThrow()
+        expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
+      })
+
+      it('drops the slot and stops serving it once passkeys are turned off', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        app = appWith(false)
+        const canary = await (
+          await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        ).json()
+        expect(canary.passkey_wrapped_ak).toBeNull()
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(200)
+        expect((await readMetadata()).passkeyCredentialId).toBeNull()
+      })
+
+      it("rejects a slot naming a passkey that isn't on the account", async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await createUserAndSession(p('other'), p('other-tok'))
+        await insertPasskeyRow(p('other'), p('cred-1'))
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('does not name a passkey on this account')
+      })
+    })
   })
 
   // ─── v1→v2 upgrade ──────────────────────────────────────────────────
@@ -2168,13 +2311,15 @@ describe('Encryption API (v2)', () => {
       )
       expect(res.status).toBe(200)
       expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
-      const { code, email } = sentEmails[0]!.params as { code: string; email: string }
+      const { action, code, email } = sentEmails[0]!.params as { action: string; code: string; email: string }
       expect(email).toBe(`${p('u')}@test.com`)
       expect(code).toMatch(/^\d{8}$/)
+      // The email must name the action it authorizes, or it carries the wrong copy.
+      expect(action).toBe('recovery-phrase-change')
 
       // And the minted code actually opens the rotate gate: verified end-to-end
       // by the rotate suite; here just confirm the row exists via a check call.
-      expect(await verifyStepUpOtp(db, `${p('u')}@test.com`, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', `${p('u')}@test.com`, code)).toBe('valid')
     })
 
     /**
@@ -2205,7 +2350,7 @@ describe('Encryption API (v2)', () => {
       const rows = await db
         .select()
         .from(verification)
-        .where(eq(verification.identifier, stepUpIdentifier(email)))
+        .where(eq(verification.identifier, stepUpIdentifier('recovery-phrase-change', email)))
       expect(rows).toHaveLength(1)
       expect(rows[0]!.value).toBe(`${code}:0`)
 
@@ -2221,7 +2366,7 @@ describe('Encryption API (v2)', () => {
           .checkVerificationOTP({ body: { email, type: 'email-verification', otp: '00000000' } })
           .catch(() => {})
       }
-      expect(await verifyStepUpOtp(db, email, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', email, code)).toBe('valid')
     })
 
     it('cools down repeat requests (429) and refuses untrusted devices (403)', async () => {

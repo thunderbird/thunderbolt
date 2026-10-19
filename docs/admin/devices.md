@@ -48,7 +48,7 @@ Use this when a device is lost or stolen, or when someone should no longer have 
 
 ### What revoking does
 
-Uploads and sync-token renewal are refused at once, and the device's sign-in sessions are deleted. Downstream sync stops when the device's current sync token expires, within `POWERSYNC_TOKEN_EXPIRY_SECONDS` (5 minutes by default); rotate `POWERSYNC_JWT_SECRET` to cut it off sooner.
+Uploads and sync-token renewal are refused at once, and the device's sign-in sessions are deleted. Downstream sync stops as soon as the revocation reaches the sync service, without waiting for the device's current sync token to expire.
 
 - The revoking device replaces the account key and the key used for new writes, and hands the new account key only to the devices that remain. The revoked device cannot read anything written afterwards, and the recovery phrase keeps working. If that step fails, every trusted device shows **Finish securing** on the revoked entry until someone completes it.
 - Its pairing identity is cleared, so other devices on the account stop accepting direct connections from it.
@@ -58,9 +58,9 @@ Uploads and sync-token renewal are refused at once, and the device's sign-in ses
 
 Personal access tokens are unaffected by any revocation. They are not tied to a device, so they keep working until they expire or the user deletes them.
 
-If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
+The device signs out and clears its local copy on its own the next time it connects. A device that never comes back online is never reached and keeps what it has. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
 
-> Revoking is not a remote wipe. Data already on that device stays there, so for a stolen device assume the local copy is still readable.
+> Revoking is not a remote wipe. A device that never comes back online keeps its data, so for a stolen device assume the local copy is still readable.
 
 If the device never reconnects, it stops syncing and keeps what it had.
 
@@ -79,12 +79,12 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 | Action             | Server-side effect                                          | Local data on the device                                                                                      | Other devices        |
 | ------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
 | **Sign out**       | Ends that session                                           | Kept or deleted, the user chooses                                                                             | Unaffected           |
-| **Revoke**         | Sessions ended, sync and decryption blocked for that device | Kept or deleted, the person holding it chooses                                                                | Unaffected           |
+| **Revoke**         | Sessions ended, sync and decryption blocked for that device | Cleared the next time it connects; kept on a device that never comes back online                              | Unaffected           |
 | **Delete account** | Account and all synced data removed                         | Deleted on devices with sync on that reconnect while their token is live; others sign out and keep their copy | All of them sign out |
 
 The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again once the device is approved. Signing out does not revoke the device on the server, so its entry stays in the trusted list and holds one of the ten slots until someone revokes it. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again.
 
-A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local database and nothing else.
+A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local data: the database, attachments and browser storage.
 
 ## Deleting an account
 

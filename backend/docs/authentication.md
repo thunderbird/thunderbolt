@@ -2,13 +2,14 @@
 
 Every credential resolves to a Better Auth session. Everything downstream (the `auth: true` route macro, PowerSync token issuance, device binding) only ever sees the session.
 
-| Credential               | Minted by                                 | Plugin / gate                | Documented in                                                   |
-| ------------------------ | ----------------------------------------- | ---------------------------- | --------------------------------------------------------------- |
-| Email OTP session        | `POST /v1/api/auth/sign-in/email-otp`     | `emailOTP` plugin            | [below](#email-sign-in-otp-bound-to-a-challenge-token) |
-| Enterprise SSO session   | `/v1/api/auth/sso/*`                      | `AUTH_MODE=oidc` or `saml`   | [OIDC](./oidc-local-dev.md), [SAML](./saml-local-dev.md)        |
-| CLI device-grant session | `POST /v1/api/auth/device/token`          | `deviceAuthorization` plugin | [below](#the-cli-device-grant-rfc-8628)                         |
-| Anonymous session        | `POST /v1/api/auth/sign-in/anonymous`     | `AUTH_ALLOW_ANONYMOUS=true`  | [below](#anonymous-sessions)                                    |
-| Personal access token    | `x-api-key` header, resolved to its owner | `apiKey` plugin              | [pat-lifecycle.md](./pat-lifecycle.md)                          |
+| Credential               | Minted by                                         | Plugin / gate                                       | Documented in                                            |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| Email OTP session        | `POST /v1/api/auth/sign-in/email-otp`             | `emailOTP` plugin                                   | [below](#email-sign-in-otp-bound-to-a-challenge-token)   |
+| Enterprise SSO session   | `/v1/api/auth/sso/*`                              | `AUTH_MODE=oidc` or `saml`                          | [OIDC](./oidc-local-dev.md), [SAML](./saml-local-dev.md) |
+| CLI device-grant session | `POST /v1/api/auth/device/token`                  | `deviceAuthorization` plugin                        | [below](#the-cli-device-grant-rfc-8628)                  |
+| Anonymous session        | `POST /v1/api/auth/sign-in/anonymous`             | `AUTH_ALLOW_ANONYMOUS=true`                         | [below](#anonymous-sessions)                             |
+| Personal access token    | `x-api-key` header, resolved to its owner         | `apiKey` plugin                                     | [pat-lifecycle.md](./pat-lifecycle.md)                   |
+| Passkey session          | `POST /v1/api/auth/passkey/verify-authentication` | `passkey` plugin, `PASSKEY_ENABLED` + consumer mode | [below](#passkeys)                                       |
 
 The stack is assembled in [`backend/src/auth/auth.ts`](../src/auth/auth.ts), mounted at `basePath: '/v1/api/auth'`.
 
@@ -18,10 +19,10 @@ The stack is assembled in [`backend/src/auth/auth.ts`](../src/auth/auth.ts), mou
 
 Sessions carry three fields beyond Better Auth's own:
 
-| Field              | Why it exists                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `user.isNew`       | Cleared by the sign-in after-hook.                                                                                       |
-| `user.isAnonymous` | Exposed on the session so the PowerSync route guard needs no extra query.                                                |
+| Field              | Why it exists                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `user.isNew`       | Cleared by the sign-in after-hook.                                                                                                 |
+| `user.isAnonymous` | Exposed on the session so the PowerSync route guard needs no extra query.                                                          |
 | `session.deviceId` | Binds a session to one device. See [powersync-account-devices.md](../../docs/internals/architecture/powersync-account-devices.md). |
 
 ### Bearer tokens are signed, and the signature is not optional
@@ -34,10 +35,10 @@ A credential is `rawSessionToken.base64Signature`, the same value Better Auth pu
 
 Routes opt in with the `auth: true` macro from [`elysia-plugin.ts`](../src/auth/elysia-plugin.ts), which mounts Better Auth with `.all('/api/auth/*')`. Not Elysia's `.mount()`: it short-circuits before `onBeforeHandle` and would silently bypass the IP rate limiter `index.ts` passes in.
 
-| Limiter                                      | Scope                                                                                | Budget                                            |
-| -------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `createAuthIpRateLimit` (the `auth` IP tier) | DB-backed; holds across replicas                                                     | See [rate-limiting.md](./rate-limiting.md)        |
-| Better Auth's own                            | In-memory, single-instance defence only                                              | 10 requests / 60s; `/get-session` relaxed to 30/s |
+| Limiter                                      | Scope                                   | Budget                                            |
+| -------------------------------------------- | --------------------------------------- | ------------------------------------------------- |
+| `createAuthIpRateLimit` (the `auth` IP tier) | DB-backed; holds across replicas        | See [rate-limiting.md](./rate-limiting.md)        |
+| Better Auth's own                            | In-memory, single-instance defence only | 10 requests / 60s; `/get-session` relaxed to 30/s |
 
 Both read the client IP through `TRUSTED_PROXY` (`getTrustedIpHeaders(settings.trustedProxy)` feeds Better Auth's `ipAddressHeaders`). `createAuth` warns at startup when it is unset in production: `x-forwarded-for` is spoofable without a proxy in front, so the limiter would key on attacker-supplied values.
 
@@ -183,8 +184,21 @@ The `anonymous` plugin is registered only when `AUTH_ALLOW_ANONYMOUS=true`; othe
 
 - The before-hook rejects `/sign-in/anonymous` when the caller already holds a non-anonymous session (session fixation).
 - `disableDeleteAnonymousUser: true` closes Better Auth's unauthenticated `/delete-anonymous-user`; the anonymous row is deleted from `onLinkAccount` when the account is promoted.
+- With Better Auth's cleanup off, `sweepIdleAnonymousUsers` ([idle-anonymous-users.ts](../src/auth/idle-anonymous-users.ts)) hard-deletes anonymous users idle for more than `ANONYMOUS_USER_IDLE_DAYS` (default 30, `0` disables) at startup and hourly, through the same cascading `user` delete as account deletion. Activity is defined in `deleteIdleAnonymousUsers` ([users.ts](../src/dal/users.ts)).
 
 Anonymous sign-in is intentionally _not_ waitlist-gated: trying the app without an account is the feature.
+
+## Passkeys
+
+The `passkey` plugin is registered only when `isPasskeyEnabled` holds (`PASSKEY_ENABLED=true` on a consumer-auth deployment); otherwise every `/passkey/*` route 404s. Sign-in (`generate-authenticate-options` → `verify-authentication`) needs no session. Management routes go through the before-hook. It runs ahead of the bearer plugin, so it looks the caller up with `auth.api.getSession` (`getSessionFromCtx` can't see a bearer-only session there), and then:
+
+- refuses anonymous users;
+- refuses API-key and CLI device-grant sessions (`isCliGrantSession`), so a delegated credential can never mint a permanent interactive sign-in;
+- allows one passkey per account, checked at both registration steps and backed by a unique index on `passkey.user_id`;
+- lets the plugin's own rule stand that registration needs a session under a day old (`SESSION_NOT_FRESH`, Better Auth's default `freshAge`). When sync setup hits it, the user confirms with a code sent to the account's own email and signs in again in place. The email can't be changed, so it's the same account and the device keeps its keys and data;
+- refuses to delete a passkey that still holds the account's E2EE passkey slot (`passkeyHoldsSyncSlot`); the client clears the slot with an AK rotation first.
+
+The plugin keeps the WebAuthn challenge in a signed cookie, but the Apple apps' webview never stores it: every API call from `tauri://localhost` is cross-site. So `elysia-plugin.ts` copies the cookie into an `X-Passkey-Challenge` header on the two options responses, and turns that header back into the cookie on the verify calls; the client sends no cookies at all. That cookie makes Better Auth check the verify calls' Origin, which is why `parseTrustedOrigins` always trusts the Android app's `http://tauri.localhost` alongside `tauri://localhost`. Older web builds still send cookies on ceremonies, so the plugin also strips any stale Better Auth session cookie — both the plain and `__Secure-` names — from passkey requests that carry a bearer token. The E2EE side of the passkey is in [e2e-encryption.md](../../docs/internals/architecture/e2e-encryption.md#the-passkey-slot-a-second-virtual-device).
 
 ## Tests
 
@@ -192,6 +206,7 @@ All in `backend/src/auth/`, run with `bun run test:backend`:
 [`otp-security.test.ts`](../src/auth/otp-security.test.ts) (challenge binding, attempt counter, resend),
 [`waitlist-integration.test.ts`](../src/auth/waitlist-integration.test.ts),
 [`device-auth-apikey.test.ts`](../src/auth/device-auth-apikey.test.ts),
+[`auth-passkey.test.ts`](../src/auth/auth-passkey.test.ts),
 [`sso-desktop-callback.test.ts`](../src/auth/sso-desktop-callback.test.ts),
 [`oidc-integration.test.ts`](../src/auth/oidc-integration.test.ts),
 [`saml-integration.test.ts`](../src/auth/saml-integration.test.ts).

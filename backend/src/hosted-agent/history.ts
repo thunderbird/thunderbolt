@@ -38,9 +38,11 @@ const containsFilePart = (body: unknown): boolean => {
 }
 
 /**
- * Parts dropped from the replay. The server registers no tools and never streams reasoning to the client
- * (`sendReasoning: false`), so tool and reasoning parts were not produced by it (a replayed reasoning part also
- * lacks the signature Anthropic requires). `step-start` is a UI step marker that carries no content.
+ * Parts dropped from the replay. Tool parts the server streamed come back from the client, which could have
+ * written any result into them, and the model would take a forged result as the server's own, so a later turn
+ * calls the tools again instead. Reasoning never streams to the client (`sendReasoning: false`), so a replayed
+ * reasoning part was not produced here (and lacks the signature Anthropic requires). `step-start` is a UI step
+ * marker that carries no content.
  */
 const droppedPartSchema = z
   .object({ type: z.string().regex(/^(tool-.+|dynamic-tool|reasoning|step-start)$/) })
@@ -64,22 +66,36 @@ const messageSchema = z.discriminatedUnion('role', [
   z.object({ id: z.string(), role: z.literal('system'), parts: z.array(z.unknown()) }),
 ])
 
+/**
+ * Longest `instructions` string, in UTF-16 code units. The 2 MB body cap (`maxRequestBytes`) is sized for a
+ * long history, and the system prompt rides every turn on top of it, so it gets a tighter bound of its own:
+ * a project at its own cap (`maxProjectInstructionsLength`, 20,000) plus room for several `/slug` skills,
+ * at most about 150 KB of UTF-8.
+ */
+export const maxAgentInstructionsLength = 50_000
+
 const requestSchema = z.object({
   id: z.string(),
   messages: z.array(messageSchema).max(maxHostedAgentHistoryMessages),
+  instructions: z.string().max(maxAgentInstructionsLength).optional(),
 })
 
-export type AgentChatRequest = { id: string; messages: UIMessage[] }
+/** Whether a failed parse failed only on `instructions` being too long, which gets its own reason. */
+const isInstructionsTooLong = (error: z.ZodError): boolean =>
+  error.issues.every((issue) => issue.path[0] === 'instructions' && issue.code === 'too_big')
+
+export type AgentChatRequest = { id: string; messages: UIMessage[]; instructions?: string }
 export type AgentChatParseResult =
   | { ok: true; value: AgentChatRequest }
-  | { ok: false; reason: 'invalid' | 'files_unsupported' }
+  | { ok: false; reason: 'invalid' | 'files_unsupported' | 'instructions_too_large' }
 
 /**
  * Parse a `DefaultChatTransport` body into a history safe to send to the model. Client system messages and
  * the parts above are dropped. A file part anywhere is refused as `files_unsupported`, before any of the shared
  * rules from `@shared/hosted-agent-history` run. Too many messages and unknown part types are `invalid`, as is
- * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`). The byte cap
- * is enforced earlier, while the body is read (see `readBoundedJson`).
+ * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`). `instructions`
+ * longer than {@link maxAgentInstructionsLength} is `instructions_too_large` when nothing else is wrong. The
+ * byte cap is enforced earlier, while the body is read (see `readBoundedJson`).
  */
 export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
   if (containsFilePart(body)) {
@@ -87,7 +103,7 @@ export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
   }
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
-    return { ok: false, reason: 'invalid' }
+    return { ok: false, reason: isInstructionsTooLong(parsed.error) ? 'instructions_too_large' : 'invalid' }
   }
   const messages = parsed.data.messages.flatMap((message) => {
     if (message.role === 'system') {
@@ -98,5 +114,5 @@ export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
   if (!startsAndEndsOnUserMessage(messages)) {
     return { ok: false, reason: 'invalid' }
   }
-  return { ok: true, value: { id: parsed.data.id, messages } }
+  return { ok: true, value: { id: parsed.data.id, messages, instructions: parsed.data.instructions } }
 }

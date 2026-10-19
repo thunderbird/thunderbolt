@@ -5178,6 +5178,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-passkey"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "swift-rs",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "tauri-plugin-process"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5440,7 +5453,7 @@ dependencies = [
 
 [[package]]
 name = "thunderbolt"
-version = "0.1.138"
+version = "0.1.144"
 dependencies = [
  "anyhow",
  "hex",
@@ -5460,6 +5473,7 @@ dependencies = [
  "tauri-plugin-http",
  "tauri-plugin-opener",
  "tauri-plugin-os",
+ "tauri-plugin-passkey",
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-store",

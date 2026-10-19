@@ -222,8 +222,12 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockFetchSpy).toHaveBeenCalledTimes(1)
-      const request = mockFetchSpy.mock.calls[0][0] as Request
+      // The AuthProvider's startup session check shares the spy.
+      const requests = mockFetchSpy.mock.calls
+        .map((call) => call[0] as Request)
+        .filter((request) => !request.url.includes('api/auth/get-session'))
+      expect(requests).toHaveLength(1)
+      const [request] = requests
       expect(request.url).toContain('waitlist/join')
       const body = await request.clone().json()
       expect(body).toEqual({ email: 'test@example.com' })

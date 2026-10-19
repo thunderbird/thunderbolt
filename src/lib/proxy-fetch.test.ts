@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
+import { setAuthToken } from './auth-token'
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -402,5 +403,50 @@ describe('createProxyWebSocket', () => {
     } finally {
       globalThis.WebSocket = originalWS
     }
+  })
+})
+
+describe('createProxyFetch — session rejected', () => {
+  const unauthenticated = JSON.stringify({ code: 'UNAUTHENTICATED' })
+  const originalDispatch = window.dispatchEvent
+  let dispatchSpy: ReturnType<typeof mock>
+
+  const proxyFetchReturning = (response: () => Response) =>
+    createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: (async () => response()) as unknown as typeof fetch,
+      isStandalone: () => false,
+    })
+
+  beforeEach(() => {
+    localStorage.clear()
+    setAuthToken('app-token')
+    dispatchSpy = mock(() => true)
+    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+  })
+
+  afterEach(() => {
+    window.dispatchEvent = originalDispatch
+    localStorage.clear()
+  })
+
+  it('treats our own auth gate rejecting the outer hop as a lost session', async () => {
+    const proxyFetch = proxyFetchReturning(() => new Response(unauthenticated, { status: 401 }))
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect((dispatchSpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'session_expired' })
+  })
+
+  it('ignores the same body when an upstream relays it, so a hostile server cannot sign the user out', async () => {
+    const proxyFetch = proxyFetchReturning(
+      () =>
+        new Response(unauthenticated, { status: 401, headers: { 'X-Proxy-Final-Url': 'https://mcp.example.com/' } }),
+    )
+
+    await proxyFetch('https://mcp.example.com/', { method: 'POST' })
+
+    expect(dispatchSpy).not.toHaveBeenCalled()
   })
 })

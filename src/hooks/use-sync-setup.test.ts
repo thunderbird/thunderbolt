@@ -15,6 +15,11 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
   recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
+  passkey_credential_id: null,
+  passkey_ecdh_public_key: null,
+  passkey_mlkem_public_key: null,
+  passkey_wrapped_ak: null,
+  passkey_attestation: null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,
@@ -58,6 +63,20 @@ describe('useSyncSetup reducer', () => {
     const waiting = reducer(initialState, { type: 'DETECTED_ADDITIONAL_DEVICE' })
     const next = reducer({ ...waiting, isLoading: true }, { type: 'DEVICE_DENIED' })
     expect(next.step).toBe('denied')
+    expect(next.isLoading).toBe(false)
+  })
+
+  it('remembers the account passkey slot found at detection', () => {
+    const next = reducer(initialState, { type: 'SET_PASSKEY_SLOT', payload: 'cred-1' })
+    expect(next.passkeySlotCredentialId).toBe('cred-1')
+    expect(next.step).toBe('intro')
+  })
+
+  it('routes into the passkey step and records where to go next', () => {
+    const loading = { ...initialState, step: 'recovery-key-display' as const, isLoading: true }
+    const next = reducer(loading, { type: 'GO_TO_PASSKEY_ENROLL', payload: 'close' })
+    expect(next.step).toBe('passkey-enroll')
+    expect(next.afterPasskey).toBe('close')
     expect(next.isLoading).toBe(false)
   })
 

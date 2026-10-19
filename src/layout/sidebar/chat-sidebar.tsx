@@ -7,6 +7,7 @@ import { chatTitleLabel } from '@/lib/title-generator'
 import { Trans, useLingui } from '@lingui/react/macro'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SidebarFooter } from '@/components/sidebar-footer'
 import {
   SidebarContent,
@@ -155,6 +156,10 @@ export const ChatSidebarContent = ({
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const moveChatToProject = useMoveChatToProject()
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configLoaded = useConfigStore(selectConfigSettled)
+  // Projects wait for `/config` like the section toggle, so they never paint and vanish.
+  const showProjects = configLoaded && !minimalMode
   // The chat whose project is being picked from a row's action menu. One dialog
   // for the whole list — a per-row instance would mount hundreds of them, and the
   // rows are virtualized anyway.
@@ -167,6 +172,14 @@ export const ChatSidebarContent = ({
   // 8px before a drag starts, so a chat row's click, context menu, and mobile
   // long-press all still fire (same constraint the tasks list uses).
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  // Minimal mode has no Settings section to switch to (see `selectMinimalMode`),
+  // so the toggle's slots stay empty. They also stay empty until `/config`
+  // answers, rather than showing a control that then disappears.
+  const sectionControl = (vertical = false) =>
+    configLoaded && !minimalMode ? (
+      <SidebarNavToggle vertical={vertical} activeSection={activeSection} onSectionChange={onSectionChange} />
+    ) : null
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     setDraggingChat((active.data.current as ChatDragData | undefined) ?? { title: null, projectId: null })
@@ -211,10 +224,7 @@ export const ChatSidebarContent = ({
       onDragEnd={handleDragEnd}
     >
       <SidebarContent className="relative flex h-full flex-col gap-0 overflow-hidden md:gap-2">
-        <SidebarHeader
-          onToggle={toggleSidebar}
-          navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
-        />
+        <SidebarHeader onToggle={toggleSidebar} navToggle={sectionControl()} />
 
         {!isMobile && (
           <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
@@ -222,9 +232,7 @@ export const ChatSidebarContent = ({
               below; pt-2 gives the nav toggle the same 8px above as the rail's
               p-2 leaves on its sides. */}
             <SidebarGroupContent className="flex flex-col gap-2">
-              {isCollapsed && (
-                <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />
-              )}
+              {isCollapsed && sectionControl(true)}
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
@@ -239,17 +247,21 @@ export const ChatSidebarContent = ({
                     </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
+                {showProjects && (
+                  <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
+                )}
                 {showTasks && (
                   <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                 )}
                 {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
               </SidebarMenu>
               {/* Drop targets for dragging a chat into a project. */}
-              <ProjectDropList
-                isDragging={draggingChat !== null}
-                draggingFromProjectId={draggingChat?.projectId ?? null}
-              />
+              {showProjects && (
+                <ProjectDropList
+                  isDragging={draggingChat !== null}
+                  draggingFromProjectId={draggingChat?.projectId ?? null}
+                />
+              )}
             </SidebarGroupContent>
           </SidebarGroup>
         )}
@@ -265,10 +277,12 @@ export const ChatSidebarContent = ({
           deleteAllChatsDialogRef={deleteAllChatsDialogRef}
           deleteChatDialogRef={deleteChatDialogRef}
           threadIdRef={threadIdRef}
-          mobileNavToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
+          mobileNavToggle={sectionControl()}
           mobileSecondaryNavigation={
             <SidebarMenu className="mt-2 flex-shrink-0">
-              <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
+              {showProjects && (
+                <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
+              )}
               {showTasks && <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />}
               {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
             </SidebarMenu>
@@ -294,7 +308,7 @@ export const ChatSidebarContent = ({
         )}
       </DragOverlay>
 
-      {moveTarget && (
+      {moveTarget && !minimalMode && (
         <MoveChatToProjectDialog
           open
           currentProjectId={moveTarget.projectId}

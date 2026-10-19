@@ -1,6 +1,6 @@
 # Managed Inference
 
-Most models are bring-your-own-key: the credential lives on the device and the universal proxy forwards it ([`src/lib/proxy-fetch.ts`](../../../src/lib/proxy-fetch.ts)). **Managed inference** is the other path, where the deployment holds the credential and any signed-in user (including an anonymous session) chats unconfigured. Every managed request is priced and quota-checked before reaching an upstream.
+Most models are bring-your-own-key: the credential lives on the device and the universal proxy forwards it ([`src/lib/proxy-fetch.ts`](../../../src/lib/proxy-fetch.ts)). **Managed inference** is the other path, where the deployment holds the credential and any signed-in user (including an anonymous session) chats unconfigured. Every managed request is priced and quota-checked before reaching an upstream; a hosted-agent run that calls tools is checked once, before its first step.
 
 | Tier             | Route           | Credential          | What the server sees                                                            | Metering                                                |
 | ---------------- | --------------- | ------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -26,7 +26,7 @@ Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../
 
 ## Admission: price first, then quota
 
-Both tiers call `checkManagedInferenceAdmission` (`usage-ledger.ts:157`) before any upstream request. Price and spend load concurrently; price failures win, so a missing price row reports configuration, not quota.
+Both tiers call `checkManagedInferenceAdmission` (`usage-ledger.ts:180`) before any upstream request. Price and spend load concurrently; price failures win, so a missing price row reports configuration, not quota.
 
 | Outcome             | Status | Body                                                               |
 | ------------------- | ------ | ------------------------------------------------------------------ |
@@ -43,7 +43,7 @@ Bodies come from [`usage-responses.ts`](../../../backend/src/inference/usage-res
 - **A new managed model needs a price migration** and its `backend/drizzle/meta/_journal.json` entry. Drizzle finds migrations through the journal; an unlisted SQL file never runs.
 - Catalog in TypeScript, prices in Postgres, so drift runs one way: the model ships, the price does not, every request 503s.
 - Prices are quota weighting, not billing. 0029 sets GLM 5.3 to `1500 / 5250`, glm-5-2's numbers rather than Tinfoil's list `1800 / 5750`, so a model swap does not change how fast users burn their allowance.
-- `calculateInferenceCost` (`usage-ledger.ts:78`) applies Anthropic prompt-cache multipliers (5-minute write ×1.25, 1-hour write ×2, cache read ×0.1) only when `provider === 'anthropic'`; the confidential receipt contract has no cache fields ([`shared/inference-usage.ts:9`](../../../shared/inference-usage.ts)).
+- `calculateInferenceCost` (`usage-ledger.ts:101`) applies Anthropic's cache-write multipliers (5-minute ×1.25, 1-hour ×2) only when `provider === 'anthropic'`. Cache reads bill at the row's nullable `cache_read_nano_usd_per_token` when it is set, for any provider; a null rate falls back to ×0.1 of input for Anthropic and to the full input rate for everyone else. Migration `0037` sets it for the two Fireworks rows; the Anthropic rows leave it null. The confidential receipt contract has no cache fields ([`shared/inference-usage.ts:9`](../../../shared/inference-usage.ts)).
 - Cache tokens above the prompt-token total, or a cost above Postgres `bigint` max, throw (`InferenceTokenCountOutOfRangeError` / `InferenceCostOverflowError`).
 
 ### The two rolling windows
@@ -55,9 +55,9 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 | 5 h    | 10¢               | 1500¢              |
 | 7 d    | 60¢               | 7500¢              |
 
-- `checkInferenceQuota` (`usage-ledger.ts:127`) sums `inference_usage.cost_nano_usd` over both windows in one aggregate using Postgres's own `now()`, keeping windows consistent across replicas.
-- Limits are integer cents, split anonymous from registered (`getInferenceQuotaLimits`, `usage-ledger.ts:184`), because anonymous sessions are free to create. Knobs: [configuration.md](../../self-hosting/configuration.md#managed-inference-quotas).
-- The ledger insert is idempotent on the event id (`onConflictDoNothing`, `usage-ledger.ts:120`), returning `'inserted'` or `'duplicate'`. That makes receipt retries safe.
+- `checkInferenceQuota` (`usage-ledger.ts:150`) sums `inference_usage.cost_nano_usd` over both windows in one aggregate using Postgres's own `now()`, keeping windows consistent across replicas.
+- Limits are integer cents, split anonymous from registered (`getInferenceQuotaLimits`, `usage-ledger.ts:207`), because anonymous sessions are free to create. Knobs: [configuration.md](../../self-hosting/configuration.md#managed-inference-quotas).
+- The ledger insert is idempotent on the event id (`onConflictDoNothing`, `usage-ledger.ts:143`), returning `'inserted'` or `'duplicate'`. That makes receipt retries safe.
 
 ## Direct tier: `/v1/chat/*`
 
@@ -70,7 +70,7 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 
 - Messages adds request-level `cache_control: { type: 'ephemeral' }` to the upstream body; Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
 - `sanitizeMessageRoles` downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.
-- `createUsageCallbacks` ([`managed-request.ts`](../../../backend/src/inference/managed-request.ts)) writes the ledger row at the admitted price in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block. The hosted agent drives the same callbacks from the AI SDK's `onFinish` through `recordLanguageModelUsage`.
+- `createUsageCallbacks` ([`managed-request.ts`](../../../backend/src/inference/managed-request.ts)) writes the ledger row at the admitted price in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block. The hosted agent drives the same callbacks from the AI SDK's `onFinish` through `recordLanguageModelUsage`. A run that a client disconnect or its upstream timeout aborts usually ends before the provider's final usage chunk (Fireworks reports usage only there), so it is billed by estimate once the stream settles (`getAbortedRunCounts`, [`hosted-agent/usage-estimate.ts`](../../../backend/src/hosted-agent/usage-estimate.ts)). The steps it finished are billed at the usage they reported, from the `steps` `onAbort` receives; only the step in flight is estimated. A step stays in flight until its tool calls settle, so an abort while a tool runs estimates the step that called it. The estimate counts one token per Han, Hiragana, Katakana or Hangul code point plus `ceil(chars / 3)` of the remaining text. For prompt tokens it reads the system prompt, the tool definitions (none for the final step, which offers no tools and carries the final-step nudge instead) and the JSON-serialized messages, earlier steps' tool calls and results included; for completion tokens, the text, reasoning and tool-call input that step streamed. Cache tokens are zero. Three characters a token rather than the usual four errs high for alphabetic text, and CJK, which tokenizes at roughly one token per one to one and a half characters, is counted one for one so it is not undercharged up to threefold; either way a client that aborts every run cannot spend past its quota. A run whose later step fails upstream reports no total, so it is billed at what its finished steps reported (`getSettledRunCounts`). If the abort lands after the run's last step and the provider's usage arrived, that is billed instead, once. `inference_usage` has no column marking an estimated row; the `agent_usage_estimated` log line (reason, prompt and completion counts) is the only record that a row is one.
 - Telemetry is body-free: status, model, provider, error kind, token counts, never content (`posthog-privacy.test.ts` pins this).
 - **Client routing.** Managed rows with `vendor: 'anthropic'` route to Messages (`src/acp/built-in-adapter.ts:449`) via `resolveManagedAnthropicConnection` ([`src/ai/fetch.ts:328`](../../../src/ai/fetch.ts)), shared by the legacy AI-SDK path and the Pi harness so they cannot drift. It deletes the `x-api-key` the Anthropic SDK insists on writing and re-sends the value as `Authorization: Bearer`: the backend authenticates the app session, not an Anthropic key. The `thunderbolt` placeholder for a missing bearer under SSO cookie auth is dropped, not promoted (`fetch.ts:272-284`).
 - **No configuration pre-check here.** Without `ANTHROPIC_API_KEY`, admission passes and the client factory throws (`createManagedProviderConnection` in `client.ts`) as a 500; the confidential route answers a clean 503.

@@ -4,12 +4,14 @@
 
 import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { Fingerprint, Loader2 } from 'lucide-react'
 
 type ApprovalWaitingStepProps = {
   error: string | null
   onContinue: () => void
   onUseRecoveryKey: () => void
+  /** Present when the account has a passkey slot this device can unlock with. */
+  onUnlockWithPasskey?: () => void
   isLoading?: boolean
   isPolling?: boolean
 }
@@ -18,6 +20,7 @@ export const ApprovalWaitingStep = ({
   error,
   onContinue,
   onUseRecoveryKey,
+  onUnlockWithPasskey,
   isLoading,
   isPolling,
 }: ApprovalWaitingStepProps) => (
@@ -52,6 +55,13 @@ export const ApprovalWaitingStep = ({
           <Trans>Check now</Trans>
         )}
       </Button>
+
+      {onUnlockWithPasskey && (
+        <Button variant="outline" className="w-full" onClick={onUnlockWithPasskey} disabled={isLoading}>
+          <Fingerprint className="mr-2 h-4 w-4" />
+          <Trans>Unlock with passkey</Trans>
+        </Button>
+      )}
 
       <Button variant="ghost" className="w-full" onClick={onUseRecoveryKey} disabled={isLoading}>
         <Trans>Use my recovery key</Trans>

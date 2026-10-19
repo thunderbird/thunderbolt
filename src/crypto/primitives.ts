@@ -100,6 +100,16 @@ export const exportMlKemPublicKey = (publicKey: Uint8Array): string => uint8Arra
 /** Import an ML-KEM public key from base64. */
 export const importMlKemPublicKey = (base64: string): Uint8Array => base64ToUint8Array(base64)
 
+/** Whether `publicKey` is a usable ML-KEM-768 public key: encapsulation checks its length and FIPS 203 modulus. */
+export const isUsableMlKemPublicKey = (publicKey: Uint8Array): boolean => {
+  try {
+    ml_kem768.encapsulate(publicKey)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Derive the AES-GCM key that encrypts the ML-KEM secret key at rest (THU-427).
  * Self-ECDH (own public + own private) → HKDF-SHA256 — NOT the AK, which would

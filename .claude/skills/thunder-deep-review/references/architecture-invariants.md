@@ -56,7 +56,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-34** HTTP streaming, not WebSockets (`SyncStreamConnectionMethod.HTTP`).
 - **INV-35** `fetchCredentials` returns `null` (not throw) on auth failure.
 - **INV-36** `uploadData` throws on failure, never `transaction.complete()` — PowerSync retries.
-- **INV-37** Error→reset mapping: 410→account_deleted; 403 DEVICE_DISCONNECTED→device_revoked; 409 DEVICE_ID_TAKEN→reset; 400 DEVICE_ID_REQUIRED→reset; 401→session_expired.
+- **INV-37** Error→reset mapping: 410→account_deleted; 403 DEVICE_DISCONNECTED→device_revoked; 409 DEVICE_ID_TAKEN→reset; 400 DEVICE_ID_REQUIRED→reset; 401→session_expired, which re-asks get-session; get-session answers a revoked X-Device-ID with 403 DEVICE_DISCONNECTED, token or not.
 
 ## Persistence & Soft-Delete
 - **INV-38** Frontend NEVER hard-deletes — `deletedAt = nowIso()`. Hard delete only in account/device flows.
@@ -100,7 +100,7 @@ Global properties that survive across subsystems. Verify any change against the 
 ## Frontend Devices & Reset
 - **INV-71** Single canonical reset: `clearLocalData()` → `window.location.replace(...)`.
 - **INV-72** Current-device-revoked dual-tracked (`powersyncCredentialsInvalid` event + React Query watcher).
-- **INV-73** Sign-in modal suppressed if revoked-modal already fired.
+- **INV-73** Sign-in modal suppressed once a reset (revocation or deletion) is under way.
 - **INV-74** `hadDeviceOnceRef` distinguishes first-load from post-deletion sync wipe.
 
 ## Tauri Shell

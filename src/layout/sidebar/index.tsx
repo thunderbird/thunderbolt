@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
@@ -43,7 +44,12 @@ export default function Sidebar() {
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
-  const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
+  const { activeSection: routeSection, setActiveSection } = useSidebarSection(location.pathname)
+  // Subscribed here rather than in `ChatSidebarContent`, which is unmounted
+  // while the Settings section is open: a minimal-mode `/config` answer that
+  // lands then must still pull the sidebar back to chats.
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const activeSection = minimalMode ? 'chats' : routeSection
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,

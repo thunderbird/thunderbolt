@@ -45,6 +45,14 @@ describe('Config Routes', () => {
       expect(disabled.body.builtInAgentEnabled).toBe(false)
     })
 
+    it('exposes minimalMode: false by default and true when set', async () => {
+      const offByDefault = await fetchConfig(createTestSettings())
+      expect(offByDefault.body.minimalMode).toBe(false)
+
+      const minimal = await fetchConfig(createTestSettings({ minimalMode: true }))
+      expect(minimal.body.minimalMode).toBe(true)
+    })
+
     it('exposes allowCustomAgents', async () => {
       const allowed = await fetchConfig(createTestSettings({ allowCustomAgents: true }))
       expect(allowed.body.allowCustomAgents).toBe(true)
@@ -61,6 +69,23 @@ describe('Config Routes', () => {
     it('exposes minAppVersion when set', async () => {
       const { body } = await fetchConfig(createTestSettings({ minAppVersion: '0.2.0' }))
       expect(body.minAppVersion).toBe('0.2.0')
+    })
+
+    it('reports passkeys off by default', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.passkeyEnabled).toBe(false)
+      expect(body.passkeyRpId).toBeUndefined()
+    })
+
+    it('reports passkeys on when the operator enables them', async () => {
+      const { body } = await fetchConfig(createTestSettings({ passkeyEnabled: true, passkeyRpId: 'localhost' }))
+      expect(body.passkeyEnabled).toBe(true)
+      expect(body.passkeyRpId).toBe('localhost')
+    })
+
+    it('keeps passkeys off in SSO modes even when enabled', async () => {
+      const { body } = await fetchConfig(createTestSettings({ passkeyEnabled: true, authMode: 'oidc' }))
+      expect(body.passkeyEnabled).toBe(false)
     })
 
     it('does not require authentication', async () => {

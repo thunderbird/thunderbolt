@@ -68,7 +68,7 @@ import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
 import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { selectBuiltInAgentEnabled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
@@ -246,6 +246,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     const trackSkillEvent = useSkillTelemetry()
+    // Minimal mode treats `/` as ordinary text: no popup, token resolution,
+    // highlighting or token-aware editing (resolution is gated in
+    // `resolveSkillTokenInstructions`).
+    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     // Display-title → slug, for the whole library (disabled skills still
     // highlight as amber chips). The composer shows `/Daily Brief`; the model
@@ -408,6 +412,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       library,
       isEnabled: isValidSkillSlug,
       agentCommands,
+      enabled: !minimalMode,
     })
 
     const addSkillChip = useCallback(
@@ -468,7 +473,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // back/forward doesn't re-trigger; the ref guard keeps StrictMode's
     // double-render from inserting the token twice.
     const consumedRunSkillRef = useRef<string | null>(null)
-    const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
+    const runSkill = minimalMode ? undefined : (location.state as { runSkill?: string } | null)?.runSkill
     if (!runSkill) {
       consumedRunSkillRef.current = null
     } else if (consumedRunSkillRef.current !== runSkill) {
@@ -537,8 +542,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => normalizeSkillTokensToSlugs(input, displayNameToSlug),
-      [input, displayNameToSlug],
+      () => (minimalMode ? input : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      [minimalMode, input, displayNameToSlug],
     )
 
     const additionalInputTokens = useMemo(() => {
@@ -724,7 +729,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <div className="flex items-center gap-2">
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
-          onOpenConnections={() => navigate('/settings/connections')}
+          onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
         {isConnecting ? (
           <div
@@ -773,7 +778,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (e: Parameters<typeof handleSlashKeyDown>[0]) => {
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
-        if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
+        if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
           const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
           if (deletion) {
             e.preventDefault()
@@ -789,7 +794,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         }
         handleSlashKeyDown(e)
       },
-      [displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
+      [minimalMode, displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
     )
 
     const handleSelectFromSlashPopup = useCallback(
@@ -975,8 +980,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // Empty + idle composer shows the voice-mode trigger in the send
             // slot; it swaps back to Send as soon as there's text or an attachment.
             emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
-            renderOverlay={(value) =>
-              renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
+            // No overlay at all in minimal mode: its presence makes the textarea text transparent.
+            renderOverlay={
+              minimalMode
+                ? undefined
+                : (value) =>
+                    renderHighlightedSkillTokens(value, classifySkill, {
+                      displayNameToSlug,
+                      onCreateSkill: openCreateSkill,
+                    })
             }
             popoverSlot={
               popupOpen ? (

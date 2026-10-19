@@ -8,12 +8,12 @@ import babelPlugin from '@rolldown/plugin-babel'
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
 import pkg from './package.json' with { type: 'json' }
+import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
@@ -79,8 +79,15 @@ export default defineConfig({
   plugins: [
     {
       name: 'copy-powersync-assets',
-      buildStart() {
-        execSync('powersync-web copy-assets --output public', { stdio: 'inherit' })
+      // `vite preview` serves the built dist/, so it has no reason to touch public/.
+      apply: (_config, { isPreview }) => !isPreview,
+      // Vite lists public/ once, right after this hook; a copy in buildStart lands after that list.
+      configResolved({ publicDir, cacheDir }) {
+        copyPowerSyncAssets(
+          path.resolve(__dirname, 'node_modules/@powersync/web/dist'),
+          path.join(publicDir, '@powersync'),
+          cacheDir,
+        )
       },
     },
     tailwindcss(),

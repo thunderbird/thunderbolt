@@ -7,16 +7,15 @@ on:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
         default: false
         type: boolean
+      tag:
+        description: 'Tag to build (defaults to v{version})'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -48,6 +47,10 @@ on:
         required: false
         default: false
         type: boolean
+      tag:
+        description: 'Tag to build (defaults to v{version})'
+        required: false
+        type: string
 
 concurrency:
   group: ios-release-${{ inputs.version }}
@@ -55,6 +58,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
 
 jobs:
   build_and_deploy_ios:
@@ -65,10 +71,19 @@ jobs:
       build_version: ${{ steps.determine_version.outputs.build_version }}
 
     steps:
+      - name: Check the tag matches the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && [ "$RELEASE_TAG" != "v$VERSION-ios-rc" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match version $VERSION"
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -81,12 +96,8 @@ jobs:
 
       - name: Display version information
         env:
-          INPUT_NIGHTLY: ${{ inputs.nightly }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "$INPUT_NIGHTLY" == "true" ]; then
-            echo "🌙 Nightly build"
-          fi
           if [ -n "$INPUT_VERSION" ]; then
             echo "🏷️ Using specified version: $INPUT_VERSION"
           else
@@ -115,11 +126,7 @@ jobs:
           APPLE_VERSION="${VERSION%%-*}"
 
           # CFBundleVersion must be unique per TestFlight upload and must
-          # monotonically increase within a marketing-version train. Using git
-          # commit count gives a single, consistent scheme for both nightly and
-          # stable builds — avoiding collisions where a nightly date integer
-          # (e.g., 20260206) would permanently block a stable build (e.g., 0.5.0)
-          # for the same CFBundleShortVersionString.
+          # monotonically increase within a marketing-version train.
           APPLE_BUILD_VERSION="$(git rev-list --count HEAD)"
 
           echo "🔧 Applying version $VERSION locally (Apple marketing: $APPLE_VERSION, build: $APPLE_BUILD_VERSION)"

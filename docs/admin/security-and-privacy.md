@@ -64,8 +64,8 @@ a compromised server could switch it off to collect plain text.
   it for them, unless you run organizational key escrow.
 - Revoking a device ends its sessions and replaces both the account key and the data key used for
   new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
-  That does not lock what is already there: the local database holds decrypted rows, and the old
-  keys stay on the device until it signs out.
+  The device clears its local database and keys the next time it connects. One that never comes
+  back online keeps its decrypted rows and old keys.
 
 **What it covers**
 
@@ -216,7 +216,7 @@ user's conversations. What follows is about direct access to your own database a
 | ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Turn sync on or off      | Settings → Preferences → Data | Off keeps everything local to that device                                                                                    |
 | Approve or deny a device | Settings → Devices            | An unapproved device cannot decrypt anything                                                                                 |
-| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. The user chooses whether the local data is wiped                            |
+| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. Its local data is cleared the next time it connects                         |
 | Export data              | Settings → Preferences → Data | A single JSON file with chats, settings, models, skills, and configuration                                                   |
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |

@@ -123,6 +123,16 @@ export const authRequestHeaders = (
   ...extra,
 })
 
+/**
+ * Sign-in endpoints answer a failed attempt with 401. That says nothing about a
+ * session the device already holds (a signed-in user confirming it's them, or
+ * trying a passkey), so it must not be read as that session expiring.
+ */
+const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
+
+const isSignInRequest = (url: URL | string | undefined): boolean =>
+  url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
   // Applied per request instead of through `headers` so the locale is re-read on
@@ -142,7 +152,7 @@ export const buildFetchOptions = (platform: string) => ({
       setAuthToken(token)
     }
   },
-  onError: (ctx: { response: Response }) => {
+  onError: (ctx: { response: Response; request?: { url: URL | string } }) => {
     // A 426 from our backend means this build is below the enforced minimum —
     // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
     // below). Status-only: the response body belongs to Better Auth here.
@@ -150,7 +160,7 @@ export const buildFetchOptions = (platform: string) => ({
       handleAppVersionUnsupported(ctx.response.status)
       return
     }
-    if (ctx.response?.status !== 401) {
+    if (ctx.response?.status !== 401 || isSignInRequest(ctx.request?.url)) {
       return
     }
     // Capture token presence BEFORE clearing — only a 401 against an existing token signals a real
@@ -227,16 +237,15 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     void consumePendingSsoAnonAlias(value.authClient)
   }, [value])
 
-  // Validate the stored token on mount via HttpClient — its afterResponse hook fires
-  // session_expired on the first 401. Avoids Better Auth's auth client to sidestep its
-  // internal retry path. Ref guards against StrictMode's double mount.
+  // Check the session on mount via HttpClient — its afterResponse hook fires
+  // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
+  // Runs without a token too: a revoked device whose token an earlier 401 cleared still
+  // gets its 403. Avoids Better Auth's auth client to sidestep its internal retry path.
+  // Ref guards against StrictMode's double mount.
   const httpClient = useHttpClient()
   const sessionCheckFiredRef = useRef(false)
   useEffect(() => {
     if (!value?.authClient || sessionCheckFiredRef.current) {
-      return
-    }
-    if (!getAuthToken()) {
       return
     }
     sessionCheckFiredRef.current = true

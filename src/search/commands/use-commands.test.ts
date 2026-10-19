@@ -11,6 +11,7 @@ import type { PaletteCommand } from './types'
 const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps => ({
   i18n,
   flags: { voice: false, tasks: false, dev: false },
+  minimalMode: false,
   showDownloadApp: false,
   isMac: true,
   onNewChat: () => {},
@@ -56,6 +57,32 @@ describe('buildCommands — navigation gating', () => {
     expect(devOnly).toContain('dev-settings')
     expect(devOnly).toContain('message-simulator')
     expect(devOnly).not.toContain('voice')
+  })
+})
+
+describe('buildCommands, minimal mode', () => {
+  const allFlags = { voice: true, tasks: true, dev: true }
+
+  it('offers the Settings destinations and create commands by default', () => {
+    const ids = buildCommands(makeDeps({ flags: allFlags })).map((command) => command.id)
+    expect(ids).toEqual(expect.arrayContaining(['agents', 'models', 'preferences', 'dev-settings', 'create-model']))
+  })
+
+  it('drops every /settings/* navigation and the create commands that open them', () => {
+    const commands = buildCommands(makeDeps({ flags: allFlags, minimalMode: true }))
+
+    const settingsRoutes = commands.filter((command) => 'to' in command && command.to.startsWith('/settings/'))
+    expect(settingsRoutes).toEqual([])
+    expect(commands.filter((command) => command.section === 'create').map((command) => command.id)).toEqual([
+      'new-chat',
+    ])
+  })
+
+  it('keeps the routes and actions that are not Settings pages', () => {
+    const ids = buildCommands(makeDeps({ flags: allFlags, minimalMode: true })).map((command) => command.id)
+    expect(ids).toEqual(
+      expect.arrayContaining(['tasks', 'message-simulator', 'new-chat', 'sign-out', 'toggle-sidebar']),
+    )
   })
 })
 

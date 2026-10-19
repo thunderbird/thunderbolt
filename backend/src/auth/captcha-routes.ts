@@ -16,8 +16,8 @@ type CaptchaRoutesDeps = {
 /**
  * `GET /captcha/challenge`: the unauthenticated endpoint that serves a captcha challenge for
  * anonymous sign-in. Mounted only when the provider issues challenges (ALTCHA does, `none`
- * does not) and anonymous auth is on. No client calls it yet: the app has no ALTCHA support,
- * so enabling the provider refuses every anonymous sign-in. It stays behind the version gate
+ * does not) and anonymous auth is on. The app's auth gate fetches it before anonymous sign-in
+ * when built with `VITE_CAPTCHA_PROVIDER=altcha`. It stays behind the version gate
  * like the sign-in it precedes, so the client must fetch it through the HttpClient, which
  * sends `X-App-Version`. A sibling of the Better Auth mount rather than inside `/api/auth/*`,
  * which Better Auth's router owns.

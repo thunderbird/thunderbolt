@@ -428,7 +428,7 @@ describe('ChatPromptInput', () => {
     const tokenText = 'run /Daily Brief now'
 
     /** Render with the chip skill in the library, seed the input, place the caret. */
-    const setupWithToken = (caret: number) => {
+    const setupWithToken = (caret: number, text = tokenText) => {
       const { mockUseChat } = setupStore()
       const ref = createRef<ChatPromptInputRef>()
       render(
@@ -442,7 +442,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
       act(() => {
-        ref.current?.setInput(tokenText)
+        ref.current?.setInput(text)
       })
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       textarea.setSelectionRange(caret, caret)
@@ -493,6 +493,43 @@ describe('ChatPromptInput', () => {
 
       expect(event.defaultPrevented).toBe(false)
       expect(textarea.value).toBe(tokenText)
+    })
+
+    describe.each([
+      [false, true],
+      [true, false],
+    ])('slash commands, minimalMode: %s', (minimalMode, active) => {
+      beforeEach(() => {
+        useConfigStore.setState({ config: { minimalMode } })
+      })
+
+      it('opens the slash popup on `/` only when active', () => {
+        const textarea = setupWithToken(1, '/')
+        fireEvent.select(textarea)
+        expect(screen.queryByRole('listbox') !== null).toBe(active)
+      })
+
+      it('highlights a committed token only when active', () => {
+        setupWithToken(16)
+        expect(document.querySelector('.skill-token') !== null).toBe(active)
+      })
+
+      it('sends the token verbatim in minimal mode and normalized to the slug otherwise', async () => {
+        setupWithToken(16)
+        await act(async () => {
+          fireEvent.submit(document.querySelector('form')!)
+        })
+        const sent = useChatStore.getState().sessions.get('thread-1')!.chatInstance.sendMessage as ReturnType<
+          typeof mock
+        >
+        expect(sent.mock.calls[0][0].parts[0].text).toBe(active ? 'run /daily-brief now' : tokenText)
+      })
+
+      it('lets Backspace delete one character of a token only in minimal mode', () => {
+        const textarea = setupWithToken(16)
+        const event = pressBackspace(textarea)
+        expect(event.defaultPrevented).toBe(active)
+      })
     })
   })
 
@@ -716,6 +753,30 @@ describe('ChatPromptInput', () => {
 
       expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name: 'Upload file' })).toBeNull()
+    })
+  })
+
+  describe.each([
+    [true, false],
+    [false, true],
+  ])('add menu, minimalMode: %s', (minimalMode, present) => {
+    beforeEach(() => {
+      useConfigStore.setState({ config: { minimalMode } })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the add menu for an agent that takes no attachments`, () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Add to chat' }) !== null).toBe(present)
     })
   })
 

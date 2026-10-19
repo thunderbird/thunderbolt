@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { Settings } from '@/config/settings'
+import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { Elysia } from 'elysia'
@@ -30,10 +30,15 @@ export const createConfigRoutes = (settings: Settings) =>
     e2eeEnabled: true,
     orgEscrowEnabled: settings.orgEscrowEnabled,
     debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
+    passkeyEnabled: isPasskeyEnabled(settings),
+    // The client's sync-unlock assertion must name the same RP ID as sign-in, or
+    // an apex PASSKEY_RP_ID wouldn't find the passkey from a subdomain.
+    passkeyRpId: isPasskeyEnabled(settings) ? settings.passkeyRpId : undefined,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,
     allowCustomAgents: settings.allowCustomAgents,
+    minimalMode: settings.minimalMode,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
     defaults: {

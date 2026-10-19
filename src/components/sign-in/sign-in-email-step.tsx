@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SiGithub } from '@icons-pack/react-simple-icons'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { EyeOff, Loader2, Mail } from 'lucide-react'
+import { EyeOff, Fingerprint, Loader2, Mail } from 'lucide-react'
 import { useRef, type FormEvent, type RefObject } from 'react'
 
 type SignInEmailStepProps = {
@@ -18,6 +18,10 @@ type SignInEmailStepProps = {
   onEmailChange: (email: string) => void
   variant: 'modal' | 'page'
   emailInputRef?: RefObject<HTMLInputElement | null>
+  /** Show the "Sign in with passkey" button (deployment enabled + browser capable). */
+  passkeyAvailable?: boolean
+  passkeyPending?: boolean
+  onPasskeySignIn?: () => void
 }
 
 /**
@@ -36,6 +40,9 @@ export const SignInEmailStep = ({
   onEmailChange,
   variant,
   emailInputRef,
+  passkeyAvailable,
+  passkeyPending,
+  onPasskeySignIn,
 }: SignInEmailStepProps) => {
   const { t } = useLingui()
   const localRef = useRef<HTMLInputElement>(null)
@@ -123,7 +130,7 @@ export const SignInEmailStep = ({
               ? 'w-full rounded-xl'
               : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
           }
-          disabled={isLoading || !isValidEmail}
+          disabled={isLoading || passkeyPending || !isValidEmail}
         >
           {isLoading ? (
             <>
@@ -136,6 +143,34 @@ export const SignInEmailStep = ({
             <Trans>Continue</Trans>
           )}
         </Button>
+
+        {passkeyAvailable && onPasskeySignIn && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">
+                <Trans>or</Trans>
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size={variant === 'modal' ? 'lg' : undefined}
+              className={variant === 'modal' ? 'w-full rounded-xl' : 'h-[46px] w-full rounded-xl text-base font-medium'}
+              disabled={isLoading || passkeyPending}
+              onClick={onPasskeySignIn}
+            >
+              {passkeyPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Fingerprint className="mr-2 h-4 w-4" />
+              )}
+              <Trans>Sign in with passkey</Trans>
+            </Button>
+          </>
+        )}
       </div>
     </form>
   )

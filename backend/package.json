@@ -20,9 +20,11 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",
     "@ai-sdk/anthropic": "^3.0.127",
+    "@ai-sdk/mcp": "^1.0.92",
     "@ai-sdk/openai-compatible": "^2.0.81",
     "@anthropic-ai/sdk": "^0.127.0",
     "@better-auth/api-key": "^1.7.7",
+    "@better-auth/passkey": "^1.7.7",
     "@better-auth/sso": "^1.7.7",
     "@electric-sql/pglite": "^0.5.4",
     "@elysiajs/cors": "^1.4.0",

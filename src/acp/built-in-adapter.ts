@@ -63,6 +63,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -392,6 +393,7 @@ export const resolvePiModel = async (
         }
         const response = await fetchTinfoil(client, input, upstreamInit, evictClient)
         handleAppVersionUnsupported(response.status)
+        await handleSessionRejected(response)
         return response
       }
       const receipts = agentCore.createReceiptLifecycle({

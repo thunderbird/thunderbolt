@@ -16,21 +16,22 @@ Server side: [Authentication](../../../backend/docs/authentication.md),
 | `thunderbolt_user_cache_secret` | `getUserCacheSecret` ([auth-token.ts:61](../../../src/lib/auth-token.ts))     | Tinfoil prompt-cache namespace; per-device, never synced, must reach only the enclave |
 | `thunderbolt_session_cache`     | `setCachedSession` ([session-cache.ts:58](../../../src/lib/session-cache.ts)) | Last good `/get-session` payload, for offline boot                                    |
 
-No production path calls `localStorage.clear()`. The one teardown is `clearLocalData`
-([cleanup.ts:33](../../../src/lib/cleanup.ts)), which removes those keys last together with the ACP bridge's
-plaintext `iroh_acp_client_secret`
-([iroh-transport.ts:87](../../../src/acp/iroh/iroh-transport.ts)).
+The one teardown is `clearLocalData` ([cleanup.ts](../../../src/lib/cleanup.ts)), which removes those keys
+together with the ACP bridge's plaintext `iroh_acp_client_secret`
+([iroh-transport.ts:87](../../../src/acp/iroh/iroh-transport.ts)). When it also clears the database, it then
+empties the rest of `localStorage` and `sessionStorage`, after the keyed removals so other tabs still see
+the sign-out.
 
 ### Why a bearer token, in plaintext storage
 
 - **Every platform authenticates with `Authorization: Bearer <token>`, including the browser**: the backend
   enables `bearer({ requireSignature: true })`
-  ([auth.ts:326](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
+  ([auth.ts:460](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
   `rawSessionToken.base64Signature`, the same value Better Auth puts in the session cookie, verified by
   HMAC-SHA256 over the raw token ([bearer-token.ts:11](../../../backend/src/auth/bearer-token.ts)).
 - **`localStorage`, not the encrypted settings database, because the getter is synchronous**:
   `token: () => getAuthToken() ?? ''`
-  ([auth-context.tsx:135-138](../../../src/contexts/auth-context.tsx)), and `localStorage` is the only
+  ([auth-context.tsx:145-148](../../../src/contexts/auth-context.tsx)), and `localStorage` is the only
   storage the app has that answers synchronously. A TODO at
   [auth-token.ts:5-12](../../../src/lib/auth-token.ts) moves it once an encryption middleware can serve it.
 - **The plaintext tradeoff is argued once**, at `getUserCacheSecret`
@@ -39,8 +40,8 @@ plaintext `iroh_acp_client_secret`
 ### How the token gets there
 
 The backend returns it in a `set-auth-token` response header
-([auth.ts:51](../../../backend/src/auth/auth.ts)) and the auth client's `onSuccess` fetch hook captures it
-([auth-context.tsx:139-144](../../../src/contexts/auth-context.tsx)). It reaches browser JavaScript only
+([auth.ts:76](../../../backend/src/auth/auth.ts)) and the auth client's `onSuccess` fetch hook captures it
+([auth-context.tsx:149-154](../../../src/contexts/auth-context.tsx)). It reaches browser JavaScript only
 because `corsExposeHeaders` lists it ([settings.ts:11](../../../backend/src/config/settings.ts)); dropping it
 there silently breaks every web sign-in.
 
@@ -54,31 +55,41 @@ Operator view: [Self-hosting § Configuration](../../self-hosting/configuration.
 | `VITE_AUTH_MODE=sso`         | Enterprise SSO. Auth requests switch to `credentials: 'include'`; unauthenticated users go to `/sso-redirect`                   |
 | `VITE_AUTH_ENABLE_ANONYMOUS` | Anonymous-session overlay. Needs the backend's `AUTH_ALLOW_ANONYMOUS` too, or the UI offers a route the server answers with 404 |
 | `VITE_BYPASS_WAITLIST`       | Skips the client-side waitlist redirect. UI only; the backend still gates sign-in                                               |
+| `VITE_CAPTCHA_PROVIDER`      | `altcha` solves a proof-of-work challenge before anonymous sign-in. Must match the backend's `CAPTCHA_PROVIDER`                 |
 
 Email-code sign-in runs `credentials: 'omit'`
-([auth-context.tsx:127](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
+([auth-context.tsx:137](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
 cookies would add ambient authority for nothing. The PowerSync connector repeats the SSO-only choice when
 fetching a sync JWT ([connector.ts:104-105](../../../src/db/powersync/connector.ts)).
 
 ### Which routes a session may reach
 
-`useAuthGate` ([use-auth-gate.ts:35](../../../src/components/auth-gate/use-auth-gate.ts)) turns session state
-plus those flags into `loading` / `allowed` / `redirect`; `AuthGate` renders `<Navigate replace />` rather
+`useAuthGate` ([use-auth-gate.ts:45](../../../src/components/auth-gate/use-auth-gate.ts)) turns session state
+plus those flags into `loading` / `allowed` / `redirect`, and `verifying` / `verification-failed` while an
+ALTCHA build solves its captcha; `AuthGate` renders `<Navigate replace />` rather
 than navigating from an effect.
 
 - **Anonymous users count as authenticated for routing**, with a real `user` row carrying
   `isAnonymous: true`. Capability gating belongs to the route.
 - **Anonymous auto-sign-in needs all three of** `isAnonymousAuthEnabled()`, `!isSsoMode()` and
-  `isWaitlistBypassed()` ([use-auth-gate.ts:40](../../../src/components/auth-gate/use-auth-gate.ts)); a ref
+  `isWaitlistBypassed()` ([use-auth-gate.ts:51](../../../src/components/auth-gate/use-auth-gate.ts)); a ref
   dedups Strict Mode's double effect.
-- **Both failure shapes are handled** ([use-auth-gate.ts:48-73](../../../src/components/auth-gate/use-auth-gate.ts)).
+- **With `VITE_CAPTCHA_PROVIDER=altcha` the sign-in solves a challenge first**
+  ([altcha.ts](../../../src/components/auth-gate/altcha.ts)), in web workers, and sends it as `x-captcha-token`.
+  A transient failure offers a retry with a fresh challenge: a network failure, timeout or 5xx on the challenge
+  fetch, a worker failure, the 60 s solve timeout, or a `403 CAPTCHA_VERIFICATION_FAILED` on sign-in. Everything
+  else, a 4xx on the challenge included, throws during render like any failed anonymous sign-in (with no error
+  boundary in the app, the window goes blank; see [Error handling](../development/error-handling.md)). Only
+  the challenge step's transient failures are retried: a failed sign-in request (network failure or 5xx) throws,
+  as it did before the captcha.
+- **Both failure shapes are handled** ([use-auth-gate.ts:117-146](../../../src/components/auth-gate/use-auth-gate.ts)).
   Better Auth methods resolve with `{ data, error }` rather than throwing on a 4xx, so a hook ignoring the
   resolved-error path leaves the gate in `loading` forever.
 
 ## Booting with a session
 
 `AuthProvider` builds the auth client from `cloudUrl` in a `useMemo`, so a backend URL change replaces the
-client wholesale ([auth-context.tsx:193-203](../../../src/contexts/auth-context.tsx)). Session plumbing, in
+client wholesale ([auth-context.tsx:203-213](../../../src/contexts/auth-context.tsx)). Session plumbing, in
 order:
 
 1. **Seed the session atom from the cache, synchronously.** `hydrateSessionFromCache`
@@ -96,9 +107,10 @@ order:
    `{ user: null, session: null }` can transit the atom on the initial `onSuccess` and must not be cached
    (a logged-out flash next boot); a real sign-out (`null`) is a deliberate no-op, since the 401 handler
    and `clearLocalData` own cache clearing.
-4. **Validate the stored token once, on mount**, through `HttpClient` rather than the auth client, so the
-   check sidesteps Better Auth's retry path and lands on the `afterResponse` 401 hook
-   ([auth-context.tsx:233-246](../../../src/contexts/auth-context.tsx)).
+4. **Check the session once, on mount, with or without a stored token**, through `HttpClient` rather than the auth client, so the
+   check sidesteps Better Auth's retry path and lands on the `afterResponse` hook: a 401 means the session
+   expired, a 403 `DEVICE_DISCONNECTED` means this device was revoked
+   ([auth-context.tsx](../../../src/contexts/auth-context.tsx)).
 
 `refetchOnWindowFocus` and `refetchWhenOffline` are both `false`
 ([auth-context.tsx:36-43](../../../src/contexts/auth-context.tsx)): the `storage` listener covers cross-tab
@@ -107,7 +119,7 @@ focus, `visibilitychange` and `online`.
 
 ## Cross-tab agreement
 
-`AuthProvider` subscribes at [auth-context.tsx:254-268](../../../src/contexts/auth-context.tsx):
+`AuthProvider` subscribes at [auth-context.tsx:263-277](../../../src/contexts/auth-context.tsx):
 
 | Change                                | Response                                                                                                                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -120,13 +132,12 @@ merely held in memory. It filters to `localStorage` and the token key, ignoring 
 
 ## Event contracts
 
-| Event                           | Declared in                                                                  | Dispatched by                                                                                                                            | Consumed by                                                                                                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `powersync_credentials_invalid` | [connector.ts:21](../../../src/db/powersync/connector.ts)                    | Connector token refresh, `HttpClient.afterResponse` ([http.ts:240](../../../src/lib/http.ts)), Better Auth `onError`, cross-tab listener | [use-powersync-credentials-invalid-listener.ts:67](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)                                                         |
-| `show_sign_in_modal`            | [use-credential-events.ts:11](../../../src/hooks/use-credential-events.ts)   | The listener above, on `session_expired`                                                                                                 | [SignInModalProvider](../../../src/contexts/sign-in-modal-context.tsx)                                                                                                       |
-| `sign_in_success`               | [use-credential-events.ts:14](../../../src/hooks/use-credential-events.ts)   | `SignInModalProvider` after a successful re-auth                                                                                         | The credentials-invalid listener, to reset its dedup ref                                                                                                                     |
-| `show_revoked_device_modal`     | [use-credential-events.ts:8](../../../src/hooks/use-credential-events.ts)    | The credentials-invalid listener                                                                                                         | [useCredentialEvents](../../../src/hooks/use-credential-events.ts) in `App`                                                                                                  |
-| `app_version_unsupported`       | [app-version-unsupported.ts:13](../../../src/lib/app-version-unsupported.ts) | `handleAppVersionUnsupported` on a 426 (or an `APP_VERSION_UNSUPPORTED` body code) from our backend                                      | [useAppVersionUnsupportedListener](../../../src/hooks/use-app-version-unsupported-listener.ts) and the sync layer ([database.ts:227](../../../src/db/powersync/database.ts)) |
+| Event                           | Declared in                                                                  | Dispatched by                                                                                                                                                                                                               | Consumed by                                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `powersync_credentials_invalid` | [connector.ts:21](../../../src/db/powersync/connector.ts)                    | Connector token refresh, `HttpClient.afterResponse` ([http.ts](../../../src/lib/http.ts)), `handleSessionRejected` ([session-rejected.ts](../../../src/lib/session-rejected.ts)), Better Auth `onError`, cross-tab listener | [use-powersync-credentials-invalid-listener.ts](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)                                                        |
+| `show_sign_in_modal`            | [use-credential-events.ts:6](../../../src/hooks/use-credential-events.ts)    | The listener above, on `session_expired`                                                                                                                                                                                    | [SignInModalProvider](../../../src/contexts/sign-in-modal-context.tsx)                                                                                                   |
+| `sign_in_success`               | [use-credential-events.ts:9](../../../src/hooks/use-credential-events.ts)    | `SignInModalProvider` after a successful re-auth                                                                                                                                                                            | The credentials-invalid listener, to reset its dedup ref                                                                                                                 |
+| `app_version_unsupported`       | [app-version-unsupported.ts:13](../../../src/lib/app-version-unsupported.ts) | `handleAppVersionUnsupported` on a 426 (or an `APP_VERSION_UNSUPPORTED` body code) from our backend                                                                                                                         | [useAppVersionUnsupportedListener](../../../src/hooks/use-app-version-unsupported-listener.ts) and the sync layer ([database.ts](../../../src/db/powersync/database.ts)) |
 
 Window `CustomEvent`s rather than imports: the producers sit below the React tree, and importing the
 consumer would close import cycles (HTTP client → PowerSync connector → sync tracker → PostHog → HTTP
@@ -136,7 +147,7 @@ client). The cost is one contract duplicated per event, each copy carrying a com
 
 - **Only a 401 against an _existing_ token is an expiry.** Better Auth's `onError` captures token presence
   before clearing it, so a 401 from sign-in or OTP-verify does not pop the sign-in modal
-  ([auth-context.tsx:156-166](../../../src/contexts/auth-context.tsx)).
+  ([auth-context.tsx:166-176](../../../src/contexts/auth-context.tsx)).
 - **Only _our_ backend's 401s count.** `HttpClient` also serves external APIs with caller-supplied OAuth
   tokens, so `beforeRequest` and `afterResponse` both gate on `isBackendRequest`
   ([http.ts:95-103](../../../src/lib/http.ts)) before setting headers or reading a status as a session
@@ -146,8 +157,13 @@ client). The cost is one contract duplicated per event, each copy carrying a com
   ([http.ts:201-206](../../../src/lib/http.ts)).
 - **`session_expired` yields to a revocation or a deletion**, via the listener's refs, rather than stacking
   a sign-in modal on a teardown
-  ([use-powersync-credentials-invalid-listener.ts:93-106](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)).
+  ([use-powersync-credentials-invalid-listener.ts](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)).
   Expiry clears the token and stops sync but keeps the database, the encryption keys and the device id.
+  It also asks the session check once more: revocation deletes a device's sessions, so a 401 alone can't
+  tell an expired session from a revoked device, and the check answers a revoked one with a 403.
+- **Backend calls outside `HttpClient`** (chat, voice, the built-in agent) report our 401 through
+  `handleSessionRejected` ([session-rejected.ts](../../../src/lib/session-rejected.ts)). Our auth gate pairs it
+  with `UNAUTHENTICATED`; the proxy skips responses it relayed from an upstream, which could forge that body.
 
 ### The 426 latch
 
@@ -157,9 +173,9 @@ client). The cost is one contract duplicated per event, each copy carrying a com
 **before** dispatching, so a caller reading the latch rather than the event still sees the block.
 `isAppVersionUnsupported()` ([app-version.ts:49](../../../src/lib/app-version.ts)) ORs it with the persisted
 `/config` minimum, and every sync entry point consults it
-([database.ts:250](../../../src/db/powersync/database.ts)). Otherwise a version-blocked client holding a sync
+([database.ts](../../../src/db/powersync/database.ts)). Otherwise a version-blocked client holding a sync
 stream queues writes in `ps_crud` and flushes them after the upgrade, before the E2EE keyring exists
-([database.ts:207-218](../../../src/db/powersync/database.ts)).
+([database.ts](../../../src/db/powersync/database.ts)).
 
 ## The header contract
 
@@ -194,7 +210,7 @@ continue on failure, since a sign-out that cannot reach the server must still cl
 | [src/contexts/auth-context.tsx](../../../src/contexts/auth-context.tsx)                                                     | Better Auth client construction, fetch hooks, provider effects   |
 | [src/contexts/sign-in-modal-context.tsx](../../../src/contexts/sign-in-modal-context.tsx)                                   | Re-auth modal, dismissal routing, post-sign-in sync enablement   |
 | [src/components/auth-gate/use-auth-gate.ts](../../../src/components/auth-gate/use-auth-gate.ts)                             | Route access decision                                            |
-| [src/lib/http.ts](../../../src/lib/http.ts)                                                                                 | Authenticated client, header injection, 401/426 hooks            |
+| [src/lib/http.ts](../../../src/lib/http.ts)                                                                                 | Authenticated client, header injection, 401/403/426 hooks        |
 | [src/lib/app-version-unsupported.ts](../../../src/lib/app-version-unsupported.ts)                                           | 426 latch and event                                              |
 | [src/hooks/use-powersync-credentials-invalid-listener.ts](../../../src/hooks/use-powersync-credentials-invalid-listener.ts) | Single consumer of the credentials-invalid event                 |
 | [src/lib/cleanup.ts](../../../src/lib/cleanup.ts)                                                                           | The one teardown path                                            |

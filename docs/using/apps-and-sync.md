@@ -85,13 +85,13 @@ Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Win
 | **Revoke**  | Any other trusted device  | Sessions on it are ended, it stops syncing, and it can no longer decrypt synced data |
 | **Remove**  | A revoked bridge only     | Deletes the record so the same bridge can be paired again                            |
 
-The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out.
+The device signs out and clears everything stored on it the next time it connects. A device that never comes back online keeps what is already on it.
 
 Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
 
 > Revoking is not reversible. To bring a device back, sign in again and approve it as new.
 
-Deleting the account is separate and wider, but it does not reach every device on its own. A device with sync on that reconnects soon after clears its local data and shows an account-deleted screen. A device with sync off, or one that comes back after too long a gap, is signed out instead and keeps its local copy, so wipe those by hand. Attached files are never cleared either, as above.
+Deleting the account is separate and wider, but it does not reach every device on its own. A device with sync on that reconnects soon after clears its local data and shows an account-deleted screen. A device with sync off, or one that comes back after too long a gap, is signed out instead and keeps its local copy, so wipe those by hand.
 
 Full detail on approval, recovery keys, and revocation is in [Devices and Accounts](../admin/devices.md).
 

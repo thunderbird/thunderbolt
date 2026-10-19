@@ -107,3 +107,20 @@ export const deleteAttachment = async (id: string): Promise<void> => {
     }
   })
 }
+
+/** Delete every locally-stored attachment, e.g. when the device's data is wiped. */
+export const clearAllAttachments = async (): Promise<void> => {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    tx.objectStore(storeName).clear()
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new Error('Failed to clear attachments', { cause: tx.error }))
+    }
+  })
+}

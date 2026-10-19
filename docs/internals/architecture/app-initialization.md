@@ -69,12 +69,17 @@ newer rows we haven't received".
 
 ### What the sync gate waits for
 
-`waitForInitialSync` (`src/db/powersync/database.ts:483`) awaits
-`waitForFirstSync({ priority: initialSyncPriority })`, `initialSyncPriority = 1`
-(`src/db/powersync/database.ts:59`), mirroring the `user_essentials` bucket in
+`waitForInitialSync` (`src/db/powersync/database.ts`) awaits
+`waitForFirstSync({ priority: initialSyncPriority })`, `initialSyncPriority = 1`, covering the
+`user_essentials` and `device_self` buckets in
 [`powersync-service/config/config.yaml`](../../../powersync-service/config/config.yaml): `settings`,
 `models`, `model_profiles`, `devices`, `chat_threads`. Lower-priority buckets (`chat_messages`,
 `tasks`, `skills`, ...) stream in after the app is interactive.
+
+It then waits for this device's own `devices` row. The account buckets are gated on that row, so a
+device trusted moments ago, whose row hasn't reached the sync service yet, gets a priority-1 sync that
+completes empty. The row arrives at the same moment the gated buckets unlock. Both waits share the
+10 s timeout.
 
 The coupling is by convention only: if the deployed sync rules stop declaring priorities, PowerSync
 falls back to the global `hasSynced` and the gate quietly waits for everything.

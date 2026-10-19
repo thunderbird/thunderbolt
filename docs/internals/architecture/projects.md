@@ -180,4 +180,5 @@ include/exclude on any future table.
   `search_project_chats` is an AI-SDK tool and an ACP agent runs its own toolset,
   so advertising it would invite calls to something that does not exist. The
   lookup is gated on the session's `projectId`, so a chat outside a project
-  never pays for it.
+  never pays for it. The hosted agent gets the same section, sent in the
+  request's `instructions` field and appended to its system prompt.

@@ -5,11 +5,19 @@
 import type { QueryableDatabase } from '@/db/client'
 import { session } from '@/db/auth-schema'
 import { and, eq, gt, isNull, or } from 'drizzle-orm'
+import { isCliDeviceId } from '@shared/cli-device-id'
 
 export type SessionDeviceBindingResult = { status: 'bound' } | { status: 'conflict' } | { status: 'invalid-session' }
 
 /** Server-only marker assigned to device-grant sessions until CLI registration binds a real device. */
 export const cliRegistrationPendingDeviceId = 'cli-registration-pending'
+
+/**
+ * Whether a session came from the CLI device grant: still awaiting registration,
+ * or bound to its CLI device.
+ */
+export const isCliGrantSession = (deviceId: string | null | undefined): deviceId is string =>
+  deviceId === cliRegistrationPendingDeviceId || isCliDeviceId(deviceId)
 
 /**
  * Resolve an unexpired persisted Better Auth session from its raw database token.

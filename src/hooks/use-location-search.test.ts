@@ -197,8 +197,11 @@ describe('useLocationSearch', () => {
     it('should search in the active locale', async () => {
       const recorded: Array<Record<string, unknown>> = []
       const recordingClient: HttpClient = {
-        get: (_url: string, options?: RequestOptions) => {
-          recorded.push((options?.searchParams ?? {}) as Record<string, unknown>)
+        get: (url: string, options?: RequestOptions) => {
+          // The AuthProvider's startup session check is not a search.
+          if (url !== 'api/auth/get-session') {
+            recorded.push((options?.searchParams ?? {}) as Record<string, unknown>)
+          }
           const promise = Promise.resolve(new Response('[]')) as ResponsePromise
           promise.json = async <T>() => [] as T
           promise.text = async () => '[]'

@@ -134,7 +134,7 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/posthog/*`                             | Analytics event relay                                                                                                                  |
 | `/v1/swagger`                               | OpenAPI spec (gated by `SWAGGER_ENABLED`)                                                                                              |
 
-There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and MCP rides the universal proxy like every other upstream (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists).
+There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and MCP rides the universal proxy like every other upstream (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists). The one MCP client on the server is the hosted agent's, which calls the operator's `AGENT_MCP_SERVERS` directly ([acp-agents.md](acp-agents.md#hosted-agent)).
 
 `createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
 

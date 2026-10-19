@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
 import { parseSkillTokens } from './parse-skill-tokens'
 
@@ -18,12 +19,18 @@ import { parseSkillTokens } from './parse-skill-tokens'
  * Keeping both surfaces on the same helper means a future change to
  * resolution semantics (e.g. case-insensitive matching) doesn't drift
  * between the budget estimate and the actual model call.
+ *
+ * Returns nothing in minimal mode, where `/` is ordinary text. Every send path
+ * (the composer estimate, the built-in pipeline in `ai/fetch.ts` and
+ * `built-in-adapter.ts`, and the ACP/hosted agents via `chat-instance.ts`)
+ * resolves through this one function, so gating here covers them all and the
+ * message text reaches the agent verbatim.
  */
 export const resolveSkillTokenInstructions = (
   text: string,
   instructionBySlug: ReadonlyMap<string, string>,
 ): string[] => {
-  if (!text || instructionBySlug.size === 0) {
+  if (!text || instructionBySlug.size === 0 || selectMinimalMode(useConfigStore.getState().config)) {
     return []
   }
   const { systemMessages } = parseSkillTokens(text, (slug) => {

@@ -169,6 +169,32 @@ describe('buildFetchOptions onError', () => {
     expect(dispatchSpy).not.toHaveBeenCalled()
   })
 
+  it.each([
+    'http://localhost:8000/v1/api/auth/sign-in/email-otp',
+    'http://localhost:8000/v1/api/auth/passkey/verify-authentication',
+  ])('keeps a stored token when a sign-in attempt is rejected with 401 (%s)', (url) => {
+    setAuthToken('valid-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({ response: new Response(null, { status: 401 }), request: { url } })
+
+    expect(getAuthToken()).toBe('valid-token')
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('still treats a 401 from any other route as an expired session', () => {
+    setAuthToken('stale-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({
+      response: new Response(null, { status: 401 }),
+      request: { url: 'http://localhost:8000/v1/api/auth/get-session' },
+    })
+
+    expect(getAuthToken()).toBeNull()
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('does not dispatch on non-401 responses', () => {
     setAuthToken('valid-token')
     const options = buildFetchOptions('web')

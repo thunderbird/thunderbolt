@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import {
@@ -9,6 +10,7 @@ import {
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
+  getPasskeyAndroidOriginsList,
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
@@ -143,6 +145,18 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual([])
+    })
+  })
+
+  describe('getPasskeyAndroidOriginsList', () => {
+    it('splits, trims, and drops empty entries', () => {
+      const settings = { passkeyAndroidOrigins: ' android:apk-key-hash:aaa ,,android:apk-key-hash:bbb, ' }
+
+      expect(getPasskeyAndroidOriginsList(settings)).toEqual(['android:apk-key-hash:aaa', 'android:apk-key-hash:bbb'])
+    })
+
+    it('is empty when unset', () => {
+      expect(getPasskeyAndroidOriginsList({ passkeyAndroidOrigins: '' })).toEqual([])
     })
   })
 
@@ -336,6 +350,50 @@ describe('Config Settings', () => {
       }
     })
 
+    describe('passkey Relying Party ID', () => {
+      const keys = ['APP_URL', 'PASSKEY_ENABLED', 'PASSKEY_RP_ID'] as const
+      const withEnv = (env: Partial<Record<(typeof keys)[number], string>>, run: () => void) => {
+        const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+        try {
+          for (const key of keys) {
+            delete process.env[key]
+          }
+          Object.assign(process.env, env)
+          clearSettingsCache()
+          run()
+        } finally {
+          for (const key of keys) {
+            if (saved[key] === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = saved[key]
+            }
+          }
+          clearSettingsCache()
+        }
+      }
+
+      it('never parses APP_URL while passkeys are off', () => {
+        withEnv({ APP_URL: 'app.example.com' }, () => {
+          expect(getSettings().passkeyRpId).toBe('')
+        })
+      })
+
+      it("derives the RP ID from APP_URL's hostname when passkeys are on", () => {
+        withEnv({ APP_URL: 'https://app.example.com', PASSKEY_ENABLED: 'true' }, () => {
+          expect(getSettings().passkeyRpId).toBe('app.example.com')
+        })
+      })
+
+      it('refuses an RP ID WebAuthn would reject', () => {
+        for (const appUrl of ['http://192.168.1.10:1420', 'app.example.com']) {
+          withEnv({ APP_URL: appUrl, PASSKEY_ENABLED: 'true' }, () => {
+            expect(() => getSettings()).toThrow()
+          })
+        }
+      })
+    })
+
     it('should have valid default values in schema', () => {
       // Test that the schema itself has sensible defaults
       // This tests the schema definition without env var manipulation
@@ -437,6 +495,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
     let savedEnv: Partial<Record<string, string>>
@@ -607,6 +666,19 @@ describe('Config Settings', () => {
       const settings = getSettings()
       expect(settings.altchaDifficulty).toBe(100_000)
       expect(settings.altchaTtlSecs).toBe(600)
+    })
+
+    it('should default ANONYMOUS_USER_IDLE_DAYS to 30, accept 0 and refuse garbage', () => {
+      delete process.env.ANONYMOUS_USER_IDLE_DAYS
+      expect(getSettings().anonymousUserIdleDays).toBe(30)
+      clearSettingsCache()
+      process.env.ANONYMOUS_USER_IDLE_DAYS = '0'
+      expect(getSettings().anonymousUserIdleDays).toBe(0)
+      for (const value of ['-1', '1.5', 'thirty']) {
+        clearSettingsCache()
+        process.env.ANONYMOUS_USER_IDLE_DAYS = value
+        expect(() => getSettings()).toThrow()
+      }
     })
 
     it('should read the altcha settings from env', () => {
@@ -976,7 +1048,7 @@ describe('Config Settings', () => {
       expect(settings.powersyncUrl).toBe('')
       expect(settings.powersyncJwtKid).toBe('')
       expect(settings.powersyncJwtSecret).toBe('')
-      // The default doubles as the post-revocation read window for the sync stream.
+      // Bounds how long a device can keep reconnecting to the sync stream.
       expect(settings.powersyncTokenExpirySeconds).toBe(300)
     })
 
@@ -1240,5 +1312,15 @@ describe('Hosted agent settings', () => {
   it('treats an empty AGENT_MAX_STEPS as unset', () => {
     process.env.AGENT_MAX_STEPS = ''
     expect(getSettings().agentMaxSteps).toBe(8)
+  })
+
+  it('accepts AGENT_MAX_STEPS up to one step per tool call a reply may make, plus the answer', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps)
+    expect(getSettings().agentMaxSteps).toBe(maxAgentSteps)
+  })
+
+  it('refuses to start on an AGENT_MAX_STEPS past that', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps + 1)
+    expect(() => getSettings()).toThrow(`AGENT_MAX_STEPS must be at most ${maxAgentSteps}`)
   })
 })

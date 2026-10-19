@@ -58,8 +58,8 @@ The same approval decision runs in three places, and they are not interchangeabl
 | Copy                                  | Where                                                                 | What only it does                                                                                                                                                                                                                                      |
 | ------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/join`                               | [routes.ts:63-103](../../../backend/src/waitlist/routes.ts)           | Skips minting a token, sends the queue email instead                                                                                                                                                                                                   |
-| `sendVerificationOTP`                 | [backend/src/auth/auth.ts:411-469](../../../backend/src/auth/auth.ts) | Blocks Better Auth's own send-OTP endpoint, which is reachable directly. `deletePersistedSignInOtp` then deletes the code Better Auth had already written to `verification` before the check ran, so no usable code survives for an unapproved address |
-| `before` hook on `/sign-in/email-otp` | [auth.ts:337-346](../../../backend/src/auth/auth.ts)                  | Defence-in-depth backstop: a caller with no `user` row and no `approved` entry is refused even holding a valid challenge token                                                                                                                         |
+| `sendVerificationOTP`                 | [backend/src/auth/auth.ts:470-528](../../../backend/src/auth/auth.ts) | Blocks Better Auth's own send-OTP endpoint, which is reachable directly. `deletePersistedSignInOtp` then deletes the code Better Auth had already written to `verification` before the check ran, so no usable code survives for an unapproved address |
+| `before` hook on `/sign-in/email-otp` | [auth.ts:396-404](../../../backend/src/auth/auth.ts)                  | Defence-in-depth backstop: a caller with no `user` row and no `approved` entry is refused even holding a valid challenge token                                                                                                                         |
 
 Both send paths converge on `getOrCreateOtpChallenge`
 ([backend/src/dal/otp-challenge.ts:18-39](../../../backend/src/dal/otp-challenge.ts)): first-writer-wins. A
@@ -145,7 +145,7 @@ full env table are in [Self-hosting § Configuration](../../self-hosting/configu
 `VITE_BYPASS_WAITLIST=true` removes the `/waitlist` route from the tree
 ([src/app.tsx:240-246](../../../src/app.tsx)), but `useAuthGate` only skips the waitlist redirect when the
 anonymous overlay is _also_ enabled
-([use-auth-gate.ts:40,87-95](../../../src/components/auth-gate/use-auth-gate.ts)). With the flag alone the
+([use-auth-gate.ts:51,174-185](../../../src/components/auth-gate/use-auth-gate.ts)). With the flag alone the
 visitor is redirected to a route that no longer exists and lands on `/not-found` via the catch-all. Pair it
 with `VITE_AUTH_ENABLE_ANONYMOUS=true` (and the backend's `AUTH_ALLOW_ANONYMOUS`), or
 leave both off.

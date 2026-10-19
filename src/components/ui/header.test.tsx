@@ -221,6 +221,19 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
   })
 
+  it('waits for /config before showing the agent selector', () => {
+    useConfigStore.setState({ config: {}, configLoaded: false })
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+    expect(screen.queryByTestId('agent-selector-trigger')).toBeNull()
+
+    act(() => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+    })
+    expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
   it('opens agent creation over the current chat route', async () => {
     setupWithAgent(builtInAgent)
     render(<Header />, { wrapper: TestWrapper })

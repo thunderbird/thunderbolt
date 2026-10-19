@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The layout measurement for the native apps, over the tree Maestro dumps. It covers what the tree can show
-// (Ruling 5): focus-covered, behind-keyboard for the focused field, and horizontal offscreen. The tree does not say
-// what is drawn on top or what scrolls, so covered and vertical offscreen stay with the web probe and the screenshot.
+// (Ruling 5): focus-covered and behind-keyboard for the focused field. The tree does not say what is drawn on top or
+// what scrolls, so covered and offscreen stay with the web probe, and the screenshot covers them on native.
 
 import type { LayoutProblem } from './layout'
 
@@ -50,21 +50,24 @@ const hasArea = ({ left, top, right, bottom }: Rect) => right > left && bottom >
 const framed = (node: NativeNode): NativeNode[] => (hasArea(node.bounds) ? [node] : node.children)
 
 /** The screen: one root over the top-level windows, sized to cover them. */
-const screenOf = (children: NativeNode[]): NativeNode => ({
-  bounds: children
-    .map((child) => child.bounds)
-    .reduce((a, b) => ({
-      left: Math.min(a.left, b.left),
-      top: Math.min(a.top, b.top),
-      right: Math.max(a.right, b.right),
-      bottom: Math.max(a.bottom, b.bottom),
-    })),
-  label: '',
-  hint: '',
-  id: '',
-  focused: false,
-  children,
-})
+const screenOf = (children: NativeNode[]): NativeNode => {
+  if (children.length === 0) throw new Error('The tree has no node with a frame')
+  return {
+    bounds: children
+      .map((child) => child.bounds)
+      .reduce((a, b) => ({
+        left: Math.min(a.left, b.left),
+        top: Math.min(a.top, b.top),
+        right: Math.max(a.right, b.right),
+        bottom: Math.max(a.bottom, b.bottom),
+      })),
+    label: '',
+    hint: '',
+    id: '',
+    focused: false,
+    children,
+  }
+}
 
 const fromHierarchy = ({ attributes, children = [] }: HierarchyNode): NativeNode[] =>
   framed({
@@ -122,54 +125,55 @@ const sameRect = (a: Rect, b: Rect) => isInside(a, b) && isInside(b, a)
 
 const name = (text: string) => `"${text.replace(/\s+/g, ' ').trim().slice(0, 50)}"`
 
-/** The one focused leaf. When several distinct leaves report focus (a WebView can mark every node), there is none. */
-const focusedLeaf = (leaves: NativeNode[]): NativeNode | undefined => {
-  const [first, ...rest] = leaves.filter((leaf) => leaf.focused)
-  return first && rest.every((leaf) => sameRect(leaf.bounds, first.bounds)) ? first : undefined
+/** The nodes from `node` down to `target`, both included, or none when `target` is not below `node`. */
+const pathTo = (node: NativeNode, target: NativeNode): NativeNode[] =>
+  node === target
+    ? [node]
+    : node.children.flatMap((child) => {
+        const path = pathTo(child, target)
+        return path.length > 0 ? [node, ...path] : []
+      })
+
+/**
+ * The focused field. Focus exists only when one leaf reports it (a WebView can mark every node), counting duplicates
+ * with equal bounds once. iOS shows some inputs as a box with the hint over their text leaves, so the field is the
+ * nearest focused ancestor with a hint, or the leaf itself.
+ */
+const focusedField = (content: NativeNode): NativeNode | undefined => {
+  const [first, ...rest] = allNodes(content).filter((node) => node.focused && node.children.length === 0)
+  if (!first || !rest.every((leaf) => sameRect(leaf.bounds, first.bounds))) return undefined
+  return pathTo(content, first).findLast((node) => node.focused && node.hint) ?? first
 }
 
-/** Measures one screen. iOS reads the keyboard from the `inputView` node; Android has no keyboard yet (Task 14). */
+/**
+ * Measures one screen: behind-keyboard and focus-covered for the focused field. iOS reads the keyboard from the
+ * `inputView` node; Android has no keyboard yet (Task 14). There is no native offscreen rule: the tree cannot tell a
+ * sideways-scrolling row of chips from a broken layout, so the screenshot covers horizontal overflow.
+ */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
-  const screen = root.bounds
   const keyboard = platform === 'ios' ? allNodes(root).find((node) => node.id === 'inputView')?.bounds : undefined
-  const leaves = allNodes(appContent(root, platform)).filter((node) => node.children.length === 0)
-  const candidates = leaves.filter((node) => node.label || node.hint)
-  const focused = focusedLeaf(leaves)
-  const describe = (node: NativeNode) =>
-    node === focused || node.hint ? `textbox ${name(node.hint || node.label)}` : `element ${name(node.label)}`
+  const content = appContent(root, platform)
+  const field = focusedField(content)
+  if (!field) return { keyboard, problems: [] }
 
-  // A node wholly past a side edge is a drawer parked off canvas on purpose.
-  const offscreen = candidates
-    .filter(
-      ({ bounds }) =>
-        (bounds.left < screen.left && bounds.right > screen.left) ||
-        (bounds.right > screen.right && bounds.left < screen.right),
-    )
-    .map((node): LayoutProblem => ({ kind: 'offscreen', target: describe(node) }))
-  return { keyboard, problems: dedupe([...offscreen, ...focusProblems(focused, candidates, keyboard)]) }
-}
-
-/** behind-keyboard and focus-covered for the focused field. */
-const focusProblems = (focused: NativeNode | undefined, candidates: NativeNode[], keyboard?: Rect): LayoutProblem[] => {
-  if (!focused) return []
-  const target = `textbox ${name(focused.hint || focused.label)}`
-  const behind = keyboard !== undefined && (focused.bounds.top + focused.bounds.bottom) / 2 > keyboard.top
-  // Leaves cannot hold each other, so a candidate is never the field's ancestor or descendant.
-  const coveredByNode = candidates.some(
-    (node) => node !== focused && !isInside(node.bounds, focused.bounds) && overlaps(node.bounds, focused.bounds),
+  const target = `textbox ${name(field.hint || field.label)}`
+  const fieldNodes = allNodes(field)
+  const behind = keyboard !== undefined && (field.bounds.top + field.bounds.bottom) / 2 > keyboard.top
+  const coveredByNode = allNodes(content).some(
+    (node) =>
+      node.children.length === 0 &&
+      Boolean(node.label || node.hint) &&
+      !fieldNodes.includes(node) &&
+      !isInside(node.bounds, field.bounds) &&
+      overlaps(node.bounds, field.bounds),
   )
   // One bug, one line: a field behind-keyboard reports is not focus-covered by the same keyboard.
-  const coveredByKeyboard = keyboard !== undefined && !behind && overlaps(keyboard, focused.bounds)
-  const checks: [boolean, LayoutProblem['kind']][] = [
-    [behind, 'behind-keyboard'],
-    [coveredByNode || coveredByKeyboard, 'focus-covered'],
-  ]
-  return checks.filter(([found]) => found).map(([, kind]) => ({ kind, target }))
+  const coveredByKeyboard = keyboard !== undefined && !behind && overlaps(keyboard, field.bounds)
+  const problems: LayoutProblem[] = []
+  if (behind) problems.push({ kind: 'behind-keyboard', target })
+  if (coveredByNode || coveredByKeyboard) problems.push({ kind: 'focus-covered', target })
+  return { keyboard, problems }
 }
-
-const dedupe = (problems: LayoutProblem[]) => [
-  ...new Map(problems.map((problem) => [`${problem.kind} ${problem.target}`, problem])).values(),
-]
 
 const rect = ({ left, top, right, bottom }: Rect) => `[${left},${top}][${right},${bottom}]`
 

@@ -30,15 +30,16 @@ test('the same step on the runner, with the field lower down, reports the same p
 test('the city step covers only text, so the measurement stays quiet (it is a visual finding)', () =>
   expect(measureNative(parseHierarchy(fixture('hier-city-kb.json')), 'ios').problems).toEqual([]))
 
-test.each(['hier-name-kb.json', 'hier-city-kb.json'])(
-  'the edit menu Back arrow half past the left edge in %s is iOS chrome, not an offscreen problem',
-  (name) => {
-    const root = parseHierarchy(fixture(name))
-    const back = allNodes(root).find((node) => node.label === 'Back')
-    expect(back?.bounds.left).toBe(-11)
-    expect(measureNative(root, 'ios').problems.filter((problem) => problem.kind === 'offscreen')).toEqual([])
-  },
-)
+test('the city search is measured on its field box [66,374][398,414], not on its placeholder text', () => {
+  const root = parseHierarchy(fixture('hier-city-kb.json'))
+  const placeholder = allNodes(root).find((node) => node.label === 'Search locations…' && node.children.length === 0)
+  expect(placeholder?.bounds).toEqual({ left: 66, top: 385, right: 185, bottom: 403 })
+  // A bar over the field's bottom 6 pt, well clear of the placeholder text.
+  root.children[0].children[0].children.push(node([246, 408, 312, 452], { label: 'Skip' }))
+  expect(measureNative(root, 'ios').problems).toEqual([
+    { kind: 'focus-covered', target: 'textbox "Search locations…"' },
+  ])
+})
 
 test('the welcome screen, where every web node reports focus, has no focused field and is clean', () => {
   const root = parseHierarchy(fixture('hier-00-welcome.json'))
@@ -47,7 +48,7 @@ test('the welcome screen, where every web node reports focus, has no focused fie
   expect(layoutLines(measureNative(root, 'ios'))).toEqual(['[qa-layout] ready keyboard=none'])
 })
 
-test('inspect_screen and hierarchy give the same lines for a chat composer with the keyboard open', () =>
+test('inspect_screen of a chat composer with the keyboard open gives the keyboard on the ready line', () =>
   expect(layoutLines(measureNative(parseInspectScreen(fixture('inspect-chat-kb.json')), 'ios'))[0]).toMatch(
     /^\[qa-layout\] ready keyboard=\[0,\d+\]\[440,956\]$/,
   ))
@@ -167,12 +168,24 @@ test('several distinct focused leaves mean nothing has focus, while equal duplic
   ])
 })
 
-test('a node half past the right edge is offscreen, and one wholly past it is a parked drawer', () => {
-  expect(problemsOf(syntheticTree([node([400, 300, 480, 340], { label: 'Next' })]))).toEqual([
-    { kind: 'offscreen', target: 'element "Next"' },
-  ])
-  expect(problemsOf(syntheticTree([node([450, 300, 520, 340], { label: 'Drawer' })]))).toEqual([])
-})
+// A field iOS shows as a box with the hint over a focused text leaf, like the cmdk search inputs.
+const boxedField = (text: number[]) =>
+  node([24, 178, 416, 222], {
+    hint: 'Enter your name',
+    focused: true,
+    children: [node(text, { label: 'Enter your name', focused: true })],
+  })
+
+test('a field with a text child is measured on its box: a bar over the lower edge counts', () =>
+  expect(
+    problemsOf(syntheticTree([boxedField([36, 190, 150, 206]), node([246, 212, 312, 256], { label: 'Skip' })])),
+  ).toEqual([{ kind: 'focus-covered', target: 'textbox "Enter your name"' }]))
+
+test('a field with a text child is measured on its box: an icon inside the box is not a cover', () =>
+  // Long typed text runs under the "Clear" icon, which still sits inside the field.
+  expect(
+    problemsOf(syntheticTree([boxedField([36, 190, 390, 210]), node([380, 186, 408, 214], { label: 'Clear' })])),
+  ).toEqual([]))
 
 test('the keyboard over the lower edge of the field, with its center free, is focus-covered', () =>
   expect(problemsOf(syntheticTree([field()], { top: 210 }))).toEqual([
@@ -191,9 +204,11 @@ test('a cover by another node still counts when the field is behind the keyboard
   ]))
 
 test('targets cut the name at 50 characters and squash whitespace', () =>
-  expect(problemsOf(syntheticTree([node([400, 300, 480, 340], { label: `Next\n${'x'.repeat(60)}` })]))).toEqual([
-    { kind: 'offscreen', target: `element "Next ${'x'.repeat(45)}"` },
-  ]))
+  expect(
+    problemsOf(
+      syntheticTree([node([24, 178, 416, 222], { hint: `Your\n${'x'.repeat(60)}`, focused: true })], { top: 210 }),
+    ),
+  ).toEqual([{ kind: 'focus-covered', target: `textbox "Your ${'x'.repeat(45)}"` }]))
 
 test('Android reads no keyboard from the tree yet', () =>
   expect(measureNative(syntheticTree([field()], { top: 210 }), 'android').keyboard).toBeUndefined())

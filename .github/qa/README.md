@@ -267,7 +267,10 @@ udid=$(.github/qa/scripts/native.sh device ios)
 
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
 stack's two extra `connect-src` origins (`http://localhost:8005`, `http://127.0.0.1:9880`, read from `stack.sh`), and
-without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. `build` takes the
+without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
+`beforeBuildCommand` puts `layout-probe.js` into `dist/index.html` as an inline script, so every native QA build
+logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. The Maestro tree
+cannot measure layout itself: it has no stacking order and leaves out unlabelled boxes. `build` takes the
 `VITE_*` settings from `stack.sh` too. The app ids are `net.thunderbird.thunderbolt.dev` (iOS, "Thunderbolt Dev")
 and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri
 rewrites, so `git status` stays clean; never commit them.

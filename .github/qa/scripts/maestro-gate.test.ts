@@ -6,7 +6,15 @@ import { expect, test } from 'bun:test'
 import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type GateContext, gateTools, handleCall, type MaestroClient, type ToolResult } from './maestro-gate'
+import { checkMaestroFlow } from './maestro-flow'
+import {
+  type GateContext,
+  gateTools,
+  handleCall,
+  type MaestroClient,
+  restartsApp,
+  type ToolResult,
+} from './maestro-gate'
 
 type HierarchyNode = { attributes: Record<string, string>; children?: HierarchyNode[] }
 type InspectElement = {
@@ -52,18 +60,33 @@ const screenText = (name: string): string => {
 
 const textResult = (text: string, isError = false): ToolResult => ({ content: [{ type: 'text', text }], isError })
 
+/** A WebView console line as `log stream` writes it on iOS. */
+const consoleLine = (message: string) =>
+  `2026-10-19 22:14:37.386 Df Thunderbolt Dev[1:2] [com.apple.WebKit:Generic] WebContent[3] ` +
+  `tauri://localhost/assets/entry.js:1:2: CONSOLE ERROR ${message}\n`
+
+const nameBug = '[qa-layout] focus-covered textbox "Enter your name"'
+
 /**
  * A gate over a fake Maestro that records every call. `inspect_screen` walks through `screens` and then repeats the
- * last one; `respond` can answer any call first.
+ * last one. Each `run` writes the next batch of `probe` messages to the WebView log, as the app's probe would while
+ * the commands run. `respond` can answer any call first.
  */
 const fakeGate = ({
   screen = 'hier-00-welcome',
   screens = [screen],
+  probe = [],
   respond,
-}: { screen?: string; screens?: string[]; respond?: (call: Call, index: number) => ToolResult | undefined } = {}) => {
+}: {
+  screen?: string
+  screens?: string[]
+  probe?: string[][]
+  respond?: (call: Call, index: number) => ToolResult | undefined
+} = {}) => {
   const dir = mkdtempSync(join(tmpdir(), 'qa-gate-'))
   const calls: Call[] = []
   let inspected = 0
+  const batches = [...probe]
   const ctx: GateContext = {
     client: {
       callTool: async (name, args) => {
@@ -71,6 +94,7 @@ const fakeGate = ({
         calls.push(call)
         const answer = respond?.(call, calls.length - 1)
         if (answer) return answer
+        if (name === 'run') appendFileSync(ctx.webviewLog, (batches.shift() ?? []).map(consoleLine).join(''))
         if (name === 'inspect_screen') return textResult(screenText(screens[Math.min(inspected++, screens.length - 1)]))
         if (name === 'take_screenshot') {
           return {
@@ -89,7 +113,7 @@ const fakeGate = ({
     webviewLog: join(dir, 'webview.log'),
     backendLog: join(dir, 'backend.log'),
     gateLog: join(dir, 'gate.log'),
-    settleMs: 0,
+    probeWaitMs: 0,
   }
   const log = async () => readFileSync(ctx.gateLog, 'utf8')
   return { ctx, calls, log, dir }
@@ -116,14 +140,14 @@ test('a denied run never reaches Maestro and is logged', async () => {
   expect(await log()).toContain('deny run')
 })
 
-test('an allowed run sends our serialization to our device and appends the measurement', async () => {
-  const { ctx, calls, log } = fakeGate({ screen: 'hier-name-kb' })
+test('an allowed run sends our serialization to our device and appends the probe lines', async () => {
+  const { ctx, calls, log } = fakeGate({ screen: 'hier-name-kb', probe: [['[qa-layout] ready', nameBug]] })
   const result = await handleCall('run', { yaml: '- waitForAnimationToEnd', device_id: 'other' }, ctx)
   expect(result.isError).toBe(true) // device_id is not the agent's to give
   expect(calls).toEqual([])
   const ok = await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx)
   expect(calls[0]).toEqual({ name: 'run', args: { device_id: ctx.deviceId, yaml: expect.stringMatching(/^appId: /) } })
-  expect(text(ok)).toContain('[qa-layout] focus-covered textbox "Enter your name"')
+  expect(text(ok).split('\n').slice(-2)).toEqual(['[qa-layout] ready keyboard=[0,611][440,956]', nameBug])
   expect(await log()).toContain('allow run')
 })
 
@@ -142,48 +166,88 @@ test('a tool the gate does not offer, or an extra argument, is refused without r
   expect(await log()).toContain('deny list_devices')
 })
 
-test('measures after a run that only waits', async () => {
-  const { ctx } = fakeGate({ screen: 'inspect-chat-kb' })
-  const result = await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx)
-  expect(text(result)).toMatch(/\[qa-layout\] ready keyboard=\[0,\d+\]\[440,956\]/)
+test('measures after a run that only waits, and each probe line comes back once', async () => {
+  const { ctx } = fakeGate({ screen: 'inspect-chat-kb', probe: [['[qa-layout] ready'], [nameBug]] })
+  const first = text(await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx))
+  expect(first).toMatch(/\[qa-layout\] ready keyboard=\[0,\d+\]\[440,956\]$/)
+  const second = text(await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx))
+  expect(second).toMatch(/\[qa-layout\] ready keyboard=\[0,\d+\]\[440,956\]\n\[qa-layout\] focus-covered/)
+  expect(text(await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx))).not.toContain('focus-covered')
 })
 
-test('a problem present in only one of the two readings is not reported', async () => {
-  for (const screens of [
-    ['hier-name-kb', 'hier-00-welcome'],
-    ['hier-00-welcome', 'hier-name-kb'],
+test('without the probe ready line since launch there is no ready line', async () => {
+  const { ctx } = fakeGate({ probe: [[], ['[qa-layout] ready'], []] })
+  expect(text(await handleCall('run', { yaml: '- back' }, ctx))).toEndWith(
+    '[qa-gate] layout probe not seen since launch',
+  )
+  expect(text(await handleCall('run', { yaml: '- back' }, ctx))).toEndWith('[qa-layout] ready keyboard=none')
+  // A relaunch reloads the page: its probe has to say ready again.
+  expect(text(await handleCall('run', { yaml: '- launchApp' }, ctx))).toEndWith(
+    '[qa-gate] layout probe not seen since launch',
+  )
+})
+
+test('a flow restarts the app with stopApp, killApp or launchApp, unless launchApp keeps it running', () => {
+  const ourFlow = (yaml: string) => {
+    const check = checkMaestroFlow(yaml, { appId: 'net.thunderbird.thunderbolt.dev' })
+    if (!check.ok) throw new Error(check.problems.join('; '))
+    return check.yaml
+  }
+  for (const yaml of [
+    '- launchApp',
+    '- launchApp: net.thunderbird.thunderbolt.dev',
+    '- launchApp:\n    appId: net.thunderbird.thunderbolt.dev',
+    '- stopApp',
+    '- back\n- retry:\n    commands:\n      - killApp',
+    '- launchApp:\n    stopApp: true',
   ]) {
-    const { ctx, calls } = fakeGate({ screens })
-    const result = await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx)
-    expect(calls.map((call) => call.name)).toEqual(['run', 'inspect_screen', 'inspect_screen'])
-    expect(text(result)).toContain('[qa-layout] ready keyboard=')
-    expect(text(result)).not.toContain('focus-covered')
+    expect(restartsApp(ourFlow(yaml))).toBe(true)
+  }
+  for (const yaml of [
+    '- back',
+    '- launchApp:\n    stopApp: false',
+    '- launchApp:\n    appId: net.thunderbird.thunderbolt.dev\n    stopApp: false\n- back',
+    '- tapOn: launchApp',
+  ]) {
+    expect(restartsApp(ourFlow(yaml))).toBe(false)
   }
 })
 
-test('a run that leaves the app is followed by a relaunch and no layout lines from the foreign screen', async () => {
-  const { ctx, calls } = fakeGate({ screens: ['control-center', 'hier-00-welcome'] })
+test('read_logs and the layout reader each see every line', async () => {
+  const { ctx } = fakeGate({ probe: [['[qa-layout] ready', nameBug]] })
+  expect(text(await handleCall('run', { yaml: '- back' }, ctx))).toContain(nameBug)
+  expect(text(await handleCall('read_logs', {}, ctx))).toContain(`CONSOLE ERROR ${nameBug}`)
+
+  appendFileSync(ctx.webviewLog, consoleLine('[qa-layout] behind-keyboard button "Continue"'))
+  expect(text(await handleCall('read_logs', {}, ctx))).toContain('behind-keyboard')
+  expect(text(await handleCall('inspect_screen', {}, ctx))).toEndWith('[qa-layout] behind-keyboard button "Continue"')
+})
+
+test('a run that leaves the app is followed by a relaunch and the layout of our screen', async () => {
+  const { ctx, calls } = fakeGate({ screens: ['control-center', 'hier-00-welcome'], probe: [['[qa-layout] ready']] })
   const result = await handleCall('run', { yaml: '- swipe:\n    direction: DOWN' }, ctx)
-  expect(calls.map((call) => call.name)).toEqual(['run', 'inspect_screen', 'run', 'inspect_screen', 'inspect_screen'])
+  expect(calls.map((call) => call.name)).toEqual(['run', 'inspect_screen', 'run', 'inspect_screen'])
   expect(calls[2].args.yaml).toContain('pressKey: Home')
   expect(calls[2].args.device_id).toBe(ctx.deviceId)
   expect(text(result)).toContain('the harness reopened it')
-  expect(text(result)).toContain('[qa-layout] ready keyboard=none')
+  // The relaunch keeps the app running, so the probe's earlier ready line still counts.
+  expect(text(result)).toEndWith('[qa-layout] ready keyboard=none')
 })
 
 test('when the app stays in the background the result says so and measures nothing', async () => {
-  const { ctx } = fakeGate({ screen: 'control-center' })
+  const { ctx } = fakeGate({ screen: 'control-center', probe: [['[qa-layout] ready', nameBug]] })
   const result = await handleCall('run', { yaml: '- back' }, ctx)
   expect(text(result)).toContain('the app is still not in the foreground')
   expect(text(result)).not.toContain('[qa-layout]')
 })
 
-test('inspect_screen passes our device and carries the measurement; cheat_sheet passes through', async () => {
+test('inspect_screen passes our device and carries the layout lines; cheat_sheet passes through', async () => {
   const { ctx, calls } = fakeGate({ screen: 'hier-name-kb' })
+  appendFileSync(ctx.webviewLog, consoleLine('[qa-layout] ready') + consoleLine(nameBug))
   const screen = await handleCall('inspect_screen', {}, ctx)
   expect(calls[0]).toEqual({ name: 'inspect_screen', args: { device_id: ctx.deviceId } })
   expect(text(screen)).toContain('"Thunderbolt Dev"')
-  expect(text(screen)).toContain('[qa-layout] focus-covered textbox "Enter your name"')
+  expect(text(screen)).toEndWith(`[qa-layout] ready keyboard=[0,611][440,956]\n${nameBug}`)
   await handleCall('cheat_sheet', {}, ctx)
   expect(calls.at(-1)?.name).toBe('cheat_sheet')
 })
@@ -239,7 +303,7 @@ test('a driver timeout is retried once', async () => {
         : undefined,
   })
   const result = await handleCall('run', { yaml: '- back' }, ctx)
-  expect(calls.map((call) => call.name)).toEqual(['run', 'run', 'inspect_screen', 'inspect_screen'])
+  expect(calls.map((call) => call.name)).toEqual(['run', 'run', 'inspect_screen'])
   expect(result.isError).toBe(false)
   expect(text(result)).not.toContain('not ready')
 })

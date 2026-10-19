@@ -7,9 +7,10 @@
 # The native apps for the QA agent, locally and in CI: build one against the stack `stack.sh serve native` runs, boot
 # a device, install the app and stream the WebView's console. <platform> is ios or android.
 #
-#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build
+#   native.sh config <platform> <out-json> [control]            Tauri config for a QA build (injects
+#                                                               layout-probe.js)
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
-#                                                               unless asked; control injects control/cover.js)
+#                                                               unless asked; control also injects control/cover.js)
 #   native.sh device <platform>                                 boot a device, print its id on stdout
 #   native.sh install <platform> <device> <app-path>
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
@@ -40,9 +41,11 @@ config() {
   # shellcheck disable=SC2016 # jq variables, not shell ones
   local filter='.app.security.csp["connect-src"] = $real[0].app.security.csp["connect-src"] + " " + $extra'
   [ "$1" = android ] && filter="$filter | del(.identifier)"
-  # Runs from the repo root, like the `bun run build` it replaces.
-  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const cover = await Bun.file(".github/qa/control/cover.js").text(); await Bun.write(f, html.replace("</head>", () => "<script>" + cover + "</script></head>"))'\'
-  [ "${3:-}" = control ] && filter="$filter | .build.beforeBuildCommand = \$cmd"
+  # Every QA build carries the layout probe as an inline script, and the control build cover.js after it. Runs from
+  # the repo root, like the `bun run build` it replaces.
+  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' .github/qa/layout-probe.js'
+  [ "${3:-}" = control ] && inject="$inject .github/qa/control/cover.js"
+  filter="$filter | .build.beforeBuildCommand = \$cmd"
   jq --slurpfile real src-tauri/tauri.conf.json --arg extra "$backend_url $fake_google_url" --arg cmd "$inject" \
     "$filter" src-tauri/tauri.dev.conf.json > "$2"
 }

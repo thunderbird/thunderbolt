@@ -6,8 +6,9 @@
 
 // The native explorer's only way to the device (spec 6.7, Ruling 1): an MCP server of ours between Claude and
 // `maestro mcp`. It offers five tools, fixes the device, sends Maestro only flows that pass the allow list, brings
-// the app back when a command leaves it, and measures the layout after every run. The model never sees Maestro's
-// cloud tools, its viewer or `list_devices`, because they are not forwarded.
+// the app back when a command leaves it, and after every run appends the layout probe's new `[qa-layout]` lines from
+// the WebView log. The model never sees Maestro's cloud tools, its viewer or `list_devices`, because they are not
+// forwarded.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -23,8 +24,7 @@ import {
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { type LayoutProblem } from '../layout'
-import { layoutLines, measureNative, parseInspectScreen } from '../native-layout'
+import { measureNative, parseInspectScreen, readyLine } from '../native-layout'
 import { sanitize, secretPattern } from './file-findings'
 import { platformOf } from './findings'
 import { checkMaestroFlow } from './maestro-flow'
@@ -46,8 +46,11 @@ export type GateContext = {
   webviewLog: string
   backendLog: string
   gateLog: string
-  /** The wait between the two screen readings a measurement compares; 500 ms unless a test shortens it. */
-  settleMs?: number
+  /**
+   * How long the gate waits after a command for the layout probe's confirmed lines: the probe debounces 250 ms and
+   * confirms over 500 ms. 1200 ms unless a test shortens it.
+   */
+  probeWaitMs?: number
 }
 
 const runArgs = z.strictObject({
@@ -62,14 +65,15 @@ const tools = [
     description:
       'Runs Maestro commands on the app under test. Pass only `yaml`: a list of commands, optionally after an ' +
       '`appId` header and `---`. Commands outside the QA allow list (scripts, links, media, device settings, ' +
-      'other apps) are refused. The result ends with `[qa-layout]` lines: the layout measured on the screen the ' +
-      'commands left.',
+      'other apps) are refused. The result ends with `[qa-layout]` lines: the ready line with the keyboard, then ' +
+      'each layout problem the in-app probe confirmed since the last call (a problem is reported once per app ' +
+      'launch).',
     args: runArgs,
   },
   {
     name: 'inspect_screen',
     description:
-      "The current screen's view hierarchy as compact JSON, followed by its `[qa-layout]` lines. Keys are " +
+      "The current screen's view hierarchy as compact JSON, followed by the `[qa-layout]` lines. Keys are " +
       'abbreviated (`b` bounds, `txt` text, `rid` resource-id, `a11y` accessibilityText, `hint`, `val`, `c` ' +
       'children). In selectors use `text:` for `txt` or `a11y` values, copied verbatim: Maestro matches the full ' +
       'string as a case-insensitive regex.',
@@ -105,6 +109,8 @@ const driverTimeout = 'iOS driver not ready in time'
 const consoleMark = { ios: 'CONSOLE', android: 'Tauri/Console' }
 const secrets = new RegExp(secretPattern.source, 'g')
 const logOffsets = new Map<string, number>()
+// The WebView logs whose probe has said ready since the app last started. One gate process serves one session.
+const probeSeen = new Set<string>()
 
 const log = (ctx: GateContext, line: string) => appendFileSync(ctx.gateLog, `${line}\n`)
 
@@ -142,23 +148,42 @@ const foregroundScreen = async (ctx: GateContext) => {
   return { screen: await inspect(ctx), notes: ['[qa-gate] the app left the foreground; the harness reopened it'] }
 }
 
-const problemKey = ({ kind, target }: LayoutProblem) => `${kind} ${target}`
+/**
+ * Whether a flow the gate wrote restarts the app, and with it the page and its probe: `stopApp`, `killApp`, or a
+ * `launchApp` without `stopApp: false`. It reads the gate's own `Bun.YAML.stringify` output, where a command's options
+ * sit four spaces deeper than its `- `.
+ */
+export const restartsApp = (yaml: string) =>
+  /^ *- (stopApp|killApp)\b/m.test(yaml) ||
+  [...yaml.matchAll(/^( *)- launchApp:?[ \t]*(.*)$((?:\n\1 {4}.*)*)/gm)].some(
+    ([, , value, options]) => value !== '' || !/^ *stopApp: false$/m.test(options),
+  )
+
+const clean = (line: string) => sanitize(line.replace(secrets, '[secret removed]'), 2000)
+
+const probeReady = '[qa-layout] ready'
 
 /**
- * Measures the screen the way the web probe confirms a problem: two readings `settleMs` apart, keeping only the
- * problems both show, because the keyboard animates in after a field takes focus. A foreign screen is never measured.
+ * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
+ * confirmation, under the gate's ready line with the keyboard from the tree. The ready line needs the probe's own
+ * ready line since the app last started, so a build without the probe never looks clean. A foreign screen is never
+ * measured.
  */
-const measured = async (ctx: GateContext) => {
+const measured = async (ctx: GateContext, restarted = false) => {
+  if (restarted) probeSeen.delete(ctx.webviewLog)
+  await Bun.sleep(ctx.probeWaitMs ?? 1200)
   const { screen, notes } = await foregroundScreen(ctx)
-  const stillAway = { screen, lines: [...notes, '[qa-gate] the app is still not in the foreground; nothing measured'] }
-  if (!isOurs(screen, ctx)) return stillAway
-  await Bun.sleep(ctx.settleMs ?? 500)
-  const again = await inspect(ctx)
-  if (!isOurs(again, ctx)) return { ...stillAway, screen: again }
-  const first = new Set(measureNative(parseInspectScreen(textOf(screen)), ctx.platform).problems.map(problemKey))
-  const second = measureNative(parseInspectScreen(textOf(again)), ctx.platform)
-  const problems = second.problems.filter((problem) => first.has(problemKey(problem)))
-  return { screen: again, lines: [...notes, ...layoutLines({ keyboard: second.keyboard, problems })] }
+  if (!isOurs(screen, ctx)) {
+    return { screen, lines: [...notes, '[qa-gate] the app is still not in the foreground; nothing measured'] }
+  }
+  const probe = newLines(ctx.webviewLog, 'layout')
+    .filter((line) => line.includes('[qa-layout]'))
+    .map((line) => clean(line.slice(line.indexOf('[qa-layout]'))))
+  if (probe.includes(probeReady)) probeSeen.add(ctx.webviewLog)
+  const head = probeSeen.has(ctx.webviewLog)
+    ? readyLine(measureNative(parseInspectScreen(textOf(screen)), ctx.platform))
+    : '[qa-gate] layout probe not seen since launch'
+  return { screen, lines: [...notes, head, ...probe.filter((line) => line !== probeReady)] }
 }
 
 const run = async (yaml: string, ctx: GateContext) => {
@@ -169,7 +194,7 @@ const run = async (yaml: string, ctx: GateContext) => {
   }
   log(ctx, 'allow run')
   const result = await callMaestro(ctx, 'run', { device_id: ctx.deviceId, yaml: check.yaml })
-  return withLines(result, (await measured(ctx)).lines)
+  return withLines(result, (await measured(ctx, restartsApp(check.yaml))).lines)
 }
 
 const screenshot = async (ctx: GateContext) => {
@@ -186,26 +211,30 @@ const screenshot = async (ctx: GateContext) => {
   return withLines(result, [`Saved to ${file}`])
 }
 
-/** The whole lines appended to `file` since the last call; a line still being written waits for the next one. */
-const newLines = (file: string): string[] => {
+/**
+ * The whole lines appended to `file` since this reader's last call; a line still being written waits for the next
+ * one. `read_logs` and the layout reader keep separate offsets, so neither takes the other's lines.
+ */
+const newLines = (file: string, reader: 'logs' | 'layout'): string[] => {
   if (!existsSync(file)) return []
   const bytes = readFileSync(file)
-  const start = logOffsets.get(file) ?? 0
+  const key = `${reader} ${file}`
+  const start = logOffsets.get(key) ?? 0
   const end = bytes.lastIndexOf('\n') + 1
   if (end <= start) return []
-  logOffsets.set(file, end)
+  logOffsets.set(key, end)
   return bytes.subarray(start, end).toString('utf8').split('\n').slice(0, -1)
 }
 
 const readLogs = (ctx: GateContext) => {
   const lines = [
-    ...newLines(ctx.webviewLog)
+    ...newLines(ctx.webviewLog, 'logs')
       .filter((line) => line.includes(consoleMark[ctx.platform]))
       .map((line) => `webview: ${line}`),
-    ...newLines(ctx.backendLog)
+    ...newLines(ctx.backendLog, 'logs')
       .filter((line) => / 5\d\d /.test(line))
       .map((line) => `backend: ${line}`),
-  ].map((line) => sanitize(line.replace(secrets, '[secret removed]'), 2000))
+  ].map(clean)
   const kept = lines.slice(-200)
   const left = lines.length - kept.length
   const notes = left > 0 ? [`[qa-gate] ${left} older lines left out`] : []

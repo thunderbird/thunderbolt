@@ -3326,6 +3326,10 @@ msgstr "OneDrive のファイルやドキュメントを検索して扱います
 msgid "Search chats, models, skills, agents…"
 msgstr "チャット、モデル、スキル、エージェントを検索…"
 
+#: src/search/palette/search-palette.tsx
+msgid "Search chats…"
+msgstr "チャットを検索…"
+
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "接続を検索"

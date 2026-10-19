@@ -101,6 +101,22 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       ]
     : []
 
+  // Minimal mode visitors are anonymous with no credentials, so signing out
+  // destroys the session and the next load starts a new user with no way back
+  // to their chats.
+  const signOutCommands: PaletteCommand[] = deps.minimalMode
+    ? []
+    : [
+        {
+          id: 'sign-out',
+          title: deps.i18n._(msg`Sign out`),
+          icon: LogOut,
+          section: 'actions',
+          keywords: ['logout', 'log out'],
+          run: deps.onSignOut,
+        },
+      ]
+
   const actionCommands: PaletteCommand[] = [
     ...themeCommands,
     {
@@ -112,14 +128,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       run: deps.onToggleSidebar,
     },
     ...downloadCommands,
-    {
-      id: 'sign-out',
-      title: deps.i18n._(msg`Sign out`),
-      icon: LogOut,
-      section: 'actions',
-      keywords: ['logout', 'log out'],
-      run: deps.onSignOut,
-    },
+    ...signOutCommands,
     {
       id: 'clear-all-chats',
       title: deps.i18n._(msg`Clear all chats`),

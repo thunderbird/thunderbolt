@@ -3338,6 +3338,10 @@ msgstr "Search and work with your OneDrive files and documents."
 msgid "Search chats, models, skills, agents…"
 msgstr "Search chats, models, skills, agents…"
 
+#: src/search/palette/search-palette.tsx
+msgid "Search chats…"
+msgstr "Search chats…"
+
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Search connections"

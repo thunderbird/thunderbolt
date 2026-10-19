@@ -3338,6 +3338,10 @@ msgstr ""
 msgid "Search chats, models, skills, agents…"
 msgstr ""
 
+#: src/search/palette/search-palette.tsx
+msgid "Search chats…"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr ""

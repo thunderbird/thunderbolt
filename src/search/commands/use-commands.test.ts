@@ -81,8 +81,22 @@ describe('buildCommands, minimal mode', () => {
   it('keeps the routes and actions that are not Settings pages', () => {
     const ids = buildCommands(makeDeps({ flags: allFlags, minimalMode: true })).map((command) => command.id)
     expect(ids).toEqual(
-      expect.arrayContaining(['tasks', 'message-simulator', 'new-chat', 'sign-out', 'toggle-sidebar']),
+      expect.arrayContaining(['tasks', 'message-simulator', 'new-chat', 'clear-all-chats', 'toggle-sidebar']),
     )
+  })
+})
+
+describe('buildCommands, sign out', () => {
+  it('offers Sign out and Clear all chats by default', () => {
+    const ids = buildCommands(makeDeps({ minimalMode: false })).map((command) => command.id)
+    expect(ids).toContain('sign-out')
+    expect(ids).toContain('clear-all-chats')
+  })
+
+  it('drops Sign out in minimal mode but keeps Clear all chats', () => {
+    const ids = buildCommands(makeDeps({ minimalMode: true })).map((command) => command.id)
+    expect(ids).not.toContain('sign-out')
+    expect(ids).toContain('clear-all-chats')
   })
 })
 

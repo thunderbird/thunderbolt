@@ -68,7 +68,7 @@ import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
 import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
-import { selectBuiltInAgentEnabled, selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
@@ -250,6 +250,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // highlighting or token-aware editing (resolution is gated in
     // `resolveSkillTokenInstructions`).
     const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const configSettled = useConfigStore(selectConfigSettled)
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     // Display-title → slug, for the whole library (disabled skills still
     // highlight as amber chips). The composer shows `/Daily Brief`; the model
@@ -977,9 +978,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
-            // Empty + idle composer shows the voice-mode trigger in the send
-            // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />}
+            // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send
+            // once there's input); withheld in minimal mode and until config settles.
+            emptyStateAction={
+              minimalMode || !configSettled ? undefined : (
+                <VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />
+              )
+            }
             // No overlay at all in minimal mode: its presence makes the textarea text transparent.
             renderOverlay={
               minimalMode

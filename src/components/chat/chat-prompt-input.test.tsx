@@ -618,8 +618,12 @@ describe('ChatPromptInput', () => {
       return { container, sendMessage: mockChatInstance.sendMessage }
     }
 
+    beforeEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+    })
+
     afterEach(() => {
-      useConfigStore.setState({ config: {} })
+      useConfigStore.setState({ config: {}, configLoaded: false })
     })
 
     it('says so and holds typed and voice sends, which would carry the history out unencrypted', async () => {
@@ -778,6 +782,43 @@ describe('ChatPromptInput', () => {
 
       expect(screen.queryByRole('button', { name: 'Add to chat' }) !== null).toBe(present)
     })
+  })
+
+  describe.each([
+    [true, false],
+    [false, true],
+  ])('voice mode button, minimalMode: %s', (minimalMode, present) => {
+    beforeEach(() => {
+      // An earlier test's persisted draft would swap the voice button for Send.
+      localStorage.clear()
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the button in the empty composer`, () => {
+      useConfigStore.setState({ config: minimalMode ? { minimalMode } : {}, configLoaded: true })
+      const { mockUseChat } = setupStore()
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Start voice mode' }) !== null).toBe(present)
+    })
+  })
+
+  it('renders no voice mode button until config settles', () => {
+    localStorage.clear()
+    useConfigStore.setState({ config: {}, configLoaded: false })
+    const { mockUseChat } = setupStore()
+    render(
+      <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      { wrapper: TestWrapper },
+    )
+
+    expect(screen.queryByRole('button', { name: 'Start voice mode' })).toBeNull()
   })
 
   describe('clipboard paste', () => {

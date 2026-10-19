@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -129,6 +130,7 @@ describe('Header', () => {
 
   beforeEach(() => {
     forceMobileViewport()
+    useConfigStore.setState({ config: {}, configLoaded: true })
   })
 
   afterEach(async () => {
@@ -200,6 +202,23 @@ describe('Header', () => {
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
     expect(wrapper).not.toHaveClass('[translate:-50%_0]')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+  })
+
+  it('hides the agent selector in minimal mode', () => {
+    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.queryByTestId('agent-selector-trigger')).toBeNull()
+  })
+
+  it('shows the agent selector with the default config', () => {
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
   })
 
   it('opens agent creation over the current chat route', async () => {

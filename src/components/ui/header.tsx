@@ -22,7 +22,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { exposesPrivateThread } from '@/chats/private-thread'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { selectAllowCustomAgents, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
@@ -191,6 +191,8 @@ export const Header = () => {
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configSettled = useConfigStore(selectConfigSettled)
 
   const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
     useShallow((state) => {
@@ -227,7 +229,9 @@ export const Header = () => {
   }
 
   const isChatRoute = location.pathname.startsWith('/chats')
-  const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
+  // Wait for `/config` so a first visit never flashes the pill before minimal mode is known.
+  const showAgentSelector =
+    isChatRoute && chatInstance !== undefined && allAgents.length > 0 && configSettled && !minimalMode
 
   const handleAddAgent = () => {
     openCreateItem({ kind: 'agent' })

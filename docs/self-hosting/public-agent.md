@@ -62,7 +62,7 @@ Render prompts once for every value below and never overwrites them afterwards. 
 
 The rest is fixed by the Blueprint. On the API it turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). It also sets `TRUSTED_PROXY=cloudflare`: all traffic to a Render web service passes through Cloudflare, which writes the caller's address to `CF-Connecting-IP`, so the rate limits key on each visitor's own address. Without it the API sees Render's proxy as every visitor, and they all share one sign-in budget. The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
 
-With `MINIMAL_MODE=true` the app is a chat and nothing else: no Settings section (`/settings` links return to the chat), no Projects, no pinned skill chips above the composer, no account or sync control, and no Settings destinations in search. With one agent and no way to add more, the agent's name shows as a label rather than a menu.
+With `MINIMAL_MODE=true` the app is a chat and nothing else: no Settings section (`/settings` links return to the chat), no Projects, no agent name in the header, no pinned skill chips above the composer, no account or sync control, and no Settings destinations in search.
 
 ## The agent's knowledge
 

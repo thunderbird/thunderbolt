@@ -74,6 +74,11 @@ test.each([
   ['- swipe:\n    start: 50%, 96%\n    end: 50%, 50%', 'within 5% of a screen edge'],
   ['- swipe:\n    start: 100, 400\n    end: 100, 100', 'in percent'],
   ['- swipe:\n    start: 50%, 50%\n    end: 50%, 120%', 'up to 100'],
+  ['- swipe:\n    from:\n      point: 50%,99%\n    direction: UP\n- tapOn: Hi', 'swipe.from.point: a point may not'],
+  ['- tapOn:\n    point: 50%,99%\n- tapOn: Settings', 'tapOn.point: a point may not lie within 5%'],
+  ['- doubleTapOn:\n    point: 2%,50%', 'doubleTapOn.point'],
+  ['- longPressOn:\n    point: 100,200', 'in percent'],
+  ['- swipe:\n    start: 50%, 60%', 'both start and end'],
 ])('%s is refused', (source, problem) =>
   expect(checkMaestroFlow(source, { appId })).toMatchObject({
     ok: false,
@@ -86,6 +91,9 @@ test.each([
   '- killApp: net.thunderbird.thunderbolt.dev\n- launchApp:\n    appId: net.thunderbird.thunderbolt.dev',
   '- swipe:\n    start: 50%, 60%\n    end: 50%, 5%',
   '- swipe:\n    direction: UP',
+  '- swipe:\n    from: Continue\n    direction: UP',
+  // The onboarding privacy checkbox has no label, so the flows tap it by position.
+  '- tapOn:\n    point: 8%,75%',
   '- tapOn: Hi\n- back',
   '- tapOn: Hi\n- pressKey: Back',
   '- tapOn: Hi\n- stopApp',

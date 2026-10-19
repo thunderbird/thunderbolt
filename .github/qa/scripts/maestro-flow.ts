@@ -68,12 +68,23 @@ const flowSchemas = (appId: string, vars: string[]) => {
   const shortOr = (short: z.ZodType, fields: Record<string, z.ZodType>) =>
     z.union([short, options(fields)], { error: 'expected a value or a mapping' })
 
+  // Pixels cannot be checked without the screen size, so points are percentages. A tap or a swipe at an edge is a
+  // system control or gesture (Notification and Control Center, home, Android back, Home and Recents) that leaves
+  // our app.
+  const percentPoint = z
+    .string()
+    .regex(percent, { error: 'expected a point in percent, like 50%, 40%' })
+    .refine((value) => coordinates(value).every((n) => n <= 100), { error: 'percentages go up to 100' })
+  const awayFromEdges = percentPoint.refine((value) => coordinates(value).every((n) => n >= 5 && n <= 95), {
+    error: 'a point may not lie within 5% of a screen edge',
+  })
+
   const nested = z.lazy(() => selector)
   const selectorFields = {
     text,
     id: text,
     index: int,
-    point: text,
+    point: awayFromEdges,
     enabled: bool,
     selected: bool,
     checked: bool,
@@ -108,15 +119,6 @@ const flowSchemas = (appId: string, vars: string[]) => {
       { error: 'expected a mapping' },
     )
     .partial()
-  // Pixels cannot be checked without the screen size, so swipe points are percentages. A swipe from an edge is a
-  // system gesture (Notification and Control Center, home, Android back) that leaves our app.
-  const percentPoint = z
-    .string()
-    .regex(percent, { error: 'expected a point in percent, like 50%, 40%' })
-    .refine((value) => coordinates(value).every((n) => n <= 100), { error: 'percentages go up to 100' })
-  const swipeStart = percentPoint.refine((value) => coordinates(value).every((n) => n >= 5 && n <= 95), {
-    error: 'a swipe may not start within 5% of a screen edge',
-  })
   const ordered = (item: z.ZodType, topLevel: boolean) =>
     z.array(item, { error: 'expected a list of commands' }).superRefine((items, ctx) =>
       items.forEach((entry, index) => {
@@ -164,11 +166,13 @@ const flowSchemas = (appId: string, vars: string[]) => {
               }),
               swipe: options({
                 direction,
-                start: swipeStart,
+                start: awayFromEdges,
                 end: percentPoint,
                 from: selector,
                 duration: ms,
                 waitToSettleTimeoutMs: ms,
+              }).refine((swipe) => 'start' in swipe === 'end' in swipe, {
+                error: 'a swipe needs both start and end, or neither',
               }),
               extendedWaitUntil: options({ visible: selector, notVisible: selector, timeout: ms }),
               waitForAnimationToEnd: options({ timeout: ms }),

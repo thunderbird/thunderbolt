@@ -111,7 +111,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
    is cut at its `mcp/` or `mcp-b/` part, so another runner path still resolves) and lists a session whose page
-   loads lack the ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns
+   loads lack the ready line under "Layout probe", because a clean layout there proves nothing. A native `run`
+   result whose gate output has no `[qa-layout] ready` line counts the same way, and the report says "screens
+   without a measurement" for both. Maestro tools count in coverage like browser tools: `run` is an action,
+   `inspect_screen`, `take_screenshot`, `read_logs` and `cheat_sheet` are reads, and a reload on native is a `run`
+   whose `yaml` has `launchApp` after `stopApp` or `killApp`. `noise.txt` turns
    a `[qa-layout]` line filed as a `console-error` into an observation. The explorer also takes a screenshot of
    every new screen and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is
    a `visual` finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is

@@ -144,12 +144,14 @@ export type AttemptFile = { id: string; attempt?: Attempt }
 export type TranscriptMessage = {
   message: {
     content: (
-      | { type: 'tool_use'; id: string; name: string; input?: { file_path?: string } }
+      | { type: 'tool_use'; id: string; name: string; input?: { file_path?: string; yaml?: string } }
       | { type: 'tool_result'; tool_use_id: string; content: string }
     )[]
   }
 }
-type Step = { kind: 'call'; tool: string; path?: string } | { kind: 'result'; tool: string; text: string }
+type Step =
+  | { kind: 'call'; tool: string; path?: string; yaml?: string }
+  | { kind: 'result'; tool: string; text: string }
 
 const toSteps = (transcript: TranscriptMessage[]): Step[] => {
   const blocks = transcript.flatMap((m) => m.message.content)
@@ -157,13 +159,16 @@ const toSteps = (transcript: TranscriptMessage[]): Step[] => {
   return blocks.map(
     (b): Step =>
       b.type === 'tool_use'
-        ? { kind: 'call', tool: b.name, path: b.input?.file_path }
+        ? { kind: 'call', tool: b.name, path: b.input?.file_path, yaml: b.input?.yaml }
         : { kind: 'result', tool: names.get(b.tool_use_id) ?? '', text: b.content },
   )
 }
 
-/** `click` for `mcp__playwright__browser_click` (and device B's `mcp__playwright_b__…`); undefined for other tools. */
-const browserTool = (tool: string) => /^mcp__playwright(?:_b)?__browser_(\w+)$/.exec(tool)?.[1]
+/**
+ * `click` for `mcp__playwright__browser_click` (and device B's `mcp__playwright_b__…`), `run` for
+ * `mcp__maestro__run`; undefined for other tools.
+ */
+const browserTool = (tool: string) => /^mcp__(?:playwright(?:_b)?__browser_|maestro__)(\w+)$/.exec(tool)?.[1]
 const readyLine = '[qa-layout] ready'
 const readOnlyTools = new Set([
   'snapshot',
@@ -174,6 +179,9 @@ const readOnlyTools = new Set([
   'find',
   'take_screenshot',
   'wait_for',
+  'inspect_screen',
+  'read_logs',
+  'cheat_sheet',
 ])
 const isAction = (step: Step) => {
   const tool = step.kind === 'call' ? browserTool(step.tool) : undefined
@@ -206,23 +214,33 @@ const probeRan = async (result: string, sessionDir: string, readLog: (path: stri
 }
 
 /**
- * Page loads in a session and how many of them did not show `[qa-layout] ready`. The MCP puts no console text in a
- * navigate result, only a count and a link to the log lines the load wrote, so each link is followed (`readLog`)
- * under `sessionDir`. A load with no link, or whose linked lines lack the ready line, counts as missing.
+ * Screens in a session and how many of them did not show `[qa-layout] ready`: page loads and native `run` calls.
+ * The Playwright MCP puts no console text in a navigate result, only a count and a link to the log lines the load
+ * wrote, so each link is followed (`readLog`) under `sessionDir`. A load with no link, or whose linked lines lack
+ * the ready line, counts as missing. The Maestro gate appends the ready line to a `run` result itself.
  */
 export const probeGaps = async (
   transcript: TranscriptMessage[],
   sessionDir: string,
   readLog = readConsoleLog,
 ): Promise<{ loads: number; missing: number }> => {
-  const loads = toSteps(transcript).flatMap((step) =>
-    step.kind === 'result' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ? [step.text] : [],
-  )
-  const ran = await Promise.all(loads.map((result) => probeRan(result, sessionDir, readLog)))
-  return { loads: loads.length, missing: ran.filter((ok) => !ok).length }
+  const screens = toSteps(transcript).flatMap((step) => {
+    if (step.kind !== 'result') return []
+    if (browserTool(step.tool) === 'run') return [Promise.resolve(step.text.includes(readyLine))]
+    return ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
+      ? [probeRan(step.text, sessionDir, readLog)]
+      : []
+  })
+  const ran = await Promise.all(screens)
+  return { loads: ran.length, missing: ran.filter((ok) => !ok).length }
 }
+// A relaunch, as the gate's allow list forces it: launchApp right after stopApp or killApp, as top-level commands.
+const relaunch = /^- (?:stopApp|killApp)\b[\s\S]*?^- launchApp\b/m
+/** A reload: a page navigation, or on native a `run` whose commands stop the app and launch it again. */
 const isNavigation = (step: Step) =>
-  step.kind === 'call' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
+  step.kind === 'call' &&
+  (['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ||
+    (browserTool(step.tool) === 'run' && relaunch.test(step.yaml ?? '')))
 /** The id of the attempt record a Write call wrote; undefined for every other step. */
 const recordWritten = (step: Step) =>
   step.kind === 'call' && step.tool === 'Write' ? /\/attempts\/([^/]+)\.json$/.exec(step.path ?? '')?.[1] : undefined
@@ -361,8 +379,7 @@ const probeSection = (probe: ReportInput['probe'] = new Map()) =>
         '',
         '## Layout probe',
         ...[...probe].map(
-          ([charter, { loads, missing }]) =>
-            `- **${charter}**: layout probe missing on ${missing} of ${loads} page loads`,
+          ([charter, { loads, missing }]) => `- **${charter}**: ${missing} of ${loads} screens without a measurement`,
         ),
       ]
 

@@ -206,8 +206,8 @@ describe('renderReport', () => {
       found: [],
       probe: new Map([['c8-phone', { loads: 4, missing: 1 }]]),
     })
-    expect(report).toContain('- **c8-phone**: layout probe missing on 1 of 4 page loads')
-    expect(report).not.toContain('**c2-chat-desktop**: layout probe')
+    expect(report).toContain('- **c8-phone**: 1 of 4 screens without a measurement')
+    expect(report).not.toContain('**c2-chat-desktop**: 0 of')
     expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('layout probe')
   })
 
@@ -599,6 +599,90 @@ describe('checkCoverage', () => {
   })
 })
 
+describe('native coverage', () => {
+  type Call = { name: string; result: string; input?: { file_path?: string; yaml?: string } }
+  const transcriptOf = (calls: Call[]): TranscriptMessage[] =>
+    calls.flatMap(({ name, result, input }, i) => [
+      { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name, input }] } },
+      { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+    ])
+  const run = (yaml: string, result = '[qa-layout] ready keyboard=none'): Call => ({
+    name: 'mcp__maestro__run',
+    result,
+    input: { yaml },
+  })
+  const inspect = (result: string): Call => ({ name: 'mcp__maestro__inspect_screen', result })
+  const record: Call = {
+    name: 'Write',
+    result: 'File created successfully',
+    input: { file_path: '/runner/qa-out/c4-ios/attempts/1.json' },
+  }
+  const screen = '{"text":"Skill Alpha One","role":"button"}\n[qa-layout] ready keyboard=none'
+  const header = 'appId: net.thunderbird.thunderbolt.dev\n---\n'
+  const tap = `${header}- tapOn: Add\n`
+  const relaunch = `${header}- stopApp\n- launchApp\n`
+  const files = (id: string) => [
+    {
+      id: '1',
+      attempt: {
+        function: id,
+        setup: 'fresh app',
+        action: 'did it',
+        expected: 'it works',
+        observed: 'text":"Skill Alpha One","role":"button',
+        status: 'passed' as const,
+      },
+    },
+  ]
+  const verdict = (id: string, calls: Call[]) => {
+    const [v] = checkCoverage(
+      [{ id, outcome: 'works', reload: id.endsWith('!') }],
+      files(id),
+      transcriptOf(calls),
+    ).verdicts
+    return [v.state, v.reason]
+  }
+
+  it('covers a function whose quote comes from an inspect_screen after a run', () => {
+    expect(verdict('edit', [run(tap), inspect(screen), record])).toEqual(['passed', undefined])
+  })
+
+  it('does not cover a quote read before any run, or one no Maestro result holds', () => {
+    expect(verdict('edit', [inspect(screen), record])).toEqual([
+      'unsupported',
+      'no browser action before the quoted result',
+    ])
+    expect(verdict('edit', [run(tap, 'ok'), record])).toEqual([
+      'unsupported',
+      'quote not in a browser tool result of this attempt',
+    ])
+  })
+
+  it('wants a stopApp then launchApp run between the change and the quote for a reload function', () => {
+    const reason = 'no reload between the change and the quoted result'
+    expect(verdict('persist!', [run(tap), inspect(screen), record])).toEqual(['unsupported', reason])
+    expect(verdict('persist!', [run(tap), run(`${header}- launchApp\n`), inspect(screen), record])).toEqual([
+      'unsupported',
+      reason,
+    ])
+    expect(verdict('persist!', [run(tap), run(`${header}- launchApp\n- stopApp\n`), inspect(screen), record])).toEqual([
+      'unsupported',
+      reason,
+    ])
+    expect(verdict('persist!', [run(tap), run(relaunch), inspect(screen), record])).toEqual(['passed', undefined])
+    expect(
+      verdict('persist!', [run(tap), run(`${header}- killApp\n- launchApp: null\n`), inspect(screen), record]),
+    ).toEqual(['passed', undefined])
+  })
+
+  it('does not take a launchApp inside a selector text for a reload', () => {
+    const spoof = `${header}- tapOn: "stopApp"\n- tapOn: "launchApp"\n`
+    expect(verdict('persist!', [run(tap), run(spoof), inspect(screen), record])[1]).toBe(
+      'no reload between the change and the quoted result',
+    )
+  })
+})
+
 describe('probeGaps', () => {
   const callsOf = (steps: readonly (readonly [string, string])[]): TranscriptMessage[] =>
     steps.flatMap(([name, result], i) => [
@@ -643,6 +727,16 @@ describe('probeGaps', () => {
       ['Write', 'ok'],
     ] as const
     expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 1, missing: 0 })
+  })
+
+  it('counts each native run that did not return the ready line, and no other Maestro tool', async () => {
+    const steps = [
+      ['mcp__maestro__run', '[qa-layout] ready keyboard=none'],
+      ['mcp__maestro__run', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__inspect_screen', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__read_logs', 'no lines'],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 1 })
   })
 
   it('reads a link written under another root or relative to another cwd from the session dir', async () => {
@@ -736,8 +830,8 @@ describe('runSummary', () => {
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
 
-    expect(report).toContain('- **c9-unlisted-phone**: layout probe missing on 1 of 2 page loads')
-    expect(report).not.toContain('fix-ab12cd34**: layout probe')
+    expect(report).toContain('- **c9-unlisted-phone**: 1 of 2 screens without a measurement')
+    expect(report).not.toContain('fix-ab12cd34**: ')
 
     expect(report).toContain('- **c4-skills-projects-phone**: 1/1 covered; invalid records: 2\n')
     expect(report).not.toContain('fix-ab12cd34**:')

@@ -382,6 +382,10 @@ msgstr ""
 msgid "Always ask"
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr ""
@@ -3653,8 +3657,16 @@ msgstr ""
 msgid "Sign-in denied"
 msgstr ""
 
+#: src/components/sso-error.tsx
+msgid "Sign-in failed"
+msgstr ""
+
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
+msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "Sign-in was cancelled, or your identity provider did not grant access."
 msgstr ""
 
 #: src/components/signed-out.tsx
@@ -4173,6 +4185,10 @@ msgstr ""
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr ""
@@ -4349,6 +4365,7 @@ msgstr ""
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -4610,6 +4627,10 @@ msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
+msgstr ""
+
+#: src/lib/sso-error-messages.ts
+msgid "We could not sign you in. Please try again."
 msgstr ""
 
 #: src/components/auth-gate/browser-check.tsx

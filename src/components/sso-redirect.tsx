@@ -8,7 +8,7 @@ import { http } from '@/lib/http'
 import { setAuthToken } from '@/lib/auth-token'
 import { isSafeUrl, normalizeBackendUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
-import { startSsoFlowLoopback } from '@/lib/sso-loopback'
+import { SsoCallbackError, startSsoFlowLoopback } from '@/lib/sso-loopback'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { useAuth } from '@/contexts'
@@ -55,7 +55,11 @@ const SsoRedirect = () => {
         // Web: redirect the browser to the IdP
         const data = await http
           .post(`${baseUrl}/v1/api/auth/sign-in/sso`, {
-            json: { providerId: 'sso', callbackURL: window.location.origin + '/' },
+            json: {
+              providerId: 'sso',
+              callbackURL: window.location.origin + '/',
+              errorCallbackURL: window.location.origin + '/sso-error',
+            },
             credentials: 'include',
             signal: abortController.signal,
           })
@@ -72,6 +76,10 @@ const SsoRedirect = () => {
         window.location.href = data.url
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
+        if (err instanceof SsoCallbackError) {
+          window.location.replace(`/sso-error?error=${encodeURIComponent(err.code)}`)
           return
         }
         console.error('SSO redirect failed:', err)

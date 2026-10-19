@@ -117,6 +117,8 @@ const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+// Enterprise-only like SsoRedirect, and reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
+const SsoError = lazy(() => import('@/components/sso-error'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -197,6 +199,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
+        {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (

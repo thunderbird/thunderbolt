@@ -142,14 +142,22 @@ describe('useAuthGate — require="authenticated"', () => {
     const authClient = createMockAuthClient({ session: null, isPending: false })
     const wrapper = createTestProvider({ authClient })
     const { result } = renderHook(() => useAuthGate('authenticated'), { wrapper })
-    expect(result.current).toEqual({ status: 'redirect', target: 'sso' })
+    expect(result.current).toEqual({ status: 'redirect', to: '/sso-redirect' })
+  })
+
+  it('returns redirect to the SSO error page, query kept, when the SSO callback came back with an error', () => {
+    env.VITE_AUTH_MODE = 'sso'
+    const authClient = createMockAuthClient({ session: null, isPending: false })
+    const wrapper = createTestProvider({ authClient })
+    const { result } = renderHook(() => useAuthGate('authenticated', '?error=account_not_linked'), { wrapper })
+    expect(result.current).toEqual({ status: 'redirect', to: '/sso-error?error=account_not_linked' })
   })
 
   it('returns redirect to waitlist when no session and waitlist is active', () => {
     const authClient = createMockAuthClient({ session: null, isPending: false })
     const wrapper = createTestProvider({ authClient })
     const { result } = renderHook(() => useAuthGate('authenticated'), { wrapper })
-    expect(result.current).toEqual({ status: 'redirect', target: 'waitlist' })
+    expect(result.current).toEqual({ status: 'redirect', to: '/waitlist' })
   })
 
   it('fires signIn.anonymous and shows loading when no session, waitlist bypassed, and anonymous allowed', async () => {
@@ -184,7 +192,7 @@ describe('useAuthGate — require="authenticated"', () => {
     rerender()
     rerender()
     expect(signInSpy).not.toHaveBeenCalled()
-    expect(result.current).toEqual({ status: 'redirect', target: 'sso' })
+    expect(result.current).toEqual({ status: 'redirect', to: '/sso-redirect' })
   })
 
   it('does NOT call signIn.anonymous when anonymous is enabled but waitlist is active (no bypass)', () => {
@@ -199,7 +207,7 @@ describe('useAuthGate — require="authenticated"', () => {
     rerender()
     rerender()
     expect(signInSpy).not.toHaveBeenCalled()
-    expect(result.current).toEqual({ status: 'redirect', target: 'waitlist' })
+    expect(result.current).toEqual({ status: 'redirect', to: '/waitlist' })
   })
 
   it('throws to error boundary when signIn.anonymous resolves with { error } (e.g. HTTP 429)', async () => {
@@ -516,7 +524,7 @@ describe('useAuthGate — require="unauthenticated"', () => {
     const authClient = createMockAuthClient({ session: realSession, isPending: false })
     const wrapper = createTestProvider({ authClient })
     const { result } = renderHook(() => useAuthGate('unauthenticated'), { wrapper })
-    expect(result.current).toEqual({ status: 'redirect', target: 'home' })
+    expect(result.current).toEqual({ status: 'redirect', to: '/' })
   })
 
   it('returns allowed when no session is present', () => {

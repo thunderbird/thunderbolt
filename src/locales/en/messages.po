@@ -382,6 +382,10 @@ msgstr "Always allow everything from this agent"
 msgid "Always ask"
 msgstr "Always ask"
 
+#: src/lib/sso-error-messages.ts
+msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+msgstr "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Analyzing…"
@@ -3653,9 +3657,17 @@ msgstr "Sign-in approved"
 msgid "Sign-in denied"
 msgstr "Sign-in denied"
 
+#: src/components/sso-error.tsx
+msgid "Sign-in failed"
+msgstr "Sign-in failed"
+
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
 msgstr "Sign-in successful"
+
+#: src/lib/sso-error-messages.ts
+msgid "Sign-in was cancelled, or your identity provider did not grant access."
+msgstr "Sign-in was cancelled, or your identity provider did not grant access."
 
 #: src/components/signed-out.tsx
 msgid "Signed Out"
@@ -4173,6 +4185,10 @@ msgstr "This server requires authorization. Click Authorize to connect."
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "This server uses OAuth. Add it and authorize to connect."
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgstr "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "This sign-in request has expired. Start a new one from your terminal."
@@ -4349,6 +4365,7 @@ msgstr "Trusted devices"
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -4611,6 +4628,10 @@ msgstr "Want early access?"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr "We could not send the transcript. Please check your connection and try again."
+
+#: src/lib/sso-error-messages.ts
+msgid "We could not sign you in. Please try again."
+msgstr "We could not sign you in. Please try again."
 
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."

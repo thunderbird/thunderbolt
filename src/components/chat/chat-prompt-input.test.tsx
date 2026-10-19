@@ -760,8 +760,15 @@ describe('ChatPromptInput', () => {
     [true, false],
     [false, true],
   ])('add menu, minimalMode: %s', (minimalMode, present) => {
-    it(`${present ? 'shows' : 'hides'} the add menu for an agent that takes no attachments`, () => {
+    beforeEach(() => {
       useConfigStore.setState({ config: { minimalMode } })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the add menu for an agent that takes no attachments`, () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
       render(

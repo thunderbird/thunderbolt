@@ -35,6 +35,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   samlEntityId: '',
   samlIdpIssuer: '',
   samlCert: '',
+  samlAllowIdpInitiated: false,
   betterAuthUrl: 'http://localhost:8000',
   betterAuthSecret: 'test-secret-at-least-32-chars-long!!',
   deviceAuthExpiresIn: '30m',

@@ -154,6 +154,8 @@ const buildSsoPlugins = () => {
       sso({
         // A falsy limit makes /sso/register answer 403, so only the env-configured provider exists.
         providersLimit: 0,
+        // Without a callback, a response with no RelayState (IdP-initiated) lands on the API origin, not the app.
+        saml: { allowIdpInitiated: settings.samlAllowIdpInitiated, idpInitiatedCallbackUrl: settings.appUrl },
         defaultSSO: [
           {
             providerId: 'sso',

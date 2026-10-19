@@ -180,8 +180,11 @@ describe('SAML Integration', () => {
       getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({ ...baseSettings, samlCert: idpCert })
     })
 
-    /** Complete an SP-initiated SAML sign-in in which the IdP signs a response for `email`. */
-    const signInThroughIdp = async (email: string) => {
+    /**
+     * Complete a SAML sign-in in which the IdP signs a response for `email`. With `unsolicited`, the response
+     * carries no `InResponseTo`, no RelayState and no cookie, as when the login starts from the IdP dashboard.
+     */
+    const signInThroughIdp = async (email: string, { unsolicited = false } = {}) => {
       const { createAuth } = await import('./auth')
       const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
       const start = await app.handle(
@@ -208,32 +211,34 @@ describe('SAML Integration', () => {
       })
       const { context: samlResponse } = await idp.createLoginResponse(
         sp,
-        { extract: { request: { id: requestId } } },
+        { extract: unsolicited ? {} : { request: { id: requestId } } },
         'post',
         { email },
       )
 
-      const acs = await app.handle(
-        new Request(acsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
-          body: new URLSearchParams({
-            SAMLResponse: samlResponse,
-            RelayState: idpRedirect.searchParams.get('RelayState') ?? '',
-          }),
-        }),
-      )
+      const headers = new Headers({ 'Content-Type': 'application/x-www-form-urlencoded' })
+      const form = new URLSearchParams({ SAMLResponse: samlResponse })
+      if (!unsolicited) {
+        headers.set('Cookie', cookie)
+        form.set('RelayState', idpRedirect.searchParams.get('RelayState') ?? '')
+      }
+
+      const acs = await app.handle(new Request(acsUrl, { method: 'POST', headers, body: form }))
       return acs.headers.get('location')
     }
 
     const ssoAccountCount = (userId: string) =>
       db.$count(account, and(eq(account.userId, userId), eq(account.providerId, 'sso')))
 
-    it('signs an existing email-OTP user in and links the IdP identity to them', async () => {
+    const existingUser = async () => {
       const { createAuth } = await import('./auth')
       const auth = createAuth(db)
       const cookie = await createSessionCookie(auth, db)
-      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) }))!.user
+      return (await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) }))!.user
+    }
+
+    it('signs an existing email-OTP user in and links the IdP identity to them', async () => {
+      const existing = await existingUser()
 
       expect(await signInThroughIdp(existing.email)).toBe(callbackURL)
       expect(await ssoAccountCount(existing.id)).toBe(1)
@@ -248,6 +253,26 @@ describe('SAML Integration', () => {
 
       expect(await signInThroughIdp(email)).toContain('error=account_not_linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    describe('response with no matching login request', () => {
+      it('is refused by default', async () => {
+        const existing = await existingUser()
+
+        const location = await signInThroughIdp(existing.email, { unsolicited: true })
+
+        expect(location).toStartWith(baseSettings.appUrl)
+        expect(location).toContain('error=unsolicited_response')
+        expect(await ssoAccountCount(existing.id)).toBe(0)
+      })
+
+      it('is accepted when SAML_ALLOW_IDP_INITIATED is on', async () => {
+        const existing = await existingUser()
+        getSettingsSpy.mockReturnValue({ ...baseSettings, samlCert: idpCert, samlAllowIdpInitiated: true })
+
+        expect(await signInThroughIdp(existing.email, { unsolicited: true })).toBe(baseSettings.appUrl)
+        expect(await ssoAccountCount(existing.id)).toBe(1)
+      })
     })
   })
 

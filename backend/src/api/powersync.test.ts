@@ -91,6 +91,7 @@ const powersyncSettings: Settings = {
   samlEntityId: '',
   samlIdpIssuer: '',
   samlCert: '',
+  samlAllowIdpInitiated: false,
   enabledAgents: '',
   allowCustomAgents: true,
   disableBuiltInAgent: false,

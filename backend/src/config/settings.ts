@@ -89,6 +89,7 @@ const settingsSchema = z
     samlEntityId: z.string().default(''),
     samlIdpIssuer: z.string().default(''),
     samlCert: z.string().default(''),
+    samlAllowIdpInitiated: z.boolean().default(false),
     betterAuthUrl: z.string().default('http://localhost:8000'),
     betterAuthSecret: z.string().min(1),
 
@@ -516,6 +517,7 @@ const parseSettings = (): Settings => {
     samlEntityId: process.env.SAML_ENTITY_ID || '',
     samlIdpIssuer: process.env.SAML_IDP_ISSUER || '',
     samlCert: process.env.SAML_CERT || '',
+    samlAllowIdpInitiated: process.env.SAML_ALLOW_IDP_INITIATED === 'true',
     betterAuthUrl: process.env.BETTER_AUTH_URL || 'http://localhost:8000',
     betterAuthSecret: process.env.BETTER_AUTH_SECRET,
     deviceAuthExpiresIn: process.env.DEVICE_AUTH_EXPIRES_IN || '30m',

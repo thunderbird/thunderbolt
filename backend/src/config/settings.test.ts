@@ -780,6 +780,39 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('SAML IdP-initiated login setting', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.SAML_ALLOW_IDP_INITIATED
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.SAML_ALLOW_IDP_INITIATED = savedEnv
+      } else {
+        delete process.env.SAML_ALLOW_IDP_INITIATED
+      }
+      clearSettingsCache()
+    })
+
+    it('stays off when the env var is unset', () => {
+      delete process.env.SAML_ALLOW_IDP_INITIATED
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
+    })
+
+    it('turns on only for "true"', () => {
+      process.env.SAML_ALLOW_IDP_INITIATED = 'true'
+      expect(getSettings().samlAllowIdpInitiated).toBe(true)
+    })
+
+    it.each(['TRUE', '1', 'yes', 'false'])('stays off for "%s"', (value) => {
+      process.env.SAML_ALLOW_IDP_INITIATED = value
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
+    })
+  })
+
   describe('minAppVersion settings', () => {
     let savedEnv: string | undefined
 

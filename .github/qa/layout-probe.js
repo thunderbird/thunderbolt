@@ -168,30 +168,39 @@
     )
     return [...new Set([focused, ...buttons])].filter((el) => {
       if (!candidates.includes(el)) return false
+      if (el === focused) {
+        // The app must scroll the field you type in into view itself, so room to scroll it is no excuse. A part its
+        // scroll box already hides belongs to focused-clipped, so only the visible bottom counts here.
+        const { rect, clip, fits } = focusedSpace(vv, el)
+        return fits && Math.min(rect.bottom, clip.bottom) - line > 1
+      }
       const shift = el.getBoundingClientRect().bottom - line
-      // The app must scroll the field you type in into view itself, so room to scroll it is no excuse.
-      return shift > 1 && (el === focused || scrollRoom(containersOf(el), 'down') < shift)
+      return shift > 1 && scrollRoom(containersOf(el), 'down') < shift
     })
   }
 
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
-  const focusedField = () => {
-    const el = document.activeElement
-    return el?.matches(textField) && isCandidate(el) ? el : null
+  // With the keyboard open, the focused field's box, the part of the screen its clipping ancestors leave it (the
+  // keyboard's area included) and whether it can show in full above the keyboard. A field taller than that space,
+  // like a growing textarea, cannot, so the keyboard rules leave it alone.
+  const focusedSpace = (vv, el) => {
+    const rect = el.getBoundingClientRect()
+    const line = vv.offsetTop + vv.height
+    const screen = { left: vv.offsetLeft, top: vv.offsetTop, right: vv.offsetLeft + vv.width, bottom: innerHeight }
+    const clip = clipArea(containersOf(el), screen)
+    return { rect, line, clip, fits: rect.height <= Math.min(line, clip.bottom) - clip.top + 1 }
   }
 
   // With the keyboard open the focused field must show in full. One problem per cause: behind-keyboard owns the part
-  // under the keyboard, this check owns the part above it that a clipping ancestor or the screen edge cuts off, and
-  // focus-covered owns what a pinned box hides. A scroll box with room left is no excuse: the app failed to scroll.
+  // the keyboard hides, this check owns what a clipping ancestor or the screen edge cuts off above the keyboard line
+  // (including a part also past the line, when the ancestor's edge comes first), and focus-covered owns what a pinned
+  // box hides. A scroll box with room left is no excuse: the app failed to scroll.
   const isFocusedClipped = (vv, el) => {
     if (!keyboardOpen(vv)) return false
-    const rect = el.getBoundingClientRect()
-    const line = vv.offsetTop + vv.height
-    if (rect.top >= line) return false
-    const screen = { left: vv.offsetLeft, top: vv.offsetTop, right: vv.offsetLeft + vv.width, bottom: innerHeight }
-    const clip = clipArea(containersOf(el), screen)
+    const { rect, line, clip, fits } = focusedSpace(vv, el)
+    if (!fits || rect.top >= line) return false
     return (
       rect.left < clip.left - 1 ||
       rect.top < clip.top - 1 ||
@@ -201,9 +210,10 @@
   }
 
   // The focused text field with any of a 5 x 3 grid of points, 2 px inside its edges, under a pinned box. Its center
-  // can be free: the iOS keyboard's bar hides only its lower edge. Only without a keyboard may the page excuse the
-  // cover by being able to scroll the field out from under it.
+  // can be free: the iOS keyboard's bar hides only its lower edge. Only without a keyboard, or for a field too tall to
+  // show in full, may the page excuse the cover by being able to scroll the field out from under it.
   const isFocusCovered = (vv, area, el) => {
+    const strict = keyboardOpen(vv) && focusedSpace(vv, el).fits
     const rect = el.getBoundingClientRect()
     const containers = containersOf(el)
     const clip = clipArea(containers, area)
@@ -215,7 +225,7 @@
         const hit = coverAt(x, y, el)
         // An icon drawn over the field scrolls with it; only a fixed or sticky box stays over it.
         const pinned = hit && pinnedCover(hit, el)
-        return Boolean(pinned) && (keyboardOpen(vv) || isStuckUnder(pinned, rect, containers))
+        return Boolean(pinned) && (strict || isStuckUnder(pinned, rect, containers))
       }),
     )
   }
@@ -252,13 +262,14 @@
       ].filter(Boolean)
     })
     const keyboard = behindKeyboard(vv, candidates).map((el) => ({ kind: 'behind-keyboard', target: describe(el) }))
-    const field = focusedField()
-    const focus = field
-      ? [
-          isFocusedClipped(vv, field) && { kind: 'focused-clipped', target: describe(field) },
-          isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
-        ].filter(Boolean)
-      : []
+    const field = document.activeElement
+    const focus =
+      field?.matches(textField) && isCandidate(field)
+        ? [
+            isFocusedClipped(vv, field) && { kind: 'focused-clipped', target: describe(field) },
+            isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
+          ].filter(Boolean)
+        : []
     return [...found, ...keyboard, ...focus, ...overflows()]
   }
 

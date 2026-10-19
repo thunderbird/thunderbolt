@@ -13,4 +13,4 @@ Object.defineProperty(window, 'visualViewport', {
   }),
   configurable: true,
 })
-document.querySelector('input').focus()
+document.querySelector('input, textarea').focus()

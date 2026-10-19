@@ -100,6 +100,30 @@ test('a focused field its scroll box cuts off with the keyboard open is focused-
     { kind: 'focused-clipped', target: 'textbox "Enter your name"' },
   ]))
 
+test('a focused textarea taller than its box above the keyboard is not reported', async ({ page }) =>
+  expect(await problemsOf(page, 'focused-tall.html')).toEqual([]))
+
+test('a focused textarea taller than the screen above the keyboard is not behind-keyboard', async ({ page }) => {
+  await page.setContent(`<textarea aria-label="Instructions" style="display: block; height: 600px"></textarea>`)
+  await page.addScriptTag({ path: resolve(import.meta.dirname, '../fixtures/layout/fake-keyboard.js') })
+  expect(await layoutProblems(page)).toEqual([])
+})
+
+test('a focused field past both its box and the keyboard line is focused-clipped once', async ({ page }) => {
+  // The box ends at 400 px, above the 420 px keyboard line, and cuts the field before the keyboard does.
+  await page.setContent(`
+    <body style="margin: 0">
+      <div id="box" style="height: 100px; margin-top: 300px; overflow-y: auto">
+        <div style="height: 80px"></div>
+        <input placeholder="City" style="display: block; height: 44px" />
+        <div style="height: 30px"></div>
+      </div>
+    </body>`)
+  await page.addScriptTag({ path: resolve(import.meta.dirname, '../fixtures/layout/fake-keyboard.js') })
+  await page.evaluate(() => document.getElementById('box')?.scrollTo(0, 0))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'focused-clipped', target: 'textbox "City"' }])
+})
+
 test('a focused field scrolled fully into its box is not clipped', async ({ page }) => {
   await problemsOf(page, 'focused-clipped.html')
   await page.evaluate(() => document.querySelector('input')?.scrollIntoView({ block: 'nearest' }))

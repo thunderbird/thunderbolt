@@ -12,6 +12,7 @@ const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps
   i18n,
   flags: { voice: false, tasks: false, dev: false },
   minimalMode: false,
+  isAnonymous: false,
   showDownloadApp: false,
   isMac: true,
   onNewChat: () => {},
@@ -93,10 +94,15 @@ describe('buildCommands, sign out', () => {
     expect(ids).toContain('clear-all-chats')
   })
 
-  it('drops Sign out in minimal mode but keeps Clear all chats', () => {
-    const ids = buildCommands(makeDeps({ minimalMode: true })).map((command) => command.id)
+  it('drops Sign out for an anonymous session but keeps Clear all chats', () => {
+    const ids = buildCommands(makeDeps({ isAnonymous: true })).map((command) => command.id)
     expect(ids).not.toContain('sign-out')
     expect(ids).toContain('clear-all-chats')
+  })
+
+  it('keeps Sign out in minimal mode for a real account', () => {
+    const ids = buildCommands(makeDeps({ minimalMode: true, isAnonymous: false })).map((command) => command.id)
+    expect(ids).toContain('sign-out')
   })
 })
 

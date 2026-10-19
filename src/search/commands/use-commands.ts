@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useAuth } from '@/contexts'
 import { themeIcons } from '@/components/theme-icons'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
@@ -50,6 +51,8 @@ export type BuildCommandsDeps = {
   /** In minimal mode (see `selectMinimalMode`) there is no Settings section or
    *  Projects, so every `/settings/*` and Projects command is dropped. */
   minimalMode: boolean
+  /** True for an anonymous session, which has nothing to sign out of. */
+  isAnonymous: boolean
   showDownloadApp: boolean
   isMac: boolean
   onNewChat: () => void
@@ -101,10 +104,11 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       ]
     : []
 
-  // Minimal mode visitors are anonymous with no credentials, so signing out
-  // destroys the session and the next load starts a new user with no way back
-  // to their chats.
-  const signOutCommands: PaletteCommand[] = deps.minimalMode
+  // An anonymous session has no account to leave (the sidebar treats it as
+  // logged out), and signing out destroys it with no way back to its chats.
+  // Real accounts keep Sign out in every mode: minimal mode hides the account
+  // menu, so the palette is their only way out.
+  const signOutCommands: PaletteCommand[] = deps.isAnonymous
     ? []
     : [
         {
@@ -170,10 +174,12 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   const { setTheme } = useTheme()
   const { toggleSidebar, closeMobileSidebar } = useSidebar()
   const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const { data: session } = useAuth().useSession()
 
   return buildCommands({
     i18n,
     minimalMode,
+    isAnonymous: session?.user?.isAnonymous === true,
     flags: {
       voice: experimentalFeatureVoice.value,
       tasks: experimentalFeatureTasks.value,

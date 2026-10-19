@@ -23,9 +23,14 @@ mock.module('@/waitlist/utils', () => ({
   sendWaitlistReminderEmail: mock(() => Promise.resolve()),
 }))
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createTestDb } from '@/test-utils/db'
+import { inflateRawSync } from 'node:zlib'
+import * as samlify from 'samlify'
+import { getTestCerts } from '../../../e2e/saml-test-certs'
+import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { account, user } from '@/db/auth-schema'
+import { and, eq } from 'drizzle-orm'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { ssoProvider } from '@/db/schema'
 
@@ -56,21 +61,17 @@ const baseSettings = createTestSettings({
 })
 
 describe('SAML Integration', () => {
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
+  let db: IsolatedTestDb['db']
   let getSettingsSpy: ReturnType<typeof spyOn>
 
-  beforeEach(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
+  // SSO mode runs Better Auth in native transactions, which commit through the shared
+  // BEGIN/ROLLBACK harness, so this suite uses the isolated instance and unique rows.
+  beforeAll(async () => {
+    db = (await getSharedIsolatedTestDb()).db
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     getSettingsSpy?.mockRestore()
-    if (cleanup) {
-      await cleanup()
-    }
   })
 
   describe('SAML sign-in endpoint', () => {
@@ -128,7 +129,6 @@ describe('SAML Integration', () => {
         expect(samlRequestEncoded).toBeTruthy()
 
         // SAMLRequest is deflate-compressed + base64-encoded; decode to inspect XML
-        const { inflateRawSync } = await import('node:zlib')
         const xml = inflateRawSync(Buffer.from(samlRequestEncoded!, 'base64')).toString()
 
         expect(xml).toContain('fake-saml-sp') // SP entity ID
@@ -155,6 +155,99 @@ describe('SAML Integration', () => {
 
         expect(res.ok).toBe(false)
       })
+    })
+  })
+
+  describe('linking a SAML sign-in to an existing account', () => {
+    const callbackURL = 'http://localhost:1420/'
+    let idpCert: string
+    let idp: ReturnType<typeof samlify.IdentityProvider>
+
+    beforeAll(() => {
+      const keys = getTestCerts()
+      idpCert = keys.certSingleLine
+      idp = samlify.IdentityProvider({
+        entityID: baseSettings.samlIdpIssuer,
+        signingCert: keys.cert,
+        privateKey: keys.privateKey,
+        singleSignOnService: [
+          { Binding: samlify.Constants.namespace.binding.redirect, Location: baseSettings.samlEntryPoint },
+        ],
+      })
+    })
+
+    beforeEach(() => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({ ...baseSettings, samlCert: idpCert })
+    })
+
+    /** Complete an SP-initiated SAML sign-in in which the IdP signs a response for `email`. */
+    const signInThroughIdp = async (email: string) => {
+      const { createAuth } = await import('./auth')
+      const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+      const start = await app.handle(
+        new Request('http://localhost/v1/api/auth/sign-in/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ providerId: 'sso', callbackURL }),
+        }),
+      )
+      const idpRedirect = new URL(((await start.json()) as { url: string }).url)
+      const cookie = start.headers
+        .getSetCookie()
+        .map((entry) => entry.split(';')[0])
+        .join('; ')
+      const authnRequest = inflateRawSync(
+        Buffer.from(idpRedirect.searchParams.get('SAMLRequest') ?? '', 'base64'),
+      ).toString()
+      const requestId = authnRequest.match(/ ID="([^"]+)"/)?.[1] ?? ''
+      const acsUrl = authnRequest.match(/AssertionConsumerServiceURL="([^"]+)"/)?.[1] ?? ''
+
+      const sp = samlify.ServiceProvider({
+        entityID: baseSettings.samlEntityId,
+        assertionConsumerService: [{ Binding: samlify.Constants.namespace.binding.post, Location: acsUrl }],
+      })
+      const { context: samlResponse } = await idp.createLoginResponse(
+        sp,
+        { extract: { request: { id: requestId } } },
+        'post',
+        { email },
+      )
+
+      const acs = await app.handle(
+        new Request(acsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+          body: new URLSearchParams({
+            SAMLResponse: samlResponse,
+            RelayState: idpRedirect.searchParams.get('RelayState') ?? '',
+          }),
+        }),
+      )
+      return acs.headers.get('location')
+    }
+
+    const ssoAccountCount = (userId: string) =>
+      db.$count(account, and(eq(account.userId, userId), eq(account.providerId, 'sso')))
+
+    it('signs an existing email-OTP user in and links the IdP identity to them', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const cookie = await createSessionCookie(auth, db)
+      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) }))!.user
+
+      expect(await signInThroughIdp(existing.email)).toBe(callbackURL)
+      expect(await ssoAccountCount(existing.id)).toBe(1)
+    })
+
+    it('control: leaves an unverified local account with the same email unlinked', async () => {
+      const email = `unverified-${crypto.randomUUID()}@example.com`
+      const [local] = await db
+        .insert(user)
+        .values({ id: crypto.randomUUID(), name: 'Unverified', email, emailVerified: false })
+        .returning()
+
+      expect(await signInThroughIdp(email)).toContain('error=account_not_linked')
+      expect(await ssoAccountCount(local.id)).toBe(0)
     })
   })
 
@@ -253,6 +346,7 @@ describe('SAML Integration', () => {
               entryPoint: 'https://attacker.test/saml/sso',
               cert: 'attacker-cert',
               callbackUrl: 'http://localhost/v1/api/auth/sso/saml2/sp/acs/attacker-idp',
+              idpMetadata: { entityID: 'https://attacker.test' },
               spMetadata: {},
             },
           }),

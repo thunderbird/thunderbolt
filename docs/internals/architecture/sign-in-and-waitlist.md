@@ -58,8 +58,8 @@ The same approval decision runs in three places, and they are not interchangeabl
 | Copy                                  | Where                                                                 | What only it does                                                                                                                                                                                                                                      |
 | ------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/join`                               | [routes.ts:63-103](../../../backend/src/waitlist/routes.ts)           | Skips minting a token, sends the queue email instead                                                                                                                                                                                                   |
-| `sendVerificationOTP`                 | [backend/src/auth/auth.ts:336-394](../../../backend/src/auth/auth.ts) | Blocks Better Auth's own send-OTP endpoint, which is reachable directly. `deletePersistedSignInOtp` then deletes the code Better Auth had already written to `verification` before the check ran, so no usable code survives for an unapproved address |
-| `before` hook on `/sign-in/email-otp` | [auth.ts:262-270](../../../backend/src/auth/auth.ts)                  | Defence-in-depth backstop: a caller with no `user` row and no `approved` entry is refused even holding a valid challenge token                                                                                                                         |
+| `sendVerificationOTP`                 | [backend/src/auth/auth.ts:411-469](../../../backend/src/auth/auth.ts) | Blocks Better Auth's own send-OTP endpoint, which is reachable directly. `deletePersistedSignInOtp` then deletes the code Better Auth had already written to `verification` before the check ran, so no usable code survives for an unapproved address |
+| `before` hook on `/sign-in/email-otp` | [auth.ts:337-346](../../../backend/src/auth/auth.ts)                  | Defence-in-depth backstop: a caller with no `user` row and no `approved` entry is refused even holding a valid challenge token                                                                                                                         |
 
 Both send paths converge on `getOrCreateOtpChallenge`
 ([backend/src/dal/otp-challenge.ts:18-39](../../../backend/src/dal/otp-challenge.ts)): first-writer-wins. A
@@ -88,12 +88,12 @@ replay it as `x-challenge-token` on the Better Auth call; the magic-link route t
 | Sign-in modal             | [use-sign-in-form-state.ts:197-232](../../../src/components/sign-in/use-sign-in-form-state.ts) | The sidebar footer and Preferences sign-in buttons, device approval for an anonymous visitor, and session expiry; also resend at `:270-275` |
 | `/auth/verify` magic link | [magic-link-verify.tsx:43-74](../../../src/components/magic-link-verify.tsx)                   | The link in the email, or a Tauri deep link                                                                                                 |
 
-### Headers must be built with `authRequestHeaders`
+### Shared headers come from `authRequestHeaders`
 
-Use `authRequestHeaders` ([src/contexts/auth-context.tsx:123](../../../src/contexts/auth-context.tsx)), never a
-bare object: better-fetch replaces client-level headers with a per-call `headers` object instead of merging,
-so a bare object drops `X-App-Version` and the call 426s under the version gate. Both OTP call sites and the
-magic-link page hit this ([AGENTS.md § App version gate](../../../AGENTS.md#app-version-gate)).
+`buildFetchOptions` applies `authRequestHeaders` ([src/contexts/auth-context.tsx:116](../../../src/contexts/auth-context.tsx))
+in `onRequest`, so every Better Auth call carries `X-App-Version`. A per-call `headers` object, such as the
+challenge token on both OTP call sites and the magic-link page, is merged with those headers
+([AGENTS.md § App version gate](../../../AGENTS.md#app-version-gate)).
 
 ### The magic link is the same code, not a second mechanism
 

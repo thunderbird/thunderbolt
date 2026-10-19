@@ -91,7 +91,7 @@ The cooldown map is per-instance, in-memory, pruned past 1000 entries.
 authClient.signIn.emailOtp({ …, fetchOptions: { headers: authRequestHeaders({ [challengeTokenHeader]: token }) } })
 ```
 
-See [`use-sign-in-form-state.ts`](../../src/components/sign-in/use-sign-in-form-state.ts) and [`use-waitlist-state.ts`](../../src/waitlist/use-waitlist-state.ts). `authRequestHeaders` is mandatory: Better Auth **replaces** client-level headers with a per-call `headers` object rather than merging, so a bare object drops `X-App-Version` and the call 426s under the [app version gate](../../AGENTS.md#app-version-gate).
+See [`use-sign-in-form-state.ts`](../../src/components/sign-in/use-sign-in-form-state.ts) and [`use-waitlist-state.ts`](../../src/waitlist/use-waitlist-state.ts). Better Auth merges a per-call `headers` object with the client's headers, and `buildFetchOptions` adds `X-App-Version` to every request in `onRequest`, so the [app version gate](../../AGENTS.md#app-version-gate) always sees it.
 
 Sign-in errors: `OTP_EXPIRED`, `INVALID_OTP`, `TOO_MANY_ATTEMPTS` (Better Auth), plus the before-hook's 401s; display mapping in [`otp-error-messages.ts`](../../src/lib/otp-error-messages.ts). `/v1/waitlist/join` answers `429 { error: 'code_already_sent' }` inside the cooldown, otherwise always `{ success: true }`. `challengeToken` is present only for an address allowed to sign in, so the response does not disclose account existence.
 
@@ -107,7 +107,11 @@ Email locale comes from the `X-App-Language` header on the triggering request, n
 
 `AUTH_MODE=oidc` or `saml` swaps the login page for an IdP redirect; `buildSsoPlugins` throws at startup if the mode's env vars are missing. Setup and the web redirect chain: [oidc-local-dev.md](./oidc-local-dev.md), [saml-local-dev.md](./saml-local-dev.md).
 
-SSO mode adds the `sso` provider to `accountLinking.trustedProviders`. The IdP is operator-controlled in a self-hosted deployment, so linking an SSO identity onto an existing user row with the same email is safe; without it, any user record not created through the same SSO flow fails at the callback with "account not linked".
+SSO mode passes a `resolveUser` hook to the `sso` plugin (`linkSsoToVerifiedEmailOwner` in [`auth.ts`](../src/auth/auth.ts)). When the IdP's email matches an existing user whose email is verified, the SSO identity is linked to that user. A new email creates a user as before. An unverified local account with the same email is refused with "account not linked".
+
+What we trust is the one IdP the operator configured through env, and only after Better Auth has checked the SAML signature or the OIDC id_token. We do not use the IdP's `email_verified` claim. Better Auth does not trust a provider by name for SSO, so without the hook every user who first signed in by email code would hit "account not linked" on their first SSO sign-in.
+
+The hook runs inside a database transaction and Better Auth refuses to call it otherwise, so SSO mode turns on `transaction` in the Drizzle adapter. Consumer mode keeps the plain adapter.
 
 ### The desktop bridge (Tauri)
 

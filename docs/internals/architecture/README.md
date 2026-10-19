@@ -136,7 +136,7 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 
 There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and MCP rides the universal proxy like every other upstream (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists).
 
-`createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`), today `/v1/config`, `/v1/health`, `/static`, `/v1/api/auth/sso`, `/v1/api/auth/device`, `/v1/posthog`, `/v1/proxy/ws`, `/v1/debug-transcripts/intake`. The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
+`createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
 
 ### Dev-Time Database
 

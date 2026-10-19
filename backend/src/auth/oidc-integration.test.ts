@@ -5,9 +5,12 @@
 import * as settingsModule from '@/config/settings'
 import { createTestSettings } from '@/test-utils/settings'
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
-import { createTestDb } from '@/test-utils/db'
+import { and, eq } from 'drizzle-orm'
+import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose'
+import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { account, user } from '@/db/auth-schema'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { ssoProvider } from '@/db/schema'
 
@@ -54,15 +57,15 @@ const baseSettings = createTestSettings({
 })
 
 /** Save and restore globalThis.fetch + process.env.TRUSTED_ORIGINS around a test body. */
-const withOidcFetch = async (fn: () => Promise<void>) => {
+const withOidcFetch = async <T>(fn: () => Promise<T>, idpFetch: typeof fetch = oidcDiscoveryFetch) => {
   const savedFetch = globalThis.fetch
   const savedOrigins = process.env.TRUSTED_ORIGINS
-  globalThis.fetch = oidcDiscoveryFetch
+  globalThis.fetch = idpFetch
   process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
   requestedDiscoveryUrls.length = 0
 
   try {
-    await fn()
+    return await fn()
   } finally {
     globalThis.fetch = savedFetch
     process.env.TRUSTED_ORIGINS = savedOrigins
@@ -70,20 +73,13 @@ const withOidcFetch = async (fn: () => Promise<void>) => {
 }
 
 describe('OIDC Integration', () => {
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
+  let db: IsolatedTestDb['db']
   let getSettingsSpy: ReturnType<typeof spyOn>
 
+  // SSO mode runs Better Auth in native transactions, which commit through the shared
+  // BEGIN/ROLLBACK harness, so this suite uses the isolated instance and unique rows.
   beforeAll(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
-  }, 60_000)
-
-  afterAll(async () => {
-    if (cleanup) {
-      await cleanup().catch(() => {})
-    }
+    db = (await getSharedIsolatedTestDb()).db
   }, 60_000)
 
   afterEach(() => {
@@ -209,6 +205,102 @@ describe('OIDC Integration', () => {
         expect(requestedDiscoveryUrls).toEqual([`${oidcPathIssuerUrl}/.well-known/openid-configuration`])
         expect(res.ok).toBe(true)
       })
+    })
+  })
+
+  describe('linking an SSO sign-in to an existing account', () => {
+    const callbackURL = 'http://localhost:1420/'
+    let signingKey: CryptoKey
+    let publicJwk: JWK
+
+    beforeAll(async () => {
+      const keyPair = await generateKeyPair('RS256', { extractable: true })
+      signingKey = keyPair.privateKey
+      publicJwk = { ...(await exportJWK(keyPair.publicKey)), alg: 'RS256' }
+    })
+
+    beforeEach(() => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: oidcIssuerUrl,
+      })
+    })
+
+    /** Complete an OIDC sign-in in which the IdP vouches for `email` with a signed id_token. */
+    const signInThroughIdp = async (email: string) => {
+      const idToken = await new SignJWT({ email, name: 'SSO User' })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuer(oidcIssuerUrl)
+        .setAudience(baseSettings.oidcClientId)
+        .setSubject(crypto.randomUUID())
+        .setIssuedAt()
+        .setExpirationTime('5m')
+        .sign(signingKey)
+      const discovery = discoveryDocumentFor(oidcIssuerUrl)
+      const idpFetch = async (...[input]: Parameters<typeof fetch>) => {
+        const url = input instanceof Request ? input.url : input.toString()
+        if (url === `${oidcIssuerUrl}/.well-known/openid-configuration`) {
+          return Response.json(discovery)
+        }
+        if (url === discovery.token_endpoint) {
+          return Response.json({ access_token: 'idp-access-token', token_type: 'Bearer', id_token: idToken })
+        }
+        if (url === discovery.jwks_uri) {
+          return Response.json({ keys: [publicJwk] })
+        }
+        throw new Error(`Unexpected OIDC request: ${url}`)
+      }
+
+      return withOidcFetch(
+        async () => {
+          const { createAuth } = await import('./auth')
+          const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+          const start = await app.handle(
+            new Request('http://localhost/v1/api/auth/sign-in/sso', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ providerId: 'sso', callbackURL }),
+            }),
+          )
+          const state = new URL(((await start.json()) as { url: string }).url).searchParams.get('state')
+          const cookie = start.headers
+            .getSetCookie()
+            .map((entry) => entry.split(';')[0])
+            .join('; ')
+
+          const callback = await app.handle(
+            new Request(`http://localhost/v1/api/auth/sso/callback/sso?code=idp-code&state=${state}`, {
+              headers: { Cookie: cookie },
+            }),
+          )
+          return callback.headers.get('location')
+        },
+        Object.assign(idpFetch, { preconnect: globalThis.fetch.preconnect }),
+      )
+    }
+
+    const ssoAccountCount = (userId: string) =>
+      db.$count(account, and(eq(account.userId, userId), eq(account.providerId, 'sso')))
+
+    it('signs an existing email-OTP user in and links the IdP identity to them', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const cookie = await createSessionCookie(auth, db)
+      const existing = (await auth.api.getSession({ headers: new Headers({ Cookie: cookie }) }))!.user
+
+      expect(await signInThroughIdp(existing.email)).toBe(callbackURL)
+      expect(await ssoAccountCount(existing.id)).toBe(1)
+    })
+
+    it('control: leaves an unverified local account with the same email unlinked', async () => {
+      const email = `unverified-${crypto.randomUUID()}@example.com`
+      const [local] = await db
+        .insert(user)
+        .values({ id: crypto.randomUUID(), name: 'Unverified', email, emailVerified: false })
+        .returning()
+
+      expect(await signInThroughIdp(email)).toContain('error=account+not+linked')
+      expect(await ssoAccountCount(local.id)).toBe(0)
     })
   })
 

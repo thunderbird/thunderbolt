@@ -55,7 +55,7 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 
 - `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). Without one, any client can forge `X-Forwarded-For` and mint a fresh bucket per request.
 - An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:161](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
-- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured: `[]` makes Better Auth resolve a null IP and disable its own limiter.
+- `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
 
 ## Response contract
 
@@ -76,7 +76,7 @@ Counters live in `rate_limits` ([db/rate-limit-schema.ts](../src/db/rate-limit-s
 
 ## Better Auth has a second, weaker limiter
 
-Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:216](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is built to be the cross-replica control on anonymous sign-in, with replay records shared in Postgres, but the app cannot complete it yet, so it stays off.
+Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:223](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is built to be the cross-replica control on anonymous sign-in, with replay records shared in Postgres, but the app cannot complete it yet, so it stays off.
 
 ## Adding a limit to a new route
 

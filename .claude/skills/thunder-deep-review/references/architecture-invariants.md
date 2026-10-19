@@ -23,7 +23,7 @@ Global properties that survive across subsystems. Verify any change against the 
 ## Trust & Authentication
 - **INV-06** Bearer = `rawToken.HMAC_b64`; verified with `timingSafeEqual`; PowerSync path-2 verifies signature independently.
 - **INV-07** `tauri://localhost` always trusted origin; backend's own origin auto-added.
-- **INV-08** `accountLinking.trustedProviders=['sso']` only when authMode ∈ {oidc, saml}.
+- **INV-08** SSO sign-in links to an existing user only through the `resolveUser` hook, and only when that user's email is verified; the adapter runs native transactions only when authMode ∈ {oidc, saml}.
 - **INV-09** OTP sign-in requires `x-challenge-token` + existing-user-or-approved-waitlist (defense in depth).
 - **INV-10** OAuth integration secrets never leave backend (confidential-client proxy).
 - **INV-11** OAuth redirect URIs: exact CORS match + hardcoded app URL + loopback any-port; HTTPS-on-localhost rejected.

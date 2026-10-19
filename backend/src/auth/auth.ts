@@ -22,12 +22,12 @@ import { getSettings } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
-import { betterAuth } from 'better-auth'
+import { betterAuth, type User } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
-import { computeDiscoveryUrl, sso } from '@better-auth/sso'
+import { computeDiscoveryUrl, sso, type SSOOptions } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
@@ -72,6 +72,19 @@ const deviceTokenPath = '/device/token'
 const authTokenHeader = 'set-auth-token'
 
 /**
+ * Signs an SSO identity into the existing user with the same verified email. We trust the
+ * operator's env-configured IdP once Better Auth has checked the SAML signature or OIDC
+ * id_token, never its `email_verified` claim. See backend/docs/authentication.md.
+ */
+const linkSsoToVerifiedEmailOwner: NonNullable<SSOOptions['resolveUser']> = async ({ providerUser }, { database }) => {
+  const existing = await database.findOne<User>({
+    model: 'user',
+    where: [{ field: 'email', value: normalizeEmail(providerUser.email) }],
+  })
+  return existing?.emailVerified ? { action: 'link', userId: existing.id, profile: 'preserve' } : { action: 'continue' }
+}
+
+/**
  * Create a Better Auth instance with the provided database
  * This factory pattern allows tests to inject their own database
  *
@@ -114,6 +127,7 @@ const buildSsoPlugins = () => {
             },
           },
         ],
+        resolveUser: linkSsoToVerifiedEmailOwner,
       }),
     ]
   }
@@ -135,16 +149,17 @@ const buildSsoPlugins = () => {
             providerId: 'sso',
             domain: new URL(settings.betterAuthUrl).host,
             samlConfig: {
-              issuer: settings.samlIdpIssuer,
+              // `issuer` names our service provider; the IdP is identified by idpMetadata.entityID.
+              issuer: settings.samlEntityId,
               entryPoint: settings.samlEntryPoint,
               cert: settings.samlCert,
-              callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/sso`,
-              spMetadata: {
-                entityID: settings.samlEntityId,
+              idpMetadata: {
+                entityID: settings.samlIdpIssuer,
               },
             },
           },
         ],
+        resolveUser: linkSsoToVerifiedEmailOwner,
       }),
     ]
   }
@@ -189,13 +204,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     )
   }
 
-  // The IdP is operator-controlled in self-hosted enterprise deployments, so we trust the
-  // 'sso' provider for account linking. Without this, Better Auth blocks linking an SSO
-  // account to an existing user record with the same email — causing the SSO callback to
-  // fail with "account not linked" for any user record that wasn't originally created via
-  // the same SSO flow. Replaces the deprecated `trustEmailVerified` SSO plugin option, and
-  // makes trust explicit in operator config rather than depending on the IdP's
-  // `email_verified` claim.
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
 
   return betterAuth({
@@ -203,15 +211,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
+      // The SSO plugin's resolveUser hook refuses to run without native transactions.
+      transaction: ssoEnabled,
     }),
     trustedOrigins,
-    ...(ssoEnabled && {
-      account: {
-        accountLinking: {
-          trustedProviders: ['sso'],
-        },
-      },
-    }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
     // horizontally-scaled deployments. Provides single-instance defence only. Today this
     // limiter and the DB-backed `auth` IP tier are the controls; the captcha on anonymous
@@ -263,7 +266,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       user: {
         create: {
           // normalizeEmail is .toLowerCase().trim() — idempotent on Better Auth's
-          // synthetic anonymous emails (`temp@{generateId()}.com`). No guard needed.
+          // synthetic anonymous emails (`{generateId()}@anonymous.placeholder.invalid`). No guard needed.
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),

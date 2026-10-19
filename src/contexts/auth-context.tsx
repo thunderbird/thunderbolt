@@ -112,14 +112,7 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
-/**
- * The headers every Better Auth request must carry.
- *
- * Also spread into a per-call `fetchOptions.headers`: better-fetch REPLACES that
- * object rather than merging it, so a call site setting only its own header
- * would drop `X-App-Version` — and the version gate is fail-closed, so the
- * request comes back 426 on a build that is perfectly up to date.
- */
+/** The headers every Better Auth request must carry. `buildFetchOptions` sets them on each request. */
 export const authRequestHeaders = (
   extra: Record<string, string> = {},
   platform: string = getPlatform(),
@@ -132,14 +125,8 @@ export const authRequestHeaders = (
 
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  // Applied per request instead of through `headers`. better-fetch merges the
-  // client-level and per-call options with a shallow spread
-  // (`{...config, ...options}`), so any call passing its own
-  // `fetchOptions.headers` — OTP verify, magic-link verify, both of which send a
-  // challenge token — replaced a client-level `headers` object wholesale.
-  // `onRequest` survives that spread because no call site overrides it, and
-  // re-reading the locale per request keeps it from being frozen at client
-  // construction, before the synced setting has hydrated.
+  // Applied per request instead of through `headers` so the locale is re-read on
+  // every call, not frozen at client construction before the synced setting hydrates.
   onRequest: (ctx: { headers: Headers }) => {
     for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
       ctx.headers.set(key, value)

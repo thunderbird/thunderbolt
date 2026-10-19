@@ -8,6 +8,8 @@ import { createTestSettings } from '@/test-utils/settings'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestDb } from '@/test-utils/db'
+import { createSessionCookie } from '@/test-utils/session-cookie'
+import { ssoProvider } from '@/db/schema'
 
 const oidcIssuerUrl = 'https://oidc.test'
 
@@ -274,6 +276,62 @@ describe('OIDC Integration', () => {
       )
 
       expect(res.ok).toBe(false)
+    })
+  })
+
+  describe('SSO provider self-registration', () => {
+    beforeEach(() => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: oidcIssuerUrl,
+      })
+    })
+
+    it('refuses an ordinary session and stores no provider', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+      const cookie = await createSessionCookie(auth, db)
+
+      const res = await app.handle(
+        new Request('http://localhost/v1/api/auth/sso/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            providerId: 'attacker-idp',
+            issuer: 'https://attacker.test',
+            domain: 'attacker.test',
+            oidcConfig: {
+              clientId: 'attacker-client',
+              clientSecret: 'attacker-secret',
+              skipDiscovery: true,
+              authorizationEndpoint: 'https://attacker.test/authorize',
+              tokenEndpoint: 'http://169.254.169.254/token',
+              jwksEndpoint: 'http://169.254.169.254/jwks',
+            },
+          }),
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      expect(await db.select().from(ssoProvider)).toHaveLength(0)
+    })
+
+    it('still signs in through the operator-configured provider', async () => {
+      await withOidcFetch(async () => {
+        const { createAuth } = await import('./auth')
+        const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerId: 'sso', callbackURL: 'http://localhost:1420/' }),
+          }),
+        )
+
+        expect(res.ok).toBe(true)
+      })
     })
   })
 })

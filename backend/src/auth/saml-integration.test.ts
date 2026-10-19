@@ -26,6 +26,8 @@ mock.module('@/waitlist/utils', () => ({
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestDb } from '@/test-utils/db'
+import { createSessionCookie } from '@/test-utils/session-cookie'
+import { ssoProvider } from '@/db/schema'
 
 const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
 
@@ -225,6 +227,40 @@ describe('SAML Integration', () => {
       )
 
       expect(res.ok).toBe(false)
+    })
+  })
+
+  describe('SSO provider self-registration', () => {
+    beforeEach(() => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue(baseSettings)
+    })
+
+    it('refuses an ordinary session and stores no provider', async () => {
+      const { createAuth } = await import('./auth')
+      const auth = createAuth(db)
+      const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+      const cookie = await createSessionCookie(auth, db)
+
+      const res = await app.handle(
+        new Request('http://localhost/v1/api/auth/sso/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            providerId: 'attacker-idp',
+            issuer: 'https://attacker.test',
+            domain: 'attacker.test',
+            samlConfig: {
+              entryPoint: 'https://attacker.test/saml/sso',
+              cert: 'attacker-cert',
+              callbackUrl: 'http://localhost/v1/api/auth/sso/saml2/sp/acs/attacker-idp',
+              spMetadata: {},
+            },
+          }),
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      expect(await db.select().from(ssoProvider)).toHaveLength(0)
     })
   })
 })

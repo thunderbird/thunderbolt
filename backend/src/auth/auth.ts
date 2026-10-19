@@ -94,6 +94,8 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        // A falsy limit makes /sso/register answer 403, so only the env-configured provider exists.
+        providersLimit: 0,
         defaultSSO: [
           {
             providerId: 'sso',
@@ -126,6 +128,8 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        // A falsy limit makes /sso/register answer 403, so only the env-configured provider exists.
+        providersLimit: 0,
         defaultSSO: [
           {
             providerId: 'sso',

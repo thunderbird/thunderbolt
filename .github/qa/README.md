@@ -15,11 +15,12 @@ The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 U
 
 The explorer reads untrusted pages, so everything it writes is untrusted too. Each job holds only the secret it needs.
 
-| Zone                  | Jobs                         | Holds                                                                                        | Never holds                                                                                   |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| A: explore and verify | `explore`, `replay`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users) | Linear key, any write token. The replay step holds **no secret**: it runs model-written specs |
-| B: file               | `file`                       | the QA Linear key                                                                            | an LLM, a browser                                                                             |
-| C: fix                | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
+| Zone                     | Jobs                         | Holds                                                                                        | Never holds                                                                                   |
+| ------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| A: explore and verify    | `explore`, `replay`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users) | Linear key, any write token. The replay step holds **no secret**: it runs model-written specs |
+| B: file                  | `file`                       | the QA Linear key                                                                            | an LLM, a browser                                                                             |
+| C: fix                   | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
+| D: native explore, macOS | `explore-native` on iOS      | the QA Anthropic key, only in the `env:` of the canary and session steps                     | any provider key, the Linear key, any write token, an agent that edits code                   |
 
 Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,
 because the replayed specs may have changed files in the replay job's checkout.
@@ -32,6 +33,40 @@ Anthropic key, and both jobs install bubblewrap, which the scrubbed CLI needs to
 
 Never add `--allow-unrestricted-file-access` to `mcp.json` or set `PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS`.
 The MCP blocks `file:` URLs by default, and that block keeps local files out of the explorer's reach.
+
+### Native explore on macOS
+
+On the macOS runner any process of the job's user can read the Anthropic key in the initial environment of
+`claude`, even with the scrub and Seatbelt (spike, spec 6.7). Zone D therefore rests on a different guarantee: the
+model cannot start any process. Five conditions hold it up, and `explore.sh run` sets all of them for an `ios` or
+`android` session:
+
+- (a) The Maestro gate (`scripts/maestro-gate.ts`, `mcp-maestro.json`) is the only path to the device. It sends
+  Maestro only flows that pass the allow list in `scripts/maestro-flow.ts`, and brings the app back to the front when
+  a command leaves it.
+- (b) No Bash: `--tools Write`, `--disallowedTools Bash`, and the hook denies it too.
+- (c) Maestro's cloud tools, `list_devices` and `open_maestro_viewer` never reach the model: the gate does not offer
+  them, and they are disallowed by name.
+- (d) No copy of the key in a file the job's user can read. It lives only in the step's `env:`, never interpolated in
+  `run:` and never written to `$GITHUB_ENV`.
+- (e) Write only inside the session dir: the rule `Edit(//<session dir>/**)` and the hook (`scripts/native-hook.ts`),
+  which resolves links before it compares paths.
+
+The hook runs before every call (`matcher: "*"`) as `bun <repo>/.github/qa/scripts/native-hook.ts || exit 2`,
+because Claude Code lets a call through when its hook cannot run. It sits in the `settings.json` of an otherwise empty
+`CLAUDE_CONFIG_DIR`, read through `--setting-sources user`. `--strict-mcp-config` keeps any other server named
+`maestro` from loading and getting the hook's allow. The scrubbed CLI ignores `--permission-mode`, so the command has
+none. The session dir is passed as a path without links, because the Edit rule does not follow them: a Write to
+`/tmp/…` misses a rule on `/private/tmp/…`. The gate log (`<out>/<session>.gate.log`), the WebView log and the
+backend log stay outside the session dir, since the model can write anywhere inside it.
+
+Before any session, `explore.sh canary <session> <out>` runs a short `claude-haiku-5-5` session with the same
+settings (4 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
+passes only when the gate log shows `deny run` and `deny Write` and the file does not exist. If it fails, no session
+runs. It prints the session's result line and never a tool result. The CLI stays pinned to
+`@anthropic-ai/claude-code@2.1.303`, where the spike measured the hook, the scrub and the Edit rule; a new version
+has to pass the canary and the Edit rule again. iOS sessions use the fake AI only (no provider key on the Mac), and no
+agent that edits code runs there.
 
 ### Real-AI legs
 
@@ -62,7 +97,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 2. **explore**: one leg per charter and platform, named `<charter>-<platform>` (`c4-skills-projects-phone`), and one
    per free-session platform (`free-<case>-<platform>`); `legs.ts` plans them. A canary adds its session's leg on the
    canary build. Each runs with `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
-   prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
+   prompt `explore.sh prompt` builds: `prompt.md`, the same for every session so they share its prompt cache, then
+   the platform's driver block (`drivers/playwright.md` or `drivers/maestro.md`; a native c7 gets both), the
+   session's own block, and the charter with its functions. Attempts, findings and repro specs are written as they happen, so a cut session
    keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
    root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
    `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
@@ -262,6 +299,12 @@ it: the backend and the fakes, with no Vite, since the app carries its own front
 udid=$(.github/qa/scripts/native.sh device ios)
 .github/qa/scripts/native.sh install ios "$udid" "/tmp/qa-ios/Thunderbolt Dev.app"
 .github/qa/scripts/native.sh logs ios "$udid" /tmp/webview.log
+
+# A session on it: the canary first, then the session (both need ANTHROPIC_API_KEY). The backend log is the one
+# `stack.sh start` writes. QA_DRY_RUN=1 prints the claude command and its hook settings instead.
+export QA_DEVICE_ID=$udid QA_WEBVIEW_LOG=/tmp/webview.log QA_BACKEND_LOG=/tmp/qa-stack.log
+.github/qa/scripts/explore.sh canary c2-chat-power-user-ios qa-out && .github/qa/scripts/explore.sh run c2-chat-power-user-ios qa-out 4
+
 .github/qa/scripts/native.sh stop-logs /tmp/webview.log
 ```
 

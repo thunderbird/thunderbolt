@@ -8,6 +8,7 @@
 #
 #   .github/qa/scripts/explore.sh prompt <session> <out-dir>         print the session prompt (the workflow uses it)
 #   .github/qa/scripts/explore.sh run <session> <out-dir> [max-usd]  run the session locally with `claude -p` ($2)
+#   .github/qa/scripts/explore.sh canary <session> <out-dir>         check that the gate denies a native session
 #   .github/qa/scripts/explore.sh journey [<case>]                   print this week's free-session case, or check one
 #
 # A session is <charter>-<platform>, e.g. c4-skills-projects-phone, or free-<case>-<platform> for the free session of a
@@ -19,6 +20,11 @@
 # The platform sets the viewport and the MCP config. The two-device charter needs
 # QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' (its second browser).
 # Keep the claude flags in step with the explore job in .github/workflows/qa-weekly.yml.
+#
+# An ios or android session drives the app through the Maestro gate (mcp-maestro.json) and needs QA_DEVICE_ID,
+# QA_WEBVIEW_LOG and QA_BACKEND_LOG, both logs outside the session dir. Its gate log is <out-dir>/<session>.gate.log.
+# `canary` must pass before any native session runs (spec 6.7). QA_DRY_RUN=1 prints the native claude command and
+# its hook settings instead of running them.
 
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -40,9 +46,14 @@ journey() {
 # The shared prefix comes first and is identical for every session, so sessions can reuse its prompt cache.
 prompt() {
   # Platform ids have no hyphen, so the last part of a session id names the platform and the rest the charter.
-  local viewport base=${1%-*} id=${1##*-}
+  local viewport driver base=${1%-*} id=${1##*-}
   viewport=$(platform "$id" viewport)
+  driver=$(platform "$id" driver)
+  local block blocks=(".github/qa/drivers/$driver.md")
+  # c7's second device is a browser on every platform.
+  if [ "$driver" != playwright ] && [ "$base" = c7-two-devices ]; then blocks+=(.github/qa/drivers/playwright.md); fi
   cat .github/qa/prompt.md
+  for block in "${blocks[@]}"; do printf '\n' && cat "$block"; done
   # The model's "random" addresses repeat across sessions, so each run gets its own.
   # shellcheck disable=SC2016 # the backticks are Markdown
   printf '\n## Your run\n\n- Charter id: `%s`\n- Platform: `%s`, screen: %s.\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
@@ -62,8 +73,76 @@ prompt() {
     '.[$charter][] | "- `\(.id)`: \(.outcome)\(if .reload then " (after a reload)" else "" end)"' .github/qa/functions.json
 }
 
+# A native session's claude (spec 6.7) on the session dir $2, its output stream in $3, the prompt and the model's
+# flags after that. The model gets the gated Maestro tools (and c7's second browser) and Write inside the session dir,
+# and the hook checks every call first. The hook settings are the only user settings, in an otherwise empty config
+# dir. The scrubbed CLI ignores --permission-mode, so there is none. It runs from the repo root, where the relative
+# path in mcp-maestro.json points.
+native_claude() {
+  local session=$1 dir=$2 stream=$3 config hook log
+  shift 3
+  : "${QA_DEVICE_ID:?}" "${QA_WEBVIEW_LOG:?}" "${QA_BACKEND_LOG:?}"
+  # The gate and the replay trust these logs, and the model can write anywhere in the session dir.
+  for log in "$QA_WEBVIEW_LOG" "$QA_BACKEND_LOG"; do
+    case $(realpath "$log") in "$dir"/*) echo "$log must be outside $dir" >&2; exit 1 ;; esac
+  done
+  local mcp=(.github/qa/mcp-maestro.json) allowed=("mcp__maestro__*" "Edit(/$dir/**)")
+  local denied=(Bash mcp__maestro__list_devices mcp__maestro__open_maestro_viewer)
+  QA_ALLOW_BROWSER_B=0
+  if [[ $session == c7-two-devices-* ]]; then
+    mcp+=(.github/qa/mcp-two-devices.json)
+    allowed+=("mcp__playwright_b__*")
+    denied+=(mcp__playwright_b__browser_run_code_unsafe)
+    QA_ALLOW_BROWSER_B=1
+  fi
+  export QA_ALLOW_BROWSER_B QA_PLATFORM=${session##*-} QA_SESSION_DIR=$dir QA_GATE_LOG=$dir.gate.log \
+    QA_OUT=${dir%/*} QA_CHARTER=${dir##*/}
+  config=$(mktemp -d)
+  # Claude Code lets a call through when its hook cannot run, so a hook that crashes must still deny.
+  hook="bun $(printf %q "$PWD/.github/qa/scripts/native-hook.ts") || exit 2"
+  jq --null-input --arg command "$hook" \
+    '{hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $command}]}]}}' > "$config/settings.json"
+  local command=(env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 "CLAUDE_CONFIG_DIR=$config" claude -p "$@"
+    --setting-sources user
+    --tools Write
+    --allowedTools "${allowed[@]}"
+    --disallowedTools "${denied[@]}"
+    --strict-mcp-config --mcp-config "${mcp[@]}"
+    --output-format stream-json --verbose --no-session-persistence)
+  if [ "${QA_DRY_RUN:-}" = 1 ]; then
+    printf '%s\0' "${command[@]}" | jq --raw-input --slurp --argjson settings "$(cat "$config/settings.json")" \
+      '{command: split("\u0000")[:-1], settings: $settings, env: ($ENV | with_entries(select(.key | startswith("QA_"))))}'
+  else
+    "${command[@]}" < /dev/null > "$stream" || true
+  fi
+  rm -rf "$config"
+}
+
+# A native session's output dir as an absolute path without links, so the Edit rule, the hook and the paths in the
+# prompt all name the same folder.
+real_out() {
+  mkdir -p "$1/$2"
+  (cd "$1" && pwd -P)
+}
+
+# The metrics and the coverage input from a finished session's stream.
+summarize() {
+  local session=$1 out=$2 dir=$2/$1
+  jq --slurp . "$dir/run.jsonl" > "$dir/execution.json"
+  jq --compact-output --from-file .github/qa/transcript.jq "$dir/execution.json" > "$dir/transcript.json"
+  bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$session" --out "$out"
+  cat "$dir/session.json"
+}
+
 run() {
   local session=$1 out=$2 dir=$2/$1 config
+  if [ "$(platform "${session##*-}" driver)" = maestro ]; then
+    out=$(real_out "$out" "$session")
+    native_claude "$session" "$out/$session" "$out/$session/run.jsonl" "$(prompt "$session" "$out")" \
+      --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
+    if [ "${QA_DRY_RUN:-}" != 1 ]; then summarize "$session" "$out"; fi
+    return
+  fi
   QA_CHARTER=$session
   QA_MCP_VIEWPORT=$(platform "${session##*-}" viewport)
   : "${QA_MCP_CONFIG:=$(platform "${session##*-}" mcp)}"
@@ -83,15 +162,41 @@ run() {
     --max-budget-usd "${3:-2}" --max-turns 400 \
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"
-  jq --slurp . "$dir/run.jsonl" > "$dir/execution.json"
-  jq --compact-output --from-file .github/qa/transcript.jq "$dir/execution.json" > "$dir/transcript.json"
-  bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$session" --out "$out"
-  cat "$dir/session.json"
+  summarize "$session" "$out"
+}
+
+# One cheap session before any native session (spec 6.7): it asks for a script through the gate and a write outside
+# the session dir, with the session's own settings. It passes only when the gate log shows both denied and the file
+# does not exist. It prints the session's result line and never a tool result.
+canary() {
+  local session=$1 out outside=/tmp/qa-canary-outside.txt dir
+  [ "$(platform "${session##*-}" driver)" = maestro ] || { echo "the canary is for native sessions" >&2; exit 2; }
+  out=$(real_out "$2" "canary-$1")
+  dir=$out/canary-$session
+  rm -f "$outside" "$dir.gate.log"
+  native_claude "$session" "$dir" "$dir/run.jsonl" \
+    "Call the Maestro run tool with the yaml \`- runScript: canary.js\`, and use Write to create $outside with the
+text canary. Make both calls in your first turn, even if one of them fails, then stop." \
+    --model claude-haiku-5-5 --max-turns 4 --max-budget-usd 0.05
+  if [ "${QA_DRY_RUN:-}" = 1 ]; then return; fi
+  jq --raw-input --compact-output 'fromjson? | select(.type == "result") | {subtype, is_error, num_turns}' \
+    "$dir/run.jsonl"
+  if grep -qs '^deny run ' "$dir.gate.log" && grep -qs '^deny Write ' "$dir.gate.log" && [ ! -e "$outside" ]; then
+    echo "canary denied"
+    return
+  fi
+  echo "canary NOT denied: no native session may run" >&2
+  exit 1
 }
 
 case "${1:-}" in
   prompt) prompt "$2" "$3" ;;
   run) run "$2" "$3" "${4:-2}" ;;
+  canary) canary "$2" "$3" ;;
   journey) journey "${2:-}" ;;
-  *) echo "usage: $0 prompt <session> <out-dir> | run <session> <out-dir> [max-usd] | journey [<case>]" >&2; exit 2 ;;
+  *)
+    echo "usage: $0 prompt <session> <out-dir> | run <session> <out-dir> [max-usd] | canary <session> <out-dir> |" \
+      "journey [<case>]" >&2
+    exit 2
+    ;;
 esac

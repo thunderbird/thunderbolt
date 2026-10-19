@@ -242,6 +242,62 @@ The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa
 `bunx playwright test --config .github/qa/playwright.config.ts --project probe`. The `qa` job in `ci.yml` runs all
 three when a QA file changes.
 
+## Native platforms
+
+The iOS and Android sessions drive the Tauri app, not a browser. `scripts/native.sh` builds the app against the QA
+stack, boots a device, installs the app and streams the WebView console; `stack.sh serve native` is the stack for
+it: the backend and the fakes, with no Vite, since the app carries its own frontend.
+
+```sh
+# Stack: backend, fake AI, fake MCP and fake Google. The backend allows the WebView origins
+# (tauri://localhost on iOS, http://tauri.localhost on Android).
+.github/qa/scripts/stack.sh start native
+
+# Builds, one per onboarding setting like the web ones (iOS takes several minutes, Android needs the SDK and NDK).
+.github/qa/scripts/native.sh build ios /tmp/qa-ios-onboarding onboarding   # -> "Thunderbolt Dev.app"
+.github/qa/scripts/native.sh build ios /tmp/qa-ios
+.github/qa/scripts/native.sh build android /tmp/qa-android                 # -> app-debug.apk
+
+# A booted device (its id on stdout), the app on it, and the console in the background.
+udid=$(.github/qa/scripts/native.sh device ios)
+.github/qa/scripts/native.sh install ios "$udid" "/tmp/qa-ios/Thunderbolt Dev.app"
+.github/qa/scripts/native.sh logs ios "$udid" /tmp/webview.log
+.github/qa/scripts/native.sh stop-logs /tmp/webview.log
+```
+
+`config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
+stack's two extra `connect-src` origins (`http://localhost:8005`, `http://127.0.0.1:9880`, read from `stack.sh`), and
+without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. `build` takes the
+`VITE_*` settings from `stack.sh` too. The app ids are `net.thunderbird.thunderbolt.dev` (iOS, "Thunderbolt Dev")
+and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri
+rewrites, so `git status` stays clean; never commit them.
+
+On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (the `qa-spike-17pm` simulator) picks the device; with it unset,
+`device ios` creates an iPhone 17 Pro Max on the newest iOS runtime. Two scripts share the machine: take
+`/tmp/qa-stack.lock` before the stack and `/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf`
+at the end), and shut the simulator down when you booted it.
+
+Traps, each of which cost a run in the spike:
+
+- The second iOS build fails with `Directory not empty` while `src-tauri/gen/apple/build/arm64-sim` exists. `build`
+  deletes it first.
+- A hardware keyboard keeps the on-screen one from opening, and every keyboard check then measures nothing.
+  `device ios` turns `ConnectHardwareKeyboard` off before it boots the simulator.
+- `simctl addmedia` aborts on a file it cannot read as media, even when the Maestro step says `optional`, so
+  `device ios` adds only `fixtures/*.png`, never the `.txt` files.
+- The console reaches the iOS system log only with `WebKitDebugLogsPageMessagesToSystemConsoleEnabled` set, which
+  `device ios` does, and lines logged before `log stream` attaches are lost, so `logs ios` returns once the
+  stream's `Filtering the log data` header shows up. Piping it into `tail` hangs the shell; it runs in the
+  background and `stop-logs` stops it by pid.
+- On macOS the stack must run under the system `/bin/bash` 3.2 as well: `serve` polls its servers instead of using
+  `wait -n`, which 3.2 lacks.
+- The Android console (`Tauri/Console` in logcat) exists only in debug builds, and the APK's target is the host's
+  architecture (`aarch64` on an Apple Silicon Mac, `x86_64` on the runner). The build reads `ANDROID_HOME` and
+  `NDK_HOME` from the environment.
+
+Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
+no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).
+
 ## Fake Google
 
 `scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880`: the account chooser, the token endpoint, userinfo,

@@ -13,6 +13,7 @@
 #   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on 1424 (and one on 1425) until killed
 #   .github/qa/scripts/stack.sh serve dev                     Vite dev servers on the working tree (1424 onboarding
 #                                                             off, 1425 on), backend --watch
+#   .github/qa/scripts/stack.sh serve native                  backend and fakes only, for the native apps (no Vite)
 #   .github/qa/scripts/stack.sh start <serve args> / stop     for CI steps: serve in the background, return once
 #                                                             ready; the pids go to $RUNNER_TEMP/qa-stack.pid and
 #                                                             qa-stack.pids
@@ -90,10 +91,11 @@ if [ "$1" = lock ]; then
   exit
 fi
 
-[ "$1" = serve ] || { echo "usage: $0 build <out-dir> [onboarding] | serve|start <dist> [<dist>] | serve|start dev | stop | lock" >&2; exit 2; }
+[ "$1" = serve ] || { echo "usage: $0 build <out-dir> [onboarding] | serve|start <dist> [<dist>] | serve|start dev|native | stop | lock" >&2; exit 2; }
 trap 'kill $(jobs -p) 2>/dev/null || true; wait' EXIT
 
-origins=http://localhost:1424,http://localhost:1425
+# The last two are the origins of the iOS and Android WebViews.
+origins=http://localhost:1424,http://localhost:1425,tauri://localhost,http://tauri.localhost
 backend_env=(
   PORT=8005
   AUTH_MODE=consumer
@@ -135,7 +137,9 @@ bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFa
 bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer(9879)" &
 bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; createFakeGoogle(9880)" &
 
-if [ "$2" = dev ]; then
+if [ "$2" = native ]; then
+  (cd backend && exec "${backend[@]}") &
+elif [ "$2" = dev ]; then
   (cd backend && exec env "${backend_env[@]}" bun run --watch src/index.ts) &
   env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort &
   env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port 1425 --strictPort &
@@ -156,7 +160,12 @@ wait_for() {
   exit 1
 }
 wait_for $backend_url/v1/health
-wait_for http://localhost:1424
+if [ "$2" != native ]; then wait_for http://localhost:1424; fi
 if [ "$2" = dev ] || [ -n "${3:-}" ]; then wait_for http://localhost:1425; fi
 echo "stack ready"
-wait -n
+# Not `wait -n`: bash 3.2, the macOS /bin/bash, lacks it, and there `serve` took the servers down after "ready".
+pids=$(jobs -p)
+while :; do
+  for pid in $pids; do kill -0 "$pid" 2>/dev/null || exit 1; done
+  sleep 1
+done

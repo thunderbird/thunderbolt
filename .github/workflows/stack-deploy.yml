@@ -251,6 +251,10 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         with:
           command: up
+          # Shared-model previews reconcile state with reality first, so a resource
+          # deleted out of band (e.g. a Keycloak client lost when the shared
+          # Keycloak restarted) is recreated instead of being reported as unchanged.
+          refresh: ${{ inputs.shared_stack_name != '' }}
           stack-name: ${{ inputs.stack_name }}
           work-dir: deploy/pulumi
           upsert: true

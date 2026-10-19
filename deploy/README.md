@@ -510,8 +510,8 @@ pulumi/
     discovery.ts        # Cloud Map private DNS (thunderbolt.local)
     dns.ts              # Cloudflare CNAMEs for the configured hostnames
     # -- Shared-stack previews (see SHARED.md) --
-    shared.ts           # previews-shared: VPC, EFS, cluster, ALB, postgres/keycloak/powersync
-    per-pr-stack.ts     # preview-pr-*: backend/frontend/marketing + per-PR routing, Keycloak client, secrets
+    shared.ts           # previews-shared: VPC, EFS, cluster, ALB, postgres/keycloak
+    per-pr-stack.ts     # preview-pr-*: backend/frontend/marketing/powersync + per-PR routing, Keycloak client, secrets
     # -- EKS --
     eks.ts              # EKS cluster, EBS CSI driver, Helm chart, nginx-ingress
 ```
@@ -592,7 +592,7 @@ After this one-time setup, trigger the workflow with `stack_name: prod-acme` and
 
 Hostnames add host-header rules that take precedence over the path-based fallback. `cloudflare_zone_id` is mandatory alongside them because the stack creates the DNS records itself — `deploy/pulumi/index.ts` fails fast if subdomain routing is configured without a zone ID and API token.
 
-`shared_stack_name` switches a per-PR deploy into shared-stack mode (THU-495): it deploys backend, frontend and marketing only, and reads the VPC, ALB, Postgres, Keycloak and PowerSync from the named stack via a Pulumi `StackReference`. Leave it empty for a standalone deploy. See `deploy/pulumi/SHARED.md`.
+`shared_stack_name` switches a per-PR deploy into shared-stack mode (THU-495): it deploys backend, frontend, marketing and PowerSync only, and reads the VPC, ALB, Postgres and Keycloak from the named stack via a Pulumi `StackReference`. Leave it empty for a standalone deploy. See `deploy/pulumi/SHARED.md`.
 
 **Secrets**: all are declared optional. An enterprise deploy needs the first three; the rest are for preview DNS and for provisioning provider keys into the stack.
 
@@ -621,7 +621,7 @@ Four workflows give every pull request a disposable stack on Fargate, reachable 
 
 **`preview-cleanup.yml`** is the hourly safety net for stacks the destroy path missed — a failed teardown, a PR closed out of band, or an open PR idle past `max_age_days` (default 3). The `preview:persist` label opts a PR's stack out, and `workflow_dispatch` takes a `dry_run` input that lists what would go without destroying it.
 
-**`previews-shared-deploy.yml`** owns `previews-shared`, the long-lived stack holding the VPC, EFS, ECS cluster, Cloud Map namespace, ALB, and the shared Postgres, Keycloak and PowerSync services. Per-PR stacks read it through a Pulumi `StackReference` and so only pay for backend, frontend and marketing. It runs on manual dispatch and weekly (Mondays 07:00 UTC) to catch drift. See `deploy/pulumi/SHARED.md`.
+**`previews-shared-deploy.yml`** owns `previews-shared`, the long-lived stack holding the VPC, EFS, ECS cluster, Cloud Map namespace, ALB, and the shared Postgres and Keycloak services. Per-PR stacks read it through a Pulumi `StackReference` and so only pay for backend, frontend, marketing and their own PowerSync. It runs on manual dispatch and weekly (Mondays 07:00 UTC) to catch drift. See `deploy/pulumi/SHARED.md`.
 
 ### Nightly Images
 

@@ -17,13 +17,13 @@ import { createCluster } from './cluster'
 export type SharedStackArgs = {
   /** Stack-derived name prefix (e.g. "tb-previews-shared"). */
   name: string
-  /** Image tag for the shared services (postgres, keycloak, powersync). */
+  /** Image tag for the shared services (postgres, keycloak). */
   version: string
   /** Image repository prefix; same one used by per-PR stacks for backend/frontend/marketing. */
   imagePrefix: string
   /** GHCR PAT for pulling images. */
   ghcrToken?: pulumi.Output<string>
-  /** Cloudflare zone ID for the auth + powersync subdomain CNAMEs. Optional. */
+  /** Cloudflare zone ID for the auth subdomain CNAME. Optional. */
   cloudflareZoneId?: pulumi.Input<string>
   /** Cloudflare API token (paired with cloudflareZoneId). Optional. */
   cloudflareApiToken?: pulumi.Output<string>
@@ -34,11 +34,6 @@ export type SharedStackArgs = {
    * frontend can't redirect users into Keycloak's UI.
    */
   authHostname: pulumi.Input<string>
-  /**
-   * Public hostname for shared PowerSync. Per-PR backends issue JWTs the user's
-   * browser presents to this endpoint over WSS for sync.
-   */
-  powersyncHostname: pulumi.Input<string>
   /** Shared AI provider keys — these rarely change and are identical across PR stacks. */
   aiSecrets: {
     anthropicApiKey: pulumi.Output<string>
@@ -49,11 +44,11 @@ export type SharedStackArgs = {
   }
   /** Postgres admin password (random per shared-stack; persisted in Pulumi state). */
   postgresPassword: pulumi.Output<string>
-  /** Replication role password used by PowerSync to connect to Postgres. */
+  /** Password for `powersync_role`, which the Postgres init script creates. */
   powersyncDbPassword: pulumi.Output<string>
   /** Keycloak admin user password (for the master realm). */
   keycloakAdminPassword: pulumi.Output<string>
-  /** PowerSync JWT signing secret (per-PR backends sign with this; PowerSync verifies). */
+  /** PowerSync JWT signing secret (per-PR backends sign with it; per-PR PowerSync verifies). */
   powersyncJwtSecret: pulumi.Output<string>
 }
 
@@ -102,11 +97,7 @@ export type SharedStackOutputs = {
    * at preview time. Pulumi state is encrypted at rest so this is safe.
    */
   postgresPassword: pulumi.Output<string>
-  /** In-cluster PowerSync hostname (`powersync.thunderbolt.local`). */
-  powersyncHost: pulumi.Output<string>
-  /** Public PowerSync URL the user's browser connects to. */
-  powersyncPublicUrl: pulumi.Output<string>
-  /** Per-PR backends sign JWTs with this; PowerSync verifies. Same secret across all PRs. */
+  /** Per-PR backends sign JWTs with this; per-PR PowerSync verifies. Same secret across all PRs. */
   powersyncJwtSecretArn: pulumi.Output<string>
   /** Per-PR backends fetch tokens from `${keycloakIssuerUrl}/.well-known/...`. */
   keycloakIssuerUrl: pulumi.Output<string>
@@ -159,7 +150,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     tags: { Name: `${name}-ns` },
   })
 
-  const sharedDiscoveryNames = ['postgres', 'powersync', 'keycloak'] as const
+  const sharedDiscoveryNames = ['postgres', 'keycloak'] as const
   const discovery = Object.fromEntries(
     sharedDiscoveryNames.map((svc) => [
       svc,
@@ -208,9 +199,9 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     ],
   })
 
-  // Pre-built host-header rules for the shared services' own subdomains
-  // (auth.shared.<base>, powersync.shared.<base>). Per-PR rules go in the higher
-  // priority range starting at 100; reserve 1-99 for shared rules.
+  // Pre-built host-header rule for the shared Keycloak's subdomain
+  // (auth.shared.<base>). Per-PR rules go in the higher priority range starting
+  // at 100; reserve 1-99 for shared rules.
   const keycloakTg = new aws.lb.TargetGroup(`${name}-keycloak-tg`, {
     namePrefix: 'tb-kc',
     port: 8080,
@@ -226,16 +217,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     tags: { Name: `${name}-keycloak` },
   })
 
-  const powersyncTg = new aws.lb.TargetGroup(`${name}-powersync-tg`, {
-    namePrefix: 'tb-ps',
-    port: 8080,
-    protocol: 'HTTP',
-    targetType: 'ip',
-    vpcId: vpc.id,
-    healthCheck: { path: '/probes/liveness', healthyThreshold: 2, interval: 30 },
-    tags: { Name: `${name}-powersync` },
-  })
-
   new aws.lb.ListenerRule(`${name}-host-auth-rule`, {
     listenerArn: listener.arn,
     priority: 1,
@@ -243,15 +224,8 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     actions: [{ type: 'forward', targetGroupArn: keycloakTg.arn }],
   })
 
-  new aws.lb.ListenerRule(`${name}-host-powersync-rule`, {
-    listenerArn: listener.arn,
-    priority: 2,
-    conditions: [{ hostHeader: { values: [args.powersyncHostname] } }],
-    actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
-  })
-
-  // Cloudflare CNAMEs for the shared subdomains (auth + powersync).
-  // Per-PR stacks own their own marketing/app/api CNAMEs separately.
+  // Cloudflare CNAME for the shared auth subdomain. Per-PR stacks own their
+  // marketing/app/api/powersync CNAMEs.
   if (args.cloudflareZoneId && args.cloudflareApiToken) {
     const cfProvider = new cloudflare.Provider(`${name}-cf`, {
       apiToken: args.cloudflareApiToken,
@@ -261,18 +235,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
       {
         zoneId: args.cloudflareZoneId,
         name: args.authHostname,
-        type: 'CNAME',
-        content: alb.dnsName,
-        proxied: true,
-        ttl: 1,
-      },
-      { provider: cfProvider },
-    )
-    new cloudflare.Record(
-      `${name}-cname-powersync`,
-      {
-        zoneId: args.cloudflareZoneId,
-        name: args.powersyncHostname,
         type: 'CNAME',
         content: alb.dnsName,
         proxied: true,
@@ -383,8 +345,8 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     aiSecretArns[key] = secret.arn
   }
 
-  // Grant the shared exec role read access to all the shared secrets so the postgres,
-  // powersync, and keycloak task definitions below can pull them at start time.
+  // Grant the shared exec role read access to all the shared secrets so the postgres
+  // and keycloak task definitions below can pull them at start time.
   // Per-PR stacks attach their OWN role policies for their per-PR secrets.
   new aws.iam.RolePolicy(`${name}-exec-shared-secrets-policy`, {
     role: execRole.name,
@@ -429,7 +391,22 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
         name: 'postgres',
         image: pgImage,
         essential: true,
-        command: ['postgres', '-c', 'wal_level=logical'],
+        // Every per-PR PowerSync holds a replication slot and a WAL sender (two
+        // while it reprocesses a sync-config change); the defaults of 10 each
+        // would cap previews well below the ALB's ~25. The WAL cap invalidates a
+        // slot left behind by a teardown that skipped drop-preview-db.sh instead
+        // of letting it pin WAL forever, though it still occupies a slot.
+        command: [
+          'postgres',
+          '-c',
+          'wal_level=logical',
+          '-c',
+          'max_replication_slots=64',
+          '-c',
+          'max_wal_senders=64',
+          '-c',
+          'max_slot_wal_keep_size=2GB',
+        ],
         stopTimeout: 120,
         environment: [
           { name: 'POSTGRES_USER', value: 'postgres' },
@@ -459,60 +436,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     serviceRegistries: { registryArn: discovery.postgres.arn },
   })
 
-  // -------- 8. PowerSync ECS service --------
-  const psImage = `${imagePrefix}/thunderbolt-powersync:${version}`
-  const psTaskDef = new aws.ecs.TaskDefinition(`${name}-ps-task`, {
-    family: `${name}-powersync`,
-    requiresCompatibilities: ['FARGATE'],
-    networkMode: 'awsvpc',
-    cpu: '512',
-    memory: '1024',
-    executionRoleArn: execRole.arn,
-    taskRoleArn: taskRole.arn,
-    containerDefinitions: pulumi.jsonStringify([
-      {
-        name: 'powersync',
-        image: psImage,
-        essential: true,
-        environment: [
-          {
-            name: 'PS_PG_URI',
-            value: pulumi.interpolate`postgresql://powersync_role:${args.powersyncDbPassword}@postgres.${NAMESPACE_DOMAIN}:5432/postgres`,
-          },
-          {
-            name: 'PS_STORAGE_URI',
-            value: pulumi.interpolate`postgresql://postgres:${args.postgresPassword}@postgres.${NAMESPACE_DOMAIN}:5432/powersync_storage`,
-          },
-          // Base64 of POWERSYNC_JWT_SECRET. Read by powersync-config.yaml's
-          // `client_auth.jwks.keys[].k: !env POWERSYNC_JWT_KEY_BASE64` to verify
-          // the JWT signatures the backend issues. Must match the secret the backend
-          // signs with — both come from the same `args.powersyncJwtSecret`.
-          {
-            name: 'POWERSYNC_JWT_KEY_BASE64',
-            value: args.powersyncJwtSecret.apply((s) => Buffer.from(s).toString('base64')),
-          },
-          // Label paired with the JWT secret. Must match the backend's
-          // POWERSYNC_JWT_KID so PowerSync can find the right key when validating.
-          { name: 'PS_JWT_KID', value: 'enterprise-powersync' },
-        ],
-        portMappings: [{ containerPort: 8080 }],
-        logConfiguration: logConfig('powersync'),
-        ...(repositoryCredentials && { repositoryCredentials }),
-      },
-    ]),
-  })
-
-  new aws.ecs.Service(`${name}-ps-svc`, {
-    cluster: cluster.arn,
-    taskDefinition: psTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    networkConfiguration: { subnets: privateSubnets.map((s) => s.id), securityGroups: [servicesSg.id] },
-    serviceRegistries: { registryArn: discovery.powersync.arn },
-    loadBalancers: [{ targetGroupArn: powersyncTg.arn, containerName: 'powersync', containerPort: 8080 }],
-  }, { dependsOn: [listener] })
-
-  // -------- 9. Keycloak ECS service --------
+  // -------- 8. Keycloak ECS service --------
   // The shared Keycloak imports the `thunderbolt` realm at boot. Per-PR stacks
   // each register their own `keycloak.openid.Client` resource in `per-pr-stack.ts`
   // — with `validRedirectUris` and `webOrigins` scoped to that PR's hostnames —
@@ -520,7 +444,15 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
   // (no hostname wildcards), so the previous wildcard `api-pr-*.…` redirect URI
   // never matched any real PR host. The `thunderbolt-app` client baked into the
   // realm import still exists but is unused for preview-pr traffic.
+  //
+  // Keycloak stores its data in the shared Postgres, so those per-PR clients
+  // survive a restart; dev mode's default embedded database lives in the
+  // container and is wiped with it. With the realm persisted, `--import-realm`
+  // skips it on later boots, so edits to keycloak-realm.json no longer reach a
+  // running stack. `keycloak-db-init` creates the database, since the Postgres
+  // init scripts only run on an empty data directory.
   const kcImage = `${imagePrefix}/thunderbolt-keycloak:${version}`
+  const postgresHost = `postgres.${NAMESPACE_DOMAIN}`
   const kcAuthUrl = pulumi.interpolate`https://${args.authHostname}`
   const keycloakRealm = 'thunderbolt'
   const keycloakAdminUsername = 'admin'
@@ -534,9 +466,24 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     taskRoleArn: taskRole.arn,
     containerDefinitions: pulumi.jsonStringify([
       {
+        name: 'keycloak-db-init',
+        image: pgImage,
+        essential: false,
+        entryPoint: ['sh', '-c'],
+        command: [
+          `until pg_isready -h ${postgresHost} -U postgres; do sleep 2; done; ` +
+            `psql -h ${postgresHost} -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'keycloak'" | grep -q 1 || ` +
+            `psql -h ${postgresHost} -U postgres -c 'CREATE DATABASE keycloak'`,
+        ],
+        secrets: [{ name: 'PGPASSWORD', valueFrom: postgresPasswordSecret.arn }],
+        logConfiguration: logConfig('keycloak-db-init'),
+        ...(repositoryCredentials && { repositoryCredentials }),
+      },
+      {
         name: 'keycloak',
         image: kcImage,
         essential: true,
+        dependsOn: [{ containerName: 'keycloak-db-init', condition: 'SUCCESS' }],
         command: ['start-dev', '--import-realm'],
         environment: [
           { name: 'KC_BOOTSTRAP_ADMIN_USERNAME', value: keycloakAdminUsername },
@@ -544,7 +491,11 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
           { name: 'KC_HTTP_PORT', value: '8080' },
           { name: 'KC_HOSTNAME', value: kcAuthUrl },
           { name: 'KC_PROXY_HEADERS', value: 'xforwarded' },
+          { name: 'KC_DB', value: 'postgres' },
+          { name: 'KC_DB_URL', value: `jdbc:postgresql://${postgresHost}:5432/keycloak` },
+          { name: 'KC_DB_USERNAME', value: 'postgres' },
         ],
+        secrets: [{ name: 'KC_DB_PASSWORD', valueFrom: postgresPasswordSecret.arn }],
         portMappings: [{ containerPort: 8080 }],
         logConfiguration: logConfig('keycloak'),
         ...(repositoryCredentials && { repositoryCredentials }),
@@ -563,7 +514,7 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     loadBalancers: [{ targetGroupArn: keycloakTg.arn, containerName: 'keycloak', containerPort: 8080 }],
   }, { dependsOn: [listener] })
 
-  // -------- 10. Outputs --------
+  // -------- 9. Outputs --------
   return {
     vpcId: vpc.id,
     publicSubnetIds: pulumi.output(publicSubnets.map((s) => s.id)),
@@ -591,8 +542,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
     postgresPort: pulumi.output(5432),
     postgresAdminPasswordSecretArn: postgresPasswordSecret.arn,
     postgresPassword: args.postgresPassword,
-    powersyncHost: pulumi.output(`powersync.${NAMESPACE_DOMAIN}`),
-    powersyncPublicUrl: pulumi.interpolate`https://${args.powersyncHostname}`,
     powersyncJwtSecretArn: powersyncJwtSecretSecret.arn,
     keycloakIssuerUrl: pulumi.interpolate`${kcAuthUrl}/realms/${keycloakRealm}`,
     keycloakUrl: kcAuthUrl,
@@ -638,8 +587,6 @@ export const loadSharedStackOutputs = (ref: pulumi.StackReference): SharedStackO
     postgresPort: get<number>('postgresPort'),
     postgresAdminPasswordSecretArn: get<string>('postgresAdminPasswordSecretArn'),
     postgresPassword: get<string>('postgresPassword'),
-    powersyncHost: get<string>('powersyncHost'),
-    powersyncPublicUrl: get<string>('powersyncPublicUrl'),
     powersyncJwtSecretArn: get<string>('powersyncJwtSecretArn'),
     keycloakIssuerUrl: get<string>('keycloakIssuerUrl'),
     keycloakUrl: get<string>('keycloakUrl'),

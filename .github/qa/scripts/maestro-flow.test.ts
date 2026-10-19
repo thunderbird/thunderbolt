@@ -36,6 +36,16 @@ test.each([
   ['appId: x\n---\n- back\n---\n- back', 'documents'],
   ['- back\n...\n- back', 'document end'],
   ['- tapOn: {toString: x}', 'toString'],
+  ['- back\r- &a\r  tapOn: x\r- *a', 'alias'], // Bun reads a lone \r as a line break
+  ['- tapOn:\r    text: a\r    <<: {id: b}', 'merge'],
+  ['- back\r\n- tapOn: Hi', undefined],
+  ['- tapOn: "<<"', undefined],
+  ['- repeat:\n    commands: [back]', 'times'], // Maestro 2.11 loops up to Int.MAX_VALUE without times
+  ['- repeat:\n    times: 2\n    commands:\n      - retry:\n          commands: [back]', 'nested'],
+  [
+    '- retry:\n    commands:\n      - runFlow:\n          commands:\n            - repeat:\n                times: 2\n                commands: [back]',
+    'nested',
+  ],
   ['- repeat:\n    times: 11\n    commands: [back]', 'times'],
   ['- retry:\n    maxRetries: "2"\n    commands: [back]', 'maxRetries'],
   ['- tapOn:\n    below:\n      text: ${1}', 'below.text'],

@@ -93,61 +93,74 @@ const flowSchemas = (appId: string, vars: string[]) => {
     )
     .partial()
   const commands: z.ZodType = z.lazy(() => z.array(command, { error: 'expected a list of commands' }))
+  const loopCommands: z.ZodType = z.lazy(() => z.array(loopCommand, { error: 'expected a list of commands' }))
   const app = shortOr(ourAppId, { appId: ourAppId })
-  const command = z.union(
-    [
-      z.enum(bareCommands, { error: (issue) => `${String(issue.input)} is not a command allowed without a value` }),
-      z
-        .strictObject(
-          {
-            tapOn: tap,
-            doubleTapOn: tap,
-            longPressOn: tap,
-            assertVisible: tap,
-            assertNotVisible: tap,
-            inputText: shortOr(text, { text }),
-            eraseText: shortOr(int, { charactersToErase: int }),
-            hideKeyboard: options({}),
-            inputRandomEmail: options({}),
-            inputRandomPersonName: options({}),
-            inputRandomNumber: options({ length: int }),
-            inputRandomText: options({ length: int }),
-            scroll: options({}),
-            scrollUntilVisible: options({
-              element: selector,
-              direction,
-              timeout: ms,
-              speed: int,
-              visibilityPercentage: int,
-              centerElement: bool,
-              waitToSettleTimeoutMs: ms,
-            }),
-            swipe: options({
-              direction,
-              start: text,
-              end: text,
-              from: selector,
-              duration: ms,
-              waitToSettleTimeoutMs: ms,
-            }),
-            extendedWaitUntil: options({ visible: selector, notVisible: selector, timeout: ms }),
-            waitForAnimationToEnd: options({ timeout: ms }),
-            back: options({}),
-            pressKey: shortOr(key, { key }),
-            launchApp: shortOr(ourAppId, { appId: ourAppId, stopApp: bool }),
-            stopApp: app,
-            killApp: app,
-            repeat: options({ times: count, while: when, commands }),
-            retry: options({ maxRetries: count, commands }),
-            runFlow: options({ when, commands }),
-          },
-          { error: 'expected a command name or a mapping' },
-        )
-        .partial()
-        .refine((item) => Object.keys(item).length === 1, { error: 'expected one command per item' }),
-    ],
-    { error: 'expected a command name or a mapping' },
-  )
+  const commandItem = (flowControl: Record<string, z.ZodType>) =>
+    z.union(
+      [
+        z.enum(bareCommands, { error: (issue) => `${String(issue.input)} is not a command allowed without a value` }),
+        z
+          .strictObject(
+            {
+              tapOn: tap,
+              doubleTapOn: tap,
+              longPressOn: tap,
+              assertVisible: tap,
+              assertNotVisible: tap,
+              inputText: shortOr(text, { text }),
+              eraseText: shortOr(int, { charactersToErase: int }),
+              hideKeyboard: options({}),
+              inputRandomEmail: options({}),
+              inputRandomPersonName: options({}),
+              inputRandomNumber: options({ length: int }),
+              inputRandomText: options({ length: int }),
+              scroll: options({}),
+              scrollUntilVisible: options({
+                element: selector,
+                direction,
+                timeout: ms,
+                speed: int,
+                visibilityPercentage: int,
+                centerElement: bool,
+                waitToSettleTimeoutMs: ms,
+              }),
+              swipe: options({
+                direction,
+                start: text,
+                end: text,
+                from: selector,
+                duration: ms,
+                waitToSettleTimeoutMs: ms,
+              }),
+              extendedWaitUntil: options({ visible: selector, notVisible: selector, timeout: ms }),
+              waitForAnimationToEnd: options({ timeout: ms }),
+              back: options({}),
+              pressKey: shortOr(key, { key }),
+              launchApp: shortOr(ourAppId, { appId: ourAppId, stopApp: bool }),
+              stopApp: app,
+              killApp: app,
+              ...flowControl,
+            },
+            { error: 'expected a command name or a mapping' },
+          )
+          .partial()
+          .refine((item) => Object.keys(item).length === 1, { error: 'expected one command per item' }),
+      ],
+      { error: 'expected a command name or a mapping' },
+    )
+  // Maestro 2.11 repeats up to Int.MAX_VALUE times without `times`, and nested loops multiply. A `retry` without
+  // `maxRetries` retries once, and Maestro caps it at 3.
+  const command = commandItem({
+    repeat: options({ while: when, commands: loopCommands }).extend({ times: count }),
+    retry: options({ maxRetries: count, commands: loopCommands }),
+    runFlow: options({ when, commands }),
+  })
+  const nestedLoop = z.never({ error: 'repeat and retry cannot be nested inside repeat or retry' })
+  const loopCommand = commandItem({
+    repeat: nestedLoop,
+    retry: nestedLoop,
+    runFlow: options({ when, commands: loopCommands }),
+  })
   const header = z.strictObject({ appId: ourAppId, name: text }, { error: 'expected a mapping' }).partial().nullable()
   return { header, commands }
 }
@@ -181,8 +194,8 @@ const describeIssues = (issues: z.core.$ZodIssue[], prefix: string): string[] =>
  */
 const rawProblem = (source: string): string | undefined => {
   if (/^(\.\.\.|%)/m.test(source)) return 'document end markers (...) and directives (%) are not allowed'
-  if (/^---(?![ \t\r]*$)/m.test(source)) return 'a document marker (---) must stand alone on its line'
-  const blank = ' \t\r\n'
+  if (/^---(?![ \t]*$)/m.test(source)) return 'a document marker (---) must stand alone on its line'
+  const blank = ' \t\n'
   let line = 1
   let quote = ''
   let quoteStart = 0
@@ -203,7 +216,9 @@ const rawProblem = (source: string): string | undefined => {
         continue
       }
       // Bun treats a quoted "<<" key as a merge key too.
-      if (source.slice(quoteStart, i) === '<<') return `${at}: merge keys (<<) are not allowed`
+      if (source.slice(quoteStart, i) === '<<' && /^[ \t]*:/.test(source.slice(i + 1))) {
+        return `${at}: merge keys (<<) are not allowed`
+      }
       quote = ''
       node = false
       continue
@@ -253,10 +268,12 @@ const parseDocuments = (documents: string[]) => {
  * The flow may start with a header (`appId`, optional `name`, then `---`); `vars` are the names the harness passes
  * to Maestro, the only ones a `${NAME}` may use.
  */
-export const checkMaestroFlow = (source: string, options: { appId: string; vars?: string[] }): FlowCheck => {
+export const checkMaestroFlow = (input: string, options: { appId: string; vars?: string[] }): FlowCheck => {
+  // Bun reads a lone \r as a line break, so the scan must see the same lines.
+  const source = input.replace(/\r\n?/g, '\n')
   const raw = rawProblem(source)
   if (raw) return { ok: false, problems: [raw] }
-  const parts = source.split(/^---[ \t\r]*$/m)
+  const parts = source.split(/^---[ \t]*$/m)
   const documents = parts.length > 1 && !parts[0].trim() ? parts.slice(1) : parts
   if (documents.length > 2) return { ok: false, problems: ['more than two YAML documents'] }
   const parsed = parseDocuments(documents)
@@ -269,6 +286,6 @@ export const checkMaestroFlow = (source: string, options: { appId: string; vars?
     ...describeIssues(headerResult.error?.issues ?? [], 'header'),
     ...describeIssues(commandsResult.error?.issues ?? [], 'commands'),
   ]
-  if (!commandsResult.success || problems.length > 0) return { ok: false, problems }
+  if (!headerResult.success || !commandsResult.success) return { ok: false, problems }
   return { ok: true, yaml: `appId: ${options.appId}\n---\n${Bun.YAML.stringify(commandsResult.data, null, 2)}` }
 }

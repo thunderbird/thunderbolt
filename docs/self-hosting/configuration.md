@@ -81,12 +81,13 @@ Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 
 ### SAML
 
-| Variable           | Default | What it does                                                                      |
-| ------------------ | ------- | --------------------------------------------------------------------------------- |
-| `SAML_ENTRY_POINT` | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                    |
-| `SAML_ENTITY_ID`   | none    | Service provider entity ID. Must match the SAML client in your identity provider. |
-| `SAML_IDP_ISSUER`  | none    | Identity provider entity ID.                                                      |
-| `SAML_CERT`        | none    | Identity provider signing certificate, base64, without PEM headers.               |
+| Variable                   | Default | What it does                                                                                                                                                                                                            |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAML_ENTRY_POINT`         | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                                                                                                                                                          |
+| `SAML_ENTITY_ID`           | none    | Service provider entity ID. Must match the SAML client in your identity provider.                                                                                                                                       |
+| `SAML_IDP_ISSUER`          | none    | Identity provider entity ID.                                                                                                                                                                                            |
+| `SAML_CERT`                | none    | Identity provider signing certificate, base64, without PEM headers.                                                                                                                                                     |
+| `SAML_ALLOW_IDP_INITIATED` | `false` | `true` accepts SAML responses that answer no login request, which is a login started at the provider's dashboard. Read the risk in [Authentication](./authentication.md#logging-in-from-the-providers-dashboard) first. |
 
 Under OIDC, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. SAML has no discovery step, so it does not need the entry. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
@@ -335,6 +336,13 @@ Request headers need no configuration: the API echoes back whatever the browser 
 | `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                    |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
+
+With `TRUSTED_PROXY` empty, the API cannot read a client address from a header it trusts. Two limiters then put every client in one shared bucket instead of skipping the limit:
+
+- The API's own limit on authentication requests (10 per minute) counts the address of whatever connects to it. Behind a reverse proxy or CDN, that is the proxy.
+- The built-in authentication limiter reads `X-Forwarded-For`. It trusts that header only when it holds a single address. A request that crossed two or more hops carries several, and the limiter then ignores the header and puts the request in one bucket per route. So does a request that arrives without the header. Those buckets allow 10 requests per minute, 3 per 10 seconds for starting an SSO sign-in, 3 per minute for requesting or entering an emailed sign-in code, and 30 per second for session checks.
+
+The symptom is many users getting `429` at the same moment, most often when a team signs in at the start of the day. If Cloudflare or Akamai sits in front of the API, set `TRUSTED_PROXY` to `cloudflare` or `akamai`. Behind any other proxy there is no setting that fixes it, because the limits are fixed: all users behind that proxy share them.
 
 Apart from anonymous sign-in, the limits are not configurable:
 

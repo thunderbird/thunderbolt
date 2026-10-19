@@ -113,7 +113,13 @@ provider's job.
 - Add the provider's origin to `TRUSTED_ORIGINS`, not `CORS_ORIGINS`. Containerized deployments
   usually need two entries: the origin the browser sees and the internal hostname the API uses.
 - An identity from your provider is linked onto an existing account with the same email address, so a
-  deployment can move from email codes to SSO without stranding accounts.
+  deployment can move from email codes to SSO without stranding accounts. The existing account's email
+  must be verified. An unverified local account with the same address is not linked, and that sign-in
+  fails with "account not linked".
+- A failed or cancelled sign-in returns the user to the app with a message and a "Try again" button.
+- Under SAML, a login that starts at your provider's dashboard is refused by default. Point the
+  dashboard icon at your app's address, or read the risk of `SAML_ALLOW_IDP_INITIATED` in
+  [Authentication](../self-hosting/authentication.md#logging-in-from-the-providers-dashboard).
 
 There is no SCIM endpoint and no provisioning ahead of first use; an account exists once the person
 signs in for the first time.

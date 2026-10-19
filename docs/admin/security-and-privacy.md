@@ -229,16 +229,16 @@ An export file does not include attached file contents.
 
 ## Hardening a deployment
 
-| Do this                                                               | Why                                                                                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended |
-| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                     |
-| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                   |
-| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                    |
-| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits                                      |
-| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                          |
-| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                 |
-| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                     |
+| Do this                                                               | Why                                                                                                                                                          |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended                                                   |
+| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                                                                       |
+| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                                                                     |
+| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                                                                      |
+| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits. Empty behind a CDN puts every client in one bucket, and many users get `429` together |
+| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                                                                            |
+| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                                                                   |
+| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                                                                       |
 
 Full variable reference: [Configuration](../self-hosting/configuration.md).
 

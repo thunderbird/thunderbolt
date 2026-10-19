@@ -78,17 +78,20 @@ Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the loc
 
 ## Single sign-on fails
 
-| Symptom                                                  | Cause                                                                                      | Fix                                                                                              |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| The app loads normally and never redirects to the IdP    | The client was not built for SSO                                                           | Build the web client with `VITE_AUTH_MODE=sso`                                                   |
-| The app loads normally and never redirects to the IdP    | A stale session from a previous sign-in                                                    | Clear site data for the app origin and reload                                                    |
-| `discovery_untrusted_origin`                             | The IdP origin is missing from `TRUSTED_ORIGINS`                                           | Add it there, not to `CORS_ORIGINS`, and restart                                                 |
-| `discovery_unexpected_error`                             | The server cannot reach the identity provider                                              | Confirm the provider is running and reachable from the server's network                          |
-| Discovery succeeds but tokens are rejected in containers | The server reaches the IdP on an internal hostname while tokens carry a browser-facing one | Set `OIDC_DISCOVERY_URL` to the internal URL and list both origins in `TRUSTED_ORIGINS`          |
-| OIDC callback returns `404` or `redirect_uri` mismatch   | The redirect URI registered with the provider is wrong                                     | Register `https://your-backend/v1/api/auth/sso/callback/sso`                                     |
-| SAML sign-in is rejected on the way back                 | The assertion consumer service (ACS) URL registered with the provider is wrong             | Register `https://your-backend/v1/api/auth/sso/saml2/sp/acs/sso`                                 |
-| `Invalid certificate`                                    | `SAML_CERT` includes PEM headers or line breaks                                            | Paste the raw base64 only, without `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` |
-| The IdP rejects the entity ID                            | `SAML_ENTITY_ID` does not match the application registered in the IdP                      | Make them identical                                                                              |
+| Symptom                                                  | Cause                                                                                      | Fix                                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| The app loads normally and never redirects to the IdP    | The client was not built for SSO                                                           | Build the web client with `VITE_AUTH_MODE=sso`                                                      |
+| The app loads normally and never redirects to the IdP    | A stale session from a previous sign-in                                                    | Clear site data for the app origin and reload                                                       |
+| `discovery_untrusted_origin`                             | The IdP origin is missing from `TRUSTED_ORIGINS`                                           | Add it there, not to `CORS_ORIGINS`, and restart                                                    |
+| `discovery_unexpected_error`                             | The server cannot reach the identity provider                                              | Confirm the provider is running and reachable from the server's network                             |
+| Discovery succeeds but tokens are rejected in containers | The server reaches the IdP on an internal hostname while tokens carry a browser-facing one | Set `OIDC_DISCOVERY_URL` to the internal URL and list both origins in `TRUSTED_ORIGINS`             |
+| OIDC callback returns `404` or `redirect_uri` mismatch   | The redirect URI registered with the provider is wrong                                     | Register `https://your-backend/v1/api/auth/sso/callback/sso`                                        |
+| SAML sign-in is rejected on the way back                 | The assertion consumer service (ACS) URL registered with the provider is wrong             | Register `https://your-backend/v1/api/auth/sso/saml2/sp/acs/sso`                                    |
+| `Invalid certificate`                                    | `SAML_CERT` includes PEM headers or line breaks                                            | Paste the raw base64 only, without `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----`    |
+| The IdP rejects the entity ID                            | `SAML_ENTITY_ID` does not match the application registered in the IdP                      | Make them identical                                                                                 |
+| Clicking the icon in the IdP dashboard does not sign in  | Thunderbolt refuses SAML responses that answer no login request it sent                    | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` after reading the risk |
+| Many users get `429` at the same time                    | `TRUSTED_PROXY` is empty behind a CDN, so every client shares one rate-limit bucket        | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one                                      |
+| "Account not linked" on an SSO sign-in                   | The account with that email is not verified                                                | See [Account not linked](#account-not-linked) below                                                 |
 
 Point your IdP at the service-provider metadata to check what Thunderbolt is actually sending:
 
@@ -100,6 +103,35 @@ Two behaviours that are not faults:
 
 - **Signing out puts the user straight back in.** The identity provider keeps its own session, so the next visit re-authenticates silently. This is normal SSO behaviour and Thunderbolt cannot end the provider's session for you.
 - **The bundled Keycloak forgets its configuration.** In every bundled deployment it runs in development mode with no persistent storage, so anything set in its admin console is lost when the container or pod restarts and the realm is re-imported. Don't use it past evaluation.
+
+### Account not linked
+
+A sign-in through your provider joins an existing account with the same email only when that account's email is verified. Two kinds of account are not:
+
+- A local account with the same address that was never verified.
+- An account your provider created on its first sign-in. Thunderbolt does not trust the provider's own email check, so it stores these unverified. They work as long as the provider sends the same user ID (the OIDC subject or the SAML NameID). A new provider, or a changed ID, cannot reach them.
+
+Check the account first:
+
+```sql
+SELECT id, email, email_verified, created_at FROM "user" WHERE email = 'person@example.com';
+```
+
+Older releases let any signed-in user add a second identity provider, and its owner could create an unverified account for someone else's address. Marking such an account verified would hand it to the real person with the owner still inside. So list how the account can be reached, with the `id` from above:
+
+```sql
+SELECT provider_id, created_at FROM account WHERE user_id = '<id>';
+SELECT name, created_at FROM apikey WHERE reference_id = '<id>';
+SELECT name, created_at FROM passkey WHERE user_id = '<id>';
+```
+
+Anything other than `sso` accounts, or an API key or passkey the person did not create, means someone else set the account up. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) before going further. Otherwise, once you are sure the address belongs to the person signing in, mark it verified, and they can sign in again:
+
+```sql
+UPDATE "user" SET email_verified = true WHERE email = 'person@example.com';
+```
+
+Don't delete the `user` row to make room for a fresh account. That is a hard delete: it removes the person's synced data and their encryption keys with it, and none of it comes back. Consider it only for an account you know nobody uses.
 
 ## Chats are not syncing between devices
 

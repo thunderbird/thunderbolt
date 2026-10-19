@@ -71,14 +71,15 @@ Put **both** origins in `TRUSTED_ORIGINS`. The server validates discovery and me
 
 ### What you configure
 
-| Variable           | Required | What it is                                                                                        |
-| ------------------ | :------: | ------------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`        |   yes    | Set to `saml`                                                                                     |
-| `SAML_ENTRY_POINT` |   yes    | Your provider's sign-on URL, where users are sent to authenticate                                 |
-| `SAML_ENTITY_ID`   |   yes    | Thunderbolt's own entity ID. Must match the application you register with your provider.          |
-| `SAML_IDP_ISSUER`  |   yes    | Your provider's entity ID. Assertions are checked against it.                                     |
-| `SAML_CERT`        |   yes    | Your provider's signing certificate                                                               |
-| `TRUSTED_ORIGINS`  |    no    | Needed only if you pass a `callbackURL` on another origin; SAML has no discovery step to validate |
+| Variable                   | Required | What it is                                                                                        |
+| -------------------------- | :------: | ------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`                |   yes    | Set to `saml`                                                                                     |
+| `SAML_ENTRY_POINT`         |   yes    | Your provider's sign-on URL, where users are sent to authenticate                                 |
+| `SAML_ENTITY_ID`           |   yes    | Thunderbolt's own entity ID. Must match the application you register with your provider.          |
+| `SAML_IDP_ISSUER`          |   yes    | Your provider's entity ID. Assertions are checked against it.                                     |
+| `SAML_CERT`                |   yes    | Your provider's signing certificate                                                               |
+| `SAML_ALLOW_IDP_INITIATED` |    no    | Set `true` to accept logins that start at the provider's dashboard. Off by default. See below.    |
+| `TRUSTED_ORIGINS`          |    no    | Needed only if you pass a `callbackURL` on another origin; SAML has no discovery step to validate |
 
 ```sh
 AUTH_MODE=saml
@@ -107,11 +108,21 @@ If your provider needs the assertion consumer URL entered by hand:
 
 Assertions must be signed. Thunderbolt validates the signature against `SAML_CERT` and the issuer against `SAML_IDP_ISSUER`.
 
+### Logging in from the provider's dashboard
+
+Thunderbolt refuses a SAML response that does not answer a login request it sent. That rules out a login that starts at your provider's dashboard, where a user clicks the Thunderbolt icon and the provider sends a response nobody asked for. The user is sent to `APP_URL` and sees the app's sign-in error page, which asks them to open Thunderbolt and sign in from there. Its "Try again" button starts a normal login. Nothing is signed in from the unrequested response. This redirect needs the app's origin in `TRUSTED_ORIGINS`.
+
+You can keep the dashboard icon working without changing this. Most providers let you point the icon at a URL. Set it to the address of your Thunderbolt app, such as `https://thunderbolt.example.com`. In Azure (Microsoft Entra ID) the field is called "Sign on URL". The login then starts at Thunderbolt, which sends a request, and the provider answers it.
+
+If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart the API. The setting is a risk. With no request to compare against, Thunderbolt cannot tell whether the person started the login or someone else did, for example by getting a signed response into their browser. The SAML library calls this a known attack vector, and the SAML2Int interoperability profile advises against this kind of login. Turn it on only if your provider leaves you no other way.
+
 ## What single sign-on looks like to the user
 
 There is no Thunderbolt login form. Opening the app with no session sends the browser straight to your identity provider.
 
-If a user already has a Thunderbolt account with the same email address, signing in through your provider links to that existing account rather than creating a second one.
+If a user already has a Thunderbolt account with the same email address and that address is verified, their first sign-in through your provider lands in that same account instead of creating a second one. A local account with the same address that was never verified is not linked. That sign-in fails with "account not linked".
+
+If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.
 
 Signing out of Thunderbolt ends the Thunderbolt session and leaves the one your identity provider holds in place, so the next visit may re-authenticate silently. That session ends at the provider.
 
@@ -173,17 +184,19 @@ A session belongs to the device that created it. With sync on, users see every s
 
 ## Troubleshooting
 
-| Symptom                                                        | Likely cause                                                              | Fix                                                                                           |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| The app loads normally instead of redirecting to your provider | The app was built without `VITE_AUTH_MODE=sso`, or a stale session exists | Rebuild the app image, or clear site data in the browser and reload                           |
-| An untrusted-origin error during sign-in                       | Your provider's origin is missing from `TRUSTED_ORIGINS`                  | Add it. Container deployments usually need both the public and the internal origin.           |
-| A discovery error during sign-in                               | The provider is unreachable from the server                               | Check the provider is running and set `OIDC_DISCOVERY_URL` to an address the server can reach |
-| The server will not start, naming an OIDC or SAML variable     | A setting the chosen mode requires is missing or misspelled               | Set every variable listed for that mode above                                                 |
-| The callback returns 404                                       | The redirect URI registered with the provider does not match              | Register `<BETTER_AUTH_URL>/v1/api/auth/sso/callback/sso` exactly                             |
-| SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above          |
-| An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                  |
-| Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                         |
-| A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row  |
+| Symptom                                                        | Likely cause                                                              | Fix                                                                                                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| The app loads normally instead of redirecting to your provider | The app was built without `VITE_AUTH_MODE=sso`, or a stale session exists | Rebuild the app image, or clear site data in the browser and reload                                                   |
+| An untrusted-origin error during sign-in                       | Your provider's origin is missing from `TRUSTED_ORIGINS`                  | Add it. Container deployments usually need both the public and the internal origin.                                   |
+| A discovery error during sign-in                               | The provider is unreachable from the server                               | Check the provider is running and set `OIDC_DISCOVERY_URL` to an address the server can reach                         |
+| The server will not start, naming an OIDC or SAML variable     | A setting the chosen mode requires is missing or misspelled               | Set every variable listed for that mode above                                                                         |
+| The callback returns 404                                       | The redirect URI registered with the provider does not match              | Register `<BETTER_AUTH_URL>/v1/api/auth/sso/callback/sso` exactly                                                     |
+| SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above                                  |
+| An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                                          |
+| Clicking the icon in the provider's dashboard does not sign in | Thunderbolt refuses SAML responses it did not ask for                     | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` (read the risk)                          |
+| Many users get `429` at the same time                          | `TRUSTED_PROXY` is empty behind a CDN, so everyone shares one limit       | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one. See [Configuration](./configuration.md#rate-limiting) |
+| Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                                                 |
+| A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row                          |
 
 ## Next
 

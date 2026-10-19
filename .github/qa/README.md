@@ -38,8 +38,9 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 
 On the macOS runner any process of the job's user can read the Anthropic key in the initial environment of
 `claude`, even with the scrub and Seatbelt (spike, spec 6.7). Zone D therefore rests on a different guarantee: the
-model cannot start any process. Five conditions hold it up, and `explore.sh run` sets all of them for an `ios` or
-`android` session:
+model cannot start any process. Five conditions hold it up. `explore.sh run` sets (a), (b), (c) and (e) for an `ios`
+or `android` session, and the workflow holds (d). It refuses `c7-two-devices-ios`: its second browser could write
+anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
 
 - (a) The Maestro gate (`scripts/maestro-gate.ts`, `mcp-maestro.json`) is the only path to the device. It sends
   Maestro only flows that pass the allow list in `scripts/maestro-flow.ts`, and brings the app back to the front when
@@ -62,8 +63,8 @@ backend log stay outside the session dir, since the model can write anywhere ins
 
 Before any session, `explore.sh canary <session> <out>` runs a short `claude-haiku-5-5` session with the same
 settings (4 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
-passes only when the gate log shows `deny run` and `deny Write` and the file does not exist. If it fails, no session
-runs. It prints the session's result line and never a tool result. The CLI stays pinned to
+passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too), the
+gate's `deny run`, the hook's `deny Write`, and the file does not exist. If it fails, no session runs. It prints the session's result line and never a tool result. The CLI stays pinned to
 `@anthropic-ai/claude-code@2.1.303`, where the spike measured the hook, the scrub and the Edit rule; a new version
 has to pass the canary and the Edit rule again. iOS sessions use the fake AI only (no provider key on the Mac), and no
 agent that edits code runs there.

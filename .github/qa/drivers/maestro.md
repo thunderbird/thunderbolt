@@ -75,5 +75,6 @@ missing.
   and the harness reads the logs while it runs.
 - Two-device charter (c7): device A is the app on this device, through the Maestro tools, not
   `mcp__playwright__*`. Device B is a web browser,
-  through `mcp__playwright_b__*`, at http://localhost:1424; the browser block below holds for it. A bug that shows
+  through `mcp__playwright_b__*`, at http://localhost:1424; the browser block below holds for it only, so read
+  `mcp__playwright_b__*` wherever it names a browser tool. A bug that shows
   only on device B gets a `repro_spec` and a `repro/<n>.spec.ts`, as on the web.

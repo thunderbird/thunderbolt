@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, expect, test } from 'bun:test'
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -79,7 +79,15 @@ test('a native session gets only Write and the gated Maestro tools, behind a hoo
   expect(env.QA_GATE_LOG).toBe(`${sessionDir}.gate.log`)
 })
 
-test('only the two-device charter gets the second browser, whatever the caller set', () => {
+test('the two-device charter does not run on iOS, as a session or a canary', () => {
+  for (const command of ['run', 'canary']) {
+    const { code, stderr } = sh([command, 'c7-two-devices-ios', out], { QA_DRY_RUN: '1', ...fakeClaude(denied) })
+    expect(code).toBe(2)
+    expect(stderr).toContain('c7-two-devices-ios does not run')
+  }
+})
+
+test('only the two-device charter on Android gets the second browser, whatever the caller set', () => {
   const single = dryRun('c2-chat-power-user-android', { QA_ALLOW_BROWSER_B: '1' })
   expect(single.env.QA_ALLOW_BROWSER_B).toBe('0')
   expect(flag(single.command, '--allowedTools')).not.toContain('mcp__playwright_b__*')
@@ -101,6 +109,15 @@ test('a native session refuses a WebView log inside its session dir', () => {
   expect(stderr).toContain('must be outside')
 })
 
+test('a native session refuses a backend log inside its session dir before the log exists', () => {
+  const notYet = join(out, 'c2-chat-power-user-ios', 'attempts', 'backend.log')
+  mkdirSync(join(out, 'c2-chat-power-user-ios', 'attempts'), { recursive: true })
+  const { code, stderr } = sh(['run', 'c2-chat-power-user-ios', out], { QA_DRY_RUN: '1', QA_BACKEND_LOG: notYet })
+  expect(existsSync(notYet)).toBe(false)
+  expect(code).not.toBe(0)
+  expect(stderr).toContain('must be outside')
+})
+
 /** A stand-in `claude` that logs the given gate lines, may write the outside file, and prints a tool result. */
 const fakeClaude = (gateLines: string[], writeOutside = false) => {
   const bin = mkdtempSync(join(work, 'bin-'))
@@ -116,17 +133,23 @@ const fakeClaude = (gateLines: string[], writeOutside = false) => {
   return { PATH: `${bin}:${process.env.PATH}` }
 }
 
-const denied = ['deny run commands[0].runScript: key not allowed', 'deny Write /tmp/qa-canary-outside.txt is outside']
+const denied = [
+  'allow mcp__maestro__run gated Maestro tool',
+  'deny run commands[0].runScript: key not allowed',
+  'deny Write /tmp/qa-canary-outside.txt is outside',
+]
 
-test('the canary passes when the gate denied the script and the write, and prints only the result line', () => {
+test('the canary passes when the hook saw the run, the gate denied it and the hook denied the write', () => {
   const { code, stdout } = sh(['canary', 'c2-chat-power-user-ios', out], fakeClaude(denied))
   expect(code).toBe(0)
   expect(stdout).toBe('{"subtype":"success","is_error":false,"num_turns":2}\ncanary denied\n')
 })
 
-test('the canary fails when either call was not denied', () => {
-  expect(sh(['canary', 'c2-chat-power-user-ios', out], fakeClaude([denied[0]])).code).toBe(1)
-  expect(sh(['canary', 'c2-chat-power-user-ios', out], fakeClaude([denied[1]])).code).toBe(1)
+test('the canary fails when any of the three lines is missing', () => {
+  for (const missing of denied) {
+    const lines = denied.filter((line) => line !== missing)
+    expect(sh(['canary', 'c2-chat-power-user-ios', out], fakeClaude(lines)).code).toBe(1)
+  }
 })
 
 test('the canary fails when the outside file exists, even with both denials logged', () => {

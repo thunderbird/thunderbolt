@@ -79,17 +79,24 @@ prompt() {
 # dir. The scrubbed CLI ignores --permission-mode, so there is none. It runs from the repo root, where the relative
 # path in mcp-maestro.json points.
 native_claude() {
-  local session=$1 dir=$2 stream=$3 config hook log
+  local session=$1 dir=$2 stream=$3 config hook log parent
   shift 3
+  # The browser tools can write anywhere in the checkout, which on the Mac breaks condition (e) of spec 6.7.
+  if [ "$session" = c7-two-devices-ios ]; then
+    echo "c7-two-devices-ios does not run: no second browser on the Mac" >&2
+    exit 2
+  fi
   : "${QA_DEVICE_ID:?}" "${QA_WEBVIEW_LOG:?}" "${QA_BACKEND_LOG:?}"
-  # The gate and the replay trust these logs, and the model can write anywhere in the session dir.
+  # The gate and the replay trust these logs, and the model can write anywhere in the session dir. The parent is
+  # resolved, so a log that does not exist yet is checked too.
   for log in "$QA_WEBVIEW_LOG" "$QA_BACKEND_LOG"; do
-    case $(realpath "$log") in "$dir"/*) echo "$log must be outside $dir" >&2; exit 1 ;; esac
+    parent=$(cd "$(dirname "$log")" && pwd -P)
+    case $parent/ in "$dir"/*) echo "$log must be outside $dir" >&2; exit 1 ;; esac
   done
   local mcp=(.github/qa/mcp-maestro.json) allowed=("mcp__maestro__*" "Edit(/$dir/**)")
   local denied=(Bash mcp__maestro__list_devices mcp__maestro__open_maestro_viewer)
   QA_ALLOW_BROWSER_B=0
-  if [[ $session == c7-two-devices-* ]]; then
+  if [ "$session" = c7-two-devices-android ]; then
     mcp+=(.github/qa/mcp-two-devices.json)
     allowed+=("mcp__playwright_b__*")
     denied+=(mcp__playwright_b__browser_run_code_unsafe)
@@ -135,10 +142,13 @@ summarize() {
 }
 
 run() {
-  local session=$1 out=$2 dir=$2/$1 config
+  local session=$1 out=$2 dir=$2/$1 config text
   if [ "$(platform "${session##*-}" driver)" = maestro ]; then
     out=$(real_out "$out" "$session")
-    native_claude "$session" "$out/$session" "$out/$session/run.jsonl" "$(prompt "$session" "$out")" \
+    # An assignment, so a prompt that fails to build stops the run instead of starting a session without it.
+    text=$(prompt "$session" "$out")
+    rm -f "$out/$session.gate.log"
+    native_claude "$session" "$out/$session" "$out/$session/run.jsonl" "$text" \
       --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
     if [ "${QA_DRY_RUN:-}" != 1 ]; then summarize "$session" "$out"; fi
     return
@@ -166,8 +176,9 @@ run() {
 }
 
 # One cheap session before any native session (spec 6.7): it asks for a script through the gate and a write outside
-# the session dir, with the session's own settings. It passes only when the gate log shows both denied and the file
-# does not exist. It prints the session's result line and never a tool result.
+# the session dir, with the session's own settings. It passes only when the gate log shows the hook letting the run
+# through, the gate denying it and the hook denying the write, and the file does not exist. It prints the session's
+# result line and never a tool result.
 canary() {
   local session=$1 out outside=/tmp/qa-canary-outside.txt dir
   [ "$(platform "${session##*-}" driver)" = maestro ] || { echo "the canary is for native sessions" >&2; exit 2; }
@@ -181,7 +192,9 @@ text canary. Make both calls in your first turn, even if one of them fails, then
   if [ "${QA_DRY_RUN:-}" = 1 ]; then return; fi
   jq --raw-input --compact-output 'fromjson? | select(.type == "result") | {subtype, is_error, num_turns}' \
     "$dir/run.jsonl"
-  if grep -qs '^deny run ' "$dir.gate.log" && grep -qs '^deny Write ' "$dir.gate.log" && [ ! -e "$outside" ]; then
+  # The hook's own line for the Maestro call proves it runs on MCP calls too, not only on Write.
+  if grep -qs '^allow mcp__maestro__run ' "$dir.gate.log" && grep -qs '^deny run ' "$dir.gate.log" &&
+    grep -qs '^deny Write ' "$dir.gate.log" && [ ! -e "$outside" ]; then
     echo "canary denied"
     return
   fi

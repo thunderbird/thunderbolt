@@ -79,6 +79,8 @@ The agent is told the current date and hour in `AGENT_TIMEZONE`, so with a sched
 
 The web app sends `Cross-Origin-Embedder-Policy: require-corp` and `Cross-Origin-Opener-Policy: same-origin`. They make the page cross-origin isolated, which the app's local database needs, so a site without them does not start. It also sends `X-Frame-Options: DENY` and `frame-ancestors 'none'`, because nothing embeds a public agent.
 
+Hashed files under `/assets/` are cached for a year and `index.html` is always revalidated, so a deploy reaches visitors on their next load.
+
 ## Usage report
 
 The API can report users, turns, tokens and spend for any window, split between anonymous and signed-in users, by day and by model, with the busiest hour. It reports counts only. Run it in an SSH session on the API (`render ssh`), from the `backend` directory:

@@ -67,6 +67,10 @@ services:
       - path: /index.html
         name: Cache-Control
         value: max-age=0, must-revalidate, public
+      # Files under /assets are content-hashed, so a new build gets new names.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     autoDeployTrigger: commit
 
   - type: web

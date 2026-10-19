@@ -30,7 +30,13 @@ test('Bash, Read and unknown tools are denied', () => {
   for (const tool of ['Bash', 'Read', 'Glob', 'WebFetch', 'mcp__playwright__browser_click', 'Task']) {
     expect(allows(tool)).toBe(false)
   }
+  for (const tool of ['NotebookEdit', 'MultiEdit'])
+    expect(allows(tool, { file_path: join(sessionDir, 'x') })).toBe(false)
+  expect(allows('Edit', { file_path: '/tmp/x' })).toBe(false)
 })
+
+test('ToolSearch is allowed: it only loads the schemas of tools the session has', () =>
+  expect(allows('ToolSearch', { query: 'select:mcp__maestro__run' })).toBe(true))
 
 test('Write and Edit are allowed only inside the session dir', () => {
   expect(allows('Write', { file_path: join(sessionDir, 'findings/1.json') })).toBe(true)

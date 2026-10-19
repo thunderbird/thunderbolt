@@ -198,7 +198,7 @@ test('a flow restarts the app with stopApp, killApp or launchApp, unless launchA
     '- launchApp: net.thunderbird.thunderbolt.dev',
     '- launchApp:\n    appId: net.thunderbird.thunderbolt.dev',
     '- stopApp',
-    '- back\n- retry:\n    commands:\n      - killApp',
+    '- tapOn: Hi\n- retry:\n    commands:\n      - killApp\n      - launchApp:\n          stopApp: false',
     '- launchApp:\n    stopApp: true',
   ]) {
     expect(restartsApp(ourFlow(yaml))).toBe(true)
@@ -213,21 +213,30 @@ test('a flow restarts the app with stopApp, killApp or launchApp, unless launchA
   }
 })
 
-test('read_logs and the layout reader each see every line', async () => {
-  const { ctx } = fakeGate({ probe: [['[qa-layout] ready', nameBug]] })
+test('the probe lines come only with run and inspect_screen, and read_logs keeps every other line', async () => {
+  const { ctx } = fakeGate({ probe: [['[qa-layout] ready', 'Uncaught TypeError: x', nameBug]] })
   expect(text(await handleCall('run', { yaml: '- back' }, ctx))).toContain(nameBug)
-  expect(text(await handleCall('read_logs', {}, ctx))).toContain(`CONSOLE ERROR ${nameBug}`)
+  expect(text(await handleCall('read_logs', {}, ctx))).toEndWith('CONSOLE ERROR Uncaught TypeError: x')
 
-  appendFileSync(ctx.webviewLog, consoleLine('[qa-layout] behind-keyboard button "Continue"'))
-  expect(text(await handleCall('read_logs', {}, ctx))).toContain('behind-keyboard')
+  appendFileSync(ctx.webviewLog, consoleLine('[qa-layout] behind-keyboard button "Continue"') + consoleLine('later'))
+  expect(text(await handleCall('read_logs', {}, ctx))).toEndWith('CONSOLE ERROR later')
   expect(text(await handleCall('inspect_screen', {}, ctx))).toEndWith('[qa-layout] behind-keyboard button "Continue"')
+})
+
+test('a screen Maestro cannot show after a run keeps the run result and says so', async () => {
+  const { ctx } = fakeGate({
+    respond: ({ name }) => (name === 'inspect_screen' ? textResult('Error: device not reachable', true) : undefined),
+  })
+  const result = await handleCall('run', { yaml: '- tapOn: Hi' }, ctx)
+  expect(result.isError).toBe(false)
+  expect(text(result)).toBe('{"success":true}\n[qa-gate] could not read the screen after this run')
 })
 
 test('a run that leaves the app is followed by a relaunch and the layout of our screen', async () => {
   const { ctx, calls } = fakeGate({ screens: ['control-center', 'hier-00-welcome'], probe: [['[qa-layout] ready']] })
   const result = await handleCall('run', { yaml: '- swipe:\n    direction: DOWN' }, ctx)
   expect(calls.map((call) => call.name)).toEqual(['run', 'inspect_screen', 'run', 'inspect_screen'])
-  expect(calls[2].args.yaml).toContain('pressKey: Home')
+  expect(calls[2].args.yaml).toBe(`appId: ${ctx.appId}\n---\n- pressKey: Home\n- launchApp:\n    stopApp: false\n`)
   expect(calls[2].args.device_id).toBe(ctx.deviceId)
   expect(text(result)).toContain('the harness reopened it')
   // The relaunch keeps the app running, so the probe's earlier ready line still counts.

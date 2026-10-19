@@ -53,8 +53,8 @@ const writeDecision = (toolInput: HookInput['tool_input'], sessionDir: string): 
 
 /**
  * Decides one tool call: the five gated `mcp__maestro__*` tools, `mcp__playwright_b__*` (except
- * `browser_run_code_unsafe`) only with `allowBrowserB`, and Write or Edit whose real target is inside `sessionDir`.
- * Everything else is denied.
+ * `browser_run_code_unsafe`) only with `allowBrowserB`, Write or Edit whose real target is inside `sessionDir`, and
+ * ToolSearch. Everything else is denied.
  */
 export const hookDecision = (input: HookInput, sessionDir: string, allowBrowserB: boolean): HookDecision => {
   const tool = input.tool_name
@@ -66,6 +66,8 @@ export const hookDecision = (input: HookInput, sessionDir: string, allowBrowserB
     return { allow: true, reason: 'second browser' }
   }
   if (tool === 'Write' || tool === 'Edit') return writeDecision(input.tool_input, sessionDir)
+  // It only loads the schemas of tools the session already has, and Claude Code may defer the Maestro tools behind it.
+  if (tool === 'ToolSearch') return { allow: true, reason: 'loads tool schemas' }
   return { allow: false, reason: 'not allowed in a native session' }
 }
 

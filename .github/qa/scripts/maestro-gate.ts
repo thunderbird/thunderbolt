@@ -65,7 +65,9 @@ const tools = [
     description:
       'Runs Maestro commands on the app under test. Pass only `yaml`: a list of commands, optionally after an ' +
       '`appId` header and `---`. Commands outside the QA allow list (scripts, links, media, device settings, ' +
-      'other apps) are refused. The result ends with `[qa-layout]` lines: the ready line with the keyboard, then ' +
+      'other apps) are refused. Nothing may leave the app mid-flow: swipe points are percentages and a swipe may ' +
+      'not start within 5% of a screen edge, stopApp and killApp must be followed by launchApp, and back may ' +
+      'only be the last command. The result ends with `[qa-layout]` lines: the ready line with the keyboard, then ' +
       'each layout problem the in-app probe confirmed since the last call (a problem is reported once per app ' +
       'launch).',
     args: runArgs,
@@ -92,7 +94,8 @@ const tools = [
   {
     name: 'read_logs',
     description:
-      "The log lines written since the last call: the app WebView's console and the backend's 5xx responses, " +
+      "The log lines written since the last call: the app WebView's console (without the `[qa-layout]` lines, " +
+      "which come with run and inspect_screen) and the backend's 5xx responses, " +
       'with secrets removed. At most 200 lines, the newest.',
     args: noArgs,
   },
@@ -132,16 +135,26 @@ const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) =>
 
 const inspect = (ctx: GateContext) => callMaestro(ctx, 'inspect_screen', { device_id: ctx.deviceId })
 
-// The top element is the foreground app; under the Control Center it is blank (spike, decision 4).
-const isOurs = (screen: ToolResult, ctx: GateContext) => {
-  const tree: { elements: { a11y?: string }[] } = JSON.parse(textOf(screen))
-  return tree.elements[0]?.a11y === ctx.appName
+const screenSchema = z.object({ elements: z.array(z.object({ a11y: z.string().optional() })) })
+
+/**
+ * Whose screen Maestro showed. The top element is the foreground app; under the Control Center it is blank (spike,
+ * decision 4). A reply that is not a screen (an error, a second driver timeout) is `unreadable`.
+ */
+const whoseScreen = (screen: ToolResult, ctx: GateContext): 'ours' | 'away' | 'unreadable' => {
+  try {
+    const tree = screenSchema.safeParse(JSON.parse(textOf(screen))).data
+    if (!tree) return 'unreadable'
+    return tree.elements[0]?.a11y === ctx.appName ? 'ours' : 'away'
+  } catch {
+    return 'unreadable'
+  }
 }
 
 /** The screen once our app is in front: as it is, or after the harness pressed Home and reopened the app. */
 const foregroundScreen = async (ctx: GateContext) => {
   const screen = await inspect(ctx)
-  if (isOurs(screen, ctx)) return { screen, notes: [] }
+  if (whoseScreen(screen, ctx) !== 'away') return { screen, notes: [] }
   // pressKey Home is refused to the agent; the harness sends its own flow, outside the allow list.
   const reopen = `appId: ${ctx.appId}\n---\n- pressKey: Home\n- launchApp:\n    stopApp: false\n`
   await callMaestro(ctx, 'run', { device_id: ctx.deviceId, yaml: reopen })
@@ -159,7 +172,8 @@ export const restartsApp = (yaml: string) =>
     ([, , value, options]) => value !== '' || !/^ *stopApp: false$/m.test(options),
   )
 
-const clean = (line: string) => sanitize(line.replace(secrets, '[secret removed]'), 2000)
+// 200 lines of 500 characters stay under Claude Code's MCP output limit.
+const clean = (line: string) => sanitize(line.replace(secrets, '[secret removed]'), 500)
 
 const probeReady = '[qa-layout] ready'
 
@@ -173,7 +187,10 @@ const measured = async (ctx: GateContext, restarted = false) => {
   if (restarted) probeSeen.delete(ctx.webviewLog)
   await Bun.sleep(ctx.probeWaitMs ?? 1200)
   const { screen, notes } = await foregroundScreen(ctx)
-  if (!isOurs(screen, ctx)) {
+  const whose = whoseScreen(screen, ctx)
+  // A flow that already ran must not look failed, or the model runs it again.
+  if (whose === 'unreadable') return { screen, lines: [...notes, '[qa-gate] could not read the screen after this run'] }
+  if (whose === 'away') {
     return { screen, lines: [...notes, '[qa-gate] the app is still not in the foreground; nothing measured'] }
   }
   const probe = newLines(ctx.webviewLog, 'layout')
@@ -229,7 +246,8 @@ const newLines = (file: string, reader: 'logs' | 'layout'): string[] => {
 const readLogs = (ctx: GateContext) => {
   const lines = [
     ...newLines(ctx.webviewLog, 'logs')
-      .filter((line) => line.includes(consoleMark[ctx.platform]))
+      // The probe's own lines reach the model only through run and inspect_screen, so nothing counts them twice.
+      .filter((line) => line.includes(consoleMark[ctx.platform]) && !line.includes('[qa-layout]'))
       .map((line) => `webview: ${line}`),
     ...newLines(ctx.backendLog, 'logs')
       .filter((line) => / 5\d\d /.test(line))

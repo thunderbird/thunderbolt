@@ -22,6 +22,22 @@ const bareCommands = [
   'killApp',
 ] as const
 const variable = /^\$\{([A-Za-z_]\w*)\}$/
+const percent = /^\s*(\d{1,3})%\s*,\s*(\d{1,3})%\s*$/
+const coordinates = (point: string) => (percent.exec(point) ?? []).slice(1).map(Number)
+
+// The commands after which the app is no longer in front (Android's back leaves it at the root), and the one that
+// brings it back. The gate checks the foreground only once a flow has ended, so nothing may run in between.
+const appRef = z.union([z.string(), z.object({})])
+const stop = z.union([z.enum(['stopApp', 'killApp']), z.object({ stopApp: appRef }), z.object({ killApp: appRef })])
+const relaunch = z.union([
+  z.literal('launchApp'),
+  z.object({ launchApp: z.union([z.string(), z.object({ optional: z.literal(false).optional() })]) }),
+])
+const back = z.union([
+  z.literal('back'),
+  z.object({ back: z.object({}) }),
+  z.object({ pressKey: z.union([z.literal('Back'), z.object({ key: z.literal('Back') })]) }),
+])
 
 /**
  * The allow list from the spike's decision 4 and its Q6 row
@@ -92,8 +108,30 @@ const flowSchemas = (appId: string, vars: string[]) => {
       { error: 'expected a mapping' },
     )
     .partial()
-  const commands: z.ZodType = z.lazy(() => z.array(command, { error: 'expected a list of commands' }))
-  const loopCommands: z.ZodType = z.lazy(() => z.array(loopCommand, { error: 'expected a list of commands' }))
+  // Pixels cannot be checked without the screen size, so swipe points are percentages. A swipe from an edge is a
+  // system gesture (Notification and Control Center, home, Android back) that leaves our app.
+  const percentPoint = z
+    .string()
+    .regex(percent, { error: 'expected a point in percent, like 50%, 40%' })
+    .refine((value) => coordinates(value).every((n) => n <= 100), { error: 'percentages go up to 100' })
+  const swipeStart = percentPoint.refine((value) => coordinates(value).every((n) => n >= 5 && n <= 95), {
+    error: 'a swipe may not start within 5% of a screen edge',
+  })
+  const ordered = (item: z.ZodType, topLevel: boolean) =>
+    z.array(item, { error: 'expected a list of commands' }).superRefine((items, ctx) =>
+      items.forEach((entry, index) => {
+        // The last command of the whole flow may leave the app: the gate checks the foreground right after it.
+        if (topLevel && index === items.length - 1) return
+        if (stop.safeParse(entry).success && !relaunch.safeParse(items[index + 1]).success) {
+          ctx.addIssue({ code: 'custom', path: [index], message: 'stopApp and killApp must be followed by launchApp' })
+        }
+        if (back.safeParse(entry).success) {
+          ctx.addIssue({ code: 'custom', path: [index], message: 'back may only be the last command of the flow' })
+        }
+      }),
+    )
+  const commands: z.ZodType = z.lazy(() => ordered(command, false))
+  const loopCommands: z.ZodType = z.lazy(() => ordered(loopCommand, false))
   const app = shortOr(ourAppId, { appId: ourAppId })
   const commandItem = (flowControl: Record<string, z.ZodType>) =>
     z.union(
@@ -126,8 +164,8 @@ const flowSchemas = (appId: string, vars: string[]) => {
               }),
               swipe: options({
                 direction,
-                start: text,
-                end: text,
+                start: swipeStart,
+                end: percentPoint,
                 from: selector,
                 duration: ms,
                 waitToSettleTimeoutMs: ms,
@@ -162,7 +200,7 @@ const flowSchemas = (appId: string, vars: string[]) => {
     runFlow: options({ when, commands: loopCommands }),
   })
   const header = z.strictObject({ appId: ourAppId, name: text }, { error: 'expected a mapping' }).partial().nullable()
-  return { header, commands }
+  return { header, commands: z.lazy(() => ordered(command, true)) }
 }
 
 const isTypeMismatch = (branch: z.core.$ZodIssue[]) =>

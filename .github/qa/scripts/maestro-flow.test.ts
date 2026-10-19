@@ -38,7 +38,7 @@ test.each([
   ['- tapOn: {toString: x}', 'toString'],
   ['- back\r- &a\r  tapOn: x\r- *a', 'alias'], // Bun reads a lone \r as a line break
   ['- tapOn:\r    text: a\r    <<: {id: b}', 'merge'],
-  ['- back\r\n- tapOn: Hi', undefined],
+  ['- hideKeyboard\r\n- tapOn: Hi', undefined],
   ['- tapOn: "<<"', undefined],
   ['- repeat:\n    commands: [back]', 'times'], // Maestro 2.11 loops up to Int.MAX_VALUE without times
   ['- repeat:\n    times: 2\n    commands:\n      - retry:\n          commands: [back]', 'nested'],
@@ -59,6 +59,38 @@ test.each([
   if (problem === undefined) expect(result).toMatchObject({ ok: true })
   else expect(result).toMatchObject({ ok: false, problems: expect.arrayContaining([expect.stringContaining(problem)]) })
 })
+
+// A flow runs whole before the gate checks the foreground, so no command may act after one that leaves the app.
+test.each([
+  ['- stopApp\n- tapOn: Settings\n- tapOn: Airplane Mode', 'commands[0]: stopApp and killApp must be followed'],
+  ['- swipe:\n    start: 50%, 100%\n    end: 50%, 30%\n- tapOn:\n    point: 20%,20%', 'within 5% of a screen edge'],
+  ['- back\n- tapOn: Chrome', 'commands[0]: back may only be the last'],
+  ['- pressKey:\n    key: Back\n- tapOn: Chrome', 'back may only be the last'],
+  ['- killApp\n- launchApp:\n    optional: true\n- tapOn: Settings', 'followed by launchApp'],
+  ['- launchApp\n- stopApp\n- tapOn: Hi', 'commands[1]: stopApp'],
+  ['- retry:\n    commands:\n      - stopApp\n- tapOn: Settings', 'retry.commands[0]: stopApp'],
+  ['- repeat:\n    times: 2\n    commands:\n      - tapOn: Hi\n      - back', 'repeat.commands[1]: back'],
+  ['- swipe:\n    start: 3%, 50%\n    end: 60%, 50%', 'within 5% of a screen edge'],
+  ['- swipe:\n    start: 50%, 96%\n    end: 50%, 50%', 'within 5% of a screen edge'],
+  ['- swipe:\n    start: 100, 400\n    end: 100, 100', 'in percent'],
+  ['- swipe:\n    start: 50%, 50%\n    end: 50%, 120%', 'up to 100'],
+])('%s is refused', (source, problem) =>
+  expect(checkMaestroFlow(source, { appId })).toMatchObject({
+    ok: false,
+    problems: expect.arrayContaining([expect.stringContaining(problem)]),
+  }),
+)
+
+test.each([
+  '- stopApp\n- launchApp\n- tapOn: Hi',
+  '- killApp: net.thunderbird.thunderbolt.dev\n- launchApp:\n    appId: net.thunderbird.thunderbolt.dev',
+  '- swipe:\n    start: 50%, 60%\n    end: 50%, 5%',
+  '- swipe:\n    direction: UP',
+  '- tapOn: Hi\n- back',
+  '- tapOn: Hi\n- pressKey: Back',
+  '- tapOn: Hi\n- stopApp',
+  '- retry:\n    commands:\n      - stopApp\n      - launchApp\n- tapOn: Hi',
+])('%s is allowed', (source) => expect(checkMaestroFlow(source, { appId })).toMatchObject({ ok: true }))
 
 test('a problem names the path of the command', () => {
   expect(

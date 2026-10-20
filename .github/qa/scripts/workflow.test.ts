@@ -9,7 +9,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extraRuns, nativeReplayCap } from './verify'
+import { extraRuns, nativeJobMinutes, nativeReplayCap, nativeRunMinutes, nativeSetupMinutes } from './verify'
 
 type Step = {
   name?: string
@@ -18,10 +18,18 @@ type Step = {
   run?: string
   if?: string
   shell?: string
+  'working-directory'?: string
   env?: Record<string, string>
   with?: Record<string, string>
 }
-type Job = { steps?: Step[]; uses?: string; 'timeout-minutes'?: number; permissions?: unknown; environment?: string }
+type Job = {
+  steps?: Step[]
+  uses?: string
+  'timeout-minutes'?: number
+  permissions?: unknown
+  environment?: string
+  env?: Record<string, string>
+}
 
 const workflow = join(import.meta.dir, '../../workflows/qa-weekly.yml')
 const { jobs } = Bun.YAML.parse(readFileSync(workflow, 'utf8')) as { jobs: Record<string, Job> }
@@ -265,9 +273,60 @@ describe('publish', () => {
 })
 
 test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
-  // Run 39380764343: about 2.6 minutes a run on iOS, and about 6 minutes of setup before the first.
   const runs = 3 + nativeReplayCap * (3 + extraRuns)
-  expect(runs * 2.6 + 6).toBeLessThan(jobs['replay-native']['timeout-minutes'] ?? 0)
+  expect(runs * nativeRunMinutes + nativeSetupMinutes).toBeLessThan(nativeJobMinutes)
+  // verify.ts stops starting runs by this number, so it must be the job's own.
+  expect(jobs['replay-native']['timeout-minutes']).toBe(nativeJobMinutes)
+})
+
+describe('native jobs', () => {
+  const maestroJobs = Object.entries(jobs).filter(([, job]) => JSON.stringify(job).includes('MAESTRO_DRIVER_STARTUP'))
+
+  test("every job that runs Maestro turns off its AI banner, which filled run 39391108579's replay error", () => {
+    expect(maestroJobs.map(([name]) => name).sort()).toEqual([
+      'explore-native',
+      'native-control',
+      'replay-native',
+      'verify-native-run',
+    ])
+    for (const [name, job] of maestroJobs) {
+      const value = job.env?.MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED
+      expect({ name, value }).toEqual({ name, value: 'true' })
+    }
+  })
+
+  test('the Gradle daemons stop after an Android build and before the emulator boots in the same job', () => {
+    const builds = Object.entries(jobs).filter(
+      ([name]) => indexOf(name, 'Boot the device') >= 0 && steps(name).some((s) => s.run?.includes('native.sh build')),
+    )
+    expect(builds.map(([name]) => name)).toEqual(['native-control'])
+    const stop = step('native-control', 'Stop the Gradle daemons')
+    expect(stop).toMatchObject({
+      if: "matrix.target.platform == 'android'",
+      'working-directory': 'src-tauri/gen/android',
+    })
+    expect(stop.run).toBe('./gradlew --stop')
+    const at = indexOf('native-control', 'Stop the Gradle daemons')
+    expect(at).toBeGreaterThan(indexOf('native-control', 'Build the control app'))
+    expect(at).toBeLessThan(indexOf('native-control', 'Boot the device'))
+  })
+
+  test('a failed control uploads the backend and WebView logs, never from a leg whose backend held keys', () => {
+    const control = step('native-control', 'Upload the stack log')
+    expect(control.if).toBe('failure()')
+    expect(control.with?.path).toBe('${{ runner.temp }}/qa-stack.log')
+    // The control's own folder, uploaded always, already holds its WebView log.
+    expect(steps('native-control').find((s) => s.with?.path === '${{ runner.temp }}/qa-control/')?.if).toBe('always()')
+    const replayLogs = step('replay-native', 'Upload the stack and WebView logs')
+    expect(replayLogs.if).toBe('failure() && !matrix.leg.real')
+    expect(replayLogs.with?.path?.split('\n').filter(Boolean)).toEqual([
+      '${{ runner.temp }}/qa-stack.log',
+      '${{ runner.temp }}/qa-webview.log',
+    ])
+    expect(indexOf('replay-native', 'Upload the stack and WebView logs')).toBeGreaterThan(
+      indexOf('replay-native', 'Replay the repro flows and specs'),
+    )
+  })
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {

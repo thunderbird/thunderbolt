@@ -240,7 +240,7 @@ control() {
   mkdir -p "$out"
   app_id=$(jq -r --arg p "$platform" '.[] | select(.id == $p) | .appId' .github/qa/platforms.json)
   { printf 'appId: %s\n---\n' "$app_id"; cat .github/qa/control/native-control.yaml; } > "$out/flow.yaml"
-  export MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
+  export MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
   logs "$platform" "$device" "$out/webview.log"

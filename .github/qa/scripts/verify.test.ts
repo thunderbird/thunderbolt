@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
+import { z } from 'zod'
 import { lintReproSpec, type RawFinding } from './findings'
 import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
@@ -742,6 +743,7 @@ describe('replay of native flows', () => {
       ['passing', 2, 3, 0],
       ['stuck', 2, 2, 4],
     ])
+    expect(result.flaky.find(({ id }) => id === 'stuck')?.replay.reason).toBe('only 2 of 3 runs reached the screen')
     expect(calls.filter((call) => call.title === 'stuck')).toHaveLength(6)
     expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
   })
@@ -874,11 +876,102 @@ describe('replay of native flows', () => {
     await expect(replay(outDir, fakeRunner({}, []), qaDir)).rejects.toThrow('--native')
   })
 
-  test('the control flow passes the allow list on both platforms', async () => {
-    const source = await Bun.file(join(import.meta.dir, '../control/stack.yaml')).text()
-    for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
-      expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
+  test('the control flow and the harness sign-in pass the allow list on both platforms', async () => {
+    for (const file of ['stack.yaml', 'sign-in.yaml']) {
+      const source = await Bun.file(join(import.meta.dir, '../control', file)).text()
+      for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
+        expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
+      }
     }
+  })
+
+  test("the driver guide's sign-in block is the harness's, so a flow that copies it types the code", async () => {
+    const guide = await Bun.file(join(import.meta.dir, '../drivers/maestro.md')).text()
+    const block = /start the flow with this sign-in[\s\S]*?```yaml\n([\s\S]*?)```/.exec(guide)?.[1] ?? ''
+    const check = checkMaestroFlow(block.replace(/^ {2}/gm, ''), { appId: 'x', vars: ['EMAIL'] })
+    if (!check.ok) throw new Error(check.problems.join('; '))
+    const list = z.array(z.unknown())
+    const signIn = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
+    expect(list.parse(Bun.YAML.parse(check.yaml.split('\n---\n')[1]))).toEqual([
+      ...signIn,
+      { extendedWaitUntil: { visible: 'Welcome to Thunderbolt!', timeout: 120000 } },
+    ])
+  })
+
+  test('a flow that waits for the first screen without typing the code is signed in by the harness first', async () => {
+    // Run 39391108579: every iOS flow pressed Continue and then waited for the welcome screen, with no code typed.
+    const c1 = 'c1-first-run-ios'
+    const welcome = '- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n    timeout: 60000\n'
+    const partial = `- launchApp\n- tapOn: Email\n- inputText: \${EMAIL}\n- tapOn: Continue\n${welcome}- tapOn: Skip\n`
+    await writeNative(makeNative('unsigned', layout), partial, c1)
+    const typed = `- launchApp\n- retry:\n    commands:\n      - inputText: '12345678'\n${welcome}- tapOn: Skip\n`
+    await writeNative(makeNative('typed', layout), typed, c1)
+    // A bug on the sign-in screen itself never waits for a later one.
+    await writeNative(makeNative('login', layout), '- launchApp\n- tapOn: Email\n', c1)
+    await writeNative(makeNative('chat', layout), '- launchApp\n- assertVisible:\n    text: Ask me anything…\n')
+    const flows: string[] = []
+    const record: RunFlow = async (yaml) => {
+      flows.push(yaml)
+      return { passed: true, layout: [], logs: [] }
+    }
+
+    await replay(outDir, fakeRunner({}, []), qaDir, record)
+
+    const list = z.array(z.unknown())
+    const commands = (yaml: string) => list.parse(Bun.YAML.parse(yaml.split('\n---\n')[1]))
+    const asWritten = (source: string) => {
+      const check = checkMaestroFlow(source, { appId: 'x', vars: ['EMAIL'] })
+      if (!check.ok) throw new Error(check.problems.join('; '))
+      return commands(check.yaml)
+    }
+    const signIn = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
+    const landing = (visible: string) => ({ extendedWaitUntil: { visible, timeout: 120000 } })
+    // Control first, then the findings in path order: c1's login, typed and unsigned, then c2's chat.
+    expect([...new Set(flows)].slice(1).map(commands)).toEqual([
+      asWritten('- launchApp\n- tapOn: Email\n'),
+      asWritten(typed),
+      [...signIn, landing('Welcome to Thunderbolt!'), ...asWritten(partial).slice(4)],
+      [...signIn, landing('Ask me anything…'), { assertVisible: { text: 'Ask me anything…' } }],
+    ])
+  })
+
+  test('a leg stops starting runs before its timeout, keeping time for later findings, and says why', async () => {
+    // Run 39391108579: 18 inconclusive iOS runs of about 3.5 minutes each ran the leg into its 90-minute timeout.
+    const minutes = 8
+    const clock = { now: 0 }
+    const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    const answers = new Map<string, Partial<FlowRun>>([
+      ['a-stuck', early],
+      ['b-bug', seen],
+      ['c-late', seen],
+    ])
+    for (const title of answers.keys()) await writeNative(makeNative(title, layout))
+    const calls: string[] = []
+    const slow: RunFlow = async (yaml) => {
+      const title = /assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? ''
+      calls.push(title)
+      clock.now += minutes * 60_000
+      return { passed: true, layout: [], logs: [], ...answers.get(title) }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now)
+
+    // 84 minutes after setup. a-stuck gets no extra run, since b-bug and c-late are owed theirs; c-late's second run
+    // would end at minute 88.
+    expect(calls).toEqual([
+      ...Array(3).fill('stack control'),
+      ...Array(3).fill('a-stuck'),
+      ...Array(3).fill('b-bug'),
+      'c-late',
+    ])
+    expect(clock.now).toBeLessThanOrEqual(84 * 60_000)
+    expect(titles(result.confirmed)).toEqual(['b-bug'])
+    const outOfTime = "out of time: another run might not end before the leg's 90-minute timeout"
+    expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+      ['a-stuck', { failed: 0, runs: 0, inconclusive: 3, reason: outOfTime }],
+      ['c-late', { failed: 1, runs: 1, error: `the layout probe logged ${nameLine}`, reason: outOfTime }],
+    ])
   })
 })
 
@@ -992,6 +1085,22 @@ describe('native fix verification', () => {
       original: device([failed, failed, failed]),
     })
     expect(stillFailing).toMatchObject({ failed: 1, failsWithout: true, passesWith: false, passed: false })
+  })
+
+  test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {
+    const flows: string[] = []
+    const record: RunFlow = async (yaml) => {
+      flows.push(yaml)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+    const unsigned = '- launchApp\n- tapOn: Continue\n- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
+
+    await verifyNativeFix({ ...base, flow: unsigned, oracle: layout, patched: record })
+
+    expect(flows).toHaveLength(3)
+    expect(flows[0]).toContain('inputText: "12345678"')
+    // The harness's own Continue only: the flow's partial sign-in is gone.
+    expect(flows[0].match(/tapOn: Continue/g)).toHaveLength(1)
   })
 
   test('a flow outside the allow list never reaches the device', async () => {

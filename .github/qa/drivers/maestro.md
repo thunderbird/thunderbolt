@@ -71,14 +71,33 @@ missing.
   `assertNotVisible`. `${EMAIL}` is the only variable, a fresh address for each replay; the rules for `run` hold for
   everything else.
 - A fresh app is slower than the one you explored, so before each step the flow waits for a text of the screen that
-  step needs, then acts on it, and taps a label rather than a point wherever the element has a text:
+  step needs, then acts on it, and taps a label rather than a point wherever the element has a text.
+- Unless the bug is on the sign-in screen itself, start the flow with this sign-in, copied as it is, then wait for the
+  first screen after it: `Welcome to Thunderbolt!` in a `c1-first-run` session, `Ask me anything…` in any other.
 
   ```yaml
   - launchApp
   - extendedWaitUntil:
       visible: Want early access?
       timeout: 120000
-  - tapOn: Email
+  - waitForAnimationToEnd
+  - retry:
+      maxRetries: 2
+      commands:
+        - tapOn:
+            text: Email
+            retryTapIfNoChange: true
+        - eraseText
+        - inputText: ${EMAIL}
+        - assertVisible: ${EMAIL}
+  - tapOn: Continue
+  - extendedWaitUntil:
+      visible: Check your email
+      timeout: 120000
+  - inputText: '12345678'
+  - extendedWaitUntil:
+      visible: Welcome to Thunderbolt!
+      timeout: 120000
   ```
 
 - In a `layout` finding the flow only reaches the screen and stops, with no assertion: the harness measures the

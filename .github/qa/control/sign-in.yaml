@@ -1,0 +1,24 @@
+# The harness's sign-in, which `verify.ts` puts before a native repro flow that never types the code but waits for
+# the first screen after sign-in (run 39391108579: no iOS flow typed it). It adds that wait itself: "Welcome to
+# Thunderbolt!" on the onboarding build, "Ask me anything…" on the plain one. The same steps as control/stack.yaml,
+# and the block drivers/maestro.md gives the model.
+- launchApp
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 120000
+- waitForAnimationToEnd
+# The simulator can drop a focus tap, and inputText types anyway; eraseText stops a partial try doubling up.
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: Email
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: ${EMAIL}
+      - assertVisible: ${EMAIL}
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Check your email
+    timeout: 120000
+- inputText: '12345678'

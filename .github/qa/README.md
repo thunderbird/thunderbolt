@@ -201,7 +201,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    bug. A `layout` run whose flow failed before the quoted line showed never reached the screen: it is inconclusive
    and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of 3 conclusive
    runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the extra runs. A run
-   whose flow passed without the line still counts as not shown.
+   whose flow passed without the line still counts as not shown. A native leg also keeps to its job's time: a run
+   starts only if it can end before replay-native's 90 minutes, less 6 minutes for the steps around the replay, taking
+   a run to last as long as the slowest so far (at least 2.6 minutes). An extra run must also leave room for the 3
+   runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says
+   why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me
+   anything…` otherwise) but never types the code `12345678` is signed in by the harness: `control/sign-in.yaml` and
+   a wait for that screen run first, in the same launch, and the flow goes on from its own wait. In run 39391108579
+   no iOS flow typed the code, and every run was inconclusive. A flow for a bug on the sign-in screen waits for no
+   later screen, so it runs as written. `drivers/maestro.md` gives the model the same sign-in block to copy.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
@@ -503,12 +511,20 @@ Android on `ubuntu-latest` with KVM.
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
   2.6 minutes on iOS (run 39380764343), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
   3 runs and up to 6 runs per finding, plus setup, fit the 90-minute job, whose timeout would lose every finding.
+  Runs can be slower than that (about 3.5 minutes in run 39391108579), so `verify.ts` also starts no run that might
+  end after the timeout: see the replay step above. When the replay fails, the job uploads the stack's and the
+  WebView's logs as `qa-logs-replay-<leg>`, except on `android-real`, whose backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,
   `verify-native-run` boots no device and writes no verdict.
 - **native-control**, only when a dispatch sets `native_control`: builds the `control` variant per platform, boots a
-  device, starts the stack and runs `native.sh control`. It holds no secret and its result is not filed.
+  device, starts the stack and runs `native.sh control`. It holds no secret and its result is not filed. On Android
+  it stops the Gradle daemons between the build and the emulator: run 39391108579 stalled on the storage check only
+  in this job, the one native job that builds before it boots. A failed control also uploads the stack's log
+  (`qa-logs-control-<platform>`); the WebView log is in the control's own folder.
+- Every Maestro process runs with `MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true`, because Maestro's "Analyze with
+  AI" banner filled the error a failed replay run keeps.
 
 ## Fake Google
 

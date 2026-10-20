@@ -34,8 +34,9 @@ export type VerifiedFinding = FindingFile & {
   /**
    * `error`: the first failed run's error message, shown to the judge. A visual finding never replays: 0/0.
    * `inconclusive`: native `layout` runs whose flow failed before the quoted line showed; `runs` leaves them out.
+   * `reason`: why fewer than three native runs counted, which makes the finding flaky.
    */
-  replay: { failed: number; runs: number; error?: string; inconclusive?: number }
+  replay: { failed: number; runs: number; error?: string; inconclusive?: number; reason?: string }
   judge?: { keep: boolean; reason: string }
   /** Paths relative to the cwd. `screenshot`: a visual finding's screenshot. */
   artifacts: { video?: string; trace?: string; screenshot?: string }
@@ -98,7 +99,12 @@ const judgePrice = { input: 4, output: 20 }
 const judgeMaxTokens = 4096
 // The aggregate caps, per replay leg and per judge leg; the README explains how to calibrate them.
 const replayCap = 20
-// (3 control + 4 × 6 runs) × 2.6 min (run 39380764343) + 6 min setup = 76 min, inside replay-native's 90.
+/** replay-native's `timeout-minutes`: a native leg starts no run that might end after it. */
+export const nativeJobMinutes = 90
+/** Run 39380764343: about 2.6 minutes a run on iOS, and 5 min 42 s for the steps around the replay step. */
+export const nativeRunMinutes = 2.6
+export const nativeSetupMinutes = 6
+// (3 control + 4 × 6 runs) × 2.6 min + 6 min = 76 min, inside nativeJobMinutes.
 export const nativeReplayCap = 4
 const judgeCap = 15
 const judgeCeilingUsd = 2
@@ -295,6 +301,41 @@ const appIdOf = (file: FindingFile) => {
   return appId
 }
 
+const signInFile = join(import.meta.dir, '../control/sign-in.yaml')
+const typesSignInCode = /"inputText":(\{"text":)?"12345678"/
+const commandList = z.array(z.unknown())
+const shownText = z.union([z.string(), z.object({ text: z.string() }).transform(({ text }) => text)])
+/** The text a command waits for or asserts, as `extendedWaitUntil.visible` or `assertVisible`. */
+const awaitedText = z.union([
+  z.object({ extendedWaitUntil: z.object({ visible: shownText }) }).transform((c) => c.extendedWaitUntil.visible),
+  z.object({ assertVisible: shownText }).transform((c) => c.assertVisible),
+])
+
+/** The first screen after sign-in: onboarding's welcome on the c1 build (Ruling 9), the chat on the plain one. */
+const landingOf = (session: string) =>
+  session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : 'Ask me anything…'
+
+/**
+ * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
+ * typing the code, as every iOS flow of run 39391108579 did: `control/sign-in.yaml`, a wait for that screen, then the
+ * flow from its own wait on, in one app launch. The flow's partial sign-in before that wait is left out. Any other
+ * flow, a bug on the sign-in screen among them, runs as written.
+ */
+const withSignIn = async (yaml: string, session: string, appId: string) => {
+  const commands = commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
+  const landing = landingOf(session)
+  const from = commands.findIndex((command) => awaitedText.safeParse(command).data === landing)
+  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) return yaml
+  const signIn = commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text()))
+  const wait = { extendedWaitUntil: { visible: landing, timeout: 120000 } }
+  const check = checkMaestroFlow(Bun.YAML.stringify([...signIn, wait, ...commands.slice(from)]), {
+    appId,
+    vars: flowVars,
+  })
+  if (!check.ok) throw new Error(`the signed-in flow fails the allow list: ${check.problems.join('; ')}`)
+  return check.yaml
+}
+
 /** The flow replay ran for a native finding: the allow list's own serialization, never the model's text. */
 const ranFlow = async (outDir: string, file: FindingFile) => {
   const check = checkMaestroFlow(await Bun.file(flowPath(outDir, file)).text(), {
@@ -303,7 +344,7 @@ const ranFlow = async (outDir: string, file: FindingFile) => {
   })
   // Replay already dropped anything else, so this only fails on a flow changed after replay.
   if (!check.ok) throw new Error(`repro flow no longer passes the allow list: ${check.problems.join('; ')}`)
-  return check.yaml
+  return withSignIn(check.yaml, file.charterDir, appIdOf(file))
 }
 const driverTimeout = 'iOS driver not ready in time'
 const logOracles = new Set(['console-error', 'page-error', 'http-5xx'])
@@ -342,8 +383,31 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
   return run.error ?? 'the flow failed'
 }
 
-/** A device to run flows on, and the number of its next run, so no run's video overwrites another's. */
-type Device = { runFlow: RunFlow; outDir: string; next: () => number }
+/**
+ * A native leg's time: `fits(n)` says whether n more runs end before `nativeJobMinutes`, the setup counted, taking a
+ * run to last as long as the longest one `time` has seen, and at least `nativeRunMinutes`.
+ */
+const legClock = (now: () => number) => {
+  const minute = 60_000
+  const end = now() + (nativeJobMinutes - nativeSetupMinutes) * minute
+  const state = { longest: nativeRunMinutes * minute }
+  return {
+    fits: (runs: number) => now() + state.longest * runs <= end,
+    time: async <T>(run: () => Promise<T>) => {
+      const start = now()
+      const result = await run()
+      state.longest = Math.max(state.longest, now() - start)
+      return result
+    },
+  }
+}
+type LegClock = ReturnType<typeof legClock>
+
+/**
+ * A device to run flows on, the number of its next run, so no run's video overwrites another's, and the leg's clock,
+ * which times every run.
+ */
+type Device = { runFlow: RunFlow; outDir: string; next: () => number; clock?: LegClock }
 
 /** Runs past the three that replace inconclusive ones, per finding. */
 export const extraRuns = 3
@@ -358,14 +422,18 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
 /**
  * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
  * `failure` says what in a run counts as failed. A run `inconclusive` marks does not count and is replaced, up to
- * `extraRuns` times, so fewer than three runs may count.
+ * `extraRuns` times, so fewer than three runs may count. With `owed` (the base runs the leg's later findings still
+ * need) a run starts only when the clock fits it, and an extra run only when it also fits those, so a slow leg never
+ * runs into its timeout and an early finding's reruns never take a later finding's runs. `reason` then says why
+ * fewer than three runs counted.
  */
 const threeRuns = async (
-  { runFlow, outDir, next }: Device,
+  { runFlow, outDir, next, clock }: Device,
   yaml: string,
   session: string,
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
+  owed?: number,
 ) => {
   const runOnce = async () => {
     const first = await runFlow(yaml, outDir, next(), session)
@@ -373,7 +441,11 @@ const threeRuns = async (
   }
   const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   for (let tries = 0; outcome.replay.runs < 3 && tries < 3 + extraRuns; tries++) {
-    const run = await runOnce()
+    if (clock && owed !== undefined && !clock.fits(1 + (tries < 3 ? 0 : owed))) {
+      outcome.replay.reason = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
+      break
+    }
+    const run = await (clock ? clock.time(runOnce) : runOnce())
     if (inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       continue
@@ -385,6 +457,7 @@ const threeRuns = async (
     outcome.replay.error ??= problem.slice(0, 1_500)
     outcome.artifacts.video ??= run.video
   }
+  if (outcome.replay.runs < 3) outcome.replay.reason ??= `only ${outcome.replay.runs} of 3 runs reached the screen`
   return outcome
 }
 
@@ -396,10 +469,17 @@ const counter = () => {
 
 /**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
- * control run stops the replay: the findings never run and `stackProblem` says why.
+ * control run stops the replay: the findings never run and `stackProblem` says why. The findings' runs keep to the
+ * leg's `clock`.
  */
-const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile, string>, runFlow: RunFlow) => {
-  const device: Device = { runFlow, outDir, next: counter() }
+const replayFlows = async (
+  outDir: string,
+  qaDir: string,
+  flows: Map<FindingFile, string>,
+  runFlow: RunFlow,
+  clock: LegClock,
+) => {
+  const device: Device = { runFlow, outDir, next: counter(), clock }
   const control = await Bun.file(join(qaDir, 'control/stack.yaml')).text()
   for (const appId of new Set([...flows.keys()].map(appIdOf))) {
     const check = checkMaestroFlow(control, { appId, vars: flowVars })
@@ -415,11 +495,12 @@ const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile
     }
   }
   const outcomes = new Map<FindingFile, Outcome>()
-  for (const [file, yaml] of flows) {
+  for (const [index, [file, yaml]] of [...flows].entries()) {
     const { oracle } = file.finding
+    const owed = 3 * (flows.size - 1 - index)
     outcomes.set(
       file,
-      await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle)),
+      await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle), owed),
     )
   }
   return { stackProblem: undefined, outcomes }
@@ -467,8 +548,10 @@ export const verifyNativeFix = async (
   const { fp, platform, session, outDir, oracle, original } = opts
   if (!original && realAiCharters.has(session))
     throw new Error(`${session} is a real-AI session: pass the original app`)
-  const check = checkMaestroFlow(opts.flow, { appId: platformOf(platform).appId ?? '', vars: flowVars })
+  const appId = platformOf(platform).appId ?? ''
+  const check = checkMaestroFlow(opts.flow, { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
+  const yaml = await withSignIn(check.yaml, session, appId)
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>
@@ -477,14 +560,14 @@ export const verifyNativeFix = async (
       : undefined
   const patched = await threeRuns(
     { runFlow: opts.patched, outDir, next },
-    check.yaml,
+    yaml,
     session,
     (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
   )
   const { failed, runs, error } = patched.replay
   const result = { fp, platform, runs, failed, passed: failed === 0, error }
   if (!original) return result
-  const unpatched = await threeRuns({ runFlow: original, outDir, next }, check.yaml, session, bug)
+  const unpatched = await threeRuns({ runFlow: original, outDir, next }, yaml, session, bug)
   const failsWithout = unpatched.replay.failed === unpatched.replay.runs
   return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
 }
@@ -541,11 +624,12 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * at gate `lint` and the rest replay again without them. A `visual` finding has no spec and takes no place under the
  * cap: it is confirmed when `screenshotProblem` finds nothing wrong with its screenshot, and dropped at gate `lint`
  * otherwise, whatever the stack's health. A native finding's `repro_flow` passes the Maestro allow list instead
- * (`checkMaestroFlow`, with `${EMAIL}` as its only variable) and runs three times through `runFlow`, after
- * `control/stack.yaml` passed three times; `flowFailure` says what counts as the bug in a run. A `layout` run whose
- * flow failed before the line showed is inconclusive and replaced, at most `extraRuns` times; with fewer than three
- * conclusive runs the finding is flaky. Both share the cap and the confirmation rule, and any failed control marks the
- * stack unhealthy. Writes and returns
+ * (`checkMaestroFlow`, with `${EMAIL}` as its only variable), is signed in by the harness when it skips the code
+ * (`withSignIn`), and runs three times through `runFlow`, after `control/stack.yaml` passed three times;
+ * `flowFailure` says what counts as the bug in a run. A `layout` run whose flow failed before the line showed is
+ * inconclusive and replaced, at most `extraRuns` times, and no run starts that might end after the leg's timeout,
+ * read from `now`; with fewer than three conclusive runs the finding is flaky, with the reason in `replay.reason`.
+ * Both share the cap and the confirmation rule, and any failed control marks the stack unhealthy. Writes and returns
  * `<outDir>/candidates.json`.
  * Needs NO secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
  * and the lints are defence in depth, not the boundary.
@@ -555,7 +639,9 @@ export const replay = async (
   runReplay: RunReplay = runPlaywright,
   qaDir = '.github/qa',
   runFlow?: RunFlow,
+  now: () => number = Date.now,
 ) => {
+  const clock = legClock(now)
   const { valid, rejected } = await loadFindings(outDir)
   const noise = await readList(join(qaDir, 'noise.txt'))
   const result: Verified = {
@@ -598,7 +684,7 @@ export const replay = async (
         : { ok: false as const, problems: ['repro flow not found'] }
       if (!check.ok) result.dropped.push({ file, gate: 'lint', reason: check.problems.join('; ') })
       else {
-        flows.set(file, check.yaml)
+        flows.set(file, await withSignIn(check.yaml, file.charterDir, appIdOf(file)))
         lintClean.push(file)
       }
       continue
@@ -640,7 +726,7 @@ export const replay = async (
     }
   }
   if (replayedFlows.size > 0 && runFlow) {
-    const native = await replayFlows(outDir, qaDir, replayedFlows, runFlow)
+    const native = await replayFlows(outDir, qaDir, replayedFlows, runFlow, clock)
     if (native.stackProblem) stackProblems.push(native.stackProblem)
     for (const file of replayedFlows.keys()) outcomes.set(file, native.outcomes.get(file) ?? noRuns)
   }
@@ -649,10 +735,10 @@ export const replay = async (
     const outcome = outcomes.get(file)
     if (!outcome) continue
     const replayed = { ...file, ...outcome }
-    const { failed, runs, inconclusive } = replayed.replay
+    const { failed, runs, reason } = replayed.replay
     if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })
-    // Too few runs reached the screen to say either way.
-    else if (inconclusive && runs < 3) result.flaky.push(replayed)
+    // Too few runs counted to say either way.
+    else if (reason) result.flaky.push(replayed)
     else if (failed === 0) result.dropped.push({ file: replayed, gate: 'replay', reason: `failed 0/${runs} replays` })
     else if (failed >= confirmingFailures(file, runs)) result.confirmed.push(replayed)
     else result.flaky.push(replayed)

@@ -445,7 +445,8 @@ const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
       ? 'security finding, text withheld'
       : `${safe(finding.title, 150)} — ${finding.oracle.type}: "${safe(finding.oracle.evidence, 300)}"`
   const inconclusive = replay.inconclusive ? `, ${replay.inconclusive} inconclusive` : ''
-  return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays${inconclusive})`
+  const reason = replay.reason ? `; ${safe(replay.reason, 200)}` : ''
+  return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays${inconclusive}${reason})`
 }
 
 /** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */

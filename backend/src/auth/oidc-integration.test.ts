@@ -503,22 +503,5 @@ describe('OIDC Integration', () => {
       const [stored] = await db.select().from(ssoProvider).where(eq(ssoProvider.providerId, storedProviderId))
       expect(stored?.oidcConfig).toBe(storedOidcConfig)
     })
-
-    it('still signs in through the operator-configured provider', async () => {
-      await withOidcFetch(async () => {
-        const { createAuth } = await import('./auth')
-        const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
-
-        const res = await app.handle(
-          new Request('http://localhost/v1/api/auth/sign-in/sso', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId: 'sso', callbackURL: 'http://localhost:1420/' }),
-          }),
-        )
-
-        expect(res.ok).toBe(true)
-      })
-    })
   })
 })

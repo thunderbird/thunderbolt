@@ -93,34 +93,62 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
 })
 
-test('install android opens the app once and stops it when the init got past the storage check', () => {
+/**
+ * `install android` against a stand-in `adb`: launch n runs as pid 400n (the first one shows up on the second look,
+ * the later ones at once, so a busy machine cannot run a launch's second out before its pid shows), and logs
+ * the storage check of run 39380764343. Only launch `step1At` gets past it to `[init] step1_`; 0 means none does.
+ */
+const warmUp = (step1At: number) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const calls = join(bin, 'calls.log')
-  // The process shows up on the second look, and its init logs step1 on the second read of its log.
   const script = `#!/bin/bash
 echo "$*" >> '${calls}'
-count() { echo x >> '${bin}/'"$1"; wc -l < '${bin}/'"$1"; }
+count() { echo x >> '${bin}/'"$1"; wc -l < '${bin}/'"$1" | tr -d ' '; }
+launches() { [ -f '${bin}/monkey' ] && wc -l < '${bin}/monkey' | tr -d ' ' || echo 0; }
 case "$*" in
-  *"shell pidof net.thunderbird.thunderbolt") [ "$(count pidof)" -ge 2 ] && echo 4129 || exit 1 ;;
-  *"logcat -d --pid=4129"*)
-    echo 'I Tauri/Console: Msg: [init] step0_5_storage_check: 5023ms'
-    [ "$(count logcat)" -ge 2 ] && echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
+  *" shell monkey "*) count monkey > /dev/null ;;
+  *"shell pidof net.thunderbird.thunderbolt")
+    [ "$(launches)" -gt 1 ] || [ "$(count pidof)" -ge 2 ] && echo "400$(launches)" || exit 1 ;;
+  *"logcat -d --pid=400"*)
+    echo 'I Tauri/Console: Msg: [init] step0_5_storage_check: 5035ms'
+    [ "$(launches)" = ${step1At} ] && echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
 esac
 exit 0
 `
   writeFileSync(join(bin, 'adb'), script)
   chmodSync(join(bin, 'adb'), 0o755)
+  // One second per launch instead of thirty.
   const proc = Bun.spawnSync(['bash', native, 'install', 'android', 'emulator-5554', '/apps/app-debug.apk'], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_WARM_SECONDS: '1' },
   })
+  return { proc, log: readFileSync(calls, 'utf8').trim().split('\n') }
+}
+
+const forceStop = '-s emulator-5554 shell am force-stop net.thunderbird.thunderbolt'
+
+test('install android relaunches the app until a launch gets past the storage check, then stops it', () => {
+  const { proc, log } = warmUp(2)
   expect(proc.stderr.toString()).toBe('')
   expect(proc.exitCode).toBe(0)
-  const log = readFileSync(calls, 'utf8').trim().split('\n')
   expect(log[0]).toBe('-s emulator-5554 install -r /apps/app-debug.apk')
-  expect(log[1]).toStartWith('-s emulator-5554 shell monkey -p net.thunderbird.thunderbolt ')
-  expect(log.filter((line) => line.includes('logcat -d --pid=4129'))).toHaveLength(2)
-  expect(log.at(-1)).toBe('-s emulator-5554 shell am force-stop net.thunderbird.thunderbolt')
+  const launches = log.flatMap((line, at) =>
+    line.includes(' shell monkey -p net.thunderbird.thunderbolt ') ? [at] : [],
+  )
+  expect(launches).toHaveLength(2)
+  // The stalled first launch is stopped before the second, which reads its own pid's log.
+  expect(log.slice(launches[0], launches[1])).toContain(forceStop)
+  expect(log.slice(launches[1])).toContain('-s emulator-5554 logcat -d --pid=4002 -s Tauri/Console:*')
+  expect(log.at(-1)).toBe(forceStop)
 })
+
+test('install android fails with the last storage check line when 4 launches never get past it', () => {
+  const { proc, log } = warmUp(0)
+  expect(proc.exitCode).toBe(2)
+  expect(proc.stderr.toString()).toContain('4 launches')
+  expect(proc.stderr.toString()).toContain('[init] step0_5_storage_check: 5035ms')
+  expect(log.filter((line) => line.includes(' shell monkey '))).toHaveLength(4)
+  expect(log.at(-1)).toBe(forceStop)
+}, 15_000)
 
 test('a QA build may reach the stack and c7 PowerSync, over HTTP and WebSocket', async () => {
   const out = join(work, 'tauri.conf.json')

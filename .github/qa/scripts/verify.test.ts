@@ -24,6 +24,7 @@ import {
   type RunFlow,
   type RunReplay,
   type Verified,
+  type VerifiedFinding,
 } from './verify'
 
 const validSpec = (title: string) => `import { expect, test } from '@playwright/test'
@@ -627,7 +628,7 @@ describe('replay of native flows', () => {
     const result = await nativeReplay({
       always: [seen, seen, seen],
       once: [unseen, seen, unseen],
-      // A flow that fails before the screen does not show the layout bug.
+      // A flow that fails before the screen is run again; the extra run shows nothing either.
       elsewhere: [other, { passed: false, error: 'Element not found: Continue' }, other],
       ready: [unseen, unseen, unseen],
     })
@@ -698,6 +699,50 @@ describe('replay of native flows', () => {
     expect(titles(result.confirmed)).toEqual(['console', 'server'])
     expect(result.confirmed[0].replay.error).toBe(`logged during the run: ${later}`)
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
+  })
+
+  test('a layout run whose flow stopped before the line is inconclusive and run again, up to 3 extra runs', async () => {
+    // Run 39380764343: of three iOS runs, two stopped on earlier screens and one reached the clipped name field.
+    const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    const unseen = { layout: ['[qa-layout] ready'] }
+    for (const title of ['run5', 'stuck', 'passing'])
+      await writeNative(makeNative(title, layout), undefined, 'c1-first-run-ios')
+    // An Android real-AI session confirms on 2 of 3 conclusive runs.
+    const real = 'c3-models-providers-android'
+    await writeNative({ ...makeNative('real', layout), viewport: 'android' }, undefined, real)
+    // A run that fails after the probe logged the line still shows the bug.
+    const seenThenFailed = { ...early, layout: [nameLine] }
+    const calls: FlowCall[] = []
+
+    const result = await nativeReplay(
+      {
+        run5: [early, seen, early, seen, seen],
+        stuck: [early, early, seen, early, seen, early, seen],
+        passing: [unseen, seen, seen],
+        real: [early, seen, unseen, seenThenFailed],
+      },
+      calls,
+    )
+
+    const counts = ({ id, replay }: { id: string; replay: VerifiedFinding['replay'] }) => [
+      id,
+      replay.failed,
+      replay.runs,
+      replay.inconclusive ?? 0,
+    ]
+    expect(result.confirmed.map(counts)).toEqual([
+      ['run5', 3, 3, 2],
+      ['real', 2, 3, 1],
+    ])
+    // 3 extra runs and still only two conclusive: flaky, whatever those two showed. A passed run without the line
+    // counts as not shown and is not run again.
+    expect(result.flaky.map(counts)).toEqual([
+      ['passing', 2, 3, 0],
+      ['stuck', 2, 2, 4],
+    ])
+    expect(calls.filter((call) => call.title === 'stuck')).toHaveLength(6)
+    expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
   })
 
   test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {

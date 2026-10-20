@@ -55,7 +55,7 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * (review focus 5): the onboarding build for a c1 session (Ruling 9), the plain one otherwise, the control included.
  * It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the flow with a fresh `EMAIL`,
  * waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest. On
- * Android the install goes through `native.sh install`, which opens the app once, and `layout` also gets the tree's
+ * Android the install goes through `native.sh install`, which warms the app up, and `layout` also gets the tree's
  * lines.
  */
 export const createRunFlow = (opts: {

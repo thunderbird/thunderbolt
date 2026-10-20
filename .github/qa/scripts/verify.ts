@@ -31,8 +31,11 @@ import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
 
 export type VerifiedFinding = FindingFile & {
-  /** `error`: the first failed run's error message, shown to the judge. A visual finding never replays: 0/0. */
-  replay: { failed: number; runs: number; error?: string }
+  /**
+   * `error`: the first failed run's error message, shown to the judge. A visual finding never replays: 0/0.
+   * `inconclusive`: native `layout` runs whose flow failed before the quoted line showed; `runs` leaves them out.
+   */
+  replay: { failed: number; runs: number; error?: string; inconclusive?: number }
   judge?: { keep: boolean; reason: string }
   /** Paths relative to the cwd. `screenshot`: a visual finding's screenshot. */
   artifacts: { video?: string; trace?: string; screenshot?: string }
@@ -317,7 +320,8 @@ const fromConsoleMark = (text: string) => {
 
 /**
  * What in a flow run shows the finding's bug, or undefined when the run did not show it. `layout`: a probe line equal
- * to the quoted one, never the ready line, whether or not the flow passed (spec 6.4). The log oracles: a new log line
+ * to the quoted one, never the ready line, whether or not the flow passed (spec 6.4); replay sets aside a failed flow
+ * without the line as inconclusive (`unreached`). The log oracles: a new log line
  * holding the normalized evidence. Both compare lines cleaned as the gate showed them, since the explorer quotes
  * those. The rest: the flow failed, unless only its driver failed to start.
  */
@@ -339,23 +343,39 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
 /** A device to run flows on, and the number of its next run, so no run's video overwrites another's. */
 type Device = { runFlow: RunFlow; outDir: string; next: () => number }
 
+/** Runs past the three that replace inconclusive ones, per finding. */
+const extraRuns = 3
+
+/**
+ * A native `layout` run whose flow failed before the probe logged the quoted line: it never reached the screen, so it
+ * says nothing about the bug (run 39380764343, where a point tap landed before the screen was ready).
+ */
+const unreached = (oracle: FindingFile['finding']['oracle']) =>
+  oracle.type === 'layout' ? (run: FlowRun) => !run.passed && flowFailure(oracle, run) === undefined : undefined
+
 /**
  * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
- * `failure` says what in a run counts as failed.
+ * `failure` says what in a run counts as failed. A run `inconclusive` marks does not count and is replaced, up to
+ * `extraRuns` times, so fewer than three runs may count.
  */
 const threeRuns = async (
   { runFlow, outDir, next }: Device,
   yaml: string,
   session: string,
   failure: (run: FlowRun) => string | undefined,
+  inconclusive?: (run: FlowRun) => boolean,
 ) => {
   const runOnce = async () => {
     const first = await runFlow(yaml, outDir, next(), session)
     return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session) : first
   }
   const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
-  for (let n = 0; n < 3; n++) {
+  for (let tries = 0; outcome.replay.runs < 3 && tries < 3 + extraRuns; tries++) {
     const run = await runOnce()
+    if (inconclusive?.(run)) {
+      outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
+      continue
+    }
     outcome.replay.runs++
     const problem = failure(run)
     if (problem === undefined) continue
@@ -394,7 +414,11 @@ const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile
   }
   const outcomes = new Map<FindingFile, Outcome>()
   for (const [file, yaml] of flows) {
-    outcomes.set(file, await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(file.finding.oracle, run)))
+    const { oracle } = file.finding
+    outcomes.set(
+      file,
+      await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle)),
+    )
   }
   return { stackProblem: undefined, outcomes }
 }
@@ -516,8 +540,10 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * cap: it is confirmed when `screenshotProblem` finds nothing wrong with its screenshot, and dropped at gate `lint`
  * otherwise, whatever the stack's health. A native finding's `repro_flow` passes the Maestro allow list instead
  * (`checkMaestroFlow`, with `${EMAIL}` as its only variable) and runs three times through `runFlow`, after
- * `control/stack.yaml` passed three times; `flowFailure` says what counts as the bug in a run. Both share the cap and
- * the confirmation rule, and any failed control marks the stack unhealthy. Writes and returns
+ * `control/stack.yaml` passed three times; `flowFailure` says what counts as the bug in a run. A `layout` run whose
+ * flow failed before the line showed is inconclusive and replaced, at most `extraRuns` times; with fewer than three
+ * conclusive runs the finding is flaky. Both share the cap and the confirmation rule, and any failed control marks the
+ * stack unhealthy. Writes and returns
  * `<outDir>/candidates.json`.
  * Needs NO secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
  * and the lints are defence in depth, not the boundary.
@@ -620,8 +646,10 @@ export const replay = async (
     const outcome = outcomes.get(file)
     if (!outcome) continue
     const replayed = { ...file, ...outcome }
-    const { failed, runs } = replayed.replay
+    const { failed, runs, inconclusive } = replayed.replay
     if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })
+    // Too few runs reached the screen to say either way.
+    else if (inconclusive && runs < 3) result.flaky.push(replayed)
     else if (failed === 0) result.dropped.push({ file: replayed, gate: 'replay', reason: `failed 0/${runs} replays` })
     else if (failed >= confirmingFailures(file, runs)) result.confirmed.push(replayed)
     else result.flaky.push(replayed)

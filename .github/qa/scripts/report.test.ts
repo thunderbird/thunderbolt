@@ -364,7 +364,7 @@ describe('renderReport findings and caps', () => {
   })
 
   it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
-    const overflow = { ...verifiedFinding('layout', 'layout', '2'), replay: { failed: 1, runs: 3 } }
+    const overflow = { ...verifiedFinding('layout', 'layout', '2'), replay: { failed: 1, runs: 2, inconclusive: 4 } }
     overflow.finding = {
       ...overflow.finding,
       title: 'Row | spills',
@@ -373,7 +373,9 @@ describe('renderReport findings and caps', () => {
     const security = { ...verifiedFinding('security', 'assert-failed', '3'), replay: { failed: 2, runs: 3 } }
     const report = render({ ...emptyVerified, flaky: [overflow, security] })
     expect(report).toContain('### Flaky (2), never filed')
-    expect(report).toContain('- c8-phone/2: Row \\| spills — layout: "see [link removed]" (failed 1/3 replays)')
+    expect(report).toContain(
+      '- c8-phone/2: Row \\| spills — layout: "see [link removed]" (failed 1/2 replays, 4 inconclusive)',
+    )
     expect(report).toContain('- c8-phone/3: security finding, text withheld (failed 2/3 replays)')
   })
 

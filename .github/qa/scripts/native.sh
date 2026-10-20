@@ -12,7 +12,9 @@
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
 #   native.sh device <platform>                                 boot a device, print its id on stdout
-#   native.sh install <platform> <device> <app-path>            on Android also open the app once and stop it
+#   native.sh install <platform> <device> <app-path>            on Android also open the app until a launch gets
+#                                                               past the storage check, up to 4 launches of
+#                                                               $QA_WARM_SECONDS (30) each, and stop it
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
 #                                                               background, pid in <file>.pid
 #   native.sh stop-logs <file>
@@ -197,23 +199,32 @@ logs() {
 }
 
 install_app() {
-  local platform=$1 device=$2 app=$3 app_id pid lines
+  local platform=$1 device=$2 app=$3 app_id pid lines='' deadline last
   if [ "$platform" = ios ]; then
     xcrun simctl install "$device" "$app"
     return
   fi
   adb -s "$device" install -r "$app"
-  # A fresh install's first open times out on the IndexedDB check and stops the init (run 39373388149), so open it once.
+  # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
+  # 39380764343, several in a row), so the app is opened until a launch gets past it.
   app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
-  adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
-  for _ in $(seq 25); do
-    pid=$(adb -s "$device" shell pidof "$app_id" | tr -d '\r') || true
-    # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
-    lines=$([ -z "$pid" ] || adb -s "$device" logcat -d --pid="$pid" -s 'Tauri/Console:*') || true
-    grep -q '\[init\] step1_' <<< "$lines" && break
-    sleep 0.5
+  for _ in 1 2 3 4; do
+    adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
+    deadline=$((SECONDS + ${QA_WARM_SECONDS:-30}))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      pid=$(adb -s "$device" shell pidof "$app_id" | tr -d '\r') || true
+      # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
+      lines=$([ -z "$pid" ] || adb -s "$device" logcat -d --pid="$pid" -s 'Tauri/Console:*') || true
+      if grep -q '\[init\] step1_' <<< "$lines"; then
+        adb -s "$device" shell am force-stop "$app_id"
+        return
+      fi
+      sleep 0.5
+    done
+    adb -s "$device" shell am force-stop "$app_id"
   done
-  adb -s "$device" shell am force-stop "$app_id"
+  last=$(grep -o '\[init\] step0_5_storage_check.*' <<< "$lines" | tail -1) || true
+  die "the app never got past the storage check in 4 launches; last: ${last:-no storage check logged}"
 }
 
 stop_logs() {

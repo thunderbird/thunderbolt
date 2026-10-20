@@ -192,13 +192,16 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
    times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
    otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
-   failure marks the stack unhealthy and no flow runs. On Android the install also opens the app once (as
+   failure marks the stack unhealthy and no flow runs. On Android the install also warms the app up (as
    `native.sh install` does) and each run ends with a `maestro hierarchy` for the tree's `behind-keyboard` line.
    A `layout` run fails when the probe (or, on Android, that tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
    hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
-   bug.
+   bug. A `layout` run whose flow failed before the quoted line showed never reached the screen: it is inconclusive
+   and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of 3 conclusive
+   runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the extra runs. A run
+   whose flow passed without the line still counts as not shown.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
@@ -466,9 +469,11 @@ Traps, each of which cost a run in the spike:
 - The Android console (`Tauri/Console` in logcat) exists only in debug builds, and the APK's target is the host's
   architecture (`aarch64` on an Apple Silicon Mac, `x86_64` on the runner). The build reads `ANDROID_HOME` and
   `NDK_HOME` from the environment.
-- On a cold emulator the first open of a fresh install hits the 5 s IndexedDB timeout and the init stops at
-  `step0_5_storage_check` (run 39373388149). `install android` opens the app once and stops it as soon as the init
-  logs `step1_`, or after about 15 s, so sessions, the control and every replay run start on a warm app.
+- On a cold emulator the first opens of a fresh install can hit the 5 s IndexedDB timeout, and the init stops at
+  `step0_5_storage_check` (runs 39373388149 and 39380764343, twice in a row there). `install android` opens the app
+  until a launch logs `[init] step1_`, up to 4 launches of 30 s each with a stop between them, and fails with the last
+  storage check line when none does. Sessions, the control and every replay run start on a warm app, and a bad
+  emulator fails at the install instead of later as `stack unhealthy`.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
 no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).

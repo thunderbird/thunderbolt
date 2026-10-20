@@ -15,12 +15,13 @@ The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 U
 
 The explorer reads untrusted pages, so everything it writes is untrusted too. Each job holds only the secret it needs.
 
-| Zone                     | Jobs                         | Holds                                                                                        | Never holds                                                                                   |
-| ------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| A: explore and verify    | `explore`, `replay`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users) | Linear key, any write token. The replay step holds **no secret**: it runs model-written specs |
-| B: file                  | `file`                       | the QA Linear key                                                                            | an LLM, a browser                                                                             |
-| C: fix                   | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
-| D: native explore, macOS | `explore-native` on iOS      | the QA Anthropic key, only in the `env:` of the canary and session steps                     | any provider key, the Linear key, any write token, an agent that edits code                   |
+| Zone                     | Jobs                                                                       | Holds                                                                                                                                                       | Never holds                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold **no secret**: they run model-written specs and flows |
+| B: file                  | `file`                                                                     | the QA Linear key                                                                                                                                           | an LLM, a browser                                                                                        |
+| C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                              |
+| D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the canary, session and secret-scan steps                                                                       | any provider key, the Linear key, any write token, an agent that edits code                              |
+| E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                                  |
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
 refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`). It refuses a patch
@@ -35,8 +36,16 @@ that matches a secret pattern, and a visual fix whose `verify.json` is not JSON 
 of any kind, `src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and
 never says "security": no finding text and no regression spec, which a person adds after the fix merges.
 
-Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,
-because the replayed specs may have changed files in the replay job's checkout.
+The fix agent's commands run in the fix job's checkout, so after the session nothing in that tree is trusted with a
+provider key. Zone E keeps the patch away from every key. `verify-native-build` applies the patch and builds the app
+with no secret, and uploads only the app. `verify-native-run` installs that app from a fresh checkout and writes the
+verdict there. A real-AI web fix is checked in `verify-real`: a fresh checkout starts the real-AI stack as in the
+`real` replay leg and serves the patched frontend, which the fix job built. The backend there is the one from before
+the patch, so a fix that needs backend code fails this check and goes to a person. `publish` reads one verdict per
+native platform of the bug and the real-AI verdict, and a missing verdict counts as a failure.
+
+Only the `build` job saves caches, because it runs before any untrusted code. `build-native` also runs before it.
+The judge runs in a fresh job, because the replayed specs may have changed files in the replay job's checkout.
 
 The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
 explorer: the stack is stopped inline, a checksum of every tracked file must still match, and the session output
@@ -61,8 +70,9 @@ anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
 - (b) No Bash: `--tools Write`, `--disallowedTools Bash`, and the hook denies it too.
 - (c) Maestro's cloud tools, `list_devices` and `open_maestro_viewer` never reach the model: the gate does not offer
   them, and they are disallowed by name.
-- (d) No copy of the key in a file the job's user can read. It lives only in the step's `env:`, never interpolated in
-  `run:` and never written to `$GITHUB_ENV`.
+- (d) No copy of the key in a file the job's user can read. In `explore-native` it lives only in the `env:` of the
+  canary step, the session step and the secret scan after the session, never interpolated in `run:` and never
+  written to `$GITHUB_ENV`. The scan runs once the session has ended, when no process the model drove is left.
 - (e) Write only inside the session dir: the rule `Edit(//<session dir>/**)` and the hook (`scripts/native-hook.ts`),
   which resolves links before it compares paths.
 
@@ -97,8 +107,9 @@ provider keys share a job with model-written specs. Two things keep them apart:
   runner's, which holds every secret the job references.
 
 A spec that gets past the lint then runs as a user that cannot read the key file, the backend's `/proc` entries or
-the runner's memory. The `real` replay leg is the only replay leg with an environment (`qa-agent`), for the keys its
-start step hands over. Its replay step holds none.
+the runner's memory. The `real` and `android-real` replay legs are the only replay legs with an environment
+(`qa-agent`), for the keys their start step hands over. Their replay steps hold none. Android's real-AI explore legs
+and `verify-real` start the stack the same way.
 
 Residual risk: the lint refuses Playwright's file writes by name. That is a denylist, so a write API added in a
 Playwright upgrade would get through and could rewrite the checkout that later replay steps and the backend run
@@ -169,18 +180,22 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and `repro/` dir of
    a repro spec, so its imports and the Playwright config work), a check that fails because of the defect; the
    workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
-   with it, and both must be true. A real-AI web task (`real`) is fixed on the fake AI and checked again on the real
-   providers. An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on
+   with it, and both must be true. The fix job runs that check three times on the builds without the patch, then
+   three times on the patched dev stack. A real-AI web task (`real`) is fixed on the fake AI, and `verify-real` runs
+   its spec three times on the real providers against the patched frontend; all three must pass. An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on
    Linux (reproducing the bug on the web at phone size when it shows there), and a native visual task's check is
    the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which fails only on its own assertions. `publish` refuses an
    edited repro flow (`fix/<fp>.yaml`) and a flow or check outside the Maestro allow list. `fix-plan.json`'s
    `verifyNative` lists each native task's flow and the repro flows of the same bug on other native platforms.
-   `native.sh verify-build` builds the patched app in a temporary worktree, and `native.sh verify-run`, from a
-   checkout the patched build never ran in, runs the flow three times on it with no key; a layout or log oracle also
+   `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
+   `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow
+   three times on it with no key; a layout or log oracle also
    needs the probe's ready line in every run. With `unpatched` (a visual check, or an Android real-AI task, which
    the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail
-   there every time. A native fix PR adds no regression spec. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise
-   the ticket gets `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
+   there every time. A native fix PR adds no regression spec. `publish` needs `passed: true` from every platform in
+   `verifyNative` for the fingerprint, web tasks included, and from `verify-real` for a real-AI web task. Only then
+   does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the diagnosis (for a native platform, "the flow still
+   fails on the native platform") and the ticket gets `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -418,6 +433,32 @@ Traps, each of which cost a run in the spike:
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
 no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).
 
+### In the weekly workflow
+
+`legs.ts` plans the native sessions into `nativeLegs` and their replay legs into `nativeVerify`, and lists the
+sessions the grid leaves out in `skipped`, which the plan step prints as notices. iOS runs on `macos-latest`,
+Android on `ubuntu-latest` with KVM.
+
+- **build-native**, one job per platform of the run, before any untrusted code: `native.sh build` with onboarding
+  off and on, uploaded as `qa-native-<platform>` and `qa-native-<platform>-onboarding`. Each artifact is a tar of
+  the app, because an artifact drops file modes.
+- **explore-native**, one job per native session: Maestro 2.11.0 (brew on macOS, the official installer on Linux; the
+  job stops on any other version), Claude Code 2.1.303, the app the session needs (the onboarding build for c1), the
+  device, `stack.sh start native` and the console stream. `c7-two-devices-android` also gets Postgres, PowerSync,
+  the web build on 1424 (`stack.sh start qa-dist`) and the second browser's Chromium. Android's real-AI sessions run
+  the backend as `qa-backend` and lock root, as the web real legs do. Then the checksums of the tracked files, the
+  canary and the session. After it, as in the web explore job: the stack and the log stream stop inline, the
+  checksums must match, the session output must hold no key, and the upload keeps findings, flows, specs, attempts,
+  the reduced `execution.json`, `transcript.json`, the Maestro screenshots, `mcp-b/` and `<session>.gate.log`.
+- **replay-native**, one job per native artifact (`ios`, `android`, `android-sync`, `android-real`), with no secret:
+  both builds, the device, the stack (`android-sync` serves the web build with Postgres, PowerSync and Playwright's
+  Chromium for c7's specs; `android-real` the real providers), the console stream, then `verify.ts replay --native`.
+  A run takes about 40 s, so the job allows 90 minutes for 20 findings and the control at three runs each.
+- The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs.
+- **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones").
+- **native-control**, only when a dispatch sets `native_control`: builds the `control` variant per platform, boots a
+  device, starts the stack and runs `native.sh control`. It holds no secret and its result is not filed.
+
 ## Fake Google
 
 `scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880`: the account chooser, the token endpoint, userinfo,
@@ -475,14 +516,15 @@ The `build` job has no environment, so these must be repository variables.
 
 ### Environment `qa-agent`
 
-Used by `explore`, the real-AI `replay` leg, `judge`, `file`, `fix`, `publish` and `report`. No required reviewers
+Used by `explore`, `explore-native`, the real-AI `replay` and `replay-native` legs, `judge`, `file`, `fix`,
+`verify-real`, `publish` and `report`. No required reviewers
 (the schedule would hang). Limit its deployment branches to `main`.
 
 | Secret                                         | Used by                                      | What it is                                                                                                                                             |
 | ---------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `QA_ANTHROPIC_API_KEY`                         | explore, judge, fix, real-AI backend, replay | one key from a dedicated Anthropic workspace with a monthly spend limit: the agent, the judge, the fix agent and the app's backend in real-AI sessions |
-| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI backend, replay                      | QA-only Tinfoil access for the GLM models                                                                                                              |
-| `QA_EXA_API_KEY`                               | real-AI backend, replay                      | QA-only Exa key for search and link previews                                                                                                           |
+| `QA_ANTHROPIC_API_KEY`                         | explore(-native), judge, fix, real-AI stacks | one key from a dedicated Anthropic workspace with a monthly spend limit: the agent, the judge, the fix agent and the app's backend in real-AI sessions |
+| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI stacks: explore, replay, verify-real | QA-only Tinfoil access for the GLM models                                                                                                              |
+| `QA_EXA_API_KEY`                               | real-AI stacks: explore, replay, verify-real | QA-only Exa key for search and link previews                                                                                                           |
 | `QA_LINEAR_API_KEY`                            | file, publish                                | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files                                                      |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                                      | the GitHub App below                                                                                                                                   |
 | `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
@@ -543,6 +585,14 @@ session, $0.49 and $0.50 per platform plus about $0.25 on the app side for sessi
 numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That is one local
 sample per charter, so keep the initial caps until two scheduled runs have reported.
 
+The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with the same caps as a web
+session and a Haiku canary before it (4 turns, $0.05). No native session has been measured with a real key. The
+spec's estimate is $1.50 to $2.50 per native charter session and $0.80 to $1.30 per free session, so $21 to $35 a
+week on top of the web sessions. The turn cap of a native session is the 400 in `explore.sh`, not
+`QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
+per platform, and every native explore, replay and verify job boots a simulator or an emulator, on macOS runners for
+iOS.
+
 ## Cut sessions
 
 A session stopped by its budget, its turn cap or the step timeout keeps every finding it wrote, and they are
@@ -602,7 +652,16 @@ Never run on GitHub (only locally, or read in the action's code):
   passwordless sudo and a 0750 home: the backend got the keys and the job's user could not read them, but that
   kernel has no Yama, so only the check's fail-closed branch ran;
 - the job-level `environment` expression that is empty for every replay leg but the real one, and the judge's
-  merge of the sync and real candidates from per-artifact directories (run locally as a script).
+  merge of the sync and real candidates from per-artifact directories (run locally as a script);
+- every native job: the macOS runner taking a `services` block whose images are all empty, the app tars between
+  jobs, the Maestro version check after brew, Claude Code from npm, the native explore steps (canary, session,
+  `shasum` tripwire, reduced `execution.json`, upload), `replay-native` with its 90-minute budget, the
+  `qa-<artifact>-[cf]*` download pattern, `verify-native-build`, `verify-native-run`, `verify-real`, `native-control`
+  and `publish` reading the verdicts. Android has not reached the app on a runner at all (the discovery runs stopped
+  in `native.sh device`), so its emulator, Maestro on it, the gate's foreground check and the probe's keyboard line
+  wait for the first GitHub run;
+- the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
+  the fix job.
 
 Also:
 
@@ -629,5 +688,19 @@ Also:
   provider outages and expected limitations. A real-AI web fix is checked again on the real providers; an Android
   one only on the fake AI, where its flow must fail without the patch, so a bug that needs a real model goes to a
   person.
+- c7 does not run on iOS: the macOS runner has no Docker for Postgres and PowerSync, and its second browser could
+  write anywhere in the checkout. On Android the app has no route to PowerSync yet: `native.sh device` reverses only
+  the stack's ports, and the native build's CSP does not allow `localhost:18081`. Until both change, c7 on Android
+  tests sign-in and the browser device, not sync.
+- iOS sessions of the real-AI charters (c3, c4, c5 and the free session) run on the fake AI, because the Mac cannot
+  keep provider keys from the job's user (spec 6.7). Their `ai-reported-failure` findings are noise for the judge.
+- The layout check on iOS and Android is the web probe injected into the QA build. There are no rules on the Maestro
+  tree, which has no stacking order and leaves out unlabelled boxes, so a defect the probe cannot see is left to the
+  screenshot and the `visual` finding.
+- The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
+- A dispatch of native sessions only plans no web leg, so no judge leg runs: its findings are replayed but never
+  judged, filed or fixed. A run that should file native findings needs at least one web session.
+- A real-AI web fix that needs backend code cannot pass `verify-real`, whose backend comes from before the patch, so
+  it goes to a person. An Android real-AI fix is checked only on the fake AI.
 - Google is covered only through the fake Google, by the free session's `calendar-planner` and `inbox-triager`
   cases. Real Google and Microsoft accounts stay out of scope, and Microsoft has no fake yet.

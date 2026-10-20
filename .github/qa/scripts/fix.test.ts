@@ -140,8 +140,10 @@ describe('route', () => {
   test('routes at most three confirmed tickets of any area, highest severity first, skipping pending branches', async () => {
     await setup()
     const runs: RunCall[] = []
-    const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: () => {} })
+    const lines: string[] = []
+    const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: (line) => lines.push(line) })
 
+    expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro spec on disk, so it is not routed`)
     // pending-layout (Urgent) has an open qa-fix/ branch; high-sync is the third, so the cap leaves out
     // high-security, medium-widgets and low-chat.
     expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('high-sync')])
@@ -293,6 +295,26 @@ describe('isDenied', () => {
     'scripts/requirements-dev.txt',
     'go.mod',
     'tools/go.sum',
+    'Gemfile',
+    'src-tauri/gen/apple/Gemfile',
+    'src-tauri/gen/apple/Gemfile.lock',
+    'src-tauri/gen/android/gradle/wrapper/gradle-wrapper.jar',
+    'src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties',
+    'bunfig.toml',
+    'backend/bunfig.toml',
+    'src-tauri/.cargo/config.toml',
+    'crates/thunderbolt-acp-client/.cargo/config',
+    'rust-toolchain',
+    'src-tauri/rust-toolchain.toml',
+    '.npmrc',
+    'cli/.npmrc',
+    '.nvmrc',
+    'backend/.nvmrc',
+    '.tool-versions',
+    'src-tauri/.tool-versions',
+    // Repro specs and visual checks import e2e/helpers, so a patch there could hollow out an unedited spec.
+    'e2e/helpers.ts',
+    'e2e/consumer-qa-ab12cd34.spec.ts',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -311,10 +333,12 @@ describe('isDenied', () => {
     'backend/drizzle/meta/_journal.json',
     'src-tauri/src/lib.rs',
     'src-tauri/tauri.conf.json',
-    'e2e/helpers.ts',
     'deploy/k8s/values.yaml',
     'src/lib/package-json.ts',
     'src/my-package.json',
+    'src/lib/cargo/config.ts',
+    'src/e2e/helpers.ts',
+    'src/components/gemfile-view.tsx',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })
@@ -487,8 +511,19 @@ describe('checkPatch', () => {
     expect(reasons).toEqual(['touches package.json'])
   })
 
+  test('rejects a deleted lockfile and a file renamed into a denied path', async () => {
+    await patchFrom(async () => {
+      await git(['git', 'rm', '--quiet', 'package.json'])
+      await mkdir(join(repo, '.github'))
+      await git(['git', 'mv', 'src/chat.ts', '.github/chat.ts'])
+    })
+    const { reasons, files } = await checkPatch(git, outDir, task())
+    expect(files.sort()).toEqual(['.github/chat.ts', 'package.json', 'src/chat.ts'])
+    expect(reasons.sort()).toEqual(['touches .github/chat.ts', 'touches package.json'])
+  })
+
   describe('a visual task', () => {
-    const check = () => join(outDir, 'fix', `${fp}.check.spec.ts`)
+    const check = () => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
     // Strings too, to prove publish wants real booleans from the workflow.
     const verify = (result: Record<'failsWithout' | 'passesWith', boolean | string>) =>
       put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify(result))
@@ -686,29 +721,25 @@ describe('publish', () => {
       outcome: 'pr',
       branch: 'qa-fix/ab12cd34',
       files: ['src/chat.ts'],
-      commit: 'fix: QA security finding THB-1',
+      commit: 'fix: QA finding THB-1',
       prUrl: 'https://github.com/o/r/pull/9',
     })
-    const noHooks = ['git', '-c', 'core.hooksPath=/dev/null']
-    expect(runs.slice(3, -1).map((r) => r.cmd.slice(0, 4))).toEqual([
-      [...noHooks, 'switch'],
-      [...noHooks, 'apply'],
-      [...noHooks, 'commit'],
-      [...noHooks, 'push'],
-    ])
+    expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
-    const pr = runs.at(-1)
-    const published = [pr?.stdin, argAfter(pr?.cmd ?? [], '--title'), argAfter(runs[6].cmd, '--message')].join('\n')
+    const pr = runs.find((r) => r.cmd[0] === 'gh')
+    const commit = runs.find((r) => r.cmd.includes('commit'))
+    const published = [pr?.stdin, argAfter(pr?.cmd ?? [], '--title'), argAfter(commit?.cmd ?? [], '--message')]
     expect(pr?.stdin).toContain('THB-1 (https://linear.app/t/issue/THB-1)')
-    for (const text of ['leaks', 'user b', 'b@thunderbolt', 'Only my chats', 'consumer-qa-', 'security ·']) {
-      expect(published).not.toContain(text)
+    // Not even the word: a public PR flagged as a security fix points at the hole before the fix ships.
+    for (const text of ['leaks', 'user b', 'b@thunderbolt', 'Only my chats', 'consumer-qa-', 'security']) {
+      expect(published.join('\n').toLowerCase()).not.toContain(text.toLowerCase())
     }
   })
 
   test('a visual fix PR keeps the check the fix agent wrote as its regression test', async () => {
     await setup({ kind: 'visual' })
     const check = `import { layoutProblems } from '../../../.github/qa/layout'\n${spec}`
-    await put(join(outDir, 'fix', `${fp}.check.spec.ts`), check)
+    await put(join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts'), check)
     await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
 
     const { repoDir, runs, result } = await publishLive()

@@ -23,10 +23,14 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | D: native explore, macOS | `explore-native` on iOS      | the QA Anthropic key, only in the `env:` of the canary and session steps                     | any provider key, the Linear key, any write token, an agent that edits code                   |
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
-refuses a patch only to protect the supply chain: one that touches `.github/` or a dependency manifest or lockfile
-(`isDenied` in `fix.ts`), adds or changes a symlink or submodule, or matches a secret pattern. App code of any kind,
-`src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only
-its ticket: no finding text and no regression spec, which a person adds after the fix merges.
+refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`): one that touches
+`.github/`, `e2e/` (every repro spec and visual check imports its helpers), or a dependency manifest, lockfile or
+build-tool file in any folder (`package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`, `.nvmrc`, `.tool-versions`,
+`Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `rust-toolchain.toml`, Gradle files and the Gradle wrapper,
+`Podfile`, `Gemfile`, `Package.resolved`, `Package.swift`, `requirements*.txt`, `go.mod`, `go.sum`), one that adds or
+changes a symlink or submodule, and one that matches a secret pattern. App code of any kind, `src-tauri/` and
+`backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and
+never says "security": no finding text and no regression spec, which a person adds after the fix merges.
 
 Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,
 because the replayed specs may have changed files in the replay job's checkout.
@@ -159,8 +163,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
    one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
    Native findings are not routed yet. A `spec` task's original spec must pass 3 times on the patch. A `visual`
-   task has no spec, so the agent first writes `qa-out/fix/<fp>.check.spec.ts`, a check that fails because of the
-   defect; the workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
+   task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and `repro/` dir of
+   a repro spec, so its imports and the Playwright config work), a check that fails because of the defect; the
+   workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
    with it, and both must be true. A real-AI task (`real`) is fixed on the fake AI and checked again on the real
    providers. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
    `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.

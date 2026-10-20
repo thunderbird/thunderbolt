@@ -17,20 +17,29 @@ import type { Verified } from './verify'
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
 const maxFixes = 3
 
-/** Dependency manifests and lockfiles, in any folder. */
-const dependencyFiles =
-  /(^|\/)(package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)|requirements[^/]*\.txt|go\.(mod|sum))$/
 /**
- * True when a fix PR must not touch `path` (repo-relative). Only the supply chain is closed: `.github/` (workflows and
- * this pipeline) and dependency manifests and lockfiles. App code of any kind is open, because a person reviews
- * every draft PR.
+ * Dependency manifests and lockfiles, in any folder, with the build-tool and toolchain files that pick a registry,
+ * a download or a binary every build runs (Gradle wrapper, `bunfig.toml`, `.cargo/config`, `rust-toolchain`).
  */
-export const isDenied = (path: string) => path.startsWith('.github/') || dependencyFiles.test(path)
+const dependencyFiles = new RegExp(
+  `(^|/)(${[
+    String.raw`package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)`,
+    String.raw`requirements[^/]*\.txt|go\.(mod|sum)|Gemfile[^/]*|gradle-wrapper\.(jar|properties)|bunfig\.toml`,
+    String.raw`\.cargo/config(\.toml)?|rust-toolchain(\.toml)?|\.npmrc|\.nvmrc|\.tool-versions`,
+  ].join('|')})$`,
+)
+/**
+ * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
+ * `.github/` (workflows and this pipeline), dependency manifests and lockfiles, and `e2e/`, whose helpers every repro
+ * spec and visual check imports (`publish` adds the regression spec there itself). App code of any kind is open,
+ * because a person reviews every draft PR.
+ */
+export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 /**
  * What the fix agent must make pass. A `spec` task has the confirmed repro spec. A `visual` task has none: the agent
- * writes its own check, `qa-out/fix/<fp>.check.spec.ts`, which the workflow runs without and with the patch.
+ * writes its own check, `qa-out/fix-<fp>/repro/check.spec.ts`, which the workflow runs without and with the patch.
  */
 type Proof = { kind: 'spec'; spec: string } | { kind: 'visual' }
 /**
@@ -128,7 +137,10 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
     // A native fix needs a Maestro check and a device to verify it on, which the fix job does not have yet.
     if (nativePlatformIds.includes(finding.viewport)) continue
     const proof = await proofOf(outDir, charterDir, finding)
-    if (!proof) continue
+    if (!proof) {
+      log(`fix: ${fp} has no repro spec on disk, so it is not routed`)
+      continue
+    }
     // Two platforms or charters can confirm one bug (same fp) in a run; a second fix job would fight over
     // `qa-fix/<fp>`.
     pending.add(fp)
@@ -207,7 +219,8 @@ const patchedFiles = async (run: Run, patch: string) => {
 const linkModes = new Set(['120000', '160000'])
 
 /** The check the fix agent wrote for a visual task. */
-const checkPath = (outDir: string, fp: string) => join(outDir, 'fix', `${fp}.check.spec.ts`)
+// Three levels under the repo root in a `repro/` dir, like a repro spec: same import paths, same Playwright project.
+const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
 /** `fix/<fp>.verify.json` of a visual check that failed on the tree without the patch and passed with it. */
 const verifiedCheck = z.object({ failsWithout: z.literal(true), passesWith: z.literal(true) })
 
@@ -273,17 +286,18 @@ const reviewNotice =
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
  * task the check the fix agent wrote. The repo is public and a security fix's PR shows up before the fix ships, so
- * that PR names only the ticket and adds no spec: a person adds the spec in a separate commit after the merge.
+ * that PR names only the ticket, never says "security", and adds no spec: a person adds the spec in a separate commit
+ * after the merge.
  */
 const draftOf = async (outDir: string, task: FixTask) => {
   const ticket = task.identifier ?? 'its Linear ticket'
   if (task.finding.area === 'security') {
-    const title = `fix: QA security finding ${task.identifier ?? task.fp}`
+    const title = `fix: QA finding ${task.identifier ?? task.fp}`
     // Linear's URL ends in a slug of the ticket's title.
     const link = task.url?.replace(/(\/issue\/[^/]+)\/.*$/, '$1') ?? 'filed in a dry run'
     const body = [
       `Draft fix by the weekly QA agent for ${ticket} (${link}).`,
-      'This fixes a security finding. The repository is public, so the finding and its regression spec stay out of this PR. A person adds the spec in a separate commit after the fix merges.',
+      'The finding and its regression spec stay out of this PR. A person adds the spec in a separate commit after the fix merges.',
       reviewNotice,
     ].join('\n\n')
     return { title, commit: title, body, spec: undefined }
@@ -313,10 +327,11 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * Deterministic, no LLM. Dry unless `live`: a dry run validates and returns the plan without touching the
  * checkout, GitHub or Linear.
  *
- * The publish job downloads the file job's `qa-out` artifact and ONLY `qa-out/fix/` from the fix job:
+ * The publish job downloads the file job's `qa-out` artifact and ONLY `qa-out/fix/` (plus `qa-out/fix-<fp>/repro/`
+ * for a visual task) from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
  * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original;
- * - for a visual task, `fix/<fp>.check.spec.ts`, the check the agent wrote, and `fix/<fp>.verify.json`, the
+ * - for a visual task, `fix-<fp>/repro/check.spec.ts`, the check the agent wrote, and `fix/<fp>.verify.json`, the
  *   workflow's record of running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
  * A diagnosis or a rejected patch (empty, a denied path, an edited spec, an unverified check) means no PR: the

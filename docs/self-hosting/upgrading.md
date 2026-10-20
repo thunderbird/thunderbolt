@@ -58,7 +58,7 @@ If you run SAML or OIDC and upgrade to a release after 0.1.144, four things chan
 
 1. **SAML logins that start at the provider's dashboard are refused.** The user lands on the app's sign-in error page and signs in again from the app. Point the dashboard icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` after reading the risk. See [Authentication](./authentication.md#logging-in-from-the-providers-dashboard).
 2. **A failed or cancelled sign-in returns to the app.** The user sees a message and a "Try again" button instead of a plain error page on the API address.
-3. **First sign-in through your provider links to an existing account only if its email is verified.** A local account with the same address that was never verified gets "account not linked".
+3. **A new identity from your provider links to an existing account only in two cases.** Either the account's email is verified (its owner signed in with an emailed code), or the account already has an identity from your provider. That second case covers switching `AUTH_MODE` between `oidc` and `saml`, moving to a different provider, and a provider that changes a user's subject or NameID. Any other account with the same address gets "account not linked". Under OIDC, a user whose provider reports `email_verified` as false is never linked, so mark the address verified at the provider. Keycloak sets it only when the realm makes users confirm the address ("Verify email") or an admin ticks "Email verified". SAML has no such claim. See [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user).
 4. **Only the provider you configured can sign anyone in.** Earlier releases let any signed-in user add another provider through the API. Those rows stay in the `sso_provider` table, but they can no longer sign anyone in, create accounts, or be edited. We recommend deleting them, and the accounts linked through them. List the rows first:
 
    ```sql
@@ -89,6 +89,20 @@ If you run SAML or OIDC and upgrade to a release after 0.1.144, four things chan
    ```
 
    Consider deleting the ones the person does not recognize. Leave other users' sessions alone.
+
+   End-to-end encryption is a fourth thing the row's owner may hold. If the owner signed in to an account the row created, they could have set up encryption, approved their own device and seen the recovery key, a 24-word phrase shown once. Deleting the `account` rows below does not take any of that back. List the devices that can still open the account's data:
+
+   ```sql
+   SELECT user_id, id, name, device_type, trusted, created_at, last_seen
+   FROM powersync.devices WHERE revoked_at IS NULL AND user_id IN ('<user_id>');
+   SELECT device_id, user_id, created_at FROM envelopes WHERE user_id IN ('<user_id>');
+   ```
+
+   Each row in `envelopes` is a copy of the account key sealed to one device, and the recovery phrase has its own slot. An empty `envelopes` result means the account never set up encryption.
+
+   You cannot revoke a device for the user from the database or the API. Revoking needs a signature made with the account's keys, so only a trusted device of that account can do it. Deleting the `envelopes` row, or setting `revoked_at`, would not change the keys the device already holds, and it would skip the key rotation that locks the device out. The supported path is for the person who owns the account to open **Settings > Devices** on a trusted device, revoke each device they do not recognize, and then run **Change recovery phrase** (it asks for an 8-digit code sent to their email). Revoking replaces the account key and the data keys. Changing the phrase makes the old phrase stop working. Neither re-encrypts any data.
+
+   If nobody legitimate uses the account, which is the usual case when the row's owner created it, delete the account instead. Deleting the `user` row cascades to its devices, envelopes and synced data. That is a hard delete and none of it comes back, so do it only for an account you know nobody uses.
 
    Then delete the accounts, before the rows they point to:
 

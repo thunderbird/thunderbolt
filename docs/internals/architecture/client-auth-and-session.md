@@ -26,7 +26,7 @@ the sign-out.
 
 - **Every platform authenticates with `Authorization: Bearer <token>`, including the browser**: the backend
   enables `bearer({ requireSignature: true })`
-  ([auth.ts:460](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
+  ([auth.ts:521](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
   `rawSessionToken.base64Signature`, the same value Better Auth puts in the session cookie, verified by
   HMAC-SHA256 over the raw token ([bearer-token.ts:11](../../../backend/src/auth/bearer-token.ts)).
 - **`localStorage`, not the encrypted settings database, because the getter is synchronous**:

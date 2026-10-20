@@ -106,10 +106,17 @@ Two behaviours that are not faults:
 
 ### Account not linked
 
-A sign-in through your provider joins an existing account with the same email only when that account's email is verified. Two kinds of account are not:
+When a sign-in arrives with an identity Thunderbolt has not seen before, and an account with the same email exists, it joins that account only when one of these is true:
 
-- A local account with the same address that was never verified.
-- An account your provider created on its first sign-in. Thunderbolt does not trust the provider's own email check, so it stores these unverified. They work as long as the provider sends the same user ID (the OIDC subject or the SAML NameID). A new provider, or a changed ID, cannot reach them.
+- The account's email is verified, because its owner signed in with an emailed code.
+- The account already has an identity from your provider (`provider_id` is `sso`). This covers a new identity for the same person: switching `AUTH_MODE` between `oidc` and `saml`, moving to a different provider, or a provider that changed the user's subject or NameID.
+
+Two things cause "account not linked":
+
+- The account was never verified and has no `sso` identity, such as a local account with the same address that was never verified. Use the check and the fix below.
+- Your OIDC provider reports the email as not verified (`email_verified` is false in the id_token or userinfo). Thunderbolt never links in that case, even to a verified account. Mark the address verified at the provider and have the user sign in again. Keycloak sets `email_verified` only when the realm makes users confirm the address ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this cause does not apply to it.
+
+An address with no account at all gets a new one.
 
 Check the account first:
 
@@ -123,9 +130,12 @@ Older releases let any signed-in user add a second identity provider, and its ow
 SELECT provider_id, created_at FROM account WHERE user_id = '<id>';
 SELECT name, created_at FROM apikey WHERE reference_id = '<id>';
 SELECT name, created_at FROM passkey WHERE user_id = '<id>';
+SELECT id, name, device_type, trusted, created_at, last_seen FROM powersync.devices WHERE user_id = '<id>' AND revoked_at IS NULL;
 ```
 
-Anything other than `sso` accounts, or an API key or passkey the person did not create, means someone else set the account up. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) before going further. Otherwise, once you are sure the address belongs to the person signing in, mark it verified, and they can sign in again:
+The last query lists the devices that hold the account's encryption keys. A device you cannot account for may belong to whoever set the account up, and so may the recovery phrase they saw when encryption was set up. You cannot revoke a device from the database, because revoking needs a signature from the account's keys. The account's owner does it on a trusted device: **Settings > Devices** to revoke each unknown device, then **Change recovery phrase**. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) for the details and for deleting an account nobody uses.
+
+Anything other than `sso` accounts, or an API key, passkey or device the person did not create, means someone else set the account up. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) before going further. Otherwise, once you are sure the address belongs to the person signing in, mark it verified, and they can sign in again:
 
 ```sql
 UPDATE "user" SET email_verified = true WHERE email = 'person@example.com';

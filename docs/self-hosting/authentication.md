@@ -120,7 +120,14 @@ If your provider cannot do that, set `SAML_ALLOW_IDP_INITIATED=true` and restart
 
 There is no Thunderbolt login form. Opening the app with no session sends the browser straight to your identity provider.
 
-If a user already has a Thunderbolt account with the same email address and that address is verified, their first sign-in through your provider lands in that same account instead of creating a second one. A local account with the same address that was never verified is not linked. That sign-in fails with "account not linked".
+When someone signs in through your provider with an identity Thunderbolt has not seen before, and a Thunderbolt account with the same email address already exists, they land in that account instead of getting a second one. This happens when either of these is true:
+
+- The account's email is verified in Thunderbolt, which means its owner signed in with an emailed code.
+- The account already has an identity from your provider. This covers the same person arriving with a new identity: you switched `AUTH_MODE` between `oidc` and `saml`, moved to a different provider, or the provider changed their subject (OIDC) or NameID (SAML).
+
+An account that meets neither condition is not linked, and that sign-in fails with "account not linked". An address with no account gets a new one.
+
+Under OIDC, a user is also never linked when the provider reports `email_verified` as false for them. The sign-in fails with "account not linked" until you mark the address as verified at the provider. Keycloak marks an address verified only when the realm makes users confirm it ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this does not apply to it.
 
 If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.
 

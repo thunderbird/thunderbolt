@@ -83,7 +83,7 @@ Plugin isolation hides in-plugin errors from the root `onError`, which covers on
 
 ### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:225`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:281`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 

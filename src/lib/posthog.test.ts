@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { initPosthog, resetPosthogClient, sanitizeUrl, stripApiKeys, trackError } from './posthog'
 
 type PosthogOptions = {
@@ -28,8 +30,11 @@ mock.module('posthog-js', () => ({
       // Always capture the options, even if PostHog client is cached
       capturedOptions = options as PosthogOptions
       const result = mockPosthogInit(...args)
-      // Return a mock client with captureException method
+      // A mock client: no saved consent choice unless a test returns one, and a captureException method.
       return {
+        has_opted_out_capturing: () => false,
+        opt_in_capturing: () => {},
+        opt_out_capturing: () => {},
         ...result,
         captureException: mockCaptureException,
       }
@@ -102,6 +107,55 @@ describe('analytics sanitizeUrl', () => {
   it('returns routes without query parameters unchanged', () => {
     expect(sanitizeUrl('/settings')).toBe('/settings')
     expect(sanitizeUrl('https://app.test/settings')).toBe('https://app.test/settings')
+  })
+})
+
+describe('initPosthog consent', () => {
+  const optIn = mock()
+  const optOut = mock()
+  /** A client whose saved choice on this device is opted out, or not. */
+  const clientWithSavedChoice = (isOptedOut: boolean) => ({
+    has_opted_out_capturing: () => isOptedOut,
+    opt_in_capturing: optIn,
+    opt_out_capturing: optOut,
+  })
+
+  beforeEach(() => {
+    resetPosthogClient()
+    mockPosthogInit.mockReset()
+    optIn.mockReset()
+    optOut.mockReset()
+  })
+
+  afterEach(async () => {
+    await updateSettings(getDb(), { data_collection: true })
+  })
+
+  it('starts a device with no saved choice opted in, the default', async () => {
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: false })
+  })
+
+  it('opts a device back in when the setting is on but PostHog saved an opt-out there', async () => {
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(true))
+    await initPosthog(createMockHttpClient())
+    expect(optIn).toHaveBeenCalledWith({ captureEventName: false })
+    expect(optOut).not.toHaveBeenCalled()
+  })
+
+  it('opts a device out when the setting is off but PostHog saved an opt-in there', async () => {
+    await updateSettings(getDb(), { data_collection: false })
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
+    await initPosthog(createMockHttpClient())
+    expect(optOut).toHaveBeenCalledTimes(1)
+    expect(optIn).not.toHaveBeenCalled()
+  })
+
+  it('leaves a device alone when its saved choice already matches the setting', async () => {
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
+    await initPosthog(createMockHttpClient())
+    expect(optIn).not.toHaveBeenCalled()
+    expect(optOut).not.toHaveBeenCalled()
   })
 })
 

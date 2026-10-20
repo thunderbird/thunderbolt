@@ -75,6 +75,22 @@ export const stripApiKeys = (value: unknown): boolean => {
 }
 
 /**
+ * Make capture on this device follow the synced `data_collection` setting. `opt_out_capturing_by_default` applies
+ * only where PostHog has no saved choice, and the Preferences toggle saves one, so without this a device that was
+ * switched off would stay off after the setting turned on again, and one switched on would keep capturing after the
+ * user turned it off on another device.
+ */
+const followDataCollection = (client: PostHog, dataCollection: boolean) => {
+  if (dataCollection && client.has_opted_out_capturing()) {
+    // Not the user's action on this device, so no `$opt_in` event.
+    client.opt_in_capturing({ captureEventName: false })
+  }
+  if (!dataCollection && !client.has_opted_out_capturing()) {
+    client.opt_out_capturing()
+  }
+}
+
+/**
  * Initialize Posthog analytics and return the client
  * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a client with cloudUrl from settings as prefixUrl
  */
@@ -143,6 +159,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         },
       }) as PostHog
     }
+    followDataCollection(posthogClient, dataCollection)
 
     return { success: true, data: posthogClient }
   } catch (error) {

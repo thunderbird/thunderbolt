@@ -342,6 +342,19 @@ cannot measure layout itself: it has no stacking order and leaves out unlabelled
 and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri
 rewrites, so `git status` stays clean; never commit them.
 
+The positive control (spec 6.3) shows, per platform, that the layout check fires when the screen is broken. The
+canaries of the web legs stay web only (they revert real fixes in `src/`); this plays their part on the native apps and
+does not depend on the iOS keyboard bug. `build <platform> <out-dir> control` adds `control/cover.js` after the probe:
+while a text field has focus, a fixed button reading `qa-control-cover` sits over the lower half of it, with a role and
+visible text because the WebView's accessibility bridge skips a bare div. Install that build and run
+`native.sh control <platform> <device> [out-dir]`. It plays `control/native-control.yaml` (the sign-in screen of the
+build without onboarding, a tap on Email), reads the WebView log, takes `maestro hierarchy`, prints the ready line and
+the probe's lines, and exits 0 only when the keyboard is open (iOS; on Android the probe line is enough until the tree
+gives a keyboard) and the probe logged `[qa-layout] focus-covered textbox "Email"`. On the plain build it exits 1.
+`controlVerdict` in `native-layout.ts` holds the rule; its tests use a run recorded on the simulator. A finding whose
+`repro_flow` is `native-control.yaml` and whose evidence is that line replays `confirmed` on the control build and
+`dropped` on the plain one.
+
 On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (the `qa-spike-17pm` simulator) picks the device; with it unset,
 `device ios` creates an iPhone 17 Pro Max on the newest iOS runtime. Two scripts share the machine: take
 `/tmp/qa-stack.lock` before the stack and `/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf`

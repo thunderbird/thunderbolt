@@ -16,6 +16,9 @@
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
 #                                                               background, pid in <file>.pid
 #   native.sh stop-logs <file>
+#   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
+#                                                               installed on <device>; exit 0 when the layout check
+#                                                               reports the covered Email field
 #
 # iOS uses $QA_IOS_DEVICE (a simulator UDID) when it is set, and otherwise an iPhone 17 Pro Max on the newest iOS
 # runtime. Android boots the AVD qa-android (an emulator needs KVM, so CI only) and reverses the stack's ports.
@@ -152,14 +155,42 @@ logs() {
   die "the log stream never attached"
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file>"
+stop_logs() {
+  kill "$(cat "$1.pid")" 2> /dev/null || true
+  rm -f "$1.pid"
+}
+
+# The positive control (spec 6.3): runs control/native-control.yaml on the calibration build already installed on the
+# device, with the WebView log on, and exits 0 only when the keyboard is open and the probe logged focus-covered for the
+# Email field. The flow, log and hierarchy stay in <out-dir>.
+control() {
+  local platform=$1 device=$2 out=${3:-$(mktemp -d)} app_id
+  mkdir -p "$out"
+  app_id=$(jq -r --arg p "$platform" '.[] | select(.id == $p) | .appId' .github/qa/platforms.json)
+  { printf 'appId: %s\n---\n' "$app_id"; cat .github/qa/control/native-control.yaml; } > "$out/flow.yaml"
+  export MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
+  logs "$platform" "$device" "$out/webview.log"
+  # shellcheck disable=SC2064 # $out is fixed by now
+  trap "stop_logs '$out/webview.log'" EXIT
+  # The iOS driver sometimes is not ready in time (spike, decision 1), so one more try.
+  maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
+    || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
+    || { tail -20 "$out/maestro.log" >&2; die "the control flow failed"; }
+  # The probe debounces 250 ms and confirms a problem over 500 ms.
+  sleep 1.5
+  maestro --udid "$device" hierarchy > "$out/hierarchy.json" 2> "$out/hierarchy.err"
+  # shellcheck disable=SC2016 # JS, not shell
+  bun -e 'import { controlVerdict } from "./.github/qa/native-layout.ts"; const [platform, hierarchy, log] = process.argv.slice(1); const { ok, lines } = controlVerdict({ platform, hierarchy: await Bun.file(hierarchy).text(), log: await Bun.file(log).text() }); console.log(lines.join("\n")); process.exit(ok ? 0 : 1)' \
+    "$platform" "$out/hierarchy.json" "$out/webview.log"
+}
+
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
 if [ "$command" = stop-logs ]; then
   [ $# -eq 1 ] || die "$usage"
-  kill "$(cat "$1.pid")" 2> /dev/null || true
-  rm -f "$1.pid"
+  stop_logs "$1"
   exit
 fi
 [ $# -ge 1 ] || die "$usage"
@@ -173,5 +204,6 @@ case $command in
     if [ "$1" = ios ]; then xcrun simctl install "$2" "$3"; else adb -s "$2" install -r "$3"; fi
     ;;
   logs) [ $# -eq 3 ] || die "$usage"; logs "$@" ;;
+  control) [ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"; control "$@" ;;
   *) die "$usage" ;;
 esac

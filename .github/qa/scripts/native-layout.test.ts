@@ -5,7 +5,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { measureNative, parseHierarchy, parseInspectScreen, readyLine } from '../native-layout'
+import { controlVerdict, measureNative, parseHierarchy, parseInspectScreen, readyLine } from '../native-layout'
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, '../fixtures/native', name), 'utf8')
 
@@ -95,3 +95,37 @@ test('both formats give the same tree, without the frameless nodes, on the whole
 
 test('Android reads no keyboard from the tree yet', () =>
   expect(measureNative(parseHierarchy(fixture('hier-name-kb.json')), 'android').keyboard).toBeUndefined())
+
+// The control run recorded on the iOS simulator: the Email field focused, the keyboard open, the cover pinned over it.
+const control = { hierarchy: fixture('hier-control-cover.json'), log: fixture('control-cover.txt') }
+
+test('the control passes when the keyboard is open and the probe covered the Email field', () => {
+  const verdict = controlVerdict({ ...control, platform: 'ios' })
+  expect(verdict.ok).toBe(true)
+  expect(verdict.lines).toEqual([
+    '[qa-layout] ready keyboard=[0,638][440,956]',
+    '[qa-layout] covered textbox "Email"',
+    '[qa-layout] focus-covered textbox "Email"',
+  ])
+})
+
+test('the control fails on a build whose probe saw no cover, and says why', () => {
+  const log = control.log
+    .split('\n')
+    .filter((line) => !line.includes('covered'))
+    .join('\n')
+  const verdict = controlVerdict({ ...control, log, platform: 'ios' })
+  expect(verdict.ok).toBe(false)
+  expect(verdict.lines.at(-1)).toBe('[qa-control] no focus-covered line for textbox "Email"')
+})
+
+test('the control fails on iOS without the keyboard, and on another field', () => {
+  const closed = controlVerdict({ ...control, hierarchy: fixture('hier-00-welcome.json'), platform: 'ios' })
+  expect(closed.ok).toBe(false)
+  expect(closed.lines).toContain('[qa-control] the keyboard is not open')
+  const other = control.log.replaceAll('textbox "Email"', 'textbox "Name"')
+  expect(controlVerdict({ ...control, log: other, platform: 'ios' }).ok).toBe(false)
+})
+
+test('the control on Android needs only the probe line until the tree gives a keyboard', () =>
+  expect(controlVerdict({ ...control, hierarchy: fixture('hier-00-welcome.json'), platform: 'android' }).ok).toBe(true))

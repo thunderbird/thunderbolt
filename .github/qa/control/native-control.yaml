@@ -1,0 +1,12 @@
+# The native positive control's flow (spec 6.3), run by `native.sh control` on the calibration build, which pins a button
+# over the lower half of any focused text field (cover.js). It opens the sign-in screen of the build without onboarding
+# and taps the Email field, where a tap opens the keyboard. A finding's `repro_flow` for the replay is this same text.
+- launchApp
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 120000
+- waitForAnimationToEnd
+- tapOn:
+    text: Email
+    retryTapIfNoChange: true
+- waitForAnimationToEnd

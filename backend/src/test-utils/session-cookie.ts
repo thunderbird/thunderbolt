@@ -19,6 +19,9 @@ export const createSessionCookie = async (auth: ReturnType<typeof createAuth>, d
     headers: new Headers({ [challengeTokenHeader]: await createTestChallenge(db, email) }),
     asResponse: true,
   })) as Response
+  if (!response.ok) {
+    throw new Error(`Email OTP sign-in failed with ${response.status}`)
+  }
 
   return response.headers
     .getSetCookie()

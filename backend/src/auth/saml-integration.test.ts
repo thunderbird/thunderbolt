@@ -428,5 +428,15 @@ describe('SAML Integration', () => {
       expect(res.status).toBe(403)
       expect(await db.select().from(ssoProvider)).toHaveLength(0)
     })
+
+    it('serves SP metadata only for the configured provider', async () => {
+      const { createAuth } = await import('./auth')
+      const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+      const metadataFor = (providerId: string) =>
+        app.handle(new Request(`http://localhost/v1/api/auth/sso/saml2/sp/metadata?providerId=${providerId}`))
+
+      expect((await metadataFor('stored-idp')).status).toBe(403)
+      expect((await metadataFor('sso')).status).toBe(200)
+    })
   })
 })

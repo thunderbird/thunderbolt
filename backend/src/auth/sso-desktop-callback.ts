@@ -6,6 +6,7 @@ import { randomBytes } from 'crypto'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
+import { configuredSsoProviderId } from './paths'
 
 const sessionCookieName = 'better-auth.session_token'
 const nonceCookieName = 'thunderbolt_desktop_sso_nonce'
@@ -82,7 +83,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             // Without errorCallbackURL, Better Auth sends a failed login to its own error page on the API host.
-            body: JSON.stringify({ providerId: 'sso', callbackURL, errorCallbackURL: callbackURL }),
+            body: JSON.stringify({ providerId: configuredSsoProviderId, callbackURL, errorCallbackURL: callbackURL }),
           })
 
           if (!ssoResponse.ok) {

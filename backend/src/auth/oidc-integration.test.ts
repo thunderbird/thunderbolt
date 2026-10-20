@@ -13,6 +13,7 @@ import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
 import { account, user } from '@/db/auth-schema'
 import { createSessionCookie } from '@/test-utils/session-cookie'
 import { ssoProvider } from '@/db/schema'
+import { sso } from '@better-auth/sso'
 
 const oidcIssuerUrl = 'https://oidc.test'
 
@@ -262,15 +263,29 @@ describe('OIDC Integration', () => {
     })
 
     /**
-     * Complete an OIDC sign-in in which the IdP vouches for `email` with a signed id_token. Returns
-     * where the callback redirects, or the sign-in status when sign-in refuses to start.
+     * Complete an OIDC sign-in in which the IdP vouches for `email` with a signed id_token carrying
+     * `claims`. Returns the final status, where the callback redirects and whose session it set.
      */
-    const signInThroughIdp = async (email: string, { providerId = 'sso', issuer = oidcIssuerUrl } = {}) => {
-      const idToken = await new SignJWT({ email, name: 'SSO User' })
+    const signInThroughIdp = async (
+      email: string,
+      options: {
+        providerId?: string
+        issuer?: string
+        claims?: { email_verified?: boolean | string }
+        subject?: string
+      } = {},
+    ) => {
+      const {
+        providerId = 'sso',
+        issuer = oidcIssuerUrl,
+        claims = { email_verified: true },
+        subject = crypto.randomUUID(),
+      } = options
+      const idToken = await new SignJWT({ email, name: 'SSO User', ...claims })
         .setProtectedHeader({ alg: 'RS256' })
         .setIssuer(issuer)
         .setAudience(baseSettings.oidcClientId)
-        .setSubject(crypto.randomUUID())
+        .setSubject(subject)
         .setIssuedAt()
         .setExpirationTime('5m')
         .sign(signingKey)
@@ -289,10 +304,17 @@ describe('OIDC Integration', () => {
         throw new Error(`Unexpected OIDC request: ${url}`)
       }
 
+      const cookieOf = (response: Response) =>
+        response.headers
+          .getSetCookie()
+          .map((entry) => entry.split(';')[0])
+          .join('; ')
+
       return withOidcFetch(
         async () => {
           const { createAuth } = await import('./auth')
-          const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+          const auth = createAuth(db)
+          const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
           const start = await app.handle(
             new Request('http://localhost/v1/api/auth/sign-in/sso', {
               method: 'POST',
@@ -301,20 +323,21 @@ describe('OIDC Integration', () => {
             }),
           )
           if (!start.ok) {
-            return start.status
+            return { status: start.status, location: null, sessionUserId: undefined }
           }
           const state = new URL(((await start.json()) as { url: string }).url).searchParams.get('state')
-          const cookie = start.headers
-            .getSetCookie()
-            .map((entry) => entry.split(';')[0])
-            .join('; ')
 
           const callback = await app.handle(
             new Request(`http://localhost/v1/api/auth/sso/callback/${providerId}?code=idp-code&state=${state}`, {
-              headers: { Cookie: cookie },
+              headers: { Cookie: cookieOf(start) },
             }),
           )
-          return callback.headers.get('location')
+          const session = await auth.api.getSession({ headers: new Headers({ Cookie: cookieOf(callback) }) })
+          return {
+            status: callback.status,
+            location: callback.headers.get('location'),
+            sessionUserId: session?.user.id,
+          }
         },
         Object.assign(idpFetch, { preconnect: globalThis.fetch.preconnect }),
       )
@@ -327,7 +350,19 @@ describe('OIDC Integration', () => {
       const { createAuth } = await import('./auth')
       const { user: existing } = await signInByEmailCode(createAuth(db))
 
-      expect(await signInThroughIdp(existing.email)).toBe(callbackURL)
+      const { location, sessionUserId } = await signInThroughIdp(existing.email)
+      expect(location).toBe(callbackURL)
+      expect(sessionUserId).toBe(existing.id)
+      expect(await ssoAccountCount(existing.id)).toBe(1)
+    })
+
+    it('links an existing email-OTP user when the IdP sends no email_verified claim, as Entra does', async () => {
+      const { createAuth } = await import('./auth')
+      const { user: existing } = await signInByEmailCode(createAuth(db))
+
+      const { location, sessionUserId } = await signInThroughIdp(existing.email, { claims: {} })
+      expect(location).toBe(callbackURL)
+      expect(sessionUserId).toBe(existing.id)
       expect(await ssoAccountCount(existing.id)).toBe(1)
     })
 
@@ -338,8 +373,47 @@ describe('OIDC Integration', () => {
         .values({ id: crypto.randomUUID(), name: 'Unverified', email, emailVerified: false })
         .returning()
 
-      expect(await signInThroughIdp(email)).toContain('error=account+not+linked')
+      expect((await signInThroughIdp(email)).location).toContain('error=account+not+linked')
       expect(await ssoAccountCount(local.id)).toBe(0)
+    })
+
+    it('links a new IdP identity to a user the provider signed up before', async () => {
+      const email = `sso-user-${crypto.randomUUID()}@example.com`
+      expect((await signInThroughIdp(email)).location).toBe(callbackURL)
+      const [ssoUser] = await db.select().from(user).where(eq(user.email, email))
+      expect(ssoUser.emailVerified).toBe(false)
+
+      // Each sign-in carries a new subject, as after moving IdP or switching between OIDC and SAML.
+      const { location, sessionUserId } = await signInThroughIdp(email)
+      expect(sessionUserId).toBe(ssoUser.id)
+      expect(location).toBe(callbackURL)
+      expect(await ssoAccountCount(ssoUser.id)).toBe(2)
+    })
+
+    it.each([false, 'false'])(
+      'leaves a verified user unlinked when the IdP says email_verified is %p',
+      async (emailVerified) => {
+        const { createAuth } = await import('./auth')
+        const { user: existing } = await signInByEmailCode(createAuth(db))
+
+        const { location } = await signInThroughIdp(existing.email, { claims: { email_verified: emailVerified } })
+        expect(location).toContain('error=account+not+linked')
+        expect(await ssoAccountCount(existing.id)).toBe(0)
+      },
+    )
+
+    it("signs a returning identity in to its own user after the IdP moves it to another user's email", async () => {
+      const { createAuth } = await import('./auth')
+      const { user: other } = await signInByEmailCode(createAuth(db))
+      const subject = crypto.randomUUID()
+      const email = `mover-${crypto.randomUUID()}@example.com`
+      expect((await signInThroughIdp(email, { subject })).location).toBe(callbackURL)
+      const [mover] = await db.select().from(user).where(eq(user.email, email))
+
+      const { location, sessionUserId } = await signInThroughIdp(other.email, { subject })
+      expect(sessionUserId).toBe(mover.id)
+      expect(location).toBe(callbackURL)
+      expect(await ssoAccountCount(other.id)).toBe(0)
     })
 
     describe('through a provider row stored in the database', () => {
@@ -357,7 +431,7 @@ describe('OIDC Integration', () => {
         const { createAuth } = await import('./auth')
         const { user: existing } = await signInByEmailCode(createAuth(db))
 
-        expect(await signInThroughIdp(existing.email, storedIdp)).toBe(403)
+        expect((await signInThroughIdp(existing.email, storedIdp)).status).toBe(403)
         expect(
           await db.$count(account, and(eq(account.userId, existing.id), eq(account.providerId, storedProviderId))),
         ).toBe(0)
@@ -366,7 +440,7 @@ describe('OIDC Integration', () => {
       it('refuses to create a new user', async () => {
         const email = `newcomer-${crypto.randomUUID()}@example.com`
 
-        expect(await signInThroughIdp(email, storedIdp)).toBe(403)
+        expect((await signInThroughIdp(email, storedIdp)).status).toBe(403)
         expect(await db.$count(user, eq(user.email, email))).toBe(0)
       })
     })
@@ -502,6 +576,25 @@ describe('OIDC Integration', () => {
       expect(res.status).toBe(403)
       const [stored] = await db.select().from(ssoProvider).where(eq(ssoProvider.providerId, storedProviderId))
       expect(stored?.oidcConfig).toBe(storedOidcConfig)
+    })
+
+    it('refuses a callback for any other provider', async () => {
+      const { createAuth } = await import('./auth')
+      const app = new Elysia({ prefix: '/v1' }).mount(createAuth(db).handler)
+      await insertStoredProvider(db)
+
+      const res = await app.handle(
+        new Request(`http://localhost/v1/api/auth/sso/callback/${storedProviderId}?code=idp-code&state=any-state`),
+      )
+
+      expect(res.status).toBe(403)
+    })
+
+    it('keeps every SSO plugin route behind the provider check', () => {
+      // isForeignSsoRequest only inspects these prefixes, so a route outside them would skip the check.
+      const paths = Object.values(sso({ providersLimit: 0 }).endpoints).map((endpoint) => endpoint.path)
+
+      expect(paths.filter((path) => path !== '/sign-in/sso' && !path.startsWith('/sso/'))).toEqual([])
     })
   })
 })

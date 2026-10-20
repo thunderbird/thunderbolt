@@ -38,7 +38,7 @@ import {
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
 import { createCaptchaProvider } from './captcha'
-import { anonymousSignInPath, authBasePath } from './paths'
+import { anonymousSignInPath, authBasePath, configuredSsoProviderId } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -81,9 +81,6 @@ type SessionLookup = {
   session: { deviceId?: string | null }
 } | null
 
-/** The provider `buildSsoPlugins` builds from env: the only one SSO sign-in may use. */
-const configuredSsoProviderId = 'sso'
-
 type SsoRequest = Partial<Record<'body' | 'params' | 'query', { providerId?: unknown }>>
 
 /** The SSO routes the app uses, each with the part of the request that names the provider. */
@@ -107,24 +104,52 @@ const isForeignSsoRequest = (path: string, request: SsoRequest) => {
   return part === undefined || request[part]?.providerId !== configuredSsoProviderId
 }
 
+type SsoUserResolution = Parameters<NonNullable<SSOOptions['resolveUser']>>[0]
+
+/** True when an OIDC provider states it never confirmed the address. SAML carries no such claim. */
+const idpDeniesEmailVerified = (input: SsoUserResolution) =>
+  input.protocol === 'oidc' &&
+  [input.verifiedIdTokenClaims, input.providerClaims].some(
+    (claims) => claims.email_verified === false || claims.email_verified === 'false',
+  )
+
 /**
- * Signs an SSO identity into the existing user with the same verified email. We trust the
- * operator's env-configured IdP once Better Auth has checked the SAML signature or OIDC
- * id_token, never its `email_verified` claim. See backend/docs/authentication.md.
+ * Signs a new SSO identity into the existing user with the same email when that user verified
+ * it by email code, or already signed in through the configured provider (a new IdP, subject or
+ * SAML NameID for the same person). We trust the operator's env-configured IdP once Better Auth
+ * has checked the SAML signature or OIDC id_token, unless it says the email is unverified.
+ * See backend/docs/authentication.md.
  */
-const linkSsoToVerifiedEmailOwner: NonNullable<SSOOptions['resolveUser']> = async ({ providerUser }, { database }) => {
+const linkSsoToKnownEmailOwner: NonNullable<SSOOptions['resolveUser']> = async (input, { database }) => {
+  const hasSsoAccount = async (field: 'accountId' | 'userId', value: string) =>
+    (await database.findOne({
+      model: 'account',
+      where: [
+        { field: 'providerId', value: configuredSsoProviderId },
+        { field, value },
+      ],
+    })) !== null
+  // This runs on every sign-in, before Better Auth finds a known identity's own user.
+  if (idpDeniesEmailVerified(input) || (await hasSsoAccount('accountId', input.accountKey.accountId))) {
+    return { action: 'continue' }
+  }
   const existing = await database.findOne<User>({
     model: 'user',
-    where: [{ field: 'email', value: normalizeEmail(providerUser.email) }],
+    where: [{ field: 'email', value: normalizeEmail(input.providerUser.email) }],
   })
-  return existing?.emailVerified ? { action: 'link', userId: existing.id, profile: 'preserve' } : { action: 'continue' }
+  if (!existing) {
+    return { action: 'continue' }
+  }
+  return existing.emailVerified || (await hasSsoAccount('userId', existing.id))
+    ? { action: 'link', userId: existing.id, profile: 'preserve' }
+    : { action: 'continue' }
 }
 
 /** What every SSO mode needs, so a new mode cannot leave one out. */
 const sharedSsoOptions = {
   // Stops new rows; isForeignSsoRequest refuses the ones older releases stored.
   providersLimit: 0,
-  resolveUser: linkSsoToVerifiedEmailOwner,
+  resolveUser: linkSsoToKnownEmailOwner,
 } satisfies SSOOptions
 
 /**
@@ -329,6 +354,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
+          console.warn(`Refused ${ctx.path}: only the configured SSO provider is available`)
           throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
         }
 

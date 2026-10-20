@@ -82,7 +82,7 @@ Each key returns a hook object: `value`, `isModified`, `setValue`, `reset`,
 ```tsx
 const { preferredName, dataCollection } = useSettings({
   preferred_name: '',
-  data_collection: false,
+  data_collection: true,
 })
 ```
 

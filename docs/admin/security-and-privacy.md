@@ -15,8 +15,8 @@ another device. Uploaded files stay on the device too, and are sent only inside 
 answers that turn.
 
 A prompt goes to whichever model provider answers it, and to a web search provider if the model
-searches. Nothing goes to the Thunderbolt team by default: analytics need both a key you configure
-and a user who has them turned on.
+searches. Nothing goes to the Thunderbolt team by default: analytics need a key you configure, and
+each user can turn them off.
 
 ## Where data lives
 
@@ -158,7 +158,8 @@ same confidential route but are not metered or charged against those caps. See
 
 Two independent switches, and both must be on before anything is sent. `POSTHOG_API_KEY` on the
 server is unset by default, and no key means no analytics client exists in the app. The user's own
-preference, **Anonymous Usage Data**, is under Settings → Preferences → Help Thunderbolt Improve.
+preference, **Anonymous Usage Data**, is on by default and can be turned off under Settings →
+Preferences → Help Thunderbolt Improve.
 
 Events are sent to your server and relayed from there, so the app never contacts an analytics host
 directly and you can block the egress at your firewall. Where your server forwards them is

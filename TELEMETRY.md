@@ -2,7 +2,7 @@
 
 ## Privacy Policy - [[PAGE]](https://www.thunderbird.net/en-US/privacy/)
 
-Event tracking is on by default, respects user privacy settings, and can be turned off in the application settings. No personally identifiable information is collected without explicit user consent.
+Event tracking is on by default, respects user privacy settings, and can be turned off in the application settings; turning it off covers every device that syncs the account. No personally identifiable information is collected without explicit user consent.
 
 ## Event Tracking
 

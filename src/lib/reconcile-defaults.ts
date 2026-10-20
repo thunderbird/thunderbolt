@@ -317,12 +317,6 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       continue
     }
 
-    // If hashes don't match, user has modified (including soft-delete) - skip update
-    if (currentHash !== existing.defaultHash) {
-      everyBundleRowAtTarget = false
-      continue
-    }
-
     // Compute the effective default: for each `frozenFields` entry, keep the
     // existing row's value instead of the incoming default. Hash covers the
     // effective (post-freeze) state so future reconciles still recognize the
@@ -339,6 +333,17 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const metadataChanged = metadataFields.some(
       (field) => (existing as Record<string, unknown>)[field] !== (effectiveDefault as Record<string, unknown>)[field],
     )
+
+    // If hashes don't match, user has modified (including soft-delete) - skip update.
+    // A row that already holds the effective default is not an edit, though: it is
+    // a value the user chose before the bundle shipped it. It takes the update
+    // below, which re-stamps `defaultHash`, so a later edit reads as one; left on
+    // the old hash, an edit back to the old default would look unedited and be
+    // overwritten by the next bump.
+    if (currentHash !== existing.defaultHash && currentHash !== effectiveHash) {
+      everyBundleRowAtTarget = false
+      continue
+    }
 
     // Skip update if the effective default matches what's already stored
     // (prevents empty PATCH operations, and collapses OTA payloads that only

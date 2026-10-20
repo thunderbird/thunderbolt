@@ -159,7 +159,7 @@ same confidential route but are not metered or charged against those caps. See
 Two independent switches, and both must be on before anything is sent. `POSTHOG_API_KEY` on the
 server is unset by default, and no key means no analytics client exists in the app. The user's own
 preference, **Anonymous Usage Data**, is on by default and can be turned off under Settings →
-Preferences → Help Thunderbolt Improve.
+Preferences → Help Thunderbolt Improve. Turning it off covers every device that syncs the account.
 
 Events are sent to your server and relayed from there, so the app never contacts an analytics host
 directly and you can block the egress at your firewall. Where your server forwards them is

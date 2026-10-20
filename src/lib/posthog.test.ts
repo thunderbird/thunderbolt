@@ -2,13 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { updateSettings } from '@/dal/settings'
+import { deleteSetting, updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, resetPosthogClient, sanitizeUrl, stripApiKeys, trackError } from './posthog'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import type { PostHog } from 'posthog-js'
+import {
+  initPosthog,
+  resetPosthogClient,
+  sanitizeUrl,
+  setCapturing,
+  shouldCapture,
+  stripApiKeys,
+  trackError,
+} from './posthog'
 
 type PosthogOptions = {
   before_send: (event: PosthogEvent) => PosthogEvent
@@ -110,7 +120,7 @@ describe('analytics sanitizeUrl', () => {
   })
 })
 
-describe('initPosthog consent', () => {
+describe('analytics consent', () => {
   const optIn = mock()
   const optOut = mock()
   /** A client whose saved choice on this device is opted out, or not. */
@@ -129,33 +139,70 @@ describe('initPosthog consent', () => {
 
   afterEach(async () => {
     await updateSettings(getDb(), { data_collection: true })
+    useLocalSettingsStore.setState({ syncEnabled: false })
   })
 
-  it('starts a device with no saved choice opted in, the default', async () => {
-    await initPosthog(createMockHttpClient())
-    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: false })
-  })
+  it.each([
+    { dataCollection: true, syncEnabled: false, hasSynced: false, expected: true },
+    { dataCollection: true, syncEnabled: true, hasSynced: true, expected: true },
+    { dataCollection: true, syncEnabled: true, hasSynced: false, expected: false },
+    { dataCollection: false, syncEnabled: false, hasSynced: false, expected: false },
+    { dataCollection: false, syncEnabled: true, hasSynced: true, expected: false },
+  ])(
+    'captures only with the setting on, and once synced when sync is on: %o',
+    ({ dataCollection, syncEnabled, hasSynced, expected }) => {
+      expect(shouldCapture({ dataCollection, syncEnabled, hasSynced })).toBe(expected)
+    },
+  )
 
-  it('opts a device back in when the setting is on but PostHog saved an opt-out there', async () => {
-    mockPosthogInit.mockReturnValue(clientWithSavedChoice(true))
-    await initPosthog(createMockHttpClient())
+  it("opts in over a saved opt-out, without an `$opt_in` event, since it isn't the user's action", () => {
+    setCapturing(clientWithSavedChoice(true) as unknown as PostHog, true)
     expect(optIn).toHaveBeenCalledWith({ captureEventName: false })
     expect(optOut).not.toHaveBeenCalled()
   })
 
-  it('opts a device out when the setting is off but PostHog saved an opt-in there', async () => {
-    await updateSettings(getDb(), { data_collection: false })
-    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
-    await initPosthog(createMockHttpClient())
+  it('opts out over a saved opt-in', () => {
+    setCapturing(clientWithSavedChoice(false) as unknown as PostHog, false)
     expect(optOut).toHaveBeenCalledTimes(1)
     expect(optIn).not.toHaveBeenCalled()
   })
 
-  it('leaves a device alone when its saved choice already matches the setting', async () => {
+  it.each([true, false])(
+    'leaves a device alone when its saved choice already matches (capturing %p)',
+    (isCapturing) => {
+      setCapturing(clientWithSavedChoice(!isCapturing) as unknown as PostHog, isCapturing)
+      expect(optIn).not.toHaveBeenCalled()
+      expect(optOut).not.toHaveBeenCalled()
+    },
+  )
+
+  it('starts capturing with the setting on, clearing an opt-out saved on this device', async () => {
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(true))
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: false })
+    expect(optIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out with the setting off', async () => {
+    await updateSettings(getDb(), { data_collection: false })
     mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
     await initPosthog(createMockHttpClient())
-    expect(optIn).not.toHaveBeenCalled()
-    expect(optOut).not.toHaveBeenCalled()
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
+    expect(optOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out on a device with sync on that has not synced yet, whose setting is only a seeded guess', async () => {
+    useLocalSettingsStore.setState({ syncEnabled: true })
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
+    expect(optOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out while the setting has no row', async () => {
+    await deleteSetting(getDb(), 'data_collection')
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
   })
 })
 

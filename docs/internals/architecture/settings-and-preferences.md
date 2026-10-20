@@ -82,7 +82,7 @@ Each key returns a hook object: `value`, `isModified`, `setValue`, `reset`,
 ```tsx
 const { preferredName, dataCollection } = useSettings({
   preferred_name: '',
-  data_collection: true,
+  data_collection: false,
 })
 ```
 
@@ -173,6 +173,14 @@ link before the query resolves.
 `experimental_feature_tasks` also requires telemetry consent: enabling it with `data_collection` off
 opens a modal, disabling telemetry disables the flag. The gate is skipped when no PostHog key is
 configured (`telemetryAvailable`), which a self-hosted deployment could never satisfy.
+
+`data_collection` ships on; the version 7 bump opted every existing account in once. After that the
+synced setting decides, and an opt-out sticks. PostHog keeps its own choice per device, saved by the
+Preferences toggle, so `setCapturing` ([`src/lib/posthog.tsx`](../../../src/lib/posthog.tsx)) makes it
+follow the setting: `initPosthog` at startup, `useAnalyticsConsent` while the app runs, so an opt-out on
+one device takes effect on the others as soon as it syncs. With sync on, a device captures only after
+its first sync (`shouldCapture`): until then its settings are defaults it seeded itself. A missing row
+reads as off.
 
 ## Map of the Preferences page
 

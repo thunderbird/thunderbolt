@@ -78,7 +78,7 @@ One exception: if you connect an external coding agent that stages files on its 
 
 ### Do you collect analytics?
 
-Events from the app, unless the user turns off the toggle under _Settings → Preferences_, which is on by default. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
+Events from the app, unless the user turns off the toggle under _Settings → Preferences_, which is on by default. Turning it off covers every device that syncs the account. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
 
 ## Models
 

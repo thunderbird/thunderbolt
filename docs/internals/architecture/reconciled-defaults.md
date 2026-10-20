@@ -40,7 +40,9 @@ rule for changing a default).
 
 Each hash fingerprints **only user-editable fields**. Reconcile recomputes it from the stored row and
 compares against the `default_hash` column: equal means untouched and updatable in place, different
-means user-edited and left alone permanently.
+means user-edited and left alone permanently. The exception is a row that already holds what the bundle
+now ships, a value the user chose before it became the default: reconcile takes it and re-stamps
+`default_hash`, so a later edit back to the old default still reads as an edit.
 
 - **`hashValues` is a wire contract** ([`shared/lib/hash.ts:16`](../../../shared/lib/hash.ts)). Stored
   hashes depend on its output byte for byte across frontend, backend and shared code; changing it

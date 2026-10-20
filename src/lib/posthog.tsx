@@ -5,6 +5,7 @@
 import { type HttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createClient } from '@/lib/http'
@@ -74,18 +75,33 @@ export const stripApiKeys = (value: unknown): boolean => {
   return Object.values(record).reduce<boolean>((removed, item) => stripApiKeys(item) || removed, removedHere)
 }
 
+type CaptureConsent = {
+  /** The synced `data_collection` setting, false while its row is missing. */
+  dataCollection: boolean
+  syncEnabled: boolean
+  /** Whether this device has completed its first sync. */
+  hasSynced: boolean
+}
+
 /**
- * Make capture on this device follow the synced `data_collection` setting. `opt_out_capturing_by_default` applies
- * only where PostHog has no saved choice, and the Preferences toggle saves one, so without this a device that was
- * switched off would stay off after the setting turned on again, and one switched on would keep capturing after the
- * user turned it off on another device.
+ * Whether this device may capture: `data_collection` is on and, when sync is on, the device has completed its first
+ * sync. Before that, its local settings are defaults it seeded itself (the reason its writes are create-only then,
+ * see `isCreateOnlyWrite`), so its `true` may be a guess about an account that opted out on another device.
  */
-const followDataCollection = (client: PostHog, dataCollection: boolean) => {
-  if (dataCollection && client.has_opted_out_capturing()) {
+export const shouldCapture = ({ dataCollection, syncEnabled, hasSynced }: CaptureConsent): boolean =>
+  dataCollection && (!syncEnabled || hasSynced)
+
+/**
+ * Opt this device's PostHog in or out to match `isCapturing`. PostHog keeps a choice of its own per device, saved by
+ * the Preferences toggle, and `opt_out_capturing_by_default` applies only where none is saved, so the setting
+ * overrides it here: that is what keeps an opt-out on one device in force on every other.
+ */
+export const setCapturing = (client: PostHog, isCapturing: boolean) => {
+  if (isCapturing && client.has_opted_out_capturing()) {
     // Not the user's action on this device, so no `$opt_in` event.
     client.opt_in_capturing({ captureEventName: false })
   }
-  if (!dataCollection && !client.has_opted_out_capturing()) {
+  if (!isCapturing && !client.has_opted_out_capturing()) {
     client.opt_out_capturing()
   }
 }
@@ -100,7 +116,12 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
     const { dataCollection } = await getSettings(db, {
-      data_collection: true,
+      data_collection: false,
+    })
+    const isCapturing = shouldCapture({
+      dataCollection,
+      syncEnabled: getLocalSetting('syncEnabled'),
+      hasSynced: getPowerSyncInstance()?.currentStatus.hasSynced ?? false,
     })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
@@ -119,7 +140,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     if (!posthogClient) {
       const { default: posthog } = await import('posthog-js')
       posthogClient = posthog.init(apiKey, {
-        opt_out_capturing_by_default: !dataCollection,
+        opt_out_capturing_by_default: !isCapturing,
         api_host: apiHost,
         debug: debugPosthog,
         autocapture: false,
@@ -159,7 +180,8 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         },
       }) as PostHog
     }
-    followDataCollection(posthogClient, dataCollection)
+    // The start state; `useAnalyticsConsent` keeps it following the setting while the app runs.
+    setCapturing(posthogClient, isCapturing)
 
     return { success: true, data: posthogClient }
   } catch (error) {

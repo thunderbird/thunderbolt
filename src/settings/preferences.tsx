@@ -242,7 +242,7 @@ export default function PreferencesSettingsPage() {
     location_country_code: '',
     location_id: '',
     location_name_display: '',
-    data_collection: true,
+    data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
     // Empty, not a US default. `useUnitDefaults` seeds these asynchronously, so

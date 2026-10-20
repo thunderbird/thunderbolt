@@ -9,6 +9,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { extraRuns, nativeReplayCap } from './verify'
 
 type Step = {
   name?: string
@@ -261,6 +262,12 @@ describe('publish', () => {
   test("leaves the fix job's own diagnosis alone", () => {
     expect(verdicts({}, {}, 'gave up\n').diagnosis).toBe('gave up\n')
   })
+})
+
+test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
+  // Run 39380764343: about 2.6 minutes a run on iOS, and about 6 minutes of setup before the first.
+  const runs = 3 + nativeReplayCap * (3 + extraRuns)
+  expect(runs * 2.6 + 6).toBeLessThan(jobs['replay-native']['timeout-minutes'] ?? 0)
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {

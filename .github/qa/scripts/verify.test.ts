@@ -12,6 +12,7 @@ import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
 import {
   judge,
+  nativeReplayCap,
   oracleOf,
   replay,
   replayEnv,
@@ -743,6 +744,23 @@ describe('replay of native flows', () => {
     ])
     expect(calls.filter((call) => call.title === 'stuck')).toHaveLength(6)
     expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
+  })
+
+  test('a native leg replays at most nativeReplayCap findings, so its worst case fits the job, and defers the rest', async () => {
+    const ids = Array.from({ length: nativeReplayCap + 1 }, (_, n) => `f${n}`)
+    for (const id of ids) await writeNative(makeNative(id, assertFailed))
+    const calls: FlowCall[] = []
+
+    const result = await nativeReplay({}, calls)
+
+    expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', ...ids.slice(0, -1)]))
+    expect(result.deferred).toEqual([
+      {
+        file: expect.objectContaining({ id: ids.at(-1) }),
+        step: 'replay',
+        reason: `over the cap of ${nativeReplayCap} replayed findings`,
+      },
+    ])
   })
 
   test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {

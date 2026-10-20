@@ -501,7 +501,8 @@ Android on `ubuntu-latest` with KVM.
   both builds, the device, the stack (`android-sync` serves the web build with Postgres, PowerSync and Playwright's
   Chromium for c7's specs; `android-real` the real providers), the console stream, then `verify.ts replay --native`
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
-  40 s, so the job allows 90 minutes for 20 findings and the control at three runs each.
+  2.6 minutes on iOS (run 39380764343), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
+  3 runs and up to 6 runs per finding, plus setup, fit the 90-minute job, whose timeout would lose every finding.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,
@@ -609,7 +610,7 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
 turns, timeout), and the constants at the top of `verify.ts` for the judge. The first values are generous on
 purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
-and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes,
+(4 on a native leg, whose runs are slow) and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes,
 1,600 tokens per screenshot, plus `max_tokens`, at Opus prices). Findings over a cap are listed as deferred and
 never filed. The app's own provider calls in real-AI sessions are **not measured**: watch the QA provider keys'
 dashboards.

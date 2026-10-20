@@ -824,8 +824,8 @@ jobs:
     needs: [build, build-native, explore-native]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
-    # About 40 s a run: up to 20 findings and the control, three runs each, is 42 minutes, plus driver retries,
-    # reinstalls and the device setup. Raised instead of a lower cap, so a busy week still replays every finding.
+    # About 2.6 minutes a run (run 39380764343), so `nativeReplayCap` in verify.ts sizes the leg to fit: the control's
+    # 3 runs and up to 6 per finding take at most 76 minutes with setup. A timeout loses every finding of the leg.
     timeout-minutes: 90
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:

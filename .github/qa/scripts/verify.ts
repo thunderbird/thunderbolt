@@ -98,6 +98,8 @@ const judgePrice = { input: 4, output: 20 }
 const judgeMaxTokens = 4096
 // The aggregate caps, per replay leg and per judge leg; the README explains how to calibrate them.
 const replayCap = 20
+// (3 control + 4 × 6 runs) × 2.6 min (run 39380764343) + 6 min setup = 76 min, inside replay-native's 90.
+export const nativeReplayCap = 4
 const judgeCap = 15
 const judgeCeilingUsd = 2
 // Message framing and the verdict schema, on top of the prompt text.
@@ -344,7 +346,7 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
 type Device = { runFlow: RunFlow; outDir: string; next: () => number }
 
 /** Runs past the three that replace inconclusive ones, per finding. */
-const extraRuns = 3
+export const extraRuns = 3
 
 /**
  * A native `layout` run whose flow failed before the probe logged the quoted line: it never reached the screen, so it
@@ -529,9 +531,9 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying the surviving specs three times each,
- * up to `replayCap` findings (the rest are `deferred`). A finding that does not fit its session dir (`sessionProblem`:
- * the dir, not the model's fields, picks spec or flow) is dropped at gate `schema`; every other finding takes the
- * dir's platform as its `viewport`.
+ * up to `replayCap` findings, `nativeReplayCap` on a native leg (the rest are `deferred`). A finding that does not
+ * fit its session dir (`sessionProblem`: the dir, not the model's fields, picks spec or flow) is dropped at gate
+ * `schema`; every other finding takes the dir's platform as its `viewport`.
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
@@ -607,10 +609,11 @@ export const replay = async (
     else lintClean.push(file)
   }
   // ponytail: the first findings in path order fill the cap; rank by severity if a capped run ever loses a bad one.
-  const replayable = lintClean.slice(0, replayCap)
+  const cap = runFlow ? nativeReplayCap : replayCap
+  const replayable = lintClean.slice(0, cap)
   result.deferred = lintClean
-    .slice(replayCap)
-    .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${replayCap} replayed findings` }))
+    .slice(cap)
+    .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${cap} replayed findings` }))
 
   const specFiles = replayable.filter((file) => !flows.has(file))
   const replayedFlows = new Map([...flows].filter(([file]) => replayable.includes(file)))

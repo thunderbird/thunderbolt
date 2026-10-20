@@ -19,6 +19,7 @@ import {
   platformOf,
   type RawFinding,
   realAiCharters,
+  sessionProblem,
   severity,
 } from './findings'
 import cases from '../journeys.json'
@@ -366,18 +367,31 @@ describe('native findings', () => {
     }
   })
 
-  test('a native finding needs a flow, a web finding a spec, and none may carry both', () => {
-    expect(accepted({ repro_flow: undefined, repro_spec: 'repro/1.spec.ts' })).toBe(false)
-    expect(accepted({ viewport: 'android' })).toBe(true)
-    expect(accepted({ viewport: 'desktop' })).toBe(false)
+  const problem = (charterDir: string, fields: Partial<RawFinding>) =>
+    sessionProblem({ charterDir, id: '1', finding: native(fields) })
+  const spec = { repro_flow: undefined, repro_spec: 'repro/1.spec.ts' }
+
+  test('the session dir decides the proof: a flow on a device, a spec on the web, never both', () => {
     expect(accepted({ repro_spec: 'repro/1.spec.ts' })).toBe(false)
     expect(accepted({ repro_flow: undefined })).toBe(false)
+    expect(problem('c2-chat-power-user-ios', {})).toBeUndefined()
+    expect(problem('c2-chat-power-user-ios', spec)).toContain('repro_flow')
+    expect(problem('c2-chat-power-user-desktop', { ...spec, viewport: 'desktop' })).toBeUndefined()
+    expect(problem('c2-chat-power-user-desktop', { viewport: 'desktop' })).toContain('repro_spec')
   })
 
-  test('the two-device charter on Android takes either proof, for device A or for the browser', () => {
-    const c7 = { charter: 'c7-two-devices', viewport: 'android' }
-    expect(accepted({ ...c7, repro_flow: undefined, repro_spec: 'repro/1.spec.ts' })).toBe(true)
-    expect(accepted(c7)).toBe(true)
+  test("a finding's viewport must name its session's platform, in a real session dir", () => {
+    expect(problem('c2-chat-power-user-android', {})).toBe(
+      'viewport ios is not the platform of session c2-chat-power-user-android',
+    )
+    expect(problem('c2-chat', {})).toBe('not a session dir: c2-chat')
+    expect(problem('x.c2-chat-power-user-ios', {})).toBe('not a session dir: x.c2-chat-power-user-ios')
+  })
+
+  test('only the c7 session on Android takes either proof, whatever charter the finding claims', () => {
+    expect(problem('c7-two-devices-android', { ...spec, viewport: 'android' })).toBeUndefined()
+    expect(problem('c7-two-devices-android', { viewport: 'android' })).toBeUndefined()
+    expect(problem('c2-chat-power-user-ios', { ...spec, charter: 'c7-two-devices' })).toContain('only c7')
   })
 
   test("a native screenshot is the gate's maestro/shot-<n> file", () => {

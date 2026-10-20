@@ -9,6 +9,7 @@ import { basename, extname, isAbsolute, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
 import { type Finding, findingSchema, fingerprint, platformIds, type Severity, severity } from './findings'
+import { sanitize, secretPattern } from './sanitize'
 import { imageInfo, screenshotPath, type Verified, type VerifiedFinding } from './verify'
 
 export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'rolled-up' | 'refused' | 'dry-run'
@@ -90,29 +91,6 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
 /** True when enough tickets were judged and too many were noise: filing must stay a dry run. */
 export const shouldBrake = (card: Scorecard): boolean =>
   card.labelled >= brakeMinLabelled && card.precision !== null && card.precision < brakeMinPrecision
-
-// ---------- sanitizing model-written text ----------
-
-export const secretPattern =
-  /\bsk-[\w-]{8,}|lin_(api|oauth)_\w+|gh[pousr]_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
-
-const keepUrl = (url: string, runUrl?: string): boolean => {
-  if (runUrl && url.startsWith(runUrl)) return true
-  try {
-    // localhost stays so repro specs remain readable; it points nowhere outside the runner.
-    return ['uploads.linear.app', 'localhost', '127.0.0.1'].includes(new URL(url).hostname)
-  } catch {
-    return false
-  }
-}
-
-/** Model-written text made safe for a ticket: no images, no foreign URLs, no fence breakout, capped. */
-export const sanitize = (text: string, max: number, runUrl?: string): string =>
-  text
-    .replace(/!\[[^\]]*\]\([^)]*\)|!\[[^\]]*\]\[[^\]]*\]|<img[^>]*>/gi, '[image removed]')
-    .replace(/https?:\/\/[^\s)>\]"'`]+/g, (url) => (keepUrl(url, runUrl) ? url : '[link removed]'))
-    .replaceAll('```', "'''")
-    .slice(0, max)
 
 // ---------- Linear ----------
 

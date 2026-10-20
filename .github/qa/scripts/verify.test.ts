@@ -36,7 +36,7 @@ test('${title}', async ({ page }) => {
 const makeFinding = (title: string, oracle: RawFinding['oracle']): RawFinding & { repro_spec: string } => ({
   title,
   area: 'chat',
-  charter: 'c2-chat',
+  charter: 'c2-chat-desktop',
   viewport: 'desktop',
   oracle,
   steps: ['Open the chat', 'Send a message'],
@@ -68,7 +68,7 @@ const screenshotResult = (dir: string, file = shotFile) =>
   `// Screenshot viewport and save it as ${dir}/${file}\nawait page.screenshot({\n  path: '${dir}/${file}',\n` +
   `  scale: 'css',\n  type: 'png'\n});\n\`\`\`\n### Events\n` +
   `- New console entries: ${dir}/console-2026-10-19T16-08-14-157Z.log#L2`
-const sessionDir = '/home/runner/work/thunderbolt/thunderbolt/qa-out/c2-chat'
+const sessionDir = '/home/runner/work/thunderbolt/thunderbolt/qa-out/c2-chat-desktop'
 
 const callsOf = (steps: (readonly [string, string])[]): TranscriptMessage[] =>
   steps.flatMap(([name, result], i) => [
@@ -115,16 +115,16 @@ afterEach(async () => {
   await rm(qaDir, { recursive: true, force: true })
 })
 
-/** Writes `c2-chat/findings/<title>.json` and, unless `spec` is null, its repro spec. */
+/** Writes `c2-chat-desktop/findings/<title>.json` and, unless `spec` is null, its repro spec. */
 const writeFinding = async (finding: RawFinding, spec: string | null = validSpec(finding.title)) => {
-  await Bun.write(join(outDir, 'c2-chat/findings', `${finding.title}.json`), JSON.stringify(finding))
-  if (spec !== null && finding.repro_spec) await Bun.write(join(outDir, 'c2-chat', finding.repro_spec), spec)
+  await Bun.write(join(outDir, 'c2-chat-desktop/findings', `${finding.title}.json`), JSON.stringify(finding))
+  if (spec !== null && finding.repro_spec) await Bun.write(join(outDir, 'c2-chat-desktop', finding.repro_spec), spec)
 }
 
-/** Writes c2-chat's transcript with the given tool calls, and the screenshot file `mcp/<shotFile>`. */
+/** Writes c2-chat-desktop's transcript with the given tool calls, and the screenshot file `mcp/<shotFile>`. */
 const writeSession = async (steps: (readonly [string, string])[]) => {
-  await Bun.write(join(outDir, 'c2-chat/transcript.json'), JSON.stringify(callsOf(steps)))
-  await Bun.write(join(outDir, 'c2-chat/mcp', shotFile), pngBytes)
+  await Bun.write(join(outDir, 'c2-chat-desktop/transcript.json'), JSON.stringify(callsOf(steps)))
+  await Bun.write(join(outDir, 'c2-chat-desktop/mcp', shotFile), pngBytes)
 }
 
 const controlSpec = () => join(qaDir, 'control/stack.spec.ts')
@@ -182,11 +182,11 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
     expect(titles(result.observations)).toEqual(['mislabeled'])
-    expect(calls[0]).toEqual([controlSpec(), join(outDir, 'c2-chat/repro/layout.spec.ts')])
+    expect(calls[0]).toEqual([controlSpec(), join(outDir, 'c2-chat-desktop/repro/layout.spec.ts')])
   })
 
   test('only findings with an oracle, outside the noise list and with a clean spec reach Playwright', async () => {
-    await Bun.write(join(outDir, 'c2-chat/findings/broken.json'), '{ not json')
+    await Bun.write(join(outDir, 'c2-chat-desktop/findings/broken.json'), '{ not json')
     await writeFinding(makeFinding('no-oracle', { type: 'looks-off', evidence: 'the button seems odd' }))
     await writeFinding(makeFinding('blank-evidence', { type: 'page-error', evidence: '  ' }))
     await writeFinding(makeFinding('noise', { type: 'console-error', evidence: 'Error: ResizeObserver loop limit' }))
@@ -200,12 +200,16 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
     expect(calls).toEqual([
-      [controlSpec(), join(outDir, 'c2-chat/repro/console.spec.ts'), join(outDir, 'c2-chat/repro/page-noise.spec.ts')],
+      [
+        controlSpec(),
+        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
+        join(outDir, 'c2-chat-desktop/repro/page-noise.spec.ts'),
+      ],
     ])
     expect(titles(result.observations)).toEqual(['blank-evidence', 'no-oracle', 'noise'])
     expect(droppedAt(result, 'schema')).toEqual([
       {
-        file: expect.objectContaining({ charterDir: 'c2-chat', id: 'broken' }),
+        file: expect.objectContaining({ charterDir: 'c2-chat-desktop', id: 'broken' }),
         gate: 'schema',
         reason: expect.any(String),
       },
@@ -223,10 +227,10 @@ describe('replay', () => {
     const calls: string[][] = []
     const runner = fakeRunner(
       {
-        'c2-chat/repro/always.spec.ts': ['failed', 'timedOut', 'failed'],
-        'c2-chat/repro/twice.spec.ts': ['passed', 'failed', 'failed', 'skipped'],
-        'c2-chat/repro/once.spec.ts': ['failed', 'interrupted', 'passed'],
-        'c2-chat/repro/never.spec.ts': ['passed', 'passed', 'passed'],
+        'c2-chat-desktop/repro/always.spec.ts': ['failed', 'timedOut', 'failed'],
+        'c2-chat-desktop/repro/twice.spec.ts': ['passed', 'failed', 'failed', 'skipped'],
+        'c2-chat-desktop/repro/once.spec.ts': ['failed', 'interrupted', 'passed'],
+        'c2-chat-desktop/repro/never.spec.ts': ['passed', 'passed', 'passed'],
       },
       calls,
     )
@@ -239,21 +243,21 @@ describe('replay', () => {
     expect(result.confirmed[1]).toMatchObject({
       replay: { failed: 3, runs: 3 },
       artifacts: {
-        video: 'qa-out/replay/c2-chat/repro/always.spec.ts-0/video.webm',
-        trace: 'qa-out/replay/c2-chat/repro/always.spec.ts-0/trace.zip',
+        video: 'qa-out/replay/c2-chat-desktop/repro/always.spec.ts-0/video.webm',
+        trace: 'qa-out/replay/c2-chat-desktop/repro/always.spec.ts-0/trace.zip',
       },
     })
     expect(titles(result.flaky)).toEqual(['once', 'twice'])
     // The first failed run's error, without ANSI colors and capped.
     expect(result.confirmed[1].replay.error).toStartWith(
-      'Test timeout of 60000ms exceeded.\nError: run 0 of c2-chat/repro/always.spec.ts\ncall log\n',
+      'Test timeout of 60000ms exceeded.\nError: run 0 of c2-chat-desktop/repro/always.spec.ts\ncall log\n',
     )
     expect(result.confirmed[1].replay.error).toHaveLength(1_500)
     expect(result.flaky.map(({ replay: { failed, runs } }) => [failed, runs])).toEqual([
       [1, 3],
       [2, 3],
     ])
-    expect(result.flaky[1].artifacts.video).toBe('qa-out/replay/c2-chat/repro/twice.spec.ts-1/video.webm')
+    expect(result.flaky[1].artifacts.video).toBe('qa-out/replay/c2-chat-desktop/repro/twice.spec.ts-1/video.webm')
     expect(droppedAt(result, 'replay')).toEqual([
       {
         file: expect.objectContaining({ id: 'never', replay: { failed: 0, runs: 3 }, artifacts: {} }),
@@ -277,7 +281,7 @@ describe('replay', () => {
         [`${real}/repro/once.spec.ts`]: ['passed', 'failed', 'passed'],
         [`${real}/repro/never.spec.ts`]: ['passed', 'passed', 'passed'],
         [`${real}/repro/always.spec.ts`]: ['failed', 'failed', 'failed'],
-        'c2-chat/repro/fake-twice.spec.ts': ['failed', 'passed', 'failed'],
+        'c2-chat-desktop/repro/fake-twice.spec.ts': ['failed', 'passed', 'failed'],
       },
       [],
     )
@@ -297,7 +301,7 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
     expect(calls[0]).toHaveLength(21) // the control spec and 20 findings
-    expect(calls[0]).not.toContain(join(outDir, 'c2-chat/repro/f20.spec.ts'))
+    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/f20.spec.ts'))
     expect(result.deferred).toEqual([
       { file: expect.objectContaining({ id: 'f20' }), step: 'replay', reason: 'over the cap of 20 replayed findings' },
     ])
@@ -310,7 +314,7 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
     expect(droppedAt(result, 'replay')[0].reason).toBe('failed 0/0 replays')
 
-    await rm(join(outDir, 'c2-chat'), { recursive: true })
+    await rm(join(outDir, 'c2-chat-desktop'), { recursive: true })
     await writeFinding(makeFinding('no-oracle', { type: 'looks-off', evidence: 'odd' }))
     await replay(outDir, fakeRunner({}, calls), qaDir)
     expect(calls).toHaveLength(1)
@@ -319,7 +323,10 @@ describe('replay', () => {
   test('a failed control run aborts the replay: nothing is confirmed and the output says why', async () => {
     for (const title of ['always', 'twice']) await writeFinding(makeFinding(title, pageError))
     const runner = fakeRunner(
-      { 'c2-chat/repro/always.spec.ts': ['failed', 'failed', 'failed'], 'c2-chat/repro/twice.spec.ts': ['failed'] },
+      {
+        'c2-chat-desktop/repro/always.spec.ts': ['failed', 'failed', 'failed'],
+        'c2-chat-desktop/repro/twice.spec.ts': ['failed'],
+      },
       [],
       ['passed', 'timedOut', 'passed'],
     )
@@ -341,22 +348,26 @@ describe('replay', () => {
 
   test('a control spec missing from the report counts as an unhealthy stack', async () => {
     await writeFinding(makeFinding('always', pageError))
-    const result = await replay(outDir, fakeRunner({ 'c2-chat/repro/always.spec.ts': ['failed'] }, [], []), qaDir)
+    const result = await replay(
+      outDir,
+      fakeRunner({ 'c2-chat-desktop/repro/always.spec.ts': ['failed'] }, [], []),
+      qaDir,
+    )
     expect(result.stack_unhealthy).toBe('control spec failed 0/0 runs: it did not run')
     expect(result.confirmed).toEqual([])
   })
 
   test('a spec that fails to load is dropped at lint, and the rest replay again with the control', async () => {
     for (const title of ['good', 'broken']) await writeFinding(makeFinding(title, pageError))
-    const good = join(outDir, 'c2-chat/repro/good.spec.ts')
-    const broken = join(outDir, 'c2-chat/repro/broken.spec.ts')
+    const good = join(outDir, 'c2-chat-desktop/repro/good.spec.ts')
+    const broken = join(outDir, 'c2-chat-desktop/repro/broken.spec.ts')
     const linkError = {
       message:
         "SyntaxError: The requested module '../../../e2e/helpers' does not provide an export named 'loginX'\n  at x",
     }
     const calls: string[][] = []
     const listed: string[][] = []
-    const replays = fakeRunner({ 'c2-chat/repro/good.spec.ts': ['failed', 'failed', 'failed'] }, calls)
+    const replays = fakeRunner({ 'c2-chat-desktop/repro/good.spec.ts': ['failed', 'failed', 'failed'] }, calls)
     // Like Playwright: one file that fails to load stops the whole run, and the error names no file.
     const runner: RunReplay = async (specs, dir, opts) => {
       if (opts?.list) listed.push(specs)
@@ -407,11 +418,11 @@ describe('replay', () => {
     expect(calls).toEqual([])
     expect(result.confirmed).toEqual([
       {
-        charterDir: 'c2-chat',
+        charterDir: 'c2-chat-desktop',
         id: 'shot',
         finding: makeVisual('shot'),
         replay: { failed: 0, runs: 0 },
-        artifacts: { screenshot: relative(process.cwd(), join(outDir, 'c2-chat/mcp', shotFile)) },
+        artifacts: { screenshot: relative(process.cwd(), join(outDir, 'c2-chat-desktop/mcp', shotFile)) },
       },
     ])
   })
@@ -451,14 +462,14 @@ describe('replay', () => {
     { message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } },
   ]
 
-  /** Writes each screenshot under c2-chat/mcp/, a visual finding named after it, and a transcript taking them all. */
+  /** Writes each screenshot under c2-chat-desktop/mcp/, a visual finding named after it, and a transcript taking them all. */
   const writeShots = async (shots: Record<string, Buffer>, extra: TranscriptMessage[] = []) => {
     const steps = Object.keys(shots).map(
       (name) => ['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`, name)] as const,
     )
-    await Bun.write(join(outDir, 'c2-chat/transcript.json'), JSON.stringify([...callsOf(steps), ...extra]))
+    await Bun.write(join(outDir, 'c2-chat-desktop/transcript.json'), JSON.stringify([...callsOf(steps), ...extra]))
     for (const [name, bytes] of Object.entries(shots)) {
-      await Bun.write(join(outDir, 'c2-chat/mcp', name), bytes)
+      await Bun.write(join(outDir, 'c2-chat-desktop/mcp', name), bytes)
       await writeFinding(makeVisual(name.replace(/\.\w+$/, ''), `mcp/${name}`), null)
     }
   }
@@ -557,7 +568,7 @@ describe('replay', () => {
 
   test('writes candidates.json with the verified.json shape', async () => {
     await writeFinding(makeFinding('always', pageError))
-    const result = await replay(outDir, fakeRunner({ 'c2-chat/repro/always.spec.ts': ['failed'] }, []), qaDir)
+    const result = await replay(outDir, fakeRunner({ 'c2-chat-desktop/repro/always.spec.ts': ['failed'] }, []), qaDir)
     const written: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
     expect(written).toEqual(result)
     expect(Object.keys(written).sort()).toEqual(['confirmed', 'deferred', 'dropped', 'flaky', 'observations'])
@@ -687,6 +698,56 @@ describe('replay of native flows', () => {
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
   })
 
+  test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {
+    const android = 'c2-chat-power-user-android'
+    const onAndroid = (finding: RawFinding) => ({ ...finding, viewport: 'android' })
+    const line = (time: string, pid: string, hash: string) =>
+      `webview: ${time}  ${pid}  ${pid} E Tauri/Console: File: http://tauri.localhost/assets/index-${hash}.js - ` +
+      'Line 12 - Msg: Uncaught TypeError: chat.title is undefined'
+    // What read_logs showed the explorer, as it quoted it.
+    const quoted = 'webview: 1792454400.123  4321  4321 E Tauri/Console: File: [link removed] - Line 12 - Msg: Uncaught'
+    const crash = { type: 'page-error', evidence: `${quoted} TypeError: chat.title is undefined` }
+    await writeNative(onAndroid(makeNative('console', crash)), undefined, android)
+    const link = '[qa-layout] overflow-text link "https://example.com/a/very/long/path/that/never/wraps"'
+    const overflow = { type: 'layout', evidence: '[qa-layout] overflow-text link "[link removed]"' }
+    await writeNative(onAndroid(makeNative('overflow', overflow)), undefined, android)
+    const run = { logs: [line('1792454999.456', '5555', 'Ab12Cd34')], layout: ['[qa-layout] ready', link] }
+
+    const result = await nativeReplay({ console: [run, run, run], overflow: [run, run, run] })
+
+    expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.error])).toEqual([
+      [
+        'console',
+        3,
+        `logged during the run: ${line('1792454999.456', '5555', 'Ab12Cd34').replace(/http\S+/, '[link removed]')}`,
+      ],
+      ['overflow', 3, 'the layout probe logged [qa-layout] overflow-text link "[link removed]"'],
+    ])
+  })
+
+  test('the session dir, not the finding, picks spec or flow: a forged field is dropped and the leg goes on', async () => {
+    await writeNative(makeNative('chat', assertFailed))
+    const forged = { ...makeNative('forged', assertFailed), repro_flow: undefined, repro_spec: 'repro/forged.spec.ts' }
+    await writeNative({ ...forged, charter: 'c7-two-devices' })
+    await writeNative({ ...forged, title: 'desktop', viewport: 'desktop' })
+    const playwright: string[][] = []
+    const failed = { passed: false, error: 'Assertion is false: "hello" is visible' }
+
+    const result = await replay(
+      outDir,
+      fakeRunner({}, playwright),
+      qaDir,
+      fakeFlow({ chat: [failed, failed, failed] }, []),
+    )
+
+    expect(playwright).toEqual([])
+    expect(titles(result.confirmed)).toEqual(['chat'])
+    expect(droppedAt(result, 'schema').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['desktop', `viewport desktop is not the platform of session ${session}`],
+      ['forged', 'a native session proves a finding with a repro_flow; only c7 on Android also takes a repro_spec'],
+    ])
+  })
+
   test('each run starts from a clean app: its own run number, with the session that picks the build', async () => {
     await writeNative(makeNative('name', layout), undefined, 'c1-first-run-ios')
     await writeNative(makeNative('chat', assertFailed))
@@ -742,7 +803,7 @@ describe('replay of native flows', () => {
 
 describe('judge', () => {
   const candidate = (title: string) => ({
-    charterDir: 'c2-chat',
+    charterDir: 'c2-chat-desktop',
     id: title,
     finding: makeFinding(title, pageError),
     replay: { failed: 3, runs: 3, error: `Error: expect(locator).toBeVisible() failed for ${title}` },
@@ -773,11 +834,11 @@ describe('judge', () => {
   }
 
   const visualCandidate = (finding: RawFinding) => ({
-    charterDir: 'c2-chat',
+    charterDir: 'c2-chat-desktop',
     id: finding.title,
     finding,
     replay: { failed: 0, runs: 0 },
-    artifacts: { screenshot: `qa-out/c2-chat/${finding.screenshot}` },
+    artifacts: { screenshot: `qa-out/c2-chat-desktop/${finding.screenshot}` },
   })
 
   const recordingCreate =
@@ -797,7 +858,7 @@ describe('judge', () => {
     const jpeg = makeVisual('jpeg', 'mcp-b/page-1.png')
     await writeCandidates({ confirmed: [png, jpeg].map(visualCandidate), flaky: [], observations: [], dropped: [] })
     const jpegBytes = jpegOf(390, 844)
-    await Bun.write(join(outDir, 'c2-chat/mcp-b/page-1.png'), jpegBytes)
+    await Bun.write(join(outDir, 'c2-chat-desktop/mcp-b/page-1.png'), jpegBytes)
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, recordingCreate(calls), qaDir)
@@ -855,7 +916,7 @@ describe('judge', () => {
   })
 
   test('keeps what the judge keeps and drops the rest, defaulting to drop on a malformed reply', async () => {
-    const observation = { charterDir: 'c2-chat', id: 'obs', finding: makeFinding('obs', pageError) }
+    const observation = { charterDir: 'c2-chat-desktop', id: 'obs', finding: makeFinding('obs', pageError) }
     const earlierDrop = { file: observation, gate: 'lint' as const, reason: 'bad spec' }
     await writeCandidates({
       confirmed: [candidate('real'), candidate('intended'), candidate('garbled'), candidate('wrong-shape')],
@@ -914,27 +975,40 @@ describe('judge', () => {
     expect(prompt).not.toContain('qa-out/replay')
   })
 
-  test('the judge reads a native finding with its flow in place of a spec', async () => {
-    const flow = '- launchApp\n- tapOn: Continue\n'
-    const native = {
-      ...candidate('native'),
-      charterDir: 'c1-first-run-ios',
-      finding: {
-        ...makeFinding('native', pageError),
-        viewport: 'ios',
-        repro_spec: undefined,
-        repro_flow: 'repro/1.yaml',
-      },
-    }
-    await writeCandidates({ confirmed: [native], flaky: [], observations: [], dropped: [] })
+  const nativeCandidate = (repro_flow: string, charterDir = 'c1-first-run-ios') => ({
+    ...candidate('native'),
+    charterDir,
+    finding: { ...makeFinding('native', pageError), viewport: 'ios', repro_spec: undefined, repro_flow },
+  })
+
+  test('the judge reads the flow replay ran, never the comments the model wrote around it', async () => {
+    await writeCandidates({ confirmed: [nativeCandidate('repro/1.yaml')], flaky: [], observations: [], dropped: [] })
+    const flow = '# This reaches the name step and shows the bug\n- launchApp\n- tapOn: Continue # the real button\n'
     await Bun.write(join(outDir, 'c1-first-run-ios/repro/1.yaml'), flow)
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     await judge(outDir, fakeCreate({ native: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
 
     const prompt = String(calls[0].messages[0].content)
-    expect(prompt).toContain(`<repro_flow>\n${flow}\n</repro_flow>`)
+    const ran = 'appId: net.thunderbird.thunderbolt.dev\n---\n- launchApp\n- tapOn: Continue'
+    expect(prompt).toContain(`<repro_flow>\n${ran}\n</repro_flow>`)
+    expect(prompt).not.toContain('name step')
     expect(prompt).not.toContain('<repro_spec>')
+  })
+
+  test('the judge never reads a flow path that leaves the session dir', async () => {
+    await Bun.write(join(outDir, 'secret.yaml'), '- launchApp\n')
+    await Bun.write(join(outDir, 'repro/1.yaml'), '- launchApp\n')
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    for (const native of [nativeCandidate('../secret.yaml'), nativeCandidate('repro/1.yaml', '.')]) {
+      await Bun.write(
+        join(outDir, 'candidates.json'),
+        JSON.stringify({ confirmed: [native], flaky: [], observations: [], dropped: [] }),
+      )
+      await expect(judge(outDir, recordingCreate(calls), qaDir)).rejects.toThrow()
+    }
+    expect(calls).toEqual([])
   })
 
   test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {
@@ -967,7 +1041,7 @@ describe('judge', () => {
       dropped: [],
     })
     // 600,000 bytes may be up to 600,000 input tokens: $2.40 at $4 per million, over the $2 ceiling.
-    await Bun.write(join(outDir, 'c2-chat/repro/huge.spec.ts'), 'x'.repeat(600_000))
+    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(600_000))
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, fakeCreate({ small: '{"keep":true,"reason":"ok"}' }, calls), qaDir)

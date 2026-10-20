@@ -25,9 +25,9 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { join } from 'node:path'
 import { z } from 'zod'
 import { measureNative, parseInspectScreen, readyLine } from '../native-layout'
-import { sanitize, secretPattern } from './file-findings'
 import { platformOf } from './findings'
 import { checkMaestroFlow, maestroEnv } from './maestro-flow'
+import { cleanLogLine } from './sanitize'
 
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 export type ToolResult = { content: Content[]; isError?: boolean }
@@ -110,7 +110,6 @@ export const gateTools = tools.map(({ name, description, args }) => ({
 
 const driverTimeout = 'iOS driver not ready in time'
 const consoleMark = { ios: 'CONSOLE', android: 'Tauri/Console' }
-const secrets = new RegExp(secretPattern.source, 'g')
 const logOffsets = new Map<string, number>()
 // The WebView logs whose probe has said ready since the app last started. One gate process serves one session.
 const probeSeen = new Set<string>()
@@ -173,7 +172,7 @@ export const restartsApp = (yaml: string) =>
   )
 
 // 200 lines of 500 characters stay under Claude Code's MCP output limit.
-const clean = (line: string) => sanitize(line.replace(secrets, '[secret removed]'), 500)
+const clean = (line: string) => cleanLogLine(line).slice(0, 500)
 
 const probeReady = '[qa-layout] ready'
 

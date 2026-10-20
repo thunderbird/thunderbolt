@@ -101,6 +101,9 @@ export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
  */
 export const screenshotFile = z.string().regex(/^(mcp(-b)?\/[\w.-]+|maestro\/shot-\d+)\.(png|jpe?g)$/)
 
+/** The Maestro flow that proves a native finding, inside the session dir. */
+export const reproFlowFile = z.string().regex(/^repro\/[\w-]+\.yaml$/)
+
 const findingFields = z.object({
   title: z.string().min(1),
   area: z.enum(areas),
@@ -115,11 +118,7 @@ const findingFields = z.object({
     .string()
     .regex(/^repro\/[\w-]+\.spec\.ts$/)
     .optional(),
-  /** The Maestro flow that proves a finding on a native platform. */
-  repro_flow: z
-    .string()
-    .regex(/^repro\/[\w-]+\.yaml$/)
-    .optional(),
+  repro_flow: reproFlowFile.optional(),
   screenshot: screenshotFile.optional(),
   /** The accessible name of the element a visual finding is about, as `<role> "<name>"`. */
   element: z.string().optional(),
@@ -127,27 +126,17 @@ const findingFields = z.object({
   function: z.string().optional(),
 })
 
-type Proof = {
-  charter: string
-  viewport: string
-  oracle: { type: string }
-  repro_spec?: string
-  repro_flow?: string
-  screenshot?: string
-}
+type Proof = { oracle: { type: string }; repro_spec?: string; repro_flow?: string; screenshot?: string }
 
 /**
- * A visual finding is proven by its screenshot, every other one by exactly one repro: a spec on the web, a flow on a
- * native platform. The two-device charter on Android takes either, a flow for the app or a spec for its browser.
+ * A visual finding is proven by its screenshot, every other one by exactly one repro. Which repro its platform needs
+ * depends on the session dir, which the schema cannot see: `sessionProblem` checks that.
  */
-const provable = (finding: Proof) => {
-  if (finding.oracle.type === 'visual') return finding.screenshot !== undefined
-  if ((finding.repro_spec === undefined) === (finding.repro_flow === undefined)) return false
-  if (!nativePlatformIds.includes(finding.viewport)) return finding.repro_spec !== undefined
-  return finding.repro_flow !== undefined || finding.charter.startsWith('c7-two-devices')
-}
-const provableMessage =
-  'a visual finding needs a screenshot, any other finding one repro: repro_spec on the web, repro_flow on a device'
+const provable = (finding: Proof) =>
+  finding.oracle.type === 'visual'
+    ? finding.screenshot !== undefined
+    : (finding.repro_spec === undefined) !== (finding.repro_flow === undefined)
+const provableMessage = 'a visual finding needs a screenshot, any other finding one of repro_spec and repro_flow'
 
 /** A finding that passed the oracle check: a known oracle type backed by quoted evidence. */
 export const findingSchema = findingFields.refine(provable, provableMessage)
@@ -194,6 +183,36 @@ export const loadFindings = async (outDir: string) => {
 
 /** Oracle gate: a finding without a known oracle type and quoted evidence is only an observation. */
 export const hasOracle = (finding: RawFinding): finding is Finding => findingSchema.safeParse(finding).success
+
+const sessionOf = (dir: string) => {
+  try {
+    return parseSession(dir)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Why a finding does not fit the session dir it was written in, or undefined when it does. The dir decides, never the
+ * model-written `charter` or `viewport`: a web session proves a finding with a repro spec, a native one with a repro
+ * flow, and c7 on Android takes either (a flow for the app, a spec for its browser). A `viewport` that names another
+ * platform than the dir does not fit either.
+ */
+export const sessionProblem = ({ charterDir, finding }: FindingFile): string | undefined => {
+  const session = /^[\w-]+$/.test(charterDir) ? sessionOf(charterDir) : undefined
+  if (!session) return `not a session dir: ${charterDir}`
+  if (finding.viewport !== session.platform) {
+    return `viewport ${finding.viewport} is not the platform of session ${charterDir}`
+  }
+  if (finding.oracle.type === 'visual') return undefined
+  if (!nativePlatformIds.includes(session.platform)) {
+    return finding.repro_flow ? 'a web session proves a finding with a repro_spec, not a repro_flow' : undefined
+  }
+  if (finding.repro_spec && session.charter !== 'c7-two-devices') {
+    return 'a native session proves a finding with a repro_flow; only c7 on Android also takes a repro_spec'
+  }
+  return undefined
+}
 
 /**
  * Import specifiers a repro spec may use. Assumes specs are replayed where the explorer wrote them,

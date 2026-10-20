@@ -17,6 +17,7 @@ import type { FlowRun, RunFlow } from './verify'
 
 // The probe debounces 250 ms and confirms a problem over 500 ms, as in the gate.
 const probeWaitMs = 1200
+const driverTimeout = 'iOS driver not ready in time'
 const androidVideo = '/sdcard/qa-replay.mp4'
 
 /** The whole lines appended to `file` from byte `start` on; a line still being written is left out. */
@@ -43,7 +44,8 @@ export const createRunFlow = (opts: {
   backendLog: string
 }): RunFlow => {
   const { platform, deviceId, webviewLog, backendLog } = opts
-  const appId = platformOf(platform).appId ?? ''
+  const { appId } = platformOf(platform)
+  if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
   return async (flowYaml, outDir, run, session): Promise<FlowRun> => {
     const app = session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain
@@ -85,7 +87,8 @@ export const createRunFlow = (opts: {
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     return {
       passed: result.exitCode === 0,
-      error: result.exitCode === 0 ? undefined : output.slice(-1_500),
+      // The whole output, not its tail: a long trace after the driver error must not hide it from the retry.
+      error: result.exitCode === 0 ? undefined : output.includes(driverTimeout) ? driverTimeout : output.slice(-1_500),
       video,
       layout: webview
         .filter((line) => line.includes('[qa-layout]'))

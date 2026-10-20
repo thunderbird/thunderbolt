@@ -131,16 +131,19 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    transcript names it, no Write or Edit call touched it, and it is a PNG or JPEG within the API's image limits
    (10 MB base64-encoded, 8000 px per side). Otherwise it is dropped. A native finding has a Maestro flow
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
-   flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
+   session dir decides which, never the finding's own `charter` or `viewport`: a finding whose viewport is not its
+   session's platform, or whose repro does not fit its session, is dropped at the schema gate. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
    times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
    otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
    failure marks the stack unhealthy and no flow runs. A `layout` run fails when the probe logs the quoted
    `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
-   fails. A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
+   fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
+   hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
    bug.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
-   `visual` finding is judged on its screenshot, a native one on its flow. For a `layout` finding the replayed probe
+   `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
+   serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
    line is the proof and a screenshot only context. The default answer is drop. Writes `verified.json`.
 5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket

@@ -17,13 +17,16 @@ import {
   normalize,
   platformOf,
   realAiCharters,
+  reproFlowFile,
   screenshotFile,
+  sessionProblem,
   signature,
   type FindingFile,
   type RejectedFile,
 } from './findings'
 import { checkMaestroFlow } from './maestro-flow'
 import { createRunFlow } from './replay-native'
+import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
 
 export type VerifiedFinding = FindingFile & {
@@ -170,14 +173,21 @@ export const imageInfo = (bytes: Buffer): ImageInfo | undefined => {
 }
 
 /**
- * A visual finding's screenshot under `outDir`. The charter dir and the model-written path are checked on every
+ * A model-written path inside a finding's session dir under `outDir`. The charter dir and the path are checked on every
  * read: no finding, and no edited candidates or verified file, can make replay, the judge or filing read a file
  * outside the session dir.
  */
-export const screenshotPath = (outDir: string, file: FindingFile) => {
+const inSession = (outDir: string, file: FindingFile, schema: z.ZodString, path: string | undefined) => {
   if (!/^[\w-]+$/.test(file.charterDir)) throw new Error(`not a session dir: ${file.charterDir}`)
-  return join(outDir, file.charterDir, screenshotFile.parse(file.finding.screenshot))
+  return join(outDir, file.charterDir, schema.parse(path))
 }
+
+/** A visual finding's screenshot under `outDir`, checked on every read. */
+export const screenshotPath = (outDir: string, file: FindingFile) =>
+  inSession(outDir, file, screenshotFile, file.finding.screenshot)
+
+/** A native finding's repro flow under `outDir`, checked on every read. */
+const flowPath = (outDir: string, file: FindingFile) => inSession(outDir, file, reproFlowFile, file.finding.repro_flow)
 
 /**
  * Why a visual finding's screenshot does not prove it, or undefined when it does. The file must be one the browser
@@ -271,38 +281,58 @@ const outcomesBySpec = (report: ReplayReport) => {
 }
 
 const specPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_spec}`
-const flowPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_flow}`
 
-// The schema keeps flows to native platforms, and every one of them names its app.
-const appIdOf = (file: FindingFile) => platformOf(file.finding.viewport).appId ?? ''
+/** The app a native finding's flow drives. `sessionProblem` keeps flows to native platforms, which all name one. */
+const appIdOf = (file: FindingFile) => {
+  const { appId } = platformOf(file.finding.viewport)
+  if (!appId) throw new Error(`platforms.json has no app for ${file.finding.viewport}`)
+  return appId
+}
 
 /** A replay flow may use only this variable: a fresh sign-in address per run. */
 const flowVars = ['EMAIL']
+
+/** The flow replay ran for a native finding: the allow list's own serialization, never the model's text. */
+const ranFlow = async (outDir: string, file: FindingFile) => {
+  const check = checkMaestroFlow(await Bun.file(flowPath(outDir, file)).text(), {
+    appId: appIdOf(file),
+    vars: flowVars,
+  })
+  // Replay already dropped anything else, so this only fails on a flow changed after replay.
+  if (!check.ok) throw new Error(`repro flow no longer passes the allow list: ${check.problems.join('; ')}`)
+  return check.yaml
+}
 const driverTimeout = 'iOS driver not ready in time'
 const logOracles = new Set(['console-error', 'page-error', 'http-5xx'])
 
 type Outcome = Pick<VerifiedFinding, 'replay' | 'artifacts'>
 
-/** Text from its console mark on, without colors: the log stream's time, process and thread change every run. */
+/**
+ * A log line or quoted evidence in the form both sides share: without colors, cleaned as the gate showed it to the
+ * explorer, and from its console mark on, since the log stream's time, process and thread change every run.
+ */
 const fromConsoleMark = (text: string) => {
-  const at = text.search(/CONSOLE |Tauri\/Console/)
-  return stripVTControlCharacters(at < 0 ? text : text.slice(at))
+  const clean = cleanLogLine(stripVTControlCharacters(text))
+  const at = clean.search(/CONSOLE |Tauri\/Console/)
+  return at < 0 ? clean : clean.slice(at)
 }
 
 /**
  * What in a flow run shows the finding's bug, or undefined when the run did not show it. `layout`: a probe line equal
  * to the quoted one, never the ready line, whether or not the flow passed (spec 6.4). The log oracles: a new log line
- * holding the normalized evidence. The rest: the flow failed, unless only its driver failed to start.
+ * holding the normalized evidence. Both compare lines cleaned as the gate showed them, since the explorer quotes
+ * those. The rest: the flow failed, unless only its driver failed to start.
  */
 const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => {
   if (oracle.type === 'layout') {
-    const quoted = /\[qa-layout\] (?!ready\b).*/.exec(oracle.evidence)?.[0].trim()
-    return quoted && run.layout.includes(quoted) ? `the layout probe logged ${quoted}` : undefined
+    const quoted = /\[qa-layout\] (?!ready\b).*/.exec(cleanLogLine(oracle.evidence))?.[0].trim()
+    const seen = quoted && run.layout.some((line) => cleanLogLine(line) === quoted)
+    return seen ? `the layout probe logged ${quoted}` : undefined
   }
   if (logOracles.has(oracle.type)) {
     const quoted = signature(fromConsoleMark(oracle.evidence))
     const line = quoted ? run.logs.find((log) => normalize(fromConsoleMark(log)).includes(quoted)) : undefined
-    return line && `logged during the run: ${line}`
+    return line && `logged during the run: ${cleanLogLine(line)}`
   }
   if (run.passed || run.error?.includes(driverTimeout)) return undefined
   return run.error ?? 'the flow failed'
@@ -340,8 +370,10 @@ const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile
       run.passed ? undefined : (run.error ?? 'the flow failed'),
     )
     if (replay.failed > 0) {
-      const stackProblem = `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`
-      return { stackProblem, outcomes: new Map<FindingFile, Outcome>() }
+      return {
+        stackProblem: `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`,
+        outcomes: new Map<FindingFile, Outcome>(),
+      }
     }
   }
   const outcomes = new Map<FindingFile, Outcome>()
@@ -373,7 +405,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying the surviving specs three times each,
- * up to `replayCap` findings (the rest are `deferred`).
+ * up to `replayCap` findings (the rest are `deferred`). A finding that does not fit its session dir (`sessionProblem`:
+ * the dir, not the model's fields, picks spec or flow) is dropped at gate `schema`.
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
@@ -406,6 +439,11 @@ export const replay = async (
   // The flow each lint-clean native finding replays: our own serialization of it, never the model's text.
   const flows = new Map<FindingFile, string>()
   for (const file of valid) {
+    const misfit = sessionProblem(file)
+    if (misfit) {
+      result.dropped.push({ file, gate: 'schema', reason: misfit })
+      continue
+    }
     const { oracle } = file.finding
     const isNoise = oracle.type === 'console-error' && noise.some((line) => oracle.evidence.includes(line))
     if (!hasOracle(file.finding) || isNoise) {
@@ -422,7 +460,7 @@ export const replay = async (
       continue
     }
     if (file.finding.repro_flow) {
-      const flow = Bun.file(join(outDir, flowPath(file)))
+      const flow = Bun.file(flowPath(outDir, file))
       const check = (await flow.exists())
         ? checkMaestroFlow(await flow.text(), { appId: appIdOf(file), vars: flowVars })
         : { ok: false as const, problems: ['repro flow not found'] }
@@ -530,10 +568,9 @@ export const judge = async (outDir: string, create: CreateMessage = createMessag
         const content = [image, { type: 'text' as const, text: finding }]
         return { candidate, content, cost: worstJudgeCost(system, finding, 1) }
       }
-      const [tag, path] = candidate.finding.repro_flow
-        ? ['repro_flow', flowPath(candidate)]
-        : ['repro_spec', specPath(candidate)]
-      const repro = await Bun.file(join(outDir, path)).text()
+      const [tag, repro] = candidate.finding.repro_flow
+        ? ['repro_flow', await ranFlow(outDir, candidate)]
+        : ['repro_spec', await Bun.file(join(outDir, specPath(candidate))).text()]
       const user =
         `${finding}\n\n<${tag}>\n${repro}\n</${tag}>\n\n` +
         `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>`

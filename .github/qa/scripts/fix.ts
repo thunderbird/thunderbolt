@@ -8,17 +8,8 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
-import {
-  type Action,
-  addComment,
-  type Filed,
-  type LinearAuth,
-  priority,
-  qaLabels,
-  sanitize,
-  secretPattern,
-  ticketView,
-} from './file-findings'
+import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
+import { sanitize, secretPattern } from './sanitize'
 import { type Area, type Finding, findingSchema, lintReproSpec, realAiCharters } from './findings'
 import type { Verified } from './verify'
 

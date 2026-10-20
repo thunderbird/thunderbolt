@@ -744,10 +744,26 @@ describe('replay of native flows', () => {
 
     expect(playwright).toEqual([])
     expect(titles(result.confirmed)).toEqual(['chat'])
+    const specOnDevice =
+      'a native session proves a finding with a repro_flow; only c7 on Android also takes a repro_spec'
     expect(droppedAt(result, 'schema').map((entry) => [entry.file.id, entry.reason])).toEqual([
-      ['desktop', `viewport desktop is not the platform of session ${session}`],
-      ['forged', 'a native session proves a finding with a repro_flow; only c7 on Android also takes a repro_spec'],
+      ['desktop', specOnDevice],
+      ['forged', specOnDevice],
     ])
+  })
+
+  test("a finding's viewport comes from its session dir, so an iOS finding written as phone replays as ios", async () => {
+    // Run 39373388149: both native sessions copied the template's "phone" into every finding.
+    await writeNative({ ...makeNative('name', layout), viewport: 'phone' })
+    const calls: FlowCall[] = []
+    const run = { layout: ['[qa-layout] ready', nameLine] }
+
+    const result = await nativeReplay({ name: [run, run, run] }, calls)
+
+    expect(result.confirmed.map((file) => [file.id, file.finding.viewport, file.replay.failed])).toEqual([
+      ['name', 'ios', 3],
+    ])
+    expect(calls.filter((call) => call.title === 'name')).toHaveLength(3)
   })
 
   test('each run starts from a clean app: its own run number, with the session that picks the build', async () => {

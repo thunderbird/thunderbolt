@@ -12,7 +12,7 @@
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
 #   native.sh device <platform>                                 boot a device, print its id on stdout
-#   native.sh install <platform> <device> <app-path>
+#   native.sh install <platform> <device> <app-path>            on Android also open the app once and stop it
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
 #                                                               background, pid in <file>.pid
 #   native.sh stop-logs <file>
@@ -196,6 +196,26 @@ logs() {
   die "the log stream never attached"
 }
 
+install_app() {
+  local platform=$1 device=$2 app=$3 app_id pid lines
+  if [ "$platform" = ios ]; then
+    xcrun simctl install "$device" "$app"
+    return
+  fi
+  adb -s "$device" install -r "$app"
+  # A fresh install's first open times out on the IndexedDB check and stops the init (run 39373388149), so open it once.
+  app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
+  adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
+  for _ in $(seq 25); do
+    pid=$(adb -s "$device" shell pidof "$app_id" | tr -d '\r') || true
+    # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
+    lines=$([ -z "$pid" ] || adb -s "$device" logcat -d --pid="$pid" -s 'Tauri/Console:*') || true
+    grep -q '\[init\] step1_' <<< "$lines" && break
+    sleep 0.5
+  done
+  adb -s "$device" shell am force-stop "$app_id"
+}
+
 stop_logs() {
   kill "$(cat "$1.pid" 2> /dev/null)" 2> /dev/null || true
   rm -f "$1.pid"
@@ -284,10 +304,7 @@ case $command in
   config) [ $# -ge 2 ] || die "$usage"; config "$@" ;;
   build) [ $# -ge 2 ] || die "$usage"; build "$@" ;;
   device) "device_$1" ;;
-  install)
-    [ $# -eq 3 ] || die "$usage"
-    if [ "$1" = ios ]; then xcrun simctl install "$2" "$3"; else adb -s "$2" install -r "$3"; fi
-    ;;
+  install) [ $# -eq 3 ] || die "$usage"; install_app "$@" ;;
   logs) [ $# -eq 3 ] || die "$usage"; logs "$@" ;;
   control) [ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"; control "$@" ;;
   verify-build) [ $# -eq 4 ] || die "$usage"; verify_build "$@" ;;

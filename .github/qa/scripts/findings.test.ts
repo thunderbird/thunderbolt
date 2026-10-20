@@ -380,10 +380,8 @@ describe('native findings', () => {
     expect(problem('c2-chat-power-user-desktop', { viewport: 'desktop' })).toContain('repro_spec')
   })
 
-  test("a finding's viewport must name its session's platform, in a real session dir", () => {
-    expect(problem('c2-chat-power-user-android', {})).toBe(
-      'viewport ios is not the platform of session c2-chat-power-user-android',
-    )
+  test("a finding fits a real session dir whatever its viewport says, since replay takes the dir's platform", () => {
+    expect(problem('c2-chat-power-user-android', {})).toBeUndefined()
     expect(problem('c2-chat', {})).toBe('not a session dir: c2-chat')
     expect(problem('x.c2-chat-power-user-ios', {})).toBe('not a session dir: x.c2-chat-power-user-ios')
   })

@@ -93,6 +93,35 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
 })
 
+test('install android opens the app once and stops it when the init got past the storage check', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const calls = join(bin, 'calls.log')
+  // The process shows up on the second look, and its init logs step1 on the second read of its log.
+  const script = `#!/bin/bash
+echo "$*" >> '${calls}'
+count() { echo x >> '${bin}/'"$1"; wc -l < '${bin}/'"$1"; }
+case "$*" in
+  *"shell pidof net.thunderbird.thunderbolt") [ "$(count pidof)" -ge 2 ] && echo 4129 || exit 1 ;;
+  *"logcat -d --pid=4129"*)
+    echo 'I Tauri/Console: Msg: [init] step0_5_storage_check: 5023ms'
+    [ "$(count logcat)" -ge 2 ] && echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
+esac
+exit 0
+`
+  writeFileSync(join(bin, 'adb'), script)
+  chmodSync(join(bin, 'adb'), 0o755)
+  const proc = Bun.spawnSync(['bash', native, 'install', 'android', 'emulator-5554', '/apps/app-debug.apk'], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  const log = readFileSync(calls, 'utf8').trim().split('\n')
+  expect(log[0]).toBe('-s emulator-5554 install -r /apps/app-debug.apk')
+  expect(log[1]).toStartWith('-s emulator-5554 shell monkey -p net.thunderbird.thunderbolt ')
+  expect(log.filter((line) => line.includes('logcat -d --pid=4129'))).toHaveLength(2)
+  expect(log.at(-1)).toBe('-s emulator-5554 shell am force-stop net.thunderbird.thunderbolt')
+})
+
 test('a QA build may reach the stack and c7 PowerSync, over HTTP and WebSocket', async () => {
   const out = join(work, 'tauri.conf.json')
   const proc = Bun.spawnSync(['bash', native, 'config', 'android', out])

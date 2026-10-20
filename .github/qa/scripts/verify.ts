@@ -15,6 +15,7 @@ import {
   lintReproSpec,
   loadFindings,
   normalize,
+  parseSession,
   platformOf,
   realAiCharters,
   reproFlowFile,
@@ -505,7 +506,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying the surviving specs three times each,
  * up to `replayCap` findings (the rest are `deferred`). A finding that does not fit its session dir (`sessionProblem`:
- * the dir, not the model's fields, picks spec or flow) is dropped at gate `schema`.
+ * the dir, not the model's fields, picks spec or flow) is dropped at gate `schema`; every other finding takes the
+ * dir's platform as its `viewport`.
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
@@ -537,12 +539,15 @@ export const replay = async (
   const lintClean: FindingFile[] = []
   // The flow each lint-clean native finding replays: our own serialization of it, never the model's text.
   const flows = new Map<FindingFile, string>()
-  for (const file of valid) {
-    const misfit = sessionProblem(file)
+  for (const written of valid) {
+    const misfit = sessionProblem(written)
     if (misfit) {
-      result.dropped.push({ file, gate: 'schema', reason: misfit })
+      result.dropped.push({ file: written, gate: 'schema', reason: misfit })
       continue
     }
+    // The dir names the platform; in run 39373388149 both native sessions wrote "phone".
+    const viewport = parseSession(written.charterDir).platform
+    const file = { ...written, finding: { ...written.finding, viewport } }
     const { oracle } = file.finding
     const isNoise = oracle.type === 'console-error' && noise.some((line) => oracle.evidence.includes(line))
     if (!hasOracle(file.finding) || isNoise) {

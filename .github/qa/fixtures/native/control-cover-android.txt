@@ -1,0 +1,29 @@
+--------- beginning of main
+         1792473601.400  4129  4129 E Tauri/Console: File: http://tauri.localhost/ - Line 350 - Msg: [qa-layout] ready
+         1792473602.617  4129  4129 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] start
+         1792473607.643  4129  4129 W Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: Failed to fetch app config, using cached value
+         1792473607.675  4129  4129 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step0_fetch_config: 5038ms
+         1792473607.763  4129  4129 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step0_5_storage_check: 5023ms
+         1792473729.143  5455  5455 E Tauri/Console: File: http://tauri.localhost/ - Line 350 - Msg: [qa-layout] ready
+         1792473729.563  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] start
+         1792473730.109  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step0_fetch_config: 84ms
+         1792473730.875  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step0_5_storage_check: 1309ms
+         1792473731.273  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 428 - Msg: App data directory initialized: /data/user/0/net.thunderbird.thunderbolt
+         1792473731.273  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step1_create_app_dir: 399ms
+         1792473731.562  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 363 - Msg: Initialized PowerSync database at /data/user/0/net.thunderbird.thunderbolt/thunderbolt-sync.db
+         1792473731.563  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step2_initialize_database: 286ms
+         1792473733.821  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step2b_db_ready: 2261ms
+         1792473736.259  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step2d_build_search_index: 2437ms
+         1792473736.286  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step2c_returning_boot_probe: 23ms
+         1792473736.286  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step3_wait_for_initial_sync: 0ms
+         1792473736.587  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step4_reconcile_defaults: 281ms
+         1792473736.814  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step4b_run_data_migrations: 245ms
+         1792473736.819  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step5_get_settings: 11ms
+         1792473736.820  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step6_create_http_client: 0ms
+         1792473736.828  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step6a_bind_session: 8ms
+         1792473737.041  5455  5455 W Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 427 - Msg: Posthog analytics disabled - no API key provided
+         1792473737.042  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step8_initialize_posthog: 212ms
+         1792473737.120  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] step7_initialize_tray: 276ms
+         1792473737.123  5455  5455 I Tauri/Console: File: http://tauri.localhost/assets/entry-DAYvdwN-.js - Line 824 - Msg: [init] complete (total 7542ms)
+         1792473742.549  5455  5455 E Tauri/Console: File: http://tauri.localhost/ - Line 317 - Msg: [qa-layout] covered textbox "Email"
+         1792473742.549  5455  5455 E Tauri/Console: File: http://tauri.localhost/ - Line 317 - Msg: [qa-layout] focus-covered textbox "Email"

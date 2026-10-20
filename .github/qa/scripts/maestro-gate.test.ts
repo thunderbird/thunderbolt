@@ -260,6 +260,63 @@ test.each([
   expect(text(result).includes('the app is still not in the foreground')).toBe(!ours)
 })
 
+/** A gate on the Android emulator, whose app has no `.dev` id. */
+const androidGate = (options: Parameters<typeof fakeGate>[0]) => {
+  const gate = fakeGate({ probe: [['[qa-layout] ready']], ...options })
+  Object.assign(gate.ctx, { platform: 'android', appId: 'net.thunderbird.thunderbolt', appName: 'Thunderbolt' })
+  return gate
+}
+
+// The home screen as the run 39373388149 session met it, cut down: a nameless root, and an icon named like our app.
+const launcher = {
+  ui_schema: { defaults: { txt: '', rid: '', a11y: '' } },
+  elements: [
+    {
+      enabled: false,
+      c: [
+        { b: '[0,0][1080,136]', rid: 'com.android.systemui:id/status_bar' },
+        {
+          b: '[0,0][1080,2400]',
+          rid: 'com.google.android.apps.nexuslauncher:id/launcher',
+          c: [{ b: '[824,1873][997,2068]', a11y: 'Thunderbolt', txt: 'Thunderbolt' }],
+        },
+      ],
+    },
+  ],
+}
+
+test('on Android the app is in front when a view carries its package in the resource id', async () => {
+  const { ctx, calls } = androidGate({ screen: 'inspect-android-onboarding' })
+  const result = await handleCall('run', { yaml: '- tapOn: Skip' }, ctx)
+  expect(calls.filter((call) => call.name === 'run')).toHaveLength(1)
+  expect(text(result)).toEndWith('[qa-layout] ready keyboard=none')
+})
+
+test('on Android the home screen is not ours, though an icon there bears the app name', async () => {
+  const { ctx, calls } = androidGate({
+    respond: (call) => (call.name === 'inspect_screen' ? textResult(JSON.stringify(launcher)) : undefined),
+  })
+  const result = await handleCall('run', { yaml: '- tapOn: Skip' }, ctx)
+  expect(calls.filter((call) => call.name === 'run')).toHaveLength(2)
+  expect(text(result)).toContain('the app is still not in the foreground')
+})
+
+test('on Android the gate reads the keyboard from the tree and reports the focused field behind it', async () => {
+  const wait = { yaml: '- waitForAnimationToEnd' }
+  const open = await handleCall('run', wait, androidGate({ screen: 'hier-android-control' }).ctx)
+  expect(text(open)).toEndWith('[qa-layout] ready keyboard=[0,1517][1080,2274]')
+
+  const hierarchy = readFileSync(join(fixtureDir, 'hier-android-control.json'), 'utf8')
+  const behind: HierarchyNode = JSON.parse(hierarchy.replace('[84,1131][1000,1281]', '[84,1700][1000,1850]'))
+  const covered = JSON.stringify({ ui_schema: { defaults: {} }, elements: (behind.children ?? []).map(toInspect) })
+  const { ctx } = androidGate({
+    respond: (call) => (call.name === 'inspect_screen' ? textResult(covered) : undefined),
+  })
+  expect(text(await handleCall('run', wait, ctx))).toEndWith(
+    '[qa-layout] ready keyboard=[0,1517][1080,2274]\n[qa-layout] behind-keyboard textbox "Email"',
+  )
+})
+
 test('when the app stays in the background the result says so and measures nothing', async () => {
   const { ctx } = fakeGate({ screen: 'control-center', probe: [['[qa-layout] ready', nameBug]] })
   const result = await handleCall('run', { yaml: '- back' }, ctx)

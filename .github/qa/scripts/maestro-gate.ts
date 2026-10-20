@@ -134,21 +134,31 @@ const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) =>
 
 const inspect = (ctx: GateContext) => callMaestro(ctx, 'inspect_screen', { device_id: ctx.deviceId })
 
-const screenSchema = z.object({
-  elements: z.array(z.object({ a11y: z.string().optional(), txt: z.string().optional() })),
+type ScreenElement = { a11y?: string; txt?: string; rid?: string; c?: ScreenElement[] }
+const elementSchema: z.ZodType<ScreenElement> = z.object({
+  a11y: z.string().optional(),
+  txt: z.string().optional(),
+  rid: z.string().optional(),
+  c: z.lazy(() => z.array(elementSchema)).optional(),
 })
+const screenSchema = z.object({ elements: z.array(elementSchema) })
+
+const elementsOf = (element: ScreenElement): ScreenElement[] => [element, ...(element.c ?? []).flatMap(elementsOf)]
 
 /**
- * Whose screen Maestro showed. The top element is the foreground app, named in `a11y` on iOS and in `txt` on Android;
- * under the Control Center it is blank (spike, decision 4). A reply that is not a screen (an error, a second driver
- * timeout) is `unreadable`.
+ * Whose screen Maestro showed. On iOS the top element is the foreground app, named in `a11y`, and under the Control
+ * Center it is blank (spike, decision 4). The Android top element has no name; there the app's own views carry its
+ * package in their resource ids (`<appId>:id/action_bar_root`, run 39373388149), which a launcher icon does not. A reply
+ * that is not a screen (an error, a second driver timeout) is `unreadable`.
  */
 const whoseScreen = (screen: ToolResult, ctx: GateContext): 'ours' | 'away' | 'unreadable' => {
   try {
     const tree = screenSchema.safeParse(JSON.parse(textOf(screen))).data
     if (!tree) return 'unreadable'
     const root = tree.elements[0]
-    return root && (root.a11y === ctx.appName || root.txt === ctx.appName) ? 'ours' : 'away'
+    const named = root !== undefined && (root.a11y === ctx.appName || root.txt === ctx.appName)
+    const ownView = tree.elements.flatMap(elementsOf).some((element) => element.rid?.startsWith(`${ctx.appId}:id/`))
+    return named || ownView ? 'ours' : 'away'
   } catch {
     return 'unreadable'
   }
@@ -182,9 +192,9 @@ const probeReady = '[qa-layout] ready'
 
 /**
  * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
- * confirmation, under the gate's ready line with the keyboard from the tree. The ready line needs the probe's own
- * ready line since the app last started, so a build without the probe never looks clean. A foreign screen is never
- * measured.
+ * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own line (Android's
+ * behind-keyboard). The ready line needs the probe's own ready line since the app last started, so a build without
+ * the probe never looks clean. A foreign screen is never measured.
  */
 const measured = async (ctx: GateContext, restarted = false) => {
   if (restarted) probeSeen.delete(ctx.webviewLog)
@@ -200,10 +210,9 @@ const measured = async (ctx: GateContext, restarted = false) => {
     .filter((line) => line.includes('[qa-layout]'))
     .map((line) => clean(line.slice(line.indexOf('[qa-layout]'))))
   if (probe.includes(probeReady)) probeSeen.add(ctx.webviewLog)
-  const head = probeSeen.has(ctx.webviewLog)
-    ? readyLine(measureNative(parseInspectScreen(textOf(screen)), ctx.platform))
-    : '[qa-gate] layout probe not seen since launch'
-  return { screen, lines: [...notes, head, ...probe.filter((line) => line !== probeReady)] }
+  const measure = measureNative(parseInspectScreen(textOf(screen)), ctx.platform)
+  const head = probeSeen.has(ctx.webviewLog) ? readyLine(measure) : '[qa-gate] layout probe not seen since launch'
+  return { screen, lines: [...notes, head, ...measure.problems, ...probe.filter((line) => line !== probeReady)] }
 }
 
 const run = async (yaml: string, ctx: GateContext) => {

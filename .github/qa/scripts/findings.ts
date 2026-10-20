@@ -196,15 +196,12 @@ const sessionOf = (dir: string) => {
 /**
  * Why a finding does not fit the session dir it was written in, or undefined when it does. The dir decides, never the
  * model-written `charter` or `viewport`: a web session proves a finding with a repro spec, a native one with a repro
- * flow, and c7 on Android takes either (a flow for the app, a spec for its browser). A `viewport` that names another
- * platform than the dir does not fit either.
+ * flow, and c7 on Android takes either (a flow for the app, a spec for its browser). Replay sets the `viewport` from
+ * the dir.
  */
 export const sessionProblem = ({ charterDir, finding }: FindingFile): string | undefined => {
   const session = /^[\w-]+$/.test(charterDir) ? sessionOf(charterDir) : undefined
   if (!session) return `not a session dir: ${charterDir}`
-  if (finding.viewport !== session.platform) {
-    return `viewport ${finding.viewport} is not the platform of session ${charterDir}`
-  }
   if (finding.oracle.type === 'visual') return undefined
   if (!nativePlatformIds.includes(session.platform)) {
     return finding.repro_flow ? 'a web session proves a finding with a repro_spec, not a repro_flow' : undefined

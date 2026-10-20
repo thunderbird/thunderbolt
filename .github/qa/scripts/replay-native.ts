@@ -11,12 +11,14 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
+import { measureNative, parseHierarchy } from '../native-layout'
 import { platformOf } from './findings'
 import { maestroEnv } from './maestro-flow'
 import type { FlowRun, RunFlow } from './verify'
 
 // The probe debounces 250 ms and confirms a problem over 500 ms, as in the gate.
 const probeWaitMs = 1200
+const nativeSh = join(import.meta.dir, 'native.sh')
 const driverTimeout = 'iOS driver not ready in time'
 const androidVideo = '/sdcard/qa-replay.mp4'
 
@@ -30,6 +32,18 @@ const linesFrom = async (file: string, start: number) => {
 }
 
 /**
+ * The tree's own `[qa-layout]` lines on Android after a run, as the gate adds them in a session: the WebView there
+ * never sees the keyboard, so a field behind it shows only in `maestro hierarchy`. A failed dump adds nothing.
+ */
+const treeLines = async (deviceId: string) => {
+  const dump = await $`maestro --udid ${deviceId} hierarchy`
+    .env({ ...getDefaultEnvironment(), ...maestroEnv() })
+    .quiet()
+    .nothrow()
+  return dump.exitCode === 0 ? measureNative(parseHierarchy(dump.stdout.toString()), 'android').problems : []
+}
+
+/**
  * A run's video under `<outDir>/videos/`. The leg and the session keep it apart from every other leg's, since the
  * judge and the file job merge every replay leg into one folder.
  */
@@ -40,7 +54,9 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * The real `RunFlow`. Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left
  * (review focus 5): the onboarding build for a c1 session (Ruling 9), the plain one otherwise, the control included.
  * It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the flow with a fresh `EMAIL`,
- * waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest.
+ * waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest. On
+ * Android the install goes through `native.sh install`, which opens the app once, and `layout` also gets the tree's
+ * lines.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -62,7 +78,8 @@ export const createRunFlow = (opts: {
       await $`xcrun simctl install ${deviceId} ${app}`.quiet()
     } else {
       await $`adb -s ${deviceId} uninstall ${appId}`.quiet().nothrow()
-      await $`adb -s ${deviceId} install ${app}`.quiet()
+      // The session's install, with its warm-up open.
+      await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
     }
     const dir = await mkdtemp(join(tmpdir(), 'qa-flow-'))
     const flowFile = join(dir, 'flow.yaml')
@@ -83,6 +100,7 @@ export const createRunFlow = (opts: {
       .quiet()
       .nothrow()
     await Bun.sleep(probeWaitMs)
+    const tree = ios ? [] : await treeLines(deviceId)
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()
     await recorder.exited
@@ -98,9 +116,12 @@ export const createRunFlow = (opts: {
       // The whole output, not its tail: a long trace after the driver error must not hide it from the retry.
       error: result.exitCode === 0 ? undefined : output.includes(driverTimeout) ? driverTimeout : output.slice(-1_500),
       video,
-      layout: webview
-        .filter((line) => line.includes('[qa-layout]'))
-        .map((line) => line.slice(line.indexOf('[qa-layout]')).trim()),
+      layout: [
+        ...webview
+          .filter((line) => line.includes('[qa-layout]'))
+          .map((line) => line.slice(line.indexOf('[qa-layout]')).trim()),
+        ...tree,
+      ],
       logs: [
         ...webview.filter((line) => !line.includes('[qa-layout]')).map((line) => `webview: ${line}`),
         ...(await linesFrom(backendLog, backendStart)).map((line) => `backend: ${line}`),

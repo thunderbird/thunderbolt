@@ -140,7 +140,7 @@ file per finding, never append; number findings 1, 2, 3…
      "title": "…",
      "area": "…",
      "charter": "<charter id>",
-     "viewport": "desktop or phone",
+     "viewport": "<your platform id from Your run: desktop, phone, ios or android>",
      "oracle": { "type": "<oracle>", "evidence": "<quoted text>" },
      "steps": ["…"],
      "expected": "…",

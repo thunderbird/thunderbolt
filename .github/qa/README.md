@@ -84,7 +84,8 @@ anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
 
 - (a) The Maestro gate (`scripts/maestro-gate.ts`, `mcp-maestro.json`) is the only path to the device. It sends
   Maestro only flows that pass the allow list in `scripts/maestro-flow.ts`, and brings the app back to the front when
-  a command leaves it.
+  a command leaves it. The app is in front when the top element bears its name (iOS) or a view's resource id starts
+  with `<appId>:id/` (Android, whose top element has no name).
 - (b) No Bash: `--tools Write`, `--disallowedTools Bash`, and the hook denies it too.
 - (c) Maestro's cloud tools, `list_devices` and `open_maestro_viewer` never reach the model: the gate does not offer
   them, and they are disallowed by name.
@@ -186,12 +187,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    transcript names it, no Write or Edit call touched it, and it is a PNG or JPEG within the API's image limits
    (10 MB base64-encoded, 8000 px per side). Otherwise it is dropped. A native finding has a Maestro flow
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
-   session dir decides which, never the finding's own `charter` or `viewport`: a finding whose viewport is not its
-   session's platform, or whose repro does not fit its session, is dropped at the schema gate. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
+   session dir decides which, never the finding's own `charter` or `viewport`: a finding whose repro does not fit
+   its session is dropped at the schema gate, and every other finding takes its session's platform as its
+   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
    times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
    otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
-   failure marks the stack unhealthy and no flow runs. A `layout` run fails when the probe logs the quoted
-   `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
+   failure marks the stack unhealthy and no flow runs. On Android the install also opens the app once (as
+   `native.sh install` does) and each run ends with a `maestro hierarchy` for the tree's `behind-keyboard` line.
+   A `layout` run fails when the probe (or, on Android, that tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
    hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
@@ -433,8 +436,8 @@ while a text field has focus, a fixed button reading `qa-control-cover` sits ove
 visible text because the WebView's accessibility bridge skips a bare div. Install that build and run
 `native.sh control <platform> <device> [out-dir]`. It plays `control/native-control.yaml` (the sign-in screen of the
 build without onboarding, a tap on Email), reads the WebView log, takes `maestro hierarchy`, prints the ready line and
-the probe's lines, and exits 0 only when the keyboard is open (iOS; on Android the probe line is enough until the tree
-gives a keyboard) and the probe logged `[qa-layout] focus-covered textbox "Email"`. On the plain build it exits 1, and
+the probe's lines, and exits 0 only when the keyboard is open (the tree's `inputView` on iOS, Gboard's
+`keyboard_holder` on Android) and the probe logged `[qa-layout] focus-covered textbox "Email"`. On the plain build it exits 1, and
 a log without the probe's ready line (a dead stream, a build without the probe) says so instead. The build deletes
 `dist/` when it ends, because the cover is written into `dist/index.html`.
 `controlVerdict` in `native-layout.ts` holds the rule; its tests use a run recorded on the simulator. A finding whose
@@ -463,6 +466,9 @@ Traps, each of which cost a run in the spike:
 - The Android console (`Tauri/Console` in logcat) exists only in debug builds, and the APK's target is the host's
   architecture (`aarch64` on an Apple Silicon Mac, `x86_64` on the runner). The build reads `ANDROID_HOME` and
   `NDK_HOME` from the environment.
+- On a cold emulator the first open of a fresh install hits the 5 s IndexedDB timeout and the init stops at
+  `step0_5_storage_check` (run 39373388149). `install android` opens the app once and stops it as soon as the init
+  logs `step1_`, or after about 15 s, so sessions, the control and every replay run start on a warm app.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
 no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).
@@ -737,9 +743,12 @@ Also:
   write anywhere in the checkout.
 - iOS sessions of the real-AI charters (c3, c4, c5 and the free session) run on the fake AI, because the Mac cannot
   keep provider keys from the job's user (spec 6.7). Their `ai-reported-failure` findings are noise for the judge.
-- The layout check on iOS and Android is the web probe injected into the QA build. There are no rules on the Maestro
-  tree, which has no stacking order and leaves out unlabelled boxes, so a defect the probe cannot see is left to the
-  screenshot and the `visual` finding.
+- The layout check on iOS and Android is the web probe injected into the QA build. The Maestro tree has no stacking
+  order and leaves out unlabelled boxes, so a defect the probe cannot see is left to the screenshot and the `visual`
+  finding. One rule runs on the tree, on Android only: the WebView there keeps its full height with the keyboard up,
+  so the probe never sees the keyboard, and the gate and the replay report `behind-keyboard` when Gboard's
+  `keyboard_holder` overlaps the focused field by at least 4 units on both axes. The keyboard is drawn over
+  everything, so that rule needs no stacking order. Another keyboard app would go unseen.
 - The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
 - A real-AI web fix that needs backend code cannot pass `verify-real`, whose backend comes from before the patch, so
   it goes to a person. An Android real-AI fix is checked only on the fake AI.

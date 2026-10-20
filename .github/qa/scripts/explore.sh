@@ -114,7 +114,13 @@ native_claude() {
   config=$(mktemp -d)
   # Claude Code lets a call through when its hook cannot run, so a hook that crashes must still deny.
   hook="bun $(printf %q "$PWD/.github/qa/scripts/native-hook.ts") || exit 2"
-  if [ -n "${QA_HARNESS:-}" ]; then hook="$(printf %q "$QA_HARNESS/native-hook") || exit 2"; fi
+  # With a harness every path below is absolute, and claude, the hook and the gate start in an empty dir: a process
+  # reads files from where it starts (Bun its bunfig.toml, the browser's MCP its workspace), never the checkout.
+  local cwd=$PWD
+  if [ -n "${QA_HARNESS:-}" ]; then
+    hook="$(printf %q "$QA_HARNESS/native-hook") || exit 2"
+    cwd=$(mktemp -d)
+  fi
   jq --null-input --arg command "$hook" \
     '{hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $command}]}]}}' > "$config/settings.json"
   local command=(env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 "CLAUDE_CONFIG_DIR=$config" claude -p "$@"
@@ -126,11 +132,13 @@ native_claude() {
     --output-format stream-json --verbose --no-session-persistence)
   if [ "${QA_DRY_RUN:-}" = 1 ]; then
     printf '%s\0' "${command[@]}" | jq --raw-input --slurp --argjson settings "$(cat "$config/settings.json")" \
-      '{command: split("\u0000")[:-1], settings: $settings, env: ($ENV | with_entries(select(.key | startswith("QA_"))))}'
+      --arg cwd "$cwd" \
+      '{command: split("\u0000")[:-1], settings: $settings, cwd: $cwd, env: ($ENV | with_entries(select(.key | startswith("QA_"))))}'
   else
-    "${command[@]}" < /dev/null > "$stream" || true
+    (cd "$cwd" && exec "${command[@]}") < /dev/null > "$stream" || true
   fi
   rm -rf "$config"
+  if [ "$cwd" != "$PWD" ]; then rm -rf "$cwd"; fi
 }
 
 # A native session's output dir as an absolute path without links, so the Edit rule, the hook and the paths in the
@@ -140,10 +148,10 @@ real_out() {
   (cd "$1" && pwd -P)
 }
 
-# The metrics and the coverage input from a finished session's stream.
+# The metrics and the coverage input from a finished session's stream ($3).
 summarize() {
   local session=$1 out=$2 dir=$2/$1
-  jq --slurp . "$dir/run.jsonl" > "$dir/execution.json"
+  jq --slurp . "$3" > "$dir/execution.json"
   jq --compact-output --from-file .github/qa/transcript.jq "$dir/execution.json" > "$dir/transcript.json"
   bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$session" --out "$out"
   cat "$dir/session.json"
@@ -156,10 +164,11 @@ run() {
     # An assignment, so a prompt that fails to build stops the run instead of starting a session without it.
     text=$(prompt "$session" "$out")
     rm -f "$out/$session.gate.log"
-    native_claude "$session" "$out/$session" "$out/$session/run.jsonl" "$text" \
+    # The stream sits next to the gate log, outside the session dir the model can write to: coverage reads it.
+    native_claude "$session" "$out/$session" "$out/$session.run.jsonl" "$text" \
       --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
     # With a harness the checkout may have been rewritten, and this step holds the key: no repo code runs now.
-    if [ "${QA_DRY_RUN:-}" != 1 ] && [ -z "${QA_HARNESS:-}" ]; then summarize "$session" "$out"; fi
+    if [ "${QA_DRY_RUN:-}" != 1 ] && [ -z "${QA_HARNESS:-}" ]; then summarize "$session" "$out" "$out/$session.run.jsonl"; fi
     return
   fi
   QA_CHARTER=$session
@@ -181,7 +190,7 @@ run() {
     --max-budget-usd "${3:-2}" --max-turns 400 \
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"
-  summarize "$session" "$out"
+  summarize "$session" "$out" "$dir/run.jsonl"
 }
 
 # One cheap session before any native session (spec 6.7): it asks for a script through the gate and a write outside
@@ -218,8 +227,11 @@ harness() {
   local session=$1 dir=$2 servers
   mkdir -p "$dir"
   dir=$(cd "$dir" && pwd -P)
-  bun build --compile .github/qa/scripts/maestro-gate.ts --outfile "$dir/maestro-gate" >&2
-  bun build --compile .github/qa/scripts/native-hook.ts --outfile "$dir/native-hook" >&2
+  # A compiled binary reads bunfig.toml (a preload is code) and .env from where it starts unless told not to.
+  local build=(bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv
+    --no-compile-autoload-tsconfig --no-compile-autoload-package-json)
+  "${build[@]}" .github/qa/scripts/maestro-gate.ts --outfile "$dir/maestro-gate" >&2
+  "${build[@]}" .github/qa/scripts/native-hook.ts --outfile "$dir/native-hook" >&2
   cp .github/qa/scripts/explore.sh "$dir/explore.sh"
   servers=$(jq --null-input --arg gate "$dir/maestro-gate" '{maestro: {type: "stdio", command: $gate, args: []}}')
   if [ "$session" = c7-two-devices-android ]; then

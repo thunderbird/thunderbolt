@@ -71,7 +71,13 @@ if [ "$1" = start ]; then
       sudo install -d --owner "$QA_BACKEND_USER" node_modules/.vite public/@powersync
       sudo install -d --mode 1777 node_modules/.vite-temp
     fi
+    # sudo makes itself unkillable by this user, so after `lock` only this rule stops the servers: signals to that
+    # user's processes, nothing else. It sorts after zz-qa-lock, and in sudoers the last matching rule wins.
+    sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill, /bin/kill' \
+      > /etc/sudoers.d/zz-qa-lock-stop"
   fi
+  # CI's inline stop reads it.
+  echo "${QA_BACKEND_USER:-}" > "$state.user"
   "$PWD/.github/qa/scripts/stack.sh" serve "${@:2}" > "$state.log" 2>&1 &
   echo $! > "$state.pid"
   until grep -q "stack ready" "$state.log"; do
@@ -85,6 +91,14 @@ if [ "$1" = stop ]; then
   pid=$(cat "$state.pid")
   kill "$pid"
   while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+  # Servers that run as another user outlive the serve script's own kill; the rule `start` installed stops them.
+  user=$(cat "$state.user" 2>/dev/null || true)
+  if [ -n "$user" ]; then
+    if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi
+    for _ in $(seq 150); do pgrep -u "$user" > /dev/null || exit 0; sleep 0.2; done
+    echo "the servers of $user did not stop" >&2
+    exit 1
+  fi
   exit
 fi
 if [ "$1" = lock ]; then

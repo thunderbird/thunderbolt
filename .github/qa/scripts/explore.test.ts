@@ -200,19 +200,41 @@ test('the harness holds the compiled gate and hook, and its MCP config points on
   expect(hook.exitCode).toBe(2)
 })
 
+test("the compiled hook ignores a bunfig.toml preload and a .env in the folder it starts in", () => {
+  // What the second browser could plant where a binary starts: Bun loads both by default.
+  const planted = mkdtempSync(join(work, 'planted-'))
+  const marker = join(work, 'preload-ran')
+  writeFileSync(join(planted, 'bunfig.toml'), 'preload = ["./evil.ts"]\n')
+  writeFileSync(join(planted, 'evil.ts'), `await Bun.write(${JSON.stringify(marker)}, "ran")\n`)
+  writeFileSync(join(planted, '.env'), 'QA_ALLOW_BROWSER_B=1\n')
+  const hook = Bun.spawnSync([join(harness, 'native-hook')], {
+    cwd: planted,
+    stdin: new TextEncoder().encode('{"tool_name":"mcp__playwright_b__browser_navigate","tool_input":{}}'),
+    env: { PATH: '/usr/bin:/bin', QA_SESSION_DIR: join(work, 's'), QA_GATE_LOG: join(work, 'planted.log') },
+  })
+  expect(existsSync(marker)).toBe(false)
+  // The .env would have turned the second browser on.
+  expect(hook.exitCode).toBe(2)
+})
+
 test('a session run from the harness uses its config and hook, never a path in the checkout', () => {
   const { code, stdout, stderr } = fromHarness(['run', 'c7-two-devices-android', out], { QA_DRY_RUN: '1' })
   expect({ code, stderr }).toEqual({ code: 0, stderr: '' })
-  const { command, settings }: DryRun = JSON.parse(stdout)
+  const { command, settings, cwd }: DryRun & { cwd: string } = JSON.parse(stdout)
   expect(flag(command, '--mcp-config')).toEqual([join(harness, 'mcp.json')])
   expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(`${join(harness, 'native-hook')} || exit 2`)
+  // claude, and through it the hook and the gate, start outside the checkout.
+  expect(cwd.startsWith(repoRoot)).toBe(false)
+  expect(cwd.startsWith(harness)).toBe(false)
 })
 
 test('a session run from the harness leaves the summary to the workflow', () => {
   const { code } = fromHarness(['run', 'c2-chat-power-user-ios', out, '1'], fakeClaude([]))
   expect(code).toBe(0)
   const dir = join(realOut(), 'c2-chat-power-user-ios')
-  expect(existsSync(join(dir, 'run.jsonl'))).toBe(true)
+  // The stream sits outside the session dir, where the model's Write cannot reach it.
+  expect(existsSync(`${dir}.run.jsonl`)).toBe(true)
+  expect(existsSync(join(dir, 'run.jsonl'))).toBe(false)
   expect(existsSync(join(dir, 'execution.json'))).toBe(false)
   expect(existsSync(join(dir, 'session.json'))).toBe(false)
 })

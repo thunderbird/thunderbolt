@@ -84,14 +84,29 @@ describe('secrets', () => {
     expect(mentions('verify-real', 'secrets.')).toEqual(['Start the stack on the real providers:env'])
   })
 
-  test('a key-holding scan after untrusted steps trusts no PATH, startup file or preload', () => {
-    for (const job of ['fix', 'explore-native']) {
-      const scan = step(job, job === 'fix' ? 'Check the fix output for secrets' : 'Check the session output for secrets')
+  test('every scan clears the startup and preload variables and calls grep by absolute path', () => {
+    const scans: [string, string][] = [
+      ['explore-native', 'Check the session output for secrets'],
+      ['fix', "Check the agent's output for the key"],
+      ['fix', 'Check the fix output for secrets'],
+    ]
+    for (const [job, name] of scans) {
+      const scan = step(job, name)
       expect(scan.shell).toBe('/bin/bash --noprofile --norc -e {0}')
       expect(scan.env).toMatchObject({ PATH: '/usr/bin:/bin', BASH_ENV: '', ENV: '', LD_PRELOAD: '' })
       expect(scan.run).toContain('/usr/bin/grep')
       expect(scan.run).not.toMatch(/(^|[\s;|{(])grep /)
     }
+  })
+
+  test("the fix job's key leaves with the scan right after the session, before any agent code runs outside it", () => {
+    const fix = indexOf('fix', 'Fix')
+    expect(steps('fix')[fix + 1].name).toBe("Check the agent's output for the key")
+    expect(mentions('fix', 'secrets.').filter((m) => !m.startsWith('Fix:'))).toEqual([
+      "Check the agent's output for the key:env",
+    ])
+    const uploads = steps('fix').filter((s) => s.uses?.startsWith('actions/upload-artifact'))
+    for (const upload of uploads) expect(upload.if).toContain("steps.key-scan.outcome == 'success'")
   })
 })
 
@@ -127,7 +142,28 @@ describe('fix job', () => {
     expect(check).toBe(start + 1)
     expect(lock).toBe(check + 1)
     expect(lock).toBeLessThan(indexOf('fix', 'Fix'))
-    expect(steps('fix').slice(lock + 1).some((s) => s.run?.includes('sudo'))).toBe(false)
+    expect(step('fix', "Check that no dev server runs as the job's user").run).toContain('ss -ltnpH')
+    // After the lock, sudo is only the narrow rule that signals the dev servers' user.
+    const sudo = steps('fix')
+      .slice(lock + 1)
+      .flatMap((s) => (s.run ?? '').split('\n').filter((line) => line.includes('sudo')))
+    expect(sudo.map((line) => line.trim())).toEqual([
+      'if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi',
+    ])
+  })
+
+  test("a stop of another user's servers fails loudly when they keep running", () => {
+    const stop = step('fix', 'Stop the stack').run ?? ''
+    expect(stop).toContain('echo "::error::The servers of $user did not stop."\n  exit 1')
+    expect(stop).not.toMatch(/kill -TERM -1[^\n]*\|\| true/)
+  })
+
+  test('stack.sh lets the job user signal the dev user after the lock, and nothing more', async () => {
+    const stack = await Bun.file(join(import.meta.dir, 'stack.sh')).text()
+    expect(stack).toContain("ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill, /bin/kill'")
+    // sudoers reads the dir in order and the last matching rule wins, so the narrow rule sorts after zz-qa-lock.
+    expect(stack).toContain('/etc/sudoers.d/zz-qa-lock-stop')
+    expect(stack).toContain('/etc/sudoers.d/zz-qa-lock"')
   })
 
   test("the agent may not edit git, the pipeline, e2e or the tool configs", () => {

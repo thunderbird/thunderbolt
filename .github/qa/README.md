@@ -39,11 +39,16 @@ included, can be changed. The repo is public, so a security fix's PR names only 
 "security": no finding text and no regression spec, which a person adds after the fix merges.
 
 In the fix job the dev servers reload the agent's edits outside its sandbox, so they run as the OS user `qa-dev`
-(`QA_BACKEND_USER` with `stack.sh start dev`). A step right after the start fails the job if a dev server runs as the
-job's user, and `stack.sh lock` then takes root away before the agent starts. Code the servers reload cannot read
-the agent's environment, which holds the key. After the session the job runs patched code as its own user (the
-visual check's builds, the real-AI build), which could add to `$GITHUB_ENV` or `$GITHUB_PATH`, so the secret scan
-that follows sets its own `PATH` and startup variables and calls its tools by absolute path.
+(`QA_BACKEND_USER` with `stack.sh start dev`). A step right after the start fails the job if a process of the job's
+user listens on 8005, 1424 or 1425 (`ss` names the owner only of the caller's own sockets), and `stack.sh lock` then
+takes root away before the agent starts. Code the servers reload cannot read the agent's environment, which holds
+the key. sudo makes itself unkillable by the job's user, so before the lock `stack.sh start` adds one sudoers rule
+that lets that user send signals as `qa-dev` and nothing else; the stop uses it and fails when a server keeps
+running. Right after the session, before any code the agent wrote runs outside its sandbox, one step greps the
+whole checkout (without `.git` and `node_modules`) for the key, and no later step holds it: patched code that runs
+afterwards (the visual check, the real-AI build) could leave a process behind or change `$GITHUB_ENV` and
+`$GITHUB_PATH`. The upload's own scan looks for token shapes only. Every scan clears the startup and preload
+variables and calls its tools by absolute path, since GitHub prepends `$GITHUB_PATH` even to a step's own `PATH`.
 
 The fix agent's commands run in the fix job's checkout, so after the session nothing in that tree is trusted with a
 provider key. Zone E keeps the patch away from every key. `verify-native-build` applies the patch and builds the app
@@ -107,11 +112,15 @@ agent that edits code runs there.
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,
 `explore.sh harness <session> <dir>` compiles the gate and the hook with `bun build --compile` into standalone
-binaries that read nothing from the checkout or `node_modules`. It copies `explore.sh` and, for c7, the layout probe,
-installs the second browser's MCP server there, and writes the session's MCP config pointing only at those files.
-The workflow makes the dir read-only and runs `<dir>/explore.sh canary` and `run` with `QA_HARNESS=<dir>`. In that
-mode `run` skips its summary, so no repo code runs in a step that holds the key after the session; the save step
-builds `execution.json` and `transcript.json` from the stream without the key, after the tripwire.
+binaries that read nothing from the checkout or `node_modules`, built with the `--no-compile-autoload-*` flags so
+they ignore a `bunfig.toml` (whose `preload` is code) or `.env` where they start. It copies `explore.sh` and, for
+c7, the layout probe, installs the second browser's MCP server there, and writes the session's MCP config pointing
+only at those files. The workflow makes the dir read-only and runs `<dir>/explore.sh canary` and `run` with
+`QA_HARNESS=<dir>`. In that mode `claude` starts in an empty temp dir, so neither it, the hook, the gate nor the
+browser's MCP server starts in the checkout, and `run` skips its summary, so no repo code runs in a step that holds
+the key after the session. The stream goes to `<out>/<session>.run.jsonl`, next to the gate log and outside the
+session dir the model can write to; the save step builds `execution.json` and `transcript.json` from it without
+the key, after the tripwire and the secret scan.
 
 ### Real-AI legs
 
@@ -695,7 +704,8 @@ Never run on GitHub (only locally, or read in the action's code):
   the fix job;
 - the fix job's dev stack as `qa-dev`: Vite and `bun --watch` under `sudo --user` reading the checkout, the cache
   dirs `stack.sh` hands that user (`node_modules/.vite`, `public/@powersync`, and `node_modules/.vite-temp` for
-  both users), the `pgrep` check, the lock before the agent, and the stop through `sudo` afterwards.
+  both users), the `ss` port check, the lock before the agent, and the stop through the narrow `sudo` rule
+  afterwards, which also stops the `qa-backend` backend of the real-AI legs now.
 
 Also:
 

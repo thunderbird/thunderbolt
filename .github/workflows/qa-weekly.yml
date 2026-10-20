@@ -375,20 +375,28 @@ jobs:
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 
-      # Inline, from the pid files stack.sh wrote outside the checkout: the backend may hold provider keys. SIGKILL
-      # for the serve script, so bash reads no more of a file the explorer may have rewritten. SIGTERM for its
-      # servers: sudo passes it on to a backend running as another user, where a SIGKILL would orphan that backend.
+      # Inline, from the files stack.sh wrote outside the checkout: the backend may hold provider keys. SIGKILL for
+      # the serve script, so bash reads no more of a file the explorer may have rewritten, and SIGTERM for this user's
+      # servers. Servers that run as another user sit under sudo, which this user cannot signal: the rule stack.sh
+      # start installed sends that user's processes SIGTERM, and a server left running fails the step.
       - &stop-stack
         name: Stop the stack
         if: always()
         run: |
           serve=$(cat "$RUNNER_TEMP/qa-stack.pid" 2>/dev/null || true)
           servers=$(cat "$RUNNER_TEMP/qa-stack.pids" 2>/dev/null || true)
+          user=$(cat "$RUNNER_TEMP/qa-stack.user" 2>/dev/null || true)
           # shellcheck disable=SC2086 # one pid per word
           kill -9 $serve 2>/dev/null || true
           # shellcheck disable=SC2086
           kill $servers 2>/dev/null || true
           for pid in $serve $servers; do while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done; done
+          if [ -n "$user" ]; then
+            if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi
+            for _ in $(seq 150); do pgrep -u "$user" > /dev/null || exit 0; sleep 0.2; done
+            echo "::error::The servers of $user did not stop."
+            exit 1
+          fi
 
       - name: Check that the checkout is unchanged
         id: tripwire
@@ -678,8 +686,9 @@ jobs:
         if: always()
         run: shasum -a 256 --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # As in the web explore job, before any later step. The browser's file writes are not a boundary its authors
-      # stand behind, so this step trusts nothing a write could have changed: no PATH, startup file or preload.
+      # As in the web explore job, before any later step, over everything the save step reads. The browser's file
+      # writes are not a boundary its authors stand behind, so this step clears the startup and preload variables
+      # and calls its tools by absolute path (GitHub still prepends $GITHUB_PATH to any PATH set here).
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -695,25 +704,28 @@ jobs:
           LD_LIBRARY_PATH: ''
         run: |
           for key in "$QA_KEY" "$TINFOIL_KEY" "$EXA_KEY"; do
-            if [ -n "$key" ] && /usr/bin/grep -rqsF -- "$key" "$QA_OUT/$QA_CHARTER" "$QA_OUT/$QA_CHARTER.gate.log"; then
+            if [ -n "$key" ] &&
+              /usr/bin/grep -rqsF -- "$key" "$QA_OUT/$QA_CHARTER" "$QA_OUT/$QA_CHARTER".{gate.log,run.jsonl}; then
               echo "::error::The session output holds a secret, so nothing is uploaded."
               exit 1
             fi
           done
 
       # What explore.sh's summary did locally, here without the key: metrics from the result message, and the tool
-      # calls with capped results for coverage. The model could write the old copies, so they go first.
+      # calls with capped results for coverage, from the stream next to the gate log, which the model cannot write.
+      # The model could write the old copies in its session dir, so they go first.
       - name: Save the session
         if: always() && steps.tripwire.outcome == 'success'
         env:
           START: ${{ steps.canary.outputs.start }}
         run: |
           dir=$QA_OUT/$QA_CHARTER
+          stream=$dir.run.jsonl
           mkdir -p "$dir"
           rm -f "$dir/execution.json" "$dir/transcript.json" "$dir/session.json" "$dir/timed-out"
-          if [ -s "$dir/run.jsonl" ]; then
+          if [ -s "$stream" ]; then
             # A session cut short can end in half a line.
-            jq --raw-input --null-input '[inputs | fromjson? // empty]' "$dir/run.jsonl" > "$RUNNER_TEMP/stream.json"
+            jq --raw-input --null-input '[inputs | fromjson? // empty]' "$stream" > "$RUNNER_TEMP/stream.json"
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
               "$RUNNER_TEMP/stream.json" > "$dir/execution.json"
             jq --compact-output --from-file .github/qa/transcript.jq "$RUNNER_TEMP/stream.json" > "$dir/transcript.json"
@@ -1063,13 +1075,15 @@ jobs:
           QA_BACKEND_USER: qa-dev
         run: .github/qa/scripts/stack.sh start dev
       - name: Check that no dev server runs as the job's user
+        # By port, not by name: ss names the process only for this user's own sockets.
         run: |
-          if pgrep -u "$(id -un)" -fa 'vite|run --watch'; then
+          listeners=$(ss -ltnpH '( sport = :8005 or sport = :1424 or sport = :1425 )')
+          echo "$listeners"
+          if grep -q 'users:' <<< "$listeners"; then
             echo "::error::A dev server runs as the job's user."
             exit 1
           fi
-          pgrep -u qa-dev -f 'run --watch' > /dev/null
-          [ "$(pgrep -u qa-dev -fc 'vite')" -ge 2 ]
+          for port in 8005 1424 1425; do grep -q ":$port " <<< "$listeners"; done
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
 
@@ -1118,6 +1132,28 @@ jobs:
               "Edit(**/pnpm-lock.yaml)" "Edit(**/.lintstagedrc*)" "Edit(**/lint-staged.config.*)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
+
+      # The last step that holds the key, right after the session and before any code the agent wrote or changed runs
+      # outside its sandbox: such code could leave a process that reads a later step's environment. Everything the
+      # patch and the uploads come from is in the checkout, so the key found anywhere there means no upload. The
+      # startup and preload variables are cleared and the tools called by absolute path, since GitHub still prepends
+      # $GITHUB_PATH.
+      - name: Check the agent's output for the key
+        id: key-scan
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          if [ -n "$QA_KEY" ] && /usr/bin/grep -rqsF --exclude-dir=.git --exclude-dir=node_modules -- "$QA_KEY" .; then
+            echo "::error::The checkout holds the QA key after the fix session, so nothing is uploaded."
+            exit 1
+          fi
 
       # Only a finished session whose patch makes the original spec pass may become a PR. The spec comes fresh
       # from the artifact (the agent's commands could have changed qa-out/), and no secret is left in this job.
@@ -1227,14 +1263,13 @@ jobs:
       # The agent could write anything under qa-out/, and artifacts are public: a secret in what is uploaded means no
       # upload. JWT-shaped strings are left to publish's own check, because repo test fixtures contain some. The
       # patched build gets the exact-key check only: minified code is full of prefixes like sk-.
-      # The steps since the session ran patched code, which could have added to $GITHUB_ENV or $GITHUB_PATH, so this
-      # one, which holds the key, sets its own PATH and startup variables and calls its tools by absolute path.
+      # Token shapes only: no step from here on holds the key. The steps since the session ran patched code, which
+      # could have changed $GITHUB_ENV or $GITHUB_PATH, hence the cleared variables and absolute paths.
       - name: Check the fix output for secrets
         id: secret-scan
         if: always()
         shell: /bin/bash --noprofile --norc -e {0}
         env:
-          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
           PATH: /usr/bin:/bin
           BASH_ENV: ''
           ENV: ''
@@ -1243,13 +1278,12 @@ jobs:
         run: |
           out=(qa-out/fix/)
           if [ -d "qa-out/fix-$QA_FP/repro" ]; then out+=("qa-out/fix-$QA_FP/repro/"); fi
-          if { [ -n "$QA_KEY" ] && /usr/bin/grep -rqsF -- "$QA_KEY" "${out[@]}" "$RUNNER_TEMP/qa-dist-fix"; } ||
-            /usr/bin/grep -rqE '\bsk-[[:alnum:]_-]{8,}|lin_(api|oauth)_|gh[pousr]_[[:alnum:]]{20,}|github_pat_|xox[bp]-' "${out[@]}"; then
+          if /usr/bin/grep -rqE '\bsk-[[:alnum:]_-]{8,}|lin_(api|oauth)_|gh[pousr]_[[:alnum:]]{20,}|github_pat_|xox[bp]-' "${out[@]}"; then
             echo "::error::The fix output contains a secret, so nothing is uploaded."
             exit 1
           fi
       # With the agent's check, so verify-native and publish read the file it wrote. The artifact's root is qa-out/.
-      - if: always() && steps.secret-scan.outcome == 'success'
+      - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-${{ matrix.task.fp }}
@@ -1257,14 +1291,16 @@ jobs:
             qa-out/fix/
             qa-out/fix-${{ matrix.task.fp }}/repro/*
           retention-days: 7
-      - if: always() && steps.secret-scan.outcome == 'success' && matrix.task.real && matrix.task.spec
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          matrix.task.real && matrix.task.spec
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-dist-${{ matrix.task.fp }}
           path: ${{ runner.temp }}/qa-dist-fix/
           if-no-files-found: ignore
           retention-days: 1
-      - if: always() && steps.secret-scan.outcome == 'success'
+      - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-session-${{ matrix.task.fp }}

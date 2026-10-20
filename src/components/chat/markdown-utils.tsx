@@ -21,8 +21,7 @@ import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { useSetPreviewHidden, useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { resolveLinkAction } from '@/lib/external-link-behavior'
-import { openExternalUrl } from '@/lib/open-external-url'
-import { isDesktop, isTauri } from '@/lib/platform'
+import { isDesktop } from '@/lib/platform'
 import { isContactUrl, isSafeUrl } from '@/lib/url-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationMap } from '@/types/citation'
@@ -280,17 +279,10 @@ const SafeLink = memo((props: ComponentProps<'a'>) => {
     )
   }
 
+  // The global link interceptor opens mailto:/tel: (the browser on web, the OS opener under Tauri)
   if (href && isContactUrl(href)) {
-    // On web the browser handles mailto:/tel: itself; the webview needs the OS opener
-    const handleContactClick = (e: MouseEvent<HTMLAnchorElement>) => {
-      if (!isTauri()) {
-        return
-      }
-      e.preventDefault()
-      void openExternalUrl(href)
-    }
     return (
-      <a {...restProps} href={href} onClick={handleContactClick}>
+      <a {...restProps} href={href}>
         {children}
       </a>
     )

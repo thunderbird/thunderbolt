@@ -11,7 +11,8 @@ import { z } from 'zod'
 import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
-import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, realAiCharters } from './findings'
+import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, platformOf, realAiCharters } from './findings'
+import { checkMaestroFlow } from './maestro-flow'
 import type { Verified } from './verify'
 
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
@@ -41,22 +42,32 @@ export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || depe
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 /**
- * What the fix agent must make pass. A `spec` task has the confirmed repro spec. A `visual` task has none: the agent
- * writes its own check, `qa-out/fix-<fp>/repro/check.spec.ts`, which the workflow runs without and with the patch.
+ * What the fix agent must make pass. A `spec` task has the confirmed repro spec, or on iOS and Android the repro
+ * `flow`. A `visual` task has neither: the agent writes its own check, which the workflow runs without and with the
+ * patch. On the web the check is `qa-out/fix-<fp>/repro/check.spec.ts`; on iOS and Android it is the Maestro flow
+ * `qa-out/fix-<fp>/repro/check.yaml`, which the task names as its `flow`.
  */
-type Proof = { kind: 'spec'; spec: string } | { kind: 'visual' }
+type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: string } | { kind: 'visual' }
 /**
- * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
- * real AI providers, where the workflow verifies the fix on the real providers too.
+ * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees, `screenshot` the finding's
+ * screenshot when it has one. `real` marks a session on the real AI providers, where the workflow verifies the fix on
+ * the real providers too.
  */
 export type FixTask = Ticket &
   Proof & {
     charterDir: string
+    platform: string
     real: boolean
+    screenshot?: string
     finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
   }
-/** `qa-out/fix-plan.json`. The workflow's fix matrix is `fixes`. */
-export type FixPlan = { fixes: FixTask[] }
+/**
+ * A flow the native verification runs on its platform with the patched app (`native.sh verify`): a native task's
+ * flow, or the repro flow of the same bug found on another platform. `session` picks the build.
+ */
+export type NativeCheck = { fp: string; platform: string; session: string; flow: string }
+/** `qa-out/fix-plan.json`. The workflow's fix matrix is `fixes`, its native verification matrix `verifyNative`. */
+export type FixPlan = { fixes: FixTask[]; verifyNative: NativeCheck[] }
 
 /** Runs a command without a shell and returns its stdout. */
 export type Run = (
@@ -106,12 +117,24 @@ const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[
 
 type RouteOptions = { outDir: string; live: boolean; run?: Run; log?: (line: string) => void }
 
-/** The proof the fix agent works against, or undefined when a spec finding's repro spec is not on disk. */
-const proofOf = async (outDir: string, charterDir: string, finding: Finding): Promise<Proof | undefined> => {
-  if (finding.oracle.type === 'visual') return { kind: 'visual' }
-  if (!finding.repro_spec) return undefined
-  const spec = join(outDir, charterDir, finding.repro_spec)
-  return (await Bun.file(spec).exists()) ? { kind: 'spec', spec } : undefined
+/** The proof the fix agent works against, or undefined when the finding's repro is not on disk. */
+const proofOf = async (
+  outDir: string,
+  charterDir: string,
+  fp: string,
+  finding: Finding,
+): Promise<Proof | undefined> => {
+  if (finding.oracle.type === 'visual') {
+    return nativePlatformIds.includes(finding.viewport)
+      ? { kind: 'visual', flow: join(outDir, `fix-${fp}`, 'repro', 'check.yaml') }
+      : { kind: 'visual' }
+  }
+  // c7 on Android proves a finding of its browser with a spec, so the field decides, not the platform.
+  const repro = finding.repro_flow ?? finding.repro_spec
+  if (!repro) return undefined
+  const path = join(outDir, charterDir, repro)
+  if (!(await Bun.file(path).exists())) return undefined
+  return finding.repro_flow ? { kind: 'spec', flow: path } : { kind: 'spec', spec: path }
 }
 
 /**
@@ -120,6 +143,8 @@ const proofOf = async (outDir: string, charterDir: string, finding: Finding): Pr
  * security and real-AI findings included, because a person reviews every draft PR. It is left out this week when an
  * earlier `qa-fix/<fp>` branch still exists (its draft PR is open) or the cap is reached: at most three, highest
  * severity first, and one per fingerprint however many platforms found the bug.
+ * A task with a Maestro flow (an iOS or Android finding) goes into `verifyNative` too, and so does the repro flow of
+ * the same bug confirmed on another native platform: the patch must pass on each of them.
  * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent; a dry run
  * plans what a live filing would have created.
  */
@@ -128,25 +153,31 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const branches = await run(['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*'])
   const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
-  const plan: FixPlan = { fixes: [] }
+  const plan: FixPlan = { fixes: [], verifyNative: [] }
+  const routed = new Set<string>()
   const tickets = filed
     .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
     .sort((a, b) => priority[a.severity] - priority[b.severity])
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
-    if (plan.fixes.length === maxFixes || pending.has(fp)) continue
+    const fresh = !routed.has(fp)
+    if (fresh && (plan.fixes.length === maxFixes || pending.has(fp))) continue
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)
-    // A native fix needs a Maestro check and a device to verify it on, which the fix job does not have yet.
-    if (nativePlatformIds.includes(finding.viewport)) continue
-    const proof = await proofOf(outDir, charterDir, finding)
+    const proof = await proofOf(outDir, charterDir, fp, finding)
     if (!proof) {
-      log(`fix: ${fp} has no repro spec on disk, so it is not routed`)
+      log(`fix: ${fp} has no repro on disk, so it is not routed`)
       continue
     }
-    // Two platforms or charters can confirm one bug (same fp) in a run; a second fix job would fight over
-    // `qa-fix/<fp>`.
-    pending.add(fp)
+    const platform = finding.viewport
+    // One fix job per bug (same fp): a second one would fight over `qa-fix/<fp>`. Only the other platforms' repro
+    // flows join it, since the fix agent writes a visual check for its own task alone.
+    const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
+    if (flow && !plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
+      plan.verifyNative.push({ fp, platform, session: charterDir, flow })
+    }
+    if (!fresh) continue
+    routed.add(fp)
     plan.fixes.push({
       fp,
       severity,
@@ -155,7 +186,9 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
       url,
       ...proof,
       charterDir,
+      platform,
       real: realAiCharters.has(charterDir),
+      screenshot: finding.screenshot ? join(outDir, charterDir, finding.screenshot) : undefined,
       finding: ticketView(finding),
     })
   }
@@ -247,17 +280,36 @@ const checkResultProblem = (text: string) => {
     : 'the visual check did not fail without the patch and pass with it'
 }
 
-/** Problems with the spec the patch must make pass: the repro spec unedited, or a visual task's verified check. */
+/**
+ * What the Maestro allow list finds wrong with a native task's flow: the replay's own check, with `${EMAIL}` as the
+ * only variable.
+ */
+const flowProblems = (platform: string, flow: string) => {
+  const check = checkMaestroFlow(flow, { appId: platformOf(platform).appId ?? '', vars: ['EMAIL'] })
+  return check.ok ? [] : check.problems
+}
+
+/**
+ * Problems with what the patch must make pass: the repro spec or flow unedited (`fix/<fp>.spec.ts` or `fix/<fp>.yaml`
+ * equal to the original), or a visual task's verified check.
+ */
 const proofProblems = async (outDir: string, task: FixTask) => {
   if (task.kind === 'spec') {
-    const original = await readFile(task.spec, 'utf8')
-    const reasons = lintReproSpec(original).map((problem) => `repro spec: ${problem}`)
-    const copy = await readFile(join(outDir, 'fix', `${task.fp}.spec.ts`), 'utf8')
-    return copy === original ? reasons : [...reasons, 'the repro spec was edited']
+    const [original, copy, lint, name] =
+      'flow' in task
+        ? [task.flow, `${task.fp}.yaml`, (text: string) => flowProblems(task.platform, text), 'repro flow']
+        : [task.spec, `${task.fp}.spec.ts`, lintReproSpec, 'repro spec']
+    const text = await readFile(original, 'utf8')
+    const reasons = lint(text).map((problem) => `${name}: ${problem}`)
+    return (await readFile(join(outDir, 'fix', copy), 'utf8')) === text
+      ? reasons
+      : [...reasons, `the ${name} was edited`]
   }
-  const check = Bun.file(checkPath(outDir, task.fp))
+  const check = Bun.file('flow' in task ? task.flow : checkPath(outDir, task.fp))
   if (!(await check.exists())) return ['the visual check is missing']
-  const reasons = lintReproSpec(await check.text()).map((problem) => `visual check: ${problem}`)
+  const text = await check.text()
+  const problems = 'flow' in task ? flowProblems(task.platform, text) : lintReproSpec(text)
+  const reasons = problems.map((problem) => `visual check: ${problem}`)
   // Written by the workflow after it ran the check on the tree without and with the patch.
   const verify = Bun.file(join(outDir, 'fix', `${task.fp}.verify.json`))
   if (!(await verify.exists())) return [...reasons, 'the visual check did not fail without the patch and pass with it']
@@ -308,7 +360,7 @@ const reviewNotice =
 
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
- * task the check the fix agent wrote. The repo is public and a security fix's PR shows up before the fix ships, so
+ * task the check the fix agent wrote. A native task adds none. The repo is public and a security fix's PR shows up before the fix ships, so
  * that PR names only the ticket, never says "security", and adds no spec: a person adds the spec in a separate commit
  * after the merge.
  */
@@ -325,9 +377,18 @@ const draftOf = async (outDir: string, task: FixTask) => {
     ].join('\n\n')
     return { title, commit: title, body, spec: undefined }
   }
+  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
+  // A code span, so a model-written title cannot @mention anyone.
+  const findingLine = `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`
+  const intro = `Draft fix by the weekly QA agent for ${ticket} (${task.url ?? 'filed in a dry run'}).`
+  if ('flow' in task) {
+    // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
+    const checked = `Checked on ${task.platform} with ${task.kind === 'spec' ? "the finding's Maestro flow" : "the fix agent's Maestro check"}`
+    const body = [intro, findingLine, `${checked}. The PR adds no regression spec.`, reviewNotice].join('\n\n')
+    return { title, commit: `${title}\n\n${checked}.`, body, spec: undefined }
+  }
   const source = task.kind === 'spec' ? task.spec : checkPath(outDir, task.fp)
   const spec = regressionSpec(task.charterDir, task.fp, await readFile(source, 'utf8'))
-  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
   const [origin, proof] =
     task.kind === 'spec'
       ? ["the QA agent's repro", 'The repro spec, which the replay confirmed, is added with its assertions unchanged']
@@ -335,13 +396,7 @@ const draftOf = async (outDir: string, task: FixTask) => {
           "the fix agent's visual check",
           "The fix agent's check, which failed without this patch and passes with it, is added",
         ]
-  const body = [
-    `Draft fix by the weekly QA agent for ${ticket} (${task.url ?? 'filed in a dry run'}).`,
-    // A code span, so a model-written title cannot @mention anyone.
-    `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`,
-    `${proof} as \`${spec.path}\`.`,
-    reviewNotice,
-  ].join('\n\n')
+  const body = [intro, findingLine, `${proof} as \`${spec.path}\`.`, reviewNotice].join('\n\n')
   return { title, commit: `${title}\n\nKeeps ${origin} as the regression test ${spec.path}.`, body, spec }
 }
 
@@ -353,9 +408,10 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * The publish job downloads the file job's `qa-out` artifact and ONLY `qa-out/fix/` (plus `qa-out/fix-<fp>/repro/`
  * for a visual task) from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
- * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original;
- * - for a visual task, `fix-<fp>/repro/check.spec.ts`, the check the agent wrote, and `fix/<fp>.verify.json`, the
- *   workflow's record of running it without and with the patch;
+ * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original (`fix/<fp>.yaml` for a native
+ *   task's repro flow);
+ * - for a visual task, `fix-<fp>/repro/check.spec.ts` (`check.yaml` on iOS and Android), the check the agent wrote,
+ *   and `fix/<fp>.verify.json`, the workflow's record of running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
  * A diagnosis or a rejected patch (empty, a denied path, an edited spec, an unverified check) means no PR: the
  * ticket gets a comment and the `Human Required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch

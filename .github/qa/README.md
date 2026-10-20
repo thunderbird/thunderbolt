@@ -165,13 +165,19 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    wording; one without an element is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
    one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
-   Native findings are not routed yet. A `spec` task's original spec must pass 3 times on the patch. A `visual`
+   A `spec` task's original spec must pass 3 times on the patch. A `visual`
    task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and `repro/` dir of
    a repro spec, so its imports and the Playwright config work), a check that fails because of the defect; the
    workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
    with it, and both must be true. A real-AI task (`real`) is fixed on the fake AI and checked again on the real
-   providers. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
-   `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
+   providers. An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on
+   Linux (reproducing the bug on the web at phone size when it shows there), and a native visual task's check is
+   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`. `publish` refuses an edited repro flow (`fix/<fp>.yaml`) and
+   a flow or check outside the Maestro allow list. `fix-plan.json`'s `verifyNative` lists each native task's flow
+   and the repro flows of the same bug on other native platforms; `native.sh verify` runs each one with no key on
+   its platform's runner, three times on the patched app (and a visual check also on the app without the patch).
+   A native fix PR adds no regression spec. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise
+   the ticket gets `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -346,6 +352,11 @@ export QA_DEVICE_ID=$udid QA_WEBVIEW_LOG=/tmp/webview.log QA_BACKEND_LOG=/tmp/qa
 # Replay the native findings: no keys in this shell, the same two logs, both builds.
 bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udid" \
   --app "/tmp/qa-ios/Thunderbolt Dev.app" --app-onboarding "/tmp/qa-ios-onboarding/Thunderbolt Dev.app"
+
+# Check a fix's patch: built in a temporary worktree (onboarding for c1), the finding's flow three times on it. The
+# flow must sit in qa-out, whose verified.json holds the finding. A visual check also gets the unpatched build.
+.github/qa/scripts/native.sh verify ios "$udid" qa-out/fix/<fp>.patch qa-out/<session>/repro/1.yaml <session> \
+  qa-out/fix/<fp>.verify.json
 
 .github/qa/scripts/native.sh stop-logs /tmp/webview.log
 ```

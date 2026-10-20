@@ -143,7 +143,7 @@ describe('route', () => {
     const lines: string[] = []
     const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: (line) => lines.push(line) })
 
-    expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro spec on disk, so it is not routed`)
+    expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro on disk, so it is not routed`)
     // pending-layout (Urgent) has an open qa-fix/ branch; high-sync is the third, so the cap leaves out
     // high-security, medium-widgets and low-chat.
     expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('high-sync')])
@@ -186,19 +186,36 @@ describe('route', () => {
 
     const plan = await route({ outDir, live: true, run: fakeRun([], {}), log: () => {} })
 
-    expect(plan).toEqual({ fixes: [] })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
   })
 
-  /** Routes one confirmed, created ticket from `charterDir`, with its repro spec on disk when it names one. */
-  const routeOne = async (charterDir: string, raw: RawFinding) => {
-    const filed: Filed[] = [{ fp: 'fp-one', charterDir, id: '1', severity: 'High', action: 'created' }]
-    const confirmed: VerifiedFinding[] = [
-      { charterDir, id: '1', finding: raw, replay: { failed: 3, runs: 3 }, artifacts: {} },
-    ]
+  /** Writes filed.json and verified.json for these created, confirmed tickets, with each repro on disk. */
+  const fileTickets = async (tickets: { fp: string; charterDir: string; raw: RawFinding }[]) => {
+    const filed: Filed[] = tickets.map(({ fp, charterDir }) => ({
+      fp,
+      charterDir,
+      id: '1',
+      severity: 'High',
+      action: 'created',
+    }))
+    const confirmed: VerifiedFinding[] = tickets.map(({ charterDir, raw }) => ({
+      charterDir,
+      id: '1',
+      finding: raw,
+      replay: { failed: 3, runs: 3 },
+      artifacts: {},
+    }))
     const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
     await put(join(outDir, 'filed.json'), JSON.stringify(filed))
     await put(join(outDir, 'verified.json'), JSON.stringify(verified))
-    if (raw.repro_spec) await put(join(outDir, charterDir, raw.repro_spec), spec)
+    for (const { charterDir, raw } of tickets) {
+      if (raw.repro_spec) await put(join(outDir, charterDir, raw.repro_spec), spec)
+      if (raw.repro_flow) await put(join(outDir, charterDir, raw.repro_flow), '- launchApp\n')
+    }
+  }
+  /** Routes one confirmed, created ticket from `charterDir`, with its repro on disk when it names one. */
+  const routeOne = async (charterDir: string, raw: RawFinding) => {
+    await fileTickets([{ fp: 'fp-one', charterDir, raw }])
     return route({ outDir, live: false, run: fakeRun([]), log: () => {} })
   }
   const visual = (area: Area, extra: Partial<RawFinding> = {}) =>
@@ -233,10 +250,66 @@ describe('route', () => {
     expect('spec' in named).toBe(false)
   })
 
-  test('a native finding is not routed yet: the fix job has no device to check it on', async () => {
-    const flow = finding('chat', { viewport: 'ios', repro_spec: undefined, repro_flow: 'repro/1.yaml' })
-    expect((await routeOne('c2-chat-ios', flow)).fixes).toEqual([])
-    expect((await routeOne('c2-chat-ios', visual('layout', { viewport: 'ios' }))).fixes).toEqual([])
+  const nativeLayout = (viewport: string) =>
+    finding('onboarding', {
+      viewport,
+      oracle: { type: 'layout', evidence: '[qa-layout] focused-clipped textbox "Enter your name"' },
+      repro_spec: undefined,
+      repro_flow: 'repro/1.yaml',
+    })
+
+  test('a native layout finding goes to the fix agent with its flow, and to the native verification', async () => {
+    const plan = await routeOne('c1-first-run-ios', nativeLayout('ios'))
+    const flow = join(outDir, 'c1-first-run-ios', 'repro', '1.yaml')
+    expect(plan.fixes).toHaveLength(1)
+    expect(plan.fixes[0]).toMatchObject({ fp: 'fp-one', kind: 'spec', platform: 'ios', flow, real: false })
+    expect('spec' in plan.fixes[0]).toBe(false)
+    expect(plan.verifyNative).toEqual([{ fp: 'fp-one', platform: 'ios', session: 'c1-first-run-ios', flow }])
+  })
+
+  test('a native visual finding asks the fix agent for a Maestro check, which the native verification runs', async () => {
+    const plan = await routeOne(
+      'c6-settings-data-ios',
+      visual('layout', { viewport: 'ios', screenshot: 'maestro/shot-3.jpg' }),
+    )
+    const check = join(outDir, 'fix-fp-one', 'repro', 'check.yaml')
+    expect(plan.fixes[0]).toMatchObject({
+      kind: 'visual',
+      platform: 'ios',
+      flow: check,
+      screenshot: join(outDir, 'c6-settings-data-ios', 'maestro', 'shot-3.jpg'),
+    })
+    expect(plan.verifyNative).toEqual([{ fp: 'fp-one', platform: 'ios', session: 'c6-settings-data-ios', flow: check }])
+  })
+
+  test('a native finding whose flow is not on disk is not routed', async () => {
+    await fileTickets([{ fp: 'fp-one', charterDir: 'c1-first-run-ios', raw: nativeLayout('ios') }])
+    await rm(join(outDir, 'c1-first-run-ios', 'repro', '1.yaml'))
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
+  })
+
+  test('an Android real-AI finding goes to the fix agent marked real', async () => {
+    const raw = finding('models', { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/1.yaml' })
+    const plan = await routeOne('c3-models-providers-android', raw)
+    expect(plan.fixes.map((t) => [t.platform, t.real])).toEqual([['android', true]])
+  })
+
+  test('one bug on phone and iOS is one fix, and the patch is also verified on iOS', async () => {
+    await fileTickets([
+      { fp: 'fp-same', charterDir: 'c1-first-run-phone', raw: finding('onboarding', { viewport: 'phone' }) },
+      { fp: 'fp-same', charterDir: 'c1-first-run-ios', raw: nativeLayout('ios') },
+    ])
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes.map((t) => [t.fp, t.platform, t.kind])).toEqual([['fp-same', 'phone', 'spec']])
+    expect(plan.verifyNative).toEqual([
+      {
+        fp: 'fp-same',
+        platform: 'ios',
+        session: 'c1-first-run-ios',
+        flow: join(outDir, 'c1-first-run-ios', 'repro', '1.yaml'),
+      },
+    ])
   })
 
   test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
@@ -400,6 +473,7 @@ describe('checkPatch', () => {
     fp,
     severity: 'High',
     charterDir: 'c2-chat',
+    platform: 'desktop',
     kind: 'spec',
     real: false,
     spec: reproSpec(),
@@ -409,6 +483,7 @@ describe('checkPatch', () => {
     fp,
     severity: 'High',
     charterDir: 'c2-chat',
+    platform: 'desktop',
     kind: 'visual',
     real: false,
     finding: { ...finding('layout'), oracle: { type: 'visual', evidence: 'Continue sits under the banner' } },
@@ -582,6 +657,67 @@ describe('checkPatch', () => {
     })
   })
 
+  describe('a native task', () => {
+    const flow = '- launchApp\n- assertVisible: Renamed\n'
+    const reproFlow = () => join(outDir, 'c1-first-run-ios', 'repro', '1.yaml')
+    const check = () => join(outDir, `fix-${fp}`, 'repro', 'check.yaml')
+    const native = (): FixTask => ({
+      fp,
+      severity: 'High',
+      charterDir: 'c1-first-run-ios',
+      platform: 'ios',
+      kind: 'spec',
+      real: false,
+      flow: reproFlow(),
+      finding: { ...finding('onboarding'), viewport: 'ios', oracle: { type: 'assert-failed', evidence: 'x' } },
+    })
+    const nativeVisual = (): FixTask => ({
+      ...visualTask(),
+      charterDir: 'c1-first-run-ios',
+      platform: 'ios',
+      flow: check(),
+    })
+    beforeEach(async () => {
+      await put(reproFlow(), flow)
+      await put(join(outDir, 'fix', `${fp}.yaml`), flow)
+    })
+
+    test('accepts a patch to src-tauri/ with the flow unedited', async () => {
+      await patchFrom(() => put(join(repo, 'src-tauri', 'src', 'lib.rs'), 'fn main() {}\n'))
+      expect(await checkPatch(git, outDir, native())).toEqual({ reasons: [], files: ['src-tauri/src/lib.rs'] })
+    })
+
+    test('rejects an edited repro flow', async () => {
+      await patchFrom(fixed)
+      await put(join(outDir, 'fix', `${fp}.yaml`), flow.replace('Renamed', 'Anything'))
+      expect((await checkPatch(git, outDir, native())).reasons).toEqual(['the repro flow was edited'])
+    })
+
+    test('rejects a repro flow outside the Maestro allow list', async () => {
+      await patchFrom(fixed)
+      const evil = '- runScript: evil.js\n'
+      await put(reproFlow(), evil)
+      await put(join(outDir, 'fix', `${fp}.yaml`), evil)
+      const { reasons } = await checkPatch(git, outDir, native())
+      expect(reasons.length).toBeGreaterThan(0)
+      for (const reason of reasons) expect(reason).toStartWith('repro flow: commands[0]')
+    })
+
+    test('a visual one needs a Maestro check inside the allow list, verified like a web check', async () => {
+      await patchFrom(fixed)
+      await put(join(outDir, 'fix', `${fp}.verify.json`), '{ "failsWithout": true, "passesWith": true }')
+      expect((await checkPatch(git, outDir, nativeVisual())).reasons).toEqual(['the visual check is missing'])
+
+      await put(check(), flow)
+      expect((await checkPatch(git, outDir, nativeVisual())).reasons).toEqual([])
+
+      await put(check(), `${flow}- evalScript: \${fetch('https://x')}\n`)
+      const { reasons } = await checkPatch(git, outDir, nativeVisual())
+      expect(reasons.length).toBeGreaterThan(0)
+      for (const reason of reasons) expect(reason).toStartWith('visual check: commands[2]')
+    })
+  })
+
   test('rejects an edited repro spec and a spec that fails the lint', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n'))
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec.replace('Renamed', 'Anything'))
@@ -601,12 +737,26 @@ describe('publish', () => {
   const rawDiff = (...paths: string[]) => paths.map((p) => `:100644 100644 aaa bbb M\0${p}\0`).join('')
   const diffOutput = { 'git diff': rawDiff('src/chat.ts') }
 
-  type Setup = { ticket?: boolean; kind?: FixTask['kind']; url?: string; extra?: Partial<FixTask['finding']> }
-  const setup = async ({ ticket = true, kind = 'spec', url = 'https://linear.app/t/THB-1', extra }: Setup = {}) => {
+  type Setup = {
+    ticket?: boolean
+    kind?: FixTask['kind']
+    url?: string
+    extra?: Partial<FixTask['finding']>
+    /** A native task's flow: the task carries it instead of a spec. */
+    flow?: string
+  }
+  const setup = async ({
+    ticket = true,
+    kind = 'spec',
+    url = 'https://linear.app/t/THB-1',
+    extra,
+    flow,
+  }: Setup = {}) => {
     const base = {
       fp,
       severity: 'High',
       charterDir: 'c2-chat',
+      platform: 'desktop',
       real: false,
       finding: {
         title: 'Renaming a chat\nloses its title',
@@ -618,10 +768,14 @@ describe('publish', () => {
         actual: 'Untitled',
         ...extra,
       },
-    } satisfies Omit<FixTask, 'kind' | 'spec'>
-    const task: FixTask = kind === 'visual' ? { ...base, kind } : { ...base, kind, spec: specPath() }
+    } satisfies Omit<FixTask, 'kind' | 'spec' | 'flow'>
+    const proof = () => {
+      if (flow) return { kind, platform: 'ios', flow }
+      return kind === 'visual' ? { kind } : { kind, spec: specPath() }
+    }
+    const task: FixTask = { ...base, ...proof() }
     const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1', url }
-    const plan: FixPlan = { fixes: [ticket ? withTicket : task] }
+    const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative: [] }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
     await put(specPath(), spec)
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
@@ -771,6 +925,20 @@ describe('publish', () => {
       regressionSpec('c2-chat', fp, check).source,
     )
     expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
+  })
+
+  test('a native fix PR adds no regression spec and names the platform the flow checked it on', async () => {
+    const flow = join(outDir, 'c1-first-run-ios', 'repro', '1.yaml')
+    await setup({ flow })
+    await put(flow, '- launchApp\n')
+    await put(join(outDir, 'fix', `${fp}.yaml`), '- launchApp\n')
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
+    expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
+    expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
+    expect(runs.at(-1)?.stdin).toContain("Checked on ios with the finding's Maestro flow")
   })
 
   test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {

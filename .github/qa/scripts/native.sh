@@ -19,6 +19,9 @@
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
 #                                                               reports the covered Email field
+#   native.sh verify <platform> <device> <patch> <flow> <session> <out-json> [unpatched-app]
+#                                                               build the app with a fix's patch and run the flow
+#                                                               three times (see verify below)
 #
 # iOS uses $QA_IOS_DEVICE (a simulator UDID) when it is set, and otherwise an iPhone 17 Pro Max on the newest iOS
 # runtime. Android boots the AVD qa-android (an emulator needs KVM, so CI only) and reverses the stack's ports.
@@ -118,25 +121,55 @@ device_ios() {
 
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
-  local abi=x86_64 avd=qa-android
+  mkdir -p "$ANDROID_AVD_HOME"
+  local abi=x86_64 avd=qa-android avds devices
   case $(uname -m) in arm64 | aarch64) abi=arm64-v8a ;; esac
-  if ! avdmanager list avd -c | grep -qx "$avd"; then
+  # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
+  avds=$(avdmanager list avd -c)
+  if ! grep -qx "$avd" <<< "$avds"; then
     echo no | avdmanager create avd --name "$avd" --package "system-images;android-36;google_apis;$abi" --device pixel_7 >&2
-    echo "hw.keyboard=no" >> "$ANDROID_AVD_HOME/$avd.avd/config.ini"
+    local config="$ANDROID_AVD_HOME/$avd.avd/config.ini"
+    grep -v '^hw.keyboard=' "$config" > "$config.tmp" || true
+    mv "$config.tmp" "$config"
+    echo "hw.keyboard=no" >> "$config"
   fi
-  if ! adb devices | grep -q '^emulator-'; then
-    emulator -avd "$avd" -no-window -no-audio -no-boot-anim > /tmp/qa-emulator.log 2>&1 &
+  local emulator_pid=
+  devices=$(adb devices)
+  if ! grep -q '^emulator-' <<< "$devices"; then
+    emulator -avd "$avd" -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > /tmp/qa-emulator.log 2>&1 &
+    emulator_pid=$!
   fi
-  adb wait-for-device
-  local serial
-  serial=$(adb devices | sed -n 's/^\(emulator-[0-9]*\).*/\1/p' | head -1)
+  # Up to 10 minutes for the device to show up, and a dead emulator ends the wait at once.
+  local serial=
+  for _ in $(seq 300); do
+    if [ -n "$emulator_pid" ] && ! kill -0 "$emulator_pid" 2> /dev/null; then
+      tail -30 /tmp/qa-emulator.log >&2
+      die "the emulator exited"
+    fi
+    serial=$(adb devices | sed -n '/^emulator-[0-9]*[[:space:]]*device$/{s/[[:space:]].*//p;q;}')
+    [ -n "$serial" ] && break
+    sleep 2
+  done
+  [ -n "$serial" ] || die "no emulator came online"
   for _ in $(seq 180); do
     [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
     sleep 2
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
   for port in $stack_ports; do adb -s "$serial" reverse "tcp:$port" "tcp:$port" >&2; done
-  adb -s "$serial" push "$fixtures"/*.png "$fixtures"/*.pdf /sdcard/Download/ >&2
+  # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
+  # mkdir and push fail (runs 39343228365 and 39344254036).
+  for _ in $(seq 90); do
+    adb -s "$serial" shell test -d /sdcard/Android && break
+    sleep 2
+  done
+  adb -s "$serial" shell test -d /sdcard/Android || die "the emulator's /sdcard never mounted"
+  adb -s "$serial" shell mkdir -p /sdcard/Download
+  # One at a time, and a refused push only warns: Android 16 refused sample.png with "Operation not permitted", and a
+  # session without that fixture still runs.
+  for file in "$fixtures"/*.png "$fixtures"/*.pdf; do
+    adb -s "$serial" push "$file" /sdcard/Download/ >&2 || echo "warning: could not push $(basename "$file") to the emulator" >&2
+  done
   echo "$serial"
 }
 
@@ -191,7 +224,34 @@ control() {
     "$platform" "$out/hierarchy.json" "$out/webview.log"
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir]"
+# The native half of a fix's verification (spec 7.2), with no key: applies <patch> (`qa-out/fix/<fp>.patch`) in a
+# temporary worktree, builds the app there (with onboarding for a c1 session) and has `verify.ts fix-native` run <flow>
+# three times on <device>, with the stack already serving. <flow> is the finding's repro flow inside the run's qa-out,
+# whose verified.json holds the finding. With <unpatched-app> (the build-native artifact of the same variant), <flow>
+# is the fix agent's visual check, and it also runs on that app. Writes the result to <out-json>, videos beside it.
+verify() {
+  local platform=$1 device=$2 patch=$3 flow=$4 session=$5 result=$6 original=${7:-} work tree onboarding='' app
+  : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
+  work=$(mktemp -d)
+  tree="$work/tree"
+  git worktree add --quiet --detach "$tree" HEAD
+  # shellcheck disable=SC2064 # the paths are fixed by now
+  trap "stop_logs '$work/webview.log'; git worktree remove --force '$tree'; rm -rf '$work'" EXIT
+  git -C "$tree" apply < "$patch"
+  # The checkout's dependencies and compiled crates: the patch may not change either (publish refuses manifests).
+  ln -s "$PWD/node_modules" "$tree/node_modules"
+  case $session in c1-first-run-*) onboarding=onboarding ;; esac
+  CARGO_TARGET_DIR="$PWD/src-tauri/target" "$tree/.github/qa/scripts/native.sh" build "$platform" "$work/app" ${onboarding:+"$onboarding"}
+  app="$work/app/Thunderbolt Dev.app"
+  [ "$platform" = ios ] || app="$work/app/app-debug.apk"
+  logs "$platform" "$device" "$work/webview.log"
+  mkdir -p "$(dirname "$result")"
+  QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
+    --native "$platform" --device "$device" --app "$app" --fp "$(basename "$patch" .patch)" --flow "$flow" \
+    --session "$session" --result "$result" ${original:+--original "$original"}
+}
+
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify <platform> <device> <patch> <flow> <session> <out-json> [unpatched-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
@@ -212,5 +272,6 @@ case $command in
     ;;
   logs) [ $# -eq 3 ] || die "$usage"; logs "$@" ;;
   control) [ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"; control "$@" ;;
+  verify) [ $# -ge 6 ] && [ $# -le 7 ] || die "$usage"; verify "$@" ;;
   *) die "$usage" ;;
 esac

@@ -15,6 +15,7 @@ import {
   replay,
   replayEnv,
   screenshotTaken,
+  verifyNativeFix,
   worstJudgeCost,
   type CreateMessage,
   type FlowRun,
@@ -798,6 +799,90 @@ describe('replay of native flows', () => {
     for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
       expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
     }
+  })
+})
+
+describe('native fix verification', () => {
+  const nameLine = '[qa-layout] focused-clipped textbox "Enter your name"'
+  const flow = '- launchApp\n- assertVisible: What should we call you?\n'
+  const timeout = { passed: false, error: 'iOS driver not ready in time' }
+  const failed = { passed: false, error: 'Assertion is false: "Continue" is visible' }
+
+  /** A device answering each run with the next queued result (a clean pass once none is left), recording the runs. */
+  const device = (results: Partial<FlowRun>[], runs: number[] = []): RunFlow => {
+    const queue = [...results]
+    return async (_yaml, _outDir, run) => {
+      runs.push(run)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [], ...queue.shift() }
+    }
+  }
+  const base = { fp: 'ab12cd34', platform: 'ios', session: 'c1-first-run-ios', flow, outDir }
+  const layout = { type: 'layout', evidence: nameLine }
+
+  test('passes only when no patched run shows the bug: the quoted probe line, or the flow failing', async () => {
+    const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })
+    expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, seen]) })).toMatchObject({
+      failed: 1,
+      passed: false,
+    })
+    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
+      failed: 1,
+      passed: false,
+    })
+  })
+
+  test('a driver that never starts fails the run after its one retry, so a dead device never passes a patch', async () => {
+    const runs: number[] = []
+    const result = await verifyNativeFix({ ...base, oracle: layout, patched: device([timeout, timeout], runs) })
+    expect(result).toMatchObject({ runs: 3, failed: 1, passed: false })
+    expect(runs).toEqual([1, 2, 3, 4])
+  })
+
+  test('a visual check must fail every run without the patch and pass every run with it', async () => {
+    const problem = { layout: ['[qa-layout] ready', '[qa-layout] covered button "Continue"'] }
+    const pass = await verifyNativeFix({
+      ...base,
+      patched: device([]),
+      original: device([failed, problem, failed]),
+    })
+    expect(pass).toEqual({
+      fp: 'ab12cd34',
+      platform: 'ios',
+      runs: 3,
+      failed: 0,
+      passed: true,
+      failsWithout: true,
+      passesWith: true,
+    })
+
+    // A driver that did not start shows no defect, so it is no failure without the patch.
+    const notFailing = await verifyNativeFix({
+      ...base,
+      patched: device([]),
+      original: device([failed, timeout, timeout]),
+    })
+    expect(notFailing).toMatchObject({ failsWithout: false, passesWith: true, passed: false })
+    const stillFailing = await verifyNativeFix({
+      ...base,
+      patched: device([{}, problem]),
+      original: device([failed, failed, failed]),
+    })
+    expect(stillFailing).toMatchObject({ failed: 1, failsWithout: true, passesWith: false, passed: false })
+  })
+
+  test('a flow outside the allow list never reaches the device', async () => {
+    const runs: number[] = []
+    const evil = verifyNativeFix({
+      ...base,
+      flow: '- runScript: steal.js\n',
+      oracle: layout,
+      patched: device([], runs),
+    })
+    await expect(evil).rejects.toThrow('runScript')
+    expect(runs).toEqual([])
   })
 })
 

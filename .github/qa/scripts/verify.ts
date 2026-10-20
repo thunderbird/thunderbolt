@@ -338,35 +338,53 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
   return run.error ?? 'the flow failed'
 }
 
+/** A device to run flows on, and the number of its next run, so no run's video overwrites another's. */
+type Device = { runFlow: RunFlow; outDir: string; next: () => number }
+
 /**
- * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A run whose
- * driver did not start is run once more and only the second try counts. A failed control run stops the replay: the
- * findings never run and `stackProblem` says why.
+ * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
+ * `failure` says what in a run counts as failed.
+ */
+const threeRuns = async (
+  { runFlow, outDir, next }: Device,
+  yaml: string,
+  session: string,
+  failure: (run: FlowRun) => string | undefined,
+) => {
+  const runOnce = async () => {
+    const first = await runFlow(yaml, outDir, next(), session)
+    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session) : first
+  }
+  const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
+  for (let n = 0; n < 3; n++) {
+    const run = await runOnce()
+    outcome.replay.runs++
+    const problem = failure(run)
+    if (problem === undefined) continue
+    outcome.replay.failed++
+    outcome.replay.error ??= problem.slice(0, 1_500)
+    outcome.artifacts.video ??= run.video
+  }
+  return outcome
+}
+
+/** Counts runs from 1. */
+const counter = () => {
+  const state = { n: 0 }
+  return () => ++state.n
+}
+
+/**
+ * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
+ * control run stops the replay: the findings never run and `stackProblem` says why.
  */
 const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile, string>, runFlow: RunFlow) => {
-  let runNumber = 0
-  const runOnce = async (yaml: string, session: string) => {
-    const first = await runFlow(yaml, outDir, ++runNumber, session)
-    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, ++runNumber, session) : first
-  }
-  const threeRuns = async (yaml: string, session: string, failure: (run: FlowRun) => string | undefined) => {
-    const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
-    for (let n = 0; n < 3; n++) {
-      const run = await runOnce(yaml, session)
-      outcome.replay.runs++
-      const problem = failure(run)
-      if (problem === undefined) continue
-      outcome.replay.failed++
-      outcome.replay.error ??= problem.slice(0, 1_500)
-      outcome.artifacts.video ??= run.video
-    }
-    return outcome
-  }
+  const device: Device = { runFlow, outDir, next: counter() }
   const control = await Bun.file(join(qaDir, 'control/stack.yaml')).text()
   for (const appId of new Set([...flows.keys()].map(appIdOf))) {
     const check = checkMaestroFlow(control, { appId, vars: flowVars })
     if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
-    const { replay } = await threeRuns(check.yaml, 'control', (run) =>
+    const { replay } = await threeRuns(device, check.yaml, 'control', (run) =>
       run.passed ? undefined : (run.error ?? 'the flow failed'),
     )
     if (replay.failed > 0) {
@@ -378,9 +396,78 @@ const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile
   }
   const outcomes = new Map<FindingFile, Outcome>()
   for (const [file, yaml] of flows) {
-    outcomes.set(file, await threeRuns(yaml, file.charterDir, (run) => flowFailure(file.finding.oracle, run)))
+    outcomes.set(file, await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(file.finding.oracle, run)))
   }
   return { stackProblem: undefined, outcomes }
+}
+
+/** `native.sh verify`'s result for one patch on one platform (spec 7.2), the shape of `qa-out/fix/<fp>.verify.json`. */
+export type NativeVerify = {
+  fp: string
+  platform: string
+  runs: number
+  failed: number
+  passed: boolean
+  failsWithout?: boolean
+  passesWith?: boolean
+}
+
+/** What fails a run of the fix agent's visual check, which has no finding: the flow failed or the probe logged a problem. */
+const checkFailure = (run: FlowRun) => {
+  const problem = run.layout.find((line) => !/^\[qa-layout\] ready\b/.test(cleanLogLine(line)))
+  if (problem) return `the layout probe logged ${cleanLogLine(problem)}`
+  if (run.passed || run.error?.includes(driverTimeout)) return undefined
+  return run.error ?? 'the flow failed'
+}
+
+/**
+ * The native half of a fix's verification (spec 7.2), run with no key on the platform's runner. The flow passes the
+ * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug:
+ * the finding's `oracle` by the replay's rule, or for the fix agent's visual check (`original` given) any probe
+ * problem. `passed` needs every run clean. A run whose driver never started counts as failed here, since it proves
+ * nothing. A visual check also runs three times on the `original` app, without the patch, and must fail every time
+ * there (`failsWithout`, with a driver that did not start never counting as a failure); `passed` then needs both.
+ */
+export const verifyNativeFix = async (
+  opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
+    | { oracle: FindingFile['finding']['oracle'] }
+    | { original: RunFlow }
+  ),
+): Promise<NativeVerify> => {
+  const { fp, platform, session, outDir } = opts
+  const check = checkMaestroFlow(opts.flow, { appId: platformOf(platform).appId ?? '', vars: flowVars })
+  if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
+  const next = counter()
+  const bug = 'oracle' in opts ? (run: FlowRun) => flowFailure(opts.oracle, run) : checkFailure
+  const patched = await threeRuns(
+    { runFlow: opts.patched, outDir, next },
+    check.yaml,
+    session,
+    (run) => bug(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
+  )
+  const { failed, runs } = patched.replay
+  const result = { fp, platform, runs, failed, passed: failed === 0 }
+  if (!('original' in opts)) return result
+  const original = await threeRuns({ runFlow: opts.original, outDir, next }, check.yaml, session, checkFailure)
+  const failsWithout = original.replay.failed === original.replay.runs
+  return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
+}
+
+/**
+ * The oracle of the confirmed finding whose repro flow `flow` is (`<qa-out>/<session>/repro/<name>.yaml`), from
+ * `<qa-out>/verified.json`: the evidence replay confirmed, before any cleaning for a ticket.
+ */
+const confirmedOracle = async (flow: string, session: string) => {
+  const outDir = resolve(flow, '../../..')
+  const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+  const found = confirmed.find(
+    (v) =>
+      v.charterDir === session &&
+      v.finding.repro_flow !== undefined &&
+      resolve(outDir, session, v.finding.repro_flow) === resolve(flow),
+  )
+  if (!found) throw new Error(`${flow} is not the repro flow of a confirmed finding of ${session}`)
+  return found.finding.oracle
 }
 
 /** Failed runs that confirm a finding: all of them, or two in three for a real-AI charter, whose replies vary. */
@@ -635,25 +722,49 @@ if (import.meta.main) {
       device: { type: 'string' },
       app: { type: 'string' },
       'app-onboarding': { type: 'string' },
+      fp: { type: 'string' },
+      flow: { type: 'string' },
+      session: { type: 'string' },
+      result: { type: 'string' },
+      original: { type: 'string' },
     },
     allowPositionals: true,
   })
   const step = positionals[0]
-  if (step !== 'replay' && step !== 'judge') {
-    throw new Error(
-      'usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out ' +
-        '[--native ios|android --device <id> --app <app> --app-onboarding <app>], ' +
-        'with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native',
-    )
-  }
-  const nativeFlows = () => {
-    const { native: platform, device, app, 'app-onboarding': onboarding } = values
+  const usage =
+    'usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out ' +
+    '[--native ios|android --device <id> --app <app> --app-onboarding <app>] | ' +
+    'fix-native --out <dir> --native ios|android --device <id> --app <patched app> --fp <fp> --flow <flow> ' +
+    '--session <session> --result <json> [--original <app>], with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native'
+  if (step !== 'replay' && step !== 'judge' && step !== 'fix-native') throw new Error(usage)
+  const nativeFlows = (app = values.app, onboarding = values['app-onboarding']) => {
+    const { native: platform, device } = values
     const { QA_WEBVIEW_LOG: webviewLog, QA_BACKEND_LOG: backendLog } = Bun.env
     if (platform !== 'ios' && platform !== 'android') throw new Error(`--native must be ios or android: ${platform}`)
     if (!device || !app || !onboarding || !webviewLog || !backendLog) {
       throw new Error('--native needs --device, --app, --app-onboarding, QA_WEBVIEW_LOG and QA_BACKEND_LOG')
     }
     return createRunFlow({ platform, deviceId: device, apps: { onboarding, plain: app }, webviewLog, backendLog })
+  }
+  if (step === 'fix-native') {
+    const { fp, flow, session, result: resultFile, original, native: platform, app } = values
+    if (!fp || !flow || !session || !resultFile || !platform) throw new Error(usage)
+    // One build per check: native.sh builds the patched app in the variant the session needs.
+    const proof = original
+      ? { original: nativeFlows(original, original) }
+      : { oracle: await confirmedOracle(flow, session) }
+    const verdict = await verifyNativeFix({
+      fp,
+      platform,
+      session,
+      flow: await Bun.file(flow).text(),
+      outDir: values.out,
+      patched: nativeFlows(app, app),
+      ...proof,
+    })
+    await Bun.write(resultFile, JSON.stringify(verdict, null, 2))
+    console.log(JSON.stringify(verdict))
+    process.exit()
   }
   const result =
     step === 'judge'

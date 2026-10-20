@@ -134,17 +134,21 @@ const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) =>
 
 const inspect = (ctx: GateContext) => callMaestro(ctx, 'inspect_screen', { device_id: ctx.deviceId })
 
-const screenSchema = z.object({ elements: z.array(z.object({ a11y: z.string().optional() })) })
+const screenSchema = z.object({
+  elements: z.array(z.object({ a11y: z.string().optional(), txt: z.string().optional() })),
+})
 
 /**
- * Whose screen Maestro showed. The top element is the foreground app; under the Control Center it is blank (spike,
- * decision 4). A reply that is not a screen (an error, a second driver timeout) is `unreadable`.
+ * Whose screen Maestro showed. The top element is the foreground app, named in `a11y` on iOS and in `txt` on Android;
+ * under the Control Center it is blank (spike, decision 4). A reply that is not a screen (an error, a second driver
+ * timeout) is `unreadable`.
  */
 const whoseScreen = (screen: ToolResult, ctx: GateContext): 'ours' | 'away' | 'unreadable' => {
   try {
     const tree = screenSchema.safeParse(JSON.parse(textOf(screen))).data
     if (!tree) return 'unreadable'
-    return tree.elements[0]?.a11y === ctx.appName ? 'ours' : 'away'
+    const root = tree.elements[0]
+    return root && (root.a11y === ctx.appName || root.txt === ctx.appName) ? 'ours' : 'away'
   } catch {
     return 'unreadable'
   }

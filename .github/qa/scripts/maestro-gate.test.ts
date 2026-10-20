@@ -243,6 +243,23 @@ test('a run that leaves the app is followed by a relaunch and the layout of our 
   expect(text(result)).toEndWith('[qa-layout] ready keyboard=none')
 })
 
+// The iOS root names the app in a11y; the Android one in txt with an empty a11y (spike tree).
+test.each([
+  ['an iOS root with the name in a11y', { a11y: 'Thunderbolt' }, true],
+  ['an Android root with the name in txt', { txt: 'Thunderbolt' }, true],
+  ['a root naming another app in txt', { txt: 'Settings' }, false],
+])('%s: in front is %p', async (_name, root, ours) => {
+  const tree = { ui_schema: { defaults: {} }, elements: [{ b: '[0,0][1080,2400]', ...root }] }
+  const { ctx, calls } = fakeGate({
+    probe: [['[qa-layout] ready']],
+    respond: (call) => (call.name === 'inspect_screen' ? textResult(JSON.stringify(tree)) : undefined),
+  })
+  ctx.appName = 'Thunderbolt'
+  const result = await handleCall('run', { yaml: '- tapOn: Hi' }, ctx)
+  expect(calls.filter((call) => call.name === 'run')).toHaveLength(ours ? 1 : 2)
+  expect(text(result).includes('the app is still not in the foreground')).toBe(!ours)
+})
+
 test('when the app stays in the background the result says so and measures nothing', async () => {
   const { ctx } = fakeGate({ screen: 'control-center', probe: [['[qa-layout] ready', nameBug]] })
   const result = await handleCall('run', { yaml: '- back' }, ctx)

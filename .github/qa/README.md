@@ -43,10 +43,11 @@ In the fix job the dev servers reload the agent's edits outside its sandbox, so 
 user listens on 8005, 1424 or 1425 (`ss` names the owner only of the caller's own sockets), and `stack.sh lock` then
 takes root away before the agent starts. Code the servers reload cannot read the agent's environment, which holds
 the key. sudo makes itself unkillable by the job's user, so before the lock `stack.sh start` adds one sudoers rule
-that lets that user send signals as `qa-dev` and nothing else; the stop uses it and fails when a server keeps
-running. Right after the session, before any code the agent wrote runs outside its sandbox, one step greps the
-whole checkout (without `.git` and `node_modules`) for the key, and no later step holds it: patched code that runs
-afterwards (the visual check, the real-AI build) could leave a process behind or change `$GITHUB_ENV` and
+that lets that user run exactly `kill -TERM -1` as `qa-dev` and nothing else; the stop uses it and fails when a
+server keeps running. Right after the session, before any code the agent wrote runs outside its sandbox, one step
+greps the whole checkout for the key, `node_modules` included (the agent can write it and the real-AI build bundles
+it). Only `.git` is left out: the agent may not edit it or run git. No later step holds the key: patched code that
+runs afterwards (the visual check, the real-AI build) could leave a process behind or change `$GITHUB_ENV` and
 `$GITHUB_PATH`. The upload's own scan looks for token shapes only. Every scan clears the startup and preload
 variables and calls its tools by absolute path, since GitHub prepends `$GITHUB_PATH` even to a step's own `PATH`.
 

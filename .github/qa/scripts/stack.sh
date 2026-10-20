@@ -71,9 +71,10 @@ if [ "$1" = start ]; then
       sudo install -d --owner "$QA_BACKEND_USER" node_modules/.vite public/@powersync
       sudo install -d --mode 1777 node_modules/.vite-temp
     fi
-    # sudo makes itself unkillable by this user, so after `lock` only this rule stops the servers: signals to that
-    # user's processes, nothing else. It sorts after zz-qa-lock, and in sudoers the last matching rule wins.
-    sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill, /bin/kill' \
+    # sudo makes itself unkillable by this user, so after `lock` only this rule stops the servers: SIGTERM to all of
+    # that user's processes, with exactly these arguments, so a spec cannot stop or freeze them with another signal.
+    # It sorts after zz-qa-lock, and in sudoers the last matching rule wins.
+    sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill -TERM -1, /bin/kill -TERM -1' \
       > /etc/sudoers.d/zz-qa-lock-stop"
   fi
   # CI's inline stop reads it.

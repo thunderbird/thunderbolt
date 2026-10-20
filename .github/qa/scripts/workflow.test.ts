@@ -105,6 +105,11 @@ describe('secrets', () => {
     expect(mentions('fix', 'secrets.').filter((m) => !m.startsWith('Fix:'))).toEqual([
       "Check the agent's output for the key:env",
     ])
+    // node_modules too: the agent can write it and the real-AI build bundles it. Only .git, which it may not edit.
+    const keyScan = step('fix', "Check the agent's output for the key").run ?? ''
+    expect(keyScan).toContain('/usr/bin/grep -rqsF --exclude-dir=.git -- "$QA_KEY" .')
+    expect(keyScan).not.toContain('node_modules')
+    expect(step('fix', 'Fix').with?.claude_args).toContain('"Edit(.git/**)"')
     const uploads = steps('fix').filter((s) => s.uses?.startsWith('actions/upload-artifact'))
     for (const upload of uploads) expect(upload.if).toContain("steps.key-scan.outcome == 'success'")
   })
@@ -160,7 +165,10 @@ describe('fix job', () => {
 
   test('stack.sh lets the job user signal the dev user after the lock, and nothing more', async () => {
     const stack = await Bun.file(join(import.meta.dir, 'stack.sh')).text()
-    expect(stack).toContain("ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill, /bin/kill'")
+    // The exact command the stops run, so a spec cannot send another signal as that user.
+    expect(stack).toContain("ALL=($QA_BACKEND_USER) NOPASSWD: /usr/bin/kill -TERM -1, /bin/kill -TERM -1'")
+    expect(step('fix', 'Stop the stack').run).toContain('sudo -n -u "$user" /usr/bin/kill -TERM -1;')
+    expect(stack).toContain('sudo -n -u "$user" /usr/bin/kill -TERM -1;')
     // sudoers reads the dir in order and the last matching rule wins, so the narrow rule sorts after zz-qa-lock.
     expect(stack).toContain('/etc/sudoers.d/zz-qa-lock-stop')
     expect(stack).toContain('/etc/sudoers.d/zz-qa-lock"')

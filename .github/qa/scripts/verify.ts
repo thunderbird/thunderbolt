@@ -115,10 +115,15 @@ const judgeMaxTokens = 4096
 const replayCap = 20
 /** replay-native's `timeout-minutes`: a native leg starts no run that might end after it. */
 export const nativeJobMinutes = 90
-/** Run 39380764343: about 2.6 minutes a run on iOS, and 5 min 42 s for the steps around the replay step. */
+/**
+ * Run 39380764343: about 2.6 minutes a run on iOS, and 5 min 42 s for the steps around the replay step. Only the
+ * cap's sizing uses the setup; `legClock` counts the real one from `QA_LEG_START`.
+ */
 export const nativeRunMinutes = 2.6
 export const nativeSetupMinutes = 6
-// (3 control + 4 × 6 runs) × 2.6 min + 6 min = 76 min, inside nativeJobMinutes.
+/** Kept for the steps after the replay: the sanitize and the 169 MB upload took 20 s in run 39380764343. */
+export const nativeWrapUpMinutes = 2
+// (3 control + 4 × 6 runs) × 2.6 min + 6 min setup + 2 min wrap-up = 78 min, inside nativeJobMinutes.
 export const nativeReplayCap = 4
 const judgeCap = 15
 const judgeCeilingUsd = 2
@@ -329,6 +334,17 @@ const awaitedText = z.union([
 const landingOf = (session: string) =>
   session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : 'Ask me anything…'
 
+/** The commands of a flow `checkMaestroFlow` serialized, after its header. */
+const commandsOf = (yaml: string) => commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
+
+const selector = z.union([z.string(), z.record(z.string(), z.unknown())])
+const assertion = z.union([z.object({ assertVisible: selector }), z.object({ assertNotVisible: selector })])
+/**
+ * Whether a checked flow's last top-level command is `assertVisible` or `assertNotVisible`. A `layout` flow must stop
+ * on the screen (drivers/maestro.md); a trailing wait for the screen's text is how it gets there, so it passes.
+ */
+const endsOnAssertion = (yaml: string) => assertion.safeParse(commandsOf(yaml).at(-1)).success
+
 /** A native flow as a device runs it: `signIn`, when set, is the harness's sign-in, run first in the same launch. */
 type NativeFlow = { yaml: string; signIn?: string }
 
@@ -347,7 +363,7 @@ const serialize = (commands: unknown[], appId: string) => {
  * the sign-in screen among them, runs as written. Three dots match the chat's ellipsis, as run 39391108579 wrote it.
  */
 const withSignIn = async (yaml: string, session: string, appId: string): Promise<NativeFlow> => {
-  const commands = commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
+  const commands = commandsOf(yaml)
   const landing = landingOf(session)
   const from = commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landing)
   if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) return { yaml }
@@ -408,12 +424,13 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
 }
 
 /**
- * A native leg's time: `fits(n)` says whether n more runs end before `nativeJobMinutes`, the setup counted, taking a
- * run to last as long as the longest one `time` has seen, and at least `nativeRunMinutes`.
+ * A native leg's time: `fits(n)` says whether n more runs end `nativeWrapUpMinutes` before the job's
+ * `nativeJobMinutes` run out, counted from `legStart` (the job's first step, so the setup is counted as it ran),
+ * taking a run to last as long as the longest one `time` has seen, and at least `nativeRunMinutes`.
  */
-const legClock = (now: () => number) => {
+const legClock = (now: () => number, legStart: number) => {
   const minute = 60_000
-  const end = now() + (nativeJobMinutes - nativeSetupMinutes) * minute
+  const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes) * minute
   const state = { longest: nativeRunMinutes * minute }
   return {
     fits: (runs: number) => now() + state.longest * runs <= end,
@@ -654,7 +671,9 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * (`withSignIn`), and runs three times through `runFlow`, after `control/stack.yaml` passed three times;
  * `flowFailure` says what counts as the bug in a run. A `layout` run whose flow failed before the line showed is
  * inconclusive and replaced, at most `extraRuns` times, and no run starts that might end after the leg's timeout,
- * read from `now`; with fewer than three conclusive runs the finding is flaky, with the reason in `replay.reason`.
+ * read from `now` against `legStart` (epoch ms, `QA_LEG_START` in CI); with fewer than three conclusive runs the
+ * finding is flaky, with the reason in `replay.reason`. A `layout` flow that ends on an assertion is dropped at gate
+ * `lint`: it would fail on every run without the line, and each such run would be rerun as inconclusive.
  * Both share the cap and the confirmation rule, and any failed control marks the stack unhealthy. Writes and returns
  * `<outDir>/candidates.json`.
  * Needs NO secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
@@ -666,8 +685,9 @@ export const replay = async (
   qaDir = '.github/qa',
   runFlow?: RunFlow,
   now: () => number = Date.now,
+  legStart = now(),
 ) => {
-  const clock = legClock(now)
+  const clock = legClock(now, legStart)
   const { valid, rejected } = await loadFindings(outDir)
   const noise = await readList(join(qaDir, 'noise.txt'))
   const result: Verified = {
@@ -709,7 +729,9 @@ export const replay = async (
         ? checkMaestroFlow(await flow.text(), { appId: appIdOf(file), vars: flowVars })
         : { ok: false as const, problems: ['repro flow not found'] }
       if (!check.ok) result.dropped.push({ file, gate: 'lint', reason: check.problems.join('; ') })
-      else {
+      else if (oracle.type === 'layout' && endsOnAssertion(check.yaml)) {
+        result.dropped.push({ file, gate: 'lint', reason: 'a layout flow ends on the screen, with no assertion' })
+      } else {
         flows.set(file, await withSignIn(check.yaml, file.charterDir, appIdOf(file)))
         lintClean.push(file)
       }
@@ -935,10 +957,18 @@ if (import.meta.main) {
     console.log(JSON.stringify(verdict))
     process.exit()
   }
+  // The job's first step writes it, so the leg's clock counts the setup the job already spent.
+  const legStart = () => {
+    const ms = Number(Bun.env.QA_LEG_START) * 1000
+    if (!(ms > 0)) throw new Error('replay --native needs QA_LEG_START, the epoch second the job started')
+    return ms
+  }
   const result =
     step === 'judge'
       ? await judge(values.out)
-      : await replay(values.out, undefined, undefined, values.native === undefined ? undefined : nativeFlows())
+      : values.native === undefined
+        ? await replay(values.out)
+        : await replay(values.out, undefined, undefined, nativeFlows(), Date.now, legStart())
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
       `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +

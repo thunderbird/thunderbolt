@@ -461,6 +461,32 @@ describe('visual findings', () => {
     expect(uploads(api)).toEqual([])
   })
 
+  test('an Android layout finding is held back until an Android sweep, and its iOS twin is still filed', async () => {
+    const layout = { type: 'layout', evidence: '[qa-layout] covered button "Preferences"' }
+    const native = { oracle: layout, repro_spec: undefined, repro_flow: 'repro/1.yaml' }
+    // The Android keyboard line comes from the tree rule, not the probe, and still waits for the sweep.
+    const keyboard = { type: 'layout', evidence: '[qa-layout] behind-keyboard textbox "Enter your name"' }
+    await writeVerified([
+      { ...native, viewport: 'ios' },
+      { ...native, viewport: 'android' },
+      { ...native, viewport: 'android', oracle: keyboard },
+      { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/2.yaml' },
+    ])
+    const api = fakeLinear()
+
+    const filed = await run(api.fetchFn)
+
+    const held = 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+    expect(filed.map((f) => [f.id, f.action, f.reason]).sort()).toEqual([
+      ['0', 'created', undefined],
+      ['1', 'refused', held],
+      ['2', 'refused', held],
+      ['3', 'created', undefined],
+    ])
+    const platforms = created(api).map((input) => /\*\*Platforms:\*\* \w+/.exec(input.description)?.[0])
+    expect(platforms.sort()).toEqual(['**Platforms:** android', '**Platforms:** ios'])
+  })
+
   test('a visual finding without an element is refused', async () => {
     await writeVerified([visualVerified({ element: undefined })])
     expect(await run(fakeLinear().fetchFn)).toMatchObject([

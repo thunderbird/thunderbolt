@@ -60,7 +60,9 @@ the patch, so a fix that needs backend code fails this check and goes to a perso
 native platform of the bug and the real-AI verdict, and a missing verdict counts as a failure. The verdicts keep
 keys away from the patch; they are not proof against a patch built to cheat. The patched build in
 `verify-native-build` runs with sudo, and on iOS the patched app is a process of the job's user, so either could
-forge a verdict. The most a forged verdict does is open a draft PR, which a person reviews.
+forge a verdict. The fix job's own verdicts (the spec replay, the visual check's `verify.json`) also run in the
+agent's checkout, whose `node_modules` its test runs could rewrite and `publish` does not check. The most a forged
+verdict does is open a draft PR, which a person reviews.
 
 Only the `build` job saves caches, because it runs before any untrusted code. `build-native` also runs before it.
 The judge runs in a fresh job, because the replayed specs may have changed files in the replay job's checkout.
@@ -201,9 +203,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    bug. A `layout` run whose flow failed before the quoted line showed never reached the screen: it is inconclusive
    and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of 3 conclusive
    runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the extra runs. A run
-   whose flow passed without the line still counts as not shown. A native leg also keeps to its job's time: a run
-   starts only if it can end before replay-native's 90 minutes, less 6 minutes for the steps around the replay, taking
-   a run to last as long as the slowest so far (at least 2.6 minutes). An extra run must also leave room for the 3
+   whose flow passed without the line still counts as not shown. A `layout` flow whose last command is `assertVisible`
+   or `assertNotVisible` is dropped at the lint gate: it would fail on every run without the line, so each of those
+   runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
+   time: a run starts only if it can end 2 minutes (for the sanitize and the upload) before replay-native's 90
+   minutes, counted from `QA_LEG_START`, which the job's first step records, so the setup is counted as it ran. A run
+   is taken to last as long as the slowest so far (at least 2.6 minutes). An extra run must also leave room for the 3
    runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says
    why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build,
    `Ask me anything…` otherwise; three dots count as the ellipsis) but never types the code `12345678` is signed in
@@ -221,6 +226,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
    wording; one without an element is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+   An Android `layout` finding is refused too, with its reason in the report, until the probe has swept correct
+   Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding of the same bug is
+   filed as usual.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
    one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
    A `spec` task's original spec must pass 3 times on the patch. A `visual`
@@ -513,8 +521,9 @@ Android on `ubuntu-latest` with KVM.
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
   2.6 minutes on iOS (run 39380764343), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
   3 runs and up to 6 runs per finding, plus setup, fit the 90-minute job, whose timeout would lose every finding.
-  Runs can be slower than that (about 3.5 minutes in run 39391108579), so `verify.ts` also starts no run that might
-  end after the timeout: see the replay step above. When the replay fails, the job uploads the stack's and the
+  Runs can be slower than that (about 3.5 minutes in run 39391108579), and Android's setup is longer than iOS's, so
+  the job's first step records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the
+  replay step above. When the replay fails, the job uploads the stack's and the
   WebView's logs as `qa-logs-replay-<leg>`, except on `android-real`, whose backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
@@ -655,9 +664,11 @@ numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 
 sample per charter, so keep the initial caps until two scheduled runs have reported.
 
 The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with the same caps as a web
-session and a Haiku canary before it (4 turns, $0.05). No native session has been measured with a real key. The
-spec's estimate is $1.50 to $2.50 per native charter session and $0.80 to $1.30 per free session, so $21 to $35 a
-week on top of the web sessions. The turn cap of a native session is the 400 in `explore.sh`, not
+session and a Haiku canary before it (4 turns, $0.05). Only c1 has been measured on GitHub (runs 39373388149,
+39380764343 and 39391108579): iOS $0.61 to $0.83 and 82 to 104 turns, Android $1.07 to $1.23 and 117 to 137 turns,
+10 to 22 minutes a session; each canary stayed under its $0.05 cap. The spec's estimate is $1.50 to $2.50 per native
+charter session and $0.80 to $1.30 per free session, so $21 to $35 a week on top of the web sessions; the other
+charters are still unmeasured. The turn cap of a native session is the 400 in `explore.sh`, not
 `QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
 per platform, and every native explore, replay and verify job boots a simulator or an emulator, on macOS runners for
 iOS.
@@ -722,21 +733,22 @@ Never run on GitHub (only locally, or read in the action's code):
   kernel has no Yama, so only the check's fail-closed branch ran;
 - the job-level `environment` expression that is empty for every replay leg but the real one, and the judge's
   merge of the sync and real candidates from per-artifact directories (run locally as a script);
-- every native job: the macOS runner taking a `services` block whose images are all empty, the app tars between
-  jobs, the Maestro installer on macOS, Claude Code from npm, the harness (compiled gate and hook, the second
-  browser's MCP server installed by npm, the read-only dir), the native explore steps (canary, session, `shasum`
-  tripwire, the save step's stream summary, upload), c7 on Android syncing through the reversed PowerSync port,
-  `replay-native` with its 90-minute budget, the
-  `qa-<artifact>-[cf]*` download pattern, `verify-native-build`, `verify-native-run`, `verify-real`, `native-control`
-  and `publish` reading the verdicts. Android has not reached the app on a runner at all (the discovery runs stopped
-  in `native.sh device`), so its emulator, Maestro on it, the gate's foreground check and the probe's keyboard line
-  wait for the first GitHub run;
+- the native jobs as this workflow runs them. Runs 39373388149, 39380764343 and 39391108579 ran a copy of it on a
+  push trigger, with the c1 sessions only, no environments and no Linear key. On both platforms they proved the
+  builds and the app tars between jobs, the Maestro installer, Claude Code from npm, the harness, the canary (denied
+  before every session), the sessions and their upload, the gate's foreground check, the replay and judge legs
+  running, and a dry filing; on iOS, the positive control; on Android, the keyboard rect from the tree and its
+  `behind-keyboard` rule. The agent found the onboarding keyboard bug on its own on both platforms. They left open:
+  a native finding confirmed by replay and filed (iOS replays were dropped, flaky or inconclusive, and Android's
+  stopped at the stack control); the Android control exiting 0 (its job stalled on the app's storage check every
+  time); the fix agent on a native task, since `claude-code-action` refuses a push event; `verify-native-build`,
+  `verify-native-run` and `publish` with a real patched app and verdict; `verify-real`; c7 on Android with the
+  `android-sync` and `android-real` legs; every charter but c1 and the free session on both platforms; and a full
+  `replay-native` leg under the `QA_LEG_START` clock (run 39391108579's iOS replay hit the timeout before it);
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
-- the fix job's dev stack as `qa-dev`: Vite and `bun --watch` under `sudo --user` reading the checkout, the cache
-  dirs `stack.sh` hands that user (`node_modules/.vite`, `public/@powersync`, and `node_modules/.vite-temp` for
-  both users), the `ss` port check, the lock before the agent, and the stop through the narrow `sudo` rule
-  afterwards, which also stops the `qa-backend` backend of the real-AI legs now.
+- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. Run 39391108579 proved the fix job's dev
+  stack as `qa-dev`: its start, the `ss` port check, the lock and the stop through the same rule.
 
 Also:
 
@@ -774,6 +786,14 @@ Also:
   `keyboard_holder` overlaps the focused field of the app's window by at least 4 units on both axes. Like the probe,
   the gate shows each such line once per app launch. The keyboard is drawn over
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
+- Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
+  `file-findings.ts`). Spec section 10 asks for a clean probe sweep of correct screens on each platform before its
+  tickets, and Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`
+  for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
+  lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest
+  from the left edge were logged, the ones the sliding page uncovers last. The drawer's animation outlasting the
+  probe's 500 ms on the slow emulator fits, but no run shows it, so no probe rule was added. Run the sweep on an
+  emulator (a keyless GitHub run), fix or exclude what it finds with a fixture, then remove the refusal.
 - The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
 - A real-AI web fix that needs backend code cannot pass `verify-real`, whose backend comes from before the patch, so
   it goes to a person. An Android real-AI fix is checked only on the fake AI.

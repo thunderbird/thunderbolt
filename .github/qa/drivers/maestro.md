@@ -100,7 +100,8 @@ missing.
   - a `c1-first-run` session (onboarding on): `- extendedWaitUntil: {visible: Welcome to Thunderbolt!, timeout: 120000}`
   - any other session: `- extendedWaitUntil: {visible: Ask me anything…, timeout: 120000}`
 
-- In a `layout` finding the flow only reaches the screen and stops, with no assertion: the harness measures the
+- In a `layout` finding the flow only reaches the screen and stops, with no assertion (replay drops one that ends
+  on `assertVisible` or `assertNotVisible`): the harness measures the
   screen after the flow ends. So the flow ends on the broken screen: for a field behind the keyboard, with that field
   still focused and the keyboard open, never with `hideKeyboard` or `back`. In a `console-error`, `page-error` or `http-5xx` finding the flow repeats the action,
   and the harness reads the logs while it runs.

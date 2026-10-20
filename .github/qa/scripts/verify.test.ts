@@ -595,8 +595,12 @@ describe('replay of native flows', () => {
     repro_spec: undefined,
     repro_flow: `repro/${title}.yaml`,
   })
-  /** A flow that asserts its own title, so the fake device can tell flows apart. */
-  const flowOf = (title: string) => `- launchApp\n- inputText: \${EMAIL}\n- assertVisible: ${title}\n`
+  /**
+   * A flow that asserts its own title, so the fake device can tell flows apart, and ends on the screen, as a layout
+   * flow must.
+   */
+  const flowOf = (title: string) =>
+    `- launchApp\n- inputText: \${EMAIL}\n- assertVisible: ${title}\n- waitForAnimationToEnd\n`
 
   /** Writes `<dir>/findings/<title>.json` and, unless `flow` is null, its repro flow. */
   const writeNative = async (finding: RawFinding, flow: string | null = flowOf(finding.title), dir = session) => {
@@ -661,6 +665,26 @@ describe('replay of native flows', () => {
     expect(lint[0].reason).toBe('repro flow not found')
     expect(lint[1].reason).toContain('runScript')
     expect(lint[2].reason).toContain('(EMAIL)')
+  })
+
+  test('a layout flow that ends on an assertion is dropped at lint, so a failing one cannot buy reruns', async () => {
+    // Such a flow fails every run without the line, and replay reruns each of those as inconclusive.
+    await writeNative(makeNative('visible', layout), '- launchApp\n- assertVisible: Never shown\n')
+    await writeNative(makeNative('hidden', layout), '- launchApp\n- assertNotVisible:\n    text: Continue\n')
+    const screenWait = '- extendedWaitUntil:\n    visible: What should we call you?\n    timeout: 120000\n'
+    await writeNative(makeNative('waits', layout), `- launchApp\n- assertVisible: waits\n${screenWait}`)
+    // Only a layout flow must stop on the screen; any other repro asserts the expected behaviour.
+    await writeNative(makeNative('asserts', assertFailed))
+    const calls: FlowCall[] = []
+
+    const result = await nativeReplay({}, calls)
+
+    const reason = 'a layout flow ends on the screen, with no assertion'
+    expect(droppedAt(result, 'lint').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['hidden', reason],
+      ['visible', reason],
+    ])
+    expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', 'asserts', 'waits']))
   })
 
   test('a control flow that fails once marks the stack unhealthy, and no finding runs or is confirmed', async () => {
@@ -918,7 +942,8 @@ describe('replay of native flows', () => {
     // A bug on the sign-in screen itself never waits for a later one.
     await writeNative(makeNative('login', layout), '- launchApp\n- tapOn: Email\n', c1)
     // Run 39391108579's flows wrote the chat's ellipsis as three dots.
-    await writeNative(makeNative('chat', layout), '- launchApp\n- assertVisible:\n    text: Ask me anything...\n')
+    const chat = '- launchApp\n- extendedWaitUntil:\n    visible:\n      text: Ask me anything...\n'
+    await writeNative(makeNative('chat', layout), chat)
     const flows = new Map<string, { flow: unknown[]; signIn?: unknown[] }>()
     const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
       flows.set(yaml, { flow: commands(yaml), signIn: signIn === undefined ? undefined : commands(signIn) })
@@ -933,7 +958,7 @@ describe('replay of native flows', () => {
       { flow: asWritten('- launchApp\n- tapOn: Email\n') },
       { flow: asWritten(typed) },
       { signIn: [...signIn, landing('Welcome to Thunderbolt!')], flow: asWritten(partial).slice(4) },
-      { signIn: [...signIn, landing('Ask me anything…')], flow: [{ assertVisible: { text: 'Ask me anything...' } }] },
+      { signIn: [...signIn, landing('Ask me anything…')], flow: asWritten(chat).slice(1) },
     ])
   })
 
@@ -964,8 +989,9 @@ describe('replay of native flows', () => {
 
   test('a leg stops starting runs before its timeout, keeping time for later findings, and says why', async () => {
     // Run 39391108579: 18 inconclusive iOS runs of about 3.5 minutes each ran the leg into its 90-minute timeout.
+    // The job started at minute 0 and its setup took 10 minutes, longer on Android than on iOS.
     const minutes = 8
-    const clock = { now: 0 }
+    const clock = { now: 10 * 60_000 }
     const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     const answers = new Map<string, Partial<FlowRun>>([
@@ -982,23 +1008,34 @@ describe('replay of native flows', () => {
       return { passed: true, layout: [], logs: [], ...answers.get(title) }
     }
 
-    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now)
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, 0)
 
-    // 84 minutes after setup. a-stuck gets no extra run, since b-bug and c-late are owed theirs; c-late's second run
-    // would end at minute 88.
-    expect(calls).toEqual([
-      ...Array(3).fill('stack control'),
-      ...Array(3).fill('a-stuck'),
-      ...Array(3).fill('b-bug'),
-      'c-late',
-    ])
-    expect(clock.now).toBeLessThanOrEqual(84 * 60_000)
+    // Runs end by minute 88, 2 minutes before the job's timeout. a-stuck gets no extra run, since b-bug and c-late are
+    // owed theirs. c-late's first run would end at minute 90: counted from the replay step, it would have started.
+    expect(calls).toEqual([...Array(3).fill('stack control'), ...Array(3).fill('a-stuck'), ...Array(3).fill('b-bug')])
+    expect(clock.now).toBe(82 * 60_000)
     expect(titles(result.confirmed)).toEqual(['b-bug'])
     const outOfTime = "out of time: another run might not end before the leg's 90-minute timeout"
     expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
       ['a-stuck', { failed: 0, runs: 0, inconclusive: 3, reason: outOfTime }],
-      ['c-late', { failed: 1, runs: 1, error: `the layout probe logged ${nameLine}`, reason: outOfTime }],
+      ['c-late', { failed: 0, runs: 0, reason: outOfTime }],
     ])
+  })
+
+  test('the native replay command refuses to start without the leg start, which its clock needs', async () => {
+    const env = { ...process.env, QA_WEBVIEW_LOG: join(outDir, 'w.log'), QA_BACKEND_LOG: join(outDir, 'b.log') }
+    const args = ['replay', '--out', outDir, '--native', 'ios', '--device', 'd', '--app', 'a', '--app-onboarding', 'b']
+    const cli = (legStart: string) =>
+      Bun.spawnSync([process.execPath, join(import.meta.dir, 'verify.ts'), ...args], {
+        cwd: join(import.meta.dir, '../../..'),
+        env: { ...env, QA_LEG_START: legStart },
+      })
+
+    const missing = cli('')
+    expect(missing.exitCode).toBe(1)
+    expect(missing.stderr.toString()).toContain('replay --native needs QA_LEG_START')
+    // No findings, so no device: the command only writes the empty candidates.
+    expect(cli('1792479250').exitCode).toBe(0)
   })
 })
 

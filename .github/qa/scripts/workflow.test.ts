@@ -9,7 +9,14 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extraRuns, nativeJobMinutes, nativeReplayCap, nativeRunMinutes, nativeSetupMinutes } from './verify'
+import {
+  extraRuns,
+  nativeJobMinutes,
+  nativeReplayCap,
+  nativeRunMinutes,
+  nativeSetupMinutes,
+  nativeWrapUpMinutes,
+} from './verify'
 
 type Step = {
   name?: string
@@ -274,9 +281,11 @@ describe('publish', () => {
 
 test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
   const runs = 3 + nativeReplayCap * (3 + extraRuns)
-  expect(runs * nativeRunMinutes + nativeSetupMinutes).toBeLessThan(nativeJobMinutes)
+  expect(runs * nativeRunMinutes + nativeSetupMinutes + nativeWrapUpMinutes).toBeLessThan(nativeJobMinutes)
   // verify.ts stops starting runs by this number, so it must be the job's own.
   expect(jobs['replay-native']['timeout-minutes']).toBe(nativeJobMinutes)
+  // ...counted from the job's first step, so the setup before the replay step is on the clock.
+  expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
 })
 
 describe('native jobs', () => {

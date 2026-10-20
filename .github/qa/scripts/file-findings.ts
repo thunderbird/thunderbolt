@@ -313,6 +313,20 @@ const videoPath = (outDir: string, video: string) =>
 
 // ---------- filing ----------
 
+/**
+ * Why a confirmed finding is never filed, or undefined. It runs before findings are grouped by fingerprint, so
+ * holding back an Android finding never holds back its iOS twin.
+ */
+const refusal = (f: Finding) => {
+  if (f.oracle.type === 'visual' && !f.element) return 'visual finding without an element to deduplicate on'
+  // Spec 10 asks for a clean probe sweep of correct screens before a platform files layout tickets. Android's never
+  // ran, and runs 39380764343 and 39391108579 logged `covered` on sidebar buttons their screenshots show uncovered.
+  if (f.viewport === 'android' && f.oracle.type === 'layout') {
+    return 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+  }
+  return undefined
+}
+
 type FileOptions = {
   outDir: string
   live: boolean
@@ -327,7 +341,7 @@ type FileOptions = {
 /**
  * File the confirmed findings of a run in Linear (or describe what would be filed) and write `filed.json`, plus
  * `scorecard.json` when there is a key. Needs no LLM. `live` is downgraded to a dry run when the last 28 days of
- * triage show low precision.
+ * triage show low precision. A finding `refusal` names is listed as refused and never reaches Linear or the fix agent.
  */
 export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const { outDir, runUrl, sha, key, fetchFn = fetch, log = console.log, now = Date.now() } = opts
@@ -349,8 +363,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const scored = verified.confirmed.flatMap((v) => {
     const f = findingSchema.parse(v.finding)
     const found = { v, f, fp: fingerprint(v.finding), sev: severity(f) }
-    if (f.oracle.type !== 'visual' || f.element) return [found]
-    const reason = 'visual finding without an element to deduplicate on'
+    const reason = refusal(f)
+    if (!reason) return [found]
     filed.push({ fp: found.fp, severity: found.sev, charterDir: v.charterDir, id: v.id, action: 'refused', reason })
     return []
   })

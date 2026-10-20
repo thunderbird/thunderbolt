@@ -827,7 +827,8 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
     # About 2.6 minutes a run (run 39380764343), so `nativeReplayCap` in verify.ts sizes the leg to fit: the control's
-    # 3 runs and up to 6 per finding take at most 76 minutes with setup. A timeout loses every finding of the leg.
+    # 3 runs and up to 6 per finding take about 78 minutes with setup. A timeout loses every finding of the leg, so
+    # verify.ts also starts no run that might end after it, counted from QA_LEG_START.
     timeout-minutes: 90
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
@@ -848,6 +849,9 @@ jobs:
       DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
       POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
     steps:
+      # The timeout counts from the job's start, so the replay's clock does too (verify.ts `legClock`).
+      - name: Record the leg's start
+        run: echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"
       - *checkout
       - *setup-bun
       - *restore-bun-linux

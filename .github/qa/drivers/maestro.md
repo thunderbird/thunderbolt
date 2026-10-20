@@ -71,7 +71,8 @@ missing.
   `assertNotVisible`. `${EMAIL}` is the only variable, a fresh address for each replay; the rules for `run` hold for
   everything else.
 - In a `layout` finding the flow only reaches the screen and stops, with no assertion: the harness measures the
-  screen after the flow ends. In a `console-error`, `page-error` or `http-5xx` finding the flow repeats the action,
+  screen after the flow ends. So the flow ends on the broken screen: for a field behind the keyboard, with that field
+  still focused and the keyboard open, never with `hideKeyboard` or `back`. In a `console-error`, `page-error` or `http-5xx` finding the flow repeats the action,
   and the harness reads the logs while it runs.
 - Two-device charter (c7): device A is the app on this device, through the Maestro tools, not
   `mcp__playwright__*`. Device B is a web browser,

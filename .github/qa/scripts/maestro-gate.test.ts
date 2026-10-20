@@ -317,6 +317,34 @@ test('on Android the gate reads the keyboard from the tree and reports the focus
   )
 })
 
+test("the tree's behind-keyboard line comes once per app launch, like the probe's lines", async () => {
+  const hierarchy = readFileSync(join(fixtureDir, 'hier-android-control.json'), 'utf8')
+  const behind: HierarchyNode = JSON.parse(hierarchy.replace('[84,1131][1000,1281]', '[84,1700][1000,1850]'))
+  const covered = JSON.stringify({ ui_schema: { defaults: {} }, elements: (behind.children ?? []).map(toInspect) })
+  const { ctx } = androidGate({
+    probe: [['[qa-layout] ready'], [], ['[qa-layout] ready']],
+    respond: (call) => (call.name === 'inspect_screen' ? textResult(covered) : undefined),
+  })
+  const line = '[qa-layout] behind-keyboard textbox "Email"'
+  expect(text(await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx))).toEndWith(line)
+  expect(text(await handleCall('run', { yaml: '- waitForAnimationToEnd' }, ctx))).not.toContain(line)
+  // A relaunch starts a new page, so the field behind the keyboard is news again.
+  expect(text(await handleCall('run', { yaml: '- launchApp' }, ctx))).toEndWith(line)
+})
+
+test('a screen with unreadable bounds after a run keeps the run result and says so', async () => {
+  const broken = {
+    ui_schema: { defaults: {} },
+    elements: [{ b: '[0,0][1080', rid: 'net.thunderbird.thunderbolt:id/x' }],
+  }
+  const { ctx } = androidGate({
+    respond: (call) => (call.name === 'inspect_screen' ? textResult(JSON.stringify(broken)) : undefined),
+  })
+  const result = await handleCall('run', { yaml: '- tapOn: Hi' }, ctx)
+  expect(result.isError).toBe(false)
+  expect(text(result)).toBe('{"success":true}\n[qa-gate] could not read the screen after this run')
+})
+
 test('when the app stays in the background the result says so and measures nothing', async () => {
   const { ctx } = fakeGate({ screen: 'control-center', probe: [['[qa-layout] ready', nameBug]] })
   const result = await handleCall('run', { yaml: '- back' }, ctx)

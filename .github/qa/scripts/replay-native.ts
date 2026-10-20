@@ -9,7 +9,7 @@ import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js
 import { $ } from 'bun'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { measureNative, parseHierarchy } from '../native-layout'
 import { platformOf } from './findings'
@@ -72,7 +72,8 @@ export const createRunFlow = (opts: {
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
   return async (flowYaml, outDir, run, session): Promise<FlowRun> => {
-    const app = session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain
+    // Absolute, because native.sh moves to the repo root before it reads the path.
+    const app = resolve(session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain)
     if (ios) {
       await $`xcrun simctl uninstall ${deviceId} ${appId}`.quiet().nothrow()
       await $`xcrun simctl install ${deviceId} ${app}`.quiet()

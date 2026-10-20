@@ -113,6 +113,20 @@ test('Android reports the focused field behind the keyboard from an overlap of 4
   ])
 })
 
+test("a focused box in the keyboard's own window, like Gboard's emoji search, is not the app's field", () => {
+  type Node = { attributes: Record<string, string>; children?: Node[] }
+  const nodes = (node: Node): Node[] => [node, ...(node.children ?? []).flatMap(nodes)]
+  const tree: Node = JSON.parse(androidControl)
+  const all = nodes(tree)
+  const email = all.find((node) => node.attributes.hintText === 'Email')
+  const holder = all.find((node) => node.attributes['resource-id']?.endsWith(':id/keyboard_holder'))
+  if (!email || !holder) throw new Error('the fixture lost its Email field or its keyboard')
+  // The search box takes the focus from the Email field.
+  email.attributes.focused = 'false'
+  holder.children = [{ attributes: { bounds: '[40,1540][1040,1640]', hintText: 'Search emoji', focused: 'true' } }]
+  expect(measureNative(parseHierarchy(JSON.stringify(tree)), 'android').problems).toEqual([])
+})
+
 test('iOS leaves the keyboard cover to the probe, even with the focused field under the keyboard', () => {
   const nameUnderKeyboard = fixture('hier-name-kb.json').replace('[24,178][416,222]', '[24,700][416,744]')
   expect(measureNative(parseHierarchy(nameUnderKeyboard), 'ios').problems).toEqual([])

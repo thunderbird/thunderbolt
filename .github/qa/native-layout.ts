@@ -7,6 +7,8 @@
 // out unlabelled boxes, so it missed the onboarding name bug and invented a cover on the city step. One rule stays on
 // the tree, Android's behind-keyboard, because the Android WebView never sees the keyboard.
 
+import platforms from './platforms.json'
+
 export type Rect = { left: number; top: number; right: number; bottom: number }
 
 export type NativeNode = {
@@ -132,6 +134,12 @@ const focusedField = (root: NativeNode): NativeNode | undefined => {
   return pathTo(root, first).findLast((node) => node.focused && node.hint) ?? first
 }
 
+const androidAppId = (platforms as { id: string; appId?: string }[]).find((entry) => entry.id === 'android')?.appId
+
+/** The top-level window that holds the app's own views (`<appId>:id/…`), which leaves out the keyboard's window. */
+const appWindow = (root: NativeNode) =>
+  root.children.find((window) => allNodes(window).some((node) => node.id.startsWith(`${androidAppId}:id/`)))
+
 const keyboardNode = {
   ios: (node: NativeNode) => node.id === 'inputView',
   // Gboard's keys; the IME window's own top node spans far above them.
@@ -140,13 +148,14 @@ const keyboardNode = {
 
 /**
  * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), and on Android a `behind-keyboard`
- * line when the keyboard covers the focused field by at least 4 units on both axes. The Android WebView keeps its
+ * line when the keyboard covers the app's focused field by at least 4 units on both axes. The Android WebView keeps its
  * full height with the keyboard up (run 39373388149), so the probe cannot see it there; on iOS the probe can. The
  * keyboard is drawn over everything, so the rule needs no stacking order.
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
   const keyboard = allNodes(root).find(keyboardNode[platform])?.bounds
-  const field = platform === 'android' && keyboard ? focusedField(root) : undefined
+  const window = platform === 'android' && keyboard ? appWindow(root) : undefined
+  const field = window && focusedField(window)
   if (!keyboard || !field || !overlaps(field.bounds, keyboard)) return { keyboard, problems: [] }
   const name = (field.hint || field.label).replace(/\s+/g, ' ').trim().slice(0, 50)
   return { keyboard, problems: [`[qa-layout] behind-keyboard textbox "${name}"`] }

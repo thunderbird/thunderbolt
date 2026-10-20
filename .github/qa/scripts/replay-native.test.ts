@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, expect, test } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { videoPath } from './replay-native'
@@ -57,14 +57,16 @@ exit 0
     const runFlow = createRunFlow({
       platform: 'android',
       deviceId: 'emulator-5554',
-      apps: { onboarding: '/apps/onboarding.apk', plain: '/apps/plain.apk' },
+      apps: { onboarding: 'apps/onboarding.apk', plain: 'apps/plain.apk' },
       webviewLog: ${JSON.stringify(webviewLog)},
       backendLog: ${JSON.stringify(backendLog)},
     })
     const run = await runFlow('- launchApp\\n', ${JSON.stringify(join(work, 'out'))}, 1, 'c2-chat-power-user-android')
     console.log(JSON.stringify(run.layout))
   `
+  // Relative app paths, as a caller may pass them, from a folder other than the one native.sh moves to.
   const proc = Bun.spawnSync([process.execPath, '-e', script], {
+    cwd: work,
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
   })
 
@@ -73,7 +75,7 @@ exit 0
   const log = readFileSync(calls, 'utf8').trim().split('\n')
   expect(log.slice(0, 3)).toEqual([
     'adb -s emulator-5554 uninstall net.thunderbird.thunderbolt',
-    'adb -s emulator-5554 install -r /apps/plain.apk',
+    `adb -s emulator-5554 install -r ${join(realpathSync(work), 'apps/plain.apk')}`,
     'adb -s emulator-5554 shell monkey -p net.thunderbird.thunderbolt -c android.intent.category.LAUNCHER 1',
   ])
   const at = (pattern: RegExp) => log.findIndex((line) => pattern.test(line))

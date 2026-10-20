@@ -747,7 +747,8 @@ Also:
   order and leaves out unlabelled boxes, so a defect the probe cannot see is left to the screenshot and the `visual`
   finding. One rule runs on the tree, on Android only: the WebView there keeps its full height with the keyboard up,
   so the probe never sees the keyboard, and the gate and the replay report `behind-keyboard` when Gboard's
-  `keyboard_holder` overlaps the focused field by at least 4 units on both axes. The keyboard is drawn over
+  `keyboard_holder` overlaps the focused field of the app's window by at least 4 units on both axes. Like the probe,
+  the gate shows each such line once per app launch. The keyboard is drawn over
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
 - The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
 - A real-AI web fix that needs backend code cannot pass `verify-real`, whose backend comes from before the patch, so

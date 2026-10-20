@@ -113,6 +113,8 @@ const consoleMark = { ios: 'CONSOLE', android: 'Tauri/Console' }
 const logOffsets = new Map<string, number>()
 // The WebView logs whose probe has said ready since the app last started. One gate process serves one session.
 const probeSeen = new Set<string>()
+// The tree's lines each WebView log has shown since the app last started: like the probe's, each comes once per launch.
+const treeSent = new Map<string, Set<string>>()
 
 const log = (ctx: GateContext, line: string) => appendFileSync(ctx.gateLog, `${line}\n`)
 
@@ -190,29 +192,48 @@ const clean = (line: string) => cleanLogLine(line).slice(0, 500)
 
 const probeReady = '[qa-layout] ready'
 
+/** The tree's measurement of a screen, or undefined when Maestro sent bounds the parser cannot read. */
+const measureScreen = (screen: ToolResult, ctx: GateContext) => {
+  try {
+    return measureNative(parseInspectScreen(textOf(screen)), ctx.platform)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
- * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own line (Android's
- * behind-keyboard). The ready line needs the probe's own ready line since the app last started, so a build without
+ * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own new line (Android's
+ * behind-keyboard, once per launch like the probe's). The ready line needs the probe's own ready line since the app last started, so a build without
  * the probe never looks clean. A foreign screen is never measured.
  */
 const measured = async (ctx: GateContext, restarted = false) => {
-  if (restarted) probeSeen.delete(ctx.webviewLog)
+  if (restarted) {
+    probeSeen.delete(ctx.webviewLog)
+    treeSent.delete(ctx.webviewLog)
+  }
   await Bun.sleep(ctx.probeWaitMs ?? 1200)
   const { screen, notes } = await foregroundScreen(ctx)
   const whose = whoseScreen(screen, ctx)
   // A flow that already ran must not look failed, or the model runs it again.
-  if (whose === 'unreadable') return { screen, lines: [...notes, '[qa-gate] could not read the screen after this run'] }
+  const unreadable = { screen, lines: [...notes, '[qa-gate] could not read the screen after this run'] }
+  if (whose === 'unreadable') return unreadable
   if (whose === 'away') {
     return { screen, lines: [...notes, '[qa-gate] the app is still not in the foreground; nothing measured'] }
   }
+  // Before the log is read, so an unreadable screen leaves the probe's lines for the next call.
+  const measure = measureScreen(screen, ctx)
+  if (!measure) return unreadable
   const probe = newLines(ctx.webviewLog, 'layout')
     .filter((line) => line.includes('[qa-layout]'))
     .map((line) => clean(line.slice(line.indexOf('[qa-layout]'))))
   if (probe.includes(probeReady)) probeSeen.add(ctx.webviewLog)
-  const measure = measureNative(parseInspectScreen(textOf(screen)), ctx.platform)
+  const sent = treeSent.get(ctx.webviewLog) ?? new Set<string>()
+  treeSent.set(ctx.webviewLog, sent)
+  const tree = measure.problems.filter((line) => !sent.has(line))
+  for (const line of tree) sent.add(line)
   const head = probeSeen.has(ctx.webviewLog) ? readyLine(measure) : '[qa-gate] layout probe not seen since launch'
-  return { screen, lines: [...notes, head, ...measure.problems, ...probe.filter((line) => line !== probeReady)] }
+  return { screen, lines: [...notes, head, ...tree, ...probe.filter((line) => line !== probeReady)] }
 }
 
 const run = async (yaml: string, ctx: GateContext) => {

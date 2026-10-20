@@ -66,6 +66,43 @@ test('an inline alert over a button in its own wrapper is still covered', async 
   expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Retry"' }])
 })
 
+// No scroll box clears these: the banner sits in the flow with the control, outside or around the box that scrolls.
+test('an inline banner over a chip in a sideways row is covered, though the page can scroll', async ({ page }) => {
+  await page.setContent(`
+    <div style="height: 600px"></div>
+    <div style="overflow-x: auto; white-space: nowrap"><button>Chip</button></div>
+    <p style="position: relative; margin-top: -20px; background: #fee">Banner</p>
+    <div style="height: 2000px"></div>`)
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Chip"' }])
+})
+
+test('an inline banner over a button in an overflow-auto wrapper with nothing to scroll is covered', async ({
+  page,
+}) => {
+  await page.setContent(`
+    <div style="height: 600px"></div>
+    <div style="overflow: auto"><button>Save</button></div>
+    <p style="position: relative; margin-top: -20px; background: #fee">Banner</p>
+    <div style="height: 2000px"></div>`)
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Save"' }])
+})
+
+test('a banner over the last button of an inner list at its end is covered, though the outer box has room', async ({
+  page,
+}) => {
+  await page.setContent(`
+    <body style="margin: 0; overflow: hidden">
+      <div style="height: 100vh; overflow: auto">
+        <div style="height: 300px"></div>
+        <div id="inner" style="height: 200px; overflow: auto"><div style="height: 400px"></div><button>Last</button></div>
+        <p style="position: relative; margin-top: -30px; height: 40px; background: #fee">Banner</p>
+        <div style="height: 2000px"></div>
+      </div>
+    </body>`)
+  await page.evaluate(() => document.getElementById('inner')?.scrollTo(0, 99999))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Last"' }])
+})
+
 test('unbreakable text wider than a phone overflows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   expect((await problemsOf(page, 'overflow.html')).map((problem) => problem.kind).sort()).toEqual([

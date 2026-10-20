@@ -113,17 +113,30 @@
     return directions.some((direction) => scrollRoom(containers, direction) < 1)
   }
 
-  // The box the cover belongs to when it stays put while el scrolls: a fixed or sticky one, or any box outside a scroll
-  // box of el's (an absolute header or button over the page's own scroller), unless el sits in it too.
-  const pinnedCover = (hit, el) => {
-    let branch = hit
+  // The scroll boxes of el's that do not hold the cover: only they move el out from under it.
+  const scrollersApart = ({ chain }, cover) =>
+    chain.filter(
+      (node) =>
+        /auto|scroll/.test(getComputedStyle(node).overflowX + getComputedStyle(node).overflowY) &&
+        !node.contains(cover),
+    )
+
+  // The box the cover belongs to when it stays put while el scrolls: a fixed or sticky one, or the top box of a cover
+  // outside one of el's scroll boxes (an absolute header over the page's own scroller). El sitting in it spares it.
+  const pinnedCover = (hit, el, containers) => {
     for (let node = hit; node && !node.contains(el); node = node.parentElement) {
       if (/fixed|sticky/.test(getComputedStyle(node).position)) return node
-      branch = node
+      if (node.parentElement.contains(el) && scrollersApart(containers, node).length > 0) return node
     }
-    const scrolls = (node) => /auto|scroll/.test(getComputedStyle(node).overflowX + getComputedStyle(node).overflowY)
-    return containersOf(el).chain.some((node) => scrolls(node) && !node.contains(hit)) ? branch : null
+    return null
   }
+
+  // The scroll room that can clear el from a cover. A cover outside el's scroll boxes is cleared only by those boxes;
+  // the page and the boxes around both carry the cover along with el.
+  const roomFor = (pinned, containers) =>
+    /fixed|sticky/.test(getComputedStyle(pinned).position)
+      ? containers
+      : { chain: scrollersApart(containers, pinned), fixed: true }
 
   const isExcusedCover = (hit) =>
     // A toast floats in a live region and leaves on its own. An inline alert over a control is still a bug.
@@ -153,8 +166,8 @@
     if (!isInside(x, y, clipArea(containers, area))) return false
     const hit = coverAt(x, y, el)
     if (!hit) return false
-    const pinned = pinnedCover(hit, el)
-    return !pinned || isStuckUnder(pinned, rect, containers)
+    const pinned = pinnedCover(hit, el, containers)
+    return !pinned || isStuckUnder(pinned, rect, roomFor(pinned, containers))
   }
 
   // The focused element, and the buttons of every open dialog (the screen's main button may sit in the dialog under
@@ -228,8 +241,8 @@
         if (!isInside(x, y, clip)) return false
         const hit = coverAt(x, y, el)
         // An icon drawn over the field scrolls with it; only a fixed or sticky box stays over it.
-        const pinned = hit && pinnedCover(hit, el)
-        return Boolean(pinned) && (strict || isStuckUnder(pinned, rect, containers))
+        const pinned = hit && pinnedCover(hit, el, containers)
+        return Boolean(pinned) && (strict || isStuckUnder(pinned, rect, roomFor(pinned, containers)))
       }),
     )
   }

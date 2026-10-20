@@ -82,8 +82,8 @@ const realAiPlatformIds = platformIds.filter((id) => platformOf(id).realAi)
 /**
  * Sessions explored with the app's real AI providers: three charters and the free session of every case
  * (`free-<case>-<platform>`), on every platform with `realAi` (iOS has none). Their findings replay on a stack with
- * the real providers too, where two failed runs in three confirm one, and they never go to the fix agent, whose
- * check runs on the fake AI. The workflow reads this set to plan its legs.
+ * the real providers too, where two failed runs in three confirm one, and their fixes are checked on the real
+ * providers. The workflow reads this set to plan its legs.
  */
 export const realAiCharters = new Set([
   ...['c3-models-providers', 'c4-skills-projects', 'c5-widgets-connections'].flatMap((charter) =>

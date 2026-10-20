@@ -16,8 +16,8 @@ const fixTitle = /^fix(\([^)]*\))?!?:\s*/
 /** The explorer's browser (Playwright MCP) cannot swipe, drag or pinch, so fixes for those can never be found. */
 const gestureTitle = /swipe|gesture|drag|pinch|long-?press/i
 /**
- * Sensitive app code, matched on directory names. `fix.ts` keeps its looser substring match for auto-fix, which must
- * stay strict; a canary only needs to avoid these areas, so `revoked-device-modal.tsx` in chat is fine.
+ * Sensitive app code, matched on directory names. A canary only needs to avoid these areas, so
+ * `revoked-device-modal.tsx` in chat is fine.
  */
 export const isSensitive = (path: string) =>
   /(^|\/)(db|devices?|crypto|encryption|auth|sso|sessions?|sign-?in|powersync|sync|drizzle|migrations?)\//.test(path)

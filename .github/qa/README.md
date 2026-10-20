@@ -22,6 +22,12 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | C: fix                   | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
 | D: native explore, macOS | `explore-native` on iOS      | the QA Anthropic key, only in the `env:` of the canary and session steps                     | any provider key, the Linear key, any write token, an agent that edits code                   |
 
+Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
+refuses a patch only to protect the supply chain: one that touches `.github/` or a dependency manifest or lockfile
+(`isDenied` in `fix.ts`), adds or changes a symlink or submodule, or matches a secret pattern. App code of any kind,
+`src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only
+its ticket: no finding text and no regression spec, which a person adds after the fix merges.
+
 Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,
 because the replayed specs may have changed files in the replay job's checkout.
 
@@ -149,11 +155,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
-   wording; one without an element is refused. Its ticket names the element, carries `Human Required` and embeds
-   the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
-6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas, one per
-   fingerprint, and never a `visual` one, which has no spec to pass. The original spec
-   must pass 3 times on the patch before `publish` opens a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
+   wording; one without an element is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
+   one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
+   Native findings are not routed yet. A `spec` task's original spec must pass 3 times on the patch. A `visual`
+   task has no spec, so the agent first writes `qa-out/fix/<fp>.check.spec.ts`, a check that fails because of the
+   defect; the workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
+   with it, and both must be true. A real-AI task (`real`) is fixed on the fake AI and checked again on the real
+   providers. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
    `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
@@ -166,7 +175,7 @@ A canary is a bug we know is there, used to check that the explorer still finds 
 at most two that:
 
 - change app code under `src/` (tests, test helpers, docs and translations are left alone);
-- touch no sensitive path: the same list that keeps the fix agent away (`isSensitive` in `fix.ts`);
+- touch no sensitive path (`isSensitive` in `canaries.ts`);
 - map to a charter in the script's one table (c2 to c6), one canary per charter, both on the same kind of AI;
 - change no runtime code outside `src/` (`shared/`, `backend/`, `public/`, `index.html`, the Vite config): the reversal
   covers `src/` only, and the canary backend runs from the unpatched checkout;
@@ -216,7 +225,8 @@ uses to judge the AI's answers) on every platform in `platforms.json`, with the 
   `legs.ts`: `c7-two-devices-ios` is left out because the macOS runner has no Docker for the Postgres and PowerSync
   containers, and iOS sessions never use the real AI providers (`realAi: false`), so c3, c4, c5 and the free session
   run there on the fake AI. Canaries stay on the web.
-- `free-*` legs are real-AI charters: two failures in three confirm, and they never go to the fix agent. One case
+- `free-*` legs are real-AI charters: two failures in three confirm, and their fixes are checked on the real
+  providers. One case
   on two platforms costs about $1.3 a week; each platform adds about half of that.
 
 ## Run it locally
@@ -461,8 +471,7 @@ secret would be used without warning. `notify` uses the existing repository secr
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 
 - `qa-agent`, `Bug`, `Security` (filing)
-- `Human Required` (tickets the fix agent must not touch; filing puts it on every `visual` ticket, and the fix
-  step on the tickets it hands to a person)
+- `Human Required` (`publish` puts it on a ticket whose fix ended in a diagnosis or a rejected patch)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
   precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
   not duplicates)
@@ -592,6 +601,6 @@ Also:
 - On CLI 2.1.285, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces the permission mode from `dontAsk` to `default`. With
   explicit allow lists both deny every unlisted command and allow read-only ones (probed).
 - A real model can fail twice in three replays by chance, and pass twice although the bug is real. The judge drops
-  provider outages and expected limitations, and a real-AI finding never goes to the fix agent.
+  provider outages and expected limitations. A real-AI fix is checked again on the real providers.
 - Google is covered only through the fake Google, by the free session's `calendar-planner` and `inbox-triager`
   cases. Real Google and Microsoft accounts stay out of scope, and Microsoft has no fake yet.

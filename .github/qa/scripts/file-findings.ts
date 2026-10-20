@@ -438,13 +438,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
       const visual = f.oracle.type === 'visual'
-      // A visual finding has no spec for the fix agent to pass, so a person takes it from the start.
-      const names = [
-        qaLabels.agent,
-        qaLabels.bug,
-        ...(f.area === 'security' ? [qaLabels.security] : []),
-        ...(visual ? [qaLabels.humanRequired] : []),
-      ]
+      const names = [qaLabels.agent, qaLabels.bug, ...(f.area === 'security' ? [qaLabels.security] : [])]
       const title = `${ticketView(f).title} [qa:${fp}]`
       // A security finding's video and screenshot can show what leaked; they stay in the run artifacts.
       const video = f.area === 'security' ? undefined : v.artifacts.video

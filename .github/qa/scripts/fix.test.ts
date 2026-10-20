@@ -137,22 +137,14 @@ describe('route', () => {
   }
   const branches = { 'git ls-remote': `abc123\trefs/heads/qa-fix/${fp('pending-layout')}\n` }
 
-  test('routes at most three fixable tickets, highest severity first, and lists the ones a person must fix', async () => {
+  test('routes at most three confirmed tickets of any area, highest severity first, skipping pending branches', async () => {
     await setup()
     const runs: RunCall[] = []
     const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: () => {} })
 
-    expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('medium-widgets')])
-    expect(plan.humanRequired).toEqual([
-      {
-        fp: fp('high-sync'),
-        severity: 'High',
-        issueId: 'issue-high-sync',
-        identifier: 'THB-high-sync',
-        url: 'https://linear.app/high-sync',
-        area: 'sync',
-      },
-    ])
+    // pending-layout (Urgent) has an open qa-fix/ branch; high-sync is the third, so the cap leaves out
+    // high-security, medium-widgets and low-chat.
+    expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('high-sync')])
     expect(JSON.parse(await readFile(join(outDir, 'fix-plan.json'), 'utf8'))).toEqual(plan)
     expect(runs.map((r) => r.cmd)).toEqual([['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*']])
   })
@@ -161,7 +153,11 @@ describe('route', () => {
     await setup()
     const plan = await route({ outDir, live: false, run: fakeRun([], branches), log: () => {} })
     const [first] = plan.fixes
-    expect(first.spec).toBe(join(outDir, 'c2-chat', 'repro', 'urgent-settings.spec.ts'))
+    expect(first).toMatchObject({
+      kind: 'spec',
+      real: false,
+      spec: join(outDir, 'c2-chat', 'repro', 'urgent-settings.spec.ts'),
+    })
     expect(first.finding).toEqual({
       title: 'settings breaks',
       area: 'settings',
@@ -171,18 +167,6 @@ describe('route', () => {
       expected: 'It works',
       actual: 'It throws',
     })
-  })
-
-  test('labels only the human-required tickets when live, and never in a dry run', async () => {
-    await setup()
-    const dry: Call[] = []
-    await route({ outDir, live: false, key: 'k', run: fakeRun([], branches), fetchFn: fakeLinear(dry), log: () => {} })
-    expect(dry).toEqual([])
-
-    const calls: Call[] = []
-    await route({ outDir, live: true, key: 'k', run: fakeRun([], branches), fetchFn: fakeLinear(calls), log: () => {} })
-    expect(calls.map((c) => c.op)).toEqual(['Label', 'AddLabel'])
-    expect(calls[1].variables).toEqual({ id: 'issue-high-sync', labelId: 'label-hr' })
   })
 
   test('a live run routes nothing when filing was forced into a dry run', async () => {
@@ -197,39 +181,63 @@ describe('route', () => {
       would: action,
     }))
     await put(join(outDir, 'filed.json'), JSON.stringify(braked))
-    const calls: Call[] = []
 
-    const plan = await route({
-      outDir,
-      live: true,
-      key: 'k',
-      run: fakeRun([], {}),
-      fetchFn: fakeLinear(calls),
-      log: () => {},
-    })
+    const plan = await route({ outDir, live: true, run: fakeRun([], {}), log: () => {} })
 
-    expect(plan).toEqual({ fixes: [], humanRequired: [] })
-    expect(calls).toEqual([])
+    expect(plan).toEqual({ fixes: [] })
   })
 
-  test('a real-AI finding goes to a person even in a fixable area: the fix check runs on the fake AI', async () => {
-    const charterDir = 'c5-widgets-connections-desktop'
-    const filed: Filed[] = [{ fp: 'fp-real', charterDir, id: '1', severity: 'High', action: 'created' }]
+  /** Routes one confirmed, created ticket from `charterDir`, with its repro spec on disk when it names one. */
+  const routeOne = async (charterDir: string, raw: RawFinding) => {
+    const filed: Filed[] = [{ fp: 'fp-one', charterDir, id: '1', severity: 'High', action: 'created' }]
     const confirmed: VerifiedFinding[] = [
-      { charterDir, id: '1', finding: finding('chat'), replay: { failed: 2, runs: 3 }, artifacts: {} },
+      { charterDir, id: '1', finding: raw, replay: { failed: 3, runs: 3 }, artifacts: {} },
     ]
     const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
     await put(join(outDir, 'filed.json'), JSON.stringify(filed))
     await put(join(outDir, 'verified.json'), JSON.stringify(verified))
-    await put(join(outDir, charterDir, 'repro', '1.spec.ts'), spec)
+    if (raw.repro_spec) await put(join(outDir, charterDir, raw.repro_spec), spec)
+    return route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+  }
+  const visual = (area: Area, extra: Partial<RawFinding> = {}) =>
+    finding(area, {
+      oracle: { type: 'visual', evidence: 'Continue sits under the banner' },
+      screenshot: 'mcp/page-1.png',
+      element: 'button "Continue"',
+      repro_spec: undefined,
+      ...extra,
+    })
 
-    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+  test.each<Area>(['security', 'auth', 'sync', 'onboarding'])(
+    'a confirmed %s finding goes to the fix agent',
+    async (area) => {
+      const plan = await routeOne('c2-chat-desktop', finding(area))
+      expect(plan.fixes.map((t) => [t.fp, t.finding.area, t.kind])).toEqual([['fp-one', area, 'spec']])
+    },
+  )
 
-    expect(plan.fixes).toEqual([])
-    expect(plan.humanRequired.map((t) => [t.fp, t.area])).toEqual([['fp-real', 'chat']])
+  test('a real-AI finding goes to the fix agent marked real, so the workflow checks it on the real providers', async () => {
+    const plan = await routeOne('c3-models-providers-desktop', finding('models'))
+    expect(plan.fixes.map((t) => [t.fp, t.real])).toEqual([['fp-one', true]])
   })
 
-  test('routes one fix and labels one ticket once when the same bugs were filed on desktop and phone', async () => {
+  test('a visual finding goes to the fix agent with no spec, even when it names one', async () => {
+    const [bare] = (await routeOne('c2-chat-desktop', visual('layout'))).fixes
+    expect(bare).toMatchObject({ fp: 'fp-one', kind: 'visual', real: false })
+    expect('spec' in bare).toBe(false)
+
+    const [named] = (await routeOne('c2-chat-desktop', visual('layout', { repro_spec: 'repro/1.spec.ts' }))).fixes
+    expect(named.kind).toBe('visual')
+    expect('spec' in named).toBe(false)
+  })
+
+  test('a native finding is not routed yet: the fix job has no device to check it on', async () => {
+    const flow = finding('chat', { viewport: 'ios', repro_spec: undefined, repro_flow: 'repro/1.yaml' })
+    expect((await routeOne('c2-chat-ios', flow)).fixes).toEqual([])
+    expect((await routeOne('c2-chat-ios', visual('layout', { viewport: 'ios' }))).fixes).toEqual([])
+  })
+
+  test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
     const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
     const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const
     const filed: Filed[] = [
@@ -249,111 +257,64 @@ describe('route', () => {
     await put(join(outDir, 'filed.json'), JSON.stringify(filed))
     await put(join(outDir, 'verified.json'), JSON.stringify(verified))
     for (const { charterDir, id } of filed) await put(join(outDir, charterDir, 'repro', `${id}.spec.ts`), spec)
-    const calls: Call[] = []
 
-    const plan = await route({
-      outDir,
-      live: true,
-      key: 'k',
-      run: fakeRun([]),
-      fetchFn: fakeLinear(calls),
-      log: () => {},
-    })
+    const plan = await route({ outDir, live: true, run: fakeRun([]), log: () => {} })
 
-    expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual([['fp-same', 'c2-chat-power-user-desktop']])
-    expect(plan.humanRequired.map((t) => t.fp)).toEqual(['fp-sync'])
-    expect(calls.map((c) => c.op)).toEqual(['Label', 'AddLabel'])
-    expect(calls[1].variables.id).toBe('i2')
-  })
-
-  test('a visual ticket becomes no fix and no Human Required entry: it is filed with that label', async () => {
-    const visual = (area: Area, extra: Partial<RawFinding>) =>
-      finding(area, {
-        oracle: { type: 'visual', evidence: 'Continue sits under the banner' },
-        screenshot: 'mcp/page-1.png',
-        element: 'button "Continue"',
-        ...extra,
-      })
-    const filed: Filed[] = [
-      { fp: 'fp-layout', charterDir: 'c2-chat-desktop', id: '1', severity: 'Low', action: 'created' },
-      { fp: 'fp-onboarding', charterDir: 'c2-chat-desktop', id: '2', severity: 'High', action: 'created' },
-    ]
-    // The layout one even has a spec on disk, so only its oracle type keeps it from the fix agent.
-    const confirmed: VerifiedFinding[] = [
-      { id: '1', finding: visual('layout', { repro_spec: 'repro/1.spec.ts' }) },
-      { id: '2', finding: visual('onboarding', { repro_spec: undefined }) },
-    ].map(({ id, finding }) => ({
-      charterDir: 'c2-chat-desktop',
-      id,
-      finding,
-      replay: { failed: 0, runs: 0 },
-      artifacts: {},
-    }))
-    const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
-    await put(join(outDir, 'filed.json'), JSON.stringify(filed))
-    await put(join(outDir, 'verified.json'), JSON.stringify(verified))
-    await put(join(outDir, 'c2-chat-desktop', 'repro', '1.spec.ts'), spec)
-
-    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
-
-    expect(plan).toEqual({ fixes: [], humanRequired: [] })
-  })
-
-  test('refuses a live run without a Linear key', async () => {
-    await setup()
-    await expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow(
-      'LINEAR_API_KEY',
-    )
+    expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual([
+      ['fp-same', 'c2-chat-power-user-desktop'],
+      ['fp-sync', 'c2-chat-power-user-desktop'],
+    ])
   })
 })
 
 describe('isDenied', () => {
   test.each([
-    'shared/powersync-tables.ts',
-    'powersync-service/config/config.yaml',
-    'backend/drizzle/0042_x.sql',
-    'src/drizzle/meta/_journal.json',
-    'src/db/schema.ts',
-    'backend/src/db/schema.ts',
-    'backend/src/auth/auth.ts',
-    'src/contexts/auth-context.tsx',
-    'src/lib/mcp-auth/index.ts',
-    'src/crypto/keys.ts',
-    'src/services/encryption.ts',
-    'src/hooks/use-powersync-status.ts',
-    'src/lib/oauth-state.ts',
-    'src/lib/oauth-redirect.ts',
-    'src/lib/sso-loopback.ts',
-    'backend/src/dal/sessions.ts',
-    'src/components/approve-device-dialog.tsx',
-    'src/components/sign-in/sign-in-form.tsx',
-    'backend/src/dal/otp-challenge.ts',
-    'src/components/sync-setup/recovery-key-entry-step.tsx',
-    'src/dal/mcp-secrets.ts',
-    'deploy/k8s/values.yaml',
-    'src-tauri/src/main.rs',
     '.github/workflows/ci.yml',
-    '.husky/pre-commit',
-    '.lintstagedrc.json',
-    'Makefile',
-    'eslint.config.js',
-    'scripts/license-headers.ts',
-    'package.json',
-    'backend/package.json',
-    'bun.lock',
     '.github/qa/fix.md',
     '.github/qa/scripts/fix.ts',
-    'e2e/helpers.ts',
     '.github/qa/playwright.config.ts',
+    'package.json',
+    'backend/package.json',
+    'cli/package.json',
+    'bun.lock',
+    'bun.lockb',
+    'backend/bun.lock',
+    'cli/bun.lock',
+    'src-tauri/Cargo.toml',
+    'src-tauri/Cargo.lock',
+    'crates/thunderbolt-acp-client/Cargo.toml',
+    'src-tauri/gen/android/build.gradle',
+    'src-tauri/gen/android/app/build.gradle.kts',
+    'src-tauri/gen/apple/Podfile',
+    'src-tauri/gen/apple/Podfile.lock',
+    'src-tauri/plugins/tauri-plugin-passkey/ios/Package.resolved',
+    'src-tauri/plugins/tauri-plugin-passkey/ios/Package.swift',
+    'requirements.txt',
+    'scripts/requirements-dev.txt',
+    'go.mod',
+    'tools/go.sum',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
 
   test.each([
     'src/chats/chat-title.tsx',
-    'src/components/chat/message-bubbles.tsx',
     'shared/url.ts',
     'backend/src/api/chat.ts',
+    'src/lib/auth-client.ts',
+    'backend/src/auth/auth.ts',
+    'src/crypto/keys.ts',
+    'src/db/schema.ts',
+    'shared/powersync-tables.ts',
+    'powersync-service/config/config.yaml',
+    'backend/drizzle/0042_x.sql',
+    'backend/drizzle/meta/_journal.json',
+    'src-tauri/src/lib.rs',
+    'src-tauri/tauri.conf.json',
+    'e2e/helpers.ts',
+    'deploy/k8s/values.yaml',
+    'src/lib/package-json.ts',
+    'src/my-package.json',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })
@@ -392,13 +353,25 @@ describe('checkPatch', () => {
   const fp = 'ab12cd34'
   let repo: string
   let git: Run
+  const reproSpec = () => join(outDir, 'c2-chat', 'repro', '1.spec.ts')
   const task = (): FixTask => ({
     fp,
     severity: 'High',
     charterDir: 'c2-chat',
-    spec: join(outDir, 'c2-chat', 'repro', '1.spec.ts'),
+    kind: 'spec',
+    real: false,
+    spec: reproSpec(),
     finding: { ...finding('chat'), oracle: { type: 'page-error', evidence: 'x' } },
   })
+  const visualTask = (): FixTask => ({
+    fp,
+    severity: 'High',
+    charterDir: 'c2-chat',
+    kind: 'visual',
+    real: false,
+    finding: { ...finding('layout'), oracle: { type: 'visual', evidence: 'Continue sits under the banner' } },
+  })
+  const fixed = () => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')
 
   /** Writes `fix/<fp>.patch` from the given working-tree edits, then resets the repo. */
   const patchFrom = async (edit: () => Promise<void>) => {
@@ -413,10 +386,11 @@ describe('checkPatch', () => {
     git = runIn(repo)
     await put(join(repo, 'src', 'chat.ts'), 'export const title = 1\n')
     await put(join(repo, 'shared', 'powersync-tables.ts'), 'export const tables = []\n')
+    await put(join(repo, 'package.json'), '{}\n')
     await git(['git', 'init', '--quiet'])
     await git(['git', 'add', '-A'])
     await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init'])
-    await put(task().spec, spec)
+    await put(reproSpec(), spec)
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
   })
 
@@ -477,14 +451,78 @@ describe('checkPatch', () => {
     expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the patch matches a secret pattern'])
   })
 
-  test('rejects a denied path, including a file renamed out of one', async () => {
+  test('accepts a patch to app code a person must review: Tauri, migrations, auth, sync', async () => {
+    const paths = ['src-tauri/src/lib.rs', 'backend/drizzle/0042_x.sql', 'src/lib/auth-client.ts']
     await patchFrom(async () => {
-      await writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')
-      await git(['git', 'mv', 'shared/powersync-tables.ts', 'src/tables.ts'])
+      for (const path of paths) await put(join(repo, path), 'changed\n')
+      await writeFile(join(repo, 'shared', 'powersync-tables.ts'), 'export const tables = [1]\n')
     })
     const { reasons, files } = await checkPatch(git, outDir, task())
-    expect(files.sort()).toEqual(['shared/powersync-tables.ts', 'src/chat.ts', 'src/tables.ts'])
-    expect(reasons).toEqual(['touches shared/powersync-tables.ts'])
+    expect(reasons).toEqual([])
+    expect(files.sort()).toEqual([...paths, 'shared/powersync-tables.ts'].sort())
+  })
+
+  test('rejects a patch to .github/, a dependency manifest or a lockfile', async () => {
+    const paths = [
+      '.github/workflows/x.yml',
+      'backend/bun.lock',
+      'src-tauri/Cargo.toml',
+      'src-tauri/gen/android/app/build.gradle.kts',
+    ]
+    await patchFrom(async () => {
+      for (const path of paths) await put(join(repo, path), 'changed\n')
+      await writeFile(join(repo, 'package.json'), '{ "dependencies": { "x": "1" } }\n')
+    })
+    const { reasons } = await checkPatch(git, outDir, task())
+    expect(reasons.sort()).toEqual([...paths, 'package.json'].map((path) => `touches ${path}`).sort())
+  })
+
+  test('rejects a file renamed out of a denied path', async () => {
+    await patchFrom(async () => {
+      await fixed()
+      await git(['git', 'mv', 'package.json', 'src/package-copy.json'])
+    })
+    const { reasons, files } = await checkPatch(git, outDir, task())
+    expect(files.sort()).toEqual(['package.json', 'src/chat.ts', 'src/package-copy.json'])
+    expect(reasons).toEqual(['touches package.json'])
+  })
+
+  describe('a visual task', () => {
+    const check = () => join(outDir, 'fix', `${fp}.check.spec.ts`)
+    // Strings too, to prove publish wants real booleans from the workflow.
+    const verify = (result: Record<'failsWithout' | 'passesWith', boolean | string>) =>
+      put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify(result))
+    const notVerified = 'the visual check did not fail without the patch and pass with it'
+
+    test('passes with a linted check that failed without the patch and passed with it', async () => {
+      await patchFrom(fixed)
+      await put(check(), spec)
+      await verify({ failsWithout: true, passesWith: true })
+      expect(await checkPatch(git, outDir, visualTask())).toEqual({ reasons: [], files: ['src/chat.ts'] })
+    })
+
+    test('is rejected without a check, and with a check that fails the lint', async () => {
+      await patchFrom(fixed)
+      await verify({ failsWithout: true, passesWith: true })
+      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual(['the visual check is missing'])
+
+      await put(check(), `${spec}process.exit(0)\n`)
+      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([
+        'visual check: line 8: "process" is not allowed',
+      ])
+    })
+
+    test.each([
+      ['no verify.json', undefined],
+      ['a check that passed without the patch', { failsWithout: false, passesWith: true }],
+      ['a check that still fails with the patch', { failsWithout: true, passesWith: false }],
+      ['a verify.json with strings', { failsWithout: 'true', passesWith: 'true' }],
+    ])('is rejected with %s', async (_name, result) => {
+      await patchFrom(fixed)
+      await put(check(), spec)
+      if (result) await verify(result)
+      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([notVerified])
+    })
   })
 
   test('rejects an edited repro spec and a spec that fails the lint', async () => {
@@ -492,7 +530,7 @@ describe('checkPatch', () => {
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec.replace('Renamed', 'Anything'))
     expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the repro spec was edited'])
 
-    await put(task().spec, `${spec}process.exit(0)\n`)
+    await put(reproSpec(), `${spec}process.exit(0)\n`)
     const { reasons } = await checkPatch(git, outDir, task())
     expect(reasons).toContain('the repro spec was edited')
     expect(reasons).toContain('repro spec: line 8: "process" is not allowed')
@@ -506,12 +544,13 @@ describe('publish', () => {
   const rawDiff = (...paths: string[]) => paths.map((p) => `:100644 100644 aaa bbb M\0${p}\0`).join('')
   const diffOutput = { 'git diff': rawDiff('src/chat.ts') }
 
-  const setup = async (ticket = true) => {
-    const task: FixTask = {
+  type Setup = { ticket?: boolean; kind?: FixTask['kind']; url?: string; extra?: Partial<FixTask['finding']> }
+  const setup = async ({ ticket = true, kind = 'spec', url = 'https://linear.app/t/THB-1', extra }: Setup = {}) => {
+    const base = {
       fp,
       severity: 'High',
       charterDir: 'c2-chat',
-      spec: specPath(),
+      real: false,
       finding: {
         title: 'Renaming a chat\nloses its title',
         area: 'chat',
@@ -520,10 +559,12 @@ describe('publish', () => {
         steps: ['Rename a chat'],
         expected: 'Renamed',
         actual: 'Untitled',
+        ...extra,
       },
-    }
-    const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1', url: 'https://linear.app/t/THB-1' }
-    const plan: FixPlan = { fixes: [ticket ? withTicket : task], humanRequired: [] }
+    } satisfies Omit<FixTask, 'kind' | 'spec'>
+    const task: FixTask = kind === 'visual' ? { ...base, kind } : { ...base, kind, spec: specPath() }
+    const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1', url }
+    const plan: FixPlan = { fixes: [ticket ? withTicket : task] }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
     await put(specPath(), spec)
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
@@ -605,6 +646,80 @@ describe('publish', () => {
     ])
   })
 
+  /** Runs a live publish into a fresh `repo/` and returns the commands it ran. */
+  const publishLive = async () => {
+    const repoDir = join(dir, 'repo')
+    await mkdir(join(repoDir, 'e2e'), { recursive: true })
+    const runs: RunCall[] = []
+    const result = await publish({
+      outDir,
+      fp,
+      live: true,
+      key: 'lin',
+      token: 'app-token',
+      repoDir,
+      run: fakeRun(runs, { ...diffOutput, 'gh pr': 'https://github.com/o/r/pull/9\n' }),
+      fetchFn: fakeLinear([]),
+      log: () => {},
+    })
+    return { repoDir, runs, result }
+  }
+  /** The value after `flag` in a command. */
+  const argAfter = (cmd: string[], flag: string) => cmd[cmd.indexOf(flag) + 1]
+
+  test('a security fix PR carries no finding text and no regression spec, only the ticket', async () => {
+    await setup({
+      url: 'https://linear.app/t/issue/THB-1/search-leaks-other-users-chats',
+      extra: {
+        title: 'Search leaks other users chats',
+        area: 'security',
+        oracle: { type: 'assert-failed', evidence: 'saw chat of user b' },
+        steps: ['Search for b@thunderbolt.test'],
+        expected: 'Only my chats',
+        actual: 'Chats of user b',
+      },
+    })
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toEqual({
+      outcome: 'pr',
+      branch: 'qa-fix/ab12cd34',
+      files: ['src/chat.ts'],
+      commit: 'fix: QA security finding THB-1',
+      prUrl: 'https://github.com/o/r/pull/9',
+    })
+    const noHooks = ['git', '-c', 'core.hooksPath=/dev/null']
+    expect(runs.slice(3, -1).map((r) => r.cmd.slice(0, 4))).toEqual([
+      [...noHooks, 'switch'],
+      [...noHooks, 'apply'],
+      [...noHooks, 'commit'],
+      [...noHooks, 'push'],
+    ])
+    expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
+    const pr = runs.at(-1)
+    const published = [pr?.stdin, argAfter(pr?.cmd ?? [], '--title'), argAfter(runs[6].cmd, '--message')].join('\n')
+    expect(pr?.stdin).toContain('THB-1 (https://linear.app/t/issue/THB-1)')
+    for (const text of ['leaks', 'user b', 'b@thunderbolt', 'Only my chats', 'consumer-qa-', 'security ·']) {
+      expect(published).not.toContain(text)
+    }
+  })
+
+  test('a visual fix PR keeps the check the fix agent wrote as its regression test', async () => {
+    await setup({ kind: 'visual' })
+    const check = `import { layoutProblems } from '../../../.github/qa/layout'\n${spec}`
+    await put(join(outDir, 'fix', `${fp}.check.spec.ts`), check)
+    await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toMatchObject({ outcome: 'pr', spec: 'e2e/consumer-qa-ab12cd34.spec.ts' })
+    expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
+      regressionSpec('c2-chat', fp, check).source,
+    )
+    expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
+  })
+
   test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3.')
@@ -679,7 +794,7 @@ describe('publish', () => {
   })
 
   test('refuses a live run without credentials, a ticket, or a routed fingerprint', async () => {
-    await setup(false)
+    await setup({ ticket: false })
     const opts = { outDir, fp, run: fakeRun([]), fetchFn: fakeLinear([]), log: () => {} }
     await expect(publish({ ...opts, live: true, key: 'lin' })).rejects.toThrow('GH_TOKEN')
     await expect(publish({ ...opts, live: true, key: 'lin', token: 't' })).rejects.toThrow('no Linear ticket')

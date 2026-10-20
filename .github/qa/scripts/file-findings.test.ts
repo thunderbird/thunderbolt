@@ -414,11 +414,12 @@ describe('one ticket per bug across platforms', () => {
 })
 
 describe('visual findings', () => {
-  test('a visual ticket is Human Required and shows its screenshot', async () => {
+  test('a visual ticket is left to the fix agent, not Human Required, and shows its screenshot', async () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
     const api = fakeLinear({ labels: ['qa-agent', 'Bug', 'Security', 'Human Required'] })
     await run(api.fetchFn, { live: true })
-    expect(created(api)[0].labelIds).toContain('l-Human Required')
+    expect(created(api)[0].labelIds).not.toContain('l-Human Required')
+    expect(created(api)[0].labelIds).toContain('l-qa-agent')
     expect(uploads(api)[0].contentType).toBe('image/png')
     expect(created(api)[0].description).toContain('![Screenshot](https://uploads.linear.app/a/page-1.png)')
     expect(created(api)[0].description).toContain('**Element:** button "Continue"')

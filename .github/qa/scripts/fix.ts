@@ -7,35 +7,44 @@
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { z } from 'zod'
 import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
-import { type Area, type Finding, findingSchema, lintReproSpec, realAiCharters } from './findings'
+import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, realAiCharters } from './findings'
 import type { Verified } from './verify'
 
-const fixableAreas = new Set<Area>(['chat', 'settings', 'skills', 'projects', 'widgets', 'layout', 'i18n'])
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
 const maxFixes = 3
 
-/** A fix may change only app code, as `.github/qa/fix.md` says; `publish` adds the regression spec itself. */
-const allowedPaths = /^(src|shared|backend\/src)\//
-/** Sensitive app code: database schema, migrations, sync, and any path naming sign-in, sessions, devices or keys. */
-const sensitivePaths =
-  /^(src|backend\/src)\/db\/|auth|sso|session|device|sign-?in|log-?(in|out)|otp|approv|recovery|secret|credential|crypto|encrypt|powersync|drizzle|migration/i
-/** True when `path` (repo-relative) is sensitive app code that no automated change may touch. */
-const isSensitive = (path: string) => sensitivePaths.test(path)
-/** True when a fix PR must not touch `path` (repo-relative): anything outside app code, or sensitive app code. */
-export const isDenied = (path: string) => !allowedPaths.test(path) || isSensitive(path)
+/** Dependency manifests and lockfiles, in any folder. */
+const dependencyFiles =
+  /(^|\/)(package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)|requirements[^/]*\.txt|go\.(mod|sum))$/
+/**
+ * True when a fix PR must not touch `path` (repo-relative). Only the supply chain is closed: `.github/` (workflows and
+ * this pipeline) and dependency manifests and lockfiles. App code of any kind is open, because a person reviews
+ * every draft PR.
+ */
+export const isDenied = (path: string) => path.startsWith('.github/') || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
-/** One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. */
-export type FixTask = Ticket & {
-  charterDir: string
-  spec: string
-  finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
-}
+/**
+ * What the fix agent must make pass. A `spec` task has the confirmed repro spec. A `visual` task has none: the agent
+ * writes its own check, `qa-out/fix/<fp>.check.spec.ts`, which the workflow runs without and with the patch.
+ */
+type Proof = { kind: 'spec'; spec: string } | { kind: 'visual' }
+/**
+ * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
+ * real AI providers, where the workflow verifies the fix on the real providers too.
+ */
+export type FixTask = Ticket &
+  Proof & {
+    charterDir: string
+    real: boolean
+    finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
+  }
 /** `qa-out/fix-plan.json`. The workflow's fix matrix is `fixes`. */
-export type FixPlan = { fixes: FixTask[]; humanRequired: (Ticket & { area: Area })[] }
+export type FixPlan = { fixes: FixTask[] }
 
 /** Runs a command without a shell and returns its stdout. */
 export type Run = (
@@ -83,72 +92,60 @@ const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[
   }
 }
 
-type RouteOptions = {
-  outDir: string
-  live: boolean
-  key?: string
-  run?: Run
-  fetchFn?: typeof fetch
-  log?: (line: string) => void
+type RouteOptions = { outDir: string; live: boolean; run?: Run; log?: (line: string) => void }
+
+/** The proof the fix agent works against, or undefined when a spec finding's repro spec is not on disk. */
+const proofOf = async (outDir: string, charterDir: string, finding: Finding): Promise<Proof | undefined> => {
+  if (finding.oracle.type === 'visual') return { kind: 'visual' }
+  if (!finding.repro_spec) return undefined
+  const spec = join(outDir, charterDir, finding.repro_spec)
+  return (await Bun.file(spec).exists()) ? { kind: 'spec', spec } : undefined
 }
 
 /**
- * Decide in code which filed tickets the fix agent may attempt, and write `fix-plan.json`.
- * A ticket (created, regression or commented) qualifies when its finding was confirmed 3/3, its repro spec is
- * on disk, its area is fixable, and no `qa-fix/<fp>` branch exists yet (an earlier draft PR is still open).
- * At most three, highest severity first, and one per fingerprint however many platforms found the bug. Security
- * and visual findings are never routed (a visual ticket is filed with `Human Required`). Every other area (sync,
- * auth, models, data, onboarding, …) needs a person, and so does every real-AI finding, because the fix job
- * checks a fix on the fake AI: with `live` those tickets get the `Human Required` label.
+ * Decide in code which filed tickets the fix agent attempts, and write `fix-plan.json`.
+ * Every ticket (created, regression or commented) whose finding was confirmed qualifies, whatever its area or oracle,
+ * security and real-AI findings included, because a person reviews every draft PR. It is left out this week when an
+ * earlier `qa-fix/<fp>` branch still exists (its draft PR is open) or the cap is reached: at most three, highest
+ * severity first, and one per fingerprint however many platforms found the bug.
  * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent; a dry run
  * plans what a live filing would have created.
  */
-export const route = async ({
-  outDir,
-  live,
-  key,
-  run = runCommand,
-  fetchFn = fetch,
-  log = console.log,
-}: RouteOptions) => {
-  if (live && !key) throw new Error('--live needs LINEAR_API_KEY')
+export const route = async ({ outDir, live, run = runCommand, log = console.log }: RouteOptions) => {
   const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const branches = await run(['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*'])
   const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
-  const plan: FixPlan = { fixes: [], humanRequired: [] }
+  const plan: FixPlan = { fixes: [] }
   const tickets = filed
     .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
     .sort((a, b) => priority[a.severity] - priority[b.severity])
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
+    if (plan.fixes.length === maxFixes || pending.has(fp)) continue
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)
-    const ticket = { fp, severity, issueId, identifier, url }
-    // The filer gives a visual ticket the Human Required label itself.
-    if (finding.area === 'security' || finding.oracle.type === 'visual') continue
-    if (!fixableAreas.has(finding.area) || realAiCharters.has(charterDir)) {
-      // filed.json has one line per platform, so a cross-platform ticket shows up more than once.
-      if (!plan.humanRequired.some((t) => t.fp === fp)) plan.humanRequired.push({ ...ticket, area: finding.area })
-      continue
-    }
-    // Only a visual finding may lack a spec; this narrows the type.
-    if (!finding.repro_spec) continue
-    const spec = join(outDir, charterDir, finding.repro_spec)
-    if (plan.fixes.length === maxFixes || pending.has(fp) || !(await Bun.file(spec).exists())) continue
+    // A native fix needs a Maestro check and a device to verify it on, which the fix job does not have yet.
+    if (nativePlatformIds.includes(finding.viewport)) continue
+    const proof = await proofOf(outDir, charterDir, finding)
+    if (!proof) continue
     // Two platforms or charters can confirm one bug (same fp) in a run; a second fix job would fight over
     // `qa-fix/<fp>`.
     pending.add(fp)
-    plan.fixes.push({ ...ticket, charterDir, spec, finding: ticketView(finding) })
+    plan.fixes.push({
+      fp,
+      severity,
+      issueId,
+      identifier,
+      url,
+      ...proof,
+      charterDir,
+      real: realAiCharters.has(charterDir),
+      finding: ticketView(finding),
+    })
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
-  log(`${qaLabels.humanRequired}: ${plan.humanRequired.map((t) => t.fp).join(', ') || 'none'}`)
-  if (!live || !key) return plan
-  await markHumanRequired(
-    { fetchFn, key },
-    plan.humanRequired.flatMap((t) => (t.issueId ? [t.issueId] : [])),
-  )
   return plan
 }
 
@@ -209,14 +206,33 @@ const patchedFiles = async (run: Run, patch: string) => {
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
 
+/** The check the fix agent wrote for a visual task. */
+const checkPath = (outDir: string, fp: string) => join(outDir, 'fix', `${fp}.check.spec.ts`)
+/** `fix/<fp>.verify.json` of a visual check that failed on the tree without the patch and passed with it. */
+const verifiedCheck = z.object({ failsWithout: z.literal(true), passesWith: z.literal(true) })
+
+/** Problems with the spec the patch must make pass: the repro spec unedited, or a visual task's verified check. */
+const proofProblems = async (outDir: string, task: FixTask) => {
+  if (task.kind === 'spec') {
+    const original = await readFile(task.spec, 'utf8')
+    const reasons = lintReproSpec(original).map((problem) => `repro spec: ${problem}`)
+    const copy = await readFile(join(outDir, 'fix', `${task.fp}.spec.ts`), 'utf8')
+    return copy === original ? reasons : [...reasons, 'the repro spec was edited']
+  }
+  const check = Bun.file(checkPath(outDir, task.fp))
+  if (!(await check.exists())) return ['the visual check is missing']
+  const reasons = lintReproSpec(await check.text()).map((problem) => `visual check: ${problem}`)
+  // Written by the workflow after it ran the check on the tree without and with the patch.
+  const verify = Bun.file(join(outDir, 'fix', `${task.fp}.verify.json`))
+  return (await verify.exists()) && verifiedCheck.safeParse(await verify.json()).success
+    ? reasons
+    : [...reasons, 'the visual check did not fail without the patch and pass with it']
+}
+
 /** Why the agent's output must not become a PR (empty = it may), and the files its patch touches. */
 export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   const patch = resolve(outDir, 'fix', `${task.fp}.patch`)
-  const original = await readFile(task.spec, 'utf8')
-  const reasons = lintReproSpec(original).map((problem) => `repro spec: ${problem}`)
-  if ((await readFile(join(outDir, 'fix', `${task.fp}.spec.ts`), 'utf8')) !== original) {
-    reasons.push('the repro spec was edited')
-  }
+  const reasons = await proofProblems(outDir, task)
   const text = await readFile(patch, 'utf8')
   if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [] }
   // The patch becomes a public PR.
@@ -248,8 +264,49 @@ type PublishOptions = {
   log?: (line: string) => void
 }
 type PublishResult =
-  | { outcome: 'pr'; branch: string; files: string[]; spec: string; commit: string; prUrl?: string }
+  | { outcome: 'pr'; branch: string; files: string[]; spec?: string; commit: string; prUrl?: string }
   | { outcome: 'human-required'; reasons: string[] }
+
+const reviewNotice =
+  'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
+
+/**
+ * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
+ * task the check the fix agent wrote. The repo is public and a security fix's PR shows up before the fix ships, so
+ * that PR names only the ticket and adds no spec: a person adds the spec in a separate commit after the merge.
+ */
+const draftOf = async (outDir: string, task: FixTask) => {
+  const ticket = task.identifier ?? 'its Linear ticket'
+  if (task.finding.area === 'security') {
+    const title = `fix: QA security finding ${task.identifier ?? task.fp}`
+    // Linear's URL ends in a slug of the ticket's title.
+    const link = task.url?.replace(/(\/issue\/[^/]+)\/.*$/, '$1') ?? 'filed in a dry run'
+    const body = [
+      `Draft fix by the weekly QA agent for ${ticket} (${link}).`,
+      'This fixes a security finding. The repository is public, so the finding and its regression spec stay out of this PR. A person adds the spec in a separate commit after the fix merges.',
+      reviewNotice,
+    ].join('\n\n')
+    return { title, commit: title, body, spec: undefined }
+  }
+  const source = task.kind === 'spec' ? task.spec : checkPath(outDir, task.fp)
+  const spec = regressionSpec(task.charterDir, task.fp, await readFile(source, 'utf8'))
+  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
+  const [origin, proof] =
+    task.kind === 'spec'
+      ? ["the QA agent's repro", 'The repro spec, which the replay confirmed, is added with its assertions unchanged']
+      : [
+          "the fix agent's visual check",
+          "The fix agent's check, which failed without this patch and passes with it, is added",
+        ]
+  const body = [
+    `Draft fix by the weekly QA agent for ${ticket} (${task.url ?? 'filed in a dry run'}).`,
+    // A code span, so a model-written title cannot @mention anyone.
+    `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`,
+    `${proof} as \`${spec.path}\`.`,
+    reviewNotice,
+  ].join('\n\n')
+  return { title, commit: `${title}\n\nKeeps ${origin} as the regression test ${spec.path}.`, body, spec }
+}
 
 /**
  * Turn the fix agent's output for one routed ticket into a draft PR, or hand the ticket to a person.
@@ -259,10 +316,12 @@ type PublishResult =
  * The publish job downloads the file job's `qa-out` artifact and ONLY `qa-out/fix/` from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
  * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original;
+ * - for a visual task, `fix/<fp>.check.spec.ts`, the check the agent wrote, and `fix/<fp>.verify.json`, the
+ *   workflow's record of running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
- * A diagnosis or a rejected patch (empty, a denied path, an edited spec) means no PR: the ticket gets a comment
- * and the `Human Required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch plus the repro spec
- * as a regression test) under the git identity the workflow configured, is pushed with `token` (a GitHub App
+ * A diagnosis or a rejected patch (empty, a denied path, an edited spec, an unverified check) means no PR: the
+ * ticket gets a comment and the `Human Required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch
+ * plus the regression spec `draftOf` picks) under the git identity the workflow configured, is pushed with `token` (a GitHub App
  * token; check out with `persist-credentials: false` so no second auth header competes), and becomes a draft PR
  * linking the ticket, which gets the PR link as a comment.
  *
@@ -317,19 +376,10 @@ export const publish = async ({
   }
 
   const branch = `qa-fix/${fp}`
-  const spec = regressionSpec(task.charterDir, fp, await readFile(task.spec, 'utf8'))
-  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
-  const commit = `${title}\n\nKeeps the QA agent's repro as the regression test ${spec.path}.`
-  const body = [
-    `Draft fix by the weekly QA agent for ${task.identifier ?? 'its Linear ticket'} (${task.url ?? 'filed in a dry run'}).`,
-    // A code span, so a model-written title cannot @mention anyone.
-    `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`,
-    `The repro spec, which failed 3 of 3 replays, is added with its assertions unchanged as \`${spec.path}\`.`,
-    'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.',
-  ].join('\n\n')
+  const { title, commit, body, spec } = await draftOf(outDir, task)
   if (!live) {
     log(`[dry run] would push ${branch} with:\n${commit}\n\nand open a draft PR:\n${body}`)
-    return { outcome: 'pr', branch, files, spec: spec.path, commit }
+    return { outcome: 'pr', branch, files, spec: spec?.path, commit }
   }
 
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
@@ -338,8 +388,10 @@ export const publish = async ({
     run(['git', '-c', 'core.hooksPath=/dev/null', ...args], opts)
   await git(['switch', '--create', branch])
   await git(['apply', '--index', patch])
-  await writeFile(join(repoDir, spec.path), spec.source)
-  await git(['add', spec.path])
+  if (spec) {
+    await writeFile(join(repoDir, spec.path), spec.source)
+    await git(['add', spec.path])
+  }
   await git(['commit', '--no-verify', '--quiet', '--message', commit])
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
   await git(['push', '--no-verify', 'origin', `HEAD:refs/heads/${branch}`], {
@@ -355,7 +407,7 @@ export const publish = async ({
   )
   const prUrl = created.trim()
   await addComment(auth, issueId, `Draft fix PR: ${prUrl}`)
-  return { outcome: 'pr', branch, files, spec: spec.path, commit, prUrl }
+  return { outcome: 'pr', branch, files, spec: spec?.path, commit, prUrl }
 }
 
 if (import.meta.main) {
@@ -369,7 +421,7 @@ if (import.meta.main) {
   })
   const key = Bun.env.LINEAR_API_KEY
   if (positionals[0] === 'route') {
-    await route({ outDir: values.out, live: values.live, key })
+    await route({ outDir: values.out, live: values.live })
   } else if (positionals[0] === 'publish' && values.fp) {
     const result = await publish({ outDir: values.out, fp: values.fp, live: values.live, key, token: Bun.env.GH_TOKEN })
     console.log(JSON.stringify(result, null, 2))

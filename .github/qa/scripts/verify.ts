@@ -7,7 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { readFile, rm } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { z } from 'zod'
 import {
@@ -24,7 +24,7 @@ import {
   type FindingFile,
   type RejectedFile,
 } from './findings'
-import { checkMaestroFlow } from './maestro-flow'
+import { checkMaestroFlow, flowVars } from './maestro-flow'
 import { createRunFlow } from './replay-native'
 import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
@@ -289,9 +289,6 @@ const appIdOf = (file: FindingFile) => {
   return appId
 }
 
-/** A replay flow may use only this variable: a fresh sign-in address per run. */
-const flowVars = ['EMAIL']
-
 /** The flow replay ran for a native finding: the allow list's own serialization, never the model's text. */
 const ranFlow = async (outDir: string, file: FindingFile) => {
   const check = checkMaestroFlow(await Bun.file(flowPath(outDir, file)).text(), {
@@ -401,7 +398,7 @@ const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile
   return { stackProblem: undefined, outcomes }
 }
 
-/** `native.sh verify`'s result for one patch on one platform (spec 7.2), the shape of `qa-out/fix/<fp>.verify.json`. */
+/** `native.sh verify-run`'s result for one patch on one platform (spec 7.2), as `qa-out/fix/<fp>.verify.json` reads. */
 export type NativeVerify = {
   fp: string
   platform: string
@@ -414,53 +411,66 @@ export type NativeVerify = {
   passesWith?: boolean
 }
 
-/** What fails a run of the fix agent's visual check, which has no finding: the flow failed or the probe logged a problem. */
-const checkFailure = (run: FlowRun) => {
-  const problem = run.layout.find((line) => !/^\[qa-layout\] ready\b/.test(cleanLogLine(line)))
-  if (problem) return `the layout probe logged ${cleanLogLine(problem)}`
-  if (run.passed || run.error?.includes(driverTimeout)) return undefined
-  return run.error ?? 'the flow failed'
-}
+/** What fails a run of the fix agent's visual check, which has no finding: only its own Maestro assertions. */
+const checkFailure = (run: FlowRun) =>
+  run.passed || run.error?.includes(driverTimeout) ? undefined : (run.error ?? 'the flow failed')
+
+/** The oracles whose evidence arrives through the WebView log, with the probe's ready line. */
+const webviewOracles = new Set(['layout', 'console-error', 'page-error'])
+
+type Oracle = FindingFile['finding']['oracle']
 
 /**
  * The native half of a fix's verification (spec 7.2), run with no key on the platform's runner. The flow passes the
- * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug:
- * the finding's `oracle` by the replay's rule, or for the fix agent's visual check (`original` given) any probe
- * problem. `passed` needs every run clean. A run whose driver never started counts as failed here, since it proves
- * nothing. A visual check also runs three times on the `original` app, without the patch, and must fail every time
- * there (`failsWithout`, with a driver that did not start never counting as a failure); `passed` then needs both.
+ * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug: the
+ * finding's `oracle` by the replay's rule, or for the fix agent's visual check (no oracle) its own assertions. A run
+ * whose driver never started counts as failed, and so does a run without the probe's ready line when the oracle reads
+ * the WebView log (a dead stream or a silenced probe shows no bug either). `passed` needs every run clean.
+ * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
+ * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. A visual check needs it, and
+ * so does a real-AI session: verified here on the fake AI, its flow must fail there without the patch to prove
+ * anything.
  */
 export const verifyNativeFix = async (
   opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
-    | { oracle: FindingFile['finding']['oracle'] }
-    | { original: RunFlow }
+    | { oracle: Oracle; original?: RunFlow }
+    | { oracle?: undefined; original: RunFlow }
   ),
 ): Promise<NativeVerify> => {
-  const { fp, platform, session, outDir } = opts
+  const { fp, platform, session, outDir, oracle, original } = opts
+  if (!original && realAiCharters.has(session))
+    throw new Error(`${session} is a real-AI session: pass the original app`)
   const check = checkMaestroFlow(opts.flow, { appId: platformOf(platform).appId ?? '', vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
   const next = counter()
-  const bug = 'oracle' in opts ? (run: FlowRun) => flowFailure(opts.oracle, run) : checkFailure
+  const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
+  const silent = (run: FlowRun) =>
+    oracle && webviewOracles.has(oracle.type) && !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
+      ? 'the layout probe never reported ready'
+      : undefined
   const patched = await threeRuns(
     { runFlow: opts.patched, outDir, next },
     check.yaml,
     session,
-    (run) => bug(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
+    (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
   )
   const { failed, runs, error } = patched.replay
   const result = { fp, platform, runs, failed, passed: failed === 0, error }
-  if (!('original' in opts)) return result
-  const original = await threeRuns({ runFlow: opts.original, outDir, next }, check.yaml, session, checkFailure)
-  const failsWithout = original.replay.failed === original.replay.runs
+  if (!original) return result
+  const unpatched = await threeRuns({ runFlow: original, outDir, next }, check.yaml, session, bug)
+  const failsWithout = unpatched.replay.failed === unpatched.replay.runs
   return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
 }
 
 /**
- * The oracle of the confirmed finding whose repro flow `flow` is (`<qa-out>/<session>/repro/<name>.yaml`), from
- * `<qa-out>/verified.json`: the evidence replay confirmed, before any cleaning for a ticket.
+ * The oracle a fix's flow is verified against. A flow in `<qa-out>/<session>/repro/` is a confirmed finding's repro
+ * flow: its oracle comes from `<qa-out>/verified.json`, the evidence replay confirmed before any cleaning for a ticket,
+ * and any other flow there throws. A flow elsewhere (`<qa-out>/fix-<fp>/repro/check.yaml`) is the fix agent's visual
+ * check, which has none.
  */
-const confirmedOracle = async (flow: string, session: string) => {
+export const oracleOf = async (flow: string, session: string): Promise<Oracle | undefined> => {
   const outDir = resolve(flow, '../../..')
+  if (relative(outDir, flow) !== join(session, 'repro', basename(flow))) return undefined
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const found = confirmed.find(
     (v) =>
@@ -752,9 +762,10 @@ if (import.meta.main) {
     const { fp, flow, session, result: resultFile, original, native: platform, app } = values
     if (!fp || !flow || !session || !resultFile || !platform) throw new Error(usage)
     // One build per check: native.sh builds the patched app in the variant the session needs.
-    const proof = original
-      ? { original: nativeFlows(original, original) }
-      : { oracle: await confirmedOracle(flow, session) }
+    const unpatched = original ? nativeFlows(original, original) : undefined
+    const oracle = await oracleOf(flow, session)
+    const proof = oracle ? { oracle, original: unpatched } : unpatched && { original: unpatched }
+    if (!proof) throw new Error('a visual check needs --original, the app without the patch')
     const verdict = await verifyNativeFix({
       fp,
       platform,

@@ -12,6 +12,7 @@ import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
 import {
   judge,
+  oracleOf,
   replay,
   replayEnv,
   screenshotTaken,
@@ -843,12 +844,51 @@ describe('native fix verification', () => {
     expect(runs).toEqual([1, 2, 3, 4])
   })
 
-  test('a visual check must fail every run without the patch and pass every run with it', async () => {
+  test('a layout verdict needs the probe ready in every patched run: a silent probe proves nothing', async () => {
+    const silent = { layout: [] }
+    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, silent]) })).toMatchObject({
+      failed: 1,
+      passed: false,
+      error: 'the layout probe never reported ready',
+    })
+    // An assertion oracle is proven by the flow itself.
+    const asserted = { type: 'assert-failed', evidence: 'never shows' }
+    const passed = await verifyNativeFix({ ...base, oracle: asserted, patched: device([silent, silent, silent]) })
+    expect(passed).toMatchObject({ failed: 0, passed: true })
+  })
+
+  test('a real-AI session must also fail without the patch, since it is checked on the fake AI', async () => {
+    const real = { ...base, platform: 'android', session: 'c3-models-providers-android' }
+    const asserted = { type: 'assert-failed', evidence: 'the model list never loads' }
+    const missing = verifyNativeFix({ ...real, oracle: asserted, patched: device([]) })
+    await expect(missing).rejects.toThrow('pass the original app')
+
+    const noBugOnFakeAi = await verifyNativeFix({
+      ...real,
+      oracle: asserted,
+      patched: device([]),
+      original: device([]),
+    })
+    expect(noBugOnFakeAi).toMatchObject({ failsWithout: false, passesWith: true, passed: false })
+    const fixed = await verifyNativeFix({
+      ...real,
+      oracle: asserted,
+      patched: device([]),
+      original: device([failed, failed, failed]),
+    })
+    expect(fixed).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
+  })
+
+  test('a visual check counts only its own assertions, and must fail every run without the patch', async () => {
+    // A probe line is no failure for a check: on c1 iOS the untouched keyboard bug would log one on every run.
     const problem = { layout: ['[qa-layout] ready', '[qa-layout] covered button "Continue"'] }
+    expect(
+      await verifyNativeFix({ ...base, patched: device([problem]), original: device([failed, problem, failed]) }),
+    ).toMatchObject({ failed: 0, failsWithout: false, passesWith: true, passed: false })
     const pass = await verifyNativeFix({
       ...base,
       patched: device([]),
-      original: device([failed, problem, failed]),
+      original: device([failed, failed, failed]),
     })
     expect(pass).toEqual({
       fp: 'ab12cd34',
@@ -869,7 +909,7 @@ describe('native fix verification', () => {
     expect(notFailing).toMatchObject({ failsWithout: false, passesWith: true, passed: false })
     const stillFailing = await verifyNativeFix({
       ...base,
-      patched: device([{}, problem]),
+      patched: device([{}, failed]),
       original: device([failed, failed, failed]),
     })
     expect(stillFailing).toMatchObject({ failed: 1, failsWithout: true, passesWith: false, passed: false })
@@ -885,6 +925,24 @@ describe('native fix verification', () => {
     })
     await expect(evil).rejects.toThrow('runScript')
     expect(runs).toEqual([])
+  })
+
+  test('the oracle comes from verified.json for a repro flow, and a check elsewhere has none', async () => {
+    const session = 'c1-first-run-ios'
+    const finding = {
+      ...makeFinding('colour', layout),
+      viewport: 'ios',
+      repro_spec: undefined,
+      repro_flow: 'repro/1.yaml',
+    }
+    const verified = { confirmed: [{ charterDir: session, id: '1', finding, replay: { failed: 3, runs: 3 } }] }
+    await Bun.write(join(outDir, 'verified.json'), JSON.stringify(verified))
+
+    expect(await oracleOf(join(outDir, session, 'repro', '1.yaml'), session)).toEqual(layout)
+    expect(await oracleOf(join(outDir, 'fix-ab12cd34', 'repro', 'check.yaml'), session)).toBeUndefined()
+    // A flow in the session dir that no confirmed finding names never runs against a borrowed oracle.
+    await expect(oracleOf(join(outDir, session, 'repro', '2.yaml'), session)).rejects.toThrow('not the repro flow')
+    await expect(oracleOf(join(outDir, session, 'repro', '1.yaml'), 'c2-chat-power-user-ios')).resolves.toBeUndefined()
   })
 })
 

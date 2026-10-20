@@ -169,14 +169,17 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and `repro/` dir of
    a repro spec, so its imports and the Playwright config work), a check that fails because of the defect; the
    workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
-   with it, and both must be true. A real-AI task (`real`) is fixed on the fake AI and checked again on the real
+   with it, and both must be true. A real-AI web task (`real`) is fixed on the fake AI and checked again on the real
    providers. An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on
    Linux (reproducing the bug on the web at phone size when it shows there), and a native visual task's check is
-   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`. `publish` refuses an edited repro flow (`fix/<fp>.yaml`) and
-   a flow or check outside the Maestro allow list. `fix-plan.json`'s `verifyNative` lists each native task's flow
-   and the repro flows of the same bug on other native platforms; `native.sh verify` runs each one with no key on
-   its platform's runner, three times on the patched app (and a visual check also on the app without the patch).
-   A native fix PR adds no regression spec. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise
+   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which fails only on its own assertions. `publish` refuses an
+   edited repro flow (`fix/<fp>.yaml`) and a flow or check outside the Maestro allow list. `fix-plan.json`'s
+   `verifyNative` lists each native task's flow and the repro flows of the same bug on other native platforms.
+   `native.sh verify-build` builds the patched app in a temporary worktree, and `native.sh verify-run`, from a
+   checkout the patched build never ran in, runs the flow three times on it with no key; a layout or log oracle also
+   needs the probe's ready line in every run. With `unpatched` (a visual check, or an Android real-AI task, which
+   the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail
+   there every time. A native fix PR adds no regression spec. Only then does `publish` open a draft PR on `qa-fix/<fp>`; otherwise
    the ticket gets `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
@@ -239,8 +242,8 @@ uses to judge the AI's answers) on every platform in `platforms.json`, with the 
   `legs.ts`: `c7-two-devices-ios` is left out because the macOS runner has no Docker for the Postgres and PowerSync
   containers, and iOS sessions never use the real AI providers (`realAi: false`), so c3, c4, c5 and the free session
   run there on the fake AI. Canaries stay on the web.
-- `free-*` legs are real-AI charters: two failures in three confirm, and their fixes are checked on the real
-  providers. One case
+- `free-*` legs are real-AI charters: two failures in three confirm, and their web fixes are checked on the real
+  providers (Android fixes on the fake AI, see step 6). One case
   on two platforms costs about $1.3 a week; each platform adds about half of that.
 
 ## Run it locally
@@ -353,10 +356,13 @@ export QA_DEVICE_ID=$udid QA_WEBVIEW_LOG=/tmp/webview.log QA_BACKEND_LOG=/tmp/qa
 bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udid" \
   --app "/tmp/qa-ios/Thunderbolt Dev.app" --app-onboarding "/tmp/qa-ios-onboarding/Thunderbolt Dev.app"
 
-# Check a fix's patch: built in a temporary worktree (onboarding for c1), the finding's flow three times on it. The
-# flow must sit in qa-out, whose verified.json holds the finding. A visual check also gets the unpatched build.
-.github/qa/scripts/native.sh verify ios "$udid" qa-out/fix/<fp>.patch qa-out/<session>/repro/1.yaml <session> \
-  qa-out/fix/<fp>.verify.json
+# Check a fix's patch: build it in a temporary worktree (onboarding for c1), then run the finding's flow three times
+# on it. The flow must sit in qa-out, whose verified.json holds the finding. A visual check or an Android real-AI
+# session also gets the unpatched build as the last argument. The patched build runs the patch's code, so in CI the
+# run happens in another job on a fresh checkout.
+.github/qa/scripts/native.sh verify-build ios qa-out/fix/<fp>.patch <session> /tmp/qa-ios-patched
+.github/qa/scripts/native.sh verify-run ios "$udid" "/tmp/qa-ios-patched/Thunderbolt Dev.app" \
+  qa-out/<session>/repro/1.yaml <session> qa-out/fix/<fp>.verify.json
 
 .github/qa/scripts/native.sh stop-logs /tmp/webview.log
 ```
@@ -620,6 +626,8 @@ Also:
 - On CLI 2.1.285, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces the permission mode from `dontAsk` to `default`. With
   explicit allow lists both deny every unlisted command and allow read-only ones (probed).
 - A real model can fail twice in three replays by chance, and pass twice although the bug is real. The judge drops
-  provider outages and expected limitations. A real-AI fix is checked again on the real providers.
+  provider outages and expected limitations. A real-AI web fix is checked again on the real providers; an Android
+  one only on the fake AI, where its flow must fail without the patch, so a bug that needs a real model goes to a
+  person.
 - Google is covered only through the fake Google, by the free session's `calendar-planner` and `inbox-triager`
   cases. Real Google and Microsoft accounts stay out of scope, and Microsoft has no fake yet.

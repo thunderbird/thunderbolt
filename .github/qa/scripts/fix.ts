@@ -12,7 +12,7 @@ import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
 import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, platformOf, realAiCharters } from './findings'
-import { checkMaestroFlow } from './maestro-flow'
+import { checkMaestroFlow, flowVars } from './maestro-flow'
 import type { Verified } from './verify'
 
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
@@ -62,10 +62,12 @@ export type FixTask = Ticket &
     finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
   }
 /**
- * A flow the native verification runs on its platform with the patched app (`native.sh verify`): a native task's
- * flow, or the repro flow of the same bug found on another platform. `session` picks the build.
+ * A flow the native verification runs on its platform with the patched app (`native.sh verify-build`, then
+ * `verify-run`): a native task's flow, or the repro flow of the same bug found on another platform. `session` picks
+ * the build. `unpatched` asks for a run on the build without the patch too, where the flow must fail: a visual check,
+ * and a real-AI session, which the keyless verification can only check on the fake AI.
  */
-export type NativeCheck = { fp: string; platform: string; session: string; flow: string }
+export type NativeCheck = { fp: string; platform: string; session: string; flow: string; unpatched: boolean }
 /** `qa-out/fix-plan.json`. The workflow's fix matrix is `fixes`, its native verification matrix `verifyNative`. */
 export type FixPlan = { fixes: FixTask[]; verifyNative: NativeCheck[] }
 
@@ -174,7 +176,8 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
     // flows join it, since the fix agent writes a visual check for its own task alone.
     const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
     if (flow && !plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
-      plan.verifyNative.push({ fp, platform, session: charterDir, flow })
+      const unpatched = proof.kind === 'visual' || realAiCharters.has(charterDir)
+      plan.verifyNative.push({ fp, platform, session: charterDir, flow, unpatched })
     }
     if (!fresh) continue
     routed.add(fp)
@@ -285,7 +288,7 @@ const checkResultProblem = (text: string) => {
  * only variable.
  */
 const flowProblems = (platform: string, flow: string) => {
-  const check = checkMaestroFlow(flow, { appId: platformOf(platform).appId ?? '', vars: ['EMAIL'] })
+  const check = checkMaestroFlow(flow, { appId: platformOf(platform).appId ?? '', vars: flowVars })
   return check.ok ? [] : check.problems
 }
 

@@ -264,7 +264,9 @@ describe('route', () => {
     expect(plan.fixes).toHaveLength(1)
     expect(plan.fixes[0]).toMatchObject({ fp: 'fp-one', kind: 'spec', platform: 'ios', flow, real: false })
     expect('spec' in plan.fixes[0]).toBe(false)
-    expect(plan.verifyNative).toEqual([{ fp: 'fp-one', platform: 'ios', session: 'c1-first-run-ios', flow }])
+    expect(plan.verifyNative).toEqual([
+      { fp: 'fp-one', platform: 'ios', session: 'c1-first-run-ios', flow, unpatched: false },
+    ])
   })
 
   test('a native visual finding asks the fix agent for a Maestro check, which the native verification runs', async () => {
@@ -279,7 +281,9 @@ describe('route', () => {
       flow: check,
       screenshot: join(outDir, 'c6-settings-data-ios', 'maestro', 'shot-3.jpg'),
     })
-    expect(plan.verifyNative).toEqual([{ fp: 'fp-one', platform: 'ios', session: 'c6-settings-data-ios', flow: check }])
+    expect(plan.verifyNative).toEqual([
+      { fp: 'fp-one', platform: 'ios', session: 'c6-settings-data-ios', flow: check, unpatched: true },
+    ])
   })
 
   test('a native finding whose flow is not on disk is not routed', async () => {
@@ -289,10 +293,11 @@ describe('route', () => {
     expect(plan).toEqual({ fixes: [], verifyNative: [] })
   })
 
-  test('an Android real-AI finding goes to the fix agent marked real', async () => {
+  test('an Android real-AI finding goes to the fix agent marked real, and its flow must fail without the patch', async () => {
     const raw = finding('models', { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/1.yaml' })
     const plan = await routeOne('c3-models-providers-android', raw)
     expect(plan.fixes.map((t) => [t.platform, t.real])).toEqual([['android', true]])
+    expect(plan.verifyNative.map((v) => [v.platform, v.unpatched])).toEqual([['android', true]])
   })
 
   test('one bug on phone and iOS is one fix, and the patch is also verified on iOS', async () => {
@@ -308,6 +313,7 @@ describe('route', () => {
         platform: 'ios',
         session: 'c1-first-run-ios',
         flow: join(outDir, 'c1-first-run-ios', 'repro', '1.yaml'),
+        unpatched: false,
       },
     ])
   })

@@ -19,9 +19,11 @@
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
 #                                                               reports the covered Email field
-#   native.sh verify <platform> <device> <patch> <flow> <session> <out-json> [unpatched-app]
-#                                                               build the app with a fix's patch and run the flow
-#                                                               three times (see verify below)
+#   native.sh verify-build <platform> <patch> <session> <out-dir>
+#                                                               build the app with a fix's patch (see verify_build)
+#   native.sh verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]
+#                                                               run a fix's flow three times on that app and write
+#                                                               the verdict (see verify_run)
 #
 # iOS uses $QA_IOS_DEVICE (a simulator UDID) when it is set, and otherwise an iPhone 17 Pro Max on the newest iOS
 # runtime. Android boots the AVD qa-android (an emulator needs KVM, so CI only) and reverses the stack's ports.
@@ -224,34 +226,48 @@ control() {
     "$platform" "$out/hierarchy.json" "$out/webview.log"
 }
 
-# The native half of a fix's verification (spec 7.2), with no key: applies <patch> (`qa-out/fix/<fp>.patch`) in a
-# temporary worktree, builds the app there (with onboarding for a c1 session) and has `verify.ts fix-native` run <flow>
-# three times on <device>, with the stack already serving. <flow> is the finding's repro flow inside the run's qa-out,
-# whose verified.json holds the finding. With <unpatched-app> (the build-native artifact of the same variant), <flow>
-# is the fix agent's visual check, and it also runs on that app. Writes the result to <out-json>, videos beside it.
-verify() {
-  local platform=$1 device=$2 patch=$3 flow=$4 session=$5 result=$6 original=${7:-} work tree onboarding='' app
-  : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
+# The build half of a fix's native verification (spec 7.2): applies <patch> (`qa-out/fix/<fp>.patch`) in a temporary
+# worktree and builds the app there into <out-dir>, with onboarding for a c1 session. The patched tree's code runs
+# here (the build, and through it anything the patch adds), so this only outputs the app: the verdict comes from
+# verify-run in a checkout this never ran in, in CI a later job on a fresh checkout.
+verify_build() {
+  local platform=$1 patch=$2 session=$3 out=$4 work tree onboarding=''
+  mkdir -p "$out"
+  # The worktree's native.sh runs from the worktree root, so a relative <out-dir> would land inside it.
+  out=$(cd "$out" && pwd)
   work=$(mktemp -d)
   tree="$work/tree"
   git worktree add --quiet --detach "$tree" HEAD
   # shellcheck disable=SC2064 # the paths are fixed by now
-  trap "stop_logs '$work/webview.log'; git worktree remove --force '$tree'; rm -rf '$work'" EXIT
+  trap "git worktree remove --force '$tree'; rm -rf '$work'" EXIT
   git -C "$tree" apply < "$patch"
-  # The checkout's dependencies and compiled crates: the patch may not change either (publish refuses manifests).
+  # The checkout's dependencies and compiled crates, for speed: the patch may change neither (publish refuses
+  # manifests), and this checkout never writes a verdict.
   ln -s "$PWD/node_modules" "$tree/node_modules"
   case $session in c1-first-run-*) onboarding=onboarding ;; esac
-  CARGO_TARGET_DIR="$PWD/src-tauri/target" "$tree/.github/qa/scripts/native.sh" build "$platform" "$work/app" ${onboarding:+"$onboarding"}
-  app="$work/app/Thunderbolt Dev.app"
-  [ "$platform" = ios ] || app="$work/app/app-debug.apk"
+  CARGO_TARGET_DIR="$PWD/src-tauri/target" "$tree/.github/qa/scripts/native.sh" build "$platform" "$out" ${onboarding:+"$onboarding"}
+}
+
+# The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
+# output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
+# with the videos beside it. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
+# other flow is the fix agent's visual check. <original-app> is the build-native artifact of the same variant, without
+# the patch, where the flow must fail too: a visual check and a real-AI session need it.
+verify_run() {
+  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} work name
+  : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
+  work=$(mktemp -d)
+  # shellcheck disable=SC2064 # the path is fixed by now
+  trap "stop_logs '$work/webview.log'; rm -rf '$work'" EXIT
   logs "$platform" "$device" "$work/webview.log"
   mkdir -p "$(dirname "$result")"
+  name=$(basename "$result")
   QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
-    --native "$platform" --device "$device" --app "$app" --fp "$(basename "$patch" .patch)" --flow "$flow" \
+    --native "$platform" --device "$device" --app "$app" --fp "${name%%.*}" --flow "$flow" \
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify <platform> <device> <patch> <flow> <session> <out-json> [unpatched-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
@@ -272,6 +288,7 @@ case $command in
     ;;
   logs) [ $# -eq 3 ] || die "$usage"; logs "$@" ;;
   control) [ $# -ge 2 ] && [ $# -le 3 ] || die "$usage"; control "$@" ;;
-  verify) [ $# -ge 6 ] && [ $# -le 7 ] || die "$usage"; verify "$@" ;;
+  verify-build) [ $# -eq 4 ] || die "$usage"; verify_build "$@" ;;
+  verify-run) [ $# -ge 6 ] && [ $# -le 7 ] || die "$usage"; verify_run "$@" ;;
   *) die "$usage" ;;
 esac

@@ -37,6 +37,43 @@ exit 0
   return { env: { PATH: `${bin}:${process.env.PATH}`, ANDROID_AVD_HOME: join(work, 'avd') }, calls }
 }
 
+test('verify-run hands verify.ts the app, the fp from the result name and the original app, then stops its log stream', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const args = join(bin, 'bun-args')
+  // A log stream that attaches and then waits to be stopped, and a bun that only records its arguments.
+  writeFileSync(join(bin, 'xcrun'), "#!/bin/bash\necho 'Filtering the log data'\nsleep 3\n")
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" > '${args}'\n`)
+  for (const tool of ['xcrun', 'bun']) chmodSync(join(bin, tool), 0o755)
+  const result = join(work, 'out', 'ab12cd34.ios.verify.json')
+  const proc = Bun.spawnSync(
+    [
+      'bash',
+      native,
+      'verify-run',
+      'ios',
+      'UDID-1',
+      '/apps/patched.app',
+      'qa-out/s/repro/1.yaml',
+      's',
+      result,
+      '/apps/original.app',
+    ],
+    { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' } },
+  )
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  const passed = readFileSync(args, 'utf8').trim().split('\n')
+  const after = (flag: string) => passed[passed.indexOf(flag) + 1]
+  expect(passed.slice(0, 2)).toEqual(['.github/qa/scripts/verify.ts', 'fix-native'])
+  expect([after('--app'), after('--fp'), after('--original'), after('--result')]).toEqual([
+    '/apps/patched.app',
+    'ab12cd34',
+    '/apps/original.app',
+    result,
+  ])
+  expect(Bun.spawnSync(['pgrep', '-f', `${bin}/xcrun`]).stdout.toString()).toBe('')
+})
+
 test('device android waits for /sdcard, pushes each fixture alone and only warns when a push is refused', () => {
   const { env, calls } = fakeAdb()
   const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...env } })

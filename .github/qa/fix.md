@@ -55,8 +55,8 @@ same web code in a WebView, so when the defect also shows in the web app at phon
 allowed.
 
 In a `visual` task the `flow` path is the check you write before you change any code: a Maestro flow that fails
-because of the defect, with an `assertVisible` or `assertNotVisible`, or by reaching the screen where the layout probe
-logs a problem. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Keep
+because of the defect, through its own `assertVisible` or `assertNotVisible`: nothing else counts, layout probe lines
+included. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Keep
 to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the like) with literal
 text: the Maestro allow list refuses scripts, `env`, `clearState`, links and any variable other than `${EMAIL}`, and a
 refused check means no PR. You cannot run it here.
@@ -68,8 +68,9 @@ run passes with it, and a visual check must fail every run without it.
 ## A real-AI task
 
 When `real` is true, the explorer found the bug while the app used the real AI providers. You work on the stack with
-the fake AI, like every other task. Fix the app code the finding points to; the workflow checks the fix again later
-on the real providers.
+the fake AI, like every other task. Fix the app code the finding points to. On the web the workflow checks the fix
+again later on the real providers. A native (Android) task is checked with no key, so on the fake AI: its flow must
+fail on the app without your patch and pass with it, or a person takes the ticket.
 
 ## Check your work
 

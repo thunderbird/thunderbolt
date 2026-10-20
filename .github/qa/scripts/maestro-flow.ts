@@ -20,6 +20,9 @@ export const maestroEnv = () => ({
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000',
 })
 
+/** The only variable a repro flow, a fix's check or a replay may use: a fresh sign-in address per run. */
+export const flowVars = ['EMAIL']
+
 /** A checked Maestro flow: the text to hand to Maestro, or every problem found. */
 export type FlowCheck = { ok: true; yaml: string } | { ok: false; problems: string[] }
 

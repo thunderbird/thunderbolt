@@ -408,6 +408,8 @@ export type NativeVerify = {
   runs: number
   failed: number
   passed: boolean
+  /** Why the first failed run with the patch failed. */
+  error?: string
   failsWithout?: boolean
   passesWith?: boolean
 }
@@ -445,8 +447,8 @@ export const verifyNativeFix = async (
     session,
     (run) => bug(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
   )
-  const { failed, runs } = patched.replay
-  const result = { fp, platform, runs, failed, passed: failed === 0 }
+  const { failed, runs, error } = patched.replay
+  const result = { fp, platform, runs, failed, passed: failed === 0, error }
   if (!('original' in opts)) return result
   const original = await threeRuns({ runFlow: opts.original, outDir, next }, check.yaml, session, checkFailure)
   const failsWithout = original.replay.failed === original.replay.runs

@@ -827,10 +827,12 @@ describe('native fix verification', () => {
     expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, seen]) })).toMatchObject({
       failed: 1,
       passed: false,
+      error: `the layout probe logged ${nameLine}`,
     })
     expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
       failed: 1,
       passed: false,
+      error: failed.error,
     })
   })
 

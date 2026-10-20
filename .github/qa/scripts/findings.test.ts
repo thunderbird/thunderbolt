@@ -348,6 +348,50 @@ describe('visual oracle', () => {
   })
 })
 
+describe('native findings', () => {
+  /** A finding from the iOS app, proven by a Maestro flow. */
+  const native = (fields: Partial<RawFinding>): RawFinding => ({
+    ...finding,
+    viewport: 'ios',
+    repro_spec: undefined,
+    repro_flow: 'repro/1.yaml',
+    ...fields,
+  })
+  const accepted = (fields: Partial<RawFinding>) => findingSchema.safeParse(native(fields)).success
+
+  test('a repro flow stays inside the session repro dir', () => {
+    expect(accepted({})).toBe(true)
+    for (const repro_flow of ['../repro/1.yaml', 'repro/../x.yaml', 'repro/a/1.yaml', 'flows/1.yaml', 'repro/1.yml']) {
+      expect(accepted({ repro_flow }), repro_flow).toBe(false)
+    }
+  })
+
+  test('a native finding needs a flow, a web finding a spec, and none may carry both', () => {
+    expect(accepted({ repro_flow: undefined, repro_spec: 'repro/1.spec.ts' })).toBe(false)
+    expect(accepted({ viewport: 'android' })).toBe(true)
+    expect(accepted({ viewport: 'desktop' })).toBe(false)
+    expect(accepted({ repro_spec: 'repro/1.spec.ts' })).toBe(false)
+    expect(accepted({ repro_flow: undefined })).toBe(false)
+  })
+
+  test('the two-device charter on Android takes either proof, for device A or for the browser', () => {
+    const c7 = { charter: 'c7-two-devices', viewport: 'android' }
+    expect(accepted({ ...c7, repro_flow: undefined, repro_spec: 'repro/1.spec.ts' })).toBe(true)
+    expect(accepted(c7)).toBe(true)
+  })
+
+  test("a native screenshot is the gate's maestro/shot-<n> file", () => {
+    for (const screenshot of ['maestro/shot-3.png', 'maestro/shot-12.jpg', 'maestro/shot-1.jpeg']) {
+      expect(accepted({ oracle: { type: 'visual', evidence: 'cut off' }, repro_flow: undefined, screenshot })).toBe(
+        true,
+      )
+    }
+    for (const screenshot of ['maestro/../x.png', 'maestro/page-1.png', 'maestro/shot-1.gif', 'maestro/a/shot-1.png']) {
+      expect(accepted({ oracle: { type: 'visual', evidence: 'cut off' }, screenshot }), screenshot).toBe(false)
+    }
+  })
+})
+
 test('each charter names exactly the functions of its list, and says the AI is real only for a real-AI charter', async () => {
   const lists: Record<string, QaFunction[]> = await Bun.file(join(import.meta.dir, '../functions.json')).json()
   for (const [charter, list] of Object.entries(lists)) {
@@ -397,7 +441,8 @@ test('every free session is real AI where the platform has real providers, and e
     // A session id is free-<case>-<platform>; a platform id without hyphens keeps the case readable before it.
     expect(id).toMatch(/^[a-z]+$/)
     expect(cases.every((c) => realAiCharters.has(`free-${c.id}-${id}`))).toBe(realAi)
-    expect(findingSchema.safeParse({ ...finding, viewport: id }).success, id).toBe(true)
+    const repro = nativePlatformIds.includes(id) ? { repro_spec: undefined, repro_flow: 'repro/1.yaml' } : {}
+    expect(findingSchema.safeParse({ ...finding, ...repro, viewport: id }).success, id).toBe(true)
     if (driver === 'playwright') expect(viewport).toMatch(/^\d+x\d+$/)
     // The Maestro config arrives with the native tasks.
     if (driver === 'playwright') expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)

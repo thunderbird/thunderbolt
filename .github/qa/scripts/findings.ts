@@ -95,8 +95,11 @@ export const realAiCharters = new Set([
 export type Area = (typeof areas)[number]
 export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
 
-/** A browser screenshot's path inside the session dir: `mcp/<file>`, or `mcp-b/<file>` for c7's second device. */
-export const screenshotFile = z.string().regex(/^mcp(-b)?\/[\w.-]+\.(png|jpe?g)$/)
+/**
+ * A screenshot's path inside the session dir: the browser's `mcp/<file>` (`mcp-b/<file>` for c7's second device), or
+ * the Maestro gate's `maestro/shot-<n>.<ext>`.
+ */
+export const screenshotFile = z.string().regex(/^(mcp(-b)?\/[\w.-]+|maestro\/shot-\d+)\.(png|jpe?g)$/)
 
 const findingFields = z.object({
   title: z.string().min(1),
@@ -112,6 +115,11 @@ const findingFields = z.object({
     .string()
     .regex(/^repro\/[\w-]+\.spec\.ts$/)
     .optional(),
+  /** The Maestro flow that proves a finding on a native platform. */
+  repro_flow: z
+    .string()
+    .regex(/^repro\/[\w-]+\.yaml$/)
+    .optional(),
   screenshot: screenshotFile.optional(),
   /** The accessible name of the element a visual finding is about, as `<role> "<name>"`. */
   element: z.string().optional(),
@@ -119,10 +127,27 @@ const findingFields = z.object({
   function: z.string().optional(),
 })
 
-/** A visual finding is proven by its screenshot, every other one by a repro spec. */
-const provable = (finding: { oracle: { type: string }; repro_spec?: string; screenshot?: string }) =>
-  finding.oracle.type === 'visual' ? finding.screenshot !== undefined : finding.repro_spec !== undefined
-const provableMessage = 'a visual finding needs a screenshot, any other finding a repro_spec'
+type Proof = {
+  charter: string
+  viewport: string
+  oracle: { type: string }
+  repro_spec?: string
+  repro_flow?: string
+  screenshot?: string
+}
+
+/**
+ * A visual finding is proven by its screenshot, every other one by exactly one repro: a spec on the web, a flow on a
+ * native platform. The two-device charter on Android takes either, a flow for the app or a spec for its browser.
+ */
+const provable = (finding: Proof) => {
+  if (finding.oracle.type === 'visual') return finding.screenshot !== undefined
+  if ((finding.repro_spec === undefined) === (finding.repro_flow === undefined)) return false
+  if (!nativePlatformIds.includes(finding.viewport)) return finding.repro_spec !== undefined
+  return finding.repro_flow !== undefined || finding.charter.startsWith('c7-two-devices')
+}
+const provableMessage =
+  'a visual finding needs a screenshot, any other finding one repro: repro_spec on the web, repro_flow on a device'
 
 /** A finding that passed the oracle check: a known oracle type backed by quoted evidence. */
 export const findingSchema = findingFields.refine(provable, provableMessage)
@@ -384,9 +409,9 @@ export const lintReproSpec = (source: string): string[] => {
   return reasons
 }
 
-/** Evidence with run-specific noise removed, so the same bug quoted in two runs compares equal. */
-const signature = (evidence: string) =>
-  evidence
+/** Evidence or a log line with run-specific noise removed, so the same bug quoted in two runs compares equal. */
+export const normalize = (text: string) =>
+  text
     .toLowerCase()
     .replace(/\?\S*/g, '') // query strings
     .replace(/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/g, '') // uuids
@@ -397,7 +422,9 @@ const signature = (evidence: string) =>
     .replace(/\d+/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 200)
+
+/** Normalized evidence, capped: the part of the dedupe key that says what went wrong. */
+export const signature = (evidence: string) => normalize(evidence).slice(0, 200)
 
 /**
  * Dedupe key for "the same bug" across runs and platforms, first 8 hex chars of a sha256:

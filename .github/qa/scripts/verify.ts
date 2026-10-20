@@ -14,11 +14,16 @@ import {
   hasOracle,
   lintReproSpec,
   loadFindings,
+  normalize,
+  platformOf,
   realAiCharters,
   screenshotFile,
+  signature,
   type FindingFile,
   type RejectedFile,
 } from './findings'
+import { checkMaestroFlow } from './maestro-flow'
+import { createRunFlow } from './replay-native'
 import type { TranscriptMessage } from './report'
 
 export type VerifiedFinding = FindingFile & {
@@ -61,6 +66,18 @@ type ReplaySuite = {
 /** Runs the given specs (absolute paths) three times each in one Playwright run, or with `list` only loads them. */
 export type RunReplay = (specs: string[], outDir: string, opts?: { list?: boolean }) => Promise<ReplayReport>
 
+/**
+ * One run of a Maestro flow on a device. `layout`: the probe's `[qa-layout]` lines in the WebView log during the run,
+ * each from `[qa-layout]` on. `logs`: every other new line of the WebView and backend logs, as `webview: <line>` or
+ * `backend: <line>`. `video`: the run's recording.
+ */
+export type FlowRun = { passed: boolean; error?: string; video?: string; layout: string[]; logs: string[] }
+/**
+ * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` is the finding's
+ * session dir, which picks the build (onboarding on for c1).
+ */
+export type RunFlow = (flowYaml: string, outDir: string, run: number, session: string) => Promise<FlowRun>
+
 /** One Messages API call, injected so tests never reach the network. */
 export type CreateMessage = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<
   Pick<Anthropic.Message, 'content' | 'stop_reason'> & {
@@ -94,12 +111,13 @@ export const worstJudgeCost = (system: string, user: string, images = 0) =>
 const screenshotTools = new Set([
   'mcp__playwright__browser_take_screenshot',
   'mcp__playwright_b__browser_take_screenshot',
+  'mcp__maestro__take_screenshot',
 ])
 
 /**
- * Whether a browser screenshot result in the session's transcript names `file`, a finding's `screenshot`
- * (`mcp/<name>` or `mcp-b/<name>`). The MCP prints the absolute path of the file it saved, so the directory part
- * also ties the file to the device that took it.
+ * Whether a screenshot result in the session's transcript names `file`, a finding's `screenshot` (`mcp/<name>`,
+ * `mcp-b/<name>` or `maestro/shot-<n>.<ext>`). The tool prints the absolute path of the file it saved, so the
+ * directory part also ties the file to the device that took it.
  */
 export const screenshotTaken = (transcript: TranscriptMessage[], file: string): boolean => {
   const blocks = transcript.flatMap((m) => m.message.content)
@@ -253,6 +271,85 @@ const outcomesBySpec = (report: ReplayReport) => {
 }
 
 const specPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_spec}`
+const flowPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_flow}`
+
+// The schema keeps flows to native platforms, and every one of them names its app.
+const appIdOf = (file: FindingFile) => platformOf(file.finding.viewport).appId ?? ''
+
+/** A replay flow may use only this variable: a fresh sign-in address per run. */
+const flowVars = ['EMAIL']
+const driverTimeout = 'iOS driver not ready in time'
+const logOracles = new Set(['console-error', 'page-error', 'http-5xx'])
+
+type Outcome = Pick<VerifiedFinding, 'replay' | 'artifacts'>
+
+/** Text from its console mark on, without colors: the log stream's time, process and thread change every run. */
+const fromConsoleMark = (text: string) => {
+  const at = text.search(/CONSOLE |Tauri\/Console/)
+  return stripVTControlCharacters(at < 0 ? text : text.slice(at))
+}
+
+/**
+ * What in a flow run shows the finding's bug, or undefined when the run did not show it. `layout`: a probe line equal
+ * to the quoted one, never the ready line, whether or not the flow passed (spec 6.4). The log oracles: a new log line
+ * holding the normalized evidence. The rest: the flow failed, unless only its driver failed to start.
+ */
+const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => {
+  if (oracle.type === 'layout') {
+    const quoted = /\[qa-layout\] (?!ready\b).*/.exec(oracle.evidence)?.[0].trim()
+    return quoted && run.layout.includes(quoted) ? `the layout probe logged ${quoted}` : undefined
+  }
+  if (logOracles.has(oracle.type)) {
+    const quoted = signature(fromConsoleMark(oracle.evidence))
+    const line = quoted ? run.logs.find((log) => normalize(fromConsoleMark(log)).includes(quoted)) : undefined
+    return line && `logged during the run: ${line}`
+  }
+  if (run.passed || run.error?.includes(driverTimeout)) return undefined
+  return run.error ?? 'the flow failed'
+}
+
+/**
+ * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A run whose
+ * driver did not start is run once more and only the second try counts. A failed control run stops the replay: the
+ * findings never run and `stackProblem` says why.
+ */
+const replayFlows = async (outDir: string, qaDir: string, flows: Map<FindingFile, string>, runFlow: RunFlow) => {
+  let runNumber = 0
+  const runOnce = async (yaml: string, session: string) => {
+    const first = await runFlow(yaml, outDir, ++runNumber, session)
+    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, ++runNumber, session) : first
+  }
+  const threeRuns = async (yaml: string, session: string, failure: (run: FlowRun) => string | undefined) => {
+    const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
+    for (let n = 0; n < 3; n++) {
+      const run = await runOnce(yaml, session)
+      outcome.replay.runs++
+      const problem = failure(run)
+      if (problem === undefined) continue
+      outcome.replay.failed++
+      outcome.replay.error ??= problem.slice(0, 1_500)
+      outcome.artifacts.video ??= run.video
+    }
+    return outcome
+  }
+  const control = await Bun.file(join(qaDir, 'control/stack.yaml')).text()
+  for (const appId of new Set([...flows.keys()].map(appIdOf))) {
+    const check = checkMaestroFlow(control, { appId, vars: flowVars })
+    if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
+    const { replay } = await threeRuns(check.yaml, 'control', (run) =>
+      run.passed ? undefined : (run.error ?? 'the flow failed'),
+    )
+    if (replay.failed > 0) {
+      const stackProblem = `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`
+      return { stackProblem, outcomes: new Map<FindingFile, Outcome>() }
+    }
+  }
+  const outcomes = new Map<FindingFile, Outcome>()
+  for (const [file, yaml] of flows) {
+    outcomes.set(file, await threeRuns(yaml, file.charterDir, (run) => flowFailure(file.finding.oracle, run)))
+  }
+  return { stackProblem: undefined, outcomes }
+}
 
 /** Failed runs that confirm a finding: all of them, or two in three for a real-AI charter, whose replies vary. */
 const confirmingFailures = (file: FindingFile, runs: number) =>
@@ -283,11 +380,20 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * and `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped
  * at gate `lint` and the rest replay again without them. A `visual` finding has no spec and takes no place under the
  * cap: it is confirmed when `screenshotProblem` finds nothing wrong with its screenshot, and dropped at gate `lint`
- * otherwise, whatever the stack's health. Writes and returns `<outDir>/candidates.json`.
- * Needs NO secrets and must run without any: the specs were written by a model that read untrusted pages, and the
- * spec lint is defence in depth, not the boundary.
+ * otherwise, whatever the stack's health. A native finding's `repro_flow` passes the Maestro allow list instead
+ * (`checkMaestroFlow`, with `${EMAIL}` as its only variable) and runs three times through `runFlow`, after
+ * `control/stack.yaml` passed three times; `flowFailure` says what counts as the bug in a run. Both share the cap and
+ * the confirmation rule, and any failed control marks the stack unhealthy. Writes and returns
+ * `<outDir>/candidates.json`.
+ * Needs NO secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
+ * and the lints are defence in depth, not the boundary.
  */
-export const replay = async (outDir: string, runReplay: RunReplay = runPlaywright, qaDir = '.github/qa') => {
+export const replay = async (
+  outDir: string,
+  runReplay: RunReplay = runPlaywright,
+  qaDir = '.github/qa',
+  runFlow?: RunFlow,
+) => {
   const { valid, rejected } = await loadFindings(outDir)
   const noise = await readList(join(qaDir, 'noise.txt'))
   const result: Verified = {
@@ -297,6 +403,8 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
     dropped: rejected.map((file) => ({ file, gate: 'schema', reason: file.reason })),
   }
   const lintClean: FindingFile[] = []
+  // The flow each lint-clean native finding replays: our own serialization of it, never the model's text.
+  const flows = new Map<FindingFile, string>()
   for (const file of valid) {
     const { oracle } = file.finding
     const isNoise = oracle.type === 'console-error' && noise.some((line) => oracle.evidence.includes(line))
@@ -313,6 +421,18 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
       }
       continue
     }
+    if (file.finding.repro_flow) {
+      const flow = Bun.file(join(outDir, flowPath(file)))
+      const check = (await flow.exists())
+        ? checkMaestroFlow(await flow.text(), { appId: appIdOf(file), vars: flowVars })
+        : { ok: false as const, problems: ['repro flow not found'] }
+      if (!check.ok) result.dropped.push({ file, gate: 'lint', reason: check.problems.join('; ') })
+      else {
+        flows.set(file, check.yaml)
+        lintClean.push(file)
+      }
+      continue
+    }
     const spec = Bun.file(join(outDir, specPath(file)))
     const problems = (await spec.exists()) ? lintReproSpec(await spec.text()) : ['repro spec not found']
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
@@ -324,31 +444,45 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
     .slice(replayCap)
     .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${replayCap} replayed findings` }))
 
+  const specFiles = replayable.filter((file) => !flows.has(file))
+  const replayedFlows = new Map([...flows].filter(([file]) => replayable.includes(file)))
+  if (replayedFlows.size > 0 && !runFlow) throw new Error('findings with a repro_flow need a device: pass --native')
+  const noRuns = { replay: { failed: 0, runs: 0 }, artifacts: {} }
+  const outcomes = new Map<FindingFile, Outcome>()
+  const stackProblems: string[] = []
   // Never start Playwright without a filter: it would run every spec, including the ones the lint rejected.
-  if (replayable.length > 0) {
+  if (specFiles.length > 0) {
     const control = resolve(qaDir, 'control/stack.spec.ts')
     const specOf = (file: FindingFile) => resolve(outDir, specPath(file))
-    const specs = [...new Set(replayable.map(specOf))]
+    const specs = [...new Set(specFiles.map(specOf))]
     const first = await runReplay([control, ...specs], outDir)
     const broken = first.errors.length > 0 ? await loadErrors(specs, outDir, runReplay) : new Map<string, string>()
     const report =
       broken.size > 0 ? await runReplay([control, ...specs.filter((spec) => !broken.has(spec))], outDir) : first
-    const outcomes = outcomesBySpec(report)
-    const noRuns = { replay: { failed: 0, runs: 0 }, artifacts: {} }
-    result.stack_unhealthy = stackProblem((outcomes.get(control) ?? noRuns).replay, report)
-    for (const file of replayable) {
+    const bySpec = outcomesBySpec(report)
+    const problem = stackProblem((bySpec.get(control) ?? noRuns).replay, report)
+    if (problem) stackProblems.push(problem)
+    for (const file of specFiles) {
       const loadError = broken.get(specOf(file))
-      if (loadError) {
-        result.dropped.push({ file, gate: 'lint', reason: `failed to load: ${loadError}` })
-        continue
-      }
-      const replayed = { ...file, ...(outcomes.get(specOf(file)) ?? noRuns) }
-      const { failed, runs } = replayed.replay
-      if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })
-      else if (failed === 0) result.dropped.push({ file: replayed, gate: 'replay', reason: `failed 0/${runs} replays` })
-      else if (failed >= confirmingFailures(file, runs)) result.confirmed.push(replayed)
-      else result.flaky.push(replayed)
+      if (loadError) result.dropped.push({ file, gate: 'lint', reason: `failed to load: ${loadError}` })
+      else outcomes.set(file, bySpec.get(specOf(file)) ?? noRuns)
     }
+  }
+  if (replayedFlows.size > 0 && runFlow) {
+    const native = await replayFlows(outDir, qaDir, replayedFlows, runFlow)
+    if (native.stackProblem) stackProblems.push(native.stackProblem)
+    for (const file of replayedFlows.keys()) outcomes.set(file, native.outcomes.get(file) ?? noRuns)
+  }
+  result.stack_unhealthy = stackProblems.length > 0 ? stackProblems.join('; ') : undefined
+  for (const file of replayable) {
+    const outcome = outcomes.get(file)
+    if (!outcome) continue
+    const replayed = { ...file, ...outcome }
+    const { failed, runs } = replayed.replay
+    if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })
+    else if (failed === 0) result.dropped.push({ file: replayed, gate: 'replay', reason: `failed 0/${runs} replays` })
+    else if (failed >= confirmingFailures(file, runs)) result.confirmed.push(replayed)
+    else result.flaky.push(replayed)
   }
   await Bun.write(join(outDir, 'candidates.json'), JSON.stringify(result, null, 2))
   return result
@@ -372,7 +506,7 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
- * its spec and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
+ * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
  * Kept → `confirmed`, otherwise `dropped` at gate `judge`; flaky candidates are never judged. At most `judgeCap`
  * calls, admitted in order only while their worst-case cost fits under `judgeCeilingUsd`; the rest are `deferred`.
  * Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
@@ -396,9 +530,12 @@ export const judge = async (outDir: string, create: CreateMessage = createMessag
         const content = [image, { type: 'text' as const, text: finding }]
         return { candidate, content, cost: worstJudgeCost(system, finding, 1) }
       }
-      const spec = await Bun.file(join(outDir, specPath(candidate))).text()
+      const [tag, path] = candidate.finding.repro_flow
+        ? ['repro_flow', flowPath(candidate)]
+        : ['repro_spec', specPath(candidate)]
+      const repro = await Bun.file(join(outDir, path)).text()
       const user =
-        `${finding}\n\n<repro_spec>\n${spec}\n</repro_spec>\n\n` +
+        `${finding}\n\n<${tag}>\n${repro}\n</${tag}>\n\n` +
         `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>`
       return { candidate, content: user, cost: worstJudgeCost(system, user) }
     }),
@@ -455,13 +592,36 @@ export const judge = async (outDir: string, create: CreateMessage = createMessag
 if (import.meta.main) {
   const { positionals, values } = parseArgs({
     args: Bun.argv.slice(2),
-    options: { out: { type: 'string', default: 'qa-out' } },
+    options: {
+      out: { type: 'string', default: 'qa-out' },
+      native: { type: 'string' },
+      device: { type: 'string' },
+      app: { type: 'string' },
+      'app-onboarding': { type: 'string' },
+    },
     allowPositionals: true,
   })
   const step = positionals[0]
-  if (step !== 'replay' && step !== 'judge')
-    throw new Error('usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out')
-  const result = await { replay, judge }[step](values.out)
+  if (step !== 'replay' && step !== 'judge') {
+    throw new Error(
+      'usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out ' +
+        '[--native ios|android --device <id> --app <app> --app-onboarding <app>], ' +
+        'with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native',
+    )
+  }
+  const nativeFlows = () => {
+    const { native: platform, device, app, 'app-onboarding': onboarding } = values
+    const { QA_WEBVIEW_LOG: webviewLog, QA_BACKEND_LOG: backendLog } = Bun.env
+    if (platform !== 'ios' && platform !== 'android') throw new Error(`--native must be ios or android: ${platform}`)
+    if (!device || !app || !onboarding || !webviewLog || !backendLog) {
+      throw new Error('--native needs --device, --app, --app-onboarding, QA_WEBVIEW_LOG and QA_BACKEND_LOG')
+    }
+    return createRunFlow({ platform, deviceId: device, apps: { onboarding, plain: app }, webviewLog, backendLog })
+  }
+  const result =
+    step === 'judge'
+      ? await judge(values.out)
+      : await replay(values.out, undefined, undefined, values.native === undefined ? undefined : nativeFlows())
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
       `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +

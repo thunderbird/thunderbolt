@@ -4,6 +4,22 @@
 
 import { z } from 'zod'
 
+/**
+ * The Maestro settings and SDK paths every Maestro process gets, and nothing else from the caller's environment. The
+ * gate's `maestro mcp` and the replay's `maestro test` both add the MCP SDK's default HOME, LOGNAME, PATH, SHELL,
+ * TERM and USER.
+ */
+export const maestroEnv = () => ({
+  ...Object.fromEntries(
+    ['JAVA_HOME', 'ANDROID_HOME'].flatMap((key) => {
+      const value = process.env[key]
+      return value ? [[key, value]] : []
+    }),
+  ),
+  MAESTRO_CLI_NO_ANALYTICS: '1',
+  MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000',
+})
+
 /** A checked Maestro flow: the text to hand to Maestro, or every problem found. */
 export type FlowCheck = { ok: true; yaml: string } | { ok: false; problems: string[] }
 

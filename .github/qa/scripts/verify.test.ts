@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { lintReproSpec, type RawFinding } from './findings'
 import type { TranscriptMessage } from './report'
+import { checkMaestroFlow } from './maestro-flow'
 import {
   judge,
   replay,
@@ -16,7 +17,9 @@ import {
   screenshotTaken,
   worstJudgeCost,
   type CreateMessage,
+  type FlowRun,
   type ReplayReport,
+  type RunFlow,
   type RunReplay,
   type Verified,
 } from './verify'
@@ -543,6 +546,15 @@ describe('replay', () => {
     expect(lintReproSpec(source)).toEqual([])
   })
 
+  test('a screenshot the Maestro gate saved counts like a browser one', () => {
+    const transcript = callsOf([
+      ['mcp__maestro__take_screenshot', `Saved to ${sessionDir}/maestro/shot-2.jpg`],
+      ['mcp__maestro__run', `ok\n${sessionDir}/maestro/shot-3.jpg`],
+    ])
+    expect(screenshotTaken(transcript, 'maestro/shot-2.jpg')).toBe(true)
+    expect(screenshotTaken(transcript, 'maestro/shot-3.jpg')).toBe(false)
+  })
+
   test('writes candidates.json with the verified.json shape', async () => {
     await writeFinding(makeFinding('always', pageError))
     const result = await replay(outDir, fakeRunner({ 'c2-chat/repro/always.spec.ts': ['failed'] }, []), qaDir)
@@ -550,6 +562,181 @@ describe('replay', () => {
     expect(written).toEqual(result)
     expect(Object.keys(written).sort()).toEqual(['confirmed', 'deferred', 'dropped', 'flaky', 'observations'])
     expect(Object.keys(written.confirmed[0]).sort()).toEqual(['artifacts', 'charterDir', 'finding', 'id', 'replay'])
+  })
+})
+
+describe('replay of native flows', () => {
+  const session = 'c2-chat-power-user-ios'
+  const nameLine = '[qa-layout] focused-clipped textbox "Enter your name"'
+  const layout = { type: 'layout', evidence: nameLine }
+  const assertFailed = { type: 'assert-failed', evidence: 'The sent message never shows' }
+
+  /** An iOS finding proven by `repro/<title>.yaml`. */
+  const makeNative = (title: string, oracle: RawFinding['oracle']): RawFinding => ({
+    ...makeFinding(title, oracle),
+    charter: 'c2-chat-power-user',
+    viewport: 'ios',
+    repro_spec: undefined,
+    repro_flow: `repro/${title}.yaml`,
+  })
+  /** A flow that asserts its own title, so the fake device can tell flows apart. */
+  const flowOf = (title: string) => `- launchApp\n- inputText: \${EMAIL}\n- assertVisible: ${title}\n`
+
+  /** Writes `<dir>/findings/<title>.json` and, unless `flow` is null, its repro flow. */
+  const writeNative = async (finding: RawFinding, flow: string | null = flowOf(finding.title), dir = session) => {
+    await Bun.write(join(outDir, dir, 'findings', `${finding.title}.json`), JSON.stringify(finding))
+    if (flow !== null) await Bun.write(join(outDir, dir, 'repro', `${finding.title}.yaml`), flow)
+  }
+
+  beforeEach(() => Bun.write(join(qaDir, 'control/stack.yaml'), flowOf('stack control')))
+
+  type FlowCall = { title: string; run: number; session: string }
+  /** Answers each run with the next result queued for the flow whose title it asserts; with none left, it passes. */
+  const fakeFlow =
+    (results: Record<string, Partial<FlowRun>[]>, calls: FlowCall[]): RunFlow =>
+    async (yaml, _outDir, run, session) => {
+      const title = /assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? ''
+      calls.push({ title, run, session })
+      return { passed: true, layout: [], logs: [], ...results[title]?.shift() }
+    }
+
+  const nativeReplay = (results: Record<string, Partial<FlowRun>[]>, calls: FlowCall[] = []) =>
+    replay(outDir, fakeRunner({}, []), qaDir, fakeFlow(results, calls))
+
+  test('a layout run fails when the probe logs the quoted line: 3/3 confirmed, 1/3 flaky, anything else 0/3', async () => {
+    for (const title of ['always', 'once', 'elsewhere']) await writeNative(makeNative(title, layout))
+    await writeNative(makeNative('ready', { type: 'layout', evidence: '[qa-layout] ready' }))
+    const video = 'qa-out/videos/run-4.mp4'
+    const seen = { layout: ['[qa-layout] ready', nameLine], video }
+    const unseen = { layout: ['[qa-layout] ready'] }
+    const other = { layout: ['[qa-layout] focused-clipped textbox "Search locations"'] }
+
+    const result = await nativeReplay({
+      always: [seen, seen, seen],
+      once: [unseen, seen, unseen],
+      // A flow that fails before the screen does not show the layout bug.
+      elsewhere: [other, { passed: false, error: 'Element not found: Continue' }, other],
+      ready: [unseen, unseen, unseen],
+    })
+
+    expect(titles(result.confirmed)).toEqual(['always'])
+    expect(result.confirmed[0]).toMatchObject({
+      replay: { failed: 3, runs: 3, error: `the layout probe logged ${nameLine}` },
+      artifacts: { video },
+    })
+    expect(result.flaky.map(({ id, replay: { failed, runs } }) => [id, failed, runs])).toEqual([['once', 1, 3]])
+    expect(droppedAt(result, 'replay').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['elsewhere', 'failed 0/3 replays'],
+      ['ready', 'failed 0/3 replays'],
+    ])
+  })
+
+  test('a flow outside the allow list is dropped at lint and never reaches the device', async () => {
+    await writeNative(makeNative('script', assertFailed), '- launchApp\n- runScript: steal.js\n')
+    await writeNative(makeNative('variable', assertFailed), '- launchApp\n- inputText: ${HOME}\n')
+    await writeNative(makeNative('missing', assertFailed), null)
+    const calls: FlowCall[] = []
+
+    const result = await nativeReplay({}, calls)
+
+    expect(calls).toEqual([])
+    const lint = droppedAt(result, 'lint')
+    expect(lint.map((entry) => entry.file.id)).toEqual(['missing', 'script', 'variable'])
+    expect(lint[0].reason).toBe('repro flow not found')
+    expect(lint[1].reason).toContain('runScript')
+    expect(lint[2].reason).toContain('(EMAIL)')
+  })
+
+  test('a control flow that fails once marks the stack unhealthy, and no finding runs or is confirmed', async () => {
+    await writeNative(makeNative('always', assertFailed))
+    const calls: FlowCall[] = []
+    const failure = 'Assertion is false: "Ask anything" is visible'
+
+    const result = await nativeReplay({ 'stack control': [{}, { passed: false, error: failure }, {}] }, calls)
+
+    expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failure}`)
+    expect(calls.map((call) => call.title)).toEqual(['stack control', 'stack control', 'stack control'])
+    expect(result.confirmed).toEqual([])
+    expect(result.dropped.map((entry) => [entry.file.id, entry.gate, entry.reason])).toEqual([
+      ['always', 'replay', 'stack unhealthy'],
+    ])
+  })
+
+  test('a log oracle fails a run when a new log line holds the evidence, whatever the run-specific noise', async () => {
+    const line = (time: string, pid: string, hash: string, chat: string) =>
+      `webview: 2026-10-19 ${time} Df Thunderbolt Dev[${pid}] [com.apple.WebKit:Generic] WebContent[49912] ` +
+      `tauri://localhost/assets/entry-${hash}.js:824:330924: CONSOLE ERROR Failed to load chat ${chat}`
+    const quoted = line('22:54:08.037', '49907:1b54a6', 'DR7YbkT0', '7d3f2a1b-0c4e-4f5a-9b6d-1e2f3a4b5c6d')
+    const later = line('23:10:41.502', '51022:22c1', 'Xk2pQ9aZ', '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d')
+    await writeNative(makeNative('console', { type: 'console-error', evidence: quoted }))
+    await writeNative(makeNative('quiet', { type: 'page-error', evidence: 'TypeError: messages is undefined' }))
+    const server = 'backend: INFO: - - "POST /v1/chat HTTP/1.1" 500 Internal Server Error 12ms'
+    await writeNative(makeNative('server', { type: 'http-5xx', evidence: server }))
+    const raw =
+      'backend: \u001b[32mINFO\u001b[39m: \u001b[36m- - "POST /v1/chat HTTP/1.1" 500 Internal Server Error 31ms'
+    const logs = { logs: [later, raw] }
+
+    const result = await nativeReplay({
+      console: [logs, logs, logs],
+      quiet: [logs, logs, logs],
+      server: [logs, logs, logs],
+    })
+
+    expect(titles(result.confirmed)).toEqual(['console', 'server'])
+    expect(result.confirmed[0].replay.error).toBe(`logged during the run: ${later}`)
+    expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
+  })
+
+  test('each run starts from a clean app: its own run number, with the session that picks the build', async () => {
+    await writeNative(makeNative('name', layout), undefined, 'c1-first-run-ios')
+    await writeNative(makeNative('chat', assertFailed))
+    const calls: FlowCall[] = []
+
+    await nativeReplay({}, calls)
+
+    expect(calls.map(({ title, run, session }) => `${run} ${title} ${session}`)).toEqual([
+      '1 stack control control',
+      '2 stack control control',
+      '3 stack control control',
+      '4 name c1-first-run-ios',
+      '5 name c1-first-run-ios',
+      '6 name c1-first-run-ios',
+      '7 chat c2-chat-power-user-ios',
+      '8 chat c2-chat-power-user-ios',
+      '9 chat c2-chat-power-user-ios',
+    ])
+  })
+
+  test('a driver that did not start is tried again and never counts as the bug', async () => {
+    await writeNative(makeNative('always', assertFailed))
+    await writeNative(makeNative('stalled', assertFailed))
+    const driver = { passed: false, error: 'Unable to launch app: iOS driver not ready in time' }
+    const failed = { passed: false, error: 'Assertion is false: "hello" is visible' }
+    const calls: FlowCall[] = []
+
+    const result = await nativeReplay(
+      { always: [driver, failed, failed, failed], stalled: [driver, driver, failed, failed] },
+      calls,
+    )
+
+    expect(calls.filter((call) => call.title === 'always')).toHaveLength(4)
+    expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
+      ['always', { failed: 3, runs: 3, error: failed.error }],
+    ])
+    // Its second driver failure in a row is a run without the bug.
+    expect(result.flaky.map(({ id, replay: { failed, runs } }) => [id, failed, runs])).toEqual([['stalled', 2, 3]])
+  })
+
+  test('a flow finding needs a device: replay without one refuses to run', async () => {
+    await writeNative(makeNative('always', assertFailed))
+    await expect(replay(outDir, fakeRunner({}, []), qaDir)).rejects.toThrow('--native')
+  })
+
+  test('the control flow passes the allow list on both platforms', async () => {
+    const source = await Bun.file(join(import.meta.dir, '../control/stack.yaml')).text()
+    for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
+      expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
+    }
   })
 })
 
@@ -725,6 +912,29 @@ describe('judge', () => {
       '<replay_failure>\nError: expect(locator).toBeVisible() failed for real\n</replay_failure>',
     )
     expect(prompt).not.toContain('qa-out/replay')
+  })
+
+  test('the judge reads a native finding with its flow in place of a spec', async () => {
+    const flow = '- launchApp\n- tapOn: Continue\n'
+    const native = {
+      ...candidate('native'),
+      charterDir: 'c1-first-run-ios',
+      finding: {
+        ...makeFinding('native', pageError),
+        viewport: 'ios',
+        repro_spec: undefined,
+        repro_flow: 'repro/1.yaml',
+      },
+    }
+    await writeCandidates({ confirmed: [native], flaky: [], observations: [], dropped: [] })
+    await Bun.write(join(outDir, 'c1-first-run-ios/repro/1.yaml'), flow)
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    await judge(outDir, fakeCreate({ native: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
+
+    const prompt = String(calls[0].messages[0].content)
+    expect(prompt).toContain(`<repro_flow>\n${flow}\n</repro_flow>`)
+    expect(prompt).not.toContain('<repro_spec>')
   })
 
   test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {

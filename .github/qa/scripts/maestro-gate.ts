@@ -27,7 +27,7 @@ import { z } from 'zod'
 import { measureNative, parseInspectScreen, readyLine } from '../native-layout'
 import { sanitize, secretPattern } from './file-findings'
 import { platformOf } from './findings'
-import { checkMaestroFlow } from './maestro-flow'
+import { checkMaestroFlow, maestroEnv } from './maestro-flow'
 
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 export type ToolResult = { content: Content[]; isError?: boolean }
@@ -291,18 +291,6 @@ const required = (key: string) => {
   if (!value) throw new Error(`${key} must be set`)
   return value
 }
-
-/** The environment `maestro mcp` starts with: the SDK adds HOME, LOGNAME, PATH, SHELL, TERM and USER. */
-const maestroEnv = () => ({
-  ...Object.fromEntries(
-    ['JAVA_HOME', 'ANDROID_HOME'].flatMap((key) => {
-      const value = process.env[key]
-      return value ? [[key, value]] : []
-    }),
-  ),
-  MAESTRO_CLI_NO_ANALYTICS: '1',
-  MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000',
-})
 
 /** Maestro's text and images; it sends no other content. */
 const toContent = (item: CallToolResult['content'][number]): Content[] => {

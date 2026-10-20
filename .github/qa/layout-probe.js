@@ -113,12 +113,16 @@
     return directions.some((direction) => scrollRoom(containers, direction) < 1)
   }
 
-  // The fixed or sticky box the cover belongs to, unless el sits in it too: only that kind stays put while el scrolls.
+  // The box the cover belongs to when it stays put while el scrolls: a fixed or sticky one, or any box outside a scroll
+  // box of el's (an absolute header or button over the page's own scroller), unless el sits in it too.
   const pinnedCover = (hit, el) => {
+    let branch = hit
     for (let node = hit; node && !node.contains(el); node = node.parentElement) {
       if (/fixed|sticky/.test(getComputedStyle(node).position)) return node
+      branch = node
     }
-    return null
+    const scrolls = (node) => /auto|scroll/.test(getComputedStyle(node).overflowX + getComputedStyle(node).overflowY)
+    return containersOf(el).chain.some((node) => scrolls(node) && !node.contains(hit)) ? branch : null
   }
 
   const isExcusedCover = (hit) =>

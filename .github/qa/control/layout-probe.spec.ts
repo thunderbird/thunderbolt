@@ -56,6 +56,16 @@ test('an inline alert over a button is covered, unlike a toast', async ({ page }
   expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Retry"' }])
 })
 
+test('an inline alert over a button in its own wrapper is still covered', async ({ page }) => {
+  // The wrapper is no scroll box, so the alert moves with the button when the page scrolls.
+  await page.setContent(`
+    <div style="height: 600px"></div>
+    <div><button>Retry</button></div>
+    <p role="alert" style="position: relative; margin-top: -20px; background: #fee">Failed</p>
+    <div style="height: 2000px"></div>`)
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Retry"' }])
+})
+
 test('unbreakable text wider than a phone overflows', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   expect((await problemsOf(page, 'overflow.html')).map((problem) => problem.kind).sort()).toEqual([
@@ -168,6 +178,33 @@ test('with the keyboard open, a sticky header over the focused field is focus-co
   await page.setContent(stickyHeaderPage)
   await page.addScriptTag({ path: resolve(import.meta.dirname, '../fixtures/layout/fake-keyboard.js') })
   await page.evaluate(() => scrollTo(0, 150))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'focus-covered', target: 'textbox "Title"' }])
+})
+
+test('a button scrolled under an absolute header outside its scroll box is fine while the box can scroll back', async ({
+  page,
+}) => expect(await problemsOf(page, 'header-over-scroller.html')).toEqual([]))
+
+test('an absolute header over a button its scroll box cannot scroll clear is covered', async ({ page }) => {
+  await page.addInitScript({ path: probePath })
+  await page.goto(`${fixture('header-over-scroller.html')}#stuck`)
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Under the header"' }])
+})
+
+test('with the keyboard open, an absolute header over the focused field is focus-covered despite the room', async ({
+  page,
+}) => {
+  await page.setContent(`
+    <body style="margin: 0; overflow: hidden">
+      <div style="position: absolute; top: 0; left: 0; right: 0; height: 60px; background: #ddd">Header</div>
+      <div id="box" style="height: 100vh; overflow: auto">
+        <div style="height: 140px"></div>
+        <input placeholder="Title" style="display: block; height: 44px" />
+        <div style="height: 2000px"></div>
+      </div>
+    </body>`)
+  await page.addScriptTag({ path: resolve(import.meta.dirname, '../fixtures/layout/fake-keyboard.js') })
+  await page.evaluate(() => document.getElementById('box')?.scrollTo(0, 130))
   expect(await layoutProblems(page)).toEqual([{ kind: 'focus-covered', target: 'textbox "Title"' }])
 })
 

@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm'
 import type { PluggableList } from 'unified'
 
 import { blockHasMath, type IncrementalMarkdownState, parseMarkdownIntoBlocksIncremental } from './markdown-blocks'
-import { markdownComponents } from './markdown-utils'
+import { markdownComponents, markdownUrlTransform } from './markdown-utils'
 
 // remark-gfm is small and used by every block, so it stays statically imported.
 // remark-math + rehype-katex + the KaTeX stylesheet (~70KB gzip) are lazy-loaded
@@ -82,7 +82,12 @@ const MemoizedMarkdownBlock = memo(
     const rehypePlugins: PluggableList = mathPlugins ? [mathPlugins.rehype] : []
     return (
       <div className="overflow-x-scroll">
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components}
+          urlTransform={markdownUrlTransform}
+        >
           {content}
         </ReactMarkdown>
       </div>

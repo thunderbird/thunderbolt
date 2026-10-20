@@ -58,6 +58,21 @@ check "bun" \
   "install with: curl -fsSL https://bun.sh/install | bash" \
   true
 
+# Bun runs the Vite/Lingui binaries under Node; Lingui requires Node >=22.19.0.
+node_version=$(node --version 2>/dev/null) || node_version="not found"
+check_node_version() {
+  [[ "$node_version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  local major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
+  # Compare lengths first so even unusually large version components cannot overflow.
+  [[ ${#major} -gt 2 || $major -gt 22 || ( $major -eq 22 && ( ${#minor} -gt 2 || $minor -ge 19 ) ) ]] || return 1
+  printf '%s\n' "$node_version"
+}
+
+check "node (>=22.19.0)" \
+  "check_node_version" \
+  "Node.js >=22.19.0 is required by Vite/Lingui (found: ${node_version}). Install a supported Node.js version and put it first in PATH; verify with: node --version" \
+  true
+
 check "cargo" \
   "cargo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
   "install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"

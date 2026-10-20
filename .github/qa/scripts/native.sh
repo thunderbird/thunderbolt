@@ -36,7 +36,9 @@ cd "$(dirname "$0")/../../.."
 eval "$(sed -n '/^backend_url=/p; /^fake_google_url=/p; /^frontend_env=(/,/^)/p' .github/qa/scripts/stack.sh)"
 
 fixtures=.github/qa/fixtures
-stack_ports="8005 9878 9879 9880"
+# The CI PowerSync service of c7, reached by the app through POWERSYNC_URL, which the backend hands out.
+powersync=localhost:18081
+stack_ports="8005 9878 9879 9880 ${powersync#*:}"
 
 die() {
   echo "$*" >&2
@@ -54,7 +56,7 @@ config() {
   local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' .github/qa/layout-probe.js'
   [ "${3:-}" = control ] && inject="$inject .github/qa/control/cover.js"
   filter="$filter | .build.beforeBuildCommand = \$cmd"
-  jq --slurpfile real src-tauri/tauri.conf.json --arg extra "$backend_url $fake_google_url" --arg cmd "$inject" \
+  jq --slurpfile real src-tauri/tauri.conf.json --arg extra "$backend_url $fake_google_url http://$powersync ws://$powersync" --arg cmd "$inject" \
     "$filter" src-tauri/tauri.dev.conf.json > "$2"
 }
 

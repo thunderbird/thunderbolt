@@ -383,6 +383,17 @@ describe('video', () => {
     expect(input.description).toContain('https://uploads.linear.app/a/v.webm')
     expect(uploads(api)[0].contentType).toBe('video/webm')
   })
+
+  test('uploads a native replay video as MP4', async () => {
+    const video = 'videos/ios-c2-chat-power-user-ios-run-4.mp4'
+    await writeVerified([{}], video)
+    await mkdir(join(outDir, 'videos'), { recursive: true })
+    await writeFile(join(outDir, video), 'video')
+    const api = fakeLinear()
+    await run(api.fetchFn)
+    expect(uploads(api)[0].contentType).toBe('video/mp4')
+    expect(created(api)[0].description).toContain('https://uploads.linear.app/a/')
+  })
 })
 
 describe('one ticket per bug across platforms', () => {
@@ -438,7 +449,7 @@ describe('visual findings', () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
     await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), '<svg onload="x()">')
     const api = fakeLinear()
-    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG or WebM file')
+    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG, WebM or MP4 file')
     expect(uploads(api)).toEqual([])
   })
 

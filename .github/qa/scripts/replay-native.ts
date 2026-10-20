@@ -30,11 +30,17 @@ const linesFrom = async (file: string, start: number) => {
 }
 
 /**
+ * A run's video under `<outDir>/videos/`. The leg and the session keep it apart from every other leg's, since the
+ * judge and the file job merge every replay leg into one folder.
+ */
+export const videoPath = (outDir: string, leg: string | undefined, session: string, run: number) =>
+  join(outDir, 'videos', `${leg ? `${leg}-` : ''}${session}-run-${run}.mp4`)
+
+/**
  * The real `RunFlow`. Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left
  * (review focus 5): the onboarding build for a c1 session (Ruling 9), the plain one otherwise, the control included.
- * It records the screen into `<outDir>/videos/run-<n>.mp4` (Android caps a recording at 3 minutes), runs the flow with
- * a fresh `EMAIL`, waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and
- * the rest.
+ * It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the flow with a fresh `EMAIL`,
+ * waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -42,8 +48,10 @@ export const createRunFlow = (opts: {
   apps: { onboarding: string; plain: string }
   webviewLog: string
   backendLog: string
+  /** The replay leg's name, in each video's name. */
+  leg?: string
 }): RunFlow => {
-  const { platform, deviceId, webviewLog, backendLog } = opts
+  const { platform, deviceId, webviewLog, backendLog, leg } = opts
   const { appId } = platformOf(platform)
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
@@ -60,7 +68,7 @@ export const createRunFlow = (opts: {
     const flowFile = join(dir, 'flow.yaml')
     await Bun.write(flowFile, flowYaml)
     await mkdir(join(outDir, 'videos'), { recursive: true })
-    const video = join(outDir, 'videos', `run-${run}.mp4`)
+    const video = videoPath(outDir, leg, session, run)
     const recorder = Bun.spawn(
       ios
         ? ['xcrun', 'simctl', 'io', deviceId, 'recordVideo', '--codec=h264', '--force', video]

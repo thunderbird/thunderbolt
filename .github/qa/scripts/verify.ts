@@ -739,13 +739,14 @@ if (import.meta.main) {
       session: { type: 'string' },
       result: { type: 'string' },
       original: { type: 'string' },
+      leg: { type: 'string' },
     },
     allowPositionals: true,
   })
   const step = positionals[0]
   const usage =
     'usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out ' +
-    '[--native ios|android --device <id> --app <app> --app-onboarding <app>] | ' +
+    '[--native ios|android --device <id> --app <app> --app-onboarding <app> [--leg <name>]] | ' +
     'fix-native --out <dir> --native ios|android --device <id> --app <patched app> --fp <fp> --flow <flow> ' +
     '--session <session> --result <json> [--original <app>], with QA_WEBVIEW_LOG and QA_BACKEND_LOG set for --native'
   if (step !== 'replay' && step !== 'judge' && step !== 'fix-native') throw new Error(usage)
@@ -756,7 +757,14 @@ if (import.meta.main) {
     if (!device || !app || !onboarding || !webviewLog || !backendLog) {
       throw new Error('--native needs --device, --app, --app-onboarding, QA_WEBVIEW_LOG and QA_BACKEND_LOG')
     }
-    return createRunFlow({ platform, deviceId: device, apps: { onboarding, plain: app }, webviewLog, backendLog })
+    return createRunFlow({
+      platform,
+      deviceId: device,
+      apps: { onboarding, plain: app },
+      webviewLog,
+      backendLog,
+      leg: values.leg,
+    })
   }
   if (step === 'fix-native') {
     const { fp, flow, session, result: resultFile, original, native: platform, app } = values

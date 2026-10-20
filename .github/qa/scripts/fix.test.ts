@@ -410,6 +410,14 @@ describe('isDenied', () => {
     'web/pnpm-lock.yaml',
     'npm-shrinkwrap.json',
     'backend/npm-shrinkwrap.json',
+    // The dev servers re-run these while the fix agent works, and the checks obey them.
+    'vite.config.ts',
+    'web/vite.config.mjs',
+    'playwright.config.ts',
+    'tsconfig.json',
+    'tsconfig.node.json',
+    'backend/tsconfig.json',
+    'src/sub/.husky/pre-commit',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -436,6 +444,8 @@ describe('isDenied', () => {
     'src/components/gemfile-view.tsx',
     'src/lib/husky.ts',
     'src/lib/lint-staged.ts',
+    'src/lib/vite-config.ts',
+    'src/settings/tsconfig-view.tsx',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })

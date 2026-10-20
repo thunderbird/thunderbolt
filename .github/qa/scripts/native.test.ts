@@ -89,4 +89,15 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(pushes.map((line) => line.split(' ').at(-2)?.split('/').at(-1)).sort()).toEqual(['sample.pdf', 'sample.png'])
   expect(at(/ push /)).toBeGreaterThan(log.lastIndexOf('-s emulator-5554 shell test -d /sdcard/Android'))
   expect(at(/ push /)).toBeGreaterThan(at(/mkdir -p \/sdcard\/Download/))
+  // c7's PowerSync too, so the app on the emulator can sync.
+  expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
+})
+
+test('a QA build may reach the stack and c7 PowerSync, over HTTP and WebSocket', async () => {
+  const out = join(work, 'tauri.conf.json')
+  const proc = Bun.spawnSync(['bash', native, 'config', 'android', out])
+  expect(proc.exitCode).toBe(0)
+  const sources = (await Bun.file(out).json()).app.security.csp['connect-src'].split(' ')
+  for (const source of ['http://localhost:8005', 'http://localhost:18081', 'ws://localhost:18081'])
+    expect(sources).toContain(source)
 })

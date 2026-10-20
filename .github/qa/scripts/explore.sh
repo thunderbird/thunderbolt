@@ -10,6 +10,7 @@
 #   .github/qa/scripts/explore.sh run <session> <out-dir> [max-usd]  run the session locally with `claude -p` ($2)
 #   .github/qa/scripts/explore.sh canary <session> <out-dir>         check that the gate denies a native session
 #   .github/qa/scripts/explore.sh journey [<case>]                   print this week's free-session case, or check one
+#   .github/qa/scripts/explore.sh harness <session> <dir>            CI: a native session's gate, hook and config in <dir>
 #
 # A session is <charter>-<platform>, e.g. c4-skills-projects-phone, or free-<case>-<platform> for the free session of a
 # case in journeys.json (platform ids are in platforms.json and never contain a hyphen), e.g.
@@ -25,9 +26,14 @@
 # QA_WEBVIEW_LOG and QA_BACKEND_LOG, both logs outside the session dir. Its gate log is <out-dir>/<session>.gate.log.
 # `canary` must pass before any native session runs (spec 6.7). QA_DRY_RUN=1 prints the native claude command and
 # its hook settings instead of running them.
+#
+# In CI c7's second browser can write anywhere in the checkout, so nothing the session runs may come from it. `harness`
+# puts the compiled gate and hook, the browser's MCP server, the session's MCP config and a copy of this script in a
+# dir outside the checkout, which the workflow makes read-only. `<dir>/explore.sh canary|run` with QA_HARNESS=<dir>
+# and QA_REPO=<checkout> then uses them, and `run` leaves the summary to a later step without the key.
 
 set -euo pipefail
-cd "$(dirname "$0")/../../.."
+cd "${QA_REPO:-$(dirname "$0")/../../..}"
 
 # One field of a platform in platforms.json.
 platform() {
@@ -102,11 +108,13 @@ native_claude() {
     denied+=(mcp__playwright_b__browser_run_code_unsafe)
     QA_ALLOW_BROWSER_B=1
   fi
+  if [ -n "${QA_HARNESS:-}" ]; then mcp=("$QA_HARNESS/mcp.json"); fi
   export QA_ALLOW_BROWSER_B QA_PLATFORM=${session##*-} QA_SESSION_DIR=$dir QA_GATE_LOG=$dir.gate.log \
     QA_OUT=${dir%/*} QA_CHARTER=${dir##*/}
   config=$(mktemp -d)
   # Claude Code lets a call through when its hook cannot run, so a hook that crashes must still deny.
   hook="bun $(printf %q "$PWD/.github/qa/scripts/native-hook.ts") || exit 2"
+  if [ -n "${QA_HARNESS:-}" ]; then hook="$(printf %q "$QA_HARNESS/native-hook") || exit 2"; fi
   jq --null-input --arg command "$hook" \
     '{hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $command}]}]}}' > "$config/settings.json"
   local command=(env CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 "CLAUDE_CONFIG_DIR=$config" claude -p "$@"
@@ -150,7 +158,8 @@ run() {
     rm -f "$out/$session.gate.log"
     native_claude "$session" "$out/$session" "$out/$session/run.jsonl" "$text" \
       --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
-    if [ "${QA_DRY_RUN:-}" != 1 ]; then summarize "$session" "$out"; fi
+    # With a harness the checkout may have been rewritten, and this step holds the key: no repo code runs now.
+    if [ "${QA_DRY_RUN:-}" != 1 ] && [ -z "${QA_HARNESS:-}" ]; then summarize "$session" "$out"; fi
     return
   fi
   QA_CHARTER=$session
@@ -202,14 +211,40 @@ text canary. Make both calls in your first turn, even if one of them fails, then
   exit 1
 }
 
+# The gate and the hook as standalone binaries that read nothing from the checkout or node_modules, this script, and
+# the session's MCP config pointing at them. c7 on Android also gets its own install of the second browser's MCP
+# server and the layout probe, so npx resolves nothing in the checkout.
+harness() {
+  local session=$1 dir=$2 servers
+  mkdir -p "$dir"
+  dir=$(cd "$dir" && pwd -P)
+  bun build --compile .github/qa/scripts/maestro-gate.ts --outfile "$dir/maestro-gate" >&2
+  bun build --compile .github/qa/scripts/native-hook.ts --outfile "$dir/native-hook" >&2
+  cp .github/qa/scripts/explore.sh "$dir/explore.sh"
+  servers=$(jq --null-input --arg gate "$dir/maestro-gate" '{maestro: {type: "stdio", command: $gate, args: []}}')
+  if [ "$session" = c7-two-devices-android ]; then
+    cp .github/qa/layout-probe.js "$dir/layout-probe.js"
+    # args[1] is the pinned package, args[0] npx's -y.
+    npm install --silent --prefix "$dir/playwright-mcp" \
+      "$(jq --raw-output '.mcpServers.playwright_b.args[1]' .github/qa/mcp-two-devices.json)" >&2
+    # shellcheck disable=SC2016 # jq variables
+    servers=$(jq --argjson servers "$servers" --arg bin "$dir/playwright-mcp/node_modules/.bin/playwright-mcp" \
+      --arg probe "$dir/layout-probe.js" '$servers + {playwright_b: (.mcpServers.playwright_b | .command = $bin
+        | .args = (.args[2:] | map(if . == ".github/qa/layout-probe.js" then $probe else . end)))}' \
+      .github/qa/mcp-two-devices.json)
+  fi
+  jq --null-input --argjson servers "$servers" '{mcpServers: $servers}' > "$dir/mcp.json"
+}
+
 case "${1:-}" in
   prompt) prompt "$2" "$3" ;;
   run) run "$2" "$3" "${4:-2}" ;;
   canary) canary "$2" "$3" ;;
   journey) journey "${2:-}" ;;
+  harness) harness "$2" "$3" ;;
   *)
     echo "usage: $0 prompt <session> <out-dir> | run <session> <out-dir> [max-usd] | canary <session> <out-dir> |" \
-      "journey [<case>]" >&2
+      "journey [<case>] | harness <session> <dir>" >&2
     exit 2
     ;;
 esac

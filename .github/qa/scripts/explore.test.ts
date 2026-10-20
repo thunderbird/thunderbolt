@@ -162,3 +162,57 @@ test('the canary fails when the outside file exists, even with both denials logg
 test('the canary refuses a web session', () => {
   expect(sh(['canary', 'c2-chat-power-user-phone', out], fakeClaude(denied)).code).toBe(2)
 })
+
+// Built once, outside any test's timeout: two `bun build --compile` runs. npm is a stand-in that records its arguments.
+const harnessDir = join(work, 'harness')
+const npmLog = join(work, 'npm.log')
+const npmBin = mkdtempSync(join(work, 'npm-'))
+writeFileSync(join(npmBin, 'npm'), `#!/bin/bash\necho "$*" > ${npmLog}\n`)
+chmodSync(join(npmBin, 'npm'), 0o755)
+const harnessBuild = sh(['harness', 'c7-two-devices-android', harnessDir], { PATH: `${npmBin}:${process.env.PATH}` })
+const harness = realpathSync(harnessDir)
+/** explore.sh run from the harness copy, as the workflow runs it. */
+const fromHarness = (args: string[], env: Record<string, string> = {}) => {
+  const proc = Bun.spawnSync(['bash', join(harness, 'explore.sh'), ...args], {
+    env: { ...process.env, QA_DEVICE_ID: 'device-1', ...logs, QA_HARNESS: harness, QA_REPO: repoRoot, ...env },
+  })
+  return { code: proc.exitCode, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() }
+}
+
+test('the harness holds the compiled gate and hook, and its MCP config points only inside it', async () => {
+  expect(harnessBuild.code).toBe(0)
+  const mcp = await Bun.file(join(harness, 'mcp.json')).json()
+  expect(mcp.mcpServers.maestro).toEqual({ type: 'stdio', command: join(harness, 'maestro-gate'), args: [] })
+  const browser = mcp.mcpServers.playwright_b
+  expect(browser.command).toBe(join(harness, 'playwright-mcp/node_modules/.bin/playwright-mcp'))
+  expect(browser.args).toContain(join(harness, 'layout-probe.js'))
+  expect(browser.args).not.toContain('-y')
+  expect(JSON.stringify(mcp)).not.toContain(repoRoot)
+  expect(await Bun.file(npmLog).text()).toBe(
+    `install --silent --prefix ${harness}/playwright-mcp @playwright/mcp@0.0.83\n`,
+  )
+  // A standalone binary: it runs from the harness with no bun and no checkout, and still denies Bash.
+  const hook = Bun.spawnSync([join(harness, 'native-hook')], {
+    cwd: work,
+    stdin: new TextEncoder().encode('{"tool_name":"Bash","tool_input":{}}'),
+    env: { PATH: '/usr/bin:/bin', QA_SESSION_DIR: join(work, 's'), QA_GATE_LOG: join(work, 'hook.log') },
+  })
+  expect(hook.exitCode).toBe(2)
+})
+
+test('a session run from the harness uses its config and hook, never a path in the checkout', () => {
+  const { code, stdout, stderr } = fromHarness(['run', 'c7-two-devices-android', out], { QA_DRY_RUN: '1' })
+  expect({ code, stderr }).toEqual({ code: 0, stderr: '' })
+  const { command, settings }: DryRun = JSON.parse(stdout)
+  expect(flag(command, '--mcp-config')).toEqual([join(harness, 'mcp.json')])
+  expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(`${join(harness, 'native-hook')} || exit 2`)
+})
+
+test('a session run from the harness leaves the summary to the workflow', () => {
+  const { code } = fromHarness(['run', 'c2-chat-power-user-ios', out, '1'], fakeClaude([]))
+  expect(code).toBe(0)
+  const dir = join(realOut(), 'c2-chat-power-user-ios')
+  expect(existsSync(join(dir, 'run.jsonl'))).toBe(true)
+  expect(existsSync(join(dir, 'execution.json'))).toBe(false)
+  expect(existsSync(join(dir, 'session.json'))).toBe(false)
+})

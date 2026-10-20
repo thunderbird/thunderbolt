@@ -30,12 +30,14 @@ const dependencyFiles = new RegExp(
     String.raw`package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml`,
     // Git hooks and lint-staged run code on a developer's machine at their next commit.
     String.raw`\.husky/.*|\.lintstagedrc[^/]*|lint-staged\.config\.[^/]+`,
+    // Tool configs the dev servers, the build and the checks execute or obey, outside the app code a person reviews.
+    String.raw`vite\.config\.[^/]+|playwright\.config\.[^/]+|tsconfig[^/]*\.json`,
   ].join('|')})$`,
 )
 /**
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
- * `.github/` (workflows and this pipeline), dependency manifests, lockfiles, git hooks and lint-staged config, and
- * `e2e/`, whose helpers every repro spec and visual check imports (`publish` adds the regression spec there itself).
+ * `.github/` (workflows and this pipeline), dependency manifests, lockfiles, git hooks and lint-staged config, the
+ * Vite, Playwright and TypeScript configs, and `e2e/`, whose helpers every repro spec and visual check imports (`publish` adds the regression spec there itself).
  * App code of any kind is open, because a person reviews every draft PR.
  */
 export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)

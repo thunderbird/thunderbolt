@@ -200,9 +200,13 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
   const file = Bun.file(path)
   if (!(await file.exists())) return undefined
   const bytes = Buffer.from(await file.arrayBuffer())
-  // Playwright records every replay video as WebM.
-  const contentType = imageInfo(bytes)?.mediaType ?? (extname(path) === '.webm' ? 'video/webm' : undefined)
-  if (!contentType) throw new Error(`not a PNG, JPEG or WebM file: ${basename(path)}`)
+  // Playwright records every replay video as WebM, the native replay as MP4.
+  const videoTypes = new Map([
+    ['.webm', 'video/webm'],
+    ['.mp4', 'video/mp4'],
+  ])
+  const contentType = imageInfo(bytes)?.mediaType ?? videoTypes.get(extname(path))
+  if (!contentType) throw new Error(`not a PNG, JPEG, WebM or MP4 file: ${basename(path)}`)
   const { fileUpload } = await linear<{
     fileUpload: {
       success: boolean

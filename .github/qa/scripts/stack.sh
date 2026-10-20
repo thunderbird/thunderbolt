@@ -24,7 +24,9 @@
 # QA_REAL_PROVIDERS=true hands the backend ANTHROPIC_API_KEY, TINFOIL_API_KEY, TINFOIL_ENCLAVE_URL and EXA_API_KEY
 # from the environment instead of the fake provider. With QA_BACKEND_USER=<name> as well (CI), `start` creates that
 # OS user and moves the keys into a file only it can read, and the backend runs as that user, so no process of the
-# job's own user, which later runs model-written specs, holds them. DATABASE_URL + POWERSYNC_URL switch the backend
+# job's own user, which later runs model-written specs, holds them. `start dev` with QA_BACKEND_USER runs the backend
+# and both Vite servers as that user (the fix job), so code they reload cannot read the fix agent's environment.
+# DATABASE_URL + POWERSYNC_URL switch the backend
 # from pglite to an already migrated Postgres with PowerSync, as in nightly.yml.
 
 set -euo pipefail
@@ -56,11 +58,19 @@ if [ "$1" = start ]; then
     sudo useradd --create-home "$QA_BACKEND_USER"
     # Lets that user reach bun and the checkout without listing this user's home.
     sudo chmod o+x "$HOME"
-    sudo install --owner "$QA_BACKEND_USER" --mode 0400 /dev/null "$backend_keys"
-    printf 'ANTHROPIC_API_KEY=%s\nTINFOIL_API_KEY=%s\nTINFOIL_ENCLAVE_URL=%s\nEXA_API_KEY=%s\n' \
-      "$ANTHROPIC_API_KEY" "$TINFOIL_API_KEY" "$TINFOIL_ENCLAVE_URL" "$EXA_API_KEY" | sudo tee "$backend_keys" > /dev/null
-    # Before any server starts: a process's initial environment stays readable to its own user in /proc.
-    unset ANTHROPIC_API_KEY TINFOIL_API_KEY TINFOIL_ENCLAVE_URL EXA_API_KEY
+    if [ "${QA_REAL_PROVIDERS:-}" = true ]; then
+      sudo install --owner "$QA_BACKEND_USER" --mode 0400 /dev/null "$backend_keys"
+      printf 'ANTHROPIC_API_KEY=%s\nTINFOIL_API_KEY=%s\nTINFOIL_ENCLAVE_URL=%s\nEXA_API_KEY=%s\n' \
+        "$ANTHROPIC_API_KEY" "$TINFOIL_API_KEY" "$TINFOIL_ENCLAVE_URL" "$EXA_API_KEY" | sudo tee "$backend_keys" > /dev/null
+      # Before any server starts: a process's initial environment stays readable to its own user in /proc.
+      unset ANTHROPIC_API_KEY TINFOIL_API_KEY TINFOIL_ENCLAVE_URL EXA_API_KEY
+    fi
+    if [ "${2:-}" = dev ]; then
+      # What the dev servers write: Vite's cache, which also stages PowerSync's assets for public/@powersync, and the
+      # bundled config, in a dir both users can add files to.
+      sudo install -d --owner "$QA_BACKEND_USER" node_modules/.vite public/@powersync
+      sudo install -d --mode 1777 node_modules/.vite-temp
+    fi
   fi
   "$PWD/.github/qa/scripts/stack.sh" serve "${@:2}" > "$state.log" 2>&1 &
   echo $! > "$state.pid"
@@ -126,25 +136,28 @@ if [ -n "${DATABASE_URL:-}" ]; then
 else
   backend_env+=(DATABASE_DRIVER=pglite)
 fi
-backend=(env "${backend_env[@]}" bun run src/index.ts)
-if [ -n "${QA_BACKEND_USER:-}" ]; then
-  # sudo resets the environment: the backend gets its settings, PATH and the keys file `start` wrote, nothing more.
-  backend=(sudo --user "$QA_BACKEND_USER" --set-home -- env "${backend_env[@]}" "PATH=$PATH"
-    bun "--env-file=$backend_keys" run src/index.ts)
-fi
+bun_run=(bun run)
+if [ -n "${QA_BACKEND_USER:-}" ] && [ "${QA_REAL_PROVIDERS:-}" = true ]; then bun_run=(bun "--env-file=$backend_keys" run); fi
+# Runs a server, as QA_BACKEND_USER when it is set. sudo resets the environment: the server gets its settings, PATH
+# and, for a real-AI backend, the keys file `start` wrote, nothing more.
+as_server() {
+  if [ -n "${QA_BACKEND_USER:-}" ]; then exec sudo --user "$QA_BACKEND_USER" --set-home -- env "PATH=$PATH" "$@"; fi
+  exec "$@"
+}
 
 bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFakeProvider(9878)" &
 bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer(9879)" &
 bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; createFakeGoogle(9880)" &
 
 if [ "$2" = native ]; then
-  (cd backend && exec "${backend[@]}") &
+  (cd backend && as_server env "${backend_env[@]}" "${bun_run[@]}" src/index.ts) &
 elif [ "$2" = dev ]; then
-  (cd backend && exec env "${backend_env[@]}" bun run --watch src/index.ts) &
-  env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort &
-  env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port 1425 --strictPort &
+  # The fix job's: these reload the agent's edits, so in CI they run as another user, away from the agent's environment.
+  (cd backend && as_server env "${backend_env[@]}" bun run --watch src/index.ts) &
+  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort) &
+  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port 1425 --strictPort) &
 else
-  (cd backend && exec "${backend[@]}") &
+  (cd backend && as_server env "${backend_env[@]}" "${bun_run[@]}" src/index.ts) &
   vite preview --outDir "$2" --port 1424 --strictPort &
   if [ -n "${3:-}" ]; then vite preview --outDir "$3" --port 1425 --strictPort & fi
 fi

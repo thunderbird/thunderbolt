@@ -117,19 +117,22 @@ const allLegs = (journey: string, canaries: { charter: string }[]): Leg[] => {
   return [...sessions, ...canaryLegs]
 }
 
+/** The web replay leg, which also judges every leg's candidates. */
+const weeklyLeg = (legs: Leg[]): VerifyLeg => ({
+  name: 'weekly',
+  platform: 'web',
+  runner: platformOf('desktop').runner,
+  out: 'qa-out',
+  artifact: 'qa-explore',
+  dist: 'qa-dist',
+  onboarding: legs.some((leg) => leg.onboarding),
+  postgres: false,
+})
+
 /** The replay legs for the selected explore legs: one per kind of stack they explored, plus the canary pair. */
 const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   const has = (artifact: string) => legs.some((leg) => leg.artifact === artifact)
-  const weekly: VerifyLeg = {
-    name: 'weekly',
-    platform: 'web',
-    runner: platformOf('desktop').runner,
-    out: 'qa-out',
-    artifact: 'qa-explore',
-    dist: 'qa-dist',
-    onboarding: legs.some((leg) => leg.onboarding),
-    postgres: false,
-  }
+  const weekly = weeklyLeg(legs)
   const sync: VerifyLeg = { ...weekly, name: 'sync', artifact: 'qa-sync', onboarding: false, postgres: true }
   const real: VerifyLeg = { ...weekly, name: 'real', artifact: 'qa-real', onboarding: false, real: true }
   // The canary findings replay on the canary build, then on the normal one: a canary counts only when its finding
@@ -174,8 +177,9 @@ const nativeVerifyLegs = (legs: Leg[]): VerifyLeg[] =>
 
 /**
  * The weekly run's plan: the web legs and the native ones to explore (`only` narrows them, see `selects`), their
- * replay legs, the web judge legs, and the sessions the grid skips for this dispatch. Throws on an id in `only` that
- * names no session, charter or `free`; a session in `skippedSessions` names none.
+ * replay legs, the judge legs, and the sessions the grid skips for this dispatch. The `weekly` judge leg judges the
+ * native candidates too, so a dispatch of native sessions only still plans it, with no web replay behind it. Throws
+ * on an id in `only` that names no session, charter or `free`; a session in `skippedSessions` names none.
  */
 export const planLegs = (input: { only: string[]; journey: string; canaries: { charter: string }[] }) => {
   const skippedIds = new Set(skippedSessions.map((s) => s.session))
@@ -187,12 +191,14 @@ export const planLegs = (input: { only: string[]; journey: string; canaries: { c
   const legs = selected.filter((leg) => leg.driver === 'playwright')
   const nativeLegs = selected.filter((leg) => leg.driver === 'maestro')
   const verify = legs.length > 0 ? verifyLegs(legs) : []
+  const nativeVerify = nativeVerifyLegs(nativeLegs)
+  const judged = verify.length > 0 || nativeVerify.length === 0 ? verify : [weeklyLeg([])]
   return {
     legs,
     nativeLegs,
     verify,
-    nativeVerify: nativeVerifyLegs(nativeLegs),
-    judge: verify.filter((v) => v.name === 'weekly' || v.name === 'canary'),
+    nativeVerify,
+    judge: judged.filter((v) => v.name === 'weekly' || v.name === 'canary'),
     skipped: skippedSessions.filter((s) => selects(input.only, s.session)),
   }
 }

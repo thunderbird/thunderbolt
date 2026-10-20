@@ -26,13 +26,16 @@ const dependencyFiles = new RegExp(
     String.raw`package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)`,
     String.raw`requirements[^/]*\.txt|go\.(mod|sum)|Gemfile[^/]*|gradle-wrapper\.(jar|properties)|bunfig\.toml`,
     String.raw`\.cargo/config(\.toml)?|rust-toolchain(\.toml)?|\.npmrc|\.nvmrc|\.tool-versions`,
+    String.raw`package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml`,
+    // Git hooks and lint-staged run code on a developer's machine at their next commit.
+    String.raw`\.husky/.*|\.lintstagedrc[^/]*|lint-staged\.config\.[^/]+`,
   ].join('|')})$`,
 )
 /**
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
- * `.github/` (workflows and this pipeline), dependency manifests and lockfiles, and `e2e/`, whose helpers every repro
- * spec and visual check imports (`publish` adds the regression spec there itself). App code of any kind is open,
- * because a person reviews every draft PR.
+ * `.github/` (workflows and this pipeline), dependency manifests, lockfiles, git hooks and lint-staged config, and
+ * `e2e/`, whose helpers every repro spec and visual check imports (`publish` adds the regression spec there itself).
+ * App code of any kind is open, because a person reviews every draft PR.
  */
 export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)
 
@@ -218,11 +221,31 @@ const patchedFiles = async (run: Run, patch: string) => {
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
 
-/** The check the fix agent wrote for a visual task. */
-// Three levels under the repo root in a `repro/` dir, like a repro spec: same import paths, same Playwright project.
+/**
+ * The check the fix agent wrote for a visual task: three levels under the repo root in a `repro/` dir, like a repro
+ * spec, so it has the same import paths and the same Playwright project.
+ */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
-/** `fix/<fp>.verify.json` of a visual check that failed on the tree without the patch and passed with it. */
-const verifiedCheck = z.object({ failsWithout: z.literal(true), passesWith: z.literal(true) })
+/** `fix/<fp>.verify.json`: whether the visual check failed on the tree without the patch and passed with it. */
+const checkResult = z.object({ failsWithout: z.boolean(), passesWith: z.boolean() })
+
+/** Parses `verify.json` text; undefined when it is not JSON or misses a boolean field. */
+const readCheckResult = (text: string): z.infer<typeof checkResult> | undefined => {
+  try {
+    return checkResult.parse(JSON.parse(text))
+  } catch {
+    return undefined
+  }
+}
+
+/** Why a visual check's `verify.json` text does not prove the fix, or undefined when it does. */
+const checkResultProblem = (text: string) => {
+  const result = readCheckResult(text)
+  if (!result) return 'the visual check result is unreadable'
+  return result.failsWithout && result.passesWith
+    ? undefined
+    : 'the visual check did not fail without the patch and pass with it'
+}
 
 /** Problems with the spec the patch must make pass: the repro spec unedited, or a visual task's verified check. */
 const proofProblems = async (outDir: string, task: FixTask) => {
@@ -237,9 +260,9 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   const reasons = lintReproSpec(await check.text()).map((problem) => `visual check: ${problem}`)
   // Written by the workflow after it ran the check on the tree without and with the patch.
   const verify = Bun.file(join(outDir, 'fix', `${task.fp}.verify.json`))
-  return (await verify.exists()) && verifiedCheck.safeParse(await verify.json()).success
-    ? reasons
-    : [...reasons, 'the visual check did not fail without the patch and pass with it']
+  if (!(await verify.exists())) return [...reasons, 'the visual check did not fail without the patch and pass with it']
+  const problem = checkResultProblem(await verify.text())
+  return problem ? [...reasons, problem] : reasons
 }
 
 /** Why the agent's output must not become a PR (empty = it may), and the files its patch touches. */

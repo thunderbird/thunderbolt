@@ -23,13 +23,16 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | D: native explore, macOS | `explore-native` on iOS      | the QA Anthropic key, only in the `env:` of the canary and session steps                     | any provider key, the Linear key, any write token, an agent that edits code                   |
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
-refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`): one that touches
-`.github/`, `e2e/` (every repro spec and visual check imports its helpers), or a dependency manifest, lockfile or
-build-tool file in any folder (`package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`, `.nvmrc`, `.tool-versions`,
-`Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `rust-toolchain.toml`, Gradle files and the Gradle wrapper,
-`Podfile`, `Gemfile`, `Package.resolved`, `Package.swift`, `requirements*.txt`, `go.mod`, `go.sum`), one that adds or
-changes a symlink or submodule, and one that matches a secret pattern. App code of any kind, `src-tauri/` and
-`backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and
+refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`). It refuses a patch
+that touches `.github/` or `e2e/` (every repro spec and visual check imports its helpers). It refuses one that
+touches, in any folder, a dependency manifest, lockfile or build-tool file (`package.json`, `bun.lock`,
+`package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bunfig.toml`, `.npmrc`, `.nvmrc`,
+`.tool-versions`, `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `rust-toolchain.toml`, Gradle files and the
+Gradle wrapper, `Podfile`, `Gemfile`, `Package.resolved`, `Package.swift`, `requirements*.txt`, `go.mod`, `go.sum`),
+or a git hook under `.husky/` or lint-staged config (`.lintstagedrc*`, `lint-staged.config.*`), which run on a
+developer's machine at their next commit. It also refuses a patch that adds or changes a symlink or submodule, or
+that matches a secret pattern, and a visual fix whose `verify.json` is not JSON or lacks a boolean field. App code
+of any kind, `src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and
 never says "security": no finding text and no regression spec, which a person adds after the fix merges.
 
 Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,

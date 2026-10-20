@@ -315,6 +315,22 @@ describe('isDenied', () => {
     // Repro specs and visual checks import e2e/helpers, so a patch there could hollow out an unedited spec.
     'e2e/helpers.ts',
     'e2e/consumer-qa-ab12cd34.spec.ts',
+    // Git hooks and lint-staged run code on a developer's machine at their next commit.
+    '.husky/pre-commit',
+    '.husky/_/husky.sh',
+    '.lintstagedrc',
+    '.lintstagedrc.json',
+    'backend/.lintstagedrc.mjs',
+    'lint-staged.config.js',
+    'cli/lint-staged.config.mjs',
+    'package-lock.json',
+    'web/package-lock.json',
+    'yarn.lock',
+    'cli/yarn.lock',
+    'pnpm-lock.yaml',
+    'web/pnpm-lock.yaml',
+    'npm-shrinkwrap.json',
+    'backend/npm-shrinkwrap.json',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -339,6 +355,8 @@ describe('isDenied', () => {
     'src/lib/cargo/config.ts',
     'src/e2e/helpers.ts',
     'src/components/gemfile-view.tsx',
+    'src/lib/husky.ts',
+    'src/lib/lint-staged.ts',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })
@@ -524,21 +542,22 @@ describe('checkPatch', () => {
 
   describe('a visual task', () => {
     const check = () => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
-    // Strings too, to prove publish wants real booleans from the workflow.
-    const verify = (result: Record<'failsWithout' | 'passesWith', boolean | string>) =>
-      put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify(result))
+    /** Writes `verify.json` as given, so a test can also write a broken one. */
+    const verify = (text: string) => put(join(outDir, 'fix', `${fp}.verify.json`), text)
+    const passed = '{ "failsWithout": true, "passesWith": true }'
     const notVerified = 'the visual check did not fail without the patch and pass with it'
+    const unreadable = 'the visual check result is unreadable'
 
     test('passes with a linted check that failed without the patch and passed with it', async () => {
       await patchFrom(fixed)
       await put(check(), spec)
-      await verify({ failsWithout: true, passesWith: true })
+      await verify(passed)
       expect(await checkPatch(git, outDir, visualTask())).toEqual({ reasons: [], files: ['src/chat.ts'] })
     })
 
     test('is rejected without a check, and with a check that fails the lint', async () => {
       await patchFrom(fixed)
-      await verify({ failsWithout: true, passesWith: true })
+      await verify(passed)
       expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), `${spec}process.exit(0)\n`)
@@ -548,15 +567,18 @@ describe('checkPatch', () => {
     })
 
     test.each([
-      ['no verify.json', undefined],
-      ['a check that passed without the patch', { failsWithout: false, passesWith: true }],
-      ['a check that still fails with the patch', { failsWithout: true, passesWith: false }],
-      ['a verify.json with strings', { failsWithout: 'true', passesWith: 'true' }],
-    ])('is rejected with %s', async (_name, result) => {
+      ['no verify.json', undefined, notVerified],
+      ['a check that passed without the patch', '{ "failsWithout": false, "passesWith": true }', notVerified],
+      ['a check that still fails with the patch', '{ "failsWithout": true, "passesWith": false }', notVerified],
+      // Real booleans only: the workflow writes this file, so anything else is a broken record.
+      ['a verify.json with strings', '{ "failsWithout": "true", "passesWith": "true" }', unreadable],
+      ['a verify.json missing a field', '{ "failsWithout": true }', unreadable],
+      ['a verify.json that is not JSON', '{ "failsWithout": true,', unreadable],
+    ])('is rejected with %s', async (_name, result, reason) => {
       await patchFrom(fixed)
       await put(check(), spec)
       if (result) await verify(result)
-      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([notVerified])
+      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([reason])
     })
   })
 

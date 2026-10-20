@@ -77,14 +77,28 @@ export type RunReplay = (specs: string[], outDir: string, opts?: { list?: boolea
 /**
  * One run of a Maestro flow on a device. `layout`: the probe's `[qa-layout]` lines in the WebView log during the run,
  * each from `[qa-layout]` on. `logs`: every other new line of the WebView and backend logs, as `webview: <line>` or
- * `backend: <line>`. `video`: the run's recording.
+ * `backend: <line>`. `video`: the run's recording. `signInFailed`: the harness's sign-in failed, so the flow never ran.
  */
-export type FlowRun = { passed: boolean; error?: string; video?: string; layout: string[]; logs: string[] }
+export type FlowRun = {
+  passed: boolean
+  error?: string
+  video?: string
+  layout: string[]
+  logs: string[]
+  signInFailed?: boolean
+}
 /**
  * Runs a checked flow on a freshly installed app. `run` is unique within one replay; `session` is the finding's
- * session dir, which picks the build (onboarding on for c1).
+ * session dir, which picks the build (onboarding on for c1). `signIn`, a checked flow too, runs first in the same
+ * launch, and the flow runs only when it passed.
  */
-export type RunFlow = (flowYaml: string, outDir: string, run: number, session: string) => Promise<FlowRun>
+export type RunFlow = (
+  flowYaml: string,
+  outDir: string,
+  run: number,
+  session: string,
+  signIn?: string,
+) => Promise<FlowRun>
 
 /** One Messages API call, injected so tests never reach the network. */
 export type CreateMessage = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<
@@ -315,28 +329,37 @@ const awaitedText = z.union([
 const landingOf = (session: string) =>
   session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : 'Ask me anything…'
 
-/**
- * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
- * typing the code, as every iOS flow of run 39391108579 did: `control/sign-in.yaml`, a wait for that screen, then the
- * flow from its own wait on, in one app launch. The flow's partial sign-in before that wait is left out. Any other
- * flow, a bug on the sign-in screen among them, runs as written.
- */
-const withSignIn = async (yaml: string, session: string, appId: string) => {
-  const commands = commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
-  const landing = landingOf(session)
-  const from = commands.findIndex((command) => awaitedText.safeParse(command).data === landing)
-  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) return yaml
-  const signIn = commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text()))
-  const wait = { extendedWaitUntil: { visible: landing, timeout: 120000 } }
-  const check = checkMaestroFlow(Bun.YAML.stringify([...signIn, wait, ...commands.slice(from)]), {
-    appId,
-    vars: flowVars,
-  })
+/** A native flow as a device runs it: `signIn`, when set, is the harness's sign-in, run first in the same launch. */
+type NativeFlow = { yaml: string; signIn?: string }
+
+/** Our own serialization of commands that passed the allow list once already, or of the harness's own file. */
+const serialize = (commands: unknown[], appId: string) => {
+  const check = checkMaestroFlow(Bun.YAML.stringify(commands), { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the signed-in flow fails the allow list: ${check.problems.join('; ')}`)
   return check.yaml
 }
 
-/** The flow replay ran for a native finding: the allow list's own serialization, never the model's text. */
+/**
+ * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
+ * typing the code, as every iOS flow of run 39391108579 did. `signIn` is then `control/sign-in.yaml` and a wait for
+ * that screen, and the flow goes on from its own wait, its partial sign-in before it left out. The two run one after
+ * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
+ * the sign-in screen among them, runs as written. Three dots match the chat's ellipsis, as run 39391108579 wrote it.
+ */
+const withSignIn = async (yaml: string, session: string, appId: string): Promise<NativeFlow> => {
+  const commands = commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
+  const landing = landingOf(session)
+  const from = commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landing)
+  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) return { yaml }
+  const signIn = commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text()))
+  const wait = { extendedWaitUntil: { visible: landing, timeout: 120000 } }
+  return { signIn: serialize([...signIn, wait], appId), yaml: serialize(commands.slice(from), appId) }
+}
+
+/**
+ * The flow replay ran for a native finding: the allow list's own serialization, never the model's text, after the
+ * harness's sign-in when replay ran one.
+ */
 const ranFlow = async (outDir: string, file: FindingFile) => {
   const check = checkMaestroFlow(await Bun.file(flowPath(outDir, file)).text(), {
     appId: appIdOf(file),
@@ -344,7 +367,8 @@ const ranFlow = async (outDir: string, file: FindingFile) => {
   })
   // Replay already dropped anything else, so this only fails on a flow changed after replay.
   if (!check.ok) throw new Error(`repro flow no longer passes the allow list: ${check.problems.join('; ')}`)
-  return withSignIn(check.yaml, file.charterDir, appIdOf(file))
+  const { signIn, yaml } = await withSignIn(check.yaml, file.charterDir, appIdOf(file))
+  return signIn ? `# The harness's sign-in:\n${signIn}\n# Then, in the same launch:\n${yaml}` : yaml
 }
 const driverTimeout = 'iOS driver not ready in time'
 const logOracles = new Set(['console-error', 'page-error', 'http-5xx'])
@@ -424,20 +448,20 @@ const unreached = (oracle: FindingFile['finding']['oracle']) =>
  * `failure` says what in a run counts as failed. A run `inconclusive` marks does not count and is replaced, up to
  * `extraRuns` times, so fewer than three runs may count. With `owed` (the base runs the leg's later findings still
  * need) a run starts only when the clock fits it, and an extra run only when it also fits those, so a slow leg never
- * runs into its timeout and an early finding's reruns never take a later finding's runs. `reason` then says why
- * fewer than three runs counted.
+ * runs into its timeout and an early finding's reruns never take a later finding's runs. A run whose harness sign-in
+ * failed is inconclusive too, whatever the oracle. `reason` then says why fewer than three runs counted.
  */
 const threeRuns = async (
   { runFlow, outDir, next, clock }: Device,
-  yaml: string,
+  { yaml, signIn }: NativeFlow,
   session: string,
   failure: (run: FlowRun) => string | undefined,
   inconclusive?: (run: FlowRun) => boolean,
   owed?: number,
 ) => {
   const runOnce = async () => {
-    const first = await runFlow(yaml, outDir, next(), session)
-    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session) : first
+    const first = await runFlow(yaml, outDir, next(), session, signIn)
+    return first.error?.includes(driverTimeout) ? runFlow(yaml, outDir, next(), session, signIn) : first
   }
   const outcome: Outcome = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   for (let tries = 0; outcome.replay.runs < 3 && tries < 3 + extraRuns; tries++) {
@@ -446,7 +470,7 @@ const threeRuns = async (
       break
     }
     const run = await (clock ? clock.time(runOnce) : runOnce())
-    if (inconclusive?.(run)) {
+    if (run.signInFailed || inconclusive?.(run)) {
       outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       continue
     }
@@ -475,7 +499,7 @@ const counter = () => {
 const replayFlows = async (
   outDir: string,
   qaDir: string,
-  flows: Map<FindingFile, string>,
+  flows: Map<FindingFile, NativeFlow>,
   runFlow: RunFlow,
   clock: LegClock,
 ) => {
@@ -484,7 +508,7 @@ const replayFlows = async (
   for (const appId of new Set([...flows.keys()].map(appIdOf))) {
     const check = checkMaestroFlow(control, { appId, vars: flowVars })
     if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
-    const { replay } = await threeRuns(device, check.yaml, 'control', (run) =>
+    const { replay } = await threeRuns(device, { yaml: check.yaml }, 'control', (run) =>
       run.passed ? undefined : (run.error ?? 'the flow failed'),
     )
     if (replay.failed > 0) {
@@ -495,12 +519,12 @@ const replayFlows = async (
     }
   }
   const outcomes = new Map<FindingFile, Outcome>()
-  for (const [index, [file, yaml]] of [...flows].entries()) {
+  for (const [index, [file, flow]] of [...flows].entries()) {
     const { oracle } = file.finding
     const owed = 3 * (flows.size - 1 - index)
     outcomes.set(
       file,
-      await threeRuns(device, yaml, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle), owed),
+      await threeRuns(device, flow, file.charterDir, (run) => flowFailure(oracle, run), unreached(oracle), owed),
     )
   }
   return { stackProblem: undefined, outcomes }
@@ -533,7 +557,8 @@ type Oracle = FindingFile['finding']['oracle']
  * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug: the
  * finding's `oracle` by the replay's rule, or for the fix agent's visual check (no oracle) its own assertions. A run
  * whose driver never started counts as failed, and so does a run without the probe's ready line when the oracle reads
- * the WebView log (a dead stream or a silenced probe shows no bug either). `passed` needs every run clean.
+ * the WebView log (a dead stream or a silenced probe shows no bug either). A run whose harness sign-in failed is
+ * replaced, as in replay, and counts on neither side. `passed` needs three counted runs, every one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. A visual check needs it, and
  * so does a real-AI session: verified here on the fake AI, its flow must fail there without the patch to prove
@@ -551,7 +576,7 @@ export const verifyNativeFix = async (
   const appId = platformOf(platform).appId ?? ''
   const check = checkMaestroFlow(opts.flow, { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
-  const yaml = await withSignIn(check.yaml, session, appId)
+  const flow = await withSignIn(check.yaml, session, appId)
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>
@@ -560,15 +585,16 @@ export const verifyNativeFix = async (
       : undefined
   const patched = await threeRuns(
     { runFlow: opts.patched, outDir, next },
-    yaml,
+    flow,
     session,
     (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
   )
-  const { failed, runs, error } = patched.replay
-  const result = { fp, platform, runs, failed, passed: failed === 0, error }
+  const { failed, runs, error, reason } = patched.replay
+  // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
+  const result = { fp, platform, runs, failed, passed: failed === 0 && runs === 3, error: error ?? reason }
   if (!original) return result
-  const unpatched = await threeRuns({ runFlow: original, outDir, next }, yaml, session, bug)
-  const failsWithout = unpatched.replay.failed === unpatched.replay.runs
+  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug)
+  const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
   return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
 }
 
@@ -652,7 +678,7 @@ export const replay = async (
   }
   const lintClean: FindingFile[] = []
   // The flow each lint-clean native finding replays: our own serialization of it, never the model's text.
-  const flows = new Map<FindingFile, string>()
+  const flows = new Map<FindingFile, NativeFlow>()
   for (const written of valid) {
     const misfit = sessionProblem(written)
     if (misfit) {

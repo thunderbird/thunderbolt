@@ -1,4 +1,4 @@
-# The harness's sign-in, which `verify.ts` puts before a native repro flow that never types the code but waits for
+# The harness's sign-in, which `verify.ts` runs before a native repro flow that never types the code but waits for
 # the first screen after sign-in (run 39391108579: no iOS flow typed it). It adds that wait itself: "Welcome to
 # Thunderbolt!" on the onboarding build, "Ask me anything…" on the plain one. The same steps as control/stack.yaml,
 # and the block drivers/maestro.md gives the model.

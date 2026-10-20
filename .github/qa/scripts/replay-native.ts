@@ -53,8 +53,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
 /**
  * The real `RunFlow`. Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left
  * (review focus 5): the onboarding build for a c1 session (Ruling 9), the plain one otherwise, the control included.
- * It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the flow with a fresh `EMAIL`,
- * waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest. On
+ * It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the harness's `signIn` when
+ * given and then, if it passed, the flow, both with the same fresh `EMAIL`, waits for the probe to confirm, and splits the new WebView lines into the probe's `layout` lines and the rest. On
  * Android the install goes through `native.sh install`, which warms the app up, and `layout` also gets the tree's
  * lines.
  */
@@ -71,7 +71,7 @@ export const createRunFlow = (opts: {
   const { appId } = platformOf(platform)
   if (!appId) throw new Error(`platforms.json has no app for ${platform}`)
   const ios = platform === 'ios'
-  return async (flowYaml, outDir, run, session): Promise<FlowRun> => {
+  return async (flowYaml, outDir, run, session, signIn): Promise<FlowRun> => {
     // Absolute, because native.sh moves to the repo root before it reads the path.
     const app = resolve(session.startsWith('c1-first-run-') ? opts.apps.onboarding : opts.apps.plain)
     if (ios) {
@@ -83,8 +83,6 @@ export const createRunFlow = (opts: {
       await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
     }
     const dir = await mkdtemp(join(tmpdir(), 'qa-flow-'))
-    const flowFile = join(dir, 'flow.yaml')
-    await Bun.write(flowFile, flowYaml)
     await mkdir(join(outDir, 'videos'), { recursive: true })
     const video = videoPath(outDir, leg, session, run)
     const recorder = Bun.spawn(
@@ -96,10 +94,18 @@ export const createRunFlow = (opts: {
     const webviewStart = Bun.file(webviewLog).size
     const backendStart = Bun.file(backendLog).size
     const email = `qa-replay-${Date.now()}-${run}@thunderbolt.test`
-    const result = await $`maestro --udid ${deviceId} test -e EMAIL=${email} ${flowFile}`
-      .env({ ...getDefaultEnvironment(), ...maestroEnv() })
-      .quiet()
-      .nothrow()
+    const maestro = async (name: string, yaml: string) => {
+      const file = join(dir, name)
+      await Bun.write(file, yaml)
+      return $`maestro --udid ${deviceId} test -e EMAIL=${email} ${file}`
+        .env({ ...getDefaultEnvironment(), ...maestroEnv() })
+        .quiet()
+        .nothrow()
+    }
+    // A separate test in the same launch, so a failed sign-in is known to be the harness's.
+    const signedIn = signIn === undefined ? undefined : await maestro('sign-in.yaml', signIn)
+    const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
+    const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
     await Bun.sleep(probeWaitMs)
     const tree = ios ? [] : await treeLines(deviceId)
     if (ios) recorder.kill('SIGINT')
@@ -113,6 +119,7 @@ export const createRunFlow = (opts: {
     const webview = await linesFrom(webviewLog, webviewStart)
     const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     return {
+      signInFailed,
       passed: result.exitCode === 0,
       // The whole output, not its tail: a long trace after the driver error must not hide it from the retry.
       error: result.exitCode === 0 ? undefined : output.includes(driverTimeout) ? driverTimeout : output.slice(-1_500),

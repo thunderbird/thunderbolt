@@ -876,26 +876,35 @@ describe('replay of native flows', () => {
     await expect(replay(outDir, fakeRunner({}, []), qaDir)).rejects.toThrow('--native')
   })
 
-  test('the control flow and the harness sign-in pass the allow list on both platforms', async () => {
+  const list = z.array(z.unknown())
+  const commands = (yaml: string) => list.parse(Bun.YAML.parse(yaml.split('\n---\n')[1]))
+  const asWritten = (source: string) => {
+    const check = checkMaestroFlow(source, { appId: 'x', vars: ['EMAIL'] })
+    if (!check.ok) throw new Error(check.problems.join('; '))
+    return commands(check.yaml)
+  }
+  const readSignIn = async () =>
+    list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
+  const landing = (visible: string) => ({ extendedWaitUntil: { visible, timeout: 120000 } })
+
+  test('the control flow and the harness sign-in pass the allow list, and the control is that sign-in', async () => {
     for (const file of ['stack.yaml', 'sign-in.yaml']) {
       const source = await Bun.file(join(import.meta.dir, '../control', file)).text()
       for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
         expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
       }
     }
+    const stack = await Bun.file(join(import.meta.dir, '../control/stack.yaml')).text()
+    expect(asWritten(stack)).toEqual([...(await readSignIn()), landing('Ask me anything…')])
   })
 
-  test("the driver guide's sign-in block is the harness's, so a flow that copies it types the code", async () => {
+  test("the driver guide's sign-in block is the harness's, and its landing waits fit each build", async () => {
     const guide = await Bun.file(join(import.meta.dir, '../drivers/maestro.md')).text()
     const block = /start the flow with this sign-in[\s\S]*?```yaml\n([\s\S]*?)```/.exec(guide)?.[1] ?? ''
-    const check = checkMaestroFlow(block.replace(/^ {2}/gm, ''), { appId: 'x', vars: ['EMAIL'] })
-    if (!check.ok) throw new Error(check.problems.join('; '))
-    const list = z.array(z.unknown())
-    const signIn = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
-    expect(list.parse(Bun.YAML.parse(check.yaml.split('\n---\n')[1]))).toEqual([
-      ...signIn,
-      { extendedWaitUntil: { visible: 'Welcome to Thunderbolt!', timeout: 120000 } },
-    ])
+    expect(asWritten(block.replace(/^ {2}/gm, ''))).toEqual(await readSignIn())
+    const wait = (build: string) => new RegExp(`${build}[^\\n]*: \`(- extendedWaitUntil: [^\`]+)\``).exec(guide)?.[1]
+    expect(asWritten(wait('c1-first-run') ?? '')).toEqual([landing('Welcome to Thunderbolt!')])
+    expect(asWritten(wait('any other session') ?? '')).toEqual([landing('Ask me anything…')])
   })
 
   test('a flow that waits for the first screen without typing the code is signed in by the harness first', async () => {
@@ -908,30 +917,48 @@ describe('replay of native flows', () => {
     await writeNative(makeNative('typed', layout), typed, c1)
     // A bug on the sign-in screen itself never waits for a later one.
     await writeNative(makeNative('login', layout), '- launchApp\n- tapOn: Email\n', c1)
-    await writeNative(makeNative('chat', layout), '- launchApp\n- assertVisible:\n    text: Ask me anything…\n')
-    const flows: string[] = []
-    const record: RunFlow = async (yaml) => {
-      flows.push(yaml)
+    // Run 39391108579's flows wrote the chat's ellipsis as three dots.
+    await writeNative(makeNative('chat', layout), '- launchApp\n- assertVisible:\n    text: Ask me anything...\n')
+    const flows = new Map<string, { flow: unknown[]; signIn?: unknown[] }>()
+    const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
+      flows.set(yaml, { flow: commands(yaml), signIn: signIn === undefined ? undefined : commands(signIn) })
       return { passed: true, layout: [], logs: [] }
     }
 
     await replay(outDir, fakeRunner({}, []), qaDir, record)
 
-    const list = z.array(z.unknown())
-    const commands = (yaml: string) => list.parse(Bun.YAML.parse(yaml.split('\n---\n')[1]))
-    const asWritten = (source: string) => {
-      const check = checkMaestroFlow(source, { appId: 'x', vars: ['EMAIL'] })
-      if (!check.ok) throw new Error(check.problems.join('; '))
-      return commands(check.yaml)
-    }
-    const signIn = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
-    const landing = (visible: string) => ({ extendedWaitUntil: { visible, timeout: 120000 } })
+    const signIn = await readSignIn()
     // Control first, then the findings in path order: c1's login, typed and unsigned, then c2's chat.
-    expect([...new Set(flows)].slice(1).map(commands)).toEqual([
-      asWritten('- launchApp\n- tapOn: Email\n'),
-      asWritten(typed),
-      [...signIn, landing('Welcome to Thunderbolt!'), ...asWritten(partial).slice(4)],
-      [...signIn, landing('Ask me anything…'), { assertVisible: { text: 'Ask me anything…' } }],
+    expect([...flows.values()].slice(1)).toEqual([
+      { flow: asWritten('- launchApp\n- tapOn: Email\n') },
+      { flow: asWritten(typed) },
+      { signIn: [...signIn, landing('Welcome to Thunderbolt!')], flow: asWritten(partial).slice(4) },
+      { signIn: [...signIn, landing('Ask me anything…')], flow: [{ assertVisible: { text: 'Ask me anything...' } }] },
+    ])
+  })
+
+  test("a run whose harness sign-in failed is inconclusive for every oracle, never the bug's proof", async () => {
+    const unsigned = (title: string) =>
+      `- launchApp\n- extendedWaitUntil:\n    visible: Ask me anything…\n- assertVisible: ${title}\n`
+    await writeNative(makeNative('assert', assertFailed), unsigned('assert'))
+    await writeNative(makeNative('stalled', assertFailed), unsigned('stalled'))
+    const failedSignIn = {
+      passed: false,
+      signInFailed: true,
+      error: 'Assertion is false: "Check your email" is visible',
+    }
+    const failed = { passed: false, error: 'Assertion is false: "assert" is visible' }
+
+    const result = await nativeReplay({
+      assert: [failedSignIn, failed, failed, failed],
+      stalled: Array(6).fill(failedSignIn),
+    })
+
+    expect(result.confirmed.map(({ id, replay }) => [id, replay])).toEqual([
+      ['assert', { failed: 3, runs: 3, inconclusive: 1, error: failed.error }],
+    ])
+    expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+      ['stalled', { failed: 0, runs: 0, inconclusive: 6, reason: 'only 0 of 3 runs reached the screen' }],
     ])
   })
 
@@ -1088,19 +1115,41 @@ describe('native fix verification', () => {
   })
 
   test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {
-    const flows: string[] = []
-    const record: RunFlow = async (yaml) => {
-      flows.push(yaml)
+    const runs: { flow: string; signIn?: string }[] = []
+    const record: RunFlow = async (flow, _outDir, _run, _session, signIn) => {
+      runs.push({ flow, signIn })
       return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
     }
     const unsigned = '- launchApp\n- tapOn: Continue\n- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
 
     await verifyNativeFix({ ...base, flow: unsigned, oracle: layout, patched: record })
 
-    expect(flows).toHaveLength(3)
-    expect(flows[0]).toContain('inputText: "12345678"')
-    // The harness's own Continue only: the flow's partial sign-in is gone.
-    expect(flows[0].match(/tapOn: Continue/g)).toHaveLength(1)
+    expect(runs).toHaveLength(3)
+    expect(runs[0].signIn).toContain('inputText: "12345678"')
+    // The flow's partial sign-in is gone: it starts at its own wait.
+    expect(runs[0].flow).not.toContain('tapOn')
+  })
+
+  test('a fix never passes, and its original never fails, on runs whose harness sign-in failed', async () => {
+    const unsigned = '- launchApp\n- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
+    const failedSignIn = {
+      passed: false,
+      signInFailed: true,
+      error: 'Assertion is false: "Check your email" is visible',
+    }
+    const broken = () => device(Array(6).fill(failedSignIn))
+    const asserted = { type: 'assert-failed', evidence: 'never shows' }
+
+    const result = await verifyNativeFix({
+      ...base,
+      flow: unsigned,
+      oracle: asserted,
+      patched: broken(),
+      original: broken(),
+    })
+
+    expect(result).toMatchObject({ runs: 0, failed: 0, passed: false, failsWithout: false, passesWith: false })
+    expect(result.error).toBe('only 0 of 3 runs reached the screen')
   })
 
   test('a flow outside the allow list never reaches the device', async () => {

@@ -82,3 +82,72 @@ exit 0
   expect(at(/^maestro .* test /)).toBeGreaterThan(at(/am force-stop net\.thunderbird\.thunderbolt$/))
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })
+
+test("the harness's sign-in runs first in the same install, and when it fails the flow never runs", () => {
+  const dir = mkdtempSync(join(work, 'sign-in-'))
+  const bin = join(dir, 'bin')
+  const calls = join(dir, 'calls.log')
+  mkdirSync(bin)
+  const fail = join(dir, 'fail-sign-in')
+  writeFileSync(
+    join(bin, 'adb'),
+    `#!/bin/bash
+case "$*" in
+  *"shell pidof "*) echo 4129 ;;
+  *"logcat -d --pid=4129"*) echo 'I Tauri/Console: Msg: [init] step1_create_app_dir: 399ms' ;;
+esac
+exit 0
+`,
+  )
+  // Logs which flow each `maestro test` got, and fails the sign-in while the flag file exists.
+  writeFileSync(
+    join(bin, 'maestro'),
+    `#!/bin/bash
+[ "$3" = test ] || exit 1
+if grep -q 'Check your email' "$6"; then
+  echo "maestro sign-in" >> '${calls}'
+  [ -f '${fail}' ] && { echo 'Assertion is false: "Check your email" is visible'; exit 1; }
+  exit 0
+fi
+echo "maestro flow" >> '${calls}'
+`,
+  )
+  for (const tool of ['adb', 'maestro']) chmodSync(join(bin, tool), 0o755)
+  const logs = [join(dir, 'webview.log'), join(dir, 'backend.log')]
+  for (const file of logs) writeFileSync(file, '')
+  const script = `
+    import { createRunFlow } from ${JSON.stringify(join(import.meta.dir, 'replay-native.ts'))}
+    const runFlow = createRunFlow({
+      platform: 'android',
+      deviceId: 'emulator-5554',
+      apps: { onboarding: 'on.apk', plain: 'plain.apk' },
+      webviewLog: ${JSON.stringify(logs[0])},
+      backendLog: ${JSON.stringify(logs[1])},
+    })
+    const run = await runFlow('- assertVisible: x\\n', ${JSON.stringify(join(dir, 'out'))}, 1, 'c2-chat-power-user-android',
+      '- extendedWaitUntil: Check your email\\n')
+    console.log(JSON.stringify({ passed: run.passed, signInFailed: run.signInFailed, error: run.error }))
+  `
+  const runs = [false, true].map((failSignIn) => {
+    writeFileSync(calls, '')
+    if (failSignIn) writeFileSync(fail, '')
+    const proc = Bun.spawnSync([process.execPath, '-e', script], {
+      cwd: dir,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    })
+    expect(proc.stderr.toString()).toBe('')
+    const maestro = readFileSync(calls, 'utf8')
+      .split('\n')
+      .filter((line) => line.startsWith('maestro'))
+    return { result: JSON.parse(proc.stdout.toString()), maestro }
+  })
+
+  expect(runs[0]).toEqual({
+    result: { passed: true, signInFailed: false },
+    maestro: ['maestro sign-in', 'maestro flow'],
+  })
+  expect(runs[1]).toEqual({
+    result: { passed: false, signInFailed: true, error: 'Assertion is false: "Check your email" is visible' },
+    maestro: ['maestro sign-in'],
+  })
+})

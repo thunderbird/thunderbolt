@@ -205,11 +205,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    starts only if it can end before replay-native's 90 minutes, less 6 minutes for the steps around the replay, taking
    a run to last as long as the slowest so far (at least 2.6 minutes). An extra run must also leave room for the 3
    runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says
-   why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me
-   anything…` otherwise) but never types the code `12345678` is signed in by the harness: `control/sign-in.yaml` and
-   a wait for that screen run first, in the same launch, and the flow goes on from its own wait. In run 39391108579
-   no iOS flow typed the code, and every run was inconclusive. A flow for a bug on the sign-in screen waits for no
-   later screen, so it runs as written. `drivers/maestro.md` gives the model the same sign-in block to copy.
+   why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build,
+   `Ask me anything…` otherwise; three dots count as the ellipsis) but never types the code `12345678` is signed in
+   by the harness. `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same
+   launch, and the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is
+   inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and
+   every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as
+   written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe

@@ -127,6 +127,8 @@ When someone signs in through your provider with an identity Thunderbolt has not
 
 An account that meets neither condition is not linked, and that sign-in fails with "account not linked". An address with no account gets a new one.
 
+Automatic linking trusts the email address your provider assigns, so your provider must not let users change their own email to someone else's address.
+
 Under OIDC, a user is also never linked when the provider reports `email_verified` as false for them. The sign-in fails with "account not linked" until you mark the address as verified at the provider. Keycloak marks an address verified only when the realm makes users confirm it ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this does not apply to it.
 
 If a sign-in fails or the user cancels at the provider, they come back to the app with a message and a "Try again" button, which starts the login again. Only a few failures, such as a login attempt that expired before the provider answered, still end on the API's own plain error page.

@@ -96,9 +96,10 @@ If you run SAML or OIDC and upgrade to a release after 0.1.144, four things chan
    SELECT user_id, id, name, device_type, trusted, created_at, last_seen
    FROM powersync.devices WHERE revoked_at IS NULL AND user_id IN ('<user_id>');
    SELECT device_id, user_id, created_at FROM envelopes WHERE user_id IN ('<user_id>');
+   SELECT user_id, created_at FROM encryption_metadata WHERE user_id IN ('<user_id>');
    ```
 
-   Each row in `envelopes` is a copy of the account key sealed to one device, and the recovery phrase has its own slot. An empty `envelopes` result means the account never set up encryption.
+   Each row in `envelopes` is a copy of the account key sealed to one device, and the recovery phrase has its own slot. No `encryption_metadata` row means the account never set up encryption. A row with no envelopes means every device was revoked. The recovery phrase, and a passkey if one was enrolled, still opens the data.
 
    You cannot revoke a device for the user from the database or the API. Revoking needs a signature made with the account's keys, so only a trusted device of that account can do it. Deleting the `envelopes` row, or setting `revoked_at`, would not change the keys the device already holds, and it would skip the key rotation that locks the device out. The supported path is for the person who owns the account to open **Settings > Devices** on a trusted device, revoke each device they do not recognize, and then run **Change recovery phrase** (it asks for an 8-digit code sent to their email). Revoking replaces the account key and the data keys. Changing the phrase makes the old phrase stop working. Neither re-encrypts any data.
 

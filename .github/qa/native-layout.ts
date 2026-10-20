@@ -96,25 +96,29 @@ export const controlTarget = 'textbox "Email"'
 
 /**
  * The positive control's verdict (spec 6.3), from the hierarchy `maestro hierarchy` dumped and the WebView log of the
- * run: the keyboard is open (iOS only, Android has no keyboard in the tree yet) and the probe logged `focus-covered`
- * for the Email field. `lines` is what the control prints: the ready line, the probe's lines and a failure reason.
+ * run: the probe reported ready, the keyboard is open (iOS only, Android has no keyboard in the tree yet) and the probe
+ * logged `focus-covered` for the Email field. `lines` is what the control prints: the ready line, the probe's lines
+ * and a failure reason.
  */
 export const controlVerdict = (opts: { hierarchy: string; log: string; platform: 'ios' | 'android' }) => {
   const { keyboard } = measureNative(parseHierarchy(opts.hierarchy), opts.platform)
-  const probe = opts.log
+  const logged = opts.log
     .split('\n')
     .filter((line) => line.includes('[qa-layout]'))
     .map((line) => line.slice(line.indexOf('[qa-layout]')).trim())
-    .filter((line) => !line.startsWith('[qa-layout] ready'))
+  const probeReady = logged.includes('[qa-layout] ready')
+  const probe = logged.filter((line) => line !== '[qa-layout] ready')
   const keyboardOk = opts.platform === 'android' || keyboard !== undefined
   const covered = probe.includes(`[qa-layout] focus-covered ${controlTarget}`)
   return {
-    ok: keyboardOk && covered,
+    ok: probeReady && keyboardOk && covered,
     lines: [
       readyLine({ keyboard }),
       ...probe,
       ...(keyboardOk ? [] : ['[qa-control] the keyboard is not open']),
-      ...(covered ? [] : [`[qa-control] no focus-covered line for ${controlTarget}`]),
+      // A dead log stream or a build without the probe reads differently from a probe that saw no cover.
+      ...(probeReady ? [] : ['[qa-control] the layout probe never reported ready']),
+      ...(covered || !probeReady ? [] : [`[qa-control] no focus-covered line for ${controlTarget}`]),
     ],
   }
 }

@@ -350,7 +350,9 @@ visible text because the WebView's accessibility bridge skips a bare div. Instal
 `native.sh control <platform> <device> [out-dir]`. It plays `control/native-control.yaml` (the sign-in screen of the
 build without onboarding, a tap on Email), reads the WebView log, takes `maestro hierarchy`, prints the ready line and
 the probe's lines, and exits 0 only when the keyboard is open (iOS; on Android the probe line is enough until the tree
-gives a keyboard) and the probe logged `[qa-layout] focus-covered textbox "Email"`. On the plain build it exits 1.
+gives a keyboard) and the probe logged `[qa-layout] focus-covered textbox "Email"`. On the plain build it exits 1, and
+a log without the probe's ready line (a dead stream, a build without the probe) says so instead. The build deletes
+`dist/` when it ends, because the cover is written into `dist/index.html`.
 `controlVerdict` in `native-layout.ts` holds the rule; its tests use a run recorded on the simulator. A finding whose
 `repro_flow` is `native-control.yaml` and whose evidence is that line replays `confirmed` on the control build and
 `dropped` on the plain one.

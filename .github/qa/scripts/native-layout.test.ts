@@ -119,6 +119,17 @@ test('the control fails on a build whose probe saw no cover, and says why', () =
   expect(verdict.lines.at(-1)).toBe('[qa-control] no focus-covered line for textbox "Email"')
 })
 
+test('a log without a ready line is a dead stream, not a missing cover', () => {
+  const log = control.log
+    .split('\n')
+    .filter((line) => !line.includes('] ready'))
+    .join('\n')
+  const verdict = controlVerdict({ ...control, log, platform: 'ios' })
+  expect(verdict.ok).toBe(false)
+  expect(verdict.lines.at(-1)).toBe('[qa-control] the layout probe never reported ready')
+  expect(verdict.lines.join('\n')).not.toContain('no focus-covered line')
+})
+
 test('the control fails on iOS without the keyboard, and on another field', () => {
   const closed = controlVerdict({ ...control, hierarchy: fixture('hier-00-welcome.json'), platform: 'ios' })
   expect(closed.ok).toBe(false)

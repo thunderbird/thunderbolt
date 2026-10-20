@@ -72,6 +72,8 @@ build() {
   mkdir -p "$out"
   config "$platform" "$out/tauri.conf.json" "$control"
   trap restore_gen EXIT
+  # The build writes cover.js into dist/index.html; the next build rewrites dist, but nobody else should pick it up.
+  [ -z "$control" ] || trap 'restore_gen; rm -rf dist' EXIT
   local run=(env "${frontend_env[@]}" "VITE_SKIP_ONBOARDING=$skip_onboarding")
   if [ "$platform" = ios ]; then
     # Tauri fails to rename over an existing .app.
@@ -143,6 +145,8 @@ logs() {
   if [ "$platform" = ios ]; then
     xcrun simctl spawn "$device" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 2h > "$file" 2>&1 &
   else
+    # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
+    adb -s "$device" logcat -c
     adb -s "$device" logcat -v epoch -s 'Tauri/Console:*' > "$file" 2>&1 &
   fi
   echo $! > "$file.pid"
@@ -156,7 +160,7 @@ logs() {
 }
 
 stop_logs() {
-  kill "$(cat "$1.pid")" 2> /dev/null || true
+  kill "$(cat "$1.pid" 2> /dev/null)" 2> /dev/null || true
   rm -f "$1.pid"
 }
 
@@ -169,15 +173,18 @@ control() {
   app_id=$(jq -r --arg p "$platform" '.[] | select(.id == $p) | .appId' .github/qa/platforms.json)
   { printf 'appId: %s\n---\n' "$app_id"; cat .github/qa/control/native-control.yaml; } > "$out/flow.yaml"
   export MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
-  logs "$platform" "$device" "$out/webview.log"
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
+  logs "$platform" "$device" "$out/webview.log"
   # The iOS driver sometimes is not ready in time (spike, decision 1), so one more try.
   maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || { tail -20 "$out/maestro.log" >&2; die "the control flow failed"; }
-  # The probe debounces 250 ms and confirms a problem over 500 ms.
-  sleep 1.5
+  # The probe debounces 250 ms and confirms a problem over 500 ms; a plain build never logs the line, so it waits it out.
+  for _ in $(seq 20); do
+    grep -q 'focus-covered' "$out/webview.log" && break
+    sleep 0.5
+  done
   maestro --udid "$device" hierarchy > "$out/hierarchy.json" 2> "$out/hierarchy.err"
   # shellcheck disable=SC2016 # JS, not shell
   bun -e 'import { controlVerdict } from "./.github/qa/native-layout.ts"; const [platform, hierarchy, log] = process.argv.slice(1); const { ok, lines } = controlVerdict({ platform, hierarchy: await Bun.file(hierarchy).text(), log: await Bun.file(log).text() }); console.log(lines.join("\n")); process.exit(ok ? 0 : 1)' \

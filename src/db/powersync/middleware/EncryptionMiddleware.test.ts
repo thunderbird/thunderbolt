@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
-import type { SyncDataBucket } from '../TransformableBucketStorage'
+import type { SyncDataBucket } from '../sync-transform'
 import type { EncryptionCodec, EncryptionContext } from '@/db/encryption/codec'
 import { createEncryptionMiddleware } from './EncryptionMiddleware'
 

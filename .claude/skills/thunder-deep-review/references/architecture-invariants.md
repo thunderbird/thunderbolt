@@ -16,7 +16,7 @@ Global properties that survive across subsystems. Verify any change against the 
 
 ## Identity & Tenancy
 
-- **INV-01** `user_id` always from JWT, never client payload; sync rules scope every row by `user_id = request.user_id()`. Cross-tenant leak structurally impossible.
+- **INV-01** `user_id` always from JWT, never client payload; the sync streams scope every row to `auth.user_id()`. Cross-tenant leak structurally impossible.
 - **INV-02** `X-Device-ID` mandatory on every PowerSync token request + upload (400 `DEVICE_ID_REQUIRED`).
 - **INV-03** Device id is client-generated UUID v4 in `localStorage[thunderbolt_device_id]`; backend never mints.
 - **INV-04** Email stored lowercase (`normalizeEmail`); lookups must normalize.
@@ -54,10 +54,10 @@ Global properties that survive across subsystems. Verify any change against the 
 
 ## Sync Pipeline
 
-- **INV-30** Empty transformer pipeline ⇒ byte-identical to `SqliteBucketStorage`.
+- **INV-30** Lines without bucket data and non-line commands reach `SqliteBucketStorage.control()` byte-identical; sync-data lines are re-encoded in their original format.
 - **INV-31** Re-encoded payload always same wire format (JSON/BSON in = out).
-- **INV-32** Two sync paths — custom SharedWorker (Chrome/Edge/FF) vs main-thread transformer (Safari/iOS/Tauri).
-- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()`.
+- **INV-32** Two sync worker hostings of the same `ThunderboltSharedSyncImplementation` — custom SharedWorker (Chrome/Edge/FF) vs dedicated Worker (Safari/iOS/Tauri); the main-thread adapter carries sync only when it runs in the tab (Android, IndexedDB fallback).
+- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()` still passes its bucket storage as `adapter` (we wrap `sync.webOptions.adapter`).
 - **INV-34** HTTP streaming, not WebSockets (`SyncStreamConnectionMethod.HTTP`).
 - **INV-35** `fetchCredentials` returns `null` (not throw) on auth failure.
 - **INV-36** `uploadData` throws on failure, never `transaction.complete()` — PowerSync retries.

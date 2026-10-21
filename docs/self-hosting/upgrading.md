@@ -225,6 +225,8 @@ The sync service decides which data reaches a device, and it reads that from a c
 | Kubernetes     | The Helm chart                                      | Upgrading the chart updates the rules |
 | AWS            | Built into the packaged sync-service image          | Moving the version updates the rules  |
 
+The rules are written as PowerSync Sync Streams (`edition: 3`), which need sync service 1.20 or later; an older service rejects them and no device syncs. Versions 1.20 to 1.25 carry a Sync Streams advisory (GHSA-hfrf-pvrg-5c3h) fixed in 1.26; the configs are tested on 1.27.0. Every deployment path pins the sync service version, so an upgrade brings the matching one, unless you set `powersync.image.tag` yourself or upgrade the chart with `--reuse-values`, which keeps the previous release's tag. The move from the older Sync Rules format makes every device download its data once more, in full, on its next connection.
+
 A rule change takes effect only when the sync service restarts. On Kubernetes, changing the configuration does not trigger that, so roll the sync deployment by hand after a chart upgrade that changes the rules.
 
 > If a release adds newly synced data and only the app is upgraded, the feature works on the device it was used on and silently fails to appear on the user's other devices.

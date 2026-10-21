@@ -193,6 +193,50 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
 }
 
 /**
+ * Whether an IndexedDB database with this name exists. Browsers without `indexedDB.databases()`
+ * (Firefox before 126) count as yes, so they keep their data.
+ */
+export const hasIndexedDbDatabase = async (
+  name: string,
+  idb: Pick<IDBFactory, 'databases'> = indexedDB,
+): Promise<boolean> => {
+  if (typeof idb.databases !== 'function') {
+    return true
+  }
+  const databases = await idb.databases()
+  return databases.some((database) => database.name === name)
+}
+
+/** Whether the OPFS root holds a file with this name. */
+export const hasOpfsFile = async (
+  name: string,
+  root?: Pick<FileSystemDirectoryHandle, 'getFileHandle'>,
+): Promise<boolean> => {
+  const directory = root ?? (await navigator.storage.getDirectory())
+  try {
+    await directory.getFileHandle(name)
+    return true
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      return false
+    }
+    throw error
+  }
+}
+
+/**
+ * Deletes an IndexedDB database. Resolves early if another tab holds it open; the browser
+ * finishes the delete once that tab closes.
+ */
+export const deleteIndexedDbDatabase = (name: string, idb: Pick<IDBFactory, 'deleteDatabase'> = indexedDB) =>
+  new Promise<void>((resolve, reject) => {
+    const request = idb.deleteDatabase(name)
+    request.onsuccess = () => resolve()
+    request.onblocked = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+
+/**
  * Checks whether IndexedDB is available and openable.
  * iOS Lockdown Mode ("Configure Web Browsing") and some private/enterprise
  * configs leave the `indexedDB` global present but make open() throw or error,
@@ -241,24 +285,18 @@ export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
 }
 
-/**
- * Determines the appropriate database path based on platform and OPFS availability
- * @param databaseType - The type of database being used
- * @param appDataDirPath - The application data directory path
- * @returns The database path to use
- */
-export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
-  // For native databases (bun-sqlite), use file path directly
-  if (databaseType === 'bun-sqlite') {
-    return `${appDataDirPath}/thunderbolt.db`
-  }
+/** The PowerSync database's filename: the OPFS file, or the IndexedDB database name. */
+export const powerSyncDbFilename = 'thunderbolt-sync.db'
 
-  // For wa-sqlite and powersync, check OPFS availability
+/**
+ * Determines the PowerSync database path from OPFS availability
+ * @param appDataDirPath - The application data directory path
+ * @returns The database path to use, or `':memory:'` when OPFS is unavailable
+ */
+export const getDatabasePath = async (appDataDirPath: string): Promise<string> => {
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    // Use different filename for PowerSync to avoid conflicts during migration
-    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
-    return `${appDataDirPath}/${filename}`
+    return `${appDataDirPath}/${powerSyncDbFilename}`
   }
 
   console.warn('OPFS not available (likely private browsing), using in-memory database')

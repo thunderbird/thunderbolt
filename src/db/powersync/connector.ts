@@ -6,7 +6,7 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import { normalizeBackendUrl } from '@/lib/url-utils'
-import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
+import type { CommonPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
@@ -318,7 +318,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * Upload local changes to the backend.
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
-  async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
+  async uploadData(database: CommonPowerSyncDatabase): Promise<void> {
     // Get the next batch of changes from the upload queue
     const transaction = await database.getNextCrudTransaction()
 

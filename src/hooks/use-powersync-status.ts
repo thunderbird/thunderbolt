@@ -46,8 +46,8 @@ const mapSyncStatus = (syncStatus: SyncStatus): PowerSyncStatusInfo => {
   return {
     isPowerSync: true,
     connectionStatus,
-    isUploading: syncStatus.dataFlowStatus?.uploading ?? false,
-    isDownloading: syncStatus.dataFlowStatus?.downloading ?? false,
+    isUploading: syncStatus.uploading,
+    isDownloading: syncStatus.downloading,
     hasSynced: syncStatus.hasSynced ?? false,
     lastSyncedAt: syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt) : null,
   }

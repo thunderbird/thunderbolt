@@ -71,17 +71,17 @@ newer rows we haven't received".
 
 `waitForInitialSync` (`src/db/powersync/database.ts`) awaits
 `waitForFirstSync({ priority: initialSyncPriority })`, `initialSyncPriority = 1`, covering the
-`user_essentials` and `device_self` buckets in
+`user_essentials` and `device_self` streams in
 [`powersync-service/config/config.yaml`](../../../powersync-service/config/config.yaml): `settings`,
-`models`, `model_profiles`, `devices`, `chat_threads`. Lower-priority buckets (`chat_messages`,
-`tasks`, `skills`, ...) stream in after the app is interactive.
+`models`, `model_profiles`, `devices`, `chat_threads`. The lower-priority `user_data` stream (`chat_messages`,
+`tasks`, `skills`, ...) streams in after the app is interactive.
 
-It then waits for this device's own `devices` row. The account buckets are gated on that row, so a
+It then waits for this device's own `devices` row. The account streams are gated on that row, so a
 device trusted moments ago, whose row hasn't reached the sync service yet, gets a priority-1 sync that
-completes empty. The row arrives at the same moment the gated buckets unlock. Both waits share the
+completes empty. The row arrives at the same moment the gated streams unlock. Both waits share the
 10 s timeout.
 
-The coupling is by convention only: if the deployed sync rules stop declaring priorities, PowerSync
+The coupling is by convention only: if the deployed sync config stops declaring priorities, PowerSync
 falls back to the global `hasSynced` and the gate quietly waits for everything.
 
 `initial_sync_outcome` on the telemetry event is one of `synced`, `timed_out`, `failed`, `disabled`
@@ -151,7 +151,7 @@ never resolves.
 `DATABASE_INIT_FAILED` (`src/components/app-error-screen.tsx:48`); every other code gets
 contact-support alone. That affordance is attached to the code, which is why both storage failures
 above report `DATABASE_INIT_FAILED` rather than something more precise. Clearing calls `resetAppDir`
-(`src/lib/fs.ts:89`): disconnect PowerSync, wipe OPFS, rerun the pipeline.
+(`src/lib/fs.ts:89`): close PowerSync, wipe OPFS and the IndexedDB database, rerun the pipeline.
 
 `HandleErrorCode` (`src/types/handle-errors.ts:5-17`) is shared with non-init code paths, so not
 every value can reach the init error screen:

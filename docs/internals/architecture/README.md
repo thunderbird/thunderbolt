@@ -84,7 +84,7 @@ One React + Vite codebase targets three runtimes:
 
 Startup (open the database, decide whether to wait for sync, seed and reconcile defaults, run data migrations, build the HTTP client) is one function: [app-initialization.md](app-initialization.md). The send path is [chat-runtime.md](chat-runtime.md); the Rust side is [tauri-shell.md](tauri-shell.md).
 
-Local state is Zustand plus TanStack Query, with Drizzle over WA-SQLite. WA-SQLite runs everywhere, Tauri included, because there is no native SQLite adapter: the `safari-tauri` config in `src/db/powersync/database.ts` opens with `OPFSCoopSyncVFS` where OPFS exists and `IDBBatchAtomicVFS` where it does not (WebKitGTK on Tauri Linux).
+Local state is Zustand plus TanStack Query, with Drizzle over WA-SQLite. WA-SQLite runs everywhere, Tauri included, because there is no native SQLite adapter: both configs in `src/db/powersync/database.ts` open with `OPFSCoopSyncVFS` where OPFS exists and `IDBBatchAtomicVFS` where it does not ([details](powersync-sync-middleware.md#local-storage)).
 
 ### The WebView Sidebar
 
@@ -151,16 +151,16 @@ Downloads and uploads use different credentials: downloads the sync JWT plus the
 
 ### Two Sync Paths
 
-| Runtime                 | Path                                                                        | Why                                                                                                                                 |
-| ----------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Chrome · Edge · Firefox | Custom **SharedWorker** (`ThunderboltSharedSyncImplementation`)             | Shares one sync connection across tabs; runs E2E crypto in-worker                                                                   |
-| Safari · iOS · Tauri    | **Dedicated Worker** hosting the same `ThunderboltSharedSyncImplementation` | `OPFSCoopSyncVFS` and `tauri://` rule out a SharedWorker, so `enableMultiTabs: true` drives a dedicated Worker over Comlink instead |
+| Runtime                 | Path                                                                        | Why                                                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome · Edge · Firefox | Custom **SharedWorker** (`ThunderboltSharedSyncImplementation`)             | Shares one sync connection across tabs; runs E2E crypto in-worker                                                                        |
+| Safari · iOS · Tauri    | **Dedicated Worker** hosting the same `ThunderboltSharedSyncImplementation` | `tauri://` and iOS WKWebView rule out a SharedWorker, so `database.enableMultiTabs: true` drives a dedicated Worker over Comlink instead |
 
-Both run the transformer in a worker and end with decrypted data in local SQLite; only the worker _kind_ differs. Rationale and file map: [powersync-sync-middleware.md](powersync-sync-middleware.md).
+Both run the transformer in a worker and end with decrypted data in local SQLite; only the worker _kind_ differs. Where multi-tab is off (Android, and the IndexedDB fallback when OPFS is unavailable), sync runs in the tab instead, through the same transformers. Rationale and file map: [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
 ### The `powersync-web-internal` Alias
 
-`ThunderboltSharedSyncImplementation` extends `SharedSyncImplementation`, an `@internal` class in `@powersync/web`, reached through the `powersync-web-internal` alias in `vite.config.ts` (`node_modules/@powersync/web/lib/src`). When upgrading `@powersync/web`, verify the class still exists there: a breaking change produces no TypeScript error.
+`ThunderboltSharedSyncImplementation` extends `SharedSyncImplementation`, an `@internal` class in `@powersync/web`, reached through the `powersync-web-internal` alias in `vite.config.ts` (`node_modules/@powersync/web/lib`), as are `WorkerClient` and `SharedWorkerConnectionRequest`. When upgrading `@powersync/web`, follow the upgrade note in [powersync-sync-middleware.md](powersync-sync-middleware.md#accessing-powersync-internals): a breaking change produces no TypeScript error.
 
 ### Schema Split
 

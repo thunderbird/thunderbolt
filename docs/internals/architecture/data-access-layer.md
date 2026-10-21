@@ -71,8 +71,7 @@ Two emulations are sanctioned:
 Narrow the catch with `isInsertConflictError`
 ([`src/lib/sqlite-errors.ts`](../../../src/lib/sqlite-errors.ts)) and rethrow the rest, so a disk-full
 or corruption is not swallowed as "row already exists". It matches numeric errno,
-`SQLITE_CONSTRAINT_*` codes, message text and wa-sqlite's `Unexpected step result: <code>`; the
-shape is backend-specific.
+`SQLITE_CONSTRAINT_*` codes and message text; the shape is backend-specific.
 
 **One module breaks the rule, latently.** In
 [`src/dal/model-profiles.ts`](../../../src/dal/model-profiles.ts), `upsertModelProfile` (`:33`) uses
@@ -142,25 +141,18 @@ carrying a credential may join `syncedTables`" invariant is in
 
 ## Client database backends
 
-`DatabaseType` has three values ([`src/db/database.ts:7`](../../../src/db/database.ts)) and
-`Database.initialize` branches three ways, but only one branch ships.
+`DatabaseType` has two values ([`src/db/database.ts:7`](../../../src/db/database.ts)), and only one
+ships.
 
-| Type         | Implementation                                                                   | Where it runs                            |
-| ------------ | -------------------------------------------------------------------------------- | ---------------------------------------- |
-| `powersync`  | [`src/db/powersync/`](../../../src/db/powersync)                                 | Every platform: web, desktop, mobile     |
-| `bun-sqlite` | [`src/db/bun-sqlite-database.ts`](../../../src/db/bun-sqlite-database.ts)        | Tests only, via `src/dal/test-utils.ts`  |
-| `wa-sqlite`  | [`src/db/wa-sqlite-database.ts`](../../../src/db/wa-sqlite-database.ts) + worker | Nowhere; unreachable in shipping configs |
+| Type         | Implementation                                                            | Where it runs                           |
+| ------------ | ------------------------------------------------------------------------- | --------------------------------------- |
+| `powersync`  | [`src/db/powersync/`](../../../src/db/powersync)                          | Every platform: web, desktop, mobile    |
+| `bun-sqlite` | [`src/db/bun-sqlite-database.ts`](../../../src/db/bun-sqlite-database.ts) | Tests only, via `src/dal/test-utils.ts` |
 
 `getDatabaseType()` ([`src/lib/platform.ts:272`](../../../src/lib/platform.ts)) promises platform- and
 capability-based selection in its JSDoc and is `async` for a backend query that JSDoc anticipates;
-the body is `return 'powersync'`. Its only callers are `src/hooks/use-app-initialization.ts` and `src/lib/fs.ts`, so the `wa-sqlite` branch
-is dead, yet its three source files and their tests still build and still pull in
-`@journeyapps/wa-sqlite` as a direct dependency. Delete them or write down their revival
-condition.
-
-`wa-sqlite` survives in two paths unrelated to the selector: `src/lib/fs.ts` treats it like
-`powersync` when resolving the OPFS database path, and `isInsertConflictError` recognizes the
-wa-sqlite worker's error format.
+the body is `return 'powersync'`. Its only caller is `src/hooks/use-app-initialization.ts`. A standalone `wa-sqlite` backend used to sit beside these; it was never reachable
+and has been removed.
 
 ## Testing the client DAL
 

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { AbstractPowerSyncDatabase } from '@powersync/web'
+import type { CommonPowerSyncDatabase } from '@powersync/web'
 // Import AppSchema from the schema module directly, NOT the `@/db/powersync`
 // barrel: the barrel re-exports the connector/database SDK, and since this file
 // is pulled into the entry bundle via `use-app-initialization`, the barrel
@@ -143,7 +143,7 @@ const resolveInternalName = (tableName: string): string => {
  * triggers on each entity's backing table, backfills existing rows, and records
  * the new version in {@link searchMetaTable}.
  */
-export const createSearchIndex = async (powerSync: AbstractPowerSyncDatabase): Promise<void> => {
+export const createSearchIndex = async (powerSync: CommonPowerSyncDatabase): Promise<void> => {
   await powerSync.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 
   const [meta] = await powerSync.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)

@@ -4,7 +4,14 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { isIndexedDbAvailable, isPrPreview, prPreviewHostRegex } from './platform'
+import {
+  deleteIndexedDbDatabase,
+  hasIndexedDbDatabase,
+  hasOpfsFile,
+  isIndexedDbAvailable,
+  isPrPreview,
+  prPreviewHostRegex,
+} from './platform'
 
 describe('prPreviewHostRegex', () => {
   it('matches thunderbolt-pr-{number}.onrender.com hostnames', () => {
@@ -146,5 +153,79 @@ describe('isIndexedDbAvailable', () => {
     const promise = isIndexedDbAvailable(idb)
     await getClock().tickAsync(5000)
     expect(await promise).toBe(false)
+  })
+})
+
+describe('hasIndexedDbDatabase', () => {
+  const idbWith = (...names: string[]) => ({ databases: async () => names.map((name) => ({ name, version: 1 })) })
+
+  it('finds a database by exact name', async () => {
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', idbWith('thunderbolt-keys', 'thunderbolt-sync.db'))).toBe(
+      true,
+    )
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', idbWith('thunderbolt-keys'))).toBe(false)
+  })
+
+  it('counts a browser without databases() as having it', async () => {
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', {} as Pick<IDBFactory, 'databases'>)).toBe(true)
+  })
+})
+
+describe('deleteIndexedDbDatabase', () => {
+  type FakeDeleteRequest = { onsuccess?: () => void; onblocked?: () => void; onerror?: () => void; error?: Error }
+
+  /** A factory whose delete request fires `outcome` once the caller has attached its handlers. */
+  const idbThat = (outcome: 'success' | 'blocked' | 'error') => {
+    const deleted: string[] = []
+    const idb = {
+      deleteDatabase: (name: string) => {
+        deleted.push(name)
+        const request: FakeDeleteRequest = { error: new Error('delete failed') }
+        queueMicrotask(() => request[`on${outcome}`]?.())
+        return request as unknown as IDBOpenDBRequest
+      },
+    }
+    return { idb, deleted }
+  }
+
+  it('resolves once the database is deleted', async () => {
+    const { idb, deleted } = idbThat('success')
+    await deleteIndexedDbDatabase('thunderbolt-sync.db', idb)
+    expect(deleted).toEqual(['thunderbolt-sync.db'])
+  })
+
+  it('resolves without waiting when another tab still holds the database open', async () => {
+    const { idb } = idbThat('blocked')
+    await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).resolves.toBeUndefined()
+  })
+
+  it('rejects when the delete fails', async () => {
+    const { idb } = idbThat('error')
+    await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).rejects.toThrow('delete failed')
+  })
+})
+
+describe('hasOpfsFile', () => {
+  const rootThat = (error?: DOMException) => ({
+    getFileHandle: async () => {
+      if (error) {
+        throw error
+      }
+      return {} as FileSystemFileHandle
+    },
+  })
+
+  it('finds an existing file', async () => {
+    expect(await hasOpfsFile('thunderbolt-sync.db', rootThat())).toBe(true)
+  })
+
+  it('reports a missing file', async () => {
+    expect(await hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('gone', 'NotFoundError')))).toBe(false)
+  })
+
+  it('rethrows other errors', async () => {
+    await expect(hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('no', 'SecurityError')))).rejects.toThrow(
+      'no',
+    )
   })
 })

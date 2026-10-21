@@ -42,12 +42,6 @@ describe('isInsertConflictError', () => {
     expect(isInsertConflictError(new Error('UNIQUE constraint violated on column foo'))).toBe(true)
   })
 
-  it('returns true for wa-sqlite Unexpected step result format', () => {
-    expect(isInsertConflictError(new Error('Unexpected step result: 2067'))).toBe(true)
-    expect(isInsertConflictError(new Error('Unexpected step result: 1555'))).toBe(true)
-    expect(isInsertConflictError(new Error('Unexpected step result: 2579'))).toBe(true)
-  })
-
   it('returns false for disk full error', () => {
     expect(isInsertConflictError(new Error('disk I/O error: database or disk is full'))).toBe(false)
     expect(isInsertConflictError({ errno: 13 })).toBe(false)
@@ -66,11 +60,6 @@ describe('isInsertConflictError', () => {
   it('returns false for null/undefined', () => {
     expect(isInsertConflictError(null)).toBe(false)
     expect(isInsertConflictError(undefined)).toBe(false)
-  })
-
-  it('returns false for wa-sqlite non-conflict step result', () => {
-    expect(isInsertConflictError(new Error('Unexpected step result: 19'))).toBe(false)
-    expect(isInsertConflictError(new Error('Unexpected step result: 999'))).toBe(false)
   })
 
   it('returns true when error is wrapped (e.g. DrizzleQueryError) with cause', () => {

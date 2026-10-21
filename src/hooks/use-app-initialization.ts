@@ -92,7 +92,7 @@ const initializeDatabase = async (appDirPath: string): Promise<{ db: AnyDrizzleD
   }
 
   const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(databaseType, appDirPath)
+  const dbPath = await getDatabasePath(appDirPath)
 
   const database = new Database()
   const db = await database.initialize({ type: databaseType, path: dbPath })

@@ -43,36 +43,31 @@ SHARED_CLUSTER_PREFIX="tb-previews-shared-cluster-"
 
 log() { echo "[drop-preview-db] $*"; }
 
-# First ARN in field $1 of an AWS CLI JSON listing that contains $2, or nothing.
-# With `--output text` the CLI applies `--query` to each page separately, so
-# `--query '…[0]'` printed one line per page (`None` for pages without a match)
-# once a listing outgrew a page. `--output json` merges the pages first.
-first_arn() {
-  jq -r --arg field "$1" --arg match "$2" '[.[$field][] | select(contains($match))][0] // empty'
-}
-
-CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" --output json | first_arn clusterArns "$SHARED_CLUSTER_PREFIX")
-if [ -z "$CLUSTER" ]; then
+CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" \
+  --query "clusterArns[?contains(@, '${SHARED_CLUSTER_PREFIX}')] | [0]" --output text)
+if [ -z "$CLUSTER" ] || [ "$CLUSTER" = "None" ]; then
   log "No shared cluster found — nothing to drop."
   exit 0
 fi
 
-SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --output json | first_arn serviceArns "$BE_SVC_PREFIX")
-if [ -z "$SVC" ]; then
+SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" \
+  --query "serviceArns[?contains(@, '${BE_SVC_PREFIX}')] | [0]" --output text)
+if [ -z "$SVC" ] || [ "$SVC" = "None" ]; then
   log "No backend service for ${STACK} — stack already torn down or never deployed. Skipping."
   exit 0
 fi
 
-TASKDEF=$(aws ecs list-task-definitions --family-prefix "$BACKEND_FAMILY" --status ACTIVE --sort DESC --region "$AWS_REGION" \
-  --output json | first_arn taskDefinitionArns "$BACKEND_FAMILY")
-if [ -z "$TASKDEF" ]; then
+TASKDEF=$(aws ecs list-task-definitions --family-prefix "$BACKEND_FAMILY" --status ACTIVE --region "$AWS_REGION" \
+  --query 'taskDefinitionArns | [-1]' --output text)
+if [ -z "$TASKDEF" ] || [ "$TASKDEF" = "None" ]; then
   log "No backend task definition for ${STACK} — skipping."
   exit 0
 fi
 
 # PowerSync holds its replication slot open; stop it so the slot can be dropped.
-PS_SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --output json | first_arn serviceArns "$PS_SVC_PREFIX")
-if [ -n "$PS_SVC" ]; then
+PS_SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" \
+  --query "serviceArns[?contains(@, '${PS_SVC_PREFIX}')] | [0]" --output text)
+if [ -n "$PS_SVC" ] && [ "$PS_SVC" != "None" ]; then
   log "Stopping PowerSync service: $PS_SVC"
   aws ecs update-service --cluster "$CLUSTER" --service "$PS_SVC" --desired-count 0 --region "$AWS_REGION" >/dev/null
   aws ecs wait services-stable --cluster "$CLUSTER" --services "$PS_SVC" --region "$AWS_REGION"

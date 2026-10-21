@@ -144,10 +144,6 @@ jobs:
     # Skip when dry-run or no orphans. The dry_run output is a string 'true'/'false'.
     if: needs.find-orphans.outputs.dry_run != 'true' && needs.find-orphans.outputs.orphans != '[]'
     runs-on: ubuntu-latest
-    # The deploy role's OIDC trust rejects this workflow's own jobs as they are
-    # but admits the `preview` environment, as previews-shared-deploy and nightly
-    # rely on. (stack-deploy's destroy job is admitted without it.)
-    environment: preview
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -194,8 +190,6 @@ jobs:
     needs: [find-orphans, destroy-orphans]
     if: ${{ always() && needs.find-orphans.result == 'success' }}
     runs-on: ubuntu-latest
-    # See drop-orphan-dbs: needed to assume the deploy role.
-    environment: preview
     # A job-level block replaces the workflow's, so restate what this job needs.
     permissions:
       contents: read

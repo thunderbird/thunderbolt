@@ -164,7 +164,9 @@ directly from the device; ON opts into the backend universal proxy. Native failu
 through the backend. See [native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out
 user with Use Cloud Proxy on gets backend 401s until they turn it off or sign in. Remote ACP WebSockets
 follow the same toggle, except loopback always stays direct. With it on, external agents need public
-`wss://` addresses; for LAN or `ws://` agents, turn it off. Tinfoil uses its attested client.
+`wss://` addresses. LAN agents need a `wss://` address with Use Cloud Proxy off. Plain `ws://`
+works only for a local bridge at its default port (`8839`) on the same computer as the desktop app.
+Tinfoil uses its attested client.
 
 Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on.
 

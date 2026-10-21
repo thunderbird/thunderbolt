@@ -149,20 +149,23 @@ from the agent type and the runtime, in order:
   turns both verdicts into a bare HTTP 400.
 - The `wss` CLI bridge binds `127.0.0.1` and prints `ws://127.0.0.1:<port>/?token=…` as the URL to
   paste into the app.
-- **A loopback bridge URL stays direct on Tauri even with Use Cloud Proxy on, and fails on web.**
-- With Use Cloud Proxy on, external agents need a public `wss://` address. For LAN agents or
-  `ws://` addresses, turn Use Cloud Proxy off on desktop/mobile; only loopback bypasses it.
+- **Plain `ws://` works only for a local bridge at its default port (`8839`) on the same computer
+  as the desktop app. It stays direct even with Use Cloud Proxy on.**
+- With Use Cloud Proxy on, external agents need a public `wss://` address. LAN agents need a
+  `wss://` address with Use Cloud Proxy off on desktop/mobile. Loopback always bypasses the proxy.
 
-Both halves are correct: the relay is an SSRF control on a server that would otherwise dial
-anything, and the bridge is loopback because it spawns subprocesses. Nothing warns you at save time, and the form accepts `ws://` by design (LAN and dev
-endpoints have no TLS; only Tauri iOS rejects it, ATS blocks cleartext, see
-[validate-agent-url.ts](../../../src/components/settings/agents/validate-agent-url.ts)).
+The relay restricts targets to prevent SSRF. The bridge uses loopback because it spawns subprocesses.
+The form's URL validation accepts `ws://` except on Tauri iOS, where ATS blocks cleartext
+([validate-agent-url.ts](../../../src/components/settings/agents/validate-agent-url.ts)).
+At connection time, the webview CSP blocks `ws://` targets outside its explicit allowlist
+([src-tauri/tauri.conf.json](../../../src-tauri/tauri.conf.json)).
 
-"Test connection" covers WebSocket endpoints only (iroh is verified on first chat) and does not warn
-either. [`connection-test.ts`](../../../src/acp/connection-test.ts) calls `openWebSocketTransport`
+"Test connection" covers WebSocket endpoints only (iroh is verified on first chat).
+[`connection-test.ts`](../../../src/acp/connection-test.ts) calls `openWebSocketTransport`
 directly, skipping `openTransport`'s routing, because a custom agent carries its own auth and never
-needs a backend credential. The probe therefore opens a native socket whichever runtime you are in,
-so a green probe is evidence about the endpoint, not the proxy path used on web or Tauri with Use Cloud Proxy on.
+needs a backend credential. The probe opens a webview socket on Tauri, so the same CSP restrictions
+apply. A blocked target fails the test and cannot be saved. A passing test does not verify
+the proxy path.
 
 For a bridge on another device, use `--transport iroh`; on web, use iroh even on the same device.
 

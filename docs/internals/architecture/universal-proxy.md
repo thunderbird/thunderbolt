@@ -192,8 +192,10 @@ list (logged by none). Hence:
 `new WebSocket(url, protocols)` with no app bearer; enabling the setting uses the same carrier,
 bearer and target subprotocols as web. Tauri loopback targets always stay direct; web always proxies.
 The proxy accepts only public `wss://` targets: `ws://` and private-network targets get HTTP 400,
-without upgrading the scheme or falling back to direct. Turn Use Cloud Proxy off on desktop/mobile
-for LAN or `ws://` agents. Managed ACP and iroh routing are separate and unchanged.
+without upgrading the scheme or falling back to direct. LAN agents need a `wss://` address with
+Use Cloud Proxy off on desktop/mobile. Plain `ws://` works only for a local bridge at its default
+port (`8839`) on the same computer as the desktop app. Managed ACP and iroh routing are separate
+and unchanged.
 
 ### Close codes
 

@@ -103,9 +103,10 @@ An external agent brings its own commands, which appear in the chat `/` menu alo
 network address. Browser rules force that traffic through the cloud proxy in your Thunderbolt
 backend, which refuses private targets. Desktop and mobile connect directly to external agents
 added with a WebSocket address by default. With Use Cloud Proxy on, external agents need a public
-`wss://` address; for agents on your local network or with a `ws://` address, turn Use Cloud Proxy
-off. Agents on the same device, including local bridges, always connect directly in desktop and
-mobile. For the web app, use a peer-to-peer ticket instead of a private WebSocket address.
+`wss://` address. Agents on your local network need a `wss://` address with Use Cloud Proxy off.
+Plain `ws://` works only for a local bridge at its default port (`8839`) on the same computer as
+the desktop app. Agents on the same device always connect directly in desktop and mobile.
+For the web app, use a peer-to-peer ticket instead of a private WebSocket address.
 
 More detail, including what each failure message means: [Connections](using/connections.md).
 

@@ -160,6 +160,10 @@ msgstr[0] "# linha importada. O app pode levar um momento para refletir as novas
 msgstr[1] "# linhas importadas. O app pode levar um momento para refletir as novas conversas."
 msgstr[2] "# linhas importadas. O app pode levar um momento para refletir as novas conversas."
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -310,6 +314,10 @@ msgstr "Adicionar modelo"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Adicionar servidor"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
@@ -505,6 +513,10 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "Pergunte o que quiser…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -837,6 +849,7 @@ msgstr "Área de transferência indisponível. Selecione a frase acima e copie m
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Fechar"
@@ -880,6 +893,34 @@ msgstr "Comando / argumentos"
 #: src/components/ui/command.tsx
 msgid "Command Palette"
 msgstr "Paleta de comandos"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr ""
 
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
@@ -1014,6 +1055,18 @@ msgstr "Conexões"
 msgid "Contact Support"
 msgstr "Falar com o suporte"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context compaction is available with supported built-in models."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "Janela de contexto excedida"
@@ -1078,6 +1131,10 @@ msgstr "Não foi possível vincular o código de emparelhamento"
 
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Your chat history is safe. Please try again."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -2099,6 +2156,10 @@ msgstr "Se você tiver acesso, enviamos um código de 8 dígitos para <0>{email}
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "Se você recebeu um código para entrar, insira-o aqui:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -3219,6 +3280,10 @@ msgstr "Reiniciar agora"
 msgid "Restart to update"
 msgstr "Reiniciar para atualizar"
 
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
 msgstr "Obtendo dados…"
@@ -3311,6 +3376,10 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "Salve sua frase de recuperação"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+#~ msgid "Saved summary of earlier context. Your full chat history is preserved."
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -3832,6 +3901,10 @@ msgstr "Resposta do modelo obtida com sucesso."
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "Sugeridos"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr ""
 
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
@@ -4359,6 +4432,10 @@ msgstr "Muitas solicitações. Tente novamente em instantes."
 msgid "Tool input"
 msgstr "Entrada da ferramenta"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
@@ -4561,9 +4638,9 @@ msgstr "Entre com sua digital, seu rosto ou o PIN do dispositivo em vez de um c�
 msgid "User Experience"
 msgstr "Experiência do usuário"
 
-#: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr "{usedTokensLabel} de {maxTokensLabel} da janela de contexto em uso"
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr "{usedTokensLabel} de {maxTokensLabel} da janela de contexto em uso"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -4602,9 +4679,18 @@ msgstr "Ver e gerenciar sua agenda; criar e reagendar eventos."
 msgid "View install guide"
 msgstr "Ver o guia de instalação"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "View latest summary"
+#~ msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
 msgstr "Ver a citação"
+
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
@@ -4627,6 +4713,10 @@ msgstr "Motor de voz"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "Modo de voz: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -4787,6 +4877,10 @@ msgstr "Anote estas 24 palavras na ordem e guarde-as em um lugar seguro. Você v
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws ou cole um ticket iroh"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."

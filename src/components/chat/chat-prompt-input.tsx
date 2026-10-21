@@ -52,7 +52,8 @@ import { useLocation as useLocation_default, useNavigate as useNavigate_default 
 import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
-import { ContextUsageIndicator } from '../context-usage-indicator'
+import { CompactionNotice, ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
+import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
@@ -225,6 +226,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       retriesExhausted,
       stopping,
+      compactionStatus,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
@@ -242,6 +244,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
     })
+    const summaryView = useCompactionSummaryState(messages)
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
@@ -289,7 +292,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     // Show the Stop button whenever the thread is busy — the same signal
     // `ChatMessages` uses for its loading spinner, so the two stay in sync.
-    const { isActive: isBusy, isStopping } = getTurnActivity({
+    const { isActive, isStopping } = getTurnActivity({
       status,
       lastMessage: messages[messages.length - 1],
       hasChatError: chatError != null,
@@ -297,6 +300,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       retryCount,
       stopRequested: stopping,
     })
+    const compacting = compactionStatus === 'compacting'
+    const isBusy = isActive || compacting
+    const canCompact =
+      selectedAgent.type === 'built-in' && supportsPiCompaction(selectedModel) && !!chatInstance.compactContext
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -659,7 +666,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        if (isOverflowing) {
+        if (isOverflowing && !canCompact) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
         }
@@ -754,8 +761,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </span>
           </div>
         ) : null}
-        {isContextKnown && !isMobile && (
-          <ContextUsageIndicator usedTokens={usedTokens ?? 0} maxTokens={maxTokens ?? 0} />
+        {(isContextKnown || (canCompact && messages.length > 0) || !!summaryView.onViewSummary) && (
+          <ContextUsageIndicator
+            key={chatThreadId}
+            usedTokens={usedTokens ?? 0}
+            maxTokens={maxTokens ?? 0}
+            onCompact={canCompact ? chatInstance.compactContext : undefined}
+            busy={isActive}
+            compacting={compacting}
+            onViewSummary={summaryView.onViewSummary}
+          />
         )}
       </div>
     )
@@ -869,6 +884,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               they slide back down on dismiss. pointer-events gated so the empty
               overlay area doesn't eat clicks behind it. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
+            <CompactionNotice
+              status={compactionStatus}
+              onViewSummary={!isActive ? summaryView.onViewSummary : undefined}
+            />
             {/* Chips keep their normal resting gap above the composer (pb-2). */}
             <div className="pointer-events-auto pb-2">
               <ChatSkillsBar

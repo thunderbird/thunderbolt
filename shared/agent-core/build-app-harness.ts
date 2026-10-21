@@ -36,6 +36,14 @@ import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
 import { buildSeedMessages, type SeedTurn } from './seed-history.ts'
+import {
+  createHarnessCompaction,
+  restoreCompaction,
+  type CompactionCheckpoint,
+  type HarnessCompaction,
+} from './compaction.ts'
+
+export type AppHarness = AgentHarness & { compaction: HarnessCompaction }
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
 const workspaceRoot = '/workspace'
@@ -136,6 +144,7 @@ export type BuildAppHarnessOptions = {
   /** Prior conversation turns to seed into the session before the first prompt,
    *  so the agent has multi-turn context. Omitted/empty starts a blank session. */
   readonly history?: readonly SeedTurn[]
+  readonly compaction?: CompactionCheckpoint
 }
 
 /** Remove the isolated browser workspace owned by a thread. */
@@ -157,7 +166,7 @@ export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}
  */
-export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
+export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<AppHarness> => {
   ensureBufferPolyfill()
   await mountAgentFs()
   const workspaceDir = workspaceDirFor(options.threadId)
@@ -208,9 +217,19 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while
   // idle; `prompt` then reads them back via `session.buildContext()`.
+  if (options.compaction) {
+    await restoreCompaction(session, options.compaction)
+  }
   for (const message of buildSeedMessages(options.history)) {
     await harness.appendMessage(message)
   }
 
-  return harness
+  return Object.assign(harness, {
+    compaction: createHarnessCompaction(
+      harness,
+      session,
+      options.compaction,
+      options.model.kind === 'confidential' ? options.model.receipts : undefined,
+    ),
+  })
 }

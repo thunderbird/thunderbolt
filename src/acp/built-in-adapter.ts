@@ -65,14 +65,14 @@ import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
-import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import type { ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
-import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
+import type { AppHarness, CompactionCheckpoint, PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
-import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import type { AgentHarness, AgentHarnessTool, AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
 import type { SecureClient } from 'tinfoil'
 import {
@@ -82,7 +82,8 @@ import {
   getTinfoilClient,
   isTinfoilTransportWedgedError,
 } from '@/ai/tinfoil-client'
-import { prepareBuiltInConversation } from './built-in-conversation'
+import { prepareBuiltInConversation, prepareBuiltInHistory, splitCompactedHistory } from './built-in-conversation'
+import { isPiModelCandidate, managedAnthropicCatalogId } from './built-in-model-support'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
  *  resolves the module's shape for the compiler without emitting a runtime
@@ -96,7 +97,7 @@ type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
  *  per-adapter cache so the conversation (which lives in the harness session) and
  *  its isolated OPFS workspace persist across the thread's turns. */
 type HarnessRecord = {
-  readonly harness: AgentHarness
+  readonly harness: AppHarness
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Removes the thread's workspace without exposing the harness's private environment. */
@@ -110,7 +111,8 @@ type HarnessRecord = {
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
  *  built for so a mid-thread config switch is detected and rebuilt. */
 type CachedHarness = {
-  readonly signature: string
+  /** Null after compaction: the next operation must use the caller's saved checkpoint. */
+  signature: string | null
   /** The build PROMISE (see {@link HarnessCache}). */
   readonly record: Promise<HarnessRecord>
 }
@@ -157,20 +159,6 @@ type TinfoilClientOptions = Pick<
   | 'isSsoMode'
 >
 
-/** Providers the in-browser Pi harness can serve. */
-const piProviders = new Set<Model['provider']>([
-  'anthropic',
-  'openai',
-  'custom',
-  'openrouter',
-  'thunderbolt',
-  'tinfoil',
-])
-
-/** Whether production routes a model to the Pi harness. Tinfoil has no legacy fallback. */
-export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
-  piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
-
 const piThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 const profileThinkingOptionsSchema = z
   .object({
@@ -194,13 +182,6 @@ const profileThinkingOptionsSchema = z
  *  the adaptive default the anthropic path has always used, so deriving the level
  *  never regresses a model that didn't configure one. */
 const fallbackThinkingLevel: ThinkingLevel = 'medium'
-
-/** Managed Anthropic slugs whose Pi catalog entry is not `claude-<slug>`. pi-ai
- *  0.82.1 has no claude-opus-5-5, so Opus 5.5 borrows Opus 5's metadata (adaptive
- *  thinking, image input) while the wire keeps the public slug; drop the alias when
- *  upgrading Pi. A `Map`, so a user-edited slug like `constructor` cannot resolve
- *  through the prototype. */
-const managedAnthropicCatalogAliases: ReadonlyMap<string, string> = new Map([['opus-5-5', 'claude-opus-5']])
 
 /** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
  *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
@@ -460,13 +441,14 @@ export const resolvePiModel = async (
         kind: 'anthropic',
         modelId: model.model,
         apiKey: model.apiKey ?? '',
+        contextWindow: model.contextWindow ?? undefined,
         fetch: context.getProxyFetch(),
       },
       thinkingLevel,
     }
   }
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
-    const catalogModelId = managedAnthropicCatalogAliases.get(model.model) ?? `claude-${model.model}`
+    const catalogModelId = managedAnthropicCatalogId(model.model)
     if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
       return null
     }
@@ -580,6 +562,7 @@ const buildHarnessRecord = async (
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
+  compaction?: CompactionCheckpoint,
 ): Promise<HarnessRecord> => {
   const systemPrompt = { current: composeAppHarnessSystemPrompt(config) }
   const harness = await agentCore.buildAppHarness({
@@ -588,6 +571,7 @@ const buildHarnessRecord = async (
     thinkingLevel: resolved.thinkingLevel,
     threadId: context.threadId,
     history,
+    compaction,
   })
   return {
     harness,
@@ -615,6 +599,14 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
+/** Estimate prompt/schema overhead when restored history has no provider usage yet. */
+const estimateHarnessOverhead = (record: HarnessRecord): number => {
+  const tools = record.harness
+    .getActiveTools()
+    .map(({ name, description, parameters }) => ({ name, description, parameters }))
+  return Math.ceil((record.systemPrompt.current.length + JSON.stringify(tools).length) / 3)
+}
+
 /**
  * Supersede earlier Mini App `get_app_context` results in what the model sees
  * this send: the harness half of `supersedeAppContextResults`.
@@ -625,14 +617,10 @@ const prepareHarnessForSend = async (
  * touching the stored session, and only for the ids the request history marks
  * as earlier Mini App reads, so a read made during this send still arrives.
  */
-export const installAppContextSupersede = (harness: AgentHarness, callIds: ReadonlySet<string>): (() => void) =>
-  harness.on('context', ({ messages }) => ({
-    messages: messages.map((message) =>
-      message.role === 'toolResult' && callIds.has(message.toolCallId)
-        ? { ...message, content: [{ type: 'text' as const, text: supersededAppContextOutput }] }
-        : message,
-    ),
-  }))
+export const supersedeHarnessAppContext = (message: AgentMessage, callIds: ReadonlySet<string>): AgentMessage =>
+  message.role === 'toolResult' && callIds.has(message.toolCallId)
+    ? { ...message, content: [{ type: 'text', text: supersededAppContextOutput }] }
+    : message
 
 /** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
@@ -709,10 +697,10 @@ const getOrBuildHarness = (
   threadId: string,
   signature: string,
   build: () => Promise<HarnessRecord>,
-): Promise<HarnessRecord> => {
+): CachedHarness => {
   const cached = cache.get(threadId)
   if (cached && cached.signature === signature) {
-    return cached.record
+    return cached
   }
   // Config drift (or first turn). On drift, abort the stale harness's run and
   // WAIT for that to settle before building the replacement, so the old and new
@@ -726,13 +714,15 @@ const getOrBuildHarness = (
       cache.delete(threadId)
     }
   })
-  cache.set(threadId, { signature, record })
-  return record
+  const entry = { signature, record }
+  cache.set(threadId, entry)
+  return entry
 }
 
 /** Abort a harness's in-flight run WITHOUT removing its workspace. Used on a
  *  config-drift eviction, where the rebuilt harness reuses the same workspace. */
 const abortHarness = async (record: HarnessRecord): Promise<void> => {
+  record.harness.compaction.abort()
   await record.harness.abort().catch(() => {})
 }
 
@@ -799,9 +789,10 @@ const fetchViaHarness = async (
   const messages = parseMessages(init)
   const supersededCallIds =
     config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
+  const transformMessage = (message: AgentMessage) => supersedeHarnessAppContext(message, supersededCallIds)
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
-  const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
+  const { history, prompt, compaction } = await prepareBuiltInConversation(messages, skillInstructions)
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
       composeAppHarnessSystemPrompt(config),
@@ -814,13 +805,16 @@ const fetchViaHarness = async (
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
-  const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
-    buildHarnessRecord(agentCore, context, resolved, history, config),
+  const cached = getOrBuildHarness(cache, context.threadId, signature, () =>
+    buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
   )
+  const record = await cached.record
   await prepareHarnessForSend(agentCore, record, config, context.httpClient)
   context.telemetry?.endPhase('harness_build')
   const { harness } = record
   context.telemetry?.setDimensions({ engine: 'pi' })
+  const checkpoint = { current: undefined as CompactionCheckpoint | undefined }
+  const initialCompactionRevision = harness.compaction.revision
 
   return new Response(
     agentCore.piHarnessToUiMessageStream(
@@ -832,14 +826,39 @@ const fetchViaHarness = async (
           throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
         }
         const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
-        const removeAppContextSupersede =
-          supersededCallIds.size > 0 ? installAppContextSupersede(harness, supersededCallIds) : () => undefined
+        const removeContext = harness.on('context', async ({ messages }) => {
+          const prepared = await harness.compaction.prepareRequest(messages, {
+            signal: init.signal ?? undefined,
+            overheadTokens: estimateHarnessOverhead(record),
+            onStatus: (status) => {
+              // Stop may close the UI stream before the checkpoint is published.
+              // Rebuild from saved history next time, including after failed saves.
+              if (status === 'compacted') {
+                cached.signature = null
+              }
+              context.onCompactionStatus?.(status)
+            },
+            transformMessage,
+          })
+          return {
+            messages: prepared.map(transformMessage),
+          }
+        })
+        const removeCheckpoint = harness.subscribe(async (event) => {
+          if (
+            (event.type === 'turn_end' || event.type === 'agent_end') &&
+            harness.compaction.revision !== initialCompactionRevision
+          ) {
+            checkpoint.current = await harness.compaction.checkpoint()
+          }
+        })
         try {
           await harness.prompt(prompt.text, { images: prompt.images })
           await harness.waitForIdle()
         } finally {
           removeBudgetFloor()
-          removeAppContextSupersede()
+          removeContext()
+          removeCheckpoint()
         }
       },
       {
@@ -855,6 +874,10 @@ const fetchViaHarness = async (
         },
         settled: (): UIMessageMetadata => {
           const messageMetadata: UIMessageMetadata = { modelId: context.selectedModel.id }
+          if (checkpoint.current) {
+            messageMetadata.contextCompaction = checkpoint.current
+            messageMetadata.contextTokens = checkpoint.current.contextTokens
+          }
           if (config.sourceCollector.length > 0) {
             messageMetadata.sources = [...config.sourceCollector]
           }
@@ -926,10 +949,51 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     return fetchViaLegacyPipeline(init, context)
   }
 
+  const compactContext: NonNullable<AgentAdapter['compact']> = async (init, context, instructions) => {
+    if (!isPiModelCandidate(context.selectedModel)) {
+      throw new Error('This model does not support context compaction')
+    }
+    const agentCore = await loadAgentCore()
+    const config = await prepareConfig({
+      modelId: context.selectedModel.id,
+      mcpClients: context.mcpClients,
+      reconnectClient: context.reconnectClient,
+      httpClient: context.httpClient,
+      chatThreadId: context.threadId,
+    })
+    const resolved = await resolvePiModel(agentCore, context, config.profile, options)
+    if (!resolved) {
+      throw new Error('This model does not support context compaction')
+    }
+    const messages = parseMessages(init)
+    const supersededCallIds =
+      config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
+    const previous = splitCompactedHistory(messages)
+    const history = await prepareBuiltInHistory(previous.messages)
+    const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
+    const cached = getOrBuildHarness(harnessCache, context.threadId, signature, () =>
+      buildHarnessRecord(agentCore, context, resolved, history, config, previous.compaction),
+    )
+    const record = await cached.record
+    await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    // The caller still has to save the returned checkpoint. Rebuild on the next
+    // operation from that caller's durable history, whether the save succeeds
+    // or fails. Keep the record owned by the cache for disconnect cleanup.
+    cached.signature = null
+    return record.harness.compaction.compact({
+      instructions,
+      signal: init.signal ?? undefined,
+      onStatus: context.onCompactionStatus,
+      overheadTokens: estimateHarnessOverhead(record),
+      transformMessage: (message) => supersedeHarnessAppContext(message, supersededCallIds),
+    })
+  }
+
   return {
     agent,
     capabilities: null,
     fetch,
+    compact: compactContext,
     // No ACP wire to warm. Each thread's harness IS persistent, so disconnect
     // disposes every cached harness and removes its isolated workspace.
     ensureSession: async () => {},

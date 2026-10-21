@@ -8,7 +8,7 @@ import { getAttachment, type StoredFile } from '@/lib/file-blob-storage'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ImageContent } from '@earendil-works/pi-ai'
-import type { SeedTurn } from '@shared/agent-core'
+import type { CompactionCheckpoint, SeedTurn } from '@shared/agent-core'
 
 export type BuiltInConversationDeps = {
   readonly getAttachment: typeof getAttachment
@@ -26,6 +26,33 @@ export type BuiltInPrompt = {
 export type PreparedBuiltInConversation = {
   readonly history: SeedTurn[]
   readonly prompt: BuiltInPrompt
+  readonly compaction?: CompactionCheckpoint
+}
+
+/** The latest surviving checkpoint bounds the history replayed after reload or regeneration. */
+export const splitCompactedHistory = (messages: ThunderboltUIMessage[]) => {
+  const index = messages.findLastIndex((message) => message.metadata?.contextCompaction?.version === 1)
+  return {
+    compaction: index >= 0 ? messages[index].metadata?.contextCompaction : undefined,
+    messages: messages.slice(index + 1),
+  }
+}
+
+/** Prepare every visible turn after a checkpoint for a manual compaction build. */
+export const prepareBuiltInHistory = async (
+  messages: ThunderboltUIMessage[],
+  deps: BuiltInConversationDeps = defaultDeps,
+): Promise<SeedTurn[]> => {
+  const turns = await Promise.all(
+    messages.map(async (message): Promise<SeedTurn | null> => {
+      if (message.role !== 'user' && message.role !== 'assistant') {
+        return null
+      }
+      const prepared = await prepareMessage(message, false, deps)
+      return prepared.text ? { role: message.role, text: prepared.text } : null
+    }),
+  )
+  return coalesceTurns(turns.filter((turn): turn is SeedTurn => turn !== null))
 }
 
 type PreparedPart = {
@@ -160,26 +187,17 @@ export const prepareBuiltInConversation = async (
     throw new Error('Built-in adapter: no user message in request body')
   }
 
-  const priorTurns = await Promise.all(
-    messages.slice(0, lastUserIndex).map(async (message): Promise<SeedTurn | null> => {
-      if (message.role !== 'user' && message.role !== 'assistant') {
-        return null
-      }
-      const prepared = await prepareMessage(message, false, deps)
-      return prepared.text.length > 0 ? { role: message.role, text: prepared.text } : null
-    }),
-  )
+  const previous = splitCompactedHistory(messages.slice(0, lastUserIndex))
+  const priorTurns = await prepareBuiltInHistory(previous.messages, deps)
   const current = await prepareMessage(messages[lastUserIndex], true, deps)
-  const turns = coalesceTurns([
-    ...priorTurns.filter((turn): turn is SeedTurn => turn !== null),
-    { role: 'user', text: current.text },
-  ])
+  const turns = coalesceTurns([...priorTurns, { role: 'user', text: current.text }])
   const promptTurn = turns.at(-1)
   if (!promptTurn) {
     throw new Error('Built-in adapter: current user message has no supported content')
   }
   const skillPrefix = skillInstructions?.length ? `${skillInstructions.join('\n\n')}\n\n` : ''
   return {
+    compaction: previous.compaction,
     history: turns.slice(0, -1),
     prompt: { text: `${skillPrefix}${promptTurn.text}`, images: current.images },
   }

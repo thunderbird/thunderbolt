@@ -136,6 +136,10 @@ msgid "Imported # row. The app may take a moment to reflect new chats."
 msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "# 行をインポートしました。新しいチャットが反映されるまで少し時間がかかる場合があります。"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -286,6 +290,10 @@ msgstr "モデルを追加"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "サーバーを追加"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
@@ -481,6 +489,10 @@ msgstr ""
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -813,6 +825,7 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
@@ -856,6 +869,34 @@ msgstr "コマンド / 引数"
 #: src/components/ui/command.tsx
 msgid "Command Palette"
 msgstr "コマンドパレット"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr ""
 
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
@@ -990,6 +1031,18 @@ msgstr "接続"
 msgid "Contact Support"
 msgstr "サポートに問い合わせる"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context compaction is available with supported built-in models."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "コンテキストウィンドウを超えました"
@@ -1054,6 +1107,10 @@ msgstr "ペアリングコードを紐づけできませんでした"
 
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Your chat history is safe. Please try again."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -2075,6 +2132,10 @@ msgstr "アクセス権がある場合は、<0>{email}</0> に 8 桁のコード
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "ログイン用のコードを受け取っている場合は、ここに入力してください:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -3195,6 +3256,10 @@ msgstr "今すぐ再起動"
 msgid "Restart to update"
 msgstr "再起動して更新"
 
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
 msgstr "データを取得中…"
@@ -3287,6 +3352,10 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "リカバリーフレーズを保存してください"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+#~ msgid "Saved summary of earlier context. Your full chat history is preserved."
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -3808,6 +3877,10 @@ msgstr "モデルから応答を取得できました。"
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "おすすめ"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr ""
 
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
@@ -4335,6 +4408,10 @@ msgstr "リクエストが多すぎます。少し待ってからもう一度お
 msgid "Tool input"
 msgstr "ツールの入力"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
@@ -4537,9 +4614,9 @@ msgstr "メールのコードの代わりに、指紋や顔認証、デバイス
 msgid "User Experience"
 msgstr "ユーザー体験"
 
-#: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr "コンテキストウィンドウ {maxTokensLabel} のうち {usedTokensLabel} を使用中"
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr "コンテキストウィンドウ {maxTokensLabel} のうち {usedTokensLabel} を使用中"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -4578,9 +4655,18 @@ msgstr "予定の表示と管理、イベントの作成と再スケジュール
 msgid "View install guide"
 msgstr "インストールガイドを見る"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "View latest summary"
+#~ msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
 msgstr "引用を見る"
+
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
@@ -4603,6 +4689,10 @@ msgstr "音声エンジン"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "音声モード: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -4763,6 +4853,10 @@ msgstr "この 24 語を順番どおりに書き留めて、安全な場所に�
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws または iroh チケットを貼り付け"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."

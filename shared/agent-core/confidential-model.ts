@@ -45,6 +45,8 @@ export type CompletedProviderStep = {
 export type ReceiptLifecycle = {
   readonly completeProviderStep: (step: CompletedProviderStep) => void
   readonly clear: () => void
+  /** Summary requests have no harness message_end; settle their receipts in their own scope. */
+  readonly withStandaloneRequests: <T>(run: () => Promise<T>) => Promise<T>
   /** Attach terminal-message correlation; the returned cleanup detaches it and clears pending state. */
   readonly attach: (harness: Pick<AgentHarness, 'subscribe'>) => () => void
 }
@@ -288,10 +290,29 @@ const toReceiptUsage = (step: CompletedProviderStep): InferenceUsageReceiptReque
 /** Correlate provider receipts with the exact terminal assistant event that owns their usage. */
 export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): ReceiptLifecycle => {
   let pending: CompletedProviderStep | null = null
+  let standalone: CompletedProviderStep[] | null = null
+  const submitStep = async (completed: CompletedProviderStep): Promise<void> => {
+    if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') {
+      return
+    }
+    const usage = toReceiptUsage(completed)
+    if (usage === null) {
+      return
+    }
+    try {
+      await options.submit(usage)
+    } catch (error) {
+      options.reportError(toError(error))
+    }
+  }
   const clear = (): void => {
     pending = null
   }
   const completeProviderStep = (step: CompletedProviderStep): void => {
+    if (standalone) {
+      standalone.push(step)
+      return
+    }
     pending = step
   }
   const attach: ReceiptLifecycle['attach'] = (harness) => {
@@ -309,19 +330,7 @@ export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): 
         return
       }
       clear()
-      if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') {
-        return
-      }
-
-      const usage = toReceiptUsage(completed)
-      if (usage === null) {
-        return
-      }
-      try {
-        await options.submit(usage)
-      } catch (error) {
-        options.reportError(toError(error))
-      }
+      await submitStep(completed)
     })
     let subscribed = true
     return () => {
@@ -333,7 +342,22 @@ export const createReceiptLifecycle = (options: CreateReceiptLifecycleOptions): 
       clear()
     }
   }
-  return { completeProviderStep, clear, attach }
+  const withStandaloneRequests: ReceiptLifecycle['withStandaloneRequests'] = async (run) => {
+    if (standalone) {
+      throw new Error('Standalone receipt capture is already running')
+    }
+    const steps: CompletedProviderStep[] = []
+    standalone = steps
+    try {
+      return await run()
+    } finally {
+      standalone = null
+      for (const step of steps) {
+        await submitStep(step)
+      }
+    }
+  }
+  return { completeProviderStep, clear, attach, withStandaloneRequests }
 }
 
 /** Build a catalog-driven confidential model over an already-attested fetch. */

@@ -142,7 +142,16 @@ try {
             })
             const first = await harness.prompt('hello first turn')
             const second = await harness.prompt('hello second turn')
-            conversations.push({ providerId, first, second, requests })
+            const checkpoint = await harness.compaction.compact({ instructions: 'Keep the greeting preference' })
+            const resumed = await core.buildAppHarness({
+              model: { ...model, kind: 'openai-compat' },
+              systemPrompt: 'Answer briefly.',
+              thinkingLevel: 'off',
+              threadId: `${providerId}-restored`,
+              compaction: JSON.parse(JSON.stringify(checkpoint)),
+            })
+            const afterCompaction = await resumed.prompt('continue after compaction')
+            conversations.push({ providerId, first, second, afterCompaction, checkpoint, requests })
           }
           const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
           const written = await env.writeFile('persist.txt', 'survives reload')
@@ -152,14 +161,18 @@ try {
           return { backend, conversations }
         }, chunkUrl)
         assert.equal(results.backend, 'opfs')
-        for (const { first, second, requests } of results.conversations) {
-          for (const response of [first, second]) {
+        for (const { first, second, afterCompaction, checkpoint, requests } of results.conversations) {
+          for (const response of [first, second, afterCompaction]) {
             assert.equal(response.stopReason, 'stop')
             assert.deepEqual(response.content, [{ type: 'text', text: 'hello back' }])
           }
-          assert.equal(requests.length, 2)
+          assert.equal(requests.length, 4)
           assert.ok(requests[1].includes('hello first turn'))
           assert.ok(requests[1].includes('hello back'))
+          assert.ok(requests[2].includes('Keep the greeting preference'))
+          assert.ok(checkpoint.summary.includes('hello back'))
+          assert.ok(requests[3].includes('hello back'))
+          assert.ok(!requests[3].includes('hello first turn'))
         }
         await page.reload()
         await loadHarness()

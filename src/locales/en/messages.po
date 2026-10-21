@@ -148,6 +148,10 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr "{verbPhrase}…"
@@ -298,6 +302,10 @@ msgstr "Add Model"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Add Server"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
+msgstr "Add summary instructions (optional)"
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
@@ -493,6 +501,10 @@ msgstr "Ask about this"
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "Ask me anything…"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
+msgstr "Assistant"
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
@@ -825,6 +837,7 @@ msgstr "Clipboard unavailable. Please select the phrase above and copy it manual
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Close"
@@ -868,6 +881,34 @@ msgstr "Command / arguments"
 #: src/components/ui/command.tsx
 msgid "Command Palette"
 msgstr "Command Palette"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr "Command result"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr "Compact now"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr "Compacted"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr "Compacting context…"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr "Compacting…"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr "Compaction instructions (optional)"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
+msgstr "Compaction summary"
 
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
@@ -1002,6 +1043,18 @@ msgstr "Connections"
 msgid "Contact Support"
 msgstr "Contact Support"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr "Context"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context compaction is available with supported built-in models."
+msgstr "Context compaction is available with supported built-in models."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr "Context usage"
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "Context Window Exceeded"
@@ -1067,6 +1120,10 @@ msgstr "Could not bind the pairing code"
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr "Could not check whether a removed device still holds your account key. Reload to try again."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Your chat history is safe. Please try again."
+msgstr "Could not compact context. Your chat history is safe. Please try again."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -2087,6 +2144,10 @@ msgstr "If you have access, we've sent an 8-digit code to <0>{email}</0>"
 #: src/waitlist/waitlist-page.tsx
 msgid "If you received a code to log in, enter it here:"
 msgstr "If you received a code to log in, enter it here:"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr "Image retained"
 
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
@@ -3207,6 +3268,10 @@ msgstr "Restart Now"
 msgid "Restart to update"
 msgstr "Restart to update"
 
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr "Retained messages and tool results"
+
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
 msgstr "Retrieving data…"
@@ -3299,6 +3364,10 @@ msgstr "Save your new recovery phrase"
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "Save your recovery phrase"
+
+#: src/components/context-usage/compaction-summary-content.tsx
+#~ msgid "Saved summary of earlier context. Your full chat history is preserved."
+#~ msgstr "Saved summary of earlier context. Your full chat history is preserved."
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -3820,6 +3889,10 @@ msgstr "Successfully got a response from the model."
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "Suggested"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
+msgstr "Summary"
 
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
@@ -4347,6 +4420,10 @@ msgstr "Too many requests. Please try again in a moment."
 msgid "Tool input"
 msgstr "Tool input"
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr "Tool result"
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr "Transcript sent — thank you."
@@ -4549,9 +4626,9 @@ msgstr "Use your fingerprint, face, or device PIN to sign in instead of an email
 msgid "User Experience"
 msgstr "User Experience"
 
-#: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -4590,9 +4667,18 @@ msgstr "View and manage your schedule; create + reschedule events."
 msgid "View install guide"
 msgstr "View install guide"
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "View latest summary"
+#~ msgstr "View latest summary"
+
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
 msgstr "View quote"
+
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
+msgstr "View summary"
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "View your schedule and upcoming events."
@@ -4615,6 +4701,10 @@ msgstr "Voice engine"
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
 msgstr "Voice mode: {status}"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
+msgstr "Wait for the current response to finish before compacting."
 
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
@@ -4775,6 +4865,10 @@ msgstr "Write down these 24 words in order and store them somewhere safe. You'll
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
 msgstr "wss://example.com/ws or paste an iroh ticket"
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
+msgstr "You"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."

@@ -322,6 +322,31 @@ const createHarnessEvents = () => {
 }
 
 describe('createReceiptLifecycle', () => {
+  it('settles every compaction receipt without a harness message, including a partially failed summary', async () => {
+    const submitted: unknown[] = []
+    const lifecycle = createReceiptLifecycle({
+      submit: async (value) => {
+        submitted.push(value)
+      },
+      reportError: () => {},
+    })
+    const events = createHarnessEvents()
+    lifecycle.attach(events.harness)
+    const message = assistantMessage()
+    await expect(
+      lifecycle.withStandaloneRequests(async () => {
+        lifecycle.completeProviderStep({ receipt: 'first-summary', message })
+        lifecycle.completeProviderStep({ receipt: 'second-summary', message })
+        throw new Error('later summary failed')
+      }),
+    ).rejects.toThrow('later summary failed')
+    expect(submitted).toHaveLength(2)
+    await events.emit({ type: 'message_end', message })
+    expect(submitted).toHaveLength(2)
+    lifecycle.completeProviderStep({ receipt: 'normal-turn', message })
+    await events.emit({ type: 'message_end', message })
+    expect(submitted).toHaveLength(3)
+  })
   it('submits one mapped receipt only for the exact terminal message', async () => {
     const submitted: unknown[] = []
     const lifecycle = createReceiptLifecycle({

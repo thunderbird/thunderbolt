@@ -7,7 +7,11 @@ import '@/testing-library'
 import { describe, expect, it } from 'bun:test'
 import type { StoredFile } from '@/lib/file-blob-storage'
 import type { ThunderboltUIMessage } from '@/types'
-import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
+import {
+  prepareBuiltInConversation,
+  splitCompactedHistory,
+  type BuiltInConversationDeps,
+} from './built-in-conversation'
 
 const storedFile = (id: string, mimeType: string): StoredFile => ({
   id,
@@ -25,6 +29,27 @@ const message = (role: 'user' | 'assistant', parts: ThunderboltUIMessage['parts'
 })
 
 describe('prepareBuiltInConversation', () => {
+  it('replays only turns after the latest checkpoint and drops a deleted checkpoint on regeneration', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'Earlier decisions',
+      tokensBefore: 9000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    const original = message('user', [{ type: 'text', text: 'Earlier context' }])
+    const compacted = {
+      ...message('assistant', [{ type: 'text', text: 'Original visible answer' }]),
+      metadata: { contextCompaction: checkpoint },
+    }
+    const next = message('user', [{ type: 'text', text: 'Continue' }])
+    const prepared = await prepareBuiltInConversation([original, compacted, next], undefined)
+    expect(prepared.compaction).toEqual(checkpoint)
+    expect(prepared.history).toEqual([])
+    expect(prepared.prompt.text).toBe('Continue')
+    expect(splitCompactedHistory([original, next]).compaction).toBeUndefined()
+    expect(compacted.parts[0]).toEqual({ type: 'text', text: 'Original visible answer' })
+  })
   it('flattens quotes/text attachments and maps current images to Pi image content', async () => {
     const files = new Map([
       ['notes', storedFile('notes', 'text/plain')],

@@ -180,9 +180,10 @@ The built-in Pi adapter also checks usage before each provider request, includin
 between tool steps, and compacts at 80% of the selected model's context window. Manual
 compaction waits for an idle conversation; Stop cancels the summary request. Compaction
 uses the selected model and its existing authenticated, proxied or confidential transport.
-An inline notice above the composer shows progress and successful completion for both
-paths. Completion clears on the next explicit send or regeneration; cancellation and
-failure clear progress without reporting success. Manual completion waits for persistence.
+A tool-style row in the transcript shows compaction progress. Saved checkpoints render
+as completed rows after their boundary messages, remaining visible across later turns
+and reloads. Cancellation and failure clear progress without reporting success. Manual
+completion waits for persistence.
 Automatic compaction leaves a fresh request intact when there is no earlier history to
 summarize; input that still exceeds the model window fails with context-overflow guidance.
 
@@ -212,8 +213,8 @@ summary active on subsequent requests. Workspace ownership remains with the cach
 The same context transformation applies to summary inputs and normal requests, keeping
 superseded Mini App reads out of durable summaries.
 
-The context menu's **View summary** and the completion notice's **View summary**
-open a read-only view in the shared inspection sidebar backed by that saved checkpoint. It renders the summary as
+The context menu's **View summary** opens the latest saved checkpoint; each completed
+transcript row opens its own checkpoint in the shared inspection sidebar. It renders the summary as
 Markdown and exposes retained messages and tool results in an expandable section.
 Opening the viewer takes a stable snapshot; it does not trigger compaction or change
 the transcript. The menu entry remains available after reloads and agent changes.

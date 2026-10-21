@@ -10,9 +10,9 @@ import {
   hydrateStore,
   resetStore,
 } from '@/test-utils/chat-store-mocks'
-import { ContentViewProvider } from '@/content-view/context'
+import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useChatStore } from '@/chats/chat-store'
 import { useConfigStore } from '@/api/config-store'
@@ -40,6 +40,14 @@ const createTestMessage = (overrides?: Partial<ThunderboltUIMessage>): Thunderbo
   parts: [{ type: 'text', text: 'Hello' }],
   ...overrides,
 })
+
+/** Expose the actual sidebar selection without mounting its unrelated viewers. */
+const SummarySelection = () => {
+  const { state } = useContentView()
+  return (
+    <output data-testid="summary-selection">{state.type === 'compaction-summary' ? state.data.summary : ''}</output>
+  )
+}
 
 describe('ChatMessages', () => {
   beforeAll(async () => {
@@ -90,6 +98,98 @@ describe('ChatMessages', () => {
       // Messages should be rendered - check if text content is present
       expect(container.textContent).toContain('Hello')
       expect(container.textContent).toContain('Hi there')
+    })
+  })
+
+  describe('compaction history', () => {
+    const savedMessage = (id: string, summary: string, role: 'user' | 'assistant' = 'assistant') =>
+      createTestMessage({
+        id,
+        role,
+        parts: [{ type: 'text', text: id }],
+        metadata: {
+          contextCompaction: { version: 1, summary, tokensBefore: 8000, contextTokens: 2000, retainedTail: [] },
+        },
+      })
+
+    const renderHistory = (messages: ThunderboltUIMessage[], status: 'ready' | 'submitted' | 'streaming' = 'ready') => {
+      const chatInstance = createMockChatInstance(messages, status)
+      const useChat = createMockUseChat(chatInstance)
+      hydrateStore({
+        chatInstance,
+        chatThread: createMockChatThread(),
+        id: 'thread-1',
+        selectedModel: null,
+        triggerData: null,
+      })
+      return {
+        chatInstance,
+        ...render(
+          <>
+            <ChatMessages useChat={useChat} />
+            <SummarySelection />
+          </>,
+          { wrapper: createTestWrapper() },
+        ),
+      }
+    }
+
+    it.each(['user', 'assistant'] as const)(
+      'restores completed rows at their %s boundary and opens each saved summary',
+      (role) => {
+        const { container } = renderHistory([
+          savedMessage('earlier-boundary', 'Earlier summary', role),
+          createTestMessage({ id: 'later-turn', parts: [{ type: 'text', text: 'A later turn' }] }),
+          savedMessage('latest-boundary', 'Latest summary'),
+        ])
+        const rows = screen.getAllByRole('button', { name: 'Compacted View summary' })
+        expect(rows).toHaveLength(2)
+        expect(container.querySelector('[data-message-id="earlier-boundary"]')?.nextElementSibling).toBe(rows[0])
+        expect(rows[0].nextElementSibling).toHaveAttribute('data-message-id', 'later-turn')
+        expect(container.querySelector('[data-message-id="latest-boundary"]')?.nextElementSibling).toBe(rows[1])
+
+        fireEvent.click(rows[1])
+        expect(screen.getByTestId('summary-selection')).toHaveTextContent('Latest summary')
+        fireEvent.click(rows[0])
+        expect(screen.getByTestId('summary-selection')).toHaveTextContent('Earlier summary')
+      },
+    )
+
+    it.each(['ready', 'submitted', 'streaming'] as const)(
+      'shows one progress row during %s and removes it on cancellation',
+      (status) => {
+        renderHistory(
+          [
+            createTestMessage(),
+            ...(status === 'streaming'
+              ? [createTestMessage({ id: 'stub', role: 'assistant', parts: [{ type: 'step-start' }] })]
+              : []),
+          ],
+          status,
+        )
+        act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' }))
+        expect(screen.getAllByText('Compacting…')).toHaveLength(1)
+        expect(screen.queryByTestId('loading-status')).toBeNull()
+        expect(screen.queryByText('Compacted')).toBeNull()
+
+        act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+        expect(screen.queryByText('Compacting…')).toBeNull()
+        expect(screen.queryByText('Compacted')).toBeNull()
+      },
+    )
+
+    it('does not create a completed history row before a checkpoint is saved', () => {
+      renderHistory([createTestMessage()])
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
+      expect(screen.queryByText('Compacted')).toBeNull()
+    })
+
+    it('removes a completed row when regeneration removes its checkpoint', () => {
+      const { chatInstance, rerender } = renderHistory([savedMessage('boundary', 'Saved summary')])
+      expect(screen.getByRole('button', { name: 'Compacted View summary' })).toBeInTheDocument()
+      chatInstance.messages = [createTestMessage({ id: 'replacement', role: 'assistant' })]
+      rerender(<ChatMessages useChat={createMockUseChat(chatInstance)} />)
+      expect(screen.queryByText('Compacted')).toBeNull()
     })
   })
 

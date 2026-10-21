@@ -3,44 +3,41 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { Check, Loader2 } from 'lucide-react'
-import type { CompactionStatus } from '@shared/agent-core'
+import { Check, ChevronRight, Loader2 } from 'lucide-react'
 
-/** Live session feedback for manual and automatic compaction, cleared by the next turn. */
-export const CompactionNotice = ({
-  status,
-  onViewSummary,
-}: {
-  status?: CompactionStatus
-  onViewSummary?: () => void
-}) => {
-  if (!status || status === 'idle') {
-    return null
-  }
-  return (
-    <div role="status" aria-atomic="true" className="text-muted-foreground text-[length:var(--font-size-xs)]">
-      <div className="flex items-center gap-1.5 px-3 py-1">
-        {status === 'compacting' ? (
-          <>
-            <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
-            <Trans>Compacting…</Trans>
-          </>
-        ) : (
-          <>
-            <Check className="size-3.5 shrink-0" aria-hidden="true" />
-            <Trans>Compacted</Trans>
-            {onViewSummary && (
-              <button
-                type="button"
-                onClick={onViewSummary}
-                className="pointer-events-auto ml-1 cursor-pointer rounded-md underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                <Trans>View summary</Trans>
-              </button>
-            )}
-          </>
-        )}
+type CompactionNoticeProps =
+  | { status: 'compacting'; onViewSummary?: never }
+  | { status: 'compacted'; onViewSummary: () => void }
+
+/** A transcript activity row for in-progress compaction or a saved checkpoint. */
+export const CompactionNotice = ({ status, onViewSummary }: CompactionNoticeProps) => {
+  if (status === 'compacting') {
+    return (
+      <div
+        role="status"
+        aria-atomic="true"
+        className="mt-6 flex min-h-[var(--min-touch-height)] items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground"
+      >
+        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+        <Trans>Compacting…</Trans>
       </div>
-    </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onViewSummary}
+      className="mt-6 flex min-h-[var(--min-touch-height)] w-full cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <Check className="size-4 shrink-0" aria-hidden="true" />
+      <span>
+        <Trans>Compacted</Trans>
+      </span>
+      <span className="ml-auto flex items-center gap-2 text-xs">
+        <Trans>View summary</Trans>
+        <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+      </span>
+    </button>
   )
 }

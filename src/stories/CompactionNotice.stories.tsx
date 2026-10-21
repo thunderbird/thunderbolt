@@ -15,5 +15,4 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Compacting: Story = { args: { status: 'compacting' } }
-export const Compacted: Story = { args: { status: 'compacted' } }
-export const Idle: Story = { args: { status: 'idle' } }
+export const Compacted: Story = { args: { status: 'compacted', onViewSummary: () => {} } }

@@ -52,7 +52,7 @@ import { useLocation as useLocation_default, useNavigate as useNavigate_default 
 import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
-import { CompactionNotice, ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
+import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
 import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModelPicker } from './chat-model-picker'
@@ -884,10 +884,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               they slide back down on dismiss. pointer-events gated so the empty
               overlay area doesn't eat clicks behind it. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-full flex flex-col">
-            <CompactionNotice
-              status={compactionStatus}
-              onViewSummary={!isActive ? summaryView.onViewSummary : undefined}
-            />
             {/* Chips keep their normal resting gap above the composer (pb-2). */}
             <div className="pointer-events-auto pb-2">
               <ChatSkillsBar

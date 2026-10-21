@@ -182,7 +182,7 @@ describe('ChatPromptInput', () => {
       })
 
       const input = screen.getByPlaceholderText('Ask me anything…')
-      expect(screen.getByText('Compacting…')).toBeInTheDocument()
+      expect(screen.queryByText('Compacting…')).toBeNull()
       expect(input).toBeEnabled()
       fireEvent.change(input, { target: { value: 'My next question' } })
       fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
@@ -195,7 +195,7 @@ describe('ChatPromptInput', () => {
       expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
       act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
       expect(screen.queryByText('Compacting…')).toBeNull()
-      expect(screen.getByText('Compacted')).toBeInTheDocument()
+      expect(screen.queryByText('Compacted')).toBeNull()
       expect(input).toHaveValue('My next question')
       expect(screen.getByLabelText('Send message')).toBeEnabled()
       act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
@@ -285,7 +285,7 @@ describe('ChatPromptInput', () => {
   })
 
   describe('saved compaction summary', () => {
-    it('opens from the saved context menu and completion notice without sending or compacting', async () => {
+    it('opens from the saved context menu without sending or compacting', async () => {
       const messages: ThunderboltUIMessage[] = [
         {
           id: 'saved',
@@ -330,13 +330,7 @@ describe('ChatPromptInput', () => {
       expect(contextTrigger).toHaveFocus()
       expect(contextTrigger).toHaveAttribute('aria-expanded', 'false')
 
-      const noticeTrigger = screen.getByRole('button', { name: 'View summary' })
-      fireEvent.click(noticeTrigger)
-      expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-      await act(async () => {
-        await getClock().tickAsync(1)
-      })
+      expect(screen.queryByRole('button', { name: 'View summary' })).toBeNull()
       expect(screen.queryByRole('region', { name: 'Compaction summary' })).toBeNull()
       expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
       expect(messages[0].parts).toEqual([{ type: 'text', text: 'Original reply' }])

@@ -24,6 +24,14 @@ describe('resolveSessionAgent', () => {
     expect(resolveSessionAgent(agents, candidates).id).toBe('thread')
   })
 
+  it('reopens a private thread on the built-in agent whatever agent its synced row names', () => {
+    expect(resolveSessionAgent(agents, { threadAgentId: 'thread', privateThread: true })).toBe(builtInAgent)
+  })
+
+  it("keeps a private thread's own agent when the deployment disables the built-in", () => {
+    const candidates = { threadAgentId: 'discovered', privateThread: true }
+    expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates).id).toBe('discovered')
+  })
   it('prefers the last-used agent over the discovered default for a new chat', () => {
     const candidates = { lastUsedAgentId: 'last-used', discoveredDefaultAgent: agentWithId('discovered') }
     expect(resolveSessionAgent(agents, candidates).id).toBe('last-used')

@@ -512,6 +512,34 @@ describe('useHydrateChatStore', () => {
 
       expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
     })
+
+    describe('agent named by the synced thread row', () => {
+      const seedCustomAgent = () =>
+        createAgent(getDb(), {
+          id: 'custom-thread-agent',
+          name: 'Thread Agent',
+          type: 'remote-acp',
+          transport: 'websocket',
+          url: 'wss://example.test/ws',
+          userId: 'u1',
+        })
+
+      it('opens a private thread on the built-in agent, not the agent its synced row names', async () => {
+        await seedCustomAgent()
+
+        const session = await hydrateThread({ agentId: 'custom-thread-agent', isEncrypted: 1 })
+
+        expect(session?.selectedAgent.id).toBe(builtInAgent.id)
+      })
+
+      it('control: keeps the agent a non-private thread names', async () => {
+        await seedCustomAgent()
+
+        const session = await hydrateThread({ agentId: 'custom-thread-agent', isEncrypted: 0 })
+
+        expect(session?.selectedAgent.id).toBe('custom-thread-agent')
+      })
+    })
   })
 
   describe('project assignment', () => {

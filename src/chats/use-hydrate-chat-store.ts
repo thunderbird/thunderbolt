@@ -259,6 +259,7 @@ export const useHydrateChatStore = ({
         : allAgents
     const selectedAgent = resolveSessionAgent(knownAgents, {
       threadAgentId: chatThread?.agentId,
+      privateThread: chatThread?.isEncrypted === 1,
       lastUsedAgentId: settings.selectedAgent,
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,

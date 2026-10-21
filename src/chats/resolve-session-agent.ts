@@ -32,14 +32,25 @@ export type AgentPreference = {
  * `agent_id` existed) stays on the fallback chain. It is taken only when it is
  * one of `allAgents`, so a stale default from another account or server falls
  * through.
+ *
+ * A private thread (`privateThread`) opens on the built-in agent before its own.
+ * `agent_id` syncs in plaintext, so the server could point the thread at any
+ * configured agent, and every agent but the built-in receives the chat
+ * unencrypted. Moving it elsewhere again goes through the header's
+ * confirmation.
  */
 export const resolveSessionAgent = (
   allAgents: Agent[],
-  candidates: AgentPreference & { threadAgentId?: string | null; discoveredDefaultAgent?: Agent },
+  candidates: AgentPreference & {
+    threadAgentId?: string | null
+    privateThread?: boolean
+    discoveredDefaultAgent?: Agent
+  },
 ): Agent => {
   const findAgent = (agentId: string | null | undefined) =>
     agentId ? allAgents.find((a) => a.id === agentId) : undefined
   return (
+    (candidates.privateThread ? findAgent(builtInAgent.id) : undefined) ??
     findAgent(candidates.threadAgentId) ??
     findAgent(candidates.lastUsedAgentId) ??
     (candidates.hasModelPick ? findAgent(builtInAgent.id) : undefined) ??

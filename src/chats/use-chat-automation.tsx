@@ -28,9 +28,9 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
   // assistant response yet. Gated on `stopping`: a stopped turn also ends with a
   // trailing user message (the aborted shell is dropped), so without the gate this
   // effect would restart the very turn the user just cancelled (THU-791).
-  // A private chat that resolved to a non-built-in agent (an automation thread
-  // has no agent of its own, so it takes the last-used one) is never sent
-  // unasked. Switching it to the built-in agent re-runs the effect and sends.
+  // A private chat on a non-built-in agent is never sent unasked. That happens
+  // when the deployment has no built-in agent or the user switched agents in
+  // the session. Switching to the built-in agent re-runs the effect and sends.
   useEffect(() => {
     if (
       !hasTriggeredRef.current &&

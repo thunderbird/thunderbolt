@@ -624,6 +624,13 @@ describe('hosted agent refusals', () => {
   const agentError = (code: string, status: number) =>
     new Error(JSON.stringify({ error: JSON.stringify({ error: { code } }), status }))
 
+  it('reads a stream error part for an upstream 429 as a plain rate limit, not a run in progress or a spending cap', () => {
+    const error = new Error(JSON.stringify({ error: 'Too many requests', status: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+    expect(isAgentRunInProgressError(error)).toBe(false)
+    expect(getInferenceQuotaWindow(error)).toBeUndefined()
+  })
+
   it('recognizes oversized instructions only on the coded 400', () => {
     expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(true)
     expect(isAgentInstructionsTooLargeError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(false)

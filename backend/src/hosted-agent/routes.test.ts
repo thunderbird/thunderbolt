@@ -20,7 +20,7 @@ import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/
 import { createTestSettings } from '@/test-utils/settings'
 import { getRegisteredProviders, resetAgentProvidersForTesting } from '@/agents/discovery'
 import { currentDateTimeLine } from '@shared/i18n/current-date-time'
-import { APICallError, dynamicTool, jsonSchema, simulateReadableStream, type ToolSet } from 'ai'
+import { APICallError, dynamicTool, jsonSchema, RetryError, simulateReadableStream, type ToolSet } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it, mock, setSystemTime } from 'bun:test'
 import { eq, sql } from 'drizzle-orm'
@@ -1078,6 +1078,48 @@ describe('createHostedAgentRoutes', () => {
     )
     expect(JSON.stringify(context)).not.toContain('echoes the conversation')
     expect(recordUsage).not.toHaveBeenCalled()
+  })
+
+  describe('upstream failures in the stream', () => {
+    const upstreamError = (statusCode: number) =>
+      new APICallError({
+        message: 'sentinel-upstream-message',
+        url: 'https://api.fireworks.ai/sentinel-url',
+        requestBodyValues: {},
+        statusCode,
+        responseBody: 'sentinel-upstream-body',
+        isRetryable: false,
+      })
+
+    const streamFailure = async (error: Error) => {
+      model = new MockLanguageModelV3({
+        doStream: async () => {
+          throw error
+        },
+      })
+      const body = await (await postChat(createMockedApp())).text()
+      expect(body).not.toContain('sentinel')
+      return body
+    }
+
+    it('streams an upstream 429 in the shape the app reads as a rate limit', async () => {
+      const body = await streamFailure(upstreamError(429))
+      expect(body).toContain(
+        `"errorText":${JSON.stringify(JSON.stringify({ error: 'Too many requests', status: 429 }))}`,
+      )
+    })
+
+    it('streams a 429 that survived the SDK retries the same way', async () => {
+      const body = await streamFailure(
+        new RetryError({ message: 'sentinel-retry', reason: 'maxRetriesExceeded', errors: [upstreamError(429)] }),
+      )
+      expect(body).toContain('Too many requests')
+    })
+
+    it('keeps the generic text for any other failure', async () => {
+      const body = await streamFailure(upstreamError(500))
+      expect(body).toContain('"errorText":"An error occurred."')
+    })
   })
 
   it('skips the ledger and logs when the provider reports no usage', async () => {

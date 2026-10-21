@@ -111,6 +111,14 @@ const getUpstreamStatus = (error: unknown): number | undefined => {
   return APICallError.isInstance(cause) ? cause.statusCode : undefined
 }
 
+/**
+ * The error text of the UI message stream. An upstream 429 is serialized in the shape the app reads as a rate
+ * limit, so it skips its automatic retries; anything else keeps the AI SDK's generic text. Never includes the
+ * upstream message, URL or body, which can echo the conversation or a key.
+ */
+const getStreamErrorText = (error: unknown): string =>
+  getUpstreamStatus(error) === 429 ? JSON.stringify({ error: 'Too many requests', status: 429 }) : 'An error occurred.'
+
 const createRunInProgressResponse = (): Response =>
   Response.json({ error: { code: 'AGENT_RUN_IN_PROGRESS' } }, { status: 429 })
 
@@ -326,6 +334,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
       headers: streamingResponseHeaders(responseHeaders),
       sendReasoning: false,
       messageMetadata: createToolTimingMetadata(),
+      onError: getStreamErrorText,
     })
     // Last, so the run takes the slot over only once nothing here can throw.
     void runToCompletion()

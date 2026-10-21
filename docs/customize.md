@@ -101,9 +101,11 @@ An external agent brings its own commands, which appear in the chat `/` menu alo
 
 **Reaching an agent on your own machine.** The web app cannot connect to `localhost` or a private
 network address. Browser rules force that traffic through the cloud proxy in your Thunderbolt
-backend, and the relay refuses private targets. Desktop and mobile connect directly to external
-agents added with a WebSocket address, regardless of Use Cloud Proxy. For the web app, use a
-peer-to-peer ticket instead of a private WebSocket URL.
+backend, which refuses private targets. Desktop and mobile connect directly to external agents
+added with a WebSocket address by default. With Use Cloud Proxy on, external agents need a public
+`wss://` address; for agents on your local network or with a `ws://` address, turn Use Cloud Proxy
+off. Agents on the same device, including local bridges, always connect directly in desktop and
+mobile. For the web app, use a peer-to-peer ticket instead of a private WebSocket address.
 
 More detail, including what each failure message means: [Connections](using/connections.md).
 

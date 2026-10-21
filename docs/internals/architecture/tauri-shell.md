@@ -162,8 +162,9 @@ uses both OS certificates and bundled public roots (Android can have an empty na
 `createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
 directly from the device; ON opts into the backend universal proxy. Native failures never retry
 through the backend. See [native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out
-user with Cloud Proxy on gets backend 401s until they turn it off or sign in. ACP WebSockets stay direct on Tauri regardless of
-the toggle, and Tinfoil uses its attested client.
+user with Use Cloud Proxy on gets backend 401s until they turn it off or sign in. Remote ACP WebSockets
+follow the same toggle, except loopback always stays direct. With it on, external agents need public
+`wss://` addresses; for LAN or `ws://` agents, turn it off. Tinfoil uses its attested client.
 
 Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on.
 

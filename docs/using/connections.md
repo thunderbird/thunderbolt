@@ -68,7 +68,7 @@ Desktop and mobile connect to HTTP/SSE MCP servers directly by default. **Settin
 
 The add form checks whether the device could reach the address: plain `http://` is allowed only for loopback and private addresses; public hosts require `https://`. Saving an address does not prove the backend can reach it.
 
-For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy. External agents added with a WebSocket address connect directly in desktop and mobile, regardless of Use Cloud Proxy.
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy. External agents added with a WebSocket address follow this setting too, except addresses on the same device always connect directly.
 
 ### Local servers
 
@@ -116,13 +116,13 @@ The built-in assistant needs no setup and appears under **Your agents**, marked 
 
 **Settings → Agents → New Agent.** The URL is either a WebSocket endpoint (`wss://example.com/ws`) or a pairing ticket from a bridge; a bare peer identity also works if the peer is discoverable. A WebSocket endpoint must pass **Test connection** before it can be saved. A peer-to-peer target is verified on the first chat instead, because it has to be authorized on the bridge first.
 
-Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. External agents added with a WebSocket address connect directly in desktop and mobile, regardless of Use Cloud Proxy. A loopback agent is reachable only from the device running it; the web relay refuses it. Use a peer-to-peer bridge for everything else.
+Test connection always connects directly from the device. A passing test proves the endpoint is alive, but a saved agent may connect through your Thunderbolt server. External agents added with a WebSocket address connect directly in desktop and mobile by default. With Use Cloud Proxy on, they need a public `wss://` address; for agents on your local network or with a `ws://` address, turn Use Cloud Proxy off. Agents on the same device always connect directly in desktop and mobile, even with the setting on. The web app always uses your Thunderbolt server and cannot reach agents on your device or local network; use a peer-to-peer bridge instead.
 
 Custom agents sync to your other devices, name, URL and description together.
 
 Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
 
-> An address that only resolves on one machine, such as a loopback bridge, appears on your other devices without working there.
+> An address that only works on one machine, such as a local bridge, appears on your other devices without working there.
 
 ### Connecting a local coding agent
 
@@ -135,7 +135,7 @@ thunderbolt acp --transport iroh -- thunderbolt acp serve
 
 Copy the printed ticket into the agent's URL field. To span several projects, start the bridge from a common parent directory.
 
-A loopback bridge is also available (`--transport wss`, default port `8839`), printing a URL of the form `ws://127.0.0.1:<port>/?token=...`. The token is regenerated on every start, so a saved URL stops working once the bridge restarts. Native apps connect to it directly regardless of Cloud Proxy; the web relay refuses loopback targets.
+A local bridge is also available (`--transport wss`, default port `8839`), printing a URL of the form `ws://127.0.0.1:<port>/?token=...`. The token is regenerated on every start, so a saved URL stops working once the bridge restarts. Desktop and mobile connect directly when running on the same device, even with Use Cloud Proxy on. This address does not work in the web app.
 
 ### Approving what an agent does
 
@@ -177,7 +177,7 @@ MCP tool calls are not approved one by one. Once a server is connected and enabl
 
 Stored credentials never reach the model, and are never part of the conversation. For HTTP/SSE connections, your credential passes through your Thunderbolt server only in the web app or when Use Cloud Proxy is on in desktop and mobile. With Use Cloud Proxy off in desktop and mobile, it goes directly to the tool server.
 
-Desktop and mobile can connect directly to custom model servers and HTTP/SSE MCP servers at private addresses when Use Cloud Proxy is off, and to external agents added with a WebSocket address regardless of Use Cloud Proxy. The web app, and desktop and mobile HTTP/SSE requests with Use Cloud Proxy on, use your Thunderbolt server, which blocks private and internal addresses. Custom loopback models always connect directly from the device.
+Desktop and mobile can connect directly to custom model servers, HTTP/SSE MCP servers and external agents added with a WebSocket address on your local network when Use Cloud Proxy is off. With it on, these connections use your Thunderbolt server, which blocks private and internal addresses; external agents need a public `wss://` address. Custom models on the same device always connect directly, as do external agents on the same device in desktop and mobile. The web app uses your Thunderbolt server, except for custom models on the same device.
 
 The agent the Thunderbolt command-line tool serves is confined to the directory the bridge was launched from and everything below it, ignores any working directory the app sends, has no shell tool, and refuses to fetch loopback or private addresses. A bridged third-party agent enforces its own scope, and whether it can run shell commands is up to that agent.
 

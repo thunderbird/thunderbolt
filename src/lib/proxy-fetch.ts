@@ -31,6 +31,7 @@ import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from 
 import { appVersionHeader } from './app-version'
 import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
+import { isLoopbackHost } from './mcp-url-validation'
 import { isTauri } from './platform'
 import { nativeFetch } from './native-fetch'
 import { handleSessionRejected } from './session-rejected'
@@ -233,7 +234,8 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
  *  default request logs (URL/Referer do). The server validates the bearer via
  *  the same signed-bearer path REST uses.
  *
- *  Standalone: returns a real WebSocket to the upstream URL directly.
+ *  Tauri: connects directly with Use Cloud Proxy off (the default), and always
+ *  for loopback targets. With it on, external targets follow the hosted path.
  *
  *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
  *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.
@@ -250,7 +252,7 @@ export const createProxyWebSocket = (options: {
 
   return (url: string, protocols?: string[]): WebSocket => {
     const standalone = standaloneCheck()
-    if (standalone) {
+    if (standalone && (!computeEffectiveProxyEnabled(standaloneCheck) || isLoopbackHost(new URL(url).hostname))) {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')

@@ -17,8 +17,8 @@
  *     and the extra hop would strip the credential. The path falls back to a
  *     direct, unauthenticated connect only when no `httpClient` is wired
  *     (true Standalone — no backend reachable).
- *   - `remote-acp` (user-configured external agents): direct WebSocket on
- *     Tauri regardless of Use Cloud Proxy; tunneled through the server on web.
+ *   - `remote-acp` (user-configured external agents): follows Use Cloud Proxy
+ *     on Tauri, except loopback stays direct; always tunneled on web.
  */
 
 import type { AnyMessage } from '@agentclientprotocol/sdk'
@@ -79,11 +79,12 @@ export const openTransport = async (inputs: OpenTransportInputs): Promise<AcpTra
 
 /** Pick the WebSocket constructor for the given inputs. Managed agents skip
  *  the universal proxy unconditionally — see file header. Remote agents fall
- *  through to the platform-aware WebSocket factory.
+ *  through to the WebSocket factory that applies Use Cloud Proxy on Tauri
+ *  (loopback always direct) and always proxies on web.
  *
  *  When the proxied path is selected, `createProxyWebSocket` returns a sync
  *  factory that builds the `Sec-WebSocket-Protocol` list (carrier + bearer +
- *  target) synchronously from the in-memory bearer token. */
+ *  target) synchronously from the stored bearer token. */
 const resolveWebSocketFactory = (inputs: OpenTransportInputs): WebSocketFactory => {
   if (inputs.agentType === 'managed-acp') {
     return resolveManagedAcpFactory(inputs)

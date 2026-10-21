@@ -10,9 +10,28 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
+import { encodeBase64Url } from '@shared/base64url'
+import { wsTargetPrefix } from '@shared/proxy-protocol'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
-import { clearAuthToken, setAuthToken } from './auth-token'
+import { setAuthToken } from './auth-token'
+
+let originalStorage: Array<[string, string | null]>
+
+beforeEach(() => {
+  originalStorage = ['proxy_enabled', 'thunderbolt_auth_token'].map((key) => [key, localStorage.getItem(key)])
+  localStorage.removeItem('proxy_enabled')
+})
+
+afterEach(() => {
+  for (const [key, value] of originalStorage) {
+    if (value === null) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, value)
+    }
+  }
+})
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -248,13 +267,7 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
 })
 
 describe('createProxyFetch — native request boundaries', () => {
-  beforeEach(() => {
-    localStorage.removeItem('proxy_enabled')
-  })
-
   afterEach(() => {
-    localStorage.removeItem('proxy_enabled')
-    clearAuthToken()
     resetAppVersionBlockedForTesting()
   })
 
@@ -399,8 +412,6 @@ describe('createProxyFetch — native request boundaries', () => {
 })
 
 describe('createProxyFetch — proxy_enabled toggle', () => {
-  afterEach(() => localStorage.removeItem('proxy_enabled'))
-
   it.each([null, 'false'])(
     'Tauri with stored %s defaults to native HTTP and switches to the backend when the proxy is enabled',
     async (stored) => {
@@ -582,71 +593,97 @@ describe('createProxyWebSocket', () => {
     close() {}
   }
 
-  it('Hosted: includes carrier + bearer + target subprotocols on /proxy/ws', () => {
+  let originalWS: typeof WebSocket
+
+  beforeEach(() => {
+    originalWS = globalThis.WebSocket
     FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWS
+  })
+
+  it.each([
+    [false, 'wss://upstream.test/path'],
+    [true, 'wss://upstream.test/path'],
+    [false, 'ws://localhost:8839/'],
+    [true, 'ws://upstream.test/path'],
+    [true, 'ws://192.168.1.10:8839/'],
+    [true, 'wss://192.168.1.10:8839/'],
+  ] as const)(
+    'proxy enabled (Tauri=%s): tunnels %s with carrier + bearer + target + caller protocols',
+    (standalone, url) => {
+      localStorage.setItem('proxy_enabled', 'true')
       const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
+        cloudUrl: 'https://backend.test/v1/',
+        isStandalone: () => standalone,
         getAuthToken: () => 'bearer-abc',
       })
-      factory('wss://upstream.test/path', ['acp.v1'])
+      factory(url, ['acp.v1'])
       expect(FakeWS.instances).toHaveLength(1)
       const real = FakeWS.instances[0]
-      expect(real.url).toBe('ws://localhost:8000/v1/proxy/ws')
-      expect(real.protocols[0]).toBe('thunderbolt.v1')
-      expect(real.protocols[1]).toBe(`thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`)
-      expect(real.protocols[2]?.startsWith('tbproxy.target.')).toBe(true)
-      expect(real.protocols[3]).toBe('acp.v1')
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
-  })
+      expect(real.url).toBe('wss://backend.test/v1/proxy/ws')
+      expect(real.protocols).toEqual([
+        'thunderbolt.v1',
+        `thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`,
+        `${wsTargetPrefix}${encodeBase64Url(url)}`,
+        'acp.v1',
+      ])
+    },
+  )
 
   it('Hosted: omits the bearer entry when no token is available (still offers carrier + target)', () => {
-    FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
-        getAuthToken: () => null,
-      })
-      factory('wss://upstream.test/path')
-      expect(FakeWS.instances).toHaveLength(1)
-      const real = FakeWS.instances[0]
-      expect(real.protocols[0]).toBe('thunderbolt.v1')
-      expect(real.protocols.some((p) => p.startsWith('thunderbolt.bearer.'))).toBe(false)
-      expect(real.protocols.some((p) => p.startsWith('tbproxy.target.'))).toBe(true)
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
+    const url = 'wss://upstream.test/path'
+    const factory = createProxyWebSocket({
+      cloudUrl: 'http://localhost:8000/v1',
+      isStandalone: () => false,
+      getAuthToken: () => null,
+    })
+    factory(url)
+    expect(FakeWS.instances).toHaveLength(1)
+    expect(FakeWS.instances[0].protocols).toEqual(['thunderbolt.v1', `${wsTargetPrefix}${encodeBase64Url(url)}`])
   })
 
-  it('Standalone: connects directly to the target URL with no bearer attached', () => {
-    FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      let tokenReads = 0
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => true,
-        getAuthToken: () => {
-          tokenReads += 1
-          return 'never-read'
-        },
-      })
-      factory('wss://upstream.test/path')
-      expect(FakeWS.instances).toHaveLength(1)
-      expect(FakeWS.instances[0].url).toBe('wss://upstream.test/path')
-      expect(tokenReads).toBe(0)
-    } finally {
-      globalThis.WebSocket = originalWS
+  it.each([
+    [null, 'wss://upstream.test/path'],
+    ['false', 'wss://upstream.test/path'],
+    ['true', 'ws://127.0.0.1:8839/?token=bridge-token'],
+    ['true', 'wss://127.42.0.1/acp'],
+    ['true', 'ws://[::1]:8839/acp'],
+    ['true', 'ws://localhost:8839/acp'],
+    ['true', 'wss://agent.localhost/acp'],
+  ])('Tauri proxy %s: connects directly to %s without reading or attaching the app bearer', (stored, url) => {
+    if (stored !== null) {
+      localStorage.setItem('proxy_enabled', stored)
     }
+    const auth = mock(() => 'backend-only-token')
+    const factory = createProxyWebSocket({
+      cloudUrl: 'http://localhost:8000/v1',
+      isStandalone: () => true,
+      getAuthToken: auth,
+    })
+    factory(url, ['acp.v1'])
+    expect(FakeWS.instances).toHaveLength(1)
+    expect(FakeWS.instances[0].url).toBe(url)
+    expect(FakeWS.instances[0].protocols).toEqual(['acp.v1'])
+    expect(auth).not.toHaveBeenCalled()
+  })
+
+  it('reads Use Cloud Proxy for each new connection from the same factory', () => {
+    const url = 'wss://upstream.test/path'
+    const factory = createProxyWebSocket({
+      cloudUrl: 'https://backend.test/v1',
+      isStandalone: () => true,
+      getAuthToken: () => 'backend-only-token',
+    })
+    factory(url)
+    localStorage.setItem('proxy_enabled', 'true')
+    factory(url)
+    localStorage.setItem('proxy_enabled', 'false')
+    factory(url)
+    expect(FakeWS.instances.map((socket) => socket.url)).toEqual([url, 'wss://backend.test/v1/proxy/ws', url])
   })
 })
 
@@ -670,7 +707,6 @@ describe('createProxyFetch — session rejected', () => {
 
   afterEach(() => {
     window.dispatchEvent = originalDispatch
-    clearAuthToken()
   })
 
   it('treats our own auth gate rejecting the outer hop as a lost session', async () => {

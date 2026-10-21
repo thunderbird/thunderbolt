@@ -1,8 +1,8 @@
 # The Universal Proxy
 
 One endpoint pair carries relayed requests to user-configured third parties: own-key model
-inference and catalogs, MCP sessions, and ACP agent sockets. Web uses the relay; native HTTP
-opts in with Cloud Proxy, and native ACP WebSockets stay direct.
+inference and catalogs, MCP sessions, and ACP agent sockets. Web uses the relay; Tauri HTTP and
+remote ACP WebSockets opt in with Use Cloud Proxy, except loopback ACP targets stay direct on Tauri.
 
 | Endpoint          | Implementation                                                      |
 | ----------------- | ------------------------------------------------------------------- |
@@ -188,6 +188,13 @@ list (logged by none). Hence:
   negotiates normally.
 - Messages arriving before the upstream socket opens are queued and flushed on `open`.
 
+`createProxyWebSocket` reads Use Cloud Proxy for each connection. Tauri defaults to direct
+`new WebSocket(url, protocols)` with no app bearer; enabling the setting uses the same carrier,
+bearer and target subprotocols as web. Tauri loopback targets always stay direct; web always proxies.
+The proxy accepts only public `wss://` targets: `ws://` and private-network targets get HTTP 400,
+without upgrading the scheme or falling back to direct. Turn Use Cloud Proxy off on desktop/mobile
+for LAN or `ws://` agents. Managed ACP and iroh routing are separate and unchanged.
+
 ### Close codes
 
 | Code   | Meaning                                                               |
@@ -271,7 +278,7 @@ Four entry points, not interchangeable:
   and relays cancellation through a per-request child signal. `init.signal` takes precedence over
   a `Request` signal, including explicit `null`; completion, failure and cancellation detach the relay.
 - **Custom loopback models always stay device-direct** through `src/lib/fetch.ts`, on web and Tauri.
-  ACP WebSockets stay Tauri-direct even with Cloud Proxy on; Tinfoil keeps its attested client.
+  Remote ACP WebSockets follow Use Cloud Proxy on Tauri, with loopback always direct; Tinfoil keeps its attested client.
 
 `computeEffectiveProxyEnabled` is the shared policy. The preferences switch shows the effective
 value, permits turning it off while signed out, and requires sign-in to enable it. Web shows it

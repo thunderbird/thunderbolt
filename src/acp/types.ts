@@ -25,8 +25,8 @@ export type AcpTransport = {
   closed?: Promise<void>
 }
 
-/** Inputs to `openTransport(...)`. WebSocket is direct on Tauri regardless of
- *  Use Cloud Proxy, and tunneled on web; `iroh` dials a peer bridge over an n0 relay. */
+/** Inputs to `openTransport(...)`. Remote WebSockets follow Use Cloud Proxy on
+ *  Tauri (loopback always direct) and always proxy on web; `iroh` uses an n0 relay. */
 export type OpenTransportOptions = {
   url: string
   transport: 'websocket' | 'iroh'

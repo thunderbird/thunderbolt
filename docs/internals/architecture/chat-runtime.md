@@ -41,7 +41,9 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    discovery names as default (`agents_system.is_default`, brand-new chats
    only) → first available agent → `builtInAgent`, so a deliberate choice wins,
    a first-time visitor lands on the default, and `disableBuiltInAgent`
-   deployments and deleted custom agents degrade quietly. Discovery can finish
+   deployments and deleted custom agents degrade quietly. A private thread
+   (`isEncrypted` 1) puts the built-in ahead of its own `agentId`, which syncs
+   in plaintext and so could name any configured agent. Discovery can finish
    while a new chat is hydrating or after it has resolved its agent, as on a
    first visit. `applyDiscoveredDefaultAgent` records the result in the chat
    store's `agentDiscovery`: `pending` from the start of each discovery run (a new
@@ -76,11 +78,18 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    will not auto-send such a thread. The composer shows a notice and holds the
    send on the same check (`isPrivateAutoRunBlocked`), since a typed message
    would carry the history out just the same. An automation thread has no
-   `agentId`, so it takes the fallback chain's agent without any confirmation
-   and needs that second check.
+   `agentId` and `isEncrypted` equal to the model's `isConfidential`, so
+   `resolveSessionAgent` opens a private one on the built-in agent and it runs
+   there. The check only blocks when the deployment disables the built-in or
+   the user switched agents in the session.
    `setSelectedAgent` itself does not check.
 3. **Transport.** One `DefaultChatTransport({ fetch: customFetch })`, where
    `customFetch` is `createAgentRoutingFetch`. Every send, every agent type.
+   The built-in adapter refuses a model that `requiresConfidentialTransport`
+   (`src/settings/models/model-policy.ts`) unless its provider is `tinfoil`.
+   A model's `provider` and `isConfidential` sync in plaintext, so a bundled
+   confidential id keeps the requirement whatever its row says, and
+   `pickModelsDefaults` keeps the bundle's values for both on an OTA payload.
 4. **Persist the user turn first.** `customFetch` awaits `saveMessages` before
    the adapter runs: creates the row, lets `updateThreadTitle` replace the
    placeholder title from the first user message (ACP agents emit assistant

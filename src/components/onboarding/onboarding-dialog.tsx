@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { lazy, Suspense, useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
@@ -14,6 +14,8 @@ import { useSettings } from '@/hooks/use-settings'
 import { onboardingStepCount, useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
 import { OnboardingAuthStep } from './onboarding-auth-step'
+import { OnboardingNameStep } from './onboarding-name-step'
+import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingLanguageStep } from './onboarding-language-step'
 import { OnboardingPasskeyStep } from './onboarding-passkey-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
@@ -23,15 +25,6 @@ import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
-import { PageFallback } from '@/loading'
-
-// Form libraries are only needed when these setup steps are displayed.
-const OnboardingNameStep = lazy(() =>
-  import('./onboarding-name-step').then((module) => ({ default: module.OnboardingNameStep })),
-)
-const OnboardingLocationStep = lazy(() =>
-  import('./onboarding-location-step').then((module) => ({ default: module.OnboardingLocationStep })),
-)
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
@@ -149,31 +142,29 @@ export const OnboardingDialog = () => {
             <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
           </div>
           <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
-            <Suspense fallback={<PageFallback />}>
-              {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
-              {state.currentStep === 2 && (
-                <OnboardingAuthStep
-                  isProcessing={state.processingOAuth}
-                  isConnected={state.isProviderConnected}
-                  onConnectionChange={actions.setProviderConnected}
-                  onDisconnect={handleProviderDisconnect}
-                />
-              )}
-              {state.currentStep === 3 && (
-                <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-              )}
-              {state.currentStep === 4 && (
-                <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-              )}
-              {state.currentStep === 5 && <OnboardingLanguageStep />}
-              {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
-                <div className="flex flex-1 items-center justify-center">
-                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
-              {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
-            </Suspense>
+            {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
+            {state.currentStep === 2 && (
+              <OnboardingAuthStep
+                isProcessing={state.processingOAuth}
+                isConnected={state.isProviderConnected}
+                onConnectionChange={actions.setProviderConnected}
+                onDisconnect={handleProviderDisconnect}
+              />
+            )}
+            {state.currentStep === 3 && (
+              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+            )}
+            {state.currentStep === 4 && (
+              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+            )}
+            {state.currentStep === 5 && <OnboardingLanguageStep />}
+            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
+            {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
           </div>
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons

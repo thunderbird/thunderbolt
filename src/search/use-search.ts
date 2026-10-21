@@ -7,7 +7,6 @@ import { planSearchQuery, toLikePattern, type SearchQueryPlan } from './query-pl
 import { searchEntities } from './registry'
 import { bm25Sql, bodyColumnIndex } from './search-sql'
 import type { SearchEntityType, SearchResult, UseSearch } from './types'
-import { useSearchIndex } from './use-search-index'
 
 /** Entity type → its registry config, for O(1) route/display lookup per hit. */
 const configByType = new Map(searchEntities.map((cfg) => [cfg.type, cfg]))
@@ -129,15 +128,12 @@ const toResult = (row: SearchRow): SearchResult => {
 export const useSearch: UseSearch = (query, { excludeTypes = [] } = {}) => {
   const plan = planSearchQuery(query)
   const enabled = plan.match !== null || plan.substrings.length > 0
-  const indexStatus = useSearchIndex(enabled)
   const statement = buildSearchStatement(plan, excludeTypes)
-  const { data, isLoading, isError } = useQuery<SearchRow>({
+  const { data, isLoading } = useQuery<SearchRow>({
     queryKey: ['search', plan.match, plan.substrings, excludeTypes],
-    // PowerSync inspects SQL dependencies even for disabled queries. Withhold
-    // the statement until the index exists so its inspection cannot fail early.
-    query: indexStatus === 'ready' ? statement.sql : '',
-    parameters: indexStatus === 'ready' ? statement.parameters : [],
-    enabled: enabled && indexStatus === 'ready',
+    query: statement.sql,
+    parameters: statement.parameters,
+    enabled,
     // Keep the prior results visible while the next query resolves so the list
     // updates in place instead of flickering empty on every keystroke.
     placeholderData: (previousData) => previousData,
@@ -146,9 +142,5 @@ export const useSearch: UseSearch = (query, { excludeTypes = [] } = {}) => {
   if (!enabled) {
     return { results: [], isLoading: false }
   }
-  return {
-    results: indexStatus === 'ready' ? (data ?? []).map(toResult) : [],
-    isLoading: indexStatus === 'pending' || (indexStatus === 'ready' && isLoading),
-    isError: indexStatus === 'failed' || isError,
-  }
+  return { results: (data ?? []).map(toResult), isLoading }
 }

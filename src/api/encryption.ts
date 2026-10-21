@@ -133,14 +133,14 @@ export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnve
  * which is why the answer is unreadable to anyone but that device.
  */
 export const fetchBindChallenge = async (httpClient: HttpClient): Promise<BindChallengeResponse> =>
-  httpClient.get('devices/me/bind-challenge', { timeout: 5_000 }).json<BindChallengeResponse>()
+  httpClient.get('devices/me/bind-challenge').json<BindChallengeResponse>()
 
 /** Step 2: echo the opened nonce so the server binds this session to this device. */
 export const bindSession = async (
   httpClient: HttpClient,
   params: { deviceId: string; nonce: string },
 ): Promise<void> => {
-  await httpClient.post('devices/me/bind', { json: params, timeout: 5_000 })
+  await httpClient.post('devices/me/bind', { json: params })
 }
 
 /** Cancel this device's pending approval state (called by the pending device itself). */

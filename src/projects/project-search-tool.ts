@@ -30,7 +30,6 @@ import { z } from 'zod'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { planSearchQuery, toLikePattern } from '@/search/query-plan'
 import { bm25Sql, bodyColumnIndex } from '@/search/search-sql'
-import { ensureSearchIndex } from '@/search/fts-setup'
 
 /** One hit: which chat it came from, and the matching excerpt. */
 export type ProjectChatHit = {
@@ -149,7 +148,6 @@ export const createProjectSearchTool = ({
       query: z.string().describe('Keywords to look for. Prefer distinctive nouns over full sentences.'),
     }),
     execute: async ({ query }) => {
-      await ensureSearchIndex()
       const hits = await searchProjectChats(db, threadIds, query, titleByThreadId)
       return formatProjectChatHits(hits, query)
     },

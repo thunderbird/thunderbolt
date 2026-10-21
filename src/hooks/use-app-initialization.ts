@@ -15,6 +15,8 @@ import { getKeyPair } from '@/crypto'
 import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
+import { createSearchIndex } from '@/search/fts-setup'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
@@ -349,6 +351,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: dbReadyError }
   }
 
+  // Step 2d: Build the unified full-text search index. Idempotent —
+  // rebuilds only when missing or the schema version bumped. Runs against the
+  // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
+  // bun-sqlite in tests) return null here and skip it. Non-critical: a failed
+  // build must never block boot, so it logs and continues.
+  const powerSyncInstance = getPowerSyncInstance()
+  if (powerSyncInstance) {
+    try {
+      await time('step2d_build_search_index', () => createSearchIndex(powerSyncInstance))
+    } catch (error) {
+      console.warn('[init] Failed to build search index:', error)
+    }
+  }
+
   // Complete binding before trust requests or the mounted session observer run.
   // If this attempt fails, that observer can retry after the local app mounts.
   await sessionBinding
@@ -454,11 +470,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     console.warn('[init] runEncryptionInit failed:', error)
   })
 
+  // Native close-to-tray handling must be ready before content. Web returns immediately.
+  const tray = await initializeTraySafely()
+
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)
 
-  // Snapshot blocking work now; optional service timings are added when they
-  // settle, so a late analytics client cannot move the core-ready milestone.
+  // Snapshot blocking work before analytics attaches so its completion cannot
+  // move the core-ready milestone.
   const initTimingPayload = {
     ...getInitTimingPayload(),
     init_core_ms: initTotalMs,
@@ -482,47 +501,22 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
         sidebarOpen: sidebarState,
         posthogClient: null,
         httpClient: client,
-        tray: undefined,
-        window: undefined,
+        ...tray,
       },
     },
   }
 }
 
-type OptionalServices = Pick<InitData, 'tray' | 'window' | 'posthogClient'>
-
-/** Publishes each optional service independently, so neither can hold up the other or the app. */
-const initializeOptionalServices = async (
-  core: CoreInitialization,
-  isCurrent: () => boolean,
-  publish: (patch: Partial<OptionalServices>) => void,
-): Promise<void> => {
-  const attachTray = async () => {
-    publish(await initializeTraySafely())
-  }
-  const attachAnalytics = async () => {
-    publish({ posthogClient: await initializePostHogSafely(core.initData.httpClient) })
-  }
-  await Promise.all([attachTray(), attachAnalytics()])
-  if (isCurrent()) {
-    trackEvent('app_init_timing', {
-      ...core.timing,
-      ...getInitTimingPayload(),
-      init_total_ms: Math.round(performance.now() - core.startedAt),
-    })
-  }
-}
-
-/** Opens the local app first, then attaches optional native and analytics services. */
+/** Opens the local app once native window handling is ready, then attaches analytics. */
 export const useAppInitialization = (httpClient?: HttpClient) => {
   // No result means loading; completed runs contain either data or an error.
   const [state, setState] = useState<HandleResult<InitData>>()
   const run = useRef(0)
-  const cancelOptional = useRef<(() => void) | undefined>(undefined)
+  const cancelAnalytics = useRef<(() => void) | undefined>(undefined)
 
   const cancelInitialization = useCallback(() => {
     ++run.current
-    cancelOptional.current?.()
+    cancelAnalytics.current?.()
   }, [])
 
   const initialize = useCallback(async () => {
@@ -541,13 +535,18 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       }
       const core = result.data
       setState({ success: true, data: core.initData })
-      cancelOptional.current = afterPaint(() => {
-        void initializeOptionalServices(core, isCurrent, (patch) => {
-          if (isCurrent()) {
-            setState((previous) =>
-              previous?.success ? { success: true, data: { ...previous.data, ...patch } } : previous,
-            )
-          }
+      cancelAnalytics.current = afterPaint(async () => {
+        const posthogClient = await initializePostHogSafely(core.initData.httpClient)
+        if (!isCurrent()) {
+          return
+        }
+        setState((previous) =>
+          previous?.success ? { success: true, data: { ...previous.data, posthogClient } } : previous,
+        )
+        trackEvent('app_init_timing', {
+          ...core.timing,
+          ...getInitTimingPayload(),
+          init_total_ms: Math.round(performance.now() - core.startedAt),
         })
       })
     } catch (error) {

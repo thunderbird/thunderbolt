@@ -25,5 +25,4 @@ export type UseSearch = (
 ) => {
   results: SearchResult[]
   isLoading: boolean
-  isError?: boolean
 }

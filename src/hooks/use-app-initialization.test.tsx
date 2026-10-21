@@ -9,6 +9,9 @@ import { getCurrentDatabase, getDb, setDatabase } from '@/db/database'
 import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createClient } from '@/lib/http'
+import { TrayManager } from '@/lib/tray'
+import type { TrayIcon } from '@tauri-apps/api/tray'
+import type { Window } from '@tauri-apps/api/window'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
@@ -121,6 +124,43 @@ describe('useAppInitialization', () => {
     expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
+  })
+
+  it('waits for supported native tray/window readiness before publishing content', async () => {
+    const nativeResources = { tray: { id: 'native-tray' } as TrayIcon, window: { label: 'main' } as Window }
+    const nativeReady = Promise.withResolvers<typeof nativeResources>()
+    const initializeNative = spyOn(TrayManager, 'initIfSupported').mockImplementation(() => nativeReady.promise)
+    const { client, responses } = createPendingAnalyticsClient()
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(initializeNative).toHaveBeenCalledTimes(1)
+      expect(result.current.isInitializing).toBe(true)
+      expect(result.current.initData).toBeUndefined()
+      expect(responses).toHaveLength(0)
+
+      await act(async () => {
+        nativeReady.resolve(nativeResources)
+        await getClock().runAllAsync()
+      })
+      expect(result.current.isInitializing).toBe(false)
+      expect(result.current.initData?.tray).toBe(nativeResources.tray)
+      expect(result.current.initData?.window).toBe(nativeResources.window)
+      expect(result.current.initData?.posthogClient).toBeNull()
+      expect(responses).toHaveLength(1)
+
+      await act(async () => {
+        responses[0].resolve(Response.json(mockPostHogConfig))
+        await getClock().runAllAsync()
+      })
+    } finally {
+      unmount()
+      initializeNative.mockRestore()
+    }
   })
 
   it('releases core content while analytics is still pending', async () => {

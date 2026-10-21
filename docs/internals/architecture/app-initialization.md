@@ -2,8 +2,8 @@
 
 `executeInitializationSteps`
 ([`src/hooks/use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts)) opens local storage and prepares the data needed to mount the app. The hook publishes `InitData`
-to [`src/app.tsx`](../../../src/app.tsx), then attaches tray and analytics services independently
-after a rendering opportunity. Auth routing and chat hydration follow core initialization.
+to [`src/app.tsx`](../../../src/app.tsx) once native window/tray setup has settled, then attaches
+analytics after a rendering opportunity. Auth routing and chat hydration follow core initialization.
 
 ## The steps, in execution order
 
@@ -16,12 +16,13 @@ after a rendering opportunity. Auth routing and chat hydration follow core initi
 | `step1_create_app_dir`        | `createAppDir()` (Tauri app dir, or OPFS on web)                              | Fatal: `APP_DIR_CREATION_FAILED`     |
 | `step2_initialize_database`   | Opens the database and registers the singleton                                | Fatal: `DATABASE_INIT_FAILED`        |
 | `step2b_db_ready`             | `select 1` against the fresh handle, bounded at `dbReadyTimeoutMs` (30 s)     | Fatal: `DATABASE_INIT_FAILED`        |
+| `step2d_build_search_index`  | Builds or validates the search index before content              | Logged; boot continues               |
 | `step2c_returning_boot_probe` | `hasCurrentDefaultsVersions` (`src/dal/settings.ts:256`): fresh or returning? | n/a                                  |
 | `step3_wait_for_initial_sync` | Awaits or skips PowerSync's priority-1 first sync                             | `waitForInitialSync` never rejects   |
 | `step4_reconcile_defaults`    | `reconcileDefaults` (`src/lib/reconcile-defaults.ts`)                         | Fatal: `RECONCILE_DEFAULTS_FAILED`   |
 | `step4b_run_data_migrations`  | `runDataMigrations` (`src/lib/data-migrations/index.ts:53`)                   | Swallowed per migration; never fatal |
 | `step5_get_settings`          | Reads feature flags and the initial `sidebar_state`                           | n/a                                  |
-| `step7_initialize_tray`       | Deferred Tauri tray setup, independent of step 8                              | Logged; boots with no tray           |
+| `step7_initialize_tray`       | Tauri window/close-handler and tray setup before content                              | Logged; boots with no tray           |
 | `step8_initialize_posthog`    | Deferred PostHog client                                                       | Logged; boots with a null client     |
 
 Several steps sit where they do because moving them breaks something no test and no type will
@@ -34,16 +35,17 @@ catch, mostly multi-device convergence of default data.
   start after the storage check, overlapping binding with the local database open. Binding settles before the key-request responder and initial-sync gate. The mounted session
   observer retains its independent retry if the startup handshake failed. The migration/follower
   check starts after reconciliation and binding.
-- **Steps 7 and 8 do not gate content.** Each publishes its result independently. A slow analytics
-  request cannot hold the tray or the app; a slow tray cannot hold analytics. Retry/unmount cancels
-  pending scheduling and prevents old results from replacing the current app state.
+- **Step 7 preserves the existing native setup boundary before content appears.** Deferring this
+  step would extend the window without close-to-tray handling into usable content. On web this step is a no-op.
+  Step 8 does not gate content: analytics attaches after a rendering opportunity. Retry/unmount
+  cancels pending scheduling and prevents old results from replacing the current app state.
 - **`step2b_db_ready` is a bounded `select 1`.** PowerSync defers its expensive ready gate (WASM
   compile, OPFS open, schema replace) to the first query, so absorbing it here keeps `step4`
   measuring reconcile rather than storage setup. The bound matters: a locked or unusable local
   database surfaces here and nowhere earlier (`createAppDir` returns the virtual path `app-data` on
   web without touching OPFS; the step-0.5 probe only opens IndexedDB), and an unbounded await hangs
   the spinner forever.
-- **`app_init_timing` fires after optional services settle.** `init_total_ms` includes those services;
+- **`app_init_timing` fires after analytics settles.** `init_total_ms` includes that deferred work;
   `init_core_ms` measures the shorter blocking pipeline. `app_chat_ready` and `app_content_ready`
   retain their original timestamps if analytics attaches late; only the three fixed startup event
   types can be buffered. Consent is read after the configuration/SDK loads, immediately before
@@ -132,20 +134,14 @@ boot. Migrations must be idempotent and rerun next launch; the contract is at th
 
 ## The search index
 
-Search is prepared when the palette or a project-search tool first needs it, rather than during
-boot. Both paths use `ensureSearchIndex`, which shares in-flight preparation per PowerSync instance
-and rechecks the index on each later demand. `useSearchIndex` enables the reactive query only when
-preparation finishes; typing another nonempty query reuses that readiness. The palette shows
-preparation/failure feedback, and reopening it retries failed preparation and checks for lost triggers.
+`step2d_build_search_index` builds the unified FTS5 index.
 
-`createSearchIndex` checks the version, table and triggers, then recreates/backfills if necessary,
-all within a write transaction. Concurrent tabs cannot observe a partially built index, sync writes
-serialize with the rebuild, and a failure rolls the changes back. Writes made before the first
-search are included by the backfill. The existing trigger self-healing checks remain in place.
-
-The index is still coupled to PowerSync's internal table layout; see
-[AGENTS.md](../../../AGENTS.md#powersync-and-synced-tables). `step2d_build_search_index_ms` is no longer
-emitted as a startup step.
+- **Before the data steps**: it only needs the raw SQLite handle.
+- **Best-effort**: a failed build logs and boot continues with a stale or empty palette.
+- **Skipped entirely** when `getPowerSyncInstance()` returns null (non-PowerSync backends, e.g.
+  `bun-sqlite` under test).
+- **Coupled to PowerSync's internal table layout**; that coupling and its failure mode are in
+  [AGENTS.md](../../../AGENTS.md#powersync-and-synced-tables).
 
 ## Failure modes and the error screens
 
@@ -199,10 +195,14 @@ needs updating by hand.
 ## Startup performance boundaries
 
 Core initialization opens storage, reconciles defaults, runs migrations and snapshots the initial
-sidebar preference. Tray and analytics attach independently after a rendering opportunity; neither
-holds the app behind the startup spinner. The analytics configuration request and each device
-binding request have a five-second timeout. Device binding overlaps database setup, but settles before sync and remote encryption operations.
+sidebar preference. Native window/tray setup retains its readiness boundary before content appears;
+analytics attaches after a rendering opportunity. Only the analytics configuration request has a
+five-second timeout. Device binding retains the existing HTTP timeout policy and overlaps database
+setup, but its attempt settles before the key responder and initial-sync gate.
 The mounted session observer can still retry a failed startup handshake.
+
+Search index setup runs at startup so a missing-index backfill does not block ordinary database
+actions during first search.
 
 Settings reads batch keys into one query. React consumers retain their individual query keys while
 sharing one settings-table watcher per database/query cache; the last consumer aborts the watcher
@@ -213,10 +213,10 @@ A new chat has no history to load, so it reads the selected model and skips pers
 message, deletion and trigger lookups. Existing chats retain those lookups. The layout uses the
 startup sidebar snapshot until its reactive query resolves, avoiding a blank layout in between.
 
-MCP client/transports, tool configuration discovery, Markdown attachment previews, and onboarding
-name/location steps load when needed. Chat routes and layout chrome remain static. Splitting
-secondary code reduces the initial module graph, but does not establish the same percentage
-reduction in visible loading time.
+MCP client/transports and tool configuration discovery load when needed. Onboarding forms, Markdown
+attachment previews, chat routes and layout chrome remain static. UI code splitting requires an
+error-recovery boundary for failed chunk downloads. Reducing the initial module graph does not
+establish the same percentage reduction in visible loading time.
 
 Native apps warm secondary routes serially after core initialization mounts the app, yielding
 between imports. This applies to every entry route and can overlap chat hydration. Web builds
@@ -234,13 +234,6 @@ milestone even if analytics attaches later. This is a rendering-opportunity meas
 of compositor paint or first-send readiness; a visible onboarding dialog can still cover the
 composer. Keep navigation-to-content alongside spinner-to-content so moving the spinner cannot
 manufacture a gain. Video/filmstrip review supplies the visual check.
-
-The [reviewed benchmark and recordings](../performance/startup-2026-10-21/README.md) compare
-production builds on the same main revision. Median spinner-to-visible-composer time fell 31.8%
-on returning local profiles and 46.9% on fresh local profiles. A separately labeled 1,500 ms
-injected analytics delay produced a 90.4% reduction. These synthetic Chromium results exclude
-real authentication, onboarding and encrypted sync; they do not establish an 80% improvement
-across production or native launches.
 
 ## Where the code lives
 

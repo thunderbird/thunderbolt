@@ -141,40 +141,43 @@ const resolveInternalName = (tableName: string): string => {
  * {@link searchIndexVersion} it returns immediately. Otherwise it drops any
  * previous generation, recreates the virtual table, installs INSERT/UPDATE/DELETE
  * triggers on each entity's backing table, backfills existing rows, and records
- * the new version in {@link searchMetaTable}.
+ * the new version in {@link searchMetaTable}. Validation and rebuilding share a
+ * write transaction so failed repairs roll back and concurrent callers serialize.
  */
 export const createSearchIndex = async (powerSync: CommonPowerSyncDatabase): Promise<void> => {
-  await powerSync.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
+  await powerSync.writeTransaction(async (transaction) => {
+    await transaction.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 
-  const [meta] = await powerSync.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
-  const indexRows = await powerSync.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
-    searchIndexTable,
-  ])
-  // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
-  // its internal ps_data__* tables (resync, schema update), which silently takes
-  // our triggers with them while the search_index table survives. Without this
-  // check the version gate would short-circuit and the index would go stale.
-  const triggerRows = await powerSync.getAll(
-    `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
-  )
-  const expectedTriggerCount = searchEntities.length * 3
-  if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
-    return
-  }
-
-  for (const statement of buildDropSql()) {
-    await powerSync.execute(statement)
-  }
-  await powerSync.execute(buildCreateSql())
-
-  for (const cfg of searchEntities) {
-    const internalName = resolveInternalName(cfg.tableName)
-    for (const trigger of buildTriggerSql(cfg, internalName)) {
-      await powerSync.execute(trigger)
+    const [meta] = await transaction.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
+    const indexRows = await transaction.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
+      searchIndexTable,
+    ])
+    // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
+    // its internal ps_data__* tables (resync, schema update), which silently takes
+    // our triggers with them while the search_index table survives. Without this
+    // check the version gate would short-circuit and the index would go stale.
+    const triggerRows = await transaction.getAll(
+      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
+    )
+    const expectedTriggerCount = searchEntities.length * 3
+    if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
+      return
     }
-    await powerSync.execute(buildBackfillSql(cfg, internalName))
-  }
 
-  await powerSync.execute(`DELETE FROM ${searchMetaTable}`)
-  await powerSync.execute(`INSERT INTO ${searchMetaTable} (version) VALUES (${searchIndexVersion})`)
+    for (const statement of buildDropSql()) {
+      await transaction.execute(statement)
+    }
+    await transaction.execute(buildCreateSql())
+
+    for (const cfg of searchEntities) {
+      const internalName = resolveInternalName(cfg.tableName)
+      for (const trigger of buildTriggerSql(cfg, internalName)) {
+        await transaction.execute(trigger)
+      }
+      await transaction.execute(buildBackfillSql(cfg, internalName))
+    }
+
+    await transaction.execute(`DELETE FROM ${searchMetaTable}`)
+    await transaction.execute(`INSERT INTO ${searchMetaTable} (version) VALUES (${searchIndexVersion})`)
+  })
 }

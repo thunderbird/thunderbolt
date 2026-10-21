@@ -137,6 +137,8 @@ boot. Migrations must be idempotent and rerun next launch; the contract is at th
 `step2d_build_search_index` builds the unified FTS5 index.
 
 - **Before the data steps**: it only needs the raw SQLite handle.
+- **Atomic**: validation, rebuild and the version marker share one write transaction. Concurrent
+  startups recheck readiness after acquiring the transaction, and a failed rebuild rolls back.
 - **Best-effort**: a failed build logs and boot continues with a stale or empty palette.
 - **Skipped entirely** when `getPowerSyncInstance()` returns null (non-PowerSync backends, e.g.
   `bun-sqlite` under test).
@@ -202,7 +204,8 @@ setup, but its attempt settles before the key responder and initial-sync gate.
 The mounted session observer can still retry a failed startup handshake.
 
 Search index setup runs at startup so a missing-index backfill does not block ordinary database
-actions during first search.
+actions during first search. A single transaction makes rebuilds atomic and avoids committing each
+schema/backfill statement separately.
 
 Settings reads batch keys into one query. React consumers retain their individual query keys while
 sharing one settings-table watcher per database/query cache; the last consumer aborts the watcher
@@ -213,10 +216,11 @@ A new chat has no history to load, so it reads the selected model and skips pers
 message, deletion and trigger lookups. Existing chats retain those lookups. The layout uses the
 startup sidebar snapshot until its reactive query resolves, avoiding a blank layout in between.
 
-MCP client/transports and tool configuration discovery load when needed. Onboarding forms, Markdown
-attachment previews, chat routes and layout chrome remain static. UI code splitting requires an
-error-recovery boundary for failed chunk downloads. Reducing the initial module graph does not
-establish the same percentage reduction in visible loading time.
+MCP client/transports and tool configuration discovery load when needed. Markdown attachment cards
+stay mounted while a shared query loads their renderer; failed downloads leave the existing file
+placeholder and controls available. Onboarding forms, chat routes and layout chrome remain static.
+UI code splitting requires an error-recovery boundary for failed chunk downloads. Reducing the
+initial module graph does not establish the same percentage reduction in visible loading time.
 
 Native apps warm secondary routes serially after core initialization mounts the app, yielding
 between imports. This applies to every entry route and can overlap chat hydration. Web builds

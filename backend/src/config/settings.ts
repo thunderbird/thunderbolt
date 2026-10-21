@@ -304,6 +304,8 @@ const settingsSchema = z
       .positive()
       .max(maxAgentSteps, { message: `AGENT_MAX_STEPS must be at most ${maxAgentSteps}` })
       .default(8),
+    // Fireworks serving tier for the hosted agent. `priority` is less likely to be load-shed and costs more.
+    agentFireworksServiceTier: z.enum(['standard', 'priority']).default('standard'),
     agentSystemPrompt: z.string().default(''),
     // JSON array of MCP servers whose read-only tools the hosted agent may call, parsed by `parseAgentMcpServers`
     // (`@/hosted-agent/mcp`) when the agent mounts, so a malformed value fails the boot.
@@ -619,6 +621,7 @@ const parseSettings = (): Settings => {
     agentEnabled: process.env.AGENT_ENABLED === 'true',
     agentModel: process.env.AGENT_MODEL || '',
     agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
+    agentFireworksServiceTier: process.env.AGENT_FIREWORKS_SERVICE_TIER || undefined,
     agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
     agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
     agentName: process.env.AGENT_NAME || undefined,

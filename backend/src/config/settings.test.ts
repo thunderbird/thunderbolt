@@ -1265,6 +1265,7 @@ describe('Hosted agent settings', () => {
     'AGENT_ENABLED',
     'AGENT_MODEL',
     'AGENT_MAX_STEPS',
+    'AGENT_FIREWORKS_SERVICE_TIER',
     'AGENT_SYSTEM_PROMPT',
     'AGENT_MCP_SERVERS',
     'AGENT_NAME',
@@ -1350,6 +1351,23 @@ describe('Hosted agent settings', () => {
   it('accepts AGENT_MAX_STEPS up to one step per tool call a reply may make, plus the answer', () => {
     process.env.AGENT_MAX_STEPS = String(maxAgentSteps)
     expect(getSettings().agentMaxSteps).toBe(maxAgentSteps)
+  })
+
+  it('defaults AGENT_FIREWORKS_SERVICE_TIER to standard, including when empty', () => {
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = ''
+    clearSettingsCache()
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+  })
+
+  it('accepts priority as AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priority'
+    expect(getSettings().agentFireworksServiceTier).toBe('priority')
+  })
+
+  it('refuses to start on an unknown AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priorty'
+    expect(() => getSettings()).toThrow(/agentFireworksServiceTier/)
   })
 
   it('refuses to start on an AGENT_MAX_STEPS past that', () => {

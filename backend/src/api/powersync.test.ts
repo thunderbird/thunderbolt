@@ -103,6 +103,7 @@ const powersyncSettings: Settings = {
   agentEnabled: false,
   agentModel: '',
   agentMaxSteps: 8,
+  agentFireworksServiceTier: 'standard',
   agentSystemPrompt: '',
   agentMcpServers: '',
   agentName: 'Assistant',

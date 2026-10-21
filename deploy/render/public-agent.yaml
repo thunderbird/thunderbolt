@@ -147,6 +147,8 @@ services:
         sync: false
       - key: AGENT_MAX_STEPS
         sync: false
+      - key: AGENT_FIREWORKS_SERVICE_TIER
+        sync: false
       - key: AGENT_SYSTEM_PROMPT
         sync: false
       - key: AGENT_MCP_SERVERS

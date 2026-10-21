@@ -2,31 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AuthContext } from '@/contexts/auth-context'
+import { AuthContext, createAuthClientInstance } from '@/contexts/auth-context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { pendingAnonIdKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
-import { createAuthClient } from 'better-auth/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
 import * as opener from '@tauri-apps/plugin-opener'
+import * as tauriOs from '@tauri-apps/plugin-os'
 import SsoRedirect from './sso-redirect'
 
 const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
 const originalFetch = globalThis.fetch
-
-/** Use the real session observer and the same refetch policy as AuthProvider. */
-const createObservedAuthClient = () =>
-  createAuthClient({
-    baseURL: 'https://api.example.test',
-    basePath: '/v1/api/auth',
-    plugins: [emailOTPClient(), anonymousClient()],
-    sessionOptions: { refetchOnWindowFocus: false, refetchWhenOffline: false },
-  })
 
 describe('SsoRedirect', () => {
   afterEach(() => {
@@ -167,7 +157,7 @@ describe('SsoRedirect', () => {
       { preconnect: originalFetch.preconnect },
     )
     useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
-    const authClient = createObservedAuthClient()
+    const authClient = createAuthClientInstance('https://api.example.test/v1')
     const view = render(
       <AuthContext.Provider value={{ authClient }}>
         <SsoRedirect />
@@ -307,6 +297,7 @@ describe('SsoRedirect', () => {
       spyOn(tauriCore, 'isTauri').mockReturnValue(true)
       spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
       const openUrl = spyOn(opener, 'openUrl').mockImplementation(async () => {})
+      spyOn(tauriOs, 'platform').mockReturnValue('macos')
       const callbacks: Array<() => void> = []
       spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
         callbacks.push(() => cb({ payload: { url: 'http://127.0.0.1:17421/?token=sso-token' } } as never))
@@ -314,7 +305,7 @@ describe('SsoRedirect', () => {
       })
       const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
       useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
-      const authClient = createObservedAuthClient()
+      const authClient = createAuthClientInstance('https://api.example.test/v1')
       const view = render(
         <AuthContext.Provider value={{ authClient }}>
           <SsoRedirect />

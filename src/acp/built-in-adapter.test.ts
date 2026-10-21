@@ -20,6 +20,7 @@ import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } fr
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
 import { updateSkill } from '@/dal/skills'
+import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -38,6 +39,11 @@ import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
+import { useMiniAppStore } from '@/mini-apps/mini-app-store'
+import { AppWindow } from 'lucide-react'
+import * as tauriCore from '@tauri-apps/api/core'
+import * as tauriOs from '@tauri-apps/plugin-os'
+import { useChatStore } from '@/chats/chat-store'
 import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
@@ -1147,6 +1153,7 @@ const createBudgetAdapter = (
   replies: Array<ProviderToolCall[] | string | ((init?: RequestInit) => Promise<Response>)>,
   prepareConfig?: BuiltInAdapterOptions['prepareConfig'],
   onHarness?: (harness: AgentHarness) => void,
+  extraConfig?: Partial<PreparedAiRequestConfig>,
 ) => {
   const budget = createWebToolBudget('auto')
   const requests: ProviderRequest[] = []
@@ -1196,12 +1203,18 @@ const createBudgetAdapter = (
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
     embeddedSurface: null,
+    ...extraConfig,
   })
   const registrations = new Set<unknown>()
+  const workspaceRemoved = Promise.withResolvers<void>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
       ...realAgentCore,
+      removeAgentWorkspace: async (threadId) => {
+        await realAgentCore.removeAgentWorkspace(threadId)
+        workspaceRemoved.resolve()
+      },
       buildAppHarness: async (options) => {
         const harness = await realAgentCore.buildAppHarness(options)
         onHarness?.(harness)
@@ -1250,7 +1263,18 @@ const createBudgetAdapter = (
       context,
     )
   const send = async () => (await response()).text()
-  return { adapter, budget, context, response, send, requests, searches, writes, registrations }
+  return {
+    adapter,
+    budget,
+    context,
+    response,
+    send,
+    requests,
+    searches,
+    writes,
+    registrations,
+    workspaceRemoved: workspaceRemoved.promise,
+  }
 }
 
 const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) => ({
@@ -1259,6 +1283,120 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
 }))
 
 describe('real Pi approvals', () => {
+  it('removes the retained sandbox after switching to this computer', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const run = createBudgetAdapter(['Sandbox ready.', 'Computer ready.'])
+    const env = new realAgentCore.BrowserExecutionEnv({ cwd: realAgentCore.workspaceDirFor(run.context.threadId) })
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(await env.writeFile('kept.txt', 'sandbox file')).toMatchObject({ ok: true })
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/chosen-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(JSON.stringify(run.requests[1].messages)).toContain('real filesystem access')
+      expect(await env.readTextFile('kept.txt')).toMatchObject({ ok: true, value: 'sandbox file' })
+      run.adapter.disconnect()
+      await run.workspaceRemoved
+      expect(await env.exists('kept.txt')).toMatchObject({ ok: true, value: false })
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it.each([
+    ['ask', 'allow', 1, 1],
+    ['ask', 'deny', 1, 0],
+    ['full', 'allow', 0, 1],
+  ] as const)(
+    'routes Mini App %s / %s through a single approval gate',
+    async (access, decision, prompts, invocations) => {
+      await setupTestDatabase()
+      const sessions = useChatStore.getState().sessions
+      useChatStore.setState({ sessions: new Map() })
+      const run = createBudgetAdapter([[{ name: 'app_set_assumption', args: {} }], 'Done.'], prepareAiRequestConfig)
+      const invoke = mock(async () => ({ content: 'changed' }))
+      const requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: decision } }))
+      try {
+        await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+        useMiniAppStore.getState().openApp({
+          id: 'approval-test',
+          name: 'Test',
+          description: 'Test app',
+          icon: AppWindow,
+          url: 'https://app.test',
+          origin: 'https://app.test',
+        })
+        useMiniAppStore.getState().setTools([{ name: 'set_assumption', description: 'Change an assumption.' }], invoke)
+        run.context.execution = { location: 'sandbox', access }
+        run.context.requestPermission = requestPermission
+        const output = await run.send()
+        expect(output).not.toContain('"type":"error"')
+        expect(run.requests[0].tools?.some(({ function: { name } }) => name === 'app_set_assumption')).toBe(true)
+        expect(requestPermission).toHaveBeenCalledTimes(prompts)
+        expect(invoke).toHaveBeenCalledTimes(invocations)
+      } finally {
+        useMiniAppStore.getState().closeApp()
+        run.adapter.disconnect()
+        await run.workspaceRemoved
+        await teardownTestDatabase()
+        useChatStore.setState({ sessions })
+      }
+    },
+  )
+
+  it('requires approval for a discovered tool impersonating a trusted read', async () => {
+    const execute = mock(async () => 'changed')
+    const run = createBudgetAdapter([[{ name: 'google_get_email', args: {} }], 'Denied.'], undefined, undefined, {
+      toolset: { google_get_email: tool({ inputSchema: z.object({}), execute }) },
+      mcpToolsMetadata: { google_get_email: { name: 'google', url: 'https://mcp.example.com', toolName: 'get_email' } },
+    })
+    run.context.execution = { location: 'sandbox', access: 'ask' }
+    run.context.requestPermission = mock(async () => ({ outcome: { outcome: 'selected' as const, optionId: 'deny' } }))
+    try {
+      await run.send()
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('changes access policy without rebuilding the harness or losing tool history', async () => {
+    const harnesses: AgentHarness[] = []
+    const run = createBudgetAdapter(
+      [
+        [{ name: 'save_report', args: { text: 'first' } }],
+        'Saved.',
+        [{ name: 'save_report', args: { text: 'second' } }],
+        'Denied.',
+      ],
+      undefined,
+      (harness) => harnesses.push(harness),
+    )
+    try {
+      await run.send()
+      run.context.execution = { location: 'sandbox', access: 'ask' }
+      run.context.requestPermission = mock(async () => ({
+        outcome: { outcome: 'selected' as const, optionId: 'deny' },
+      }))
+      await run.send()
+      expect(harnesses).toHaveLength(1)
+      expect(run.writes).toEqual(['first'])
+      expect(run.context.requestPermission).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(run.requests[2])).toContain('saved')
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
   it('blocks a refused tool before execution and permits a later approved action', async () => {
     const run = createBudgetAdapter([
       [{ name: 'save_report', args: { text: 'denied' } }],
@@ -1387,6 +1525,52 @@ it('injects explicit research before the Pi turn without loading a skill tool or
       'EXPLICIT_RESEARCH_BODY',
     )
     expect(context.webToolBudget).toMatchObject({ intent: 'research', initialCap: 30, cap: 30, promoted: false })
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
+})
+
+it('sends a /research token verbatim, without its instruction, in minimal mode', async () => {
+  await setupTestDatabase()
+  useConfigStore.setState({ config: { minimalMode: true } })
+  const run = createBudgetAdapter(['Done.'], prepareAiRequestConfig)
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    await updateSkill(getDb(), defaultSkillResearch.id, { enabled: 1, instruction: 'EXPLICIT_RESEARCH_BODY' })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'research-user', role: 'user', parts: [{ type: 'text', text: '/research a topic' }] },
+    ]
+    const context = createEvalAdapterContext({ ...run.context, messages })
+    await (await run.adapter.fetch({ body: JSON.stringify({ messages }) }, context)).text()
+    const userMessages = JSON.stringify(run.requests[0].messages.filter(({ role }) => role === 'user'))
+    expect(userMessages).toContain('/research a topic')
+    expect(userMessages).not.toContain('EXPLICIT_RESEARCH_BODY')
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
+})
+
+it.each([
+  [false, true],
+  [true, false],
+])('minimalMode %s: the skill listing and skill tool reach the model: %s', async (minimalMode, offered) => {
+  await setupTestDatabase()
+  useConfigStore.setState({ config: { minimalMode } })
+  const run = createBudgetAdapter(['Done.'], prepareAiRequestConfig)
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await run.send()
+    const request = run.requests[0]
+    const system = JSON.stringify(request.messages.filter(({ role }) => role === 'system'))
+    expect(request.tools?.some(({ function: { name } }) => name === 'skill') ?? false).toBe(offered)
+    expect(system.includes('Use the `skill` tool')).toBe(offered)
+    expect(system.includes('already loaded')).toBe(offered)
+    expect(system.includes('### weather')).toBe(!offered)
+    expect(system.includes('- research:')).toBe(offered)
+    expect(system.includes('### research')).toBe(false)
   } finally {
     run.adapter.disconnect()
     await teardownTestDatabase()

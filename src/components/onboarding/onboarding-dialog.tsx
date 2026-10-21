@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
@@ -17,11 +17,17 @@ import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingLanguageStep } from './onboarding-language-step'
+import { OnboardingPasskeyStep } from './onboarding-passkey-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
+import { useAccountPasskey } from '@/lib/passkey'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
+
+/** Wizard position of the passkey step. */
+const passkeyStep = 6
 
 export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
@@ -31,6 +37,9 @@ export const OnboardingDialog = () => {
     user_has_completed_onboarding: false,
   })
   const { state, actions } = useOnboardingState()
+  // The account gets one passkey, so the step is offered only while it has none.
+  const accountPasskey = useAccountPasskey()
+  const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
 
   /**
    * Derived during render rather than mirrored into state. The previous effect
@@ -42,6 +51,18 @@ export const OnboardingDialog = () => {
     import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
     !userHasCompletedOnboarding.isLoading &&
     !userHasCompletedOnboarding.value
+
+  // Skip the step when it isn't offered (no passkey support, or the account
+  // already has one), but only once that's known: the skip is persisted, so
+  // skipping while still loading would lose the step for good.
+  const skipPasskeyStep = useEffectEvent(() => {
+    actions.skipStep().catch((error) => console.error('Failed to skip the passkey step:', error))
+  })
+  useEffect(() => {
+    if (isOpen && state.currentStep === passkeyStep && accountPasskey.isSettled && !shouldOfferPasskeyStep) {
+      skipPasskeyStep()
+    }
+  }, [isOpen, state.currentStep, accountPasskey.isSettled, shouldOfferPasskeyStep])
 
   // Owned here (the connected container) so the auth step stays presentational.
   const handleProviderDisconnect = async (provider: OAuthProvider) => {
@@ -137,7 +158,13 @@ export const OnboardingDialog = () => {
               <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 5 && <OnboardingLanguageStep />}
-            {state.currentStep === 6 && <OnboardingCelebrationStep />}
+            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
+            {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
           </div>
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons
@@ -160,7 +187,9 @@ export const OnboardingDialog = () => {
                       ? !state.isNameValid
                       : state.currentStep === 4
                         ? !state.isLocationValid
-                        : isCelebration && isCompleting
+                        : state.currentStep === passkeyStep
+                          ? !accountPasskey.isSettled
+                          : isCelebration && isCompleting
               }
               continueText={
                 isCelebration ? (

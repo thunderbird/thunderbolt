@@ -14,6 +14,8 @@ If an external agent is handling the conversation, the picker is hidden and noth
 
 Some models are marked **Private**. These run in a hardware enclave the app verifies before sending, so the server relaying the request cannot read it. A chat started on one is locked to that mode: ordinary models are greyed out inside it, and private models are greyed out in an ordinary chat. Start a new chat to switch modes. See [Models and providers](../customize.md#models).
 
+The lock covers models, not agents. Moving a private chat to any agent other than Thunderbolt from the chat header asks first, because that agent receives the conversation unencrypted and the chat is no longer private. An automation that runs on a private model will not send its prompt to another agent. The chat says so above the composer and holds new messages until you switch it to Thunderbolt, which runs it. On a deployment that turns Thunderbolt off, the notice only says the chat won't run on that agent.
+
 Models that show their working display a collapsible **Thought for …** block above the answer. The reasoning is part of the saved message.
 
 ## Skills and slash commands
@@ -57,7 +59,7 @@ Three consequences follow:
 
 - Attachments do not follow a conversation to your other devices. The message and the filename sync; the file itself does not. On a second device the model is told a file was attached and that it is unavailable there.
 - Attachments are not included in a data export. Export carries your conversations, not the files you attached to them.
-- Nothing inside the app removes an attached file once it has been sent. Deleting the conversation, signing out and deleting your account all leave it in local storage. Clearing site data (browser) or removing the app (desktop and mobile) is what clears it.
+- Deleting the conversation leaves an attached file in local storage. Signing out with **Delete data from device**, deleting your account, or having the device revoked clears it, as does clearing site data (browser) or removing the app (desktop and mobile).
 
 ### How a file reaches the model
 

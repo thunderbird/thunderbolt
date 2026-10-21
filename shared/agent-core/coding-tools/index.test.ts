@@ -5,7 +5,7 @@
 /**
  * Tests for the four browser coding tools' wiring: argument preparation/validation,
  * error/abort paths, and output shaping (continuation hints, truncation footers,
- * line-ending/BOM preservation). Driven through the public `createBrowserCodingTools`
+ * line-ending/BOM preservation). Driven through the public `createCodingTools`
  * factory over a real in-memory ZenFS mount (DI of the FS via the mount, not module
  * mocking) so the tests exercise the genuine tool → operation → ZenFS path. The pure
  * edit MATCHING algorithm is covered separately in `edit-apply.test.ts`; here we only
@@ -18,7 +18,7 @@ import * as fsp from '@zenfs/core/promises'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { mountInMemoryFs } from '../browser-env/mount.ts'
 import { BrowserExecutionEnv } from '../browser-env/browser-execution-env.ts'
-import { createBrowserCodingTools } from './index.ts'
+import { createCodingTools } from './index.ts'
 import { defaultMaxBytes, defaultMaxLines } from './truncate.ts'
 
 const ws = '/ws'
@@ -45,7 +45,7 @@ beforeEach(async () => {
   await fsp.rm(ws, { recursive: true, force: true })
   await fsp.mkdir(ws, { recursive: true })
   const env = new BrowserExecutionEnv({ cwd: ws })
-  ;[bash, read, write, edit] = createBrowserCodingTools(env, { cwd: ws })
+  ;[bash, read, write, edit] = createCodingTools(env, { cwd: ws })
 })
 
 const run = (tool: AgentTool, args: unknown) =>
@@ -54,7 +54,28 @@ const run = (tool: AgentTool, args: unknown) =>
     tool.execute as (id: string, a: unknown, s?: AbortSignal) => Promise<{ content: { type: string; text?: string }[] }>
   )('call-1', args, undefined)
 
-describe('createBrowserCodingTools', () => {
+describe('createCodingTools', () => {
+  it('cancels a write while its environment is preparing the filesystem', async () => {
+    const started = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<void>()
+    class DelayedEnvironment extends BrowserExecutionEnv {
+      override async writeFile(path: string, content: string, signal?: AbortSignal) {
+        started.resolve()
+        await ready.promise
+        return super.writeFile(path, content, signal)
+      }
+    }
+    const env = new DelayedEnvironment({ cwd: ws })
+    const write = createCodingTools(env, { cwd: ws })[2]!
+    const controller = new AbortController()
+    const result = write.execute('cancel-write', { path: 'cancelled.txt', content: 'never written' }, controller.signal)
+    await started.promise
+    controller.abort()
+    ready.resolve()
+    await expect(result).rejects.toThrow(/abort/i)
+    expect(await fsp.exists(`${ws}/cancelled.txt`)).toBe(false)
+  })
+
   it('exposes the four tools in order with the model-visible names', () => {
     expect([bash.name, read.name, write.name, edit.name]).toEqual(['bash', 'read', 'write', 'edit'])
     // The mutating tools serialize the batch; read does not.
@@ -157,7 +178,7 @@ describe('read tool', () => {
   })
 
   it('aborts before touching the filesystem when the signal is already aborted', async () => {
-    // Target a MISSING file: if access() ran despite the aborted signal we would see
+    // Target a MISSING file: if a read ran despite the aborted signal we would see
     // ENOENT, so the 'Operation aborted' message proves the abort short-circuits first.
     const aborted = AbortSignal.abort()
     await expect(
@@ -243,9 +264,7 @@ describe('edit tool – execution', () => {
   })
 
   it('reports a friendly error (with the FS error code) when the file does not exist', async () => {
-    await expect(run(edit, { path: 'missing.txt', edits: [{ oldText: 'a', newText: 'b' }] })).rejects.toThrow(
-      /Could not edit file: missing\.txt\..*not_found/,
-    )
+    await expect(run(edit, { path: 'missing.txt', edits: [{ oldText: 'a', newText: 'b' }] })).rejects.toThrow(/ENOENT/)
   })
 
   it('rejects editing outside the workspace jail', async () => {

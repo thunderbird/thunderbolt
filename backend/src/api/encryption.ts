@@ -40,18 +40,22 @@ import {
   revokeDeviceSessions,
   upsertOrgEnvelope,
   withUserDeviceRegistrationLock,
+  isUserPasskeyCredential,
+  type PasskeySlot,
 } from '@/dal'
-import type { Settings } from '@/config/settings'
+import { isPasskeyEnabled, type Settings } from '@/config/settings'
 import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import { consumeStepUpOtp, requestStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
+import type { StepUpAction } from '@/lib/step-up-otp'
+import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
   type ChallengeOperation,
+  type PasskeySlotRequest,
   type RecoverySlotRequest,
   type WrappedKeyEntry,
   bindOperation,
@@ -63,6 +67,9 @@ import {
 } from '@shared/e2ee-types'
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Hardcoded at module scope so a client can never pick what its step-up code buys. */
+const stepUpAction = 'recovery-phrase-change' satisfies StepUpAction
 
 /**
  * Upper bound on keyring rows carried in one request. The keyring grows by one
@@ -334,6 +341,78 @@ const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
 }
 
 /**
+ * Passkey-slot coverage (AK rotation): the optional counterpart of
+ * {@link assertRecoveryCoverage}. The credential id, the PRF-derived public keys,
+ * the AK wrapped to them and the attestation arrive all together or not at all —
+ * a partial slot would name a passkey that cannot open it. Omitting all five is
+ * legal and clears the slot (removal is a rotation); differing keys are an
+ * enrollment, gated like everything else here by the 'rotate' proof.
+ *
+ * Returns the slot to persist, or null for "no slot".
+ */
+const assertPasskeyCoverage = (body: Partial<PasskeySlotRequest>): PasskeySlot | null => {
+  const fields = [
+    body.passkeyCredentialId,
+    body.passkeyEcdhPublicKey,
+    body.passkeyMlkemPublicKey,
+    body.passkeyWrappedAK,
+    body.passkeyAttestation,
+  ]
+  if (fields.every((field) => !field)) {
+    return null
+  }
+  if (
+    !body.passkeyCredentialId ||
+    !body.passkeyEcdhPublicKey ||
+    !body.passkeyMlkemPublicKey ||
+    !body.passkeyWrappedAK ||
+    !body.passkeyAttestation
+  ) {
+    throw new BadRequestError(
+      'passkeyCredentialId, passkeyEcdhPublicKey, passkeyMlkemPublicKey, passkeyWrappedAK and passkeyAttestation must be supplied together',
+    )
+  }
+  return {
+    passkeyCredentialId: body.passkeyCredentialId,
+    passkeyEcdhPublicKey: body.passkeyEcdhPublicKey,
+    passkeyMlkemPublicKey: body.passkeyMlkemPublicKey,
+    passkeyWrappedAk: body.passkeyWrappedAK,
+    passkeyAttestation: body.passkeyAttestation,
+  }
+}
+
+/** The passkey-slot fields of GET /encryption/canary — all null while passkeys are off. */
+const servedPasskeySlot = (
+  settings: Settings,
+  metadata: NonNullable<Awaited<ReturnType<typeof getEncryptionMetadata>>>,
+) => {
+  const enabled = isPasskeyEnabled(settings)
+  return {
+    passkey_credential_id: enabled ? metadata.passkeyCredentialId : null,
+    passkey_ecdh_public_key: enabled ? metadata.passkeyEcdhPublicKey : null,
+    passkey_mlkem_public_key: enabled ? metadata.passkeyMlkemPublicKey : null,
+    passkey_wrapped_ak: enabled ? metadata.passkeyWrappedAk : null,
+    passkey_attestation: enabled ? metadata.passkeyAttestation : null,
+  }
+}
+
+/**
+ * Check that the rotation's passkey slot names one of the user's passkeys. A
+ * re-anchored slot always passes: the foreign key on `passkey_credential_id`
+ * keeps its passkey row from being deleted while the slot exists.
+ */
+const resolvePasskeySlot = async (
+  txDb: QueryableDatabase,
+  userId: string,
+  slot: PasskeySlot | null,
+): Promise<PasskeySlot | null> => {
+  if (!slot || (await isUserPasskeyCredential(txDb, userId, slot.passkeyCredentialId))) {
+    return slot
+  }
+  throw new BadRequestError('passkeyCredentialId does not name a passkey on this account')
+}
+
+/**
  * Enforce + persist the org-escrow envelope (THU-804) inside an AK create/change
  * transaction. Every flow that mints a new AK (first-device bootstrap, rotate,
  * upgrade) must give the operator escrow key its wrapped copy atomically: when
@@ -434,20 +513,15 @@ export const createEncryptionRoutes = (
           return { error: 'Only trusted devices can request a step-up code' }
         }
         try {
-          // The cooldown is enforced inside the mint's transaction, against the
-          // outstanding row's own `createdAt` — shared across replicas and
-          // atomic. See `requestStepUpOtp`.
-          const stepUp = await requestStepUpOtp(database, sessionUser!.email)
-          if (stepUp.status === 'cooling-down') {
-            set.status = 429
-            return { error: 'A code was just sent — wait a moment before requesting another' }
-          }
-          await notifications.sendStepUpCode({
+          const cooldown = await sendStepUpCode(database, notifications, stepUpAction, {
             email: sessionUser!.email,
-            code: stepUp.code,
             deviceName: caller.device.name ?? 'Unknown device',
             locale: resolveEmailLocale(request.headers.get('X-App-Language')),
           })
+          if (cooldown) {
+            set.status = cooldown.status
+            return cooldown.body
+          }
           return { ok: true as const }
         } catch (err) {
           return mapEncryptionError(err, set)
@@ -801,9 +875,9 @@ export const createEncryptionRoutes = (
               if (updated.length === 0) {
                 throw new ForbiddenError('Device has been revoked')
               }
-              // Bootstrap is its own wording; otherwise caller==target is the
-              // recovery-phrase self-approval (Shape 2 admits nothing else
-              // untrusted), and caller≠target is a normal approval.
+              // Bootstrap is its own wording; otherwise caller==target is a
+              // recovery-phrase or passkey self-approval (Shape 2 admits nothing
+              // else untrusted), and caller≠target is a normal approval.
               accessGained = !metadata ? 'bootstrap' : callerDeviceId === deviceId ? 'recovery' : 'approved'
             }
           })
@@ -891,7 +965,9 @@ export const createEncryptionRoutes = (
         }
         if (device.revokedAt != null) {
           set.status = 403
-          return { error: 'Device has been revoked' }
+          // The code is what tells the approval poll this is revocation and not the
+          // transient unbound-session 403 above — the client wipes the device on it.
+          return { error: 'Device has been revoked', code: 'DEVICE_DISCONNECTED' }
         }
 
         // Device was denied or cancelled — not pending, not trusted, not revoked
@@ -939,6 +1015,9 @@ export const createEncryptionRoutes = (
           recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
           recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
           recovery_wrapped_ak: metadata.recoveryWrappedAk,
+          // Not served while passkeys are off, so clients treat the account as
+          // having no slot and their next rotation clears it.
+          ...servedPasskeySlot(settings, metadata),
           key_version: metadata.keyVersion,
           primary_key_id: metadata.primaryKeyId,
           scheme_version: metadata.schemeVersion,
@@ -1129,6 +1208,7 @@ export const createEncryptionRoutes = (
         // recovery slot stays a 400 rather than masquerading as a step-up 403.
         try {
           assertRecoveryCoverage(body)
+          assertPasskeyCoverage(body)
         } catch (err) {
           return mapEncryptionError(err, set)
         }
@@ -1138,22 +1218,11 @@ export const createEncryptionRoutes = (
           (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
             storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
         if (recoveryChanged) {
-          if (!body.stepUpOtp) {
-            set.status = 403
-            return { error: 'Step-up verification required to change the recovery phrase', code: 'step_up_required' }
-          }
           // Session email, never client input — see the step-up note above.
-          //
-          // The verdict covers every way a code can be refused; a storage
-          // failure throws instead, so an outage stays a 500 rather than
-          // telling a user their code was wrong and walking them into
-          // spending their remaining attempts on it. All four rejections
-          // collapse to one response: distinguishing them would tell an
-          // attacker holding only the session whether a code is outstanding.
-          const verdict = await verifyStepUpOtp(database, sessionUser!.email, body.stepUpOtp)
-          if (verdict !== 'valid') {
-            set.status = 403
-            return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
+          const refusal = await requireStepUpCode(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
+          if (refusal) {
+            set.status = refusal.status
+            return refusal.body
           }
         }
 
@@ -1178,6 +1247,10 @@ export const createEncryptionRoutes = (
             const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
             assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
             assertRecoveryCoverage(body)
+            // With passkeys off nothing can show or remove a slot, so drop it.
+            const passkeySlot = isPasskeyEnabled(settings)
+              ? await resolvePasskeySlot(txDb, userId, assertPasskeyCoverage(body))
+              : null
 
             for (const envelope of body.envelopes) {
               await upsertEnvelope(txDb, {
@@ -1222,7 +1295,7 @@ export const createEncryptionRoutes = (
               (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
                 txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
             if (txRecoveryChanged && !recoveryChanged) {
-              throw new ForbiddenError('Step-up verification required to change the recovery phrase')
+              throw new ForbiddenError(stepUpRequiredMessage[stepUpAction])
             }
 
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
@@ -1237,6 +1310,7 @@ export const createEncryptionRoutes = (
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
               recoveryAttestation: body.recoveryAttestation,
+              passkeySlot,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
@@ -1246,13 +1320,7 @@ export const createEncryptionRoutes = (
           })
 
           if (recoveryChanged) {
-            // Consume the code only after the commit, so a rotation that failed
-            // midway stays retryable with the same code. A failed delete leaves
-            // the code valid until its own expiry for the inbox holder only —
-            // log, never fail a committed rotation over it.
-            await consumeStepUpOtp(database, sessionUser!.email).catch((err) =>
-              console.error('[step-up] failed to consume verification code:', err),
-            )
+            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({
@@ -1284,6 +1352,12 @@ export const createEncryptionRoutes = (
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
           recoveryAttestation: t.String({ maxLength: 200 }),
+          // WebAuthn caps credential ids at 1023 bytes: ~1364 base64url characters.
+          passkeyCredentialId: t.Optional(t.String({ maxLength: 1400 })),
+          passkeyEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
+          passkeyMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
+          passkeyWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
+          passkeyAttestation: t.Optional(t.String({ maxLength: 200 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },

@@ -14,6 +14,7 @@ export {
   importPublicKey,
   exportMlKemPublicKey,
   importMlKemPublicKey,
+  isUsableMlKemPublicKey,
   deriveMlKemAtRestKey,
   wrapAK,
   rewrapAK,

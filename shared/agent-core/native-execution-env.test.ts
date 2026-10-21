@@ -39,6 +39,7 @@ describe('native coding environment', () => {
     const result = await read.execute('read', { path: 'file.txt' })
     expect(result.content).toEqual([{ type: 'text', text: 'second' }])
     expect(calls.every(({ command }) => command === 'agent_fs')).toBe(true)
+    expect(calls.filter(({ args }) => args.operation === 'read')).toHaveLength(2)
   })
 
   it('cancels a command even when Stop arrives while registration is pending', async () => {
@@ -58,6 +59,32 @@ describe('native coding environment', () => {
     prepared.resolve()
     expect(await result).toMatchObject({ ok: false, error: { code: 'aborted' } })
     expect(calls.map(({ command }) => command)).toEqual(['agent_prepare_command', 'agent_forget_command'])
+  })
+
+  it('forwards Stop to an executing command and cleans up its registration', async () => {
+    const started = Promise.withResolvers<void>()
+    const completed = Promise.withResolvers<unknown>()
+    const controller = new AbortController()
+    const { calls, invoke } = bridge((command) => {
+      if (command === 'agent_exec') {
+        started.resolve()
+        return completed.promise
+      }
+      if (command === 'agent_cancel_command') {
+        completed.resolve({ stdout: '', stderr: '', exitCode: -1, failure: 'aborted' })
+      }
+    })
+    const result = new NativeExecutionEnv('/real', invoke).exec('sleep 60', { abortSignal: controller.signal })
+    await started.promise
+    controller.abort()
+    expect(await result).toMatchObject({ ok: false, error: { code: 'aborted' } })
+    expect(calls.map(({ command }) => command)).toEqual([
+      'agent_prepare_command',
+      'agent_exec',
+      'agent_cancel_command',
+      'agent_forget_command',
+    ])
+    expect(new Set(calls.map(({ args }) => args.id)).size).toBe(1)
   })
 
   it('forwards partial output on timeout and encodes IPC failures as Results', async () => {

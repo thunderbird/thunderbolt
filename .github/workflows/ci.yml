@@ -96,6 +96,8 @@ jobs:
               # gated by the same `i18n:check`. Without these the check never runs
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
+              # Also scanned by the email catalog: it authors step-up prose outside a template.
+              - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
             helm:
               - 'deploy/k8s/**'
@@ -589,8 +591,9 @@ jobs:
         run: |
           cd src-tauri
           cargo build --all-targets
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          # --workspace also covers the local plugins (default-members is the app only).
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
 
       # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
       # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build

@@ -9,6 +9,7 @@ import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { clearActiveLocale } from '@/i18n/active-locale'
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { clearAllAttachments } from '@/lib/file-blob-storage'
 import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
@@ -19,9 +20,9 @@ type ClearLocalDataOptions = {
   disableSync?: boolean
   /** Clear all encryption keys from IndexedDB + invalidate CK cache (default: true) */
   clearEncryptionKeys?: boolean
-  /** Delete the database and app files via resetAppDir (default: true) */
+  /** Delete the database, app files, attachments and all web storage (default: true) */
   clearDatabase?: boolean
-  /** Clear auth token and device ID from localStorage (default: true) */
+  /** Clear auth token and device ID from localStorage (default: true). `clearDatabase` clears them anyway. */
   clearAuth?: boolean
 }
 
@@ -68,6 +69,13 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
       console.error('[clearLocalData] Failed to reset app directory:', error)
     }
 
+    // Attachments live in their own IndexedDB store, outside the database above.
+    try {
+      await clearAllAttachments()
+    } catch (error) {
+      console.error('[clearLocalData] Failed to clear attachments:', error)
+    }
+
     // Reset local settings to defaults (previously these lived in the DB and were deleted with it)
     useLocalSettingsStore.setState(initialLocalSettings)
     // Same reasoning for the locale mirror: it caches the synced `language` row, so
@@ -87,5 +95,18 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
     // so it must be wiped with the other local creds on every identity teardown.
     clearIrohClientSecret()
     clearCachedSession()
+  }
+
+  // Everything else in web storage — OAuth flow state, banners, in-flight markers — so
+  // the next load starts as a first visit. Last on purpose: other tabs learn about a
+  // sign-out from the keyed token removal above, and a blanket clear() sends them only
+  // an unkeyed event they ignore.
+  if (clearDatabase) {
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch (error) {
+      console.error('[clearLocalData] Failed to clear web storage:', error)
+    }
   }
 }

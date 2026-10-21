@@ -11,6 +11,8 @@ import type { PaletteCommand } from './types'
 const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps => ({
   i18n,
   flags: { voice: false, tasks: false, dev: false },
+  minimalMode: false,
+  isAnonymous: false,
   showDownloadApp: false,
   isMac: true,
   onNewChat: () => {},
@@ -56,6 +58,51 @@ describe('buildCommands — navigation gating', () => {
     expect(devOnly).toContain('dev-settings')
     expect(devOnly).toContain('message-simulator')
     expect(devOnly).not.toContain('voice')
+  })
+})
+
+describe('buildCommands, minimal mode', () => {
+  const allFlags = { voice: true, tasks: true, dev: true }
+
+  it('offers the Settings destinations and create commands by default', () => {
+    const ids = buildCommands(makeDeps({ flags: allFlags })).map((command) => command.id)
+    expect(ids).toEqual(expect.arrayContaining(['agents', 'models', 'preferences', 'dev-settings', 'create-model']))
+  })
+
+  it('drops every /settings/* navigation and the create commands that open them', () => {
+    const commands = buildCommands(makeDeps({ flags: allFlags, minimalMode: true }))
+
+    const settingsRoutes = commands.filter((command) => 'to' in command && command.to.startsWith('/settings/'))
+    expect(settingsRoutes).toEqual([])
+    expect(commands.filter((command) => command.section === 'create').map((command) => command.id)).toEqual([
+      'new-chat',
+    ])
+  })
+
+  it('keeps the routes and actions that are not Settings pages', () => {
+    const ids = buildCommands(makeDeps({ flags: allFlags, minimalMode: true })).map((command) => command.id)
+    expect(ids).toEqual(
+      expect.arrayContaining(['tasks', 'message-simulator', 'new-chat', 'clear-all-chats', 'toggle-sidebar']),
+    )
+  })
+})
+
+describe('buildCommands, sign out', () => {
+  it('offers Sign out and Clear all chats by default', () => {
+    const ids = buildCommands(makeDeps({ minimalMode: false })).map((command) => command.id)
+    expect(ids).toContain('sign-out')
+    expect(ids).toContain('clear-all-chats')
+  })
+
+  it('drops Sign out for an anonymous session but keeps Clear all chats', () => {
+    const ids = buildCommands(makeDeps({ isAnonymous: true })).map((command) => command.id)
+    expect(ids).not.toContain('sign-out')
+    expect(ids).toContain('clear-all-chats')
+  })
+
+  it('keeps Sign out in minimal mode for a real account', () => {
+    const ids = buildCommands(makeDeps({ minimalMode: true, isAnonymous: false })).map((command) => command.id)
+    expect(ids).toContain('sign-out')
   })
 })
 

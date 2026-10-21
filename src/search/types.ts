@@ -16,7 +16,13 @@ export type SearchResult = {
 }
 
 /** Hook contract every search consumer keys off. */
-export type UseSearch = (query: string) => {
+export type UseSearch = (
+  query: string,
+  options?: {
+    /** Entity types left out of the query itself, so they cannot use up its result limit. */
+    excludeTypes?: readonly SearchEntityType[]
+  },
+) => {
   results: SearchResult[]
   isLoading: boolean
 }

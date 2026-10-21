@@ -20,6 +20,8 @@ export type InferencePrice = ManagedInferenceIdentity &
   Readonly<{
     inputNanoUsdPerToken: bigint
     outputNanoUsdPerToken: bigint
+    /** The provider's cached-input rate; absent means cache reads bill at the input rate (Anthropic: a tenth of it). */
+    cacheReadNanoUsdPerToken?: bigint
   }>
 export type InferenceQuotaLimits = Readonly<{ fiveHourCents: number; sevenDayCents: number }>
 export type InferenceQuotaDecision =
@@ -66,19 +68,40 @@ export const loadInferencePrice = async (
     .select({
       inputNanoUsdPerToken: inferencePrices.inputNanoUsdPerToken,
       outputNanoUsdPerToken: inferencePrices.outputNanoUsdPerToken,
+      cacheReadNanoUsdPerToken: inferencePrices.cacheReadNanoUsdPerToken,
     })
     .from(inferencePrices)
     .where(and(eq(inferencePrices.provider, identity.provider), eq(inferencePrices.model, identity.model)))
     .limit(1)
+  if (!price) {
+    return null
+  }
 
-  return price ? { ...identity, ...price } : null
+  const { cacheReadNanoUsdPerToken, ...rates } = price
+  return cacheReadNanoUsdPerToken === null
+    ? { ...identity, ...rates }
+    : { ...identity, ...rates, cacheReadNanoUsdPerToken }
 }
 
-/** Calculate usage cost, applying Anthropic's 5-minute cache write/read multipliers. */
+/**
+ * Cost of the cache-read tokens: the row's cached-input rate when it has one, otherwise Anthropic's tenth of
+ * the input rate. Any other provider without a rate bills them as ordinary input, as before the column existed.
+ */
+const cacheReadCost = (cacheReadTokens: number, price: InferencePrice): bigint => {
+  if (price.cacheReadNanoUsdPerToken !== undefined) {
+    return BigInt(cacheReadTokens) * price.cacheReadNanoUsdPerToken
+  }
+  if (price.provider === 'anthropic') {
+    return (BigInt(cacheReadTokens) * price.inputNanoUsdPerToken) / 10n
+  }
+  return BigInt(cacheReadTokens) * price.inputNanoUsdPerToken
+}
+
+/** Calculate usage cost, applying Anthropic's cache write multipliers and each row's cache-read rate. */
 export const calculateInferenceCost = (counts: InferenceTokenCounts, price: InferencePrice): bigint => {
   const cacheCreationTokens = price.provider === 'anthropic' ? (counts.cacheCreationTokens ?? 0) : 0
   const cacheCreation1hTokens = price.provider === 'anthropic' ? (counts.cacheCreation1hTokens ?? 0) : 0
-  const cacheReadTokens = price.provider === 'anthropic' ? (counts.cacheReadTokens ?? 0) : 0
+  const cacheReadTokens = counts.cacheReadTokens ?? 0
   const uncachedPromptTokens = counts.promptTokens - cacheCreationTokens - cacheReadTokens
   const cacheCreation5mTokens = cacheCreationTokens - cacheCreation1hTokens
   if (uncachedPromptTokens < 0 || cacheCreation5mTokens < 0) {
@@ -88,7 +111,7 @@ export const calculateInferenceCost = (counts: InferenceTokenCounts, price: Infe
     BigInt(uncachedPromptTokens) * price.inputNanoUsdPerToken +
     (BigInt(cacheCreation5mTokens) * price.inputNanoUsdPerToken * 5n) / 4n +
     BigInt(cacheCreation1hTokens) * price.inputNanoUsdPerToken * 2n +
-    (BigInt(cacheReadTokens) * price.inputNanoUsdPerToken) / 10n +
+    cacheReadCost(cacheReadTokens, price) +
     BigInt(counts.completionTokens) * price.outputNanoUsdPerToken
   if (cost > postgresBigintMax) {
     throw new InferenceCostOverflowError()

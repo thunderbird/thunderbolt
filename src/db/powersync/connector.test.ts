@@ -7,7 +7,7 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import { resetCodecState } from '@/db/encryption'
-import { SyncStatus, type AbstractPowerSyncDatabase } from '@powersync/web'
+import type { CommonPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
@@ -229,11 +229,12 @@ describe('ThunderboltConnector', () => {
       // uploadData defers (throws) before reaching the endpoint under test.
       await storePrimaryKeyId('0')
       const complete = mock(() => Promise.resolve())
-      const database = Object.create(null) as AbstractPowerSyncDatabase
-      database.getNextCrudTransaction = async () => ({ crud: [], haveMore: false, complete })
-      // `currentStatus` is non-optional on the real class, so the stub has to
+      // `currentStatus` is non-optional on the real database, so the stub has to
       // carry it — `uploadData` reads it to classify create-only writes.
-      database.currentStatus = new SyncStatus({})
+      const database = {
+        getNextCrudTransaction: async () => ({ crud: [], haveMore: false, complete }),
+        currentStatus: {},
+      } as unknown as CommonPowerSyncDatabase
       fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
       const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
 
@@ -363,7 +364,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
 
   // A DELETE op keeps `encodeForUpload` a no-op, so uploadData exercises only the
   // primary-key-load path we're testing (encryption of a real column is Track C's concern).
-  const makeDatabase = (): AbstractPowerSyncDatabase =>
+  const makeDatabase = (): CommonPowerSyncDatabase =>
     ({
       // The real database always carries `currentStatus`; `uploadData` reads it
       // before reaching the primary-key path under test. DELETE is never
@@ -373,7 +374,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
         crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
         complete: async () => {},
       }),
-    }) as unknown as AbstractPowerSyncDatabase
+    }) as unknown as CommonPowerSyncDatabase
 
   const okResponse = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -458,7 +459,7 @@ describe('ThunderboltConnector upload encryption gate', () => {
           completed = true
         },
       }),
-    } as unknown as AbstractPowerSyncDatabase
+    } as unknown as CommonPowerSyncDatabase
     return { database, wasCompleted: () => completed }
   }
 
@@ -764,7 +765,7 @@ describe('ThunderboltConnector.uploadData', () => {
     ({
       currentStatus: { hasSynced },
       getNextCrudTransaction: async () => ({ crud, complete: async () => {} }),
-    }) as unknown as AbstractPowerSyncDatabase
+    }) as unknown as CommonPowerSyncDatabase
 
   /**
    * These tests are about the create-only tag, not encryption, so the account

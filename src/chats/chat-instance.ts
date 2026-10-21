@@ -20,6 +20,7 @@ import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-b
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -1129,7 +1130,7 @@ export const createChatInstance = (
 
     // The hosted agent doesn't use the selected model, and its threads are never
     // private, so the model/thread confidentiality lock doesn't apply to it.
-    if (chatThread && !isHostedAgent(selectedAgent) && chatThread.isEncrypted !== selectedModel.isConfidential) {
+    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )

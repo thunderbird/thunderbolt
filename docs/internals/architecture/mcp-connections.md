@@ -2,7 +2,8 @@
 
 Thunderbolt is an MCP **client**. A Model Context Protocol server added in Settings → Connections
 (`/settings/connections`, routed in [src/app.tsx](../../../src/app.tsx)) has its tools merged into the
-model's toolset on every send.
+model's toolset on every send. This page covers that client, in the app. The hosted agent has a second,
+server-side client for the operator's `AGENT_MCP_SERVERS` ([acp-agents.md](acp-agents.md#hosted-agent)).
 
 ## Transports
 

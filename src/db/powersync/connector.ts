@@ -6,7 +6,7 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import { normalizeBackendUrl } from '@/lib/url-utils'
-import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
+import type { CommonPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { initialKeyId } from '@shared/e2ee-types'
@@ -15,7 +15,7 @@ import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
  * - 410 (account deleted), 409 + DEVICE_ID_TAKEN, 400 + DEVICE_ID_REQUIRED → full reset
- * - 403 + DEVICE_DISCONNECTED → open revoked-device modal, preserve local data
+ * - 403 + DEVICE_DISCONNECTED → full reset, then the device-revoked screen
  * - 401 (session expired) → open sign-in modal, preserve local data
  * - 403 + ANONYMOUS_SYNC_FORBIDDEN → backend says this session may not sync (e.g. anonymous user);
  *   we disable local sync via setSyncEnabled(false)
@@ -318,7 +318,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * Upload local changes to the backend.
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
-  async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
+  async uploadData(database: CommonPowerSyncDatabase): Promise<void> {
     // Get the next batch of changes from the upload queue
     const transaction = await database.getNextCrudTransaction()
 

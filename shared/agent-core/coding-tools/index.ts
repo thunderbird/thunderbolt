@@ -82,7 +82,7 @@ const bashSchema = Type.Object({
   timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds (optional, no default timeout)' })),
 })
 
-/** Persist full (untruncated) bash output to a ZenFS temp file so the model can
+/** Persist captured bash output to a temporary file in the selected environment so the model can
  *  `cat` it; returns the path, or undefined if the write failed. */
 const persistFullOutput = async (env: CodingEnvironment, output: string): Promise<string | undefined> => {
   const tmp = await env.createTempFile({ prefix: 'pi-bash-', suffix: '.log' })
@@ -216,9 +216,7 @@ const buildReadTool = (env: CodingEnvironment): AgentTool<typeof readSchema> => 
     async execute(_toolCallId, { path, offset, limit }, signal) {
       const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
-      await operations.access(absolutePath)
-      throwIfAborted(signal)
-      const buffer = await operations.readFile(absolutePath)
+      const buffer = await operations.readFile(absolutePath, signal)
       return textResult(formatReadOutput(path, buffer.toString('utf-8'), offset, limit))
     },
   }
@@ -246,7 +244,7 @@ const buildWriteTool = (env: CodingEnvironment): AgentTool<typeof writeSchema> =
     async execute(_toolCallId, { path, content }, signal) {
       const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
-      await operations.writeFile(absolutePath, content)
+      await operations.writeFile(absolutePath, content, signal)
       return textResult(`Successfully wrote ${Buffer.byteLength(content, 'utf-8')} bytes to ${path}`)
     },
   }
@@ -343,37 +341,26 @@ const buildEditTool = (env: CodingEnvironment): AgentTool<typeof editSchema> => 
       const { path, edits } = validateEditInput(input)
       const absolutePath = await resolveToolPath(env, path)
       throwIfAborted(signal)
-      try {
-        await operations.access(absolutePath)
-      } catch (error) {
-        const reason =
-          error instanceof Error && 'code' in error ? `Error code: ${error.code}. ${error.message}` : String(error)
-        throw new Error(`Could not edit file: ${path}. ${reason}.`, { cause: error })
-      }
-      throwIfAborted(signal)
-      const buffer = await operations.readFile(absolutePath)
+      const buffer = await operations.readFile(absolutePath, signal)
       const { bom, text: content } = stripBom(buffer.toString('utf-8'))
       const originalEnding = detectLineEnding(content)
       const { newContent } = applyEditsToNormalizedContent(normalizeToLF(content), edits, path)
       throwIfAborted(signal)
-      await operations.writeFile(absolutePath, bom + restoreLineEndings(newContent, originalEnding))
+      await operations.writeFile(absolutePath, bom + restoreLineEndings(newContent, originalEnding), signal)
       return textResult(`Successfully replaced ${edits.length} block(s) in ${path}.`)
     },
   }
 }
 
 /**
- * Build the four browser coding tools (bash/read/write/edit) bound to `env` and
+ * Build the four coding tools (bash/read/write/edit) bound to `env` and
  * rooted at `options.cwd`. Returned as plain {@link AgentTool}s ready to register
  * on an {@link import('@earendil-works/pi-agent-core').AgentHarness}.
  *
- * @param env - the ZenFS-backed execution environment the tools operate over
+ * @param env - the execution environment the tools operate over
  * @param options - `cwd` the tools resolve relative paths against
  */
 export const createCodingTools = (env: CodingEnvironment, options: { cwd: string }): AgentTool[] => {
   const { cwd } = options
   return [buildBashTool(env, cwd), buildReadTool(env), buildWriteTool(env), buildEditTool(env)]
 }
-
-/** Compatibility name for callers that provide the browser environment. */
-export const createBrowserCodingTools = createCodingTools

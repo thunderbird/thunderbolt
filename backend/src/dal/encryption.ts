@@ -106,6 +106,19 @@ export type RecoverySlot = {
 }
 
 /**
+ * The optional passkey slot — a second virtual device built like the recovery
+ * slot, from a passkey's PRF output. `null` means no slot (never enrolled, or
+ * removed).
+ */
+export type PasskeySlot = {
+  passkeyCredentialId: string
+  passkeyEcdhPublicKey: string
+  passkeyMlkemPublicKey: string
+  passkeyWrappedAk: string
+  passkeyAttestation: string
+}
+
+/**
  * Get encryption metadata for a user: the canary, the challenge-response
  * signing public key, the KDF salt, the recovery slot, and the polled keyring
  * pointers (`keyVersion`/`primaryKeyId`/`schemeVersion`). `canarySecretHash` is
@@ -123,6 +136,11 @@ export const getEncryptionMetadata = async (database: QueryableDatabase, userId:
       recoveryMlkemPublicKey: encryptionMetadataTable.recoveryMlkemPublicKey,
       recoveryWrappedAk: encryptionMetadataTable.recoveryWrappedAk,
       recoveryAttestation: encryptionMetadataTable.recoveryAttestation,
+      passkeyCredentialId: encryptionMetadataTable.passkeyCredentialId,
+      passkeyEcdhPublicKey: encryptionMetadataTable.passkeyEcdhPublicKey,
+      passkeyMlkemPublicKey: encryptionMetadataTable.passkeyMlkemPublicKey,
+      passkeyWrappedAk: encryptionMetadataTable.passkeyWrappedAk,
+      passkeyAttestation: encryptionMetadataTable.passkeyAttestation,
       keyVersion: encryptionMetadataTable.keyVersion,
       primaryKeyId: encryptionMetadataTable.primaryKeyId,
       schemeVersion: encryptionMetadataTable.schemeVersion,
@@ -168,11 +186,12 @@ export const insertEncryptionMetadataIfNotExists = async (
     .onConflictDoNothing({ target: encryptionMetadataTable.userId })
 
 /**
- * Replace the canary + signing key + KDF salt + recovery slot in one UPDATE (AK
- * rotation). The recovery public keys are unchanged on a silent rotation and
- * differ only when the user explicitly changes their phrase; either way the
- * wrapped AK is re-anchored. `keyVersion` is bumped separately via
- * `bumpKeyVersion` in the same transaction.
+ * Replace the canary + signing key + KDF salt + recovery slot + passkey slot in
+ * one UPDATE (AK rotation). The recovery public keys are unchanged on a silent
+ * rotation and differ only when the user explicitly changes their phrase; either
+ * way the wrapped AK is re-anchored. The passkey slot is re-anchored the same
+ * way, set on enrollment, and cleared (`passkeySlot: null`) on removal.
+ * `keyVersion` is bumped separately via `bumpKeyVersion` in the same transaction.
  */
 export const replaceEncryptionMetadata = async (
   database: QueryableDatabase,
@@ -182,6 +201,7 @@ export const replaceEncryptionMetadata = async (
     canaryCtext: string
     signingPublicKey: string
     kdfSalt: string
+    passkeySlot: PasskeySlot | null
   },
 ) =>
   database
@@ -195,6 +215,11 @@ export const replaceEncryptionMetadata = async (
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
       recoveryAttestation: metadata.recoveryAttestation,
+      passkeyCredentialId: metadata.passkeySlot?.passkeyCredentialId ?? null,
+      passkeyEcdhPublicKey: metadata.passkeySlot?.passkeyEcdhPublicKey ?? null,
+      passkeyMlkemPublicKey: metadata.passkeySlot?.passkeyMlkemPublicKey ?? null,
+      passkeyWrappedAk: metadata.passkeySlot?.passkeyWrappedAk ?? null,
+      passkeyAttestation: metadata.passkeySlot?.passkeyAttestation ?? null,
     })
     .where(eq(encryptionMetadataTable.userId, metadata.userId))
     .returning()

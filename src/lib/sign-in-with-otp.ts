@@ -32,11 +32,6 @@ type SignInWithOtpArgs = {
  * the flag inside this same request, and Better Auth's session atom is fed
  * solely by `/get-session`, so every later read reports `false`.
  *
- * Headers go through `authRequestHeaders` because Better Auth *replaces*
- * client-level headers with per-call ones instead of merging, which would drop
- * `X-App-Version` and trip the fail-closed version gate. Centralising that here
- * removes three chances to get it wrong.
- *
  * The result is returned untouched so callers keep their own error handling.
  */
 export const signInWithOtp = async (

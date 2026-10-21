@@ -498,6 +498,8 @@ describe('Encryption API', () => {
       expect(response.status).toBe(403)
       const body = await response.json()
       expect(body.error).toBe('Device has been revoked')
+      // The approval poll keys its wipe on this code, not on the bare 403.
+      expect(body.code).toBe('DEVICE_DISCONNECTED')
     })
 
     it('returns 404 when device has no envelope (pending device)', async () => {

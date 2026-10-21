@@ -19,6 +19,7 @@ import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/a
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { useConfigStore } from '@/api/config-store'
 import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
 import { createMCPClient } from '@ai-sdk/mcp'
@@ -42,7 +43,6 @@ import {
   recordLegacyEmptyResponseRetry,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
-  sanitizeToolPrefix,
   selectPromptSkillDefinitions,
   withAppVersionHeader,
 } from './fetch'
@@ -119,27 +119,6 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
   name,
   url: `https://${name}.example.com`,
   client: { tools, close: () => {} } as unknown as MCPClient,
-})
-
-describe('sanitizeToolPrefix', () => {
-  const cases: Array<[string | null | undefined, string]> = [
-    ['Render', 'render'],
-    ['render.com', 'render_com'],
-    ['My Server', 'my_server'],
-    ['api.github.com', 'api_github_com'],
-    ['  spaced  ', 'spaced'],
-    ['UPPER_snake', 'upper_snake'],
-    ['weird!!!name', 'weird_name'],
-    ['---', 'mcp'],
-    ['', 'mcp'],
-    [null, 'mcp'],
-    [undefined, 'mcp'],
-    ['localhost-3000', 'localhost_3000'],
-  ]
-
-  it.each(cases)('sanitizes %p → %p', (input, expected) => {
-    expect(sanitizeToolPrefix(input)).toBe(expected)
-  })
 })
 
 describe('addSkillTool', () => {
@@ -240,6 +219,16 @@ describe('selectPromptSkillDefinitions', () => {
     expect(prompt).not.toContain('WIDGET_CONTRACT_BODY')
     expect(prompt).not.toContain('TASK_SKILL_BODY')
     expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+  })
+
+  it.each([
+    [false, ['weather', 'research', 'user-authored']],
+    [true, ['weather']],
+  ])('minimalMode %s keeps these skills in the selection: %j', (minimalMode, expected) => {
+    useConfigStore.setState({ config: { minimalMode } })
+
+    expect(selectPromptSkillDefinitions(storedSkills, true).map(({ name }) => name)).toEqual(expected)
+    expect(selectPromptSkillDefinitions(storedSkills, false).map(({ name }) => name)).toEqual(['weather'])
   })
 
   it('keeps every enabled skill in the slash-token resolution map', () => {

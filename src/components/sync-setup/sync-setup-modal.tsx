@@ -13,12 +13,13 @@ import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
 import { RecoveryKeyEntryStep } from './recovery-key-entry-step'
+import { PasskeyEnrollStep } from './passkey-enroll-step'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
-import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 type SyncSetupModalProps = {
   open: boolean
@@ -30,10 +31,15 @@ type SyncSetupModalProps = {
  * Multi-step wizard for sync/encryption setup.
  *
  * Flow: intro → detecting (auto) → (first-device-setup → recovery-key-display | approval-waiting)
+ * → passkey-enroll (optional, only while the account has no passkey slot)
  */
 export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModalProps) => {
   const setup = useSyncSetup()
   const httpClient = useHttpClient()
+  const passkeyAvailable = usePasskeyAvailable()
+  // The passkey step is offered once per account: only while no slot exists yet.
+  const shouldOfferPasskey = (passkeySlotCredentialId: string | null) => passkeyAvailable && !passkeySlotCredentialId
+  const canUnlockWithPasskey = passkeyAvailable && !!setup.passkeySlotCredentialId
   const hasCompletedRef = useRef(false)
 
   // Reset wizard state when modal opens (not on close — avoids step flash during close animation)
@@ -44,8 +50,10 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
   prevOpen.current = open
 
+  // Closing mid-enrollment would hide its result, success or failure.
+  const [isPasskeyEnrolling, setIsPasskeyEnrolling] = useState(false)
   const isRecoveryKeyStep = setup.step === 'recovery-key-display'
-  const canDismiss = !isRecoveryKeyStep && !setup.isLoading
+  const canDismiss = !isRecoveryKeyStep && !setup.isLoading && !isPasskeyEnrolling
 
   // Stable identity so the yield listener isn't torn down and re-added every render.
   const completeAndClose = useCallback(() => {
@@ -69,18 +77,42 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     onYield: completeAndClose,
   })
 
-  const showSuccess = () => {
+  // Callers acting right after detection pass the slot they just detected; the
+  // others run in a later render, where state already holds it.
+  const showSuccess = (passkeySlotCredentialId = setup.passkeySlotCredentialId) => {
+    if (shouldOfferPasskey(passkeySlotCredentialId)) {
+      setup.goToPasskeyEnroll('complete')
+      return
+    }
     setup.completeSetup()
   }
 
   const handleFirstDeviceDone = () => {
+    if (shouldOfferPasskey(setup.passkeySlotCredentialId)) {
+      setup.goToPasskeyEnroll('close')
+      return
+    }
     completeAndClose()
   }
 
+  const handlePasskeyStepDone = () => {
+    if (setup.afterPasskey === 'close') {
+      completeAndClose()
+      return
+    }
+    setup.completeSetup()
+  }
+
+  const handleUnlockWithPasskey = async () => {
+    if (await setup.unlockWithPasskey()) {
+      setup.completeSetup()
+    }
+  }
+
   const handleContinueIntro = async () => {
-    const result = await setup.continueIntro()
-    if (result === 'already-trusted') {
-      showSuccess()
+    const { outcome, passkeySlotCredentialId } = await setup.continueIntro()
+    if (outcome === 'already-trusted') {
+      showSuccess(passkeySlotCredentialId)
     }
   }
 
@@ -96,8 +128,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const handleRevoked = () => {
+    // The HttpClient has already turned the 403 into the revocation reset; just get out of its way.
     onOpenChange(false)
-    window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
   }
 
   const handleDenied = () => {
@@ -115,9 +147,12 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const { isPolling } = useApprovalPolling({
-    enabled: setup.step === 'approval-waiting',
+    // Paused while a passkey unlock (or a manual check) is in flight, so no new poll
+    // starts staging keys alongside it. A check already in flight still finishes;
+    // it can only stage the same account's keys.
+    enabled: setup.step === 'approval-waiting' && !setup.isLoading,
     checkApproval: () => checkApprovalAndUnwrap(httpClient),
-    onApproved: showSuccess,
+    onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
     onDenied: handleDenied,
   })
@@ -134,7 +169,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
       open={open}
       onOpenChange={(isOpen) => {
         if (!isOpen && canDismiss) {
-          if (setup.step === 'setup-complete') {
+          // The device already holds the keys on both steps, so dismissing finishes setup.
+          if (setup.step === 'setup-complete' || setup.step === 'passkey-enroll') {
             completeAndClose()
           } else {
             handleClose()
@@ -194,9 +230,14 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
             error={setup.approvalError}
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
+            onUnlockWithPasskey={canUnlockWithPasskey ? handleUnlockWithPasskey : undefined}
             isLoading={setup.isLoading}
             isPolling={isPolling}
           />
+        )}
+
+        {setup.step === 'passkey-enroll' && (
+          <PasskeyEnrollStep unlocksSync onDone={handlePasskeyStepDone} onBusyChange={setIsPasskeyEnrolling} />
         )}
 
         {setup.step === 'recovery-key-entry' && (

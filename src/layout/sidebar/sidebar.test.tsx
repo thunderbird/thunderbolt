@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
+import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -22,23 +24,27 @@ import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
 
-const SidebarTestWrapper = ({ children }: { children: ReactNode }) => (
-  <DatabaseProvider db={getDb()}>
-    <HttpClientProvider httpClient={createMockHttpClient([])}>
-      <AuthProvider authClient={createMockAuthClient()}>
-        <SignInModalProvider>
-          <MemoryRouter initialEntries={['/chats/new']}>
-            <SidebarProvider>
-              <Routes>
-                <Route path="/*" element={children} />
-              </Routes>
-            </SidebarProvider>
-          </MemoryRouter>
-        </SignInModalProvider>
-      </AuthProvider>
-    </HttpClientProvider>
-  </DatabaseProvider>
-)
+const createSidebarWrapper =
+  ({ path = '/chats/new', defaultOpen = true } = {}) =>
+  ({ children }: { children: ReactNode }) => (
+    <DatabaseProvider db={getDb()}>
+      <HttpClientProvider httpClient={createMockHttpClient([])}>
+        <AuthProvider authClient={createMockAuthClient()}>
+          <SignInModalProvider>
+            <MemoryRouter initialEntries={[path]}>
+              <SidebarProvider defaultOpen={defaultOpen}>
+                <Routes>
+                  <Route path="/*" element={children} />
+                </Routes>
+              </SidebarProvider>
+            </MemoryRouter>
+          </SignInModalProvider>
+        </AuthProvider>
+      </HttpClientProvider>
+    </DatabaseProvider>
+  )
+
+const SidebarTestWrapper = createSidebarWrapper()
 
 describe('Sidebar reactivity', () => {
   // The chat list is virtualized (virtua) — give it real-looking measurements
@@ -135,5 +141,147 @@ describe('Sidebar reactivity', () => {
     )
     expect(scrollArea?.className).not.toContain('shadow-[')
     expect(sidebarFooter?.className).not.toContain('shadow-[')
+  })
+
+  describe('section toggle', () => {
+    const minimalConfig = { config: { minimalMode: true }, configLoaded: true }
+
+    beforeEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it('offers the Settings section by default', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+    })
+
+    it('offers Projects outside minimal mode and hides it in minimal mode', () => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.getByText('Projects')).toBeInTheDocument()
+
+      cleanup()
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByText('Projects')).not.toBeInTheDocument()
+    })
+
+    describe('with a project', () => {
+      const renderWithProject = async (state: { config: { minimalMode?: boolean }; configLoaded: boolean }) => {
+        await createProject(getDb(), { name: 'Alpha' })
+        useConfigStore.setState(state)
+        renderWithReactivity(<Sidebar />, { tables: ['chat_threads', 'projects'], wrapper: SidebarTestWrapper })
+      }
+
+      it('lists the project drop targets outside minimal mode', async () => {
+        await renderWithProject({ config: {}, configLoaded: true })
+
+        expect(await waitForElement(() => screen.queryByText('Recent Projects'))).toBeInTheDocument()
+      })
+
+      it('hides the project drop targets in minimal mode', async () => {
+        await renderWithProject(minimalConfig)
+        await act(async () => {
+          await getClock().runAllAsync()
+        })
+
+        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Alpha')).not.toBeInTheDocument()
+      })
+
+      it('hides Projects and its drop targets until the config has loaded', async () => {
+        await renderWithProject({ config: {}, configLoaded: false })
+        await act(async () => {
+          await getClock().runAllAsync()
+        })
+
+        expect(screen.queryByText('Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+      })
+    })
+
+    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
+      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
+      expect(screen.queryByText('Projects') !== null).toBe(!minimal)
+    })
+
+    it('shows the toggle once the first-ever fetch answers', () => {
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+    })
+
+    it('shows no section toggle until the config has loaded', () => {
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+    })
+
+    it('leaves the toggle slot empty in minimal mode', () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    })
+
+    it('leaves the collapsed rail without a toggle in minimal mode', () => {
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ defaultOpen: false }),
+      })
+
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    })
+
+    it('leaves the mobile header without a toggle in minimal mode', () => {
+      forceMobileViewport()
+      useConfigStore.setState(minimalConfig)
+      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+
+      const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
+      expect(mobileHeader).toBeInTheDocument()
+      expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+      expect(mobileHeader?.firstElementChild?.nextElementSibling?.firstElementChild).toHaveClass('justify-end')
+    })
+
+    it('pulls an open Settings section back to chats when minimal mode arrives', () => {
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/settings/models' }),
+      })
+      expect(screen.getByText('Preferences')).toBeInTheDocument()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: true }))
+
+      expect(screen.queryByText('Preferences')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Chats')).not.toBeInTheDocument()
+    })
+
+    it('keeps the Settings section open when the loaded config is not minimal', () => {
+      renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads'],
+        wrapper: createSidebarWrapper({ path: '/settings/models' }),
+      })
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      // Settings-only navigation, absent from the chats sidebar.
+      expect(screen.getByText('Preferences')).toBeInTheDocument()
+    })
   })
 })

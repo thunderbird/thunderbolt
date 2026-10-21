@@ -287,3 +287,23 @@ describe('useSlashCommand agent commands', () => {
     ])
   })
 })
+
+describe('useSlashCommand enabled option', () => {
+  const library = [fakeSkill('alpha')]
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])('popup and keys follow the enabled option (%s)', (enabled, open) => {
+    const setValue = mock()
+    const hook = renderHook(() =>
+      useSlashCommand({ value: '/', setValue, inputRef, library, isEnabled: () => true, enabled }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    expect(hook.result.current.popupOpen).toBe(open)
+    const event = keyEvent('Enter')
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(setValue.mock.calls.length > 0).toBe(open)
+  })
+})

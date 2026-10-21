@@ -127,7 +127,13 @@ export const ChatList = ({
     >
       <MobileSidebarScrim data-slot="mobile-sidebar-header-scrim" />
       <div className="relative z-10">
-        <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
+        <div
+          className={cn(
+            'flex h-[var(--touch-height-lg)] flex-shrink-0 items-center',
+            // With no section toggle (minimal mode) the actions keep to the right.
+            mobileNavToggle ? 'justify-between' : 'justify-end',
+          )}
+        >
           {mobileNavToggle}
           {chatActions}
         </div>

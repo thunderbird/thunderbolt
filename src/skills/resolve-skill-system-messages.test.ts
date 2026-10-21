@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 
+import { useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from './resolve-skill-system-messages'
 
@@ -18,6 +19,13 @@ describe('resolveSkillTokenInstructions', () => {
     ['meeting-notes', 'You are a meeting-notes summarizer.'],
     ['weekly-review', 'You are a weekly review coach.'],
   ])
+
+  it('resolves tokens outside minimal mode and ignores them inside it', () => {
+    useConfigStore.setState({ config: { minimalMode: false } })
+    expect(resolveSkillTokenInstructions('/meeting-notes', map)).toEqual(['You are a meeting-notes summarizer.'])
+    useConfigStore.setState({ config: { minimalMode: true } })
+    expect(resolveSkillTokenInstructions('/meeting-notes', map)).toEqual([])
+  })
 
   it('returns an empty array when the text has no tokens', () => {
     expect(resolveSkillTokenInstructions('plain message', map)).toEqual([])

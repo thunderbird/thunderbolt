@@ -87,7 +87,20 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
       useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
     }
   },
-  setTools: (tools, invokeTool) => set({ tools, invokeTool }),
+  setTools: (tools, invokeTool) => {
+    // A model turn can retain these tools across a reload or an approval wait.
+    // Never dispatch that turn's action to a replacement guest document.
+    const invokeCurrentGuest: MiniAppToolInvoker = async (name, args) => {
+      if (get().invokeTool !== invokeCurrentGuest) {
+        return {
+          content: 'The app changed or closed before this action could run. Request its current tools again.',
+          isError: true,
+        }
+      }
+      return invokeTool(name, args)
+    }
+    set({ tools, invokeTool: invokeCurrentGuest })
+  },
   setContextReader: (requestContext) => set({ requestContext }),
   resetGuest: () => {
     const { activeApp } = get()

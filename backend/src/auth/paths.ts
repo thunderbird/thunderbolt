@@ -5,5 +5,11 @@
 /** Where Better Auth is mounted. */
 export const authBasePath = '/v1/api/auth'
 
+/** The provider `buildSsoPlugins` builds from env: the only one SSO sign-in may use. */
+export const configuredSsoProviderId = 'sso'
+
 /** Anonymous sign-in, relative to `authBasePath` (the form Better Auth hooks see). */
 export const anonymousSignInPath = '/sign-in/anonymous'
+
+/** The passkey calls that verify a relayed WebAuthn challenge. */
+export const passkeyVerifyPaths = ['/passkey/verify-registration', '/passkey/verify-authentication']

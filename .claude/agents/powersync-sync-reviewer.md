@@ -43,7 +43,7 @@ Before reviewing, read the relevant architecture docs (don't rely on memory):
 - Confirm account deletion / device removal still hard-deletes this table's rows where required (these are the sanctioned hard-delete paths). Flag a new synced table that account-deletion doesn't clean up.
 
 **6. SharedWorker / internal path**
-- If the diff bumps `@powersync/web`, verify the `powersync-web-internal` alias in `vite.config.ts` (→ `@powersync/web/lib/src`) still resolves and `ThunderboltSharedSyncImplementation` still extends `SharedSyncImplementation`. This can break without a TypeScript error.
+- If the diff bumps `@powersync/web`, verify the `powersync-web-internal` alias in `vite.config.ts` (→ `@powersync/web/lib`) still resolves, `ThunderboltSharedSyncImplementation` still extends `SharedSyncImplementation`, and `@powersync/shared-internals` is pinned to the exact version `@powersync/web` pins (one copy in `bun.lock`). This can break without a TypeScript error.
 
 **7. Sync-classification consistency (sibling tables & half-synced state)**
 

@@ -32,6 +32,7 @@
 import { expect, test } from '../fixtures'
 import { countDeviceSessions, getSigningPublicKey, waitForUserId } from '../db'
 import {
+  backendBaseUrl,
   completeFirstDeviceSetup,
   createE2eeEmail,
   encryptionApiRequest,
@@ -66,24 +67,28 @@ test.describe.serial('A1 — X-Device-ID spoofing and revoked-session replay', (
       // revoked-device-identity.spec.ts). This test proves the *retained token*
       // that outlives that row is refused in practice.
       expect(await countDeviceSessions(userId, attacker.deviceId)).toEqual(0)
+      // The device is held offline, so the attacker copies its bearer token off it
+      // and replays it from outside the browser. Non-vacuity: the 401s below only
+      // mean something if a token is actually sent.
+      const token = await attacker.page.evaluate(() => localStorage.getItem('thunderbolt_auth_token'))
+      expect(token).not.toBeNull()
+      const replay = async (deviceId?: string) => {
+        const response = await attacker.context.request.get(`${backendBaseUrl}${challengePath('revoke')}`, {
+          headers: { Authorization: `Bearer ${token}`, ...(deviceId ? { 'X-Device-ID': deviceId } : {}) },
+        })
+        return response.status()
+      }
 
       // Spoofing its own revoked id: refused at the session layer (401) before
       // ever reaching the getCallerDevice 403.
-      const ownId = await encryptionApiRequest(attacker.page, challengePath('revoke'), {
-        deviceId: attacker.deviceId,
-      })
-      expect(ownId.status).toEqual(401)
+      expect(await replay(attacker.deviceId)).toEqual(401)
 
       // Spoofing a TRUSTED sibling's id — the id whose device-state gate would
       // pass if the session were alive. Only session death stops it.
-      const spoofSibling = await encryptionApiRequest(attacker.page, challengePath('revoke'), {
-        deviceId: adminDeviceId,
-      })
-      expect(spoofSibling.status).toEqual(401)
+      expect(await replay(adminDeviceId)).toEqual(401)
 
       // No device id at all: still 401 (session checked before the 400).
-      const noId = await encryptionApiRequest(attacker.page, challengePath('revoke'), {})
-      expect(noId.status).toEqual(401)
+      expect(await replay()).toEqual(401)
 
       // The attacker changed nothing: the admin is still authenticated and the
       // account signing identity is intact.

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useAuth } from '@/contexts'
 import { themeIcons } from '@/components/theme-icons'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
@@ -14,6 +16,7 @@ import type { I18n, MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { Download, LogOut, MessageCirclePlus, PanelLeft, Trash2 } from 'lucide-react'
+import { isMinimalModeHiddenPath } from '../registry'
 import { buildCreateCommands } from './create-commands'
 import { navigationCommands, type NavGate } from './navigation'
 import type { PaletteCommand, UseCommandsOptions } from './types'
@@ -45,6 +48,11 @@ export type BuildCommandsDeps = {
    *  command titles are module-scope descriptors that need resolving. */
   i18n: I18n
   flags: CommandFlags
+  /** In minimal mode (see `selectMinimalMode`) there is no Settings section or
+   *  Projects, so every `/settings/*` and Projects command is dropped. */
+  minimalMode: boolean
+  /** True for an anonymous session, which has nothing to sign out of. */
+  isAnonymous: boolean
   showDownloadApp: boolean
   isMac: boolean
   onNewChat: () => void
@@ -62,6 +70,7 @@ export type BuildCommandsDeps = {
 export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
   const navCommands: PaletteCommand[] = navigationCommands
     .filter((command) => gateOpen(command.gate, deps.flags))
+    .filter((command) => !(deps.minimalMode && isMinimalModeHiddenPath(command.to)))
     .map(({ id, title, icon, to, keywords }) => ({
       id,
       title: deps.i18n._(title),
@@ -95,6 +104,23 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       ]
     : []
 
+  // An anonymous session has no account to leave (the sidebar treats it as
+  // logged out), and signing out destroys it with no way back to its chats.
+  // Real accounts keep Sign out in every mode: minimal mode hides the account
+  // menu, so the palette is their only way out.
+  const signOutCommands: PaletteCommand[] = deps.isAnonymous
+    ? []
+    : [
+        {
+          id: 'sign-out',
+          title: deps.i18n._(msg`Sign out`),
+          icon: LogOut,
+          section: 'actions',
+          keywords: ['logout', 'log out'],
+          run: deps.onSignOut,
+        },
+      ]
+
   const actionCommands: PaletteCommand[] = [
     ...themeCommands,
     {
@@ -106,14 +132,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       run: deps.onToggleSidebar,
     },
     ...downloadCommands,
-    {
-      id: 'sign-out',
-      title: deps.i18n._(msg`Sign out`),
-      icon: LogOut,
-      section: 'actions',
-      keywords: ['logout', 'log out'],
-      run: deps.onSignOut,
-    },
+    ...signOutCommands,
     {
       id: 'clear-all-chats',
       title: deps.i18n._(msg`Clear all chats`),
@@ -135,7 +154,10 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     run: deps.onNewChat,
   }
 
-  return [...navCommands, newChatCommand, ...buildCreateCommands(deps.i18n), ...actionCommands]
+  // Every create command opens a Settings page, so they go with it.
+  const createCommands = deps.minimalMode ? [] : buildCreateCommands(deps.i18n)
+
+  return [...navCommands, newChatCommand, ...createCommands, ...actionCommands]
 }
 
 /**
@@ -151,9 +173,13 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
   const { toggleSidebar, closeMobileSidebar } = useSidebar()
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const { data: session } = useAuth().useSession()
 
   return buildCommands({
     i18n,
+    minimalMode,
+    isAnonymous: session?.user?.isAnonymous === true,
     flags: {
       voice: experimentalFeatureVoice.value,
       tasks: experimentalFeatureTasks.value,

@@ -8,6 +8,13 @@ const ssoTimeoutMs = 5 * 60 * 1000
 /** Sentinel used to distinguish timeout rejections from real errors */
 const ssoTimeout = Symbol('sso-timeout')
 
+/** The loopback callback reported a failed login. `code` is the untrusted `error` query value. */
+export class SsoCallbackError extends Error {
+  constructor(readonly code: string) {
+    super(code)
+  }
+}
+
 /**
  * Starts an SSO flow using the localhost loopback server and the system browser.
  *
@@ -19,7 +26,7 @@ const ssoTimeout = Symbol('sso-timeout')
  * @param baseUrl - Backend base URL (e.g. `http://localhost:8000`)
  * @param timeoutMs - How long to wait for the user to complete auth (default: 5 minutes)
  * @returns Signed bearer token on success, `null` on timeout
- * @throws On server start failure, network error, or IdP error
+ * @throws On server start failure, network error, or `SsoCallbackError` for an IdP error
  */
 export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeoutMs): Promise<string | null> => {
   const { invoke } = await import('@tauri-apps/api/core')
@@ -57,9 +64,9 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
     ])
 
     const url = new URL(callbackUrl)
-    const error = url.searchParams.get('error_description') ?? url.searchParams.get('error')
+    const error = url.searchParams.get('error')
     if (error) {
-      throw new Error(error)
+      throw new SsoCallbackError(error)
     }
 
     const token = url.searchParams.get('token')

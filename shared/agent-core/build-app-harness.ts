@@ -6,15 +6,16 @@
  * Assembles a Pi {@link AgentHarness} for the APP — the in-browser analogue of
  * the CLI's `buildHarness`. Where the CLI binds a `NodeExecutionEnv` (real bash +
  * `node:fs`) and lets Pi's anthropic provider read `ANTHROPIC_API_KEY`, the app
- * harness runs entirely inside the browser:
+ * harness runs in the app webview with an injected execution environment:
  *
  *   - the model is Pi's anthropic model wired through the caller's injected
  *     `fetch` (the app's CORS proxy) via {@link buildAnthropicModel};
- *   - the execution environment is a {@link BrowserExecutionEnv} over an
- *     OPFS-backed ZenFS mount ({@link mountAgentFs}), with an in-memory fallback;
- *   - the four coding tools (bash/read/write/edit) are bound to that same mount
- *     via {@link createCodingTools} — plain Pi `AgentTool`s over the
- *     {@link BrowserExecutionEnv}, with no `@earendil-works/pi-coding-agent` (and
+ *   - by default, {@link BrowserExecutionEnv} uses an OPFS-backed ZenFS mount
+ *     ({@link mountAgentFs}), with an in-memory fallback; desktop callers can
+ *     instead supply a native environment;
+ *   - the four coding tools (bash/read/write/edit) share that environment
+ *     via {@link createCodingTools} — plain Pi `AgentTool`s, with no
+ *     `@earendil-works/pi-coding-agent` (and
  *     hence no Node child-process/`undici`/TUI) cascade on the app path.
  *
  * Extra `tools` (e.g. the app's MCP tools converted via `./mcp-tools.ts`) are
@@ -150,12 +151,10 @@ export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
 }
 
 /**
- * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
- * (once), carves the thread's isolated workspace under {@link workspaceRoot},
- * binds the coding tools to it, resolves the proxied model (anthropic,
- * OpenAI-compatible, or confidential), and returns the constructed harness. The
- * workspace persists with the harness; tear it down by removing
- * {@link workspaceDirFor}`(threadId)` when the thread is disposed.
+ * Build a ready-to-run app harness, binding coding tools to the supplied environment
+ * or a default isolated ZenFS workspace. Resolves the proxied model (anthropic,
+ * OpenAI-compatible, or confidential) and returns the constructed harness.
+ * Sandbox workspaces are removed on thread disposal; native files belong to the user.
  *
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}

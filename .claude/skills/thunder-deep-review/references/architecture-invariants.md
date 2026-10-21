@@ -14,7 +14,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - Tauri Shell: INV-75..80
 
 ## Identity & Tenancy
-- **INV-01** `user_id` always from JWT, never client payload; sync rules scope every row by `user_id = request.user_id()`. Cross-tenant leak structurally impossible.
+- **INV-01** `user_id` always from JWT, never client payload; the sync streams scope every row to `auth.user_id()`. Cross-tenant leak structurally impossible.
 - **INV-02** `X-Device-ID` mandatory on every PowerSync token request + upload (400 `DEVICE_ID_REQUIRED`).
 - **INV-03** Device id is client-generated UUID v4 in `localStorage[thunderbolt_device_id]`; backend never mints.
 - **INV-04** Email stored lowercase (`normalizeEmail`); lookups must normalize.
@@ -23,7 +23,7 @@ Global properties that survive across subsystems. Verify any change against the 
 ## Trust & Authentication
 - **INV-06** Bearer = `rawToken.HMAC_b64`; verified with `timingSafeEqual`; PowerSync path-2 verifies signature independently.
 - **INV-07** `tauri://localhost` always trusted origin; backend's own origin auto-added.
-- **INV-08** `accountLinking.trustedProviders=['sso']` only when authMode ∈ {oidc, saml}.
+- **INV-08** SSO sign-in links to an existing user only through the `resolveUser` hook, and only when that user's email is verified; the adapter runs native transactions only when authMode ∈ {oidc, saml}.
 - **INV-09** OTP sign-in requires `x-challenge-token` + existing-user-or-approved-waitlist (defense in depth).
 - **INV-10** OAuth integration secrets never leave backend (confidential-client proxy).
 - **INV-11** OAuth redirect URIs: exact CORS match + hardcoded app URL + loopback any-port; HTTPS-on-localhost rejected.
@@ -49,14 +49,14 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-29** Approve-device never touches local non-extractable CK.
 
 ## Sync Pipeline
-- **INV-30** Empty transformer pipeline ⇒ byte-identical to `SqliteBucketStorage`.
+- **INV-30** Lines without bucket data and non-line commands reach `SqliteBucketStorage.control()` byte-identical; sync-data lines are re-encoded in their original format.
 - **INV-31** Re-encoded payload always same wire format (JSON/BSON in = out).
-- **INV-32** Two sync paths — custom SharedWorker (Chrome/Edge/FF) vs main-thread transformer (Safari/iOS/Tauri).
-- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()`.
+- **INV-32** Two sync worker hostings of the same `ThunderboltSharedSyncImplementation` — custom SharedWorker (Chrome/Edge/FF) vs dedicated Worker (Safari/iOS/Tauri); the main-thread adapter carries sync only when it runs in the tab (Android, IndexedDB fallback).
+- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()` still passes its bucket storage as `adapter` (we wrap `sync.webOptions.adapter`).
 - **INV-34** HTTP streaming, not WebSockets (`SyncStreamConnectionMethod.HTTP`).
 - **INV-35** `fetchCredentials` returns `null` (not throw) on auth failure.
 - **INV-36** `uploadData` throws on failure, never `transaction.complete()` — PowerSync retries.
-- **INV-37** Error→reset mapping: 410→account_deleted; 403 DEVICE_DISCONNECTED→device_revoked; 409 DEVICE_ID_TAKEN→reset; 400 DEVICE_ID_REQUIRED→reset; 401→session_expired.
+- **INV-37** Error→reset mapping: 410→account_deleted; 403 DEVICE_DISCONNECTED→device_revoked; 409 DEVICE_ID_TAKEN→reset; 400 DEVICE_ID_REQUIRED→reset; 401→session_expired, which re-asks get-session; get-session answers a revoked X-Device-ID with 403 DEVICE_DISCONNECTED, token or not.
 
 ## Persistence & Soft-Delete
 - **INV-38** Frontend NEVER hard-deletes — `deletedAt = nowIso()`. Hard delete only in account/device flows.
@@ -100,7 +100,7 @@ Global properties that survive across subsystems. Verify any change against the 
 ## Frontend Devices & Reset
 - **INV-71** Single canonical reset: `clearLocalData()` → `window.location.replace(...)`.
 - **INV-72** Current-device-revoked dual-tracked (`powersyncCredentialsInvalid` event + React Query watcher).
-- **INV-73** Sign-in modal suppressed if revoked-modal already fired.
+- **INV-73** Sign-in modal suppressed once a reset (revocation or deletion) is under way.
 - **INV-74** `hadDeviceOnceRef` distinguishes first-load from post-deletion sync wipe.
 
 ## Tauri Shell

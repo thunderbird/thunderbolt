@@ -14,10 +14,10 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
+import { DeviceRevoked } from '@/components/device-revoked'
 import { SignedOut } from '@/components/signed-out'
 import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
-import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
@@ -26,6 +26,7 @@ import WaitlistPage from '@/waitlist/waitlist-page'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
@@ -49,7 +50,6 @@ import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
-import { useCredentialEvents } from './hooks/use-credential-events'
 import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
 import { RecoveryKeyDialog } from './components/recovery-key-dialog'
 import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
@@ -118,6 +118,8 @@ const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 // Lazily import SSO components so non-enterprise deployments don't pay
 // for the extra bundle size and attack surface.
 const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+// Enterprise-only like SsoRedirect, and reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
+const SsoError = lazy(() => import('@/components/sso-error'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -142,6 +144,7 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useBootstrapSystemAgents()
   useAppLanguage()
+  useAnalyticsConsent()
   useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
@@ -198,6 +201,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
+        {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (
@@ -248,6 +252,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Fallback routes - no guards */}
         <Route path="/signed-out" element={<SignedOut />} />
         <Route path="/account-deleted" element={<AccountDeleted />} />
+        <Route path="/device-revoked" element={<DeviceRevoked />} />
         <Route path="/not-found" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/not-found" replace />} />
       </Routes>
@@ -288,7 +293,6 @@ export const App = () => {
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
-  const { revokedDeviceOpen } = useCredentialEvents()
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
@@ -409,9 +413,6 @@ export const App = () => {
         <LazyMotion features={loadMotionFeatures} strict>
           {renderAppContent()}
           <WindowControls />
-          {/* The upgrade blocker replaces the whole app, so it must win over the
-              revoked-device modal that renders outside renderAppContent. */}
-          <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
           {/* Seamless v1→v2 migration completed at init — show the new recovery
               phrase once. Blocked while the upgrade screen owns the viewport; the
               phrase is not lost in that case, because the mint marked it pending

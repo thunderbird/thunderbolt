@@ -19,10 +19,34 @@ msgid "If this wasn’t you, revoke that device from Settings → Devices and ch
 msgstr "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
 
 #. js-lingui-explicit-id
-#: src/emails/security-code.tsx
 #: src/lib/security-notifications.tsx
 msgid "Confirm your recovery phrase change"
 msgstr "Confirm your recovery phrase change"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
+msgstr "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
+msgstr "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Confirm your account deletion"
+msgstr "Confirm your account deletion"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
+msgstr "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
+msgstr "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
@@ -128,16 +152,6 @@ msgstr "Use the code below to sign in, or click the button."
 #: src/emails/magic-link.tsx
 msgid "Sign In"
 msgstr "Sign In"
-
-#. js-lingui-explicit-id
-#: src/emails/security-code.tsx
-msgid "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
-msgstr "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
-
-#. js-lingui-explicit-id
-#: src/emails/security-code.tsx
-msgid "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
-msgstr "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx

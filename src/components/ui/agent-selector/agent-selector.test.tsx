@@ -177,10 +177,35 @@ describe('AgentSelector', () => {
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('renders without crashing when only the built-in agent is available', () => {
-    const onSelect = mock(() => {})
-    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={onSelect} />)
+  it('is a plain label, with no menu, when there is one agent and no way to add another', () => {
+    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} disabled />)
 
-    expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent('Thunderbolt')
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    expect(trigger).toHaveTextContent('Thunderbolt')
+    expect(trigger.closest('button')).toBeNull()
+    // Not dimmed by `disabled`: there is no switch to hold back during a reply.
+    expect(trigger).not.toHaveClass('opacity-60')
+
+    fireEvent.click(trigger)
+
+    expect(screen.getAllByText('Thunderbolt')).toHaveLength(1)
+  })
+
+  describe('when the only available agent is not the selected one', () => {
+    // A chat created before hosted-agent discovery finished keeps the built-in
+    // fallback, so the hosted agent is the one choice and must stay reachable.
+    const openAndPick = () => {
+      const onSelect = mock()
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[systemAgent]} onSelect={onSelect} />)
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      return onSelect
+    }
+
+    it('keeps the menu', () => {
+      const onSelect = openAndPick()
+
+      fireEvent.click(screen.getByText('RAG Chat'))
+      expect(onSelect).toHaveBeenCalledWith(systemAgent)
+    })
   })
 })

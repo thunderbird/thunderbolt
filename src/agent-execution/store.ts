@@ -5,7 +5,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ExecutionLocation = 'sandbox' | 'computer' | 'cloud'
 export type AgentExecution = { access: 'ask' | 'full' } & (
   | { location: 'computer'; cwd: string }
   | { location: 'sandbox' | 'cloud'; cwd?: string }

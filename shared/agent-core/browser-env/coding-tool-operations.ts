@@ -23,28 +23,23 @@ export type BashOperations = {
 
 /** File-read backend for the read tool. */
 export type ReadOperations = {
-  readFile: (absolutePath: string) => Promise<Buffer>
-  access: (absolutePath: string) => Promise<void>
+  readFile: (absolutePath: string, signal?: AbortSignal) => Promise<Buffer>
 }
 
 /** File-write backend for the write tool. */
 export type WriteOperations = {
-  writeFile: (absolutePath: string, content: string) => Promise<void>
+  writeFile: (absolutePath: string, content: string, signal?: AbortSignal) => Promise<void>
 }
 
 /** File read/write backend for the edit tool. */
-export type EditOperations = {
-  readFile: (absolutePath: string) => Promise<Buffer>
-  writeFile: (absolutePath: string, content: string) => Promise<void>
-  access: (absolutePath: string) => Promise<void>
-}
+export type EditOperations = ReadOperations & WriteOperations
 
 /**
- * Build bash operations that run every command through `env` (just-bash over the
- * shared ZenFS mount). Streams stdout and stderr to the tool via `onData` and
+ * Build bash operations that run every command through the selected environment.
+ * Streams stdout and stderr to the tool via `onData` and
  * surfaces the env's encoded failures by throwing them.
  *
- * @param env - the browser execution environment bound to the agent's cwd
+ * @param env - the execution environment bound to the agent's cwd
  */
 export const createBashOperations = (env: CodingEnvironment): BashOperations => ({
   exec: async (command, cwd, { onData, signal, timeout }) => {
@@ -74,16 +69,13 @@ const unwrap = <T>(result: Result<T, FileError>): T => {
 
 /** Build file reads over the selected execution environment. */
 export const createReadOperations = (env: CodingEnvironment): ReadOperations => ({
-  readFile: async (path) => Buffer.from(unwrap(await env.readBinaryFile(path))),
-  access: async (path) => {
-    unwrap(await env.readBinaryFile(path))
-  },
+  readFile: async (path, signal) => Buffer.from(unwrap(await env.readBinaryFile(path, signal))),
 })
 
 /** Build file writes; the environment creates parent directories. */
 export const createWriteOperations = (env: CodingEnvironment): WriteOperations => ({
-  writeFile: async (path, content) => {
-    unwrap(await env.writeFile(path, content))
+  writeFile: async (path, content, signal) => {
+    unwrap(await env.writeFile(path, content, signal))
   },
 })
 

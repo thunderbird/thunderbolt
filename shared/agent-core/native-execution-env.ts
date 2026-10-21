@@ -23,7 +23,7 @@ export class NativeExecutionEnv implements CodingEnvironment {
     signal?: AbortSignal,
   ): Promise<Result<T, FileError>> {
     if (signal?.aborted) {
-      return err(new FileError('unknown', 'aborted', path ?? this.cwd))
+      return err(new FileError('aborted', 'aborted', path ?? this.cwd))
     }
     try {
       return ok(await this.invoke<T>('agent_fs', { cwd: this.cwd, operation, path, ...extra }))

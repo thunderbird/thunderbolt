@@ -8,7 +8,12 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::{collections::HashMap, path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tauri::Manager;
 #[cfg(desktop)]
 use tauri_plugin_dialog::DialogExt;
@@ -205,24 +210,56 @@ pub struct ShellOutput {
     failure: Option<&'static str>,
 }
 
+#[derive(Default)]
+struct CapturedOutput {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
 // Continue draining after the cap so a verbose child cannot deadlock on its pipe.
-async fn capture(mut stream: impl tokio::io::AsyncRead + Unpin) -> Result<String, String> {
+async fn capture(
+    mut stream: impl tokio::io::AsyncRead + Unpin,
+    output: Arc<Mutex<CapturedOutput>>,
+) -> Result<(), String> {
     const LIMIT: usize = 4 * 1024 * 1024;
-    let mut output = Vec::new();
     let mut buffer = [0; 8192];
-    let mut truncated = false;
     loop {
         let count = stream.read(&mut buffer).await.map_err(|e| e.to_string())?;
         if count == 0 {
             break;
         }
-        let retained = count.min(LIMIT - output.len());
-        output.extend_from_slice(&buffer[..retained]);
-        truncated |= retained < count;
+        let mut output = output.lock().map_err(|e| e.to_string())?;
+        let retained = count.min(LIMIT - output.bytes.len());
+        output.bytes.extend_from_slice(&buffer[..retained]);
+        output.truncated |= retained < count;
     }
-    let mut text = String::from_utf8_lossy(&output).into_owned();
-    if truncated {
+    Ok(())
+}
+
+async fn finish_capture(
+    mut task: tokio::task::JoinHandle<Result<(), String>>,
+    output: Arc<Mutex<CapturedOutput>>,
+) -> Result<String, String> {
+    // Detached descendants can retain the pipe after the shell is gone. Preserve
+    // what we read, but never let pipe cleanup keep Stop or timeout pending.
+    let drain_timed_out = match tokio::time::timeout(Duration::from_millis(250), &mut task).await {
+        Ok(result) => {
+            result.map_err(|e| e.to_string())??;
+            false
+        }
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            true
+        }
+    };
+    let output = output.lock().map_err(|e| e.to_string())?;
+    let mut text = String::from_utf8_lossy(&output.bytes).into_owned();
+    if output.truncated {
         text.push_str("\n[Output exceeded 4 MiB; truncated]");
+    }
+    if drain_timed_out {
+        text.push_str("\n[Stopped capturing output from a detached process]");
     }
     Ok(text)
 }
@@ -230,7 +267,7 @@ async fn capture(mut stream: impl tokio::io::AsyncRead + Unpin) -> Result<String
 async fn stop_process_tree(pid: u32) {
     #[cfg(unix)]
     unsafe {
-        // The child has its own process group, so descendants cannot survive Stop.
+        // Kill the shell's group. Descendants that deliberately detach are outside it.
         libc::kill(-(pid as i32), libc::SIGKILL);
     }
     #[cfg(windows)]
@@ -274,8 +311,16 @@ async fn run_shell(
     builder.process_group(0);
     let mut child = builder.spawn().map_err(|e| e.to_string())?;
     let pid = child.id().ok_or("Missing process id")?;
-    let stdout = tokio::spawn(capture(child.stdout.take().ok_or("Missing stdout")?));
-    let stderr = tokio::spawn(capture(child.stderr.take().ok_or("Missing stderr")?));
+    let stdout_output = Arc::new(Mutex::new(CapturedOutput::default()));
+    let stderr_output = Arc::new(Mutex::new(CapturedOutput::default()));
+    let stdout = tokio::spawn(capture(
+        child.stdout.take().ok_or("Missing stdout")?,
+        stdout_output.clone(),
+    ));
+    let stderr = tokio::spawn(capture(
+        child.stderr.take().ok_or("Missing stderr")?,
+        stderr_output.clone(),
+    ));
     let outcome = tokio::select! {
         status = child.wait() => status.map(|s| (s.code().unwrap_or(-1), None)).map_err(|e| e.to_string()),
         _ = cancel.changed() => Ok((-1, Some("aborted"))),
@@ -284,10 +329,14 @@ async fn run_shell(
     stop_process_tree(pid).await;
     let _ = child.kill().await;
     let _ = child.wait().await;
+    let (stdout, stderr) = tokio::join!(
+        finish_capture(stdout, stdout_output),
+        finish_capture(stderr, stderr_output)
+    );
     let (exit_code, failure) = outcome?;
     Ok(ShellOutput {
-        stdout: stdout.await.map_err(|e| e.to_string())??,
-        stderr: stderr.await.map_err(|e| e.to_string())??,
+        stdout: stdout?,
+        stderr: stderr?,
         exit_code,
         failure,
     })
@@ -319,6 +368,41 @@ pub async fn agent_exec(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn detached_pipe_cannot_hold_completion_and_keeps_partial_output() {
+        let (mut writer, reader) = tokio::io::duplex(64);
+        writer.write_all(b"partial output").await.unwrap();
+        // Keep the writer alive, as a detached child inheriting the pipe would.
+        let output = Arc::new(Mutex::new(CapturedOutput::default()));
+        let capture_task = tokio::spawn(capture(reader, output.clone()));
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), finish_capture(capture_task, output))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            result,
+            "partial output\n[Stopped capturing output from a detached process]"
+        );
+        assert!(writer.write_all(b"after completion").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn capture_drains_large_output_and_marks_truncation() {
+        let (mut writer, reader) = tokio::io::duplex(8192);
+        let output = Arc::new(Mutex::new(CapturedOutput::default()));
+        let capture_task = tokio::spawn(capture(reader, output.clone()));
+        writer
+            .write_all(&vec![b'x'; 4 * 1024 * 1024 + 1])
+            .await
+            .unwrap();
+        drop(writer);
+        let text = finish_capture(capture_task, output).await.unwrap();
+        assert!(text.starts_with(&"x".repeat(4 * 1024 * 1024)));
+        assert!(text.ends_with("[Output exceeded 4 MiB; truncated]"));
+    }
 
     #[test]
     fn host_paths_and_regular_file_reads() {
@@ -341,12 +425,19 @@ mod tests {
     async fn stop_cancels_a_running_process_group() {
         let dir = tempfile::tempdir().unwrap();
         let (sender, cancel) = watch::channel(false);
+        let started = dir.path().join("started");
         let stop = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(30)).await;
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !started.exists() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("descendant did not start");
             sender.send_replace(true);
         });
         let result = run_shell(
-            "(sleep 0.3; touch unwanted) & wait",
+            "(touch started; sleep 0.3; touch unwanted) & wait",
             dir.path().to_str().unwrap(),
             HashMap::new(),
             5.0,
@@ -403,16 +494,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (_sender, cancel) = watch::channel(false);
         let result = run_shell(
-            "(sleep 0.3; touch unwanted) & wait",
+            "(touch started; sleep 1.5; touch unwanted) & wait",
             dir.path().to_str().unwrap(),
             HashMap::new(),
-            0.05,
+            0.5,
             cancel,
         )
         .await
         .unwrap();
         assert_eq!(result.failure, Some("timeout"));
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(
+            dir.path().join("started").exists(),
+            "descendant must have started before timeout"
+        );
+        tokio::time::sleep(Duration::from_millis(1600)).await;
         assert!(!dir.path().join("unwanted").exists());
     }
 }

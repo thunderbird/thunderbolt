@@ -156,7 +156,7 @@ falsify, not a fact.
   is a wire-format change rather than a comment someone implements. (2) A2 never holds another
   account's AK in openable form: only wrappings to that account's own device public keys, plus the
   org-escrow envelope, which is C11's deliberate operator concession. (3) A `user_id` never changes
-  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:414`) deletes the anonymous user
+  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:641`) deletes the anonymous user
   outright, so no ciphertext survives an id change. Any change to (1) or (2) invalidates this claim
   and must revisit the AAD. **Adding the account id to the AAD was considered and rejected**
   (THU-891, cancelled): it closes nothing reachable, and against the one path that *is* reachable —
@@ -315,9 +315,11 @@ falsify, not a fact.
   untagged: the attacker dies at the gate with the anchor unmoved) and the gate matrix in
   `backend/src/api/encryption-v2.test.ts`. **Boundary + residuals:** full device/OS compromise is
   out of scope — the guarantee is that a TRANSIENT, ORIGIN-LEVEL compromise cannot become permanent
-  takeover. The interim step-up factor is an email OTP, defeatable by an attacker who also reads the
-  victim's inbox in the same browser; the factor upgrades to a passkey/PRF assertion when THU-790
-  lands (recorded there), and the notification remains the net beneath the gate either way.
+  takeover **through the recovery anchor**. The passkey slot is the exception: enrolling it has no
+  step-up (see [Known and accepted](#known-and-accepted)). The interim step-up factor is an email
+  OTP, defeatable by an attacker who also reads the victim's inbox in the same browser; upgrading it
+  to a passkey/PRF assertion is a follow-up, and the notification remains the net beneath the gate
+  either way.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.
@@ -414,6 +416,19 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
 - **Decrypt-failure handling and keys-before-data ordering** are deferred (planning gaps G2/G3);
   PowerSync retries make naive fail-closed poison the sync loop.
 - **Device fingerprint verification at approval** (Signal-style code compare) is deferred (G5).
+- **Whoever controls the passkey can unlock the account's data.** The passkey slot is a virtual
+  device keyed by the passkey's PRF output, so anyone who can use the passkey — including anyone in
+  control of the account at its synced provider (iCloud Keychain, Google Password Manager, a password
+  manager) — can unlock sync on a new device. Same trade as Tinfoil and 1Password; the recovery
+  phrase and device approval remain as independent ways in.
+- **Enrolling a passkey slot has no step-up.** Unlike a recovery-phrase change, a rotation that adds
+  the slot needs only the `rotate` proof, so A6 on a trusted device can plant a slot for keys it
+  controls and keep receiving the AK through later rotations, revocations included. And it isn't
+  reliably visible: the server only checks that the slot names one of the user's passkeys, so a
+  planted slot can sit under the user's real passkey and Preferences looks the same. Removing the
+  passkey (from a device with sync on) rotates the slot away and mints a new primary DEK, which
+  stops future unlocks; any device that already unlocked through the slot must still be revoked.
+  A step-up gate is a follow-up.
 
 ## Consumers
 

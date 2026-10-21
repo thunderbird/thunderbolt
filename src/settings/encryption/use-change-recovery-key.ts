@@ -7,7 +7,12 @@ import { msg } from '@lingui/core/macro'
 import { useHttpClient, type HttpClient } from '@/contexts'
 import { i18n } from '@/i18n'
 import { postStepUpRequest } from '@/api/encryption'
-import { changeRecoveryPhrase, RotationStaleError, StepUpVerificationError } from '@/services/encryption'
+import {
+  changeRecoveryPhrase,
+  PasskeyAnchorError,
+  RotationStaleError,
+  StepUpVerificationError,
+} from '@/services/encryption'
 
 // `msg` at module scope, resolved with `i18n._` in the handler below: a
 // module-scope `t` would freeze these to the boot locale. Resolving eagerly is
@@ -17,12 +22,17 @@ const codeRequestFailed = msg`Failed to send the verification code`
 const codeRejected = msg`That code is invalid or expired. Check your email and try again.`
 const rotationStale = msg`Your account keys changed while preparing the new phrase. Please try again.`
 const rotationFailed = msg`Failed to change the recovery phrase`
+const passkeyAnchorFailed = msg`Your passkey's sync keys couldn't be verified. Remove the passkey in Settings → Preferences on the web, then try again.`
 
 type ChangeRecoveryKeyState = {
   /** idle → confirming (dialog open) → stepUp (emailed code entry) → display (new phrase shown) → idle */
   status: 'idle' | 'confirming' | 'stepUp' | 'display'
-  /** Covers both the code request and the rotation — whichever is in flight. */
-  isBusy: boolean
+  /**
+   * Which request is in flight. Not a boolean: the step-up dialog's submit
+   * spinner must not claim the rotation started when only a code is being
+   * emailed (a resend).
+   */
+  busy: 'none' | 'request' | 'rotate'
   otp: string
   newRecoveryKey: string | null
   error: string | null
@@ -43,7 +53,7 @@ type ChangeRecoveryKeyAction =
 
 export const initialState: ChangeRecoveryKeyState = {
   status: 'idle',
-  isBusy: false,
+  busy: 'none',
   otp: '',
   newRecoveryKey: null,
   error: null,
@@ -56,18 +66,19 @@ export const reducer = (state: ChangeRecoveryKeyState, action: ChangeRecoveryKey
     case 'CANCEL':
       return initialState
     case 'START_REQUEST':
+      return { ...state, busy: 'request', error: null }
     case 'START_ROTATION':
-      return { ...state, isBusy: true, error: null }
+      return { ...state, busy: 'rotate', error: null }
     case 'CODE_SENT':
-      return { ...state, status: 'stepUp', isBusy: false, otp: '', error: null }
+      return { ...state, status: 'stepUp', busy: 'none', otp: '', error: null }
     // Stay on the current dialog so its action button doubles as the retry
     // affordance (the code request and RotationStaleError are both retryable).
     case 'REQUEST_FAILED':
     case 'ROTATION_FAILED':
-      return { ...state, isBusy: false, error: action.payload }
+      return { ...state, busy: 'none', error: action.payload }
     // Wrong/expired code: clear it so the input is ready for a fresh attempt.
     case 'CODE_REJECTED':
-      return { ...state, isBusy: false, otp: '', error: action.payload }
+      return { ...state, busy: 'none', otp: '', error: action.payload }
     case 'OTP_CHANGED':
       return { ...state, otp: action.payload }
     case 'ROTATION_SUCCESS':
@@ -127,6 +138,10 @@ export const useChangeRecoveryKey = (
         dispatch({ type: 'ROTATION_FAILED', payload: i18n._(rotationStale) })
         return
       }
+      if (err instanceof PasskeyAnchorError) {
+        dispatch({ type: 'ROTATION_FAILED', payload: i18n._(passkeyAnchorFailed) })
+        return
+      }
       const message = err instanceof Error ? err.message : i18n._(rotationFailed)
       dispatch({ type: 'ROTATION_FAILED', payload: message })
     }
@@ -134,6 +149,8 @@ export const useChangeRecoveryKey = (
 
   return {
     ...state,
+    isBusy: state.busy !== 'none',
+    isSubmitting: state.busy === 'rotate',
     openConfirm,
     cancel,
     setOtp,

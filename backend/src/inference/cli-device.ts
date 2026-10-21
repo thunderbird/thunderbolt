@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isCliDeviceId } from '@/dal/devices'
-import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { cliRegistrationPendingDeviceId, isCliGrantSession } from '@/dal/sessions'
 import { devicesTable } from '@/db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { InferenceDatabase } from './usage-ledger'
@@ -25,7 +24,7 @@ export const rejectUnregisteredCliDevice = async (
   }
 
   const deviceId = session.deviceId
-  if (deviceId !== cliRegistrationPendingDeviceId && (!deviceId || !isCliDeviceId(deviceId))) {
+  if (!isCliGrantSession(deviceId)) {
     return
   }
 

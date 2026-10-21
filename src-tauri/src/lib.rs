@@ -46,6 +46,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_haptics::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_passkey::init())
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
             agent_execution::agent_pick_workspace,

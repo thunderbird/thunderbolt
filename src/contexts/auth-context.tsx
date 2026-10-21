@@ -112,14 +112,7 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
-/**
- * The headers every Better Auth request must carry.
- *
- * Also spread into a per-call `fetchOptions.headers`: better-fetch REPLACES that
- * object rather than merging it, so a call site setting only its own header
- * would drop `X-App-Version` — and the version gate is fail-closed, so the
- * request comes back 426 on a build that is perfectly up to date.
- */
+/** The headers every Better Auth request must carry. `buildFetchOptions` sets them on each request. */
 export const authRequestHeaders = (
   extra: Record<string, string> = {},
   platform: string = getPlatform(),
@@ -130,16 +123,20 @@ export const authRequestHeaders = (
   ...extra,
 })
 
+/**
+ * Sign-in endpoints answer a failed attempt with 401. That says nothing about a
+ * session the device already holds (a signed-in user confirming it's them, or
+ * trying a passkey), so it must not be read as that session expiring.
+ */
+const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
+
+const isSignInRequest = (url: URL | string | undefined): boolean =>
+  url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  // Applied per request instead of through `headers`. better-fetch merges the
-  // client-level and per-call options with a shallow spread
-  // (`{...config, ...options}`), so any call passing its own
-  // `fetchOptions.headers` — OTP verify, magic-link verify, both of which send a
-  // challenge token — replaced a client-level `headers` object wholesale.
-  // `onRequest` survives that spread because no call site overrides it, and
-  // re-reading the locale per request keeps it from being frozen at client
-  // construction, before the synced setting has hydrated.
+  // Applied per request instead of through `headers` so the locale is re-read on
+  // every call, not frozen at client construction before the synced setting hydrates.
   onRequest: (ctx: { headers: Headers }) => {
     for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
       ctx.headers.set(key, value)
@@ -155,7 +152,7 @@ export const buildFetchOptions = (platform: string) => ({
       setAuthToken(token)
     }
   },
-  onError: (ctx: { response: Response }) => {
+  onError: (ctx: { response: Response; request?: { url: URL | string } }) => {
     // A 426 from our backend means this build is below the enforced minimum —
     // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
     // below). Status-only: the response body belongs to Better Auth here.
@@ -163,7 +160,7 @@ export const buildFetchOptions = (platform: string) => ({
       handleAppVersionUnsupported(ctx.response.status)
       return
     }
-    if (ctx.response?.status !== 401) {
+    if (ctx.response?.status !== 401 || isSignInRequest(ctx.request?.url)) {
       return
     }
     // Capture token presence BEFORE clearing — only a 401 against an existing token signals a real
@@ -240,16 +237,15 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     void consumePendingSsoAnonAlias(value.authClient)
   }, [value])
 
-  // Validate the stored token on mount via HttpClient — its afterResponse hook fires
-  // session_expired on the first 401. Avoids Better Auth's auth client to sidestep its
-  // internal retry path. Ref guards against StrictMode's double mount.
+  // Check the session on mount via HttpClient — its afterResponse hook fires
+  // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
+  // Runs without a token too: a revoked device whose token an earlier 401 cleared still
+  // gets its 403. Avoids Better Auth's auth client to sidestep its internal retry path.
+  // Ref guards against StrictMode's double mount.
   const httpClient = useHttpClient()
   const sessionCheckFiredRef = useRef(false)
   useEffect(() => {
     if (!value?.authClient || sessionCheckFiredRef.current) {
-      return
-    }
-    if (!getAuthToken()) {
       return
     }
     sessionCheckFiredRef.current = true

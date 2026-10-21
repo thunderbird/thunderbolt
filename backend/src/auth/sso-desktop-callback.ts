@@ -6,6 +6,7 @@ import { randomBytes } from 'crypto'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
+import { configuredSsoProviderId } from './paths'
 
 const sessionCookieName = 'better-auth.session_token'
 const nonceCookieName = 'thunderbolt_desktop_sso_nonce'
@@ -49,7 +50,7 @@ const errorHtml = (message: string) =>
  * Mounted under `/api/auth/sso/` so cookies share the same path as
  * Better Auth's SSO callback endpoints.
  */
-export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
+export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: typeof fetch = globalThis.fetch) => {
   // Only mount in SSO mode — in consumer mode these endpoints are unused
   // and desktop-initiate would fail with a confusing 502.
   if (settings.authMode === 'consumer') {
@@ -78,10 +79,11 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // Call Better Auth's SSO sign-in endpoint via HTTP. Uses the configured
           // betterAuthUrl which works behind reverse proxies. A direct internal API call
           // would avoid the network hop but couples tightly to Better Auth internals.
-          const ssoResponse = await fetch(`${baseUrl}/v1/api/auth/sign-in/sso`, {
+          const ssoResponse = await fetchFn(`${baseUrl}/v1/api/auth/sign-in/sso`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId: 'sso', callbackURL }),
+            // Without errorCallbackURL, Better Auth sends a failed login to its own error page on the API host.
+            body: JSON.stringify({ providerId: configuredSsoProviderId, callbackURL, errorCallbackURL: callbackURL }),
           })
 
           if (!ssoResponse.ok) {
@@ -149,6 +151,21 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
             })
           }
 
+          // Clear the nonce cookie so it can't be replayed
+          const redirectToApp = (search: string) =>
+            new Response(null, {
+              status: 302,
+              headers: [
+                ['location', `http://127.0.0.1:${port}/?${search}`],
+                ['set-cookie', `${nonceCookieName}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
+              ],
+            })
+
+          // A failed login arrives here too (see errorCallbackURL in desktop-initiate): hand the code to the app.
+          if (query.error) {
+            return redirectToApp(`error=${encodeURIComponent(query.error)}`)
+          }
+
           const encodedToken = parseCookieValue(cookieHeader, sessionCookieName)
           if (!encodedToken) {
             return new Response(errorHtml('Session not found. Please try signing in again from the app.'), {
@@ -161,18 +178,12 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // and may be URL-encoded by the browser. Decode it before forwarding.
           const bearerToken = decodeURIComponent(encodedToken)
 
-          // Clear the nonce cookie so it can't be replayed
-          return new Response(null, {
-            status: 302,
-            headers: [
-              ['location', `http://127.0.0.1:${port}/?token=${encodeURIComponent(bearerToken)}`],
-              ['set-cookie', `${nonceCookieName}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
-            ],
-          })
+          return redirectToApp(`token=${encodeURIComponent(bearerToken)}`)
         },
         {
           query: t.Object({
             loopback_port: t.String(),
+            error: t.Optional(t.String()),
           }),
         },
       )

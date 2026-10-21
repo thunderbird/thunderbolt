@@ -32,7 +32,7 @@ helm unittest deploy/k8s
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
-`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
 
 ### `shared/agent-core`
 
@@ -253,6 +253,8 @@ Each anchor records a breakage:
 - **`openSidebarOnMobile(page)`**: opens the mobile drawer before a test selects sidebar content; a no-op on desktop, which already renders it.
 - **`collectPageErrors(page)`**: subscribes to `pageerror` and returns an errors array, filtering harmless Tauri-only noise (`__TAURI__`, `convertFileSrc`).
 
+For a German browser, use `deTest` from `e2e/test.ts` instead of `test.use({ locale: 'de-DE' })`. Chromium applies `locale` only to pages Playwright is attached to, so the page a redirect leaves reads the host's languages (`en-US` on CI) and can write them into storage for the next page. `deTest` also passes `--accept-lang=de-DE,de`, which makes the browser itself German. A test for another non-English locale needs the same launch option.
+
 ### Current Specs
 
 `oidc` project:
@@ -296,6 +298,8 @@ Each anchor records a breakage:
 - Keep each spec to one user-visible flow. The suite is a smoke test, not a regression matrix: unit-test branching logic, use e2e for "does the whole thing boot".
 
 ### Nightly E2E
+
+It runs inside [`nightly-pipeline.yml`](../../../.github/workflows/nightly-pipeline.yml) at 04:00 UTC and gates the release.
 
 [`nightly.yml`](../../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, against PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit against in-memory test backends. The PR workflow, [`e2e.yml`](../../../.github/workflows/e2e.yml), runs Chromium only.
 

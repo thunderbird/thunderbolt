@@ -20,8 +20,8 @@ export const AgentExecutionControls = ({ threadId, disabled }: { threadId: strin
   const { t } = useLingui()
   const state = useAgentExecutionControlsState(threadId)
   const { execution, setExecution } = state
-  const computer = execution.location === 'computer'
-  const full = execution.access === 'full'
+  const isComputer = execution.location === 'computer'
+  const hasFullAccess = execution.access === 'full'
   return (
     <>
       <DropdownMenu>
@@ -32,10 +32,10 @@ export const AgentExecutionControls = ({ threadId, disabled }: { threadId: strin
             size="icon"
             disabled={disabled || state.pending}
             aria-label={t`Agent location`}
-            title={computer ? t`This computer` : t`Local sandbox`}
+            title={isComputer ? t`This computer` : t`Local sandbox`}
             className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
           >
-            {computer ? (
+            {isComputer ? (
               <Monitor className="size-[var(--icon-size-default)]" />
             ) : (
               <Box className="size-[var(--icon-size-default)]" />
@@ -51,7 +51,7 @@ export const AgentExecutionControls = ({ threadId, disabled }: { threadId: strin
                   <Trans>This computer</Trans>
                 </div>
                 <p className="break-all text-muted-foreground text-[length:var(--font-size-xs)]">
-                  {computer ? execution.cwd : <Trans>Real files and commands on your computer</Trans>}
+                  {isComputer ? execution.cwd : <Trans>Real files and commands on your computer</Trans>}
                 </p>
               </div>
             </DropdownMenuItem>
@@ -92,13 +92,13 @@ export const AgentExecutionControls = ({ threadId, disabled }: { threadId: strin
             size="icon"
             disabled={disabled || state.pending}
             aria-label={t`Agent access`}
-            title={full ? t`Full access` : t`Ask for approval`}
+            title={hasFullAccess ? t`Full access` : t`Ask for approval`}
             className={cn(
               'size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground',
-              full && 'text-destructive hover:text-destructive data-[state=open]:text-destructive',
+              hasFullAccess && 'text-destructive hover:text-destructive data-[state=open]:text-destructive',
             )}
           >
-            {full ? (
+            {hasFullAccess ? (
               <ShieldAlert className="size-[var(--icon-size-default)]" />
             ) : (
               <ShieldCheck className="size-[var(--icon-size-default)]" />

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { chatTitleLabel } from '@/lib/title-generator'
 
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -97,7 +98,8 @@ const ChatItemActions = ({
 }: {
   Item: MenuItemComponent
   onRename: () => void
-  onMove: () => void
+  /** Absent where chats cannot be moved into projects (minimal mode). */
+  onMove?: () => void
   onDelete: () => void
   deleteLabel: ReactNode
   isDeletePending: boolean
@@ -107,10 +109,12 @@ const ChatItemActions = ({
       <Pencil className="size-4 mr-2" />
       <Trans>Rename</Trans>
     </Item>
-    <Item onClick={onMove} className="cursor-pointer">
-      <FolderInput className="size-4 mr-2" />
-      <Trans>Move to project</Trans>
-    </Item>
+    {onMove && (
+      <Item onClick={onMove} className="cursor-pointer">
+        <FolderInput className="size-4 mr-2" />
+        <Trans>Move to project</Trans>
+      </Item>
+    )}
     <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
       {deleteLabel}
     </Item>
@@ -132,6 +136,8 @@ export const ChatListItem = memo(
     useChat = useChat_default,
   }: ChatListItemComponentProps) => {
     const { i18n, t } = useLingui()
+    // Minimal mode has no projects to move a chat into or drag it onto.
+    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
     const chatInstance = useChatStore((state) => state.sessions.get(thread.id)?.chatInstance)
 
     const { status } = useChat(
@@ -152,6 +158,7 @@ export const ChatListItem = memo(
       isDragging,
     } = useDraggable({
       id: chatDragId(thread.id),
+      disabled: minimalMode,
       // Carried on the drag so the sidebar can render a preview and decide
       // whether "Remove from project" applies, with no extra query.
       data: { title: thread.title, projectId: thread.projectId ?? null } satisfies ChatDragData,
@@ -280,11 +287,15 @@ export const ChatListItem = memo(
                 icon: <Pencil className="size-4" />,
                 onSelect: startRename,
               },
-              {
-                label: t`Move to project`,
-                icon: <FolderInput className="size-4" />,
-                onSelect: startMove,
-              },
+              ...(minimalMode
+                ? []
+                : [
+                    {
+                      label: t`Move to project`,
+                      icon: <FolderInput className="size-4" />,
+                      onSelect: startMove,
+                    },
+                  ]),
               {
                 label: t`Delete`,
                 icon: deleteIcon,
@@ -361,7 +372,7 @@ export const ChatListItem = memo(
                 <ChatItemActions
                   Item={ContextMenuItem}
                   onRename={startRename}
-                  onMove={startMove}
+                  onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}
@@ -378,7 +389,7 @@ export const ChatListItem = memo(
                 <ChatItemActions
                   Item={DropdownMenuItem}
                   onRename={startRename}
-                  onMove={startMove}
+                  onMove={minimalMode ? undefined : startMove}
                   onDelete={startDelete}
                   deleteLabel={deleteLabel}
                   isDeletePending={deleteChatMutation.isPending}

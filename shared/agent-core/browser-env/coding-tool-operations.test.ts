@@ -122,11 +122,9 @@ describe('file operation adapters (real in-memory ZenFS)', () => {
     expect(buf.toString('utf8')).toBe('seed-content')
   })
 
-  it('access resolves for an existing file and rejects (ENOENT) for a missing one', async () => {
+  it('readFile rejects with not_found for a missing file', async () => {
     const ops = createReadOperations(fileEnv)
-    await expect(ops.access(`${dir}/seed.txt`)).resolves.toBeUndefined()
-    // The edit tool branches on this rejection to distinguish edit vs create.
-    await expect(ops.access(`${dir}/missing.txt`)).rejects.toMatchObject({ code: 'not_found' })
+    await expect(ops.readFile(`${dir}/missing.txt`)).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('write mkdir creates nested dirs recursively; the file is then visible to the read adapter (shared mount)', async () => {
@@ -148,8 +146,8 @@ describe('file operation adapters (real in-memory ZenFS)', () => {
     expect(buf.toString('utf8')).toBe('v2-overwritten')
   })
 
-  it('edit access rejects for a missing file (the create-vs-edit signal)', async () => {
+  it('edit reads reject for a missing file', async () => {
     const ops = createEditOperations(fileEnv)
-    await expect(ops.access(`${dir}/never-existed.txt`)).rejects.toMatchObject({ code: 'not_found' })
+    await expect(ops.readFile(`${dir}/never-existed.txt`)).rejects.toMatchObject({ code: 'not_found' })
   })
 })

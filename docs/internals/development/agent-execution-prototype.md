@@ -60,16 +60,20 @@ trusted main frontend, not as an OS sandbox or a protection against compromised
 application code. Native commands default to 120 seconds, accept up to 3600
 seconds, and retain up to 4 MiB per output stream. Reads accept regular files up
 to 25 MiB. Unix commands run in their own process group, terminated on Stop,
-timeout, and completion; persistent background servers are intentionally not
-supported. Windows requires `bash` on PATH and uses `taskkill /T` for cancellation;
+timeout, and completion. Descendants that deliberately detach from that group
+can outlive the command; this is host access, not OS isolation. Output draining
+is bounded so detached pipes cannot block Stop. Persistent background servers
+are not supported. Windows requires `bash` on PATH and uses `taskkill /T` for cancellation;
 the prototype's native tests exercise macOS/Unix.
 
 `src/agent-execution/approval.ts` gates both Pi and legacy tool execution. Unknown
-tools ask instead of guessing from their names; Mini App actions use this shared
+tools ask; discovered MCP tools never inherit trusted built-in read permissions
+from a matching name; Mini App actions use this shared
 gate instead of showing a second approval prompt. Approval requests queue per
 turn and carry the originating chat and its AbortSignal. The existing inline
-permission UI shows complete arguments. The adapter rebuilds on location,
-working-folder, or access-policy changes and refuses unsupported native models
+permission UI shows complete arguments. The adapter rebuilds on location
+or working-folder changes. Access-policy changes refresh tools and the prompt
+without losing tool history. It refuses unsupported native models
 instead of silently falling back to sandbox execution.
 
 ## Verification

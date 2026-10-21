@@ -60,6 +60,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -101,7 +102,7 @@ type HarnessRecord = {
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
   readonly baseTools: AgentHarnessTool<undefined>[]
   /** Removes the thread's workspace without exposing the harness's private environment. */
-  readonly removeWorkspace: () => Promise<void>
+  readonly removeWorkspace?: () => Promise<void>
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
   /** Mutable transport cell read by the attached receipt lifecycle. */
@@ -394,6 +395,7 @@ export const resolvePiModel = async (
         }
         const response = await fetchTinfoil(client, input, upstreamInit, evictClient)
         handleAppVersionUnsupported(response.status)
+        await handleSessionRejected(response)
         return response
       }
       const receipts = agentCore.createReceiptLifecycle({
@@ -609,7 +611,7 @@ const buildHarnessRecord = async (
   return {
     harness,
     baseTools: harness.getTools(),
-    removeWorkspace: native ? async () => {} : () => agentCore.removeAgentWorkspace(context.threadId),
+    removeWorkspace: native ? undefined : () => agentCore.removeAgentWorkspace(context.threadId),
     systemPrompt,
     receiptHttpClient: resolved.receiptHttpClient,
   }
@@ -632,7 +634,12 @@ const prepareHarnessForSend = async (
   const allTools: AgentHarnessTool<undefined>[] = ungatedTools.map((tool) => ({
     ...tool,
     execute: async (...args: Parameters<typeof tool.execute>) => {
-      await authorize(tool.name, args[1], args[0], args[2])
+      await authorize(
+        { name: tool.name, source: config.mcpToolsMetadata?.[tool.name] ? 'external' : 'built-in' },
+        args[1],
+        args[0],
+        args[2],
+      )
       return tool.execute(...args)
     },
   }))
@@ -745,7 +752,14 @@ const getOrBuildHarness = (
   // workspace dir is kept — the rebuild reuses the thread's files; a rejected
   // prior build is swallowed so the rebuild still proceeds.
   const previous = cached?.record
-  const record = previous ? previous.then(abortHarness, () => {}).then(build) : build()
+  const record = previous
+    ? previous.then(async (previousRecord) => {
+        await abortHarness(previousRecord)
+        const next = await build()
+        // Keep teardown ownership when a sandbox is retained across runtime switches.
+        return { ...next, removeWorkspace: next.removeWorkspace ?? previousRecord.removeWorkspace }
+      }, build)
+    : build()
   record.catch(() => {
     if (cache.get(threadId)?.record === record) {
       cache.delete(threadId)
@@ -766,7 +780,7 @@ const abortHarness = async (record: HarnessRecord): Promise<void> => {
  *  (`force`), and a benign idle-abort error is swallowed. */
 const disposeHarness = async (record: HarnessRecord): Promise<void> => {
   await abortHarness(record)
-  await record.removeWorkspace()
+  await record.removeWorkspace?.()
 }
 
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the
@@ -842,7 +856,9 @@ const fetchViaHarness = async (
   // every later turn whose config signature is unchanged, and rebuild it when the
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
-  const signature = `${harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)}|execution:${JSON.stringify(context.execution ?? defaultAgentExecution)}`
+  const execution = context.execution ?? defaultAgentExecution
+  // Access changes refresh the tools and prompt below without discarding tool history.
+  const signature = `${harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)}|execution:${JSON.stringify([execution.location, execution.cwd])}`
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config),
   )

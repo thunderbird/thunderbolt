@@ -7,8 +7,10 @@ import { msg } from '@lingui/core/macro'
 import type { AgentAdapterContext } from '@/types/acp'
 import type { AgentExecution } from './store'
 import type { Tool } from 'ai'
+import { toAcpToolKind } from '@shared/agent-tool-permissions'
 
-export type AuthorizeTool = (name: string, input: unknown, id: string, signal?: AbortSignal) => Promise<void>
+export type ApprovalTool = { name: string; source: 'built-in' | 'external' }
+export type AuthorizeTool = (tool: ApprovalTool, input: unknown, id: string, signal?: AbortSignal) => Promise<void>
 
 // Only audited read-only tools bypass approval. Unknown integration/MCP actions ask.
 const readOnlyTools = new Set([
@@ -35,9 +37,9 @@ export const createToolAuthorizer = (
   context: Pick<AgentAdapterContext, 'threadId' | 'requestPermission'>,
 ): AuthorizeTool => {
   let pending: Promise<void> = Promise.resolve()
-  return async (name, input, id, signal) => {
+  return async ({ name, source }, input, id, signal) => {
     signal?.throwIfAborted()
-    if (execution.access === 'full' || readOnlyTools.has(name)) {
+    if (execution.access === 'full' || (source === 'built-in' && readOnlyTools.has(name))) {
       return
     }
     const previous = pending
@@ -53,7 +55,7 @@ export const createToolAuthorizer = (
           toolCall: {
             toolCallId: id,
             title: name,
-            kind: name === 'bash' ? 'execute' : name === 'write' || name === 'edit' ? 'edit' : 'other',
+            kind: source === 'built-in' ? toAcpToolKind(name) : 'other',
             rawInput: { location: execution.location, workingDirectory: execution.cwd, arguments: input },
           },
           options: [
@@ -74,7 +76,11 @@ export const createToolAuthorizer = (
 }
 
 /** Gate legacy tools at execution, after validation and before any side effects. */
-export const withToolApproval = (tools: Record<string, Tool>, authorize: AuthorizeTool): Record<string, Tool> =>
+export const withToolApproval = (
+  tools: Record<string, Tool>,
+  authorize: AuthorizeTool,
+  externalTools: Readonly<Record<string, unknown>> | undefined,
+): Record<string, Tool> =>
   Object.fromEntries(
     Object.entries(tools).map(([name, tool]) => [
       name,
@@ -82,7 +88,12 @@ export const withToolApproval = (tools: Record<string, Tool>, authorize: Authori
         ...tool,
         execute: tool.execute
           ? async (input: unknown, options: Parameters<NonNullable<Tool['execute']>>[1]) => {
-              await authorize(name, input, options.toolCallId, options.abortSignal)
+              await authorize(
+                { name, source: externalTools?.[name] ? 'external' : 'built-in' },
+                input,
+                options.toolCallId,
+                options.abortSignal,
+              )
               return tool.execute!(input, options)
             }
           : undefined,

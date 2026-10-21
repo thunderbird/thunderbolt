@@ -292,7 +292,9 @@ test.describe('PowerSync E2EE key rotation', () => {
       // "1" — the key the post-revoke row above is written under — never lands in
       // its keyring.
       await expect(doomed.page.getByText('Device access revoked', { exact: true })).toBeVisible({ timeout: 30_000 })
-      expect(await getEncryptionKeyNames(doomed.page)).not.toContain('thunderbolt_dek_1')
+      // The screen only appears after the wipe, so the key store must be empty: no DEK "1",
+      // and nothing it held before either.
+      expect(await getEncryptionKeyNames(doomed.page)).toEqual([])
 
       await loginViaConsumerOtp(recovered.page, email)
       const setupDialog = await startAdditionalDeviceSetup(recovered.page)

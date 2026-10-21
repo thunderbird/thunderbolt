@@ -11,13 +11,14 @@ import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
 import { createSsoDesktopCallbackRoutes } from '@/auth/sso-desktop-callback'
-import { createLoggerMiddleware, createStandaloneLogger } from '@/config/logger'
+import { createStandaloneLogger } from '@/config/logger'
 import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
+import { sweepIdleAnonymousUsers } from '@/auth/idle-anonymous-users'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -123,8 +124,7 @@ export const createApp = async (deps?: AppDeps) => {
   return (
     configuredApp
       .use(createCorsMiddleware(settings))
-      .use(createLoggerMiddleware(settings))
-      .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createHttpLoggingMiddleware(appLogger, settings.trustedProxy))
       .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
@@ -143,7 +143,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
-      .use(createSsoDesktopCallbackRoutes(settings))
+      .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({
@@ -264,11 +264,12 @@ const startServer = async () => {
 
     const app = await createApp()
 
-    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7) and
-    // expired solved captcha challenges. There is no cron infra, so a startup sweep plus an hourly
-    // interval keeps both tables bounded (nonces have a ~5-minute TTL, captcha challenges
-    // ALTCHA_TTL_SECS). The db is lazily imported to preserve the "no db init at module
-    // load" invariant that keeps tests/CI clean.
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
+    // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
+    // sweep plus an hourly interval keeps these tables bounded (nonces have a ~5-minute TTL,
+    // captcha challenges ALTCHA_TTL_SECS, anonymous users ANONYMOUS_USER_IDLE_DAYS). The db is
+    // lazily imported to preserve the "no db init at module load" invariant that keeps tests/CI
+    // clean.
     const { db: sweepDb } = await import('@/db/client')
     const sweepExpiredRows = async () => {
       try {
@@ -281,6 +282,7 @@ const startServer = async () => {
       } catch (err) {
         log.error({ err }, 'Failed to sweep expired captcha challenges')
       }
+      await sweepIdleAnonymousUsers(sweepDb, settings, log)
     }
     void sweepExpiredRows()
     const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)

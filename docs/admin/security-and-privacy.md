@@ -15,8 +15,8 @@ another device. Uploaded files stay on the device too, and are sent only inside 
 answers that turn.
 
 A prompt goes to whichever model provider answers it, and to a web search provider if the model
-searches. Nothing goes to the Thunderbolt team by default: analytics need both a key you configure
-and a user who has them turned on.
+searches. Nothing goes to the Thunderbolt team by default: analytics need a key you configure, and
+each user can turn them off.
 
 ## Where data lives
 
@@ -64,8 +64,8 @@ a compromised server could switch it off to collect plain text.
   it for them, unless you run organizational key escrow.
 - Revoking a device ends its sessions and replaces both the account key and the data key used for
   new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
-  That does not lock what is already there: the local database holds decrypted rows, and the old
-  keys stay on the device until it signs out.
+  The device clears its local database and keys the next time it connects. One that never comes
+  back online keeps its decrypted rows and old keys.
 
 **What it covers**
 
@@ -158,7 +158,8 @@ same confidential route but are not metered or charged against those caps. See
 
 Two independent switches, and both must be on before anything is sent. `POSTHOG_API_KEY` on the
 server is unset by default, and no key means no analytics client exists in the app. The user's own
-preference, **Anonymous Usage Data**, is under Settings → Preferences → Help Thunderbolt Improve.
+preference, **Anonymous Usage Data**, is on by default and can be turned off under Settings →
+Preferences → Help Thunderbolt Improve. Turning it off covers every device that syncs the account.
 
 Events are sent to your server and relayed from there, so the app never contacts an analytics host
 directly and you can block the egress at your firewall. Where your server forwards them is
@@ -216,7 +217,7 @@ user's conversations. What follows is about direct access to your own database a
 | ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Turn sync on or off      | Settings → Preferences → Data | Off keeps everything local to that device                                                                                    |
 | Approve or deny a device | Settings → Devices            | An unapproved device cannot decrypt anything                                                                                 |
-| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. The user chooses whether the local data is wiped                            |
+| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. Its local data is cleared the next time it connects                         |
 | Export data              | Settings → Preferences → Data | A single JSON file with chats, settings, models, skills, and configuration                                                   |
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |
@@ -229,16 +230,16 @@ An export file does not include attached file contents.
 
 ## Hardening a deployment
 
-| Do this                                                               | Why                                                                                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended |
-| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                     |
-| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                   |
-| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                    |
-| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits                                      |
-| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                          |
-| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                 |
-| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                     |
+| Do this                                                               | Why                                                                                                                                                          |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended                                                   |
+| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                                                                       |
+| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                                                                     |
+| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                                                                      |
+| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits. Empty behind a CDN puts every client in one bucket, and many users get `429` together |
+| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                                                                            |
+| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                                                                   |
+| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                                                                       |
 
 Full variable reference: [Configuration](../self-hosting/configuration.md).
 

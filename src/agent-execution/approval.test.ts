@@ -9,6 +9,40 @@ import { z } from 'zod'
 import { createToolAuthorizer, withToolApproval } from './approval'
 
 describe('built-in tool approval', () => {
+  it('requires approval for an external tool even when its name matches a trusted read', async () => {
+    const execute = mock(async () => 'side effect')
+    const requestPermission = mock(
+      async (): Promise<RequestPermissionResponse> => ({
+        outcome: { outcome: 'selected', optionId: 'deny' },
+      }),
+    )
+    const authorize = createToolAuthorizer(
+      { location: 'sandbox', access: 'ask' },
+      { threadId: 'chat', requestPermission },
+    )
+    const gated = withToolApproval({ google_get_email: tool({ inputSchema: z.object({}), execute }) }, authorize, {
+      google_get_email: { name: 'google', toolName: 'get_email' },
+    })
+    await expect(gated.google_get_email.execute!({}, { toolCallId: 'spoofed-read', messages: [] })).rejects.toThrow(
+      'denied',
+    )
+    expect(execute).not.toHaveBeenCalled()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+  })
+
+  it('continues the approval queue after a denied action', async () => {
+    const replies = ['deny', 'allow']
+    const authorize = createToolAuthorizer(
+      { location: 'sandbox', access: 'ask' },
+      {
+        threadId: 'chat',
+        requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: replies.shift()! } }),
+      },
+    )
+    const denied = authorize({ name: 'write', source: 'built-in' }, {}, 'first')
+    const allowed = authorize({ name: 'write', source: 'built-in' }, {}, 'second')
+    expect((await Promise.allSettled([denied, allowed])).map(({ status }) => status)).toEqual(['rejected', 'fulfilled'])
+  })
   it('allows audited reads without prompting and asks before writes, shell and unknown tools', async () => {
     const requestPermission = mock(
       async (_request: RequestPermissionRequest): Promise<RequestPermissionResponse> => ({
@@ -20,11 +54,11 @@ describe('built-in tool approval', () => {
       { threadId: 'chat', requestPermission },
     )
     for (const name of ['read', 'search', 'google_get_email', 'skill']) {
-      await authorize(name, {}, name)
+      await authorize({ name, source: 'built-in' }, {}, name)
     }
     expect(requestPermission).not.toHaveBeenCalled()
     for (const name of ['write', 'edit', 'bash', 'mcp_send_message']) {
-      await authorize(name, { path: 'a' }, name)
+      await authorize({ name, source: 'built-in' }, { path: 'a' }, name)
     }
     expect(requestPermission).toHaveBeenCalledTimes(4)
     expect(requestPermission.mock.calls[0][0]).toMatchObject({
@@ -42,7 +76,7 @@ describe('built-in tool approval', () => {
         requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'deny' } }),
       },
     )
-    const gated = withToolApproval({ send: tool({ inputSchema: z.object({}), execute }) }, authorize)
+    const gated = withToolApproval({ send: tool({ inputSchema: z.object({}), execute }) }, authorize, undefined)
     await expect(gated.send.execute!({}, { toolCallId: 'send-1', messages: [] })).rejects.toThrow('denied')
     expect(execute).not.toHaveBeenCalled()
   })
@@ -55,9 +89,9 @@ describe('built-in tool approval', () => {
       { location: 'computer', access: 'full', cwd: '/workspace' },
       { threadId: 'chat', requestPermission },
     )
-    await authorize('bash', {}, 'one')
+    await authorize({ name: 'bash', source: 'built-in' }, {}, 'one')
     expect(requestPermission).not.toHaveBeenCalled()
-    await expect(authorize('bash', {}, 'two', AbortSignal.abort())).rejects.toThrow()
+    await expect(authorize({ name: 'bash', source: 'built-in' }, {}, 'two', AbortSignal.abort())).rejects.toThrow()
   })
 
   it('serializes approval requests and checks for cancellation after approval', async () => {
@@ -68,8 +102,8 @@ describe('built-in tool approval', () => {
       { threadId: 'chat', requestPermission },
     )
     const controller = new AbortController()
-    const a = authorize('write', {}, 'a', controller.signal)
-    const b = authorize('edit', {}, 'b', controller.signal)
+    const a = authorize({ name: 'write', source: 'built-in' }, {}, 'a', controller.signal)
+    const b = authorize({ name: 'edit', source: 'built-in' }, {}, 'b', controller.signal)
     const settled = Promise.allSettled([a, b])
     await Promise.resolve()
     expect(requestPermission).toHaveBeenCalledTimes(1)
@@ -81,6 +115,6 @@ describe('built-in tool approval', () => {
 
   it('fails closed when the approval bridge is absent', async () => {
     const authorize = createToolAuthorizer({ location: 'sandbox', access: 'ask' }, { threadId: 'chat' })
-    await expect(authorize('write', {}, 'id')).rejects.toThrow('approval is unavailable')
+    await expect(authorize({ name: 'write', source: 'built-in' }, {}, 'id')).rejects.toThrow('approval is unavailable')
   })
 })

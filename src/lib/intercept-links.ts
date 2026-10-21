@@ -4,7 +4,7 @@
 
 import { openExternalUrl } from './open-external-url'
 import { isTauri } from './platform'
-import { isSafeUrl } from './url-utils'
+import { isContactUrl, isSafeUrl } from './url-utils'
 
 const handler = async (event: MouseEvent) => {
   if (event.defaultPrevented) {
@@ -19,8 +19,11 @@ const handler = async (event: MouseEvent) => {
   if (url.origin === location.origin || url.protocol === 'app:') {
     return
   }
+  if (isContactUrl(anchor.href) && !isTauri()) {
+    return
+  }
   event.preventDefault()
-  if (!isSafeUrl(anchor.href)) {
+  if (!isSafeUrl(anchor.href) && !isContactUrl(anchor.href)) {
     return
   }
 

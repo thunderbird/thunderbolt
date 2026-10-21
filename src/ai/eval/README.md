@@ -97,7 +97,8 @@ turn’s `initialCap`, `finalCap` and `promoted`; a later user turn starts fresh
 
 ### Reply-language suite
 
-Scores the `# Language` section of the system prompt (`src/ai/prompt.ts`): the model must
+Scores the `# Language` section of the system prompt (`src/ai/prompt.ts`, text in
+`shared/i18n/language-instruction.ts`): the model must
 answer in the conversation's language, stay there when foreign-language content shows up
 mid-thread, switch on an explicit request, and fall back to the app language when a turn
 establishes none. Scenarios live in `language-scenarios.ts` and run as Chat turns across

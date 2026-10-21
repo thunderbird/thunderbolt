@@ -43,6 +43,7 @@ describe('native workspace selection', () => {
   })
 
   it('keeps sandbox selected if the native picker fails', async () => {
+    const report = spyOn(console, 'error').mockImplementation(() => {})
     spyOn(tauriCore, 'invoke').mockRejectedValue(new Error('Dialog unavailable'))
     const { result } = renderHook(() => useAgentExecutionControlsState('picker'))
 
@@ -50,5 +51,6 @@ describe('native workspace selection', () => {
 
     expect(getAgentExecution('picker').location).toBe('sandbox')
     expect(result.current.error).toBe('Could not select a working folder. Please try again.')
+    expect(report).toHaveBeenCalledTimes(1)
   })
 })

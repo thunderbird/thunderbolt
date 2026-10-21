@@ -70,10 +70,18 @@ export const isAllowedTestProxyTarget = (url: URL): boolean =>
   (url.protocol === 'http:' || url.protocol === 'https:') &&
   (process.env.TEST_PROXY_ALLOWED_HOSTS ?? '').split(',').includes(url.host)
 
+/** Bun-specific `fetch` TLS options for a pinned request. */
+export type PinnedTls = { serverName: string }
+
 /**
  * Resolves a URL's hostname via DNS, validates all resolved IPs against the
- * private address blocklist, and returns a fetch-ready [pinnedUrl, headers] pair.
+ * private address blocklist, and returns a fetch-ready [pinnedUrl, headers, tls] triple.
  * Prevents DNS rebinding by connecting to the resolved IP with the original Host header.
+ *
+ * `tls` names the original hostname for TLS SNI and certificate verification, which
+ * would otherwise follow the IP in the pinned URL. Bun derived SNI from the Host header
+ * through 1.4.0; from 1.4.1 every pinned HTTPS request fails the handshake without it.
+ * It is undefined when the URL was not rewritten (IP literals, test fixtures).
  *
  * Userinfo (username/password) is stripped from the resulting pinned URL.
  *
@@ -84,7 +92,7 @@ export const validateAndPin = async (
   url: string,
   extraHeaders?: HeadersInit,
   dnsLookup: DnsLookup = defaultDnsLookup,
-): Promise<[pinnedUrl: string, headers: Headers]> => {
+): Promise<[pinnedUrl: string, headers: Headers, tls: PinnedTls | undefined]> => {
   const parsed = new URL(url)
   parsed.username = ''
   parsed.password = ''
@@ -92,14 +100,14 @@ export const validateAndPin = async (
   const literalAddress = parseIpAddress(hostname)
 
   if (isAllowedTestProxyTarget(parsed)) {
-    return [parsed.toString(), new Headers(extraHeaders)]
+    return [parsed.toString(), new Headers(extraHeaders), undefined]
   }
 
   if (literalAddress) {
     if (isPrivateOrInternalAddress(literalAddress)) {
       throw new Error(`Blocked: ${hostname} is a private/internal address`)
     }
-    return [parsed.toString(), new Headers(extraHeaders)]
+    return [parsed.toString(), new Headers(extraHeaders), undefined]
   }
 
   const addresses = await dnsLookup(hostname)
@@ -124,7 +132,7 @@ export const validateAndPin = async (
   const headers = new Headers(extraHeaders)
   headers.set('Host', hostname)
 
-  return [pinnedUrl.toString(), headers]
+  return [pinnedUrl.toString(), headers, { serverName: hostname }]
 }
 
 /**
@@ -132,16 +140,17 @@ export const validateAndPin = async (
  * validates all resolved IPs, and follows redirects safely (each hop is validated).
  *
  * Uses IP pinning: resolves the hostname, validates IPs, then connects directly
- * to the resolved IP with the original Host header for TLS SNI / virtual hosting.
+ * to the resolved IP with the original hostname in the Host header (virtual hosting)
+ * and in `tls.serverName` (SNI and certificate verification).
  */
 export const createSafeFetch = (fetchFn: typeof fetch, dnsLookup: DnsLookup = defaultDnsLookup) => {
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-    const [pinnedUrl, headers] = await validateAndPin(url, init?.headers, dnsLookup)
+    const [pinnedUrl, headers, tls] = await validateAndPin(url, init?.headers, dnsLookup)
 
     // Always intercept redirects so we can validate each hop's destination
     const callerWantsManual = init?.redirect === 'manual'
-    const response = await fetchFn(pinnedUrl, { ...init, headers, redirect: 'manual' })
+    const response = await fetchFn(pinnedUrl, { ...init, headers, tls, redirect: 'manual' })
 
     const isRedirect = [301, 302, 303, 307, 308].includes(response.status)
     if (!isRedirect || callerWantsManual) {
@@ -159,15 +168,16 @@ export const createSafeFetch = (fetchFn: typeof fetch, dnsLookup: DnsLookup = de
 
       const redirectUrl = new URL(location, currentUrl).toString()
       currentUrl = redirectUrl
-      const [pinnedRedirect, redirectHeaders] = await validateAndPin(redirectUrl, init?.headers, dnsLookup)
+      const [pinnedRedirect, redirectHeaders, redirectTls] = await validateAndPin(redirectUrl, init?.headers, dnsLookup)
 
       // 303 always becomes GET; 301/302 become GET for non-GET/HEAD (per spec)
       const methodOverride =
         currentResponse.status === 303 ||
         ([301, 302].includes(currentResponse.status) && init?.method && !['GET', 'HEAD'].includes(init.method))
-      const redirectInit: RequestInit = {
+      const redirectInit: BunFetchRequestInit = {
         ...init,
         headers: redirectHeaders,
+        tls: redirectTls,
         redirect: 'manual',
         ...(methodOverride ? { method: 'GET', body: undefined } : {}),
       }

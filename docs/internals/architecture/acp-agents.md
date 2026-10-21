@@ -328,9 +328,20 @@ emits one `managed-http` descriptor whose `url` is the server-relative `/v1/agen
 `anonymousSafe` and named as `defaultAgentId`. There is no ACP wire: the client's
 [managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts) posts the chat (only `id`, `role`
 and `parts` per message) through the authenticated app client and hands the endpoint's AI SDK UI
-message stream to the chat unchanged. Both ends apply the same history rules from
+message stream to the chat unchanged. The project section and `/slug` skill instructions ride in the
+body's `instructions` field, joined as `composeAcpPrompt` joins them, and the endpoint appends that to
+its system prompt. Both ends apply the same history rules from
 [shared/hosted-agent-history.ts](../../../shared/hosted-agent-history.ts). The adapter is only taken
 for a system agent, since a synced custom row's `type` is plaintext (see `customRowToAgent`).
+
+With `AGENT_MCP_SERVERS` set, the endpoint is an MCP client of its own, on the server
+([backend/src/hosted-agent/mcp.ts](../../../backend/src/hosted-agent/mcp.ts)): a run may call the
+operator's servers' read-only tools, namespaced `<server>_<tool>` like `mergeMcpTools` names the
+built-in agent's, for up to `AGENT_MAX_STEPS` model steps, the last of which offers no tools. The tool
+parts stream to the chat as `dynamic-tool` parts, with no server badge since the server URLs stay on
+the server, and both ends drop them from the next turn's history, so a later turn calls the tools
+again. The operator's view is in
+[configuration.md](../../self-hosting/configuration.md#hosted-agent-tools).
 
 The hosted agent takes no attachments for now: the composer hides the attach action and ignores
 dropped and pasted files (`agentAcceptsAttachments`), files queued before the chat moved onto it stay
@@ -338,6 +349,10 @@ visible but hold the send until they are removed, and the adapter replaces any f
 the history (a chat that switched agents) with one "could not be delivered" note per user turn. Its
 threads are created with `isEncrypted` 0: the content reaches the backend unencrypted, so the thread
 is never a private chat, and the private-chat model lock is skipped while the hosted agent answers.
+When the built-in takes such a thread over, its model is swapped for one that fits the lock (see
+`resolveSessionModel` in [chat-runtime.md](chat-runtime.md)).
+Moving an existing private chat onto it, or onto any ACP agent, asks the user first
+([chat-runtime.md](chat-runtime.md#one-send-end-to-end)).
 
 ## Where the code lives
 

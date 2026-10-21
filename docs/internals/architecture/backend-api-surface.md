@@ -4,7 +4,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 
 ## Route inventory
 
-**Gate**: path sits under a prefix in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts:16-25`). `exempt` means reachable without `X-App-Version` under `MIN_APP_VERSION`. Auth modes: [below](#auth-modes).
+**Gate**: path sits under a prefix in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). `exempt` means reachable without `X-App-Version` under `MIN_APP_VERSION`. Auth modes: [below](#auth-modes).
 
 | Path                                                                          | Module                                  | Auth                                      | Rate limit                                        | Gate    |
 | ----------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------- | ------------------------------------------------- | ------- |
@@ -40,11 +40,11 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `WS /v1/haystack/ws`                                                          | `haystack/routes.ts`                    | subprotocol bearer                        | none                                              | gated   |
 | `GET /v1/swagger`, `/v1/swagger/json`                                         | `@elysiajs/swagger`, `SWAGGER_ENABLED`  | public                                    | none                                              | gated   |
 
-\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
+\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
-‡ Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED` (`hosted-agent/history.ts`).
+‡ Body: `id`, `messages`, and an optional `instructions` string appended to the system prompt after `AGENT_SYSTEM_PROMPT` and, when the run has tools, the rules for tool results, under a `# User instructions` header that ranks it below both (`hosted-agent/system-prompt.ts`). Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED`, and `instructions` over 50,000 UTF-16 code units gets `400` with code `AGENT_INSTRUCTIONS_TOO_LARGE` (`hosted-agent/history.ts`). Reads `X-App-Language`, validated with `matchExactLocale`, to name the reply-language fallback in the system prompt; a missing or unshipped tag falls back to English (`hosted-agent/system-prompt.ts`). With `AGENT_MCP_SERVERS` set, a run may call the servers' read-only tools for up to `AGENT_MAX_STEPS` model steps, and the tool calls and results stream with the reply (`hosted-agent/mcp.ts`). The prompt ends with the current date and hour (no minutes) in `AGENT_TIMEZONE`, then a note naming any MCP server that could not be reached, so on a Fireworks model, whose prompt cache reuses the conversation per user, the cached history is invalidated at most once an hour and once per change in a server's reachability. Anthropic models are sent without cache control. One run per user per process: a second request while one runs gets `429` with code `AGENT_RUN_IN_PROGRESS`. A client disconnect aborts the upstream call and frees the slot, as does the 2-minute upstream timeout; the two log as `agent_run_aborted` and `agent_run_timed_out`, and either run's finished steps are billed at their reported usage and the step in flight by estimate ([managed-inference.md](./managed-inference.md)).
 
 Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.test.ts`).
 
@@ -67,15 +67,15 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 - `/v1/chat/v1/messages`: the inner `/v1` is part of the Anthropic Messages API shape.
 - `GET /v1/health` (public liveness, `api/routes.ts`) and `/v1/health/*` (token-gated probes, `api/health.ts`) are different modules on one prefix.
 - Managed inference is under `/v1/chat`, not `/v1/inference`; the only `/v1/inference-*` path is the usage receipt.
-- No MCP route: remote MCP rides the universal proxy ([mcp-connections.md](mcp-connections.md)).
+- No MCP route: remote MCP rides the universal proxy ([mcp-connections.md](mcp-connections.md)). The hosted agent's own MCP calls go straight from the API to the servers in `AGENT_MCP_SERVERS`.
 
 ## Global middleware, in order
 
-Order in `backend/src/index.ts:123-238` is load-bearing:
+Order in `backend/src/index.ts:123-237` is load-bearing:
 
 1. `createCorsMiddleware`: short-circuited responses still carry `Access-Control-Allow-Origin`.
-2. `createLoggerMiddleware` and `createHttpLoggingMiddleware`: rejected requests are still access-logged.
-3. `createAppVersionMiddleware`: the 426 gate, after CORS and logging for those two reasons.
+2. `createHttpLoggingMiddleware`: the one entry whose position does not matter. It wraps the whole request handler with `.wrap()`, so the access log records every response, including the 426s below, 404s and guard rejections.
+3. `createAppVersionMiddleware`: the 426 gate, after CORS for that reason.
 4. `createErrorHandlingMiddleware`: the root `onError`.
 5. The Better Auth plugin, then the route groups.
 
@@ -83,7 +83,7 @@ Plugin isolation hides in-plugin errors from the root `onError`, which covers on
 
 ### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts:66`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:198`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:281`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 

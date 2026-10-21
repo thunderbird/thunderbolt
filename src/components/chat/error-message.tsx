@@ -8,6 +8,7 @@ import {
   getChatErrorKind,
   getInferenceQuotaWindow,
   type InferenceQuotaWindow,
+  isAgentInstructionsTooLargeError,
   isAgentRunInProgressError,
   isContextOverflowError,
   isRateLimitError,
@@ -32,11 +33,15 @@ const inferenceQuotaMessages = {
 } satisfies Record<InferenceQuotaWindow, MessageDescriptor>
 
 const agentRunInProgressMessage = msg`The agent is still finishing your previous message. Try again in a minute.`
+const agentInstructionsTooLargeMessage = msg`The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.`
 
 /** Resolve final chat error copy after automatic retries stop. */
 const getFinalChatErrorMessage = (error?: Error | null): MessageDescriptor => {
   if (isAgentRunInProgressError(error)) {
     return agentRunInProgressMessage
+  }
+  if (isAgentInstructionsTooLargeError(error)) {
+    return agentInstructionsTooLargeMessage
   }
   const kind = getChatErrorKind(error)
   return (kind && causeSpecificErrorMessages[kind]) || defaultChatErrorMessage

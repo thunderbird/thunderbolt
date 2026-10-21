@@ -347,6 +347,29 @@ describe('createAuthenticatedClient', () => {
       expect(event.detail).toEqual({ reason: 'session_expired' })
     })
 
+    it('dispatches device_revoked on a DEVICE_DISCONNECTED 403 from the app backend', async () => {
+      const fetch = mock<FetchFn>(() =>
+        Promise.resolve(new Response(JSON.stringify({ code: 'DEVICE_DISCONNECTED' }), { status: 403 })),
+      )
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('api/auth/get-session')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      expect((dispatchSpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'device_revoked' })
+    })
+
+    it('does not dispatch on a 403 carrying any other code', async () => {
+      const fetch = mock<FetchFn>(() =>
+        Promise.resolve(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })),
+      )
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
+    })
+
     it('does not dispatch on 401 from external API even with caller-provided Authorization header (Google/MS OAuth)', async () => {
       // Integration tools (Google, Microsoft) reuse the same authenticated client but pass their
       // own OAuth tokens. A 401 from those external APIs must NOT clear the app session.

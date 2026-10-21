@@ -18,6 +18,7 @@ import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveSkillWebToolIntent } from '@/ai/turn-web-budget'
 import {
@@ -43,6 +44,7 @@ import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
@@ -86,21 +88,9 @@ import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provi
 import { isMcpDiscoveryError } from '@/lib/mcp-errors'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
+import { sanitizeToolPrefix } from '@shared/mcp-tool-names'
 import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
-
-/**
- * Sanitizes a server name into a valid tool prefix.
- * Server names are already meaningful (set by user or auto-generated),
- * so this just lowercases and replaces non-alphanumeric chars with underscores.
- * `mcp_servers.name` is a nullable synced column, so a null/missing name falls
- * back to the generic `mcp` prefix rather than crashing the chat send.
- */
-export const sanitizeToolPrefix = (serverName: string | null | undefined): string =>
-  (serverName ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '') || 'mcp'
 
 /** Wrap fetch to include credentials in SSO mode so session cookies are sent to the backend. */
 const fetch: typeof baseFetch = (input, init) =>
@@ -125,6 +115,7 @@ export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
     }
     const response = await base(input, { ...init, headers })
     handleAppVersionUnsupported(response.status)
+    await handleSessionRejected(response)
     return response
   }
   wrapped.preconnect = base.preconnect
@@ -563,6 +554,9 @@ export const prepareAiRequestConfig = async ({
   telemetry?.endPhase('request_config')
   const skills = selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
+  // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
+  // inlined into the prompt (as for non-tool models) instead of loaded on demand.
+  const loadsSkillsByTool = supportsTools && !selectMinimalMode(useConfigStore.getState().config)
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
@@ -574,7 +568,7 @@ export const prepareAiRequestConfig = async ({
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),
     skills,
-    supportsTools,
+    loadsSkillsByTool,
     webToolBudget,
   )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
@@ -700,7 +694,7 @@ export const prepareAiRequestConfig = async ({
     hasWebTools,
     mcpServersSummary: merged.summary,
     skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
-    supportsTools,
+    supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser
     // negotiation the same way `X-App-Language` does.
@@ -819,7 +813,7 @@ export const aiFetchStreamingResponse = async ({
     toolApprovalHandled: authorizeTool !== undefined,
     telemetry,
   })
-  const toolset = authorizeTool ? withToolApproval(rawToolset, authorizeTool) : rawToolset
+  const toolset = authorizeTool ? withToolApproval(rawToolset, authorizeTool, mcpToolsMetadata) : rawToolset
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }

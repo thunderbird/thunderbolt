@@ -26,7 +26,8 @@ export const useAgentExecutionControlsState = (threadId: string) => {
         if (cwd !== null) {
           setExecution(threadId, { ...execution, location: 'computer', cwd })
         }
-      } catch {
+      } catch (error) {
+        console.error('Failed to select agent workspace:', error)
         setError(t`Could not select a working folder. Please try again.`)
       }
     })

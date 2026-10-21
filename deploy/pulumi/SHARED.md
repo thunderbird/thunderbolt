@@ -126,11 +126,11 @@ database (`<db>_ps_storage`) if they do not already exist, runs `drizzle-kit mig
 against `DATABASE_URL`, then creates the `powersync` publication. The name comes
 from the Pulumi stack name with every non-alphanumeric character replaced by `_`
 (`preview-pr-846` → `preview_pr_846`, `dbNameFromStack` in `src/per-pr-stack.ts`), and
-both URLs reach the task as Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `Preview Destroy` runs before
-`pulumi destroy`: it stops the PR's PowerSync, drops its replication slot and both
-databases. The hourly orphan cleanup destroys orphan stacks without it, so their
-databases and slot stay behind; the shared Postgres runs with `max_slot_wal_keep_size`
-so such a slot stops pinning WAL. The
+both URLs reach the task as Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `stack-deploy.yml`'s `destroy` job runs
+before `pulumi destroy` for every preview destroy (PR close, hourly orphan cleanup,
+manual): it stops the PR's PowerSync, drops its replication slot and both databases. As a
+backstop the shared Postgres runs with `max_slot_wal_keep_size`, so a slot that escapes a
+failed drop stops pinning WAL. The
 alternatives considered were a Pulumi `command.local.Command` running `psql` through a
 private bastion task, and a Pulumi-triggered Lambda; both add a component the entrypoint
 does not.

@@ -310,6 +310,19 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Every preview destroy (PR close, hourly orphan cleanup, manual) drops the
+      # PR's databases and PowerSync slot first: the script finds them through the
+      # stack's backend service and task definition, which the destroy removes.
+      # A failed drop must not leave the stack's ECS services and rules running.
+      - name: Drop the preview's databases
+        id: drop
+        if: steps.stack_check.outputs.exists == 'true' && startsWith(inputs.stack_name, 'preview-pr-')
+        continue-on-error: true
+        env:
+          INPUT_STACK_NAME: ${{ inputs.stack_name }}
+          AWS_REGION: ${{ inputs.region }}
+        run: ./scripts/drop-preview-db.sh "${INPUT_STACK_NAME#preview-pr-}"
+
       - name: Destroy
         if: steps.stack_check.outputs.exists == 'true'
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
@@ -324,3 +337,12 @@ jobs:
           # resources (e.g. the Keycloak OIDC client) deleted out-of-band, and
           # destroying against stale state 404s on the phantom delete.
           refresh: true
+
+      # The destroy removes what the script needs to find the databases, so a failed
+      # drop can't be retried. Fail the job to make it visible: the hourly cleanup
+      # notifies, and Preview Destroy says so in the PR's preview comment.
+      - name: Report a failed database drop
+        if: steps.drop.outcome == 'failure'
+        run: |
+          echo "::error::Dropping the preview's databases failed; they and the PowerSync slot are left on the shared Postgres."
+          exit 1

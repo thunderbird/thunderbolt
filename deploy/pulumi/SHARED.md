@@ -128,8 +128,9 @@ from the Pulumi stack name with every non-alphanumeric character replaced by `_`
 (`preview-pr-846` → `preview_pr_846`, `dbNameFromStack` in `src/per-pr-stack.ts`), and
 both URLs reach the task as Secrets Manager entries. Teardown is `scripts/drop-preview-db.sh`, which `Preview Destroy` runs before
 `pulumi destroy`: it stops the PR's PowerSync, drops its replication slot and both
-databases. The hourly orphan cleanup runs it too. As a backstop the shared Postgres
-runs with `max_slot_wal_keep_size`, so a slot that escapes both stops pinning WAL. The
+databases. The hourly orphan cleanup destroys orphan stacks without it, so their
+databases and slot stay behind; the shared Postgres runs with `max_slot_wal_keep_size`
+so such a slot stops pinning WAL. The
 alternatives considered were a Pulumi `command.local.Command` running `psql` through a
 private bastion task, and a Pulumi-triggered Lambda; both add a component the entrypoint
 does not.

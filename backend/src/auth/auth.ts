@@ -304,6 +304,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     },
     advanced: {
+      database: { joins: true },
       ipAddress: {
         ipAddressHeaders: getTrustedIpHeaders(settings.trustedProxy),
       },

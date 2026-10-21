@@ -81,7 +81,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 //
 // Every loader in this map is both the `lazy()` source for its route and part
 // of `preloadAllRouteChunks`, so a new lazy route added here is warmed on the
-// Tauri apps automatically. Deliberately-cold chunks (SSO, dev-only routes)
+// Tauri apps automatically. Deployment-specific chunks (SSO, dev-only routes)
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
@@ -116,9 +116,10 @@ const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
 const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 
-// Lazily import SSO components so non-enterprise deployments don't pay
-// for the extra bundle size and attack surface.
-const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+// Keep SSO out of consumer builds' startup requests. SSO deployments warm the
+// redirect during initialization so routing doesn't add a chunk-fetch waterfall.
+const loadSsoRedirect = () => import('@/components/sso-redirect')
+const SsoRedirect = lazy(loadSsoRedirect)
 // Enterprise-only like SsoRedirect, and reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
 const SsoError = lazy(() => import('@/components/sso-error'))
 
@@ -312,6 +313,10 @@ export const App = () => {
   // runs on web too; that policy is about not warming *every* route.
   useEffect(() => {
     void loadSearchPalette()
+    if (isSsoMode()) {
+      // Speculative loading must not interrupt startup; the route owns failures.
+      void loadSsoRedirect().catch(() => {})
+    }
   }, [])
 
   // Show the Tauri window after React mounts and CSS is applied.

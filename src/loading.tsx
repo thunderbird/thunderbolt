@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2 } from 'lucide-react'
-import { type FC, useEffect } from 'react'
+import { type FC, useEffect, useState } from 'react'
 import { markSpinnerMounted } from '@/lib/init-timing'
 
 type LoadingProps = {
@@ -12,10 +12,17 @@ type LoadingProps = {
 }
 
 export const Loading: FC<LoadingProps> = ({ className, size = 24 }) => {
+  // Startup, auth and route loading mount separate spinners. Share their phase
+  // so replacing one with another doesn't visibly restart the rotation.
+  const [animationDelay] = useState(() => `${-(performance.now() % 1000)}ms`)
   useEffect(markSpinnerMounted, [])
   return (
     <div className="flex items-center justify-center w-full h-[100vh]">
-      <Loader2 className={`animate-spin text-gray-500 ${className || ''}`} size={size} />
+      <Loader2
+        className={`animate-spin text-gray-500 ${className || ''}`}
+        style={{ animationDelay, animationDuration: '1s' }}
+        size={size}
+      />
     </div>
   )
 }

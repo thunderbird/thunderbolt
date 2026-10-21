@@ -5,7 +5,8 @@
 import { AuthContext } from '@/contexts/auth-context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { act, cleanup, render } from '@testing-library/react'
+import { pendingAnonIdKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
@@ -20,6 +21,7 @@ describe('SsoRedirect', () => {
     cleanup()
     globalThis.fetch = originalFetch
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+    sessionStorage.removeItem(pendingAnonIdKey)
   })
 
   it('posts to the exact SSO endpoint when cloudUrl has trailing slashes', async () => {
@@ -32,7 +34,8 @@ describe('SsoRedirect', () => {
       { preconnect: originalFetch.preconnect },
     )
     useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1///' })
-    const authClient = createMockAuthClient()
+    const getSession = mock(async () => ({ data: null, error: null }))
+    const authClient = createMockAuthClient({ getSession })
 
     render(
       <AuthContext.Provider value={{ authClient }}>
@@ -49,6 +52,7 @@ describe('SsoRedirect', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0]?.url).toBe('https://api.example.test/v1/api/auth/sign-in/sso')
     expect(requests[0]?.url).not.toContain('/v1//')
+    expect(getSession).not.toHaveBeenCalled()
 
     act(() => useLocalSettingsStore.getState().setLocalSetting('cloudUrl', 'https://api.example.test/v1/'))
     await act(async () => {
@@ -58,6 +62,41 @@ describe('SsoRedirect', () => {
     })
 
     expect(requests).toHaveLength(1)
+  })
+
+  it('waits for the session on a direct visit and does not refetch it before redirecting', async () => {
+    const requests: Request[] = []
+    globalThis.fetch = Object.assign(
+      async (request: RequestInfo | URL) => {
+        requests.push(new Request(request))
+        return Response.json({ url: 'unsafe redirect fixture' })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+    const getSession = mock(async () => ({ data: null, error: null }))
+    const renderRedirect = (isPending: boolean) => (
+      <AuthContext.Provider value={{ authClient: createMockAuthClient({ isPending, getSession }) }}>
+        <SsoRedirect />
+      </AuthContext.Provider>
+    )
+    const view = render(renderRedirect(true))
+    await act(async () => {})
+    expect(requests).toHaveLength(0)
+
+    view.rerender(renderRedirect(false))
+    await act(async () => {})
+    expect(requests).toHaveLength(1)
+    expect(getSession).not.toHaveBeenCalled()
+
+    // A session observer rerender is not another sign-in attempt.
+    view.rerender(renderRedirect(false))
+    await act(async () => {})
+    expect(requests).toHaveLength(1)
+
+    fireEvent.click(view.getByRole('button', { name: 'Try again' }))
+    await act(async () => {})
+    expect(requests).toHaveLength(2)
+    expect(getSession).not.toHaveBeenCalled()
   })
 
   it('asks Better Auth to send a failed login back to the app error page', async () => {
@@ -92,7 +131,7 @@ describe('SsoRedirect', () => {
   })
 
   describe('on Tauri desktop', () => {
-    const renderWithLoopbackCallback = async (callbackUrl: string) => {
+    const renderWithLoopbackCallback = async (callbackUrl: string, authClient = createMockAuthClient()) => {
       Object.assign(window, { isTauri: true })
       spyOn(tauriCore, 'isTauri').mockReturnValue(true)
       spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
@@ -105,7 +144,7 @@ describe('SsoRedirect', () => {
       useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
 
       const view = render(
-        <AuthContext.Provider value={{ authClient: createMockAuthClient() }}>
+        <AuthContext.Provider value={{ authClient }}>
           <SsoRedirect />
         </AuthContext.Provider>,
       )
@@ -135,6 +174,19 @@ describe('SsoRedirect', () => {
 
       expect(replaceSpy).not.toHaveBeenCalled()
       expect(view.getByText('Try again')).toBeTruthy()
+    })
+
+    it('preserves an anonymous session snapshot through the desktop SSO callback without refetching', async () => {
+      const getSession = mock(async () => ({ data: null, error: null }))
+      const authClient = createMockAuthClient({
+        session: { user: { id: 'anonymous-user', email: '', isAnonymous: true } },
+        getSession,
+      })
+      const { replaceSpy } = await renderWithLoopbackCallback('http://127.0.0.1:17421/?token=sso-token', authClient)
+
+      expect(getSession).not.toHaveBeenCalled()
+      expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-user')
+      expect(replaceSpy).toHaveBeenCalledWith('/')
     })
   })
 })

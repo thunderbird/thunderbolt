@@ -2969,6 +2969,10 @@ msgstr "Einstellungen"
 msgid "Preferred Name"
 msgstr "Gewünschter Name"
 
+#: src/search/palette/search-palette.tsx
+msgid "Preparing search…"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview"
 msgstr "Vorschau"
@@ -3365,6 +3369,10 @@ msgstr "Emoji suchen"
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "Nach einem Befehl suchen…"
+
+#: src/search/palette/search-palette.tsx
+msgid "Search is unavailable. Try again."
+msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"

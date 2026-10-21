@@ -15,6 +15,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
+import { onContentReady } from '@/lib/init-timing'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
@@ -199,14 +200,17 @@ export default function ChatDetailPage() {
   const projectId = isNew ? searchParams.get('projectId') : null
   const newChatId = useNewChatId(isNew, projectId)
 
-  // Warm the lazily-split message subtree for new chats as well as existing
-  // ones: the first send swaps the empty state for the message list mid-
-  // animation, and an unloaded chunk would leave the enter fade running over
-  // an empty Suspense shell with the messages popping in afterwards. Firing
-  // from an effect keeps the chunk out of the entry bundle either way.
+  // Existing conversations need the renderer immediately. On a blank chat,
+  // its formatting dependencies should not compete with the first composer
+  // render. Still warm it before the first send (typing also triggers a preload).
   useEffect(() => {
+    if (isNew) {
+      return onContentReady(() => {
+        void loadChatMessageList()
+      })
+    }
     void loadChatMessageList()
-  }, [])
+  }, [isNew])
 
   if (!chatThreadId) {
     return null

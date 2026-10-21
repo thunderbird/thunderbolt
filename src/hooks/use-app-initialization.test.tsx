@@ -4,8 +4,11 @@
 
 import type { InitialSyncOutcome } from '@/db/database-interface'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { updateSettings } from '@/dal/settings'
+import { getDb } from '@/db/database'
 import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { createClient } from '@/lib/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
@@ -23,6 +26,24 @@ mock.module('@tauri-apps/plugin-os', () => ({
 
 const mockPostHogConfig = {
   public_posthog_api_key: null, // Disable PostHog in tests
+}
+
+/** Leaves analytics responses pending so tests can exercise the interactive app before they settle. */
+const createPendingAnalyticsClient = () => {
+  const responses: ReturnType<typeof Promise.withResolvers<Response>>[] = []
+  const client = createClient({
+    prefixUrl: 'http://test-api.local',
+    fetch: async (input) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (!url.endsWith('/posthog/config')) {
+        return Response.json({})
+      }
+      const response = Promise.withResolvers<Response>()
+      responses.push(response)
+      return await response.promise
+    },
+  })
+  return { client, responses }
 }
 
 // happydom has no IndexedDB, so the boot pipeline's storage pre-flight
@@ -102,6 +123,78 @@ describe('useAppInitialization', () => {
     expect(result.current.initError).toBeUndefined()
   })
 
+  it('releases core content while analytics is still pending', async () => {
+    const { client, responses } = createPendingAnalyticsClient()
+    const { result } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(responses).toHaveLength(1)
+    expect(result.current.isInitializing).toBe(false)
+    expect(result.current.initData?.db).toBeDefined()
+    expect(result.current.initData?.posthogClient).toBeNull()
+    expect(result.current.initError).toBeUndefined()
+    await act(async () => {
+      responses[0].resolve(Response.json(mockPostHogConfig))
+      await getClock().runAllAsync()
+    })
+    expect(result.current.initData?.db).toBeDefined()
+  })
+
+  it('ignores a late analytics completion from the previous initialization after retry', async () => {
+    const { client, responses } = createPendingAnalyticsClient()
+    const { result } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(responses).toHaveLength(1)
+    const firstInitData = result.current.initData
+
+    await act(async () => {
+      await result.current.retry()
+      await getClock().runAllAsync()
+    })
+    expect(responses).toHaveLength(2)
+    const currentInitData = result.current.initData
+    expect(currentInitData).toBeDefined()
+    expect(currentInitData).not.toBe(firstInitData)
+    expect(getInitTimingPayload()).not.toHaveProperty('step8_initialize_posthog_ms')
+
+    await act(async () => {
+      responses[0].resolve(Response.json(mockPostHogConfig))
+      await getClock().runAllAsync()
+    })
+    // Publishing the obsolete service result would replace this object and
+    // notify the current app tree even though that result belongs to run one.
+    expect(result.current.initData).toBe(currentInitData)
+    expect(result.current.isInitializing).toBe(false)
+    expect(getInitTimingPayload()).not.toHaveProperty('step8_initialize_posthog_ms')
+
+    await act(async () => {
+      responses[1].resolve(Response.json(mockPostHogConfig))
+      await getClock().runAllAsync()
+    })
+    expect(result.current.initData).not.toBe(currentInitData)
+    expect(result.current.initData?.db).toBe(currentInitData?.db)
+    expect(getInitTimingPayload().step8_initialize_posthog_ms).toBeNumber()
+  })
+
+  it('does not start deferred analytics when initialization completes after unmount', async () => {
+    const { client, responses } = createPendingAnalyticsClient()
+    const { unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    unmount()
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(responses).toHaveLength(0)
+  })
+
   it('handles initialization gracefully when non-critical steps fail', async () => {
     const mockHttpClient = createMockHttpClient(mockPostHogConfig)
     const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
@@ -140,6 +233,20 @@ describe('useAppInitialization', () => {
     expect(result.current.isInitializing).toBe(false)
     expect(result.current.initData).toBeDefined()
     expect(result.current.initError).toBeUndefined()
+  })
+
+  it.each([false, true])('provides the persisted sidebar preference (%s) before the layout mounts', async (open) => {
+    await updateSettings(getDb(), { sidebar_state: open })
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(result.current.initData?.sidebarOpen).toBe(open)
   })
 
   it('records every init step duration for the app_init_timing payload', async () => {

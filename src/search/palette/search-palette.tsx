@@ -102,7 +102,7 @@ export const SearchPalette = ({
   // those routes redirect away, and filtering after the query's LIMIT would let
   // them crowd out the chats that can be shown.
   const excludeTypes = useMemo(() => (minimalMode ? [...minimalModeHiddenEntityTypes] : []), [minimalMode])
-  const { results } = useSearch(hasQuery ? trimmedQuery : '', { excludeTypes })
+  const { results, isLoading, isError } = useSearch(open && hasQuery ? trimmedQuery : '', { excludeTypes })
   const groups = useMemo(() => {
     if (!hasQuery) {
       return []
@@ -255,7 +255,13 @@ export const SearchPalette = ({
           ) : (
             <>
               <CommandEmpty>
-                <Trans>No results found.</Trans>
+                {isLoading ? (
+                  <Trans>Preparing search…</Trans>
+                ) : isError ? (
+                  <Trans>Search is unavailable. Try again.</Trans>
+                ) : (
+                  <Trans>No results found.</Trans>
+                )}
               </CommandEmpty>
               {commandSections}
               {groups.map(({ entity, hits }) => (

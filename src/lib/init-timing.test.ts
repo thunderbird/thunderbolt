@@ -5,10 +5,14 @@
 import { beforeEach, describe, expect, it } from 'bun:test'
 import {
   beginInitRun,
+  getInitRun,
   getInitTimingPayload,
   markAppMounted,
   markBundleEvaluated,
   markChatReady,
+  markContentReady,
+  markSpinnerMounted,
+  onContentReady,
   recordInitStep,
   resetInitTiming,
 } from './init-timing'
@@ -62,6 +66,32 @@ describe('init-timing', () => {
     expect(markChatReady()).toBeNull()
   })
 
+  it('reports content once, notifies subscribers, and supports late subscribers', () => {
+    let notifications = 0
+    markSpinnerMounted()
+    onContentReady(() => {
+      notifications += 1
+    })
+    const payload = markContentReady()
+    expect(payload?.spinner_to_content_ms).toBeGreaterThanOrEqual(0)
+    expect(notifications).toBe(1)
+    expect(markContentReady()).toBeNull()
+    onContentReady(() => {
+      notifications += 1
+    })
+    expect(notifications).toBe(2)
+  })
+
+  it('does not run cancelled content listeners', () => {
+    let called = false
+    const unsubscribe = onContentReady(() => {
+      called = true
+    })
+    unsubscribe()
+    markContentReady()
+    expect(called).toBe(false)
+  })
+
   it('beginInitRun clears step durations from a previous run and bumps the counter', () => {
     beginInitRun()
     recordInitStep('step0_fetch_config', 100)
@@ -71,6 +101,24 @@ describe('init-timing', () => {
 
     expect(payload.init_run).toBe(2)
     expect(payload).not.toHaveProperty('step0_fetch_config_ms')
+  })
+
+  it('ignores a deferred step from an earlier initialization after retry', async () => {
+    beginInitRun()
+    const firstRun = getInitRun()
+    const completion = Promise.withResolvers<void>()
+    const oldStep = (async () => {
+      await completion.promise
+      recordInitStep('step8_initialize_posthog', 1_500, firstRun)
+    })()
+
+    beginInitRun()
+    recordInitStep('step8_initialize_posthog', 20, getInitRun())
+    completion.resolve()
+    await oldStep
+
+    expect(getInitTimingPayload().step8_initialize_posthog_ms).toBe(20)
+    expect(getInitTimingPayload().init_run).toBe(2)
   })
 
   it('keeps marks across init runs (retry should not lose bundle/mount marks)', () => {

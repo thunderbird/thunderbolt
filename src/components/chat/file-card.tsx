@@ -9,11 +9,13 @@ import { FileText, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { DocxThumbnail } from './docx-thumbnail'
 import { ImageThumbnail } from './image-thumbnail'
-import { MarkdownThumbnail } from './markdown-thumbnail'
 import { docxMimeType, isTextualAttachment, TextSnippet } from './text-snippet'
 
-// react-pdf is heavy — load it only when an attachment card actually renders.
+// Document renderers stay out of the entry bundle until their attachment renders.
 const PdfThumbnail = lazy(() => import('./pdf-thumbnail'))
+const MarkdownThumbnail = lazy(() =>
+  import('./markdown-thumbnail').then((module) => ({ default: module.MarkdownThumbnail })),
+)
 
 type FileCardProps = {
   localFileId: string
@@ -58,7 +60,7 @@ const typeBadge = (filename: string, mimeType: string): string => {
  * Claude-Desktop-style attachment card: a first-page preview thumbnail with a
  * type badge + filename overlaid along the bottom. Used for pending composer
  * attachments (`onRemove`) and for sent attachments in chat (`onOpen`). The
- * thumbnail renderer is lazy-loaded (see {@link PdfThumbnail}).
+ * PDF and Markdown thumbnail renderers are lazy-loaded.
  */
 export const FileCard = ({
   localFileId,
@@ -89,7 +91,11 @@ export const FileCard = ({
         </Suspense>
       )}
       {isImage && <ImageThumbnail localFileId={localFileId} alt={filename} />}
-      {isMarkdown && <MarkdownThumbnail localFileId={localFileId} />}
+      {isMarkdown && (
+        <Suspense fallback={null}>
+          <MarkdownThumbnail localFileId={localFileId} />
+        </Suspense>
+      )}
       {isDocx && <DocxThumbnail localFileId={localFileId} title={filename} />}
       {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
       {deliverAs && (

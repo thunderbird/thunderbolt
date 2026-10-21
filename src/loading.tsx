@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Loader2 } from 'lucide-react'
-import { type FC } from 'react'
+import { type FC, useEffect } from 'react'
+import { markSpinnerMounted } from '@/lib/init-timing'
 
 type LoadingProps = {
   className?: string
@@ -11,6 +12,7 @@ type LoadingProps = {
 }
 
 export const Loading: FC<LoadingProps> = ({ className, size = 24 }) => {
+  useEffect(markSpinnerMounted, [])
   return (
     <div className="flex items-center justify-center w-full h-[100vh]">
       <Loader2 className={`animate-spin text-gray-500 ${className || ''}`} size={size} />

@@ -14,6 +14,7 @@ import {
   getChatMessages,
   getChatThread,
   getDefaultModelForThread,
+  getSelectedModel,
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
@@ -192,7 +193,7 @@ export const useHydrateChatStore = ({
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
-    const isDeleted = await isChatThreadDeleted(db, id)
+    const isDeleted = !isNew && (await isChatThreadDeleted(db, id))
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -219,16 +220,16 @@ export const useHydrateChatStore = ({
       return
     }
 
-    // If the session does not exist, create it below
-    const settings = await getSettings(db, { selected_model: String, selected_agent: String })
-
-    const [defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
+    // New IDs are minted locally and have no history. Read the selected model
+    // directly, and start independent reads together instead of gating on settings.
+    const [settings, defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
       await Promise.all([
-        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-        getChatThread(db, id),
-        getChatMessages(db, id),
+        getSettings(db, { selected_model: String, selected_agent: String }),
+        isNew ? getSelectedModel(db) : getDefaultModelForThread(db, id),
+        isNew ? null : getChatThread(db, id),
+        isNew ? [] : getChatMessages(db, id),
         getAvailableModels(db),
-        getTriggerPromptForThread(db, id),
+        isNew ? null : getTriggerPromptForThread(db, id),
         getAllAgents(db),
         getAllSystemAgents(db),
       ])

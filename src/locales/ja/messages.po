@@ -2957,6 +2957,10 @@ msgstr "環境設定"
 msgid "Preferred Name"
 msgstr "希望する呼び名"
 
+#: src/search/palette/search-palette.tsx
+msgid "Preparing search…"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview"
 msgstr "プレビュー"
@@ -3353,6 +3357,10 @@ msgstr "絵文字を検索"
 #: src/components/ui/command.tsx
 msgid "Search for a command to run…"
 msgstr "実行するコマンドを検索…"
+
+#: src/search/palette/search-palette.tsx
+msgid "Search is unavailable. Try again."
+msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"

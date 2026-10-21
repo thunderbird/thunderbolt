@@ -3,11 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { CommonPowerSyncDatabase } from '@powersync/web'
+import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 // Import AppSchema from the schema module directly, NOT the `@/db/powersync`
-// barrel: the barrel re-exports the connector/database SDK, and since this file
-// is pulled into the entry bundle via `use-app-initialization`, the barrel
-// import would drag the whole PowerSync SDK eager and defeat the dynamic import
-// in `src/db/database.ts`.
+// barrel: the barrel re-exports the connector/database SDK, which search index
+// preparation does not need to load.
 import { AppSchema } from '@/db/powersync/schema'
 import type { SearchEntityConfig } from './registry'
 import { searchEntities, searchIndexVersion } from './registry'
@@ -137,44 +136,71 @@ const resolveInternalName = (tableName: string): string => {
 /**
  * Idempotently builds the unified FTS5 search index and its sync triggers.
  *
- * Runs once at startup: if the index already exists at the current
+ * Runs on first search demand: if the index already exists at the current
  * {@link searchIndexVersion} it returns immediately. Otherwise it drops any
  * previous generation, recreates the virtual table, installs INSERT/UPDATE/DELETE
  * triggers on each entity's backing table, backfills existing rows, and records
  * the new version in {@link searchMetaTable}.
  */
 export const createSearchIndex = async (powerSync: CommonPowerSyncDatabase): Promise<void> => {
-  await powerSync.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
+  await powerSync.writeTransaction(async (transaction) => {
+    await transaction.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 
-  const [meta] = await powerSync.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
-  const indexRows = await powerSync.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
-    searchIndexTable,
-  ])
-  // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
-  // its internal ps_data__* tables (resync, schema update), which silently takes
-  // our triggers with them while the search_index table survives. Without this
-  // check the version gate would short-circuit and the index would go stale.
-  const triggerRows = await powerSync.getAll(
-    `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
-  )
-  const expectedTriggerCount = searchEntities.length * 3
-  if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
-    return
-  }
-
-  for (const statement of buildDropSql()) {
-    await powerSync.execute(statement)
-  }
-  await powerSync.execute(buildCreateSql())
-
-  for (const cfg of searchEntities) {
-    const internalName = resolveInternalName(cfg.tableName)
-    for (const trigger of buildTriggerSql(cfg, internalName)) {
-      await powerSync.execute(trigger)
+    const [meta] = await transaction.getAll<{ version: number }>(`SELECT version FROM ${searchMetaTable} LIMIT 1`)
+    const indexRows = await transaction.getAll(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, [
+      searchIndexTable,
+    ])
+    // Also confirm the per-entity triggers still exist: PowerSync can drop/recreate
+    // its internal ps_data__* tables (resync, schema update), which silently takes
+    // our triggers with them while the search_index table survives. Without this
+    // check the version gate would short-circuit and the index would go stale.
+    const triggerRows = await transaction.getAll(
+      `SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'`,
+    )
+    const expectedTriggerCount = searchEntities.length * 3
+    if (indexRows.length > 0 && meta?.version === searchIndexVersion && triggerRows.length === expectedTriggerCount) {
+      return
     }
-    await powerSync.execute(buildBackfillSql(cfg, internalName))
-  }
 
-  await powerSync.execute(`DELETE FROM ${searchMetaTable}`)
-  await powerSync.execute(`INSERT INTO ${searchMetaTable} (version) VALUES (${searchIndexVersion})`)
+    for (const statement of buildDropSql()) {
+      await transaction.execute(statement)
+    }
+    await transaction.execute(buildCreateSql())
+
+    for (const cfg of searchEntities) {
+      const internalName = resolveInternalName(cfg.tableName)
+      for (const trigger of buildTriggerSql(cfg, internalName)) {
+        await transaction.execute(trigger)
+      }
+      await transaction.execute(buildBackfillSql(cfg, internalName))
+    }
+
+    await transaction.execute(`DELETE FROM ${searchMetaTable}`)
+    await transaction.execute(`INSERT INTO ${searchMetaTable} (version) VALUES (${searchIndexVersion})`)
+  })
+}
+
+const preparations = new WeakMap<CommonPowerSyncDatabase, Promise<void>>()
+
+/**
+ * Share concurrent preparation, then validate again on the next search demand.
+ * A resync or schema replacement can remove triggers from an existing database.
+ */
+export const ensureSearchIndex = (database: CommonPowerSyncDatabase | null = getPowerSyncInstance()): Promise<void> => {
+  if (!database) {
+    throw new Error('PowerSync is not available')
+  }
+  const existing = preparations.get(database)
+  if (existing) {
+    return existing
+  }
+  const pending = (async () => {
+    try {
+      await createSearchIndex(database)
+    } finally {
+      preparations.delete(database)
+    }
+  })()
+  preparations.set(database, pending)
+  return pending
 }

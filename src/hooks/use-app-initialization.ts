@@ -14,15 +14,13 @@ import { fetchEncryptionMetadata } from '@/api/encryption'
 import { getKeyPair } from '@/crypto'
 import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
-import { getPowerSyncInstance } from '@/db/powersync/sync-state'
-import { createSearchIndex } from '@/search/fts-setup'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
 import { createAuthenticatedClient } from '@/lib/http'
-import { beginInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
+import { beginInitRun, getInitRun, getInitTimingPayload, recordInitStep } from '@/lib/init-timing'
 import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
@@ -40,7 +38,8 @@ import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { afterPaint } from '@/lib/after-paint'
 import { observeDbReadiness, reportDbDiagnostic } from './db-diagnostic'
 
 /**
@@ -179,12 +178,13 @@ export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
 }
 
 const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+  const initRun = getInitRun()
   const startedAt = performance.now()
   try {
     return await fn()
   } finally {
     const durationMs = performance.now() - startedAt
-    recordInitStep(label, durationMs)
+    recordInitStep(label, durationMs, initRun)
     console.info(`[init] ${label}: ${Math.round(durationMs)}ms`)
   }
 }
@@ -211,7 +211,13 @@ const initializePostHogSafely = async (httpClient: HttpClient): Promise<PostHog 
   }
 }
 
-const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<InitData>> => {
+type CoreInitialization = {
+  initData: InitData
+  timing: Record<string, unknown>
+  startedAt: number
+}
+
+const executeInitializationSteps = async (httpClient?: HttpClient): Promise<HandleResult<CoreInitialization>> => {
   beginInitRun()
   const totalStartedAt = performance.now()
   console.info('[init] start')
@@ -245,6 +251,40 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     trackError(storageError, { initialization_step: 'storage_check' })
     return { success: false, error: storageError }
   }
+
+  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
+  // Step 6: HTTP client initialization (use provided client or create one)
+  let client: HttpClient
+
+  if (httpClient) {
+    client = httpClient
+  } else {
+    try {
+      client = await time('step6_create_http_client', async () =>
+        createAuthenticatedClient(cloudUrl, getAuthToken, {
+          credentials: isSsoMode() ? 'include' : undefined,
+        }),
+      )
+    } catch (error) {
+      console.error('Failed to initialize HTTP client:', error)
+      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
+      trackError(httpClientError, { initialization_step: 'http_client' })
+      return {
+        success: false,
+        error: httpClientError,
+      }
+    }
+  }
+
+  // Binding can run alongside local storage setup. Sync credentials require it,
+  // so starting only after the initial-sync wait creates a startup dependency cycle.
+  const sessionBinding = time('step6a_bind_session', async () => {
+    try {
+      await ensureSessionBound(client)
+    } catch (error) {
+      console.warn('[init] session binding failed:', error)
+    }
+  })
 
   // Step 1: App directory creation
   let appDirPath: string
@@ -309,19 +349,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: dbReadyError }
   }
 
-  // Step 2d: Build the unified full-text search index. Idempotent —
-  // rebuilds only when missing or the schema version bumped. Runs against the
-  // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
-  // bun-sqlite in tests) return null here and skip it. Non-critical: a failed
-  // build must never block boot, so it logs and continues.
-  const powerSyncInstance = getPowerSyncInstance()
-  if (powerSyncInstance) {
-    try {
-      await time('step2d_build_search_index', () => createSearchIndex(powerSyncInstance))
-    } catch (error) {
-      console.warn('[init] Failed to build search index:', error)
-    }
-  }
+  // Complete binding before trust requests or the mounted session observer run.
+  // If this attempt fails, that observer can retry after the local app mounts.
+  await sessionBinding
+  startKeyRequestResponder({
+    stageKeyring: () => stageKeyring(client),
+    refreshAK: () => refreshAK(client),
+    fetchMetadata: () => fetchEncryptionMetadata(client),
+  })
 
   // Read the persisted `/config` cache once, up front. `pickModelsDefaults`
   // returns whichever of (bundled models, OTA models) declares the higher
@@ -355,8 +390,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     hasCurrentDefaultsVersions(db, defaultsTargets),
   )
 
-  // Step 3: Wait for PowerSync initial sync — only on fresh boots when sync is
-  // enabled AND we already applied the current bundle versions. Returning
+  // Step 3: Wait for PowerSync initial sync only when sync is
+  // enabled and the current bundle versions have not been applied. Returning
   // boots on sync-enabled, up-to-date devices kick off the sync fire-and-
   // forget so the engine still warms up and background updates land as they
   // arrive, then feed `initialSyncCompleted: false` to reconcile so the
@@ -403,98 +438,53 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // initialization — each migration retries on the next launch.
   await time('step4b_run_data_migrations', () => runDataMigrations(db))
 
-  // Step 5: Get cloud url and experimental feature tasks
-  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
-  const { experimentalFeatureTasks, experimentalFeatureVoice } = await time('step5_get_settings', () =>
+  // Include the sidebar preference so mounting the layout doesn't add another
+  // database round trip before the chat can start hydrating.
+  const { experimentalFeatureTasks, experimentalFeatureVoice, sidebarState } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,
       experimental_feature_voice: false,
+      sidebar_state: true,
     }),
   )
 
-  // Step 6: HTTP client initialization (use provided client or create one)
-  let client: HttpClient
-
-  if (httpClient) {
-    client = httpClient
-  } else {
-    try {
-      client = await time('step6_create_http_client', async () =>
-        createAuthenticatedClient(cloudUrl, getAuthToken, {
-          credentials: isSsoMode() ? 'include' : undefined,
-        }),
-      )
-    } catch (error) {
-      console.error('Failed to initialize HTTP client:', error)
-      const httpClientError = createHandleError('HTTP_CLIENT_INIT_FAILED', 'Failed to initialize HTTP client', error)
-      trackError(httpClientError, { initialization_step: 'http_client' })
-      return {
-        success: false,
-        error: httpClientError,
-      }
-    }
-  }
-
-  // Step 6b: Start the E2EE key-request responder (D2 + C3 polling) and run
-  // the WS6 migrator/follower check. The SharedWorker holds no auth token, so
-  // key fetching and the migration/follow flow must happen here on the main
-  // thread. Both are fire-and-forget: staging/migration must never block boot,
-  // and a repeat init run replaces the previous responder. The responder
-  // self-gates on setup completeness internally.
-  // Bind this session to this device BEFORE anything calls a trust route
-  // (THU-873). Every keyring/envelope/challenge route resolves its caller from
-  // `session.deviceId`, and a re-authenticated session starts out bound to
-  // nothing — so an unbound session would 403 the keyring fetch below and leave
-  // the codec fail-closed, painting the UI with `__enc:v2:` ciphertext. Awaited
-  // for that ordering, but never fatal: a device with no key pair has nothing to
-  // bind, and a failure here self-heals on the next launch.
-  await time('step6a_bind_session', async () => {
-    try {
-      await ensureSessionBound(client)
-    } catch (error) {
-      console.warn('[init] session binding failed:', error)
-    }
-  })
-
-  startKeyRequestResponder({
-    stageKeyring: () => stageKeyring(client),
-    refreshAK: () => refreshAK(client),
-    fetchMetadata: () => fetchEncryptionMetadata(client),
-  })
+  // Run the migration/follower check after local data preparation. Session binding
+  // and the key responder already started before the initial-sync gate.
   runEncryptionInit(client).catch((error) => {
     console.warn('[init] runEncryptionInit failed:', error)
   })
 
-  // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
-  // of each other) — run in parallel; each wrapper swallows its own failure.
-  const [tray, posthogClient] = await Promise.all([initializeTraySafely(), initializePostHogSafely(client)])
-
   const initTotalMs = Math.round(performance.now() - totalStartedAt)
   console.info(`[init] complete (total ${initTotalMs}ms)`)
 
-  // Report the full startup timeline to PostHog. This must run after step 8 —
-  // the PostHog client only exists from there on; if the user opted out of data
-  // collection, trackEvent no-ops.
+  // Snapshot blocking work now; optional service timings are added when they
+  // settle, so a late analytics client cannot move the core-ready milestone.
   const initTimingPayload = {
     ...getInitTimingPayload(),
-    init_total_ms: initTotalMs,
+    init_core_ms: initTotalMs,
     initial_sync_outcome: initialSyncOutcome,
     init_path: canSkipSyncWait ? ('returning' as const) : ('fresh' as const),
     sync_enabled: getLocalSetting('syncEnabled'),
     platform: getPlatform(),
   }
-  trackEvent('app_init_timing', initTimingPayload)
+  performance.mark('thunderbolt:core-ready')
 
   return {
     success: true,
     data: {
-      db,
-      cloudUrl,
-      experimentalFeatureTasks,
-      experimentalFeatureVoice,
-      posthogClient,
-      httpClient: client,
-      ...tray,
+      startedAt: totalStartedAt,
+      timing: initTimingPayload,
+      initData: {
+        db,
+        cloudUrl,
+        experimentalFeatureTasks,
+        experimentalFeatureVoice,
+        sidebarOpen: sidebarState,
+        posthogClient: null,
+        httpClient: client,
+        tray: undefined,
+        window: undefined,
+      },
     },
   }
 }
@@ -503,59 +493,112 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
  * Hook for managing app initialization
  * @param httpClient - Optional HTTP client (primarily for testing)
  */
+type InitializationState = {
+  initData?: InitData
+  initError?: HandleError
+  isInitializing: boolean
+}
+
+/** Publishes each optional service independently, so neither can hold up the other or the app. */
+const initializeOptionalServices = async (
+  core: CoreInitialization,
+  isCurrent: () => boolean,
+  publish: (patch: Partial<InitData>) => void,
+): Promise<void> => {
+  await Promise.all([
+    (async () => {
+      const tray = await initializeTraySafely()
+      if (isCurrent()) {
+        publish(tray)
+      }
+    })(),
+    (async () => {
+      const posthogClient = await initializePostHogSafely(core.initData.httpClient)
+      if (isCurrent()) {
+        publish({ posthogClient })
+      }
+    })(),
+  ])
+  if (isCurrent()) {
+    trackEvent('app_init_timing', {
+      ...core.timing,
+      ...getInitTimingPayload(),
+      init_total_ms: Math.round(performance.now() - core.startedAt),
+    })
+  }
+}
+
+/** Opens the local app first, then attaches optional native and analytics services. */
 export const useAppInitialization = (httpClient?: HttpClient) => {
-  const [initData, setInitData] = useState<InitData>()
-  const [initError, setInitError] = useState<HandleError>()
-  const [isInitializing, setIsInitializing] = useState(true)
+  const [state, setState] = useState<InitializationState>({ isInitializing: true })
+  const run = useRef(0)
+  const cancelOptional = useRef<(() => void) | undefined>(undefined)
 
   const initialize = useCallback(async () => {
-    setIsInitializing(true)
+    const currentRun = ++run.current
+    cancelOptional.current?.()
+    const isCurrent = () => run.current === currentRun
+    setState({ isInitializing: true })
     try {
       const result = await executeInitializationSteps(httpClient)
-
-      if (result.success) {
-        setInitData(result.data)
-        setInitError(undefined)
-      } else {
-        setInitError(result.error)
+      if (!isCurrent()) {
+        return
       }
+      if (!result.success) {
+        setState({ initError: result.error, isInitializing: false })
+        return
+      }
+      const core = result.data
+      setState({ initData: core.initData, isInitializing: false })
+      cancelOptional.current = afterPaint(() => {
+        void initializeOptionalServices(core, isCurrent, (patch) => {
+          setState((previous) => ({
+            ...previous,
+            initData: previous.initData ? { ...previous.initData, ...patch } : undefined,
+          }))
+        })
+      })
     } catch (error) {
-      // Any unhandled rejection from an unguarded init step (e.g. PowerSync's
-      // deferred storage open) must surface as an error screen rather than
-      // leaving the app stuck on the loading spinner forever. Tracked like the
-      // per-step failures so an unexpected throw stays observable.
+      if (!isCurrent()) {
+        return
+      }
       console.error('Failed to initialize app:', error)
-      const unknownError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
-      trackError(unknownError, { initialization_step: 'uncaught' })
-      setInitError(unknownError)
-    } finally {
-      setIsInitializing(false)
+      const initError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
+      trackError(initError, { initialization_step: 'uncaught' })
+      setState({ initError, isInitializing: false })
     }
   }, [httpClient])
 
-  const retry = useCallback(async () => {
-    await initialize()
-  }, [initialize])
-
   const clearDatabase = useCallback(async () => {
-    setIsInitializing(true)
+    ++run.current
+    cancelOptional.current?.()
+    setState({ isInitializing: true })
     try {
       await resetAppDir()
       await initialize()
-    } finally {
-      setIsInitializing(false)
+    } catch (error) {
+      setState({
+        initError: createHandleError('DATABASE_INIT_FAILED', 'Failed to clear database', error),
+        isInitializing: false,
+      })
     }
   }, [initialize])
 
+  const cancelInitialization = useCallback(() => {
+    ++run.current
+    cancelOptional.current?.()
+  }, [])
+
   useEffect(() => {
-    initialize()
-  }, [initialize])
+    void initialize()
+    return cancelInitialization
+  }, [initialize, cancelInitialization])
 
   return {
-    initData,
-    initError,
-    isInitializing,
-    retry,
+    initData: state.initData,
+    initError: state.initError,
+    isInitializing: state.isInitializing,
+    retry: initialize,
     clearDatabase,
   }
 }

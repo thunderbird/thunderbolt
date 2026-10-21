@@ -67,6 +67,7 @@ import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
+import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 
@@ -127,14 +128,13 @@ const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
 /**
- * Prefetch every lazily routed chunk. The Tauri apps serve chunks from local
- * disk, so warming them right after first paint makes every screen render
- * instantly on navigation while the web build keeps true lazy loading to
- * protect its first load. Dynamic imports are memoized, so the `lazy()`
+ * Prefetch lazily routed chunks after core initialization, yielding between
+ * imports. Tauri serves these from local disk; the web build keeps true lazy
+ * loading to protect its first load. Dynamic imports are memoized, so the `lazy()`
  * components resolve from the same in-flight module records.
  */
 const preloadAllRouteChunks = () => {
-  void Promise.allSettled(Object.values(routeChunkLoaders).map((load) => load()))
+  return preloadInBackground(Object.values(routeChunkLoaders))
 }
 
 const queryClient = new QueryClient()
@@ -149,6 +149,14 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
+
+  // Start only after core initialization has mounted the app, regardless of its
+  // entry route. Serial warming yields between chunks but can overlap hydration.
+  useEffect(() => {
+    if (isTauri()) {
+      return preloadAllRouteChunks()
+    }
+  }, [])
 
   return (
     <BrowserRouter>
@@ -165,14 +173,14 @@ const AppContent = ({ initData }: { initData: InitData }) => {
  * URL (see `device-approval-return.ts`) so the approval page reopens pre-filled.
  * Read once on mount via a lazy initializer, so normal landings are a no-op.
  */
-const HomeShell = () => {
+const HomeShell = ({ sidebarOpen }: { sidebarOpen: boolean }) => {
   const [deviceReturn] = useState(takeDeviceApprovalReturn)
   if (deviceReturn) {
     return <Navigate to={deviceReturn} replace />
   }
   return (
     <>
-      <Layout />
+      <Layout initialSidebarOpen={sidebarOpen} />
       <OnboardingDialog />
       <WelcomeDialog />
     </>
@@ -215,7 +223,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Main app routes - authenticated only. The gate decides redirect
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route path="/" element={<HomeShell />}>
+          <Route path="/" element={<HomeShell sidebarOpen={initData.sidebarOpen} />}>
             {/* Home routes with HomeLayout */}
             <Route element={<ChatLayout />}>
               <Route index element={<Navigate to="/chats/new" replace />} />
@@ -298,7 +306,7 @@ export const App = () => {
 
   // Start the palette's chunk during boot so it is in memory by the time
   // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
-  // the `sidebarState` gate in `Layout`, so fetching only from there leaves a
+  // core initialization in `Layout`, so fetching only from there leaves a
   // window where Cmd+K has nothing to show. ~10KB, for the one surface
   // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
   // runs on web too; that policy is about not warming *every* route.
@@ -312,7 +320,6 @@ export const App = () => {
   useEffect(() => {
     if (isTauri()) {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
-      preloadAllRouteChunks()
     }
   }, [])
 

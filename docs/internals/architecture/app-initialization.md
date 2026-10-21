@@ -1,9 +1,9 @@
 # App Initialization
 
 `executeInitializationSteps`
-([`src/hooks/use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts)) runs everything
-between "the bundle finished evaluating" and "the app renders a chat", handing one `InitData` object
-to [`src/app.tsx`](../../../src/app.tsx) at `src/app.tsx:298`.
+([`src/hooks/use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts)) opens local storage and prepares the data needed to mount the app. The hook publishes `InitData`
+to [`src/app.tsx`](../../../src/app.tsx), then attaches tray and analytics services independently
+after a rendering opportunity. Auth routing and chat hydration follow core initialization.
 
 ## The steps, in execution order
 
@@ -11,18 +11,18 @@ to [`src/app.tsx`](../../../src/app.tsx) at `src/app.tsx:298`.
 | ----------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
 | `step0_fetch_config`          | Fire-and-forget `/config` fetch; hydrates the persisted `useConfigStore`      | Logged; nothing downstream awaits it |
 | `step0_5_storage_check`       | `isIndexedDbAvailable()` probe (`src/lib/platform.ts:203`)                    | Fatal: `STORAGE_UNAVAILABLE`         |
+| `step6_create_http_client`    | `createAuthenticatedClient`; skipped when a client was injected (tests)       | Fatal: `HTTP_CLIENT_INIT_FAILED`     |
+| `step6a_bind_session`         | Device/session challenge and response, when a device key pair exists          | Logged, boot continues               |
 | `step1_create_app_dir`        | `createAppDir()` (Tauri app dir, or OPFS on web)                              | Fatal: `APP_DIR_CREATION_FAILED`     |
 | `step2_initialize_database`   | Opens the database and registers the singleton                                | Fatal: `DATABASE_INIT_FAILED`        |
 | `step2b_db_ready`             | `select 1` against the fresh handle, bounded at `dbReadyTimeoutMs` (30 s)     | Fatal: `DATABASE_INIT_FAILED`        |
-| `step2d_build_search_index`   | `createSearchIndex` (`src/search/fts-setup.ts:146`)                           | Logged, boot continues               |
 | `step2c_returning_boot_probe` | `hasCurrentDefaultsVersions` (`src/dal/settings.ts:256`): fresh or returning? | n/a                                  |
 | `step3_wait_for_initial_sync` | Awaits or skips PowerSync's priority-1 first sync                             | `waitForInitialSync` never rejects   |
 | `step4_reconcile_defaults`    | `reconcileDefaults` (`src/lib/reconcile-defaults.ts`)                         | Fatal: `RECONCILE_DEFAULTS_FAILED`   |
 | `step4b_run_data_migrations`  | `runDataMigrations` (`src/lib/data-migrations/index.ts:53`)                   | Swallowed per migration; never fatal |
-| `step5_get_settings`          | Reads `experimental_feature_tasks` / `experimental_feature_voice`             | n/a                                  |
-| `step6_create_http_client`    | `createAuthenticatedClient`; skipped when a client was injected (tests)       | Fatal: `HTTP_CLIENT_INIT_FAILED`     |
-| `step7_initialize_tray`       | Tauri tray, in parallel with step 8; each wrapper swallows its own failure    | Logged; boots with no tray           |
-| `step8_initialize_posthog`    | PostHog client                                                                | Logged; boots with a null client     |
+| `step5_get_settings`          | Reads feature flags and the initial `sidebar_state`                           | n/a                                  |
+| `step7_initialize_tray`       | Deferred Tauri tray setup, independent of step 8                              | Logged; boots with no tray           |
+| `step8_initialize_posthog`    | Deferred PostHog client                                                       | Logged; boots with a null client     |
 
 Several steps sit where they do because moving them breaks something no test and no type will
 catch, mostly multi-device convergence of default data.
@@ -30,20 +30,28 @@ catch, mostly multi-device convergence of default data.
 - **Every step is wrapped in `time(label, fn)`**: logs `[init] <label>: <n>ms` and feeds the
   `app_init_timing` event ([TELEMETRY.md](../../../TELEMETRY.md#startup-performance-app_)). Labels
   become property names on that event, so renaming one breaks the existing dashboards.
-- **The labels are historical, not an order**: `0, 0.5, 1, 2, 2b, 2d, 2c, 3, 4, 4b, 5, 6, 7+8`, with
-  `2d` physically before `2c`. Read the file, not the numbers.
+- **The labels are historical, not execution order.** Client creation and session binding now
+  start after the storage check, overlapping binding with the local database open. Binding settles before the key-request responder and initial-sync gate. The mounted session
+  observer retains its independent retry if the startup handshake failed. The migration/follower
+  check starts after reconciliation and binding.
+- **Steps 7 and 8 do not gate content.** Each publishes its result independently. A slow analytics
+  request cannot hold the tray or the app; a slow tray cannot hold analytics. Retry/unmount cancels
+  pending scheduling and prevents old results from replacing the current app state.
 - **`step2b_db_ready` is a bounded `select 1`.** PowerSync defers its expensive ready gate (WASM
   compile, OPFS open, schema replace) to the first query, so absorbing it here keeps `step4`
   measuring reconcile rather than storage setup. The bound matters: a locked or unusable local
   database surfaces here and nowhere earlier (`createAppDir` returns the virtual path `app-data` on
   web without touching OPFS; the step-0.5 probe only opens IndexedDB), and an unbounded await hangs
   the spinner forever.
-- **`trackEvent('app_init_timing')` fires after step 8**, where the PostHog client first exists
-  (`src/hooks/use-app-initialization.ts:397-408`).
+- **`app_init_timing` fires after optional services settle.** `init_total_ms` includes those services;
+  `init_core_ms` measures the shorter blocking pipeline. `app_chat_ready` and `app_content_ready`
+  retain their original timestamps if analytics attaches late; only the three fixed startup event
+  types can be buffered. Consent is read after the configuration/SDK loads, immediately before
+  client initialization.
 
 ## Fresh boot vs returning boot
 
-Step 3 is the pipeline's one user-visible cost: a fresh boot waits up to 10 s
+Step 3 can add a substantial user-visible cost: a fresh boot waits up to 10 s
 (`initialSyncTimeoutMs`, `src/db/powersync/database.ts:48`) for PowerSync's first sync before
 rendering. Step 2c picks the path.
 
@@ -54,8 +62,8 @@ const canSkipSyncWait = bundleVersionsCurrent && getLocalSetting('syncEnabled')
 ```
 
 1. **Bundle versions current**, per the probe below.
-2. **Sync enabled.** Sync-disabled devices take the fresh path even though `waitForInitialSync`
-   returns `'disabled'` instantly, because `'disabled'` sets `initialSyncCompleted: true`, the only
+2. **Sync enabled.** Sync-disabled devices take the fresh path and resolve `'disabled'` immediately
+   without a network wait, because `'disabled'` sets `initialSyncCompleted: true`, the only
    thing that lets reconcile's gate apply bundle updates on a standalone device. Skipping would pin
    it `false` and freeze those users on their defaults.
 
@@ -124,14 +132,20 @@ boot. Migrations must be idempotent and rerun next launch; the contract is at th
 
 ## The search index
 
-`step2d_build_search_index` builds the unified FTS5 index.
+Search is prepared when the palette or a project-search tool first needs it, rather than during
+boot. Both paths use `ensureSearchIndex`, which shares in-flight preparation per PowerSync instance
+and rechecks the index on each later demand. `useSearchIndex` enables the reactive query only when
+preparation finishes; typing another nonempty query reuses that readiness. The palette shows
+preparation/failure feedback, and reopening it retries failed preparation and checks for lost triggers.
 
-- **Before the data steps**: it only needs the raw SQLite handle.
-- **Best-effort**: a failed build logs and boot continues with a stale or empty palette.
-- **Skipped entirely** when `getPowerSyncInstance()` returns null (non-PowerSync backends, e.g.
-  `bun-sqlite` under test).
-- **Coupled to PowerSync's internal table layout**; that coupling and its failure mode are in
-  [AGENTS.md](../../../AGENTS.md#powersync-and-synced-tables).
+`createSearchIndex` checks the version, table and triggers, then recreates/backfills if necessary,
+all within a write transaction. Concurrent tabs cannot observe a partially built index, sync writes
+serialize with the rebuild, and a failure rolls the changes back. Writes made before the first
+search are included by the backfill. The existing trigger self-healing checks remain in place.
+
+The index is still coupled to PowerSync's internal table layout; see
+[AGENTS.md](../../../AGENTS.md#powersync-and-synced-tables). `step2d_build_search_index_ms` is no longer
+emitted as a startup step.
 
 ## Failure modes and the error screens
 
@@ -181,6 +195,52 @@ durations per run so a retry reports its own timings with an incremented `init_r
 Per-step properties are generated from the `time('…')` call sites, so adding a step adds a property
 automatically, but the full list in [TELEMETRY.md](../../../TELEMETRY.md#startup-performance-app_)
 needs updating by hand.
+
+## Startup performance boundaries
+
+Core initialization opens storage, reconciles defaults, runs migrations and snapshots the initial
+sidebar preference. Tray and analytics attach independently after a rendering opportunity; neither
+holds the app behind the startup spinner. The analytics configuration request and each device
+binding request have a five-second timeout. Device binding overlaps database setup, but settles before sync and remote encryption operations.
+The mounted session observer can still retry a failed startup handshake.
+
+Settings reads batch keys into one query. React consumers retain their individual query keys while
+sharing one settings-table watcher per database/query cache; the last consumer aborts the watcher
+and removes its schema listener. Defaults reconciliation also batches its existence and version
+probes inside the existing transaction, preserving the monotonic version and initial-sync gates.
+
+A new chat has no history to load, so it reads the selected model and skips persisted-thread,
+message, deletion and trigger lookups. Existing chats retain those lookups. The layout uses the
+startup sidebar snapshot until its reactive query resolves, avoiding a blank layout in between.
+
+MCP client/transports, tool configuration discovery, Markdown attachment previews, and onboarding
+name/location steps load when needed. Chat routes and layout chrome remain static. Splitting
+secondary code reduces the initial module graph, but does not establish the same percentage
+reduction in visible loading time.
+
+Native apps warm secondary routes serially after core initialization mounts the app, yielding
+between imports. This applies to every entry route and can overlap chat hydration. Web builds
+retain on-demand route loading.
+
+### Measuring changes
+
+Compare production builds from the same base revision with the same device, dataset, session,
+route, sync/encryption state and cache conditions. Report fresh profiles and returning reloads
+separately. A deliberately delayed service is a useful regression scenario, but must be labeled as
+an injected delay rather than representative production latency.
+
+`app_content_ready` follows committed chat content and two animation frames. It preserves an early
+milestone even if analytics attaches later. This is a rendering-opportunity measurement, not proof
+of compositor paint or first-send readiness; a visible onboarding dialog can still cover the
+composer. Keep navigation-to-content alongside spinner-to-content so moving the spinner cannot
+manufacture a gain. Video/filmstrip review supplies the visual check.
+
+The [reviewed benchmark and recordings](../performance/startup-2026-10-21/README.md) compare
+production builds on the same main revision. Median spinner-to-visible-composer time fell 31.8%
+on returning local profiles and 46.9% on fresh local profiles. A separately labeled 1,500 ms
+injected analytics delay produced a 90.4% reduction. These synthetic Chromium results exclude
+real authentication, onboarding and encrypted sync; they do not establish an 80% improvement
+across production or native launches.
 
 ## Where the code lives
 

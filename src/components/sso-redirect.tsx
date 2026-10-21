@@ -26,9 +26,12 @@ const SsoRedirect = () => {
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const analytics = useAnonymousPromotionAnalytics()
-  const [error, setError] = useState(false)
+  const [status, setStatus] = useState<'waiting-for-session' | 'redirecting' | 'error'>('waiting-for-session')
   const [retryKey, setRetryKey] = useState(0)
   const normalizedCloudUrl = normalizeBackendUrl(cloudUrl)
+  // A signed-out session becomes pending again on reconnect. Only wait for its
+  // first resolution; background refetches must not restart an active sign-in.
+  const isSessionReady = status !== 'waiting-for-session' || !isPending
 
   const redirectToSso = useEffectEvent(async (signal: AbortSignal) => {
     const baseUrl = normalizedCloudUrl.replace(/\/v1$/, '')
@@ -48,7 +51,7 @@ const SsoRedirect = () => {
           setAuthToken(token)
           window.location.replace('/')
         } else {
-          setError(true) // timeout
+          setStatus('error') // timeout
         }
         return
       }
@@ -68,7 +71,7 @@ const SsoRedirect = () => {
 
       if (!isSafeUrl(data.url)) {
         console.error('SSO redirect blocked: unsafe URL', data.url)
-        setError(true)
+        setStatus('error')
         return
       }
 
@@ -84,22 +87,22 @@ const SsoRedirect = () => {
         return
       }
       console.error('SSO redirect failed:', err)
-      setError(true)
+      setStatus('error')
     }
   })
 
   useEffect(() => {
-    if (isPending) {
+    if (!isSessionReady) {
       return
     }
-    setError(false)
+    setStatus('redirecting')
     const abortController = new AbortController()
     void redirectToSso(abortController.signal)
 
     return () => abortController.abort()
-  }, [normalizedCloudUrl, retryKey, isPending])
+  }, [normalizedCloudUrl, retryKey, isSessionReady])
 
-  if (error) {
+  if (status === 'error') {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[length:var(--font-size-body)] text-muted-foreground">

@@ -227,8 +227,9 @@ Native apps warm secondary routes serially after core initialization mounts the 
 between imports. This applies to every entry route and can overlap chat hydration. Web builds
 retain on-demand route loading, except that SSO deployments preload their small redirect chunk
 during startup. SSO redirect analytics reuses the resolved session; it does not add a second
-session request before sign-in. Direct visits still wait for session resolution. Auth redirects
-keep the loading indicator visible while navigation commits, and loading indicators share a
+session request before sign-in. Direct visits still wait for the first session resolution;
+background session refreshes must not restart an active attempt or dismiss its error screen.
+Auth redirects keep the loading indicator visible while navigation commits, and loading indicators share a
 rotation phase to reduce jumps when startup hands off to auth or route loading.
 
 The backend uses Better Auth's supported Drizzle joins to read a session and its user in one

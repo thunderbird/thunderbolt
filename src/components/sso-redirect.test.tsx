@@ -6,7 +6,10 @@ import { AuthContext } from '@/contexts/auth-context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { pendingAnonIdKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
+import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
+import { createAuthClient } from 'better-auth/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
@@ -15,6 +18,15 @@ import SsoRedirect from './sso-redirect'
 
 const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
 const originalFetch = globalThis.fetch
+
+/** Use the real session observer and the same refetch policy as AuthProvider. */
+const createObservedAuthClient = () =>
+  createAuthClient({
+    baseURL: 'https://api.example.test',
+    basePath: '/v1/api/auth',
+    plugins: [emailOTPClient(), anonymousClient()],
+    sessionOptions: { refetchOnWindowFocus: false, refetchWhenOffline: false },
+  })
 
 describe('SsoRedirect', () => {
   afterEach(() => {
@@ -130,6 +142,98 @@ describe('SsoRedirect', () => {
     ])
   })
 
+  it('keeps the web attempt and its error stable across signed-out background session refetches', async () => {
+    const firstSignIn = Promise.withResolvers<Response>()
+    const backgroundSession = Promise.withResolvers<Response>()
+    const errorSession = Promise.withResolvers<Response>()
+    const sessionRequests: Request[] = []
+    const signInRequests: Request[] = []
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init)
+        if (request.url.endsWith('/get-session')) {
+          sessionRequests.push(request)
+          if (sessionRequests.length === 2) {
+            return backgroundSession.promise
+          }
+          if (sessionRequests.length === 3) {
+            return errorSession.promise
+          }
+          return Response.json(null)
+        }
+        signInRequests.push(request)
+        return signInRequests.length === 1 ? firstSignIn.promise : Response.json({ url: 'unsafe redirect fixture' })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
+    useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
+    const authClient = createObservedAuthClient()
+    const view = render(
+      <AuthContext.Provider value={{ authClient }}>
+        <SsoRedirect />
+      </AuthContext.Provider>,
+    )
+
+    try {
+      await act(async () => void (await getClock().tickAsync(1)))
+      expect(sessionRequests).toHaveLength(1)
+      expect(signInRequests).toHaveLength(1)
+
+      await act(async () => {
+        window.dispatchEvent(new Event('offline'))
+        window.dispatchEvent(new Event('online'))
+        await getClock().tickAsync(1)
+      })
+      expect(sessionRequests).toHaveLength(2)
+      expect(authClient.$store.atoms.session.get().isPending).toBe(true)
+      expect(signInRequests[0]?.signal.aborted).toBe(false)
+
+      await act(async () => {
+        backgroundSession.resolve(Response.json(null))
+        await getClock().tickAsync(1)
+      })
+      expect(authClient.$store.atoms.session.get().isPending).toBe(false)
+      expect(signInRequests).toHaveLength(1)
+
+      await act(async () => {
+        firstSignIn.resolve(Response.json({ url: 'unsafe redirect fixture' }))
+        await getClock().tickAsync(1)
+      })
+      expect(view.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+
+      await act(async () => {
+        void authClient.$store.atoms.session.get().refetch()
+        await getClock().tickAsync(1)
+      })
+      expect(sessionRequests).toHaveLength(3)
+      expect(authClient.$store.atoms.session.get().isPending).toBe(true)
+      expect(view.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      expect(signInRequests).toHaveLength(1)
+
+      await act(async () => {
+        fireEvent.click(view.getByRole('button', { name: 'Try again' }))
+        await getClock().tickAsync(1)
+      })
+      expect(signInRequests).toHaveLength(2)
+
+      await act(async () => {
+        errorSession.resolve(Response.json(null))
+        await getClock().tickAsync(1)
+      })
+      expect(authClient.$store.atoms.session.get().isPending).toBe(false)
+      expect(signInRequests).toHaveLength(2)
+      expect(view.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    } finally {
+      backgroundSession.resolve(Response.json(null))
+      errorSession.resolve(Response.json(null))
+      firstSignIn.resolve(Response.json({ url: 'unsafe redirect fixture' }))
+      view.unmount()
+      // Nanostores delays its final unsubscribe; release the real client's
+      // global online/broadcast listeners before another test starts.
+      await act(async () => void (await getClock().tickAsync(1001)))
+    }
+  })
+
   describe('on Tauri desktop', () => {
     const renderWithLoopbackCallback = async (callbackUrl: string, authClient = createMockAuthClient()) => {
       Object.assign(window, { isTauri: true })
@@ -187,6 +291,65 @@ describe('SsoRedirect', () => {
       expect(getSession).not.toHaveBeenCalled()
       expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-user')
       expect(replaceSpy).toHaveBeenCalledWith('/')
+    })
+
+    it('does not open another system browser when a signed-out session refetches during loopback sign-in', async () => {
+      const backgroundSession = Promise.withResolvers<Response>()
+      const sessionRequests: Request[] = []
+      globalThis.fetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          sessionRequests.push(new Request(input, init))
+          return sessionRequests.length === 1 ? Response.json(null) : backgroundSession.promise
+        },
+        { preconnect: originalFetch.preconnect },
+      )
+      Object.assign(window, { isTauri: true })
+      spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+      spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
+      const openUrl = spyOn(opener, 'openUrl').mockImplementation(async () => {})
+      const callbacks: Array<() => void> = []
+      spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
+        callbacks.push(() => cb({ payload: { url: 'http://127.0.0.1:17421/?token=sso-token' } } as never))
+        return () => {}
+      })
+      const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
+      useLocalSettingsStore.setState({ cloudUrl: 'https://api.example.test/v1' })
+      const authClient = createObservedAuthClient()
+      const view = render(
+        <AuthContext.Provider value={{ authClient }}>
+          <SsoRedirect />
+        </AuthContext.Provider>,
+      )
+
+      try {
+        await act(async () => void (await getClock().tickAsync(1)))
+        expect(openUrl).toHaveBeenCalledTimes(1)
+
+        await act(async () => {
+          window.dispatchEvent(new Event('offline'))
+          window.dispatchEvent(new Event('online'))
+          await getClock().tickAsync(1)
+        })
+        expect(sessionRequests).toHaveLength(2)
+        expect(authClient.$store.atoms.session.get().isPending).toBe(true)
+        await act(async () => {
+          backgroundSession.resolve(Response.json(null))
+          await getClock().tickAsync(1)
+        })
+        expect(openUrl).toHaveBeenCalledTimes(1)
+
+        await act(async () => {
+          callbacks.forEach((callback) => callback())
+          await getClock().tickAsync(1)
+        })
+        expect(replace).toHaveBeenCalledTimes(1)
+        expect(replace).toHaveBeenCalledWith('/')
+      } finally {
+        backgroundSession.resolve(Response.json(null))
+        callbacks.forEach((callback) => callback())
+        view.unmount()
+        await act(async () => void (await getClock().tickAsync(1001)))
+      }
     })
   })
 })

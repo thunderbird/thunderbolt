@@ -120,7 +120,7 @@ const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 // redirect during initialization so routing doesn't add a chunk-fetch waterfall.
 const loadSsoRedirect = () => import('@/components/sso-redirect')
 const SsoRedirect = lazy(loadSsoRedirect)
-// Enterprise-only like SsoRedirect, and reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
+// Reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
 const SsoError = lazy(() => import('@/components/sso-error'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates

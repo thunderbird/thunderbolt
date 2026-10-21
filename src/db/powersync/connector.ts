@@ -241,8 +241,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * bare 403 as "not proof of anything".
    */
   private async probeAccountEncryption(): Promise<{ status: 'set-up' | 'absent' | 'unknown' }> {
+    const auth = this.getRequestAuth()
     try {
-      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, this.getRequestAuth())
+      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, auth)
       if (response.status === 404) {
         return { status: 'absent' }
       }

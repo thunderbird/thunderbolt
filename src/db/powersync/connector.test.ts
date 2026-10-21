@@ -10,6 +10,7 @@ import { resetCodecState } from '@/db/encryption'
 import type { CommonPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as syncTracker from './sync-tracker'
 import {
   handleCredentialsInvalidIfNeeded,
   isCreateOnlyWrite,
@@ -270,7 +271,7 @@ describe('ThunderboltConnector', () => {
       fetchMock.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }))
       const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
 
-      await expect(connector.uploadData(database)).rejects.toThrow(/deferring/)
+      await expect(connector.uploadData(database)).rejects.toThrow('Not signed in — deferring sync')
 
       expect(fetchMock).not.toHaveBeenCalled()
       expect(dispatchSpy).not.toHaveBeenCalled()
@@ -315,6 +316,31 @@ describe('ThunderboltConnector', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports auth loss during key lookup without misclassifying it as missing encryption keys', async () => {
+    setAuthToken(authToken)
+    await clearAllKeys()
+    const syncEventSpy = spyOn(syncTracker, 'trackSyncEvent').mockImplementation(() => {})
+    try {
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+      const credentials = connector.fetchCredentials()
+      clearAuthToken()
+
+      expect(await credentials).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(dispatchSpy).not.toHaveBeenCalled()
+      expect(syncEventSpy).toHaveBeenCalledWith('sync_credentials_error', {
+        had_token: true,
+        error: 'Error: Not signed in — deferring sync',
+      })
+      expect(syncEventSpy).not.toHaveBeenCalledWith(
+        'sync_credentials_error',
+        expect.objectContaining({ error_code: 'KEYRING_MISSING' }),
+      )
+    } finally {
+      syncEventSpy.mockRestore()
+    }
   })
 
   it('uploadData uses SSO cookies when no bearer token is stored', async () => {

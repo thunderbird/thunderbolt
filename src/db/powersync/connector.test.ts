@@ -25,6 +25,19 @@ const createFetchStub = (fetchMock: ReturnType<typeof mock>): typeof fetch =>
     preconnect: globalThis.fetch.preconnect,
   })
 
+/** Queue a write that needs no encrypted payload, with observable acknowledgement. */
+const createQueuedUpload = () => {
+  const complete = mock(async () => {})
+  const database = {
+    currentStatus: { hasSynced: true },
+    getNextCrudTransaction: async () => ({
+      crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
+      complete,
+    }),
+  } as unknown as CommonPowerSyncDatabase
+  return { database, complete }
+}
+
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof spyOn>
 
@@ -225,6 +238,7 @@ describe('ThunderboltConnector', () => {
     })
 
     it(`uploadData uses the exact upload endpoint for ${connectorUrl}`, async () => {
+      setAuthToken(authToken)
       // A verified primary key_id lets the v2 upload gate proceed; without it
       // uploadData defers (throws) before reaching the endpoint under test.
       await storePrimaryKeyId('0')
@@ -246,6 +260,93 @@ describe('ThunderboltConnector', () => {
       expect(complete).toHaveBeenCalledTimes(1)
     })
   }
+
+  for (const hasPrimaryKey of [false, true]) {
+    it(`uploadData preserves queued writes while signed out (primary key present: ${hasPrimaryKey})`, async () => {
+      if (hasPrimaryKey) {
+        await storePrimaryKeyId('0')
+      }
+      const { database, complete } = createQueuedUpload()
+      fetchMock.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }))
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+      await expect(connector.uploadData(database)).rejects.toThrow(/deferring/)
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(dispatchSpy).not.toHaveBeenCalled()
+      expect(complete).not.toHaveBeenCalled()
+
+      setAuthToken(authToken)
+      await storePrimaryKeyId('0')
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+      await connector.uploadData(database)
+      expect(complete).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it('uploadData defers if the token disappears while the encryption probe is pending', async () => {
+    setAuthToken(authToken)
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockImplementation(async () => {
+      clearAuthToken()
+      return Response.json({ error: 'Encryption not set up' }, { status: 404 })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await expect(connector.uploadData(database)).rejects.toThrow('Not signed in — deferring sync')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)
+    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('fetchCredentials defers if the token disappears while the encryption probe is pending', async () => {
+    setAuthToken(authToken)
+    await clearAllKeys()
+    fetchMock.mockImplementation(async () => {
+      clearAuthToken()
+      return Response.json({ error: 'Encryption not set up' }, { status: 404 })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    expect(await connector.fetchCredentials()).toBeNull()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('uploadData uses SSO cookies when no bearer token is stored', async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = 'sso'
+    await storePrimaryKeyId('0')
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await connector.uploadData(database)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${backendUrl}/powersync/upload`,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('uploadData still reports an expired bearer session without completing queued writes', async () => {
+    setAuthToken(authToken)
+    await storePrimaryKeyId('0')
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await expect(connector.uploadData(database)).rejects.toThrow('Upload failed: 401')
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
+    expect(complete).not.toHaveBeenCalled()
+  })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
     setAuthToken(authToken)

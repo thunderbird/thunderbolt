@@ -518,6 +518,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
       taskDefinition: feTaskDef.arn,
       desiredCount: 1,
       launchType: 'FARGATE',
+      // Smoke tests must wait until old tasks stop serving HTML/assets from another build.
+      waitForSteadyState: true,
       networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
       loadBalancers: [{ targetGroupArn: frontendTg.arn, containerName: 'frontend', containerPort: 8080 }],
     },

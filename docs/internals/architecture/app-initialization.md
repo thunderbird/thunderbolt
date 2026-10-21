@@ -16,13 +16,13 @@ analytics after a rendering opportunity. Auth routing and chat hydration follow 
 | `step1_create_app_dir`        | `createAppDir()` (Tauri app dir, or OPFS on web)                              | Fatal: `APP_DIR_CREATION_FAILED`     |
 | `step2_initialize_database`   | Opens the database and registers the singleton                                | Fatal: `DATABASE_INIT_FAILED`        |
 | `step2b_db_ready`             | `select 1` against the fresh handle, bounded at `dbReadyTimeoutMs` (30 s)     | Fatal: `DATABASE_INIT_FAILED`        |
-| `step2d_build_search_index`  | Builds or validates the search index before content              | Logged; boot continues               |
+| `step2d_build_search_index`   | Builds or validates the search index before content                           | Logged; boot continues               |
 | `step2c_returning_boot_probe` | `hasCurrentDefaultsVersions` (`src/dal/settings.ts:256`): fresh or returning? | n/a                                  |
 | `step3_wait_for_initial_sync` | Awaits or skips PowerSync's priority-1 first sync                             | `waitForInitialSync` never rejects   |
 | `step4_reconcile_defaults`    | `reconcileDefaults` (`src/lib/reconcile-defaults.ts`)                         | Fatal: `RECONCILE_DEFAULTS_FAILED`   |
 | `step4b_run_data_migrations`  | `runDataMigrations` (`src/lib/data-migrations/index.ts:53`)                   | Swallowed per migration; never fatal |
 | `step5_get_settings`          | Reads feature flags and the initial `sidebar_state`                           | n/a                                  |
-| `step7_initialize_tray`       | Tauri window/close-handler and tray setup before content                              | Logged; boots with no tray           |
+| `step7_initialize_tray`       | Tauri window/close-handler and tray setup before content                      | Logged; boots with no tray           |
 | `step8_initialize_posthog`    | Deferred PostHog client                                                       | Logged; boots with a null client     |
 
 Several steps sit where they do because moving them breaks something no test and no type will
@@ -217,7 +217,8 @@ message, deletion and trigger lookups. Existing chats retain those lookups. The 
 startup sidebar snapshot until its reactive query resolves, avoiding a blank layout in between.
 
 MCP client/transports and tool configuration discovery load when needed. Markdown attachment cards
-stay mounted while a shared query loads their renderer; failed downloads leave the existing file
+stay mounted while a shared query loads their GFM plugin; `react-markdown` remains in the entry bundle
+because link rendering already imports its URL transform. Failed downloads leave the existing file
 placeholder and controls available. Onboarding forms, chat routes and layout chrome remain static.
 UI code splitting requires an error-recovery boundary for failed chunk downloads. Reducing the
 initial module graph does not establish the same percentage reduction in visible loading time.

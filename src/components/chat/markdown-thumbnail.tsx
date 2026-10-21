@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useQuery } from '@tanstack/react-query'
+import ReactMarkdown from 'react-markdown'
 import { useAttachmentText } from './text-snippet'
 
 type MarkdownThumbnailProps = {
@@ -12,33 +13,32 @@ type MarkdownThumbnailProps = {
 /**
  * Renders a markdown attachment as *formatted* markdown, scaled down into a
  * mini-page thumbnail (rendered at 480px wide, then transform-scaled to the
- * 160px card). Returns null until the text resolves so the placeholder shows.
+ * 160px card). Keeps the placeholder until the text and GFM plugin resolve.
  */
 export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
   const text = useAttachmentText(localFileId, 'text/markdown')
-  const { data: renderer } = useQuery({
-    queryKey: ['markdown-thumbnail-renderer'],
+  const { data: remarkGfm } = useQuery({
+    queryKey: ['markdown-thumbnail-gfm'],
     queryFn: async () => {
-      const [markdown, gfm] = await Promise.all([import('react-markdown'), import('remark-gfm')])
-      return { Markdown: markdown.default, remarkGfm: gfm.default }
+      const gfm = await import('remark-gfm')
+      return gfm.default
     },
     enabled: !!text,
     staleTime: Infinity,
-    // Native clients can load these bundled modules while offline.
+    // Native clients can load this bundled module while offline.
     networkMode: 'always',
     throwOnError: false,
   })
-  if (!text || !renderer) {
+  if (!text || !remarkGfm) {
     return null
   }
-  const { Markdown, remarkGfm } = renderer
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden bg-card">
       <div
         className="prose prose-sm dark:prose-invert w-[480px] origin-top-left p-4 text-foreground"
         style={{ transform: 'scale(var(--thumb-scale, 0.3))' }}
       >
-        <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </div>
     </div>
   )

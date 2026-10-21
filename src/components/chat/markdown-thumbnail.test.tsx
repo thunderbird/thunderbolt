@@ -8,18 +8,16 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn, type Mock } from 'bun:test'
 import type { ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FileCard } from './file-card'
 import { MarkdownThumbnail } from './markdown-thumbnail'
 
-const rendererKey = ['markdown-thumbnail-renderer']
-const renderer = { Markdown: ReactMarkdown, remarkGfm }
+const gfmKey = ['markdown-thumbnail-gfm']
 const markdown = '# Preview heading\n\n~~Removed text~~'
 
 const flush = () => act(async () => void (await getClock().runAllAsync()))
 
-describe('MarkdownThumbnail renderer loading', () => {
+describe('MarkdownThumbnail GFM loading', () => {
   const clients: QueryClient[] = []
   let attachment: Mock<typeof attachmentStorage.getAttachment>
 
@@ -54,7 +52,7 @@ describe('MarkdownThumbnail renderer loading', () => {
     attachment.mockRestore()
   })
 
-  it('does not load renderer modules when the attachment is unavailable', async () => {
+  it('does not load GFM when the attachment is unavailable', async () => {
     attachment.mockResolvedValue(null)
     const { client, wrapper } = createWrapper()
     const { container } = render(<MarkdownThumbnail localFileId="missing" />, { wrapper })
@@ -62,15 +60,15 @@ describe('MarkdownThumbnail renderer loading', () => {
     await flush()
 
     expect(container).toBeEmptyDOMElement()
-    expect(client.getQueryState(rendererKey)?.fetchStatus).toBe('idle')
-    expect(client.getQueryData(rendererKey)).toBeUndefined()
+    expect(client.getQueryState(gfmKey)?.fetchStatus).toBe('idle')
+    expect(client.getQueryData(gfmKey)).toBeUndefined()
   })
 
-  it('shares a pending renderer load and keeps the file controls usable', async () => {
+  it('shares a pending GFM load and keeps the file controls usable', async () => {
     const { client, wrapper } = createWrapper()
-    const pending = Promise.withResolvers<typeof renderer>()
+    const pending = Promise.withResolvers<typeof remarkGfm>()
     const load = mock(() => pending.promise)
-    const loading = client.fetchQuery({ queryKey: rendererKey, queryFn: load })
+    const loading = client.fetchQuery({ queryKey: gfmKey, queryFn: load })
     const onOpen = mock()
     const onRemove = mock()
     render(
@@ -91,7 +89,7 @@ describe('MarkdownThumbnail renderer loading', () => {
     expect(load).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      pending.resolve(renderer)
+      pending.resolve(remarkGfm)
       await loading
     })
     await flush()
@@ -102,8 +100,8 @@ describe('MarkdownThumbnail renderer loading', () => {
 
   it('keeps the card on import failure and retries when mounted again', async () => {
     const { client, wrapper } = createWrapper()
-    const pending = Promise.withResolvers<typeof renderer>()
-    const loading = client.fetchQuery({ queryKey: rendererKey, queryFn: () => pending.promise })
+    const pending = Promise.withResolvers<typeof remarkGfm>()
+    const loading = client.fetchQuery({ queryKey: gfmKey, queryFn: () => pending.promise })
     const failure = loading.catch((error: unknown) => error)
     const onOpen = mock()
     const card = <FileCard localFileId="markdown-file" filename="notes.md" mimeType="text/markdown" onOpen={onOpen} />
@@ -114,7 +112,7 @@ describe('MarkdownThumbnail renderer loading', () => {
     await flush()
 
     expect(await failure).toEqual(new Error('Chunk unavailable'))
-    expect(client.getQueryState(rendererKey)?.status).toBe('error')
+    expect(client.getQueryState(gfmKey)?.status).toBe('error')
     expect(screen.queryByRole('heading', { name: 'Preview heading' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /notes.md/ }))
     expect(onOpen).toHaveBeenCalledTimes(1)
@@ -122,24 +120,24 @@ describe('MarkdownThumbnail renderer loading', () => {
     first.unmount()
     render(card, { wrapper })
     await flush()
-    await act(async () => void (await client.getQueryCache().find({ queryKey: rendererKey })?.promise))
+    await act(async () => void (await client.getQueryCache().find({ queryKey: gfmKey })?.promise))
     await flush()
 
     expect(screen.getByRole('heading', { name: 'Preview heading' })).toBeInTheDocument()
-    expect(client.getQueryState(rendererKey)?.status).toBe('success')
+    expect(client.getQueryState(gfmKey)?.status).toBe('success')
   })
 
-  it('loads the bundled renderer even when the device is offline', async () => {
+  it('loads the bundled GFM plugin even when the device is offline', async () => {
     onlineManager.setOnline(false)
     const { client, wrapper } = createWrapper()
     render(<MarkdownThumbnail localFileId="markdown-file" />, { wrapper })
 
     await flush()
-    await act(async () => void (await client.getQueryCache().find({ queryKey: rendererKey })?.promise))
+    await act(async () => void (await client.getQueryCache().find({ queryKey: gfmKey })?.promise))
     await flush()
 
     expect(screen.getByRole('heading', { name: 'Preview heading' })).toBeInTheDocument()
     expect(screen.getByText('Removed text').tagName).toBe('DEL')
-    expect(client.getQueryState(rendererKey)?.status).toBe('success')
+    expect(client.getQueryState(gfmKey)?.status).toBe('success')
   })
 })

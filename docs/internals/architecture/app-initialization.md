@@ -92,7 +92,7 @@ falls back to the global `hasSynced` and the gate quietly waits for everything.
 `hasCurrentDefaultsVersions` requires every `defaults_version.*` marker to exist **and**
 meet-or-exceed the version reconcile would apply on this boot: the bundled constant for tasks,
 skills and settings; for models, whichever source `pickModelsDefaults`
-([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
+([`src/lib/pick-defaults.ts:40`](../../../src/lib/pick-defaults.ts)) picks (the cached OTA payload only
 when it declares a strictly higher version than the bundle and clears its sanity guards, the bundle
 otherwise). That value is computed once above step 2c and shared with step 4, so the two cannot
 disagree.

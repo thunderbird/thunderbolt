@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { defaultModelOpus55, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import {
+  defaultModelDeepSeekV41Flash,
+  defaultModelOpus55,
+  defaultModels,
+  defaultModelsVersion,
+} from '@shared/defaults/models'
 import { pickModelsDefaults } from './pick-defaults'
 
 const serverPayload = (version: number) => ({
@@ -22,7 +27,7 @@ describe('pickModelsDefaults', () => {
     const server = serverPayload(defaultModelsVersion + 1)
     const picked = pickModelsDefaults(server)
     expect(picked.version).toBe(server.version)
-    expect(picked.data).toBe(server.data)
+    expect(picked.data).toEqual(server.data)
   })
 
   test('bundle wins when server declares an equal version (avoid needless swap)', () => {
@@ -96,6 +101,14 @@ describe('pickModelsDefaults', () => {
     }
     const picked = pickModelsDefaults(partialOverlap)
     expect(picked.version).toBe(defaultModelsVersion + 1)
-    expect(picked.data).toBe(partialOverlap.data)
+    expect(picked.data).toEqual(partialOverlap.data)
+  })
+
+  test("keeps a bundled model's provider and confidentiality while adopting the rest of the server row", () => {
+    const picked = pickModelsDefaults({
+      version: defaultModelsVersion + 1,
+      data: [{ ...defaultModelDeepSeekV41Flash, provider: 'thunderbolt', isConfidential: 0, name: 'Renamed' }],
+    })
+    expect(picked.data).toEqual([{ ...defaultModelDeepSeekV41Flash, name: 'Renamed' }])
   })
 })

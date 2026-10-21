@@ -120,7 +120,8 @@ state so later passes still read the row as unedited.
 | `enabled`, `pinnedOrder` | widget skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
 
 **To change a frozen field on a model, ship a fresh model id.** Freezing applies to updates only;
-inserts use the default as-is.
+inserts use the default as-is. An OTA payload still cannot change either field on a bundled id (see
+OTA below).
 
 ### When the marker advances
 
@@ -171,7 +172,7 @@ so later boots read the last-known payload synchronously; only `version` and `da
 nothing reads `defaultModelId` today. Both sides import `shared/defaults/models.ts`, so a defaults
 change can reach users on a backend deploy without a client release.
 
-`pickModelsDefaults` ([`src/lib/pick-defaults.ts:35`](../../../src/lib/pick-defaults.ts)) takes the
+`pickModelsDefaults` ([`src/lib/pick-defaults.ts:40`](../../../src/lib/pick-defaults.ts)) takes the
 server payload only if all three guards hold. Trip one and the bundle wins:
 
 1. `version` is finite and **strictly** higher than `defaultModelsVersion`.
@@ -182,6 +183,10 @@ Guard 3 blocks a disjoint payload passing as a wholesale replacement, destructiv
 `cleanupRemovedDefaults` would soft-delete every bundle-known id while the pass inserted nothing,
 since OTA-only ids have no bundled profile. The bundle is the floor: OTA updates or retires ids the
 bundle knows, it never replaces the lineup.
+
+An adopted payload keeps the bundle's `provider` and `isConfidential` on every id the bundle knows.
+Those two fields decide whether a prompt takes the confidential transport, and freezing only covers
+updates, so without this an OTA insert could land a confidential id with other values.
 
 Rollback is monotonic: a server that _lowers_ its declared version cannot overwrite. Retract a bad
 published set by shipping a **higher** version with reverted content.

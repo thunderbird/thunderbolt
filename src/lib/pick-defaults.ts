@@ -31,6 +31,11 @@ type ServerModelsDefaults = { version: number; data: SharedModel[] }
  *     nothing (OTA-only-new ids have no bundled profile). Bundle acts as the
  *     floor: OTA can update or retire ids the bundle knows, but not wipe
  *     wholesale.
+ *
+ * An adopted payload keeps the bundle's `provider` and `isConfidential` on
+ * every bundle-known id. They decide whether a prompt takes the confidential
+ * transport, and reconcile's `frozenFields` only protects them on update, not
+ * when a row is first inserted.
  */
 export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): ModelsDefaults => {
   if (
@@ -40,9 +45,13 @@ export const pickModelsDefaults = (server: ServerModelsDefaults | undefined): Mo
     Array.isArray(server.data) &&
     server.data.length > 0
   ) {
-    const bundledIds = new Set(defaultModels.map((m) => m.id))
-    if (server.data.some((m) => bundledIds.has(m.id))) {
-      return { version: server.version, data: server.data }
+    const bundledById = new Map(defaultModels.map((m) => [m.id, m]))
+    if (server.data.some((m) => bundledById.has(m.id))) {
+      const data = server.data.map((m) => {
+        const bundled = bundledById.get(m.id)
+        return bundled ? { ...m, provider: bundled.provider, isConfidential: bundled.isConfidential } : m
+      })
+      return { version: server.version, data }
     }
     // Payload is well-formed but has zero overlap with the bundle. Either the
     // server team shipped a wholesale replacement (needs a client build with

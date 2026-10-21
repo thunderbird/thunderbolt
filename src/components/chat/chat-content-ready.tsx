@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { afterPaint } from '@/lib/after-paint'
 import { markContentReady } from '@/lib/init-timing'
 import { trackEvent } from '@/lib/posthog'
+import { loadChatMessageList } from './chat-messages-loader'
 
 /** Placed inside the message Suspense boundary so a lazy message list cannot mark ready early. */
 export const ChatContentReady = () => {
@@ -16,6 +17,9 @@ export const ChatContentReady = () => {
         if (payload) {
           trackEvent('app_content_ready', payload)
         }
+        // Warm blank chats after their composer renders, including embedded chats.
+        // Existing conversations have already loaded this memoized module.
+        void loadChatMessageList()
       }),
     [],
   )

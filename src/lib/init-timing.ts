@@ -36,8 +36,6 @@ const state: InitTimingState = {
   stepDurations: {},
 }
 
-const contentListeners = new Set<() => void>()
-
 /** Marks spinner commit; a trace is still needed to establish its actual first painted frame. */
 export const markSpinnerMounted = (): void => {
   if (state.spinnerMountedMs !== null) {
@@ -45,18 +43,6 @@ export const markSpinnerMounted = (): void => {
   }
   state.spinnerMountedMs = performance.now()
   performance.mark('thunderbolt:spinner-mounted')
-}
-
-/** Subscribes to the first committed chat content's rendering opportunity. */
-export const onContentReady = (listener: () => void): (() => void) => {
-  if (state.contentReadyMs !== null) {
-    listener()
-  } else {
-    contentListeners.add(listener)
-  }
-  return () => {
-    contentListeners.delete(listener)
-  }
 }
 
 /** Marks committed chat content after a rendering opportunity, once per page. */
@@ -72,10 +58,6 @@ export const markContentReady = (): Record<string, number | null> | null => {
       state.spinnerMountedMs === null ? null : Math.round(state.contentReadyMs - state.spinnerMountedMs),
   }
   console.info(`[startup] content ready ${JSON.stringify(payload)}`)
-  for (const listener of contentListeners) {
-    listener()
-  }
-  contentListeners.clear()
   return payload
 }
 
@@ -149,5 +131,4 @@ export const resetInitTiming = (): void => {
   state.contentReadyMs = null
   state.spinnerMountedMs = null
   state.stepDurations = {}
-  contentListeners.clear()
 }

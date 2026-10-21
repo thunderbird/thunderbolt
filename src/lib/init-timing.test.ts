@@ -12,7 +12,6 @@ import {
   markChatReady,
   markContentReady,
   markSpinnerMounted,
-  onContentReady,
   recordInitStep,
   resetInitTiming,
 } from './init-timing'
@@ -66,30 +65,15 @@ describe('init-timing', () => {
     expect(markChatReady()).toBeNull()
   })
 
-  it('reports content once, notifies subscribers, and supports late subscribers', () => {
-    let notifications = 0
+  it('reports content once with the elapsed time since the spinner mounted', () => {
     markSpinnerMounted()
-    onContentReady(() => {
-      notifications += 1
-    })
     const payload = markContentReady()
     expect(payload?.spinner_to_content_ms).toBeGreaterThanOrEqual(0)
-    expect(notifications).toBe(1)
     expect(markContentReady()).toBeNull()
-    onContentReady(() => {
-      notifications += 1
-    })
-    expect(notifications).toBe(2)
   })
 
-  it('does not run cancelled content listeners', () => {
-    let called = false
-    const unsubscribe = onContentReady(() => {
-      called = true
-    })
-    unsubscribe()
-    markContentReady()
-    expect(called).toBe(false)
+  it('does not invent a spinner duration when content loads without a spinner', () => {
+    expect(markContentReady()?.spinner_to_content_ms).toBeNull()
   })
 
   it('beginInitRun clears step durations from a previous run and bumps the counter', () => {

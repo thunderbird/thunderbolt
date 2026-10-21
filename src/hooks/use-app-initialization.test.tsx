@@ -5,14 +5,14 @@
 import type { InitialSyncOutcome } from '@/db/database-interface'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { updateSettings } from '@/dal/settings'
-import { getDb } from '@/db/database'
+import { getCurrentDatabase, getDb, setDatabase } from '@/db/database'
 import { getInitTimingPayload, resetInitTiming } from '@/lib/init-timing'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { createClient } from '@/lib/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, beforeAll, describe, expect, it, mock, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn, test } from 'bun:test'
 import { resolveInitialSyncStep, useAppInitialization, waitForDatabaseReady } from './use-app-initialization'
 
 mock.module('@tauri-apps/api/core', () => ({
@@ -195,20 +195,95 @@ describe('useAppInitialization', () => {
     expect(responses).toHaveLength(0)
   })
 
-  it('handles initialization gracefully when non-critical steps fail', async () => {
-    const mockHttpClient = createMockHttpClient(mockPostHogConfig)
-    const { result } = renderHook(() => useAppInitialization(mockHttpClient), {
+  it('keeps core content available when deferred analytics fails', async () => {
+    const { client, responses } = createPendingAnalyticsClient()
+    const { result } = renderHook(() => useAppInitialization(client), {
       wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
     })
-
-    // Advance timers to complete initialization
     await act(async () => {
       await getClock().runAllAsync()
     })
+    expect(responses).toHaveLength(1)
+    const database = result.current.initData?.db
 
+    await act(async () => {
+      responses[0].resolve(Response.json({}, { status: 403 }))
+      await getClock().runAllAsync()
+    })
     expect(result.current.isInitializing).toBe(false)
-    expect(result.current.initData).toBeDefined()
+    expect(result.current.initData?.db).toBe(database)
+    expect(result.current.initData?.posthogClient).toBeNull()
     expect(result.current.initError).toBeUndefined()
+  })
+
+  it('does not replace a successful retry with an earlier database-reset failure', async () => {
+    const database = getCurrentDatabase()!
+    const closing = Promise.withResolvers<void>()
+    const close = spyOn(database, 'close').mockImplementation(() => closing.promise)
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      let clearing: Promise<void> = Promise.resolve()
+      act(() => {
+        clearing = result.current.clearDatabase()
+      })
+      expect(close).toHaveBeenCalledTimes(1)
+      expect(result.current.isInitializing).toBe(true)
+
+      await act(async () => {
+        await result.current.retry()
+      })
+      const currentInitData = result.current.initData
+      expect(currentInitData).toBeDefined()
+
+      await act(async () => {
+        closing.reject(new Error('Database close failed'))
+        await clearing
+      })
+      expect(result.current.initData).toBe(currentInitData)
+      expect(result.current.initError).toBeUndefined()
+      expect(result.current.isInitializing).toBe(false)
+    } finally {
+      unmount()
+      close.mockRestore()
+    }
+  })
+
+  it('does not restart initialization when a database reset finishes after unmount', async () => {
+    const database = getCurrentDatabase()!
+    const closing = Promise.withResolvers<void>()
+    const close = spyOn(database, 'close').mockImplementation(() => closing.promise)
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      let clearing: Promise<void> = Promise.resolve()
+      act(() => {
+        clearing = result.current.clearDatabase()
+      })
+      const initRun = getInitTimingPayload().init_run
+      unmount()
+
+      await act(async () => {
+        closing.resolve()
+        await clearing
+        await getClock().runAllAsync()
+      })
+      expect(getInitTimingPayload().init_run).toBe(initRun)
+    } finally {
+      close.mockRestore()
+      // The fake close keeps the test database open, while resetDatabase clears its registration.
+      setDatabase(database)
+    }
   })
 
   it('retry function reinitializes the app', async () => {

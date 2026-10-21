@@ -14,7 +14,7 @@ The video shows actual separate browser captures at normal speed, with a **1.5-s
 
 ## Measurements
 
-Before is main at `ee419dfedf6435ba2e7438ad408d73d4f7a728ed`; after is this PR's reviewed implementation on that same base. Both production builds use the same locked dependencies and `VITE_SKIP_ONBOARDING=true`.
+Before is main at `ee419dfedf6435ba2e7438ad408d73d4f7a728ed`; the recorded after build is commit `e5d7ffb0bf3bb35366463dd874a93aa6288eaf66` on that same base. Subsequent readability changes are validated separately in the PR; these timing runs and video remain tied to the recorded commit. Both production builds use the same locked dependencies and `VITE_SKIP_ONBOARDING=true`.
 
 | Condition                                            | Samples per build | Median spinner → composer | Reduction | p90 spinner → composer | Median navigation → composer |
 | ---------------------------------------------------- | ----------------: | ------------------------: | --------: | ---------------------: | ---------------------------: |

@@ -33,7 +33,7 @@ import { defaultSkillsVersion } from '@/defaults/skills'
 import { defaultTasksVersion } from '@/defaults/tasks'
 import { TrayManager } from '@/lib/tray'
 import type { InitData } from '@/types'
-import type { HandleError, HandleResult } from '@/types/handle-errors'
+import type { HandleResult } from '@/types/handle-errors'
 import type { TrayIcon } from '@tauri-apps/api/tray'
 import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
@@ -489,36 +489,21 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   }
 }
 
-/**
- * Hook for managing app initialization
- * @param httpClient - Optional HTTP client (primarily for testing)
- */
-type InitializationState = {
-  initData?: InitData
-  initError?: HandleError
-  isInitializing: boolean
-}
+type OptionalServices = Pick<InitData, 'tray' | 'window' | 'posthogClient'>
 
 /** Publishes each optional service independently, so neither can hold up the other or the app. */
 const initializeOptionalServices = async (
   core: CoreInitialization,
   isCurrent: () => boolean,
-  publish: (patch: Partial<InitData>) => void,
+  publish: (patch: Partial<OptionalServices>) => void,
 ): Promise<void> => {
-  await Promise.all([
-    (async () => {
-      const tray = await initializeTraySafely()
-      if (isCurrent()) {
-        publish(tray)
-      }
-    })(),
-    (async () => {
-      const posthogClient = await initializePostHogSafely(core.initData.httpClient)
-      if (isCurrent()) {
-        publish({ posthogClient })
-      }
-    })(),
-  ])
+  const attachTray = async () => {
+    publish(await initializeTraySafely())
+  }
+  const attachAnalytics = async () => {
+    publish({ posthogClient: await initializePostHogSafely(core.initData.httpClient) })
+  }
+  await Promise.all([attachTray(), attachAnalytics()])
   if (isCurrent()) {
     trackEvent('app_init_timing', {
       ...core.timing,
@@ -530,32 +515,39 @@ const initializeOptionalServices = async (
 
 /** Opens the local app first, then attaches optional native and analytics services. */
 export const useAppInitialization = (httpClient?: HttpClient) => {
-  const [state, setState] = useState<InitializationState>({ isInitializing: true })
+  // No result means loading; completed runs contain either data or an error.
+  const [state, setState] = useState<HandleResult<InitData>>()
   const run = useRef(0)
   const cancelOptional = useRef<(() => void) | undefined>(undefined)
 
-  const initialize = useCallback(async () => {
-    const currentRun = ++run.current
+  const cancelInitialization = useCallback(() => {
+    ++run.current
     cancelOptional.current?.()
+  }, [])
+
+  const initialize = useCallback(async () => {
+    cancelInitialization()
+    const currentRun = run.current
     const isCurrent = () => run.current === currentRun
-    setState({ isInitializing: true })
+    setState(undefined)
     try {
       const result = await executeInitializationSteps(httpClient)
       if (!isCurrent()) {
         return
       }
       if (!result.success) {
-        setState({ initError: result.error, isInitializing: false })
+        setState(result)
         return
       }
       const core = result.data
-      setState({ initData: core.initData, isInitializing: false })
+      setState({ success: true, data: core.initData })
       cancelOptional.current = afterPaint(() => {
         void initializeOptionalServices(core, isCurrent, (patch) => {
-          setState((previous) => ({
-            ...previous,
-            initData: previous.initData ? { ...previous.initData, ...patch } : undefined,
-          }))
+          if (isCurrent()) {
+            setState((previous) =>
+              previous?.success ? { success: true, data: { ...previous.data, ...patch } } : previous,
+            )
+          }
         })
       })
     } catch (error) {
@@ -565,29 +557,28 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
       console.error('Failed to initialize app:', error)
       const initError = createHandleError('UNKNOWN_ERROR', 'Failed to initialize app', error)
       trackError(initError, { initialization_step: 'uncaught' })
-      setState({ initError, isInitializing: false })
+      setState({ success: false, error: initError })
     }
-  }, [httpClient])
+  }, [httpClient, cancelInitialization])
 
   const clearDatabase = useCallback(async () => {
-    ++run.current
-    cancelOptional.current?.()
-    setState({ isInitializing: true })
+    cancelInitialization()
+    const currentRun = run.current
+    setState(undefined)
     try {
       await resetAppDir()
-      await initialize()
+      if (run.current === currentRun) {
+        await initialize()
+      }
     } catch (error) {
-      setState({
-        initError: createHandleError('DATABASE_INIT_FAILED', 'Failed to clear database', error),
-        isInitializing: false,
-      })
+      if (run.current === currentRun) {
+        setState({
+          success: false,
+          error: createHandleError('DATABASE_INIT_FAILED', 'Failed to clear database', error),
+        })
+      }
     }
-  }, [initialize])
-
-  const cancelInitialization = useCallback(() => {
-    ++run.current
-    cancelOptional.current?.()
-  }, [])
+  }, [initialize, cancelInitialization])
 
   useEffect(() => {
     void initialize()
@@ -595,9 +586,9 @@ export const useAppInitialization = (httpClient?: HttpClient) => {
   }, [initialize, cancelInitialization])
 
   return {
-    initData: state.initData,
-    initError: state.initError,
-    isInitializing: state.isInitializing,
+    initData: state?.success ? state.data : undefined,
+    initError: state && !state.success ? state.error : undefined,
+    isInitializing: state === undefined,
     retry: initialize,
     clearDatabase,
   }

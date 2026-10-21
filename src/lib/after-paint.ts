@@ -4,10 +4,10 @@
 
 /** Schedules optional work after a rendering opportunity; returns its cancellation handle. */
 export const afterPaint = (callback: () => void): (() => void) => {
+  let secondFrame: number | undefined
   const firstFrame = requestAnimationFrame(() => {
     secondFrame = requestAnimationFrame(callback)
   })
-  let secondFrame: number | undefined
   return () => {
     cancelAnimationFrame(firstFrame)
     if (secondFrame !== undefined) {
@@ -24,15 +24,13 @@ export const preloadInBackground = (loaders: Array<() => Promise<unknown>>): (()
     if (cancelled || index === loaders.length) {
       return
     }
-    cancelFrame = afterPaint(() => {
-      void (async () => {
-        try {
-          await loaders[index]()
-        } catch (error) {
-          console.warn('[preload] Route warming failed:', error)
-        }
-        next(index + 1)
-      })()
+    cancelFrame = afterPaint(async () => {
+      try {
+        await loaders[index]()
+      } catch (error) {
+        console.warn('[preload] Route warming failed:', error)
+      }
+      next(index + 1)
     })
   }
   next(0)

@@ -15,7 +15,6 @@ import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
-import { onContentReady } from '@/lib/init-timing'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
@@ -200,16 +199,12 @@ export default function ChatDetailPage() {
   const projectId = isNew ? searchParams.get('projectId') : null
   const newChatId = useNewChatId(isNew, projectId)
 
-  // Existing conversations need the renderer immediately. On a blank chat,
-  // its formatting dependencies should not compete with the first composer
-  // render. Still warm it before the first send (typing also triggers a preload).
+  // Overlap the renderer load with existing-chat hydration. Blank chats warm it
+  // from ChatContentReady after the composer renders (typing also preloads it).
   useEffect(() => {
-    if (isNew) {
-      return onContentReady(() => {
-        void loadChatMessageList()
-      })
+    if (!isNew) {
+      void loadChatMessageList()
     }
-    void loadChatMessageList()
   }, [isNew])
 
   if (!chatThreadId) {

@@ -594,6 +594,59 @@ describe('createHostedAgentRoutes', () => {
     )
   })
 
+  describe('service tier pricing', () => {
+    const storedPrice: InferencePrice = {
+      provider: 'fireworks',
+      model: fireworksModel,
+      inputNanoUsdPerToken: 1400n,
+      outputNanoUsdPerToken: 4400n,
+      cacheReadNanoUsdPerToken: 260n,
+    }
+
+    const priorityPrice = {
+      ...storedPrice,
+      inputNanoUsdPerToken: 1750n,
+      outputNanoUsdPerToken: 5500n,
+      cacheReadNanoUsdPerToken: 325n,
+    }
+
+    const recordedPrice = async (
+      agentFireworksServiceTier: Settings['agentFireworksServiceTier'],
+      upstreamTimeoutMs?: number,
+    ) => {
+      checkAdmission.mockImplementation(async () => ({ outcome: 'allowed', price: storedPrice }))
+      const settings = { ...fireworksSettings, agentFireworksServiceTier }
+      const app = createApp({ settings, model, checkAdmission, recordUsage, logger, upstreamTimeoutMs })
+      await (await postChat(app)).text()
+      await settleRun()
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      return recordUsage.mock.calls[0][1].price
+    }
+
+    it('records a Priority reply at the Priority rate', async () => {
+      expect(await recordedPrice('priority')).toEqual(priorityPrice)
+    })
+
+    it('records the estimate for a timed-out Priority run at the Priority rate', async () => {
+      model = new MockLanguageModelV3({
+        doStream: async ({ abortSignal }) => ({
+          stream: new ReadableStream<StreamPart>({
+            start: (controller) => abortSignal?.addEventListener('abort', () => controller.error(abortSignal.reason)),
+          }),
+        }),
+      })
+      expect(await recordedPrice('priority', 50)).toEqual(priorityPrice)
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'agent_usage_estimated', reason: 'timeout' }),
+        'Agent usage estimated',
+      )
+    })
+
+    it('records a Standard reply at the stored price', async () => {
+      expect(await recordedPrice('standard')).toEqual(storedPrice)
+    })
+  })
+
   describe('reply language', () => {
     it('falls back to the app language named from X-App-Language', async () => {
       const system = await sentSystemPrompt(createMockedApp(), model, { 'X-App-Language': 'de' })

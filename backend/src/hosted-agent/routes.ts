@@ -44,6 +44,7 @@ import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
 import { createAgentMcpClients, parseAgentMcpServers, type AgentMcpClients, type AgentMcpToolsResult } from './mcp'
 import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
+import { assertServiceTierPriced, priceForServiceTier } from './pricing'
 import { createHostedAgentProvider } from './provider'
 import { buildAgentSystemPrompt } from './system-prompt'
 import { createToolTimingMetadata } from './tool-timing'
@@ -139,6 +140,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
   const identity = getAgentIdentity(settings.agentModel)
+  assertServiceTierPriced(identity, settings)
   // Built at startup so an unset provider key fails the boot (see `createManagedProviderConnection`).
   const model = options.model ?? createAgentModel(identity, settings, { fetchFn, logger })
   // Parsed at startup so a malformed AGENT_MCP_SERVERS fails the boot; the servers connect on first use.
@@ -399,7 +401,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           }
           return startRun({
             userId,
-            price: admission.price,
+            price: priceForServiceTier(admission.price, settings),
             messages,
             instructions: chatRequest.value.instructions,
             appLanguage: ctx.request.headers.get('X-App-Language'),

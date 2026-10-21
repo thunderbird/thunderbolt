@@ -45,10 +45,10 @@ for pr in "$@"; do
 done
 KEEP_PRS="$*"
 
-# First ARN in field $1 of a paginated AWS CLI JSON listing that contains $2, or
-# nothing. See drop-preview-db.sh for why this avoids `--query`.
+# First ARN in field $1 of an AWS CLI JSON listing that contains $2, or nothing.
+# See drop-preview-db.sh for why the listings use `--output json`.
 first_arn() {
-  jq -rs --arg field "$1" --arg match "$2" '[.[][$field][] | select(contains($match))][0] // empty'
+  jq -r --arg field "$1" --arg match "$2" '[.[$field][] | select(contains($match))][0] // empty'
 }
 
 CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" --output json | first_arn clusterArns "$SHARED_CLUSTER_PREFIX")
@@ -72,13 +72,17 @@ aws ecs describe-task-definition --task-definition "$(jq -r .taskDefinition "$WO
   --region "$AWS_REGION" --query 'taskDefinition' > "$WORKDIR/source.json"
 
 # Runs in the postgres image's busybox sh. Database names come from a regex
-# match, so they are safe to interpolate.
+# match, so they are safe to interpolate. The lists are assigned before looping
+# because `set -e` ignores a failing command substitution in a `for` word list,
+# which would let an unreachable Postgres exit 0 having swept nothing.
 SWEEP_CMD=$(cat <<'EOF'
 set -eu
 export PGPASSWORD="$POSTGRES_PASSWORD" PGHOST=postgres.thunderbolt.local PGUSER=postgres PGDATABASE=postgres
 q() { psql -v ON_ERROR_STOP=1 -tAc "$1"; }
 failed=0
-for db in $(q "SELECT datname FROM pg_database WHERE datname ~ '^preview_pr_[0-9]+(_ps_storage)?\$' OR datname = 'powersync_storage' ORDER BY 1"); do
+dbs=$(q "SELECT datname FROM pg_database WHERE datname ~ '^preview_pr_[0-9]+(_ps_storage)?\$' OR datname = 'powersync_storage' ORDER BY 1")
+slots=$(q "SELECT slot_name FROM pg_replication_slots WHERE database = 'postgres' AND NOT active")
+for db in $dbs; do
   pr=$(echo "$db" | sed -n 's/^preview_pr_\([0-9]*\).*/\1/p')
   if [ -n "$pr" ] && echo " $KEEP_PRS " | grep -q " $pr "; then
     echo "keep $db"
@@ -94,7 +98,7 @@ for db in $(q "SELECT datname FROM pg_database WHERE datname ~ '^preview_pr_[0-9
     q "DROP DATABASE IF EXISTS \"$db\" WITH (FORCE)" > /dev/null ||
     { echo "failed to drop $db"; failed=1; }
 done
-for slot in $(q "SELECT slot_name FROM pg_replication_slots WHERE database = 'postgres' AND NOT active"); do
+for slot in $slots; do
   if [ "$DRY_RUN" = true ]; then
     echo "would drop slot $slot"
     continue

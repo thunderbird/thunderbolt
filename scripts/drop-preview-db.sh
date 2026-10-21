@@ -43,12 +43,12 @@ SHARED_CLUSTER_PREFIX="tb-previews-shared-cluster-"
 
 log() { echo "[drop-preview-db] $*"; }
 
-# First ARN in field $1 of a paginated AWS CLI JSON listing that contains $2, or
-# nothing. The CLI applies `--query` to each page separately, so `--query '…[0]'`
-# yields one line per page (`None` for pages without a match) once a listing
-# outgrows a single page; slurping with jq filters the whole listing instead.
+# First ARN in field $1 of an AWS CLI JSON listing that contains $2, or nothing.
+# With `--output text` the CLI applies `--query` to each page separately, so
+# `--query '…[0]'` printed one line per page (`None` for pages without a match)
+# once a listing outgrew a page. `--output json` merges the pages first.
 first_arn() {
-  jq -rs --arg field "$1" --arg match "$2" '[.[][$field][] | select(contains($match))][0] // empty'
+  jq -r --arg field "$1" --arg match "$2" '[.[$field][] | select(contains($match))][0] // empty'
 }
 
 CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" --output json | first_arn clusterArns "$SHARED_CLUSTER_PREFIX")

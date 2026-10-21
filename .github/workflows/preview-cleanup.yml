@@ -183,12 +183,18 @@ jobs:
 
   # Catches whatever escaped drop-preview-db.sh (a failed teardown, a drop that
   # never ran) so leaked databases and replication slots don't accumulate. Keeps
-  # every open PR as well as every live stack: a new PR is open before its
-  # backend creates its database, so it can never be swept mid-deploy.
+  # every open PR as well as every live stack. A PR opened after the keep list
+  # is read can't be swept by mistake: its database only appears once its images
+  # are built and its backend boots, minutes after the sweep has already scanned.
   sweep-preview-dbs:
     needs: [find-orphans, destroy-orphans]
     if: ${{ always() && needs.find-orphans.result == 'success' }}
     runs-on: ubuntu-latest
+    # A job-level block replaces the workflow's, so restate what this job needs.
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
@@ -203,7 +209,7 @@ jobs:
         run: |
           set -euo pipefail
           STACK_PRS=$(cd deploy/pulumi && pulumi stack ls --json | jq -r '.[].name | select(test("^preview-pr-[0-9]+$")) | ltrimstr("preview-pr-")')
-          OPEN_PRS=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json number --jq '.[].number')
+          OPEN_PRS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq '.[].number')
           # shellcheck disable=SC2046,SC2086 # one argument per PR number
           ./scripts/sweep-preview-dbs.sh $(printf '%s\n' $STACK_PRS $OPEN_PRS | sort -un)
 

@@ -273,8 +273,9 @@ Four entry points, not interchangeable:
   Native failures propagate without a backend retry. Public `http:` targets are upgraded to
   `https:`; local/private IPs, `host.docker.internal`, `.local` and `*.localhost` names keep HTTP.
   Arbitrary split-DNS private FQDNs are upgraded too; the hosted proxy also upgraded and SSRF-blocked them.
-- **Native requests never follow redirects, for all methods** (`maxRedirections: 0`), because
-  reqwest retains provider-specific credentials such as `x-api-key` across redirects. Enter the
+- **Native GET/HEAD requests follow same-origin redirects up to 5 hops**; POST and cross-origin
+  redirects are returned as-is (`maxRedirections: 0` on every plugin call), because reqwest
+  retains provider-specific credentials such as `x-api-key` across origins. Enter the
   final endpoint URL. Hosted redirect handling is unchanged. Both native entry points use
   `src/lib/native-fetch.ts`, which normalizes plugin request/body failures to `TypeError('Failed to fetch')`
   and relays cancellation through a per-request child signal. `init.signal` takes precedence over

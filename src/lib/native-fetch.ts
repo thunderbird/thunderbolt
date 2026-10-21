@@ -4,6 +4,7 @@
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { isLocalNetworkAddress, parseIpAddress } from '@shared/ip-classification'
+import { redirectStatuses } from '@shared/proxy-protocol'
 
 /** Upgrade public HTTP targets while allowing device-local HTTP servers. */
 const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
@@ -27,7 +28,7 @@ const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
   return input instanceof Request ? new Request(url, input) : url
 }
 
-/** Native HTTP with Fetch-compatible failures, cancellation and no credential-bearing redirects. */
+/** Native HTTP with Fetch-compatible failures and cancellation; follows up to five same-origin GET/HEAD redirects. */
 export const nativeFetch = async (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -45,12 +46,30 @@ export const nativeFetch = async (
 
   const send = async () => {
     try {
-      const response = await fetchImpl(target, { ...init, signal: child.signal, maxRedirections: 0 })
-      if (signal?.aborted) {
-        await response.body?.cancel(signal.reason)
-        throw signal.reason
+      let current = target
+      const method = (init?.method ?? (target instanceof Request ? target.method : 'GET')).toUpperCase()
+      for (let hop = 0; ; hop++) {
+        signal?.throwIfAborted()
+        const response = await fetchImpl(current, { ...init, signal: child.signal, maxRedirections: 0 })
+        if (signal?.aborted) {
+          await response.body?.cancel(signal.reason)
+          throw signal.reason
+        }
+        const location = response.headers.get('location')
+        if ((method !== 'GET' && method !== 'HEAD') || !redirectStatuses.has(response.status) || !location) {
+          return response
+        }
+        const url = new URL(current instanceof Request ? current.url : current.toString())
+        const next = URL.canParse(location, url) ? new URL(location, url) : null
+        if (!next || next.origin !== url.origin) {
+          return response
+        }
+        await response.body?.cancel()
+        if (hop === 5) {
+          throw new Error('Too many redirects')
+        }
+        current = current instanceof Request ? new Request(next, current) : next
       }
-      return response
     } catch (error) {
       detach()
       throw failure(error)

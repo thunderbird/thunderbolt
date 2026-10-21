@@ -51,7 +51,8 @@ So a `http://localhost:…` server works on Tauri with Cloud Proxy off,
 fails on web, and nothing warns at save time. Use an iroh bridge across machines; same trap as ACP
 ("The relay will not carry a loopback bridge" in [acp-agents.md](acp-agents.md)).
 
-Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out
+Native GET/HEAD requests follow same-origin redirects up to 5 hops; POST and cross-origin redirects
+are returned as-is so provider credentials never cross origins. A signed-out
 user with Cloud Proxy on gets backend 401s until they turn it off or sign in.
 
 ### iroh

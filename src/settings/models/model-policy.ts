@@ -3,6 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Model } from '@/types'
+import { defaultModels } from '@shared/defaults/models'
+
+const bundledConfidentialModelIds = new Set(defaultModels.filter((m) => m.isConfidential === 1).map((m) => m.id))
+
+/**
+ * Whether a model may only run on the attested Tinfoil transport. A synced
+ * row's `isConfidential` and `provider` are plaintext the server can rewrite,
+ * so a bundled confidential id keeps the requirement whatever its row says.
+ */
+export const requiresConfidentialTransport = (model: Pick<Model, 'id' | 'isConfidential'>): boolean =>
+  model.isConfidential === 1 || bundledConfidentialModelIds.has(model.id)
 
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 

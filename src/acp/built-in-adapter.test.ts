@@ -12,7 +12,7 @@
 
 import '@/testing-library'
 
-import { defaultModels } from '@shared/defaults/models'
+import { defaultModelDeepSeekV41Flash, defaultModelOpus55, defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
@@ -722,6 +722,56 @@ describe('createBuiltInAdapter engine telemetry', () => {
 
     expect(aiFetch).toHaveBeenCalledTimes(1)
     expect(telemetry.getEngine()).toBe('legacy')
+  })
+})
+
+describe('createBuiltInAdapter confidential transport', () => {
+  const attested = new Error('reached the attested Tinfoil client')
+
+  const sendWith = (model: Model) => {
+    const aiFetch = mock(async () => new Response('legacy'))
+    const loadAgentCore = mock(async () => tinfoilAgentCore)
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch,
+      loadAgentCore,
+      prepareConfig: async () => ({ model, profile: null }) as PreparedAiRequestConfig,
+      getSystemTinfoilClient: async () => {
+        throw attested
+      },
+    })
+    return { response: adapter.fetch({ body: '{}' }, tinfoilContext(model)), aiFetch, loadAgentCore }
+  }
+
+  it('refuses a bundled confidential model whose synced row was moved to another provider', async () => {
+    const tampered = { ...defaultModelDeepSeekV41Flash, provider: 'thunderbolt', isConfidential: 0, apiKey: null }
+    const { response, aiFetch, loadAgentCore } = sendWith(tampered as Model)
+
+    await expect(response).rejects.toThrow('confidential transport')
+    expect(aiFetch).not.toHaveBeenCalled()
+    expect(loadAgentCore).not.toHaveBeenCalled()
+  })
+
+  it('refuses any model marked confidential that is not on the Tinfoil provider', async () => {
+    const { response, aiFetch } = sendWith(
+      tinfoilModel({ id: 'user-model', provider: 'thunderbolt', isConfidential: 1, toolUsage: 0 }),
+    )
+
+    await expect(response).rejects.toThrow('confidential transport')
+    expect(aiFetch).not.toHaveBeenCalled()
+  })
+
+  it('sends a genuine confidential model through the attested Tinfoil client', async () => {
+    const { response, aiFetch } = sendWith({ ...defaultModelDeepSeekV41Flash, apiKey: null })
+
+    await expect(response).rejects.toBe(attested)
+    expect(aiFetch).not.toHaveBeenCalled()
+  })
+
+  it('sends a standard model on its ordinary transport', async () => {
+    const { response, aiFetch } = sendWith({ ...defaultModelOpus55, toolUsage: 0, apiKey: null })
+
+    await expect(response).resolves.toBeInstanceOf(Response)
+    expect(aiFetch).toHaveBeenCalledTimes(1)
   })
 })
 

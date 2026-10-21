@@ -68,6 +68,7 @@ import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
+import { requiresConfidentialTransport } from '@/settings/models/model-policy'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
@@ -910,8 +911,12 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
 
   // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes
   // this route; other providers still fall back when their id/config is unusable.
-  const fetch = (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
-    if (isPiModelCandidate(context.selectedModel)) {
+  const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
+    const model = context.selectedModel
+    if (requiresConfidentialTransport(model) && model.provider !== 'tinfoil') {
+      throw new Error(`Model ${model.id} is confidential but is not on the confidential transport`)
+    }
+    if (isPiModelCandidate(model)) {
       return fetchViaHarness(
         init,
         context,

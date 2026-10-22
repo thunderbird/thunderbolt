@@ -213,7 +213,7 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 | `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
 
-`MINIMAL_MODE=true` hides the Settings section, the header's agent name, the starter skill chips, Projects, the account control and the add menu's Connections action and the voice mode button, and turns off slash-command skills, so `/` is ordinary text in the composer.
+`MINIMAL_MODE=true` hides the Settings section, the header's agent name, the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
 
 ### Hosted agent
 

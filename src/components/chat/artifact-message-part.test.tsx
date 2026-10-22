@@ -4,6 +4,9 @@
 
 import '@/testing-library'
 import { getClock } from '@/testing-library'
+import { getDb } from '@/db/database'
+import { renameProjectArtifact } from '@/dal/project-artifact-presentation'
+import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -70,20 +73,16 @@ const PanelIdentity = () => {
 describe('ArtifactMessagePart', () => {
   it('keeps an artifact in its project canvas when the source chat opens', () => {
     const actions: string[] = []
-    const { container, getByText } = render(
-      <MemoryRouter>
-        <ContentViewProvider>
-          <ArtifactCanvasContext
-            value={{ messageId: 'canvas-message', toolCallId: 'canvas', reveal: () => actions.push('reveal') }}
-          >
-            <ArtifactMessagePart
-              part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
-              messageId="canvas-message"
-              chatThreadId="canvas-chat"
-            />
-          </ArtifactCanvasContext>
-        </ContentViewProvider>
-      </MemoryRouter>,
+    const { container, getByText } = renderWithProviders(
+      <ArtifactCanvasContext
+        value={{ messageId: 'canvas-message', toolCallId: 'canvas', reveal: () => actions.push('reveal') }}
+      >
+        <ArtifactMessagePart
+          part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
+          messageId="canvas-message"
+          chatThreadId="canvas-chat"
+        />
+      </ArtifactCanvasContext>,
     )
     expect(container.querySelector('iframe')).toBeNull()
     fireEvent.click(getByText('Show artifact'))
@@ -98,6 +97,34 @@ describe('ArtifactMessagePart', () => {
   afterEach(() => {
     restoreIntersectionObserver()
     resetAppSettledForTests()
+  })
+
+  it('keeps saved names consistent when returning from the side panel to inline', async () => {
+    const id = artifactId({ kind: 'html', messageId: 'renamed-message', toolCallId: 'renamed-call' })
+    await renameProjectArtifact(getDb(), id, 'Saved name')
+    const view = renderWithReactivity(
+      <MemoryRouter>
+        <ContentViewProvider>
+          <ArtifactMessagePart
+            part={toolPart({ toolCallId: 'renamed-call', state: 'output-available', output: { ok: true } })}
+            messageId="renamed-message"
+            chatThreadId="chat-one"
+          />
+        </ContentViewProvider>
+      </MemoryRouter>,
+      { tables: ['settings'] },
+    )
+    await waitForElement(() => view.queryByText('Saved name'))
+    fireEvent.click(view.getByTitle('Open in side panel'))
+    await act(async () => {
+      await renameProjectArtifact(getDb(), id, 'Updated name')
+      view.triggerChange(['settings'])
+      await getClock().tickAsync(200)
+    })
+    fireEvent.click(view.getByText('Show inline'))
+    expect(view.getByText('Updated name')).toBeInTheDocument()
+    expect(view.queryByText('My Artifact')).toBeNull()
+    expect(view.container.querySelector('iframe')).not.toBeNull()
   })
 
   it('shows a shimmering "Generating" card while streaming, with no blank frame before there is body content', () => {

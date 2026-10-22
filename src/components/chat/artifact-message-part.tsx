@@ -4,6 +4,7 @@
 
 import { renderHtmlInput, type RenderHtmlPart } from '@/artifacts/render-html-tool'
 import { toHtmlArtifact } from '@/artifacts/artifact'
+import { useArtifactPresentation } from '@/artifacts/use-artifact-presentation'
 import { Button } from '@/components/ui/button'
 import { useContentView } from '@/content-view/context'
 import { useThrottle } from '@/hooks/use-throttle'
@@ -38,10 +39,16 @@ export const ArtifactMessagePart = ({ part, messageId, chatThreadId }: ArtifactM
   const { artifactId: routeArtifactId } = useParams()
   const navigate = useNavigate()
   const input = renderHtmlInput(part as RenderHtmlPart)
-  const title = input.title?.trim() || t`Artifact`
 
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
-  const artifact = toHtmlArtifact(messageId, chatThreadId, part)
+  const sourceArtifact = toHtmlArtifact(messageId, chatThreadId, part)
+  const presentation = useArtifactPresentation(
+    sourceArtifact ? [sourceArtifact] : [],
+    `inline:${messageId}:${part.toolCallId}`,
+  )
+  // Gallery deletion leaves the original transcript output readable.
+  const artifact = presentation.artifacts[0] ?? sourceArtifact
+  const title = artifact?.title ?? (input.title?.trim() || t`Artifact`)
 
   // Throttle the streaming HTML into the preview iframe; render the exact HTML once verified.
   const throttledHtml = useThrottle(input.html ?? '', artifactPreviewThrottleMs)

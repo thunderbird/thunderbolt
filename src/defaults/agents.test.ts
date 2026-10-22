@@ -17,18 +17,21 @@ describe('built-in agents', () => {
     expect(isPrivateAgent({ ...zeusAgent, isPrivate: true })).toBe(false)
   })
 
-  it('allows only the Tinfoil transport for Vesta', () => {
+  it('allows only the preconfigured Tinfoil models for Vesta', () => {
     expect(isModelAllowedForAgent(builtInAgent, defaultModelDeepSeekV41Flash)).toBe(true)
     expect(isModelAllowedForAgent(builtInAgent, defaultModelGlm53)).toBe(true)
     expect(isModelAllowedForAgent(builtInAgent, defaultModelOpus55)).toBe(false)
     expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, provider: 'custom' })).toBe(false)
+    expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, model: 'other-model' })).toBe(false)
   })
 
-  it('allows hosted and user-added non-Tinfoil models for Zeus', () => {
+  it('allows only hosted Opus 5.5 for Zeus', () => {
     expect(isModelAllowedForAgent(zeusAgent, defaultModelOpus55)).toBe(true)
     expect(isModelAllowedForAgent(zeusAgent, defaultModelGlm53)).toBe(false)
-    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'custom' })).toBe(true)
-    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, model: 'other-model' })).toBe(true)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'custom' })).toBe(false)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'openai' })).toBe(false)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'anthropic' })).toBe(false)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, model: 'other-model' })).toBe(false)
   })
 
   it('leaves remote model selection to the agent and rejects unknown built-ins', () => {

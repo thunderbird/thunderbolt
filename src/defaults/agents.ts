@@ -5,6 +5,7 @@
 import type { Agent } from '@/types/acp'
 import type { Model } from '@/types'
 import { needsApiKey } from '@/settings/models/model-policy'
+import { defaultModelOpus55, defaultModels } from '@shared/defaults/models'
 
 /**
  * The built-in confidential agent, Vesta. Lives in code only — never a DB row.
@@ -35,7 +36,7 @@ export const builtInAgent: Agent = {
   userId: null,
 }
 
-/** The non-confidential built-in assistant, defaulting to Thunderbolt-hosted Opus. */
+/** The non-confidential built-in assistant using Thunderbolt-hosted Opus. */
 export const zeusAgent: Agent = {
   ...builtInAgent,
   id: 'superbolt-built-in',
@@ -54,18 +55,25 @@ export const isPrivateAgent = (agent: Agent): boolean =>
   isBuiltInAgent(agent) && agent.id === builtInAgent.id && agent.isPrivate === true
 
 /**
- * Models a built-in agent may send to. Check the actual provider instead of the
- * model's legacy confidentiality label so editing that label cannot bypass the
- * agent's transport policy. Remote agents select their own models upstream.
+ * Built-in agents use only their preconfigured models. Check provider and model
+ * instead of the legacy confidentiality label so editing that label cannot
+ * bypass the policy. User-created remote agents select their own models upstream.
  */
 export const isModelAllowedForAgent = (agent: Agent, model: Pick<Model, 'provider' | 'model'>): boolean => {
   if (!isBuiltInAgent(agent)) {
     return true
   }
   if (agent.id === builtInAgent.id) {
-    return model.provider === 'tinfoil'
+    return (
+      model.provider === 'tinfoil' &&
+      defaultModels.some((configured) => configured.provider === 'tinfoil' && configured.model === model.model)
+    )
   }
-  return agent.id === zeusAgent.id && model.provider !== 'tinfoil'
+  return (
+    agent.id === zeusAgent.id &&
+    model.provider === defaultModelOpus55.provider &&
+    model.model === defaultModelOpus55.model
+  )
 }
 
 /** Resolve the built-in owner from the same policy used by model selection and sends. */

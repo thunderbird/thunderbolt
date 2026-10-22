@@ -37,6 +37,16 @@ describe('assertSessionCanSend', () => {
     ).toThrow('private chat cannot run')
   })
 
+  it.each([builtInAgent, zeusAgent])('rejects custom models for $name even with configured credentials', (agent) => {
+    expect(() =>
+      assertSessionCanSend({
+        chatThread: null,
+        selectedAgent: agent,
+        selectedModel: createMockModel({ provider: 'custom', model: 'local-model', apiKey: 'configured-key' }),
+      }),
+    ).toThrow('model is not available')
+  })
+
   it('allows each built-in only its configured model transport', () => {
     expect(() =>
       assertSessionCanSend({ chatThread: null, selectedAgent: builtInAgent, selectedModel: tinfoil }),

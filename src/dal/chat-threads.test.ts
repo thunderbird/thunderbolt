@@ -24,6 +24,7 @@ import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { nowIso } from '@/lib/utils'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -44,7 +45,7 @@ const createTestModel = async () => {
     id: modelId,
     provider: 'thunderbolt',
     name: 'Test Model',
-    model: 'gpt-oss-120b',
+    model: defaultModelOpus55.model,
     isSystem: 0,
     enabled: 1,
     isConfidential: 0,
@@ -160,7 +161,7 @@ describe('Chat Threads DAL', () => {
       expect(stored?.agentId).toBe('haystack-rag')
     })
 
-    it('binds an implicit non-Tinfoil thread to Zeus', async () => {
+    it('binds an implicit hosted Opus thread to Zeus', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
       const model = await getModel(getDb(), modelId)

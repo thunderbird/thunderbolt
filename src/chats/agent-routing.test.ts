@@ -18,6 +18,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { useChatStore, type ChatSession } from '@/chats/chat-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -54,7 +55,7 @@ const mockModel: Model = {
   id: 'model-1',
   provider: 'tinfoil',
   name: 'Test Model',
-  model: 'gpt-4',
+  model: defaultModelDeepSeekV41Flash.model,
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,

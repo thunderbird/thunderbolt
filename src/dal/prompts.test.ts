@@ -20,8 +20,6 @@ import {
 } from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { type Prompt } from '@/types'
-import { zeusAgent } from '@/defaults/agents'
-import { getChatMessages } from './chat-messages'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -37,14 +35,12 @@ describe('Prompts DAL', () => {
     await resetTestDatabase()
   })
 
-  it('runs user-added model automations on Zeus without changing their model', async () => {
+  it('rejects custom-model automations instead of silently rerouting them through a built-in agent', async () => {
     const db = getDb()
     await db.insert(modelsTable).values({ id: 'custom', provider: 'custom', model: 'local-model', name: 'Custom' })
     await createAutomation(db, { id: 'automation', prompt: 'Run', modelId: 'custom' })
-    const threadId = await runAutomation(db, 'automation')
-    const [thread] = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId))
-    expect(thread).toMatchObject({ agentId: zeusAgent.id, isEncrypted: 0 })
-    expect((await getChatMessages(db, threadId))[0].modelId).toBe('custom')
+    await expect(runAutomation(db, 'automation')).rejects.toThrow('No built-in agent supports this model')
+    expect(await db.select().from(chatThreadsTable)).toHaveLength(0)
   })
 
   describe('getAllPrompts', () => {

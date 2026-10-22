@@ -22,10 +22,10 @@ describe('resolveSessionModel', () => {
     expect(resolveSessionModel(zeusAgent, confidential, models).id).toBe(standard.id)
   })
 
-  it('keeps user-added models usable without the hosted catalog, and prefers Opus when switching agents', () => {
+  it('does not fall back to custom models when the preconfigured model is unavailable', () => {
     const custom = createMockModel({ id: 'custom', provider: 'custom', model: 'local-model', isConfidential: 0 })
-    expect(resolveSessionModel(zeusAgent, confidential, [custom])).toBe(custom)
-    expect(resolveSessionModel(zeusAgent, custom, [custom, standard])).toBe(custom)
+    expect(resolveSessionModel(zeusAgent, confidential, [confidential, custom])).toBe(confidential)
+    expect(resolveSessionModel(zeusAgent, custom, [custom, standard])).toBe(standard)
     expect(resolveSessionModel(zeusAgent, confidential, [custom, standard])).toBe(standard)
   })
 

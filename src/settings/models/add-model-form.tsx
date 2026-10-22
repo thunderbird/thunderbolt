@@ -97,7 +97,7 @@ export const AddModelForm = ({
                   }}
                   value={field.value}
                 >
-                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
+                  <SelectTrigger ref={providerTriggerRef} aria-label={t`Provider`} className="w-full rounded-lg">
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
                   <SelectContent>
@@ -157,7 +157,7 @@ export const AddModelForm = ({
                   <Input
                     type="password"
                     {...field}
-                    placeholder="sk-..."
+                    placeholder={provider === 'otari' ? 'tk-...' : 'sk-...'}
                     className="rounded-lg"
                     onChange={(event) => {
                       field.onChange(event)

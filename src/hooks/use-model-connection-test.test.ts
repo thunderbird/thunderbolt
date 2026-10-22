@@ -21,6 +21,42 @@ const completionResponse = (): Response =>
   })
 
 describe('createDefaultProbe', () => {
+  it('tests Otari through the real model factory and Chat Completions serializer', async () => {
+    const requests: Request[] = []
+    const transport: FetchFn = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(new Request(input, init))
+        return completionResponse()
+      },
+      { preconnect: async () => false },
+    )
+    await createDefaultProbe()(
+      { provider: 'otari', model: 'openai:gpt-4o', url: null, apiKey: 'tk-user' },
+      () => transport,
+      new AbortController().signal,
+    )
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toBe('https://api.otari.ai/api/v1/chat/completions')
+    expect(requests[0].method).toBe('POST')
+    expect(requests[0].headers.get('authorization')).toBe('Bearer tk-user')
+    expect(await requests[0].json()).toMatchObject({ model: 'openai:gpt-4o' })
+  })
+
+  it('fails the Otari connection test when the gateway refuses the token', async () => {
+    const transport: FetchFn = Object.assign(
+      async () => Response.json({ error: { message: 'Invalid Otari token' } }, { status: 401 }),
+      { preconnect: async () => false },
+    )
+    await expect(
+      createDefaultProbe()(
+        { provider: 'otari', model: 'openai:gpt-4o', url: null, apiKey: 'invalid' },
+        () => transport,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('Invalid Otari token')
+  })
+
   it('tests a BYOK Tinfoil model through one attested chat completion', async () => {
     const requests: Request[] = []
     const client = {

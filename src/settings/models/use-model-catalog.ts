@@ -9,6 +9,7 @@ import { useCallback, useEffect, useReducer } from 'react'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   canFetchCatalog,
   catalogDebounceMs,
@@ -74,6 +75,7 @@ export const catalogToComboboxItems = (models: AvailableModel[]): ComboboxItem[]
 /** Provider catalog fetching shared by the add-model and edit-model forms. */
 export const useModelCatalog = () => {
   const { i18n } = useLingui()
+  const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(modelCatalogReducer, initialModelCatalogState)
 
   const fetchCatalog = useCallback(
@@ -81,13 +83,15 @@ export const useModelCatalog = () => {
       const requestKey = catalogRequestKey(request)
       dispatch({ type: 'CATALOG_REQUESTED', requestKey })
       try {
-        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request) })
+        // Otari rejects browser preflights, so discovery needs the same proxy as inference.
+        const catalogFetch = request.provider === 'otari' ? getProxyFetch() : undefined
+        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request, catalogFetch) })
       } catch (error) {
         console.error('Failed to fetch models:', error)
         dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })
       }
     },
-    [i18n],
+    [i18n, getProxyFetch],
   )
   const invalidateCatalog = useCallback(() => dispatch({ type: 'CATALOG_INVALIDATED' }), [])
 

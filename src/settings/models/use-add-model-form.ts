@@ -31,7 +31,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'otari', 'tinfoil']),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -85,8 +85,9 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
 }
 
 /** Generates a readable display name from a provider model identifier. */
-export const generateModelName = (modelId: string): string => {
-  const segment = modelId.split('/').pop() ?? modelId
+export const generateModelName = (modelId: string, provider?: Model['provider']): string => {
+  const unprefixedId = provider === 'otari' ? modelId.slice(modelId.indexOf(':') + 1) : modelId
+  const segment = unprefixedId.split('/').pop() ?? unprefixedId
   const beforeColon = segment.split(':')[0]
   const parts = beforeColon.split(/[-_]+/).flatMap((part) => {
     if (/^[A-Za-z]\d$/.test(part)) {
@@ -203,7 +204,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
-    form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    form.setValue('name', selected?.name || generateModelName(modelId, provider), { shouldValidate: true })
   }
 
   // Recomputes formState.isValid for the freshly blanked fields (the submit

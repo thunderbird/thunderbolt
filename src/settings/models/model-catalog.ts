@@ -8,6 +8,8 @@ import { getTinfoilClient } from '@/ai/tinfoil-client'
 import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
+import { otariBaseUrl } from '@/lib/otari'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { catalogRequiresApiKey } from './model-policy'
@@ -105,6 +107,9 @@ const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): stri
   if (provider === 'openrouter') {
     return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
   }
+  if (provider === 'otari') {
+    return apiKey ? `${otariBaseUrl}/models` : undefined
+  }
   if (provider === 'custom' && url) {
     return `${normalizeOpenAiBaseUrl(url)}/models`
   }
@@ -112,7 +117,10 @@ const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): stri
 }
 
 /** Fetches a provider catalog only when explicitly requested by the caller. */
-export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogRequest): Promise<AvailableModel[]> => {
+export const fetchModelsForProvider = async (
+  { provider, apiKey, url }: CatalogRequest,
+  catalogFetch: FetchFn = fetch,
+): Promise<AvailableModel[]> => {
   if (provider === 'thunderbolt') {
     return thunderboltModelCatalog
   }
@@ -136,7 +144,7 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
   }
 
   const response = await http
-    .get(endpoint, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fetch })
+    .get(endpoint, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fetch: catalogFetch })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data
     .map((model) => ({

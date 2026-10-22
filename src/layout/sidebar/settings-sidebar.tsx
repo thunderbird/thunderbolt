@@ -18,12 +18,13 @@ import { cn } from '@/lib/utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { AudioLines, Bot, Cpu, Plug, Search, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { SidebarSection } from './types'
 
 type NavItem = {
@@ -66,14 +67,16 @@ type SettingsSidebarContentProps = {
   isCollapsed: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
+  onSearchClick?: () => void
 }
 
 export const SettingsSidebarContent = ({
   isCollapsed,
   onSectionChange,
   onSettingsNavigate,
+  onSearchClick,
 }: SettingsSidebarContentProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
   const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
@@ -87,12 +90,15 @@ export const SettingsSidebarContent = ({
     ? navGroups
     : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
 
+  const headerControls = (
+    <SidebarHeaderActions onSearchClick={onSearchClick}>
+      <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+    </SidebarHeaderActions>
+  )
+
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader
-        onToggle={toggleSidebar}
-        navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />}
-      />
+      <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
 
       {isCollapsed && (
         // pb-0: the next group's own top padding provides the 8px gap,
@@ -101,6 +107,16 @@ export const SettingsSidebarContent = ({
         <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
             <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+            {onSearchClick && (
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={onSearchClick} tooltip={t`Search`} className="cursor-pointer">
+                    <Search className="size-[var(--icon-size-default)]" />
+                    <span>{t`Search`}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       )}
@@ -120,9 +136,7 @@ export const SettingsSidebarContent = ({
             )}
           >
             {isMobile && index === 0 && (
-              <div className="flex h-[var(--touch-height-lg)] items-center">
-                <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
-              </div>
+              <div className="flex h-[var(--touch-height-lg)] items-center">{headerControls}</div>
             )}
             <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
               {i18n._(group.label)}

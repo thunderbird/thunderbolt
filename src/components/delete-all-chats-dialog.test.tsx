@@ -21,11 +21,14 @@ describe('DeleteAllChatsDialog', () => {
     render(<DeleteAllChatsDialog ref={ref} onConfirm={() => {}} />)
     act(() => ref.current?.open())
 
-    expect(screen.getByRole('alertdialog', { name: 'Delete all chats?' })).toHaveAttribute(
+    expect(screen.getByRole('alertdialog', { name: 'Delete chats outside projects?' })).toHaveAttribute(
       'data-slot',
       'alert-dialog-content',
     )
     expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeInTheDocument()
+    expect(
+      screen.getByText("This will delete all chats that aren't in a project. Chats inside projects will be kept."),
+    ).toBeInTheDocument()
   })
 
   it('uses an alert bottom sheet on mobile', async () => {
@@ -35,7 +38,7 @@ describe('DeleteAllChatsDialog', () => {
     render(<DeleteAllChatsDialog ref={ref} onConfirm={onConfirm} />)
     act(() => ref.current?.open())
 
-    const sheet = screen.getByRole('alertdialog', { name: 'Delete all chats?' })
+    const sheet = screen.getByRole('alertdialog', { name: 'Delete chats outside projects?' })
     expect(sheet).toHaveAttribute('data-slot', 'drawer-content')
     expect(sheet).toHaveAttribute('data-swipe-direction', 'down')
     await act(async () => {
@@ -43,7 +46,7 @@ describe('DeleteAllChatsDialog', () => {
     })
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete All Chats' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete chats' }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
@@ -53,7 +56,7 @@ describe('DeleteAllChatsDialog', () => {
     render(<DeleteAllChatsDialog ref={ref} isPending onConfirm={onConfirm} />)
     act(() => ref.current?.open())
 
-    const confirmButton = screen.getByRole('button', { name: 'Delete All Chats' })
+    const confirmButton = screen.getByRole('button', { name: 'Delete chats' })
     expect(confirmButton).toBeDisabled()
     fireEvent.click(confirmButton)
     expect(onConfirm).not.toHaveBeenCalled()

@@ -35,7 +35,7 @@ export {
 // Chat Threads
 export {
   createChatThread,
-  deleteAllChatThreads,
+  deleteNonProjectChatThreads,
   deleteChatThread,
   getAllChatThreads,
   getChatThread,

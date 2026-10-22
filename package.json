@@ -128,6 +128,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-store": "^2.4.2",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "@twemoji/svg": "^15.0.0",
     "@zenfs/core": "^2.6.5",
     "@zenfs/dom": "^1.2.12",
     "acorn": "^8.17.0",
@@ -243,6 +244,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "vite-bundle-analyzer": "^1.2.1",
+    "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^4.1.4",
     "webdriverio": "^9.31.9"
   },

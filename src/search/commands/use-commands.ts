@@ -135,7 +135,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     ...signOutCommands,
     {
       id: 'clear-all-chats',
-      title: deps.i18n._(msg`Clear all chats`),
+      title: deps.i18n._(msg`Delete chats outside projects`),
       icon: Trash2,
       section: 'actions',
       keywords: ['delete', 'remove'],

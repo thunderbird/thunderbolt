@@ -120,7 +120,7 @@ describe('Sidebar reactivity', () => {
 
     const scrollArea = document.querySelector<HTMLElement>('[data-slot="chat-list-scroll"]')
     const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
-    const recentChatsLabel = screen.getByText('Recent Chats')
+    const recentChatsLabel = screen.getByText('Recents')
     const sidebarFooter = document.querySelector<HTMLElement>('[data-sidebar="footer"]')
 
     expect(scrollArea).toContainElement(recentChatsLabel)
@@ -161,10 +161,10 @@ describe('Sidebar reactivity', () => {
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
     })
 
-    it('offers Projects outside minimal mode and hides it in minimal mode', () => {
+    it('offers Projects outside minimal mode and hides it in minimal mode', async () => {
       useConfigStore.setState({ config: {}, configLoaded: true })
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
-      expect(screen.getByText('Projects')).toBeInTheDocument()
+      expect(await waitForElement(() => screen.queryByText('Projects'))).toBeInTheDocument()
 
       cleanup()
       useConfigStore.setState(minimalConfig)
@@ -182,7 +182,7 @@ describe('Sidebar reactivity', () => {
       it('lists the project drop targets outside minimal mode', async () => {
         await renderWithProject({ config: {}, configLoaded: true })
 
-        expect(await waitForElement(() => screen.queryByText('Recent Projects'))).toBeInTheDocument()
+        expect(await waitForElement(() => screen.queryByText('Projects'))).toBeInTheDocument()
       })
 
       it('hides the project drop targets in minimal mode', async () => {
@@ -191,7 +191,7 @@ describe('Sidebar reactivity', () => {
           await getClock().runAllAsync()
         })
 
-        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Projects')).not.toBeInTheDocument()
         expect(screen.queryByText('Alpha')).not.toBeInTheDocument()
       })
 
@@ -202,17 +202,22 @@ describe('Sidebar reactivity', () => {
         })
 
         expect(screen.queryByText('Projects')).not.toBeInTheDocument()
-        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
       })
     })
 
-    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
-      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
-      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+    it.each([false, true])(
+      'renders from a persisted config before the fetch answers (minimal mode %s)',
+      async (minimal) => {
+        useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+        renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
-      expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
-      expect(screen.queryByText('Projects') !== null).toBe(!minimal)
-    })
+        expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
+        if (!minimal) {
+          await waitForElement(() => screen.queryByText('Projects'))
+        }
+        expect(screen.queryByText('Projects') !== null).toBe(!minimal)
+      },
+    )
 
     it('shows the toggle once the first-ever fetch answers', () => {
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })

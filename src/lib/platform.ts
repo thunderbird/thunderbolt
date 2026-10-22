@@ -179,8 +179,9 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
     // Try to access OPFS - this will fail in private browsing
     const root = await navigator.storage.getDirectory()
 
-    // Try to create a test file to ensure write access
-    const testFileName = `opfs-test-${Date.now()}.txt`
+    // Concurrent tabs can probe in the same millisecond. Each must remove only
+    // its own file, or one reports unavailable storage and opens an empty DB.
+    const testFileName = `opfs-test-${crypto.randomUUID()}.txt`
     await root.getFileHandle(testFileName, { create: true })
 
     // Clean up test file

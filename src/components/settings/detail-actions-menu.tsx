@@ -4,7 +4,7 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { MoreVertical, SquarePen, Trash2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -12,22 +12,36 @@ import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { cn } from '@/lib/utils'
 
 /** The detail panels' shared ⋯ header menu; children are its menu items. */
-export const DetailActionsMenu = ({ children }: { children: ReactNode }) => {
+export const DetailActionsMenu = ({
+  children,
+  onOpenChange,
+  onCloseAutoFocus,
+  triggerClassName,
+  side,
+  align = 'end',
+}: {
+  children: ReactNode
+  onOpenChange?: (open: boolean) => void
+  onCloseAutoFocus?: ComponentProps<typeof DropdownMenuContent>['onCloseAutoFocus']
+  triggerClassName?: string
+  side?: ComponentProps<typeof DropdownMenuContent>['side']
+  align?: ComponentProps<typeof DropdownMenuContent>['align']
+}) => {
   const { t } = useLingui()
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
           aria-label={t`More`}
-          className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+          className={cn(mutedIconButtonClass, mobileHeaderControlFillClass, triggerClassName)}
         >
           <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
+      <DropdownMenuContent side={side} align={align} className="min-w-56" onCloseAutoFocus={onCloseAutoFocus}>
         {children}
       </DropdownMenuContent>
     </DropdownMenu>

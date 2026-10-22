@@ -9,8 +9,8 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import '@testing-library/jest-dom'
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { SettingsSidebarContent } from './settings-sidebar'
@@ -23,7 +23,7 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const renderSidebar = (authClient: AuthClient) => {
+const renderSidebar = (authClient: AuthClient, onSearchClick = () => {}) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
@@ -35,7 +35,12 @@ const renderSidebar = (authClient: AuthClient) => {
     </TestProvider>
   )
   return render(
-    <SettingsSidebarContent isCollapsed={false} onSectionChange={() => {}} onSettingsNavigate={() => {}} />,
+    <SettingsSidebarContent
+      isCollapsed={false}
+      onSectionChange={() => {}}
+      onSettingsNavigate={() => {}}
+      onSearchClick={onSearchClick}
+    />,
     {
       wrapper: Wrapper,
     },
@@ -76,5 +81,13 @@ describe('SettingsSidebarContent — Agents entry visibility', () => {
     renderSidebar(authClient)
 
     expect(screen.getByText('All agents')).toBeInTheDocument()
+  })
+
+  it('keeps global search available alongside the Settings tab', () => {
+    const onSearchClick = mock()
+    renderSidebar(createMockAuthClient({ session: anonSession }), onSearchClick)
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    expect(onSearchClick).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
   })
 })

@@ -2,23 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { wrapArtifactPreviewHtml } from '@/artifacts/harness'
+import { downloadArtifactHtml } from '@/artifacts/download-artifact'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useLingui } from '@lingui/react/macro'
-import { downloadFile } from '@/lib/download'
 import { useTransientFlag } from '@/hooks/use-transient-flag'
 import { Check, Copy, Download, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
-
-/** Filename-safe slug from a human title, e.g. "Sales Dashboard" → "sales-dashboard". */
-const toFileSlug = (title: string): string =>
-  title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'artifact'
 
 type ArtifactActionsProps = {
   html: string
@@ -58,14 +49,7 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
   const handleDownload = async () => {
     setSaveError(null)
     try {
-      await downloadFile({
-        name: `${toFileSlug(title)}.html`,
-        // Ship the file with the same offline CSP the app renders it under, so opening the download
-        // in a browser can't run it unsandboxed with network access — a self-contained artifact
-        // needs none.
-        contents: wrapArtifactPreviewHtml(html),
-        mimeType: 'text/html',
-      })
+      await downloadArtifactHtml(html, title)
       flagSaved()
     } catch (error) {
       console.error('[artifacts] Could not save the artifact', error)

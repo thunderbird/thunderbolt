@@ -20,9 +20,9 @@ export const DeleteAllChatsDialog = forwardRef<DeleteAllChatsDialogRef, DeleteAl
   return (
     <ImperativeConfirmActionDialog
       ref={ref}
-      title={t`Delete all chats?`}
-      description={t`This will permanently delete all your chats.`}
-      confirmLabel={t`Delete All Chats`}
+      title={t`Delete chats outside projects?`}
+      description={t`This will delete all chats that aren't in a project. Chats inside projects will be kept.`}
+      confirmLabel={t`Delete chats`}
       {...props}
     />
   )

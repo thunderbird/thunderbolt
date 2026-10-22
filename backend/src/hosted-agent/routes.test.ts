@@ -1102,18 +1102,18 @@ describe('createHostedAgentRoutes', () => {
       return body
     }
 
+    const rateLimitErrorText = `"errorText":${JSON.stringify(JSON.stringify({ error: 'Too many requests', status: 429 }))}`
+
     it('streams an upstream 429 in the shape the app reads as a rate limit', async () => {
       const body = await streamFailure(upstreamError(429))
-      expect(body).toContain(
-        `"errorText":${JSON.stringify(JSON.stringify({ error: 'Too many requests', status: 429 }))}`,
-      )
+      expect(body).toContain(rateLimitErrorText)
     })
 
     it('streams a 429 that survived the SDK retries the same way', async () => {
       const body = await streamFailure(
         new RetryError({ message: 'sentinel-retry', reason: 'maxRetriesExceeded', errors: [upstreamError(429)] }),
       )
-      expect(body).toContain('Too many requests')
+      expect(body).toContain(rateLimitErrorText)
     })
 
     it('keeps the generic text for any other failure', async () => {

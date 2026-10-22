@@ -9,6 +9,7 @@ describe('routeHostsContentView', () => {
   it('is the Mini App route, which layers the view over its own chat pane', () => {
     expect(routeHostsContentView('/apps/finance-model')).toBeTrue()
     expect(routeHostsContentView('/apps/finance-model?chat=abc')).toBeTrue()
+    expect(routeHostsContentView('/artifacts/html%3Amessage%3Acall')).toBeTrue()
   })
 
   it('leaves every other route to main-layout', () => {
@@ -17,6 +18,7 @@ describe('routeHostsContentView', () => {
     expect(routeHostsContentView('/chats/abc')).toBeFalse()
     expect(routeHostsContentView('/settings/preferences')).toBeFalse()
     expect(routeHostsContentView('/')).toBeFalse()
+    expect(routeHostsContentView('/artifacts')).toBeFalse()
   })
 
   it('hosts content beside an artifact canvas, while the gallery uses the main layout', () => {

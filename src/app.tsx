@@ -87,6 +87,7 @@ const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
   projectArtifacts: () => import('@/projects/project-artifacts-page'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
+  artifact: () => import('@/artifacts/artifact-page'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
@@ -102,6 +103,7 @@ const routeChunkLoaders = {
 const TasksPage = lazy(routeChunkLoaders.tasks)
 const ProjectArtifactsPage = lazy(routeChunkLoaders.projectArtifacts)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
+const ArtifactPage = lazy(routeChunkLoaders.artifact)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
@@ -227,6 +229,8 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="projects/:projectId/artifacts" element={<ProjectArtifactsPage />} />
               <Route path="projects/:projectId/artifacts/:artifactId" element={<ProjectArtifactsPage />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
+              <Route path="artifacts" element={<Navigate to="/chats/new" replace />} />
+              <Route path="artifacts/:artifactId" element={<ArtifactPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

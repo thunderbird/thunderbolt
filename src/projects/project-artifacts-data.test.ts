@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, spyOn } from 'bun:test'
+import { artifactId } from '@/artifacts/artifact'
 import { collectProjectArtifacts, readArtifactPins } from './project-artifacts-data'
 
 const labels = { untitledArtifact: 'Unbenannt', untitledChat: 'Neuer Chat' }
@@ -32,7 +33,9 @@ describe('project artifacts', () => {
   it('retains distinct, stable links after failed retries with the same title', () => {
     const failed = part('retry', { output: { ok: false, errors: ['invalid'] } })
     const result = collect([failed, part('a'), part('b')])
-    expect(result.map((artifact) => artifact.id)).toEqual([`${messageId}-1`, `${messageId}-2`])
+    expect(result.map((artifact) => artifact.id)).toEqual(
+      ['a', 'b'].map((toolCallId) => artifactId({ kind: 'html', messageId, toolCallId })),
+    )
     expect(collect([part('retry'), part('a'), part('b')])[1].id).toBe(result[0].id)
     expect(result[0]).toMatchObject({ toolCallId: 'a', html: '<h1>Chart</h1>', chatThreadId: 'chat' })
   })

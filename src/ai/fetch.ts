@@ -6,12 +6,13 @@ import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } 
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
+import { getActiveArtifactSession } from '@/artifacts/artifact-session-store'
 import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
 import { chooseEmbeddedSurface, type EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
 import { buildMiniAppContextNote, supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
-import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
+import { getMiniAppSnapshot } from '@/mini-apps/mini-app-store'
 import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
@@ -577,28 +578,21 @@ export const prepareAiRequestConfig = async ({
       titleByThreadId: projectContext.titleByThreadId,
     })
   }
-  // Mini App context is a tool for the same reason cross-chat recall is: the
-  // app's state changes on every click, and injecting it would invalidate the
-  // cacheable stable prompt on every send. Registered only while an app is open.
-  const miniAppSnapshot = getMiniAppSnapshot()
+  // Bind context and tools to one mounted owner for the whole turn. A background
+  // frame cannot donate tools or replace the context of the selected artifact.
+  const artifactSession = getActiveArtifactSession()
+  const surface = chooseEmbeddedSurface(artifactSession)
+  const surfaceOwner = artifactSession?.owner ?? null
+  const miniAppSnapshot = getMiniAppSnapshot(surface === 'mini-app' ? surfaceOwner : null)
   const miniApp = miniAppSnapshot.app
-  // One tool name for both embedded surfaces — see `chooseEmbeddedSurface` for
-  // which one it describes when both are open, and why that is a rule rather
-  // than a condition.
-  const artifactSnapshot = getArtifactContextSnapshot()
-  const surface = chooseEmbeddedSurface({
-    miniAppOpenedAt: miniApp ? miniAppSnapshot.openedAt : null,
-    artifactOpenedAt: artifactSnapshot.openedAt,
-    hasArtifactTitle: artifactSnapshot.title !== null,
-  })
-  // Reads the frame live rather than a cache, so state the user changed a
-  // moment ago is in the answer with no notification needed.
-  const readMiniAppContext = () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null)
+  const readMiniAppContext = () => getMiniAppSnapshot(surfaceOwner).requestContext?.() ?? Promise.resolve(null)
   if (supportsTools && surface === 'artifact') {
-    appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
+    appToolset.get_app_context = createArtifactContextTool({
+      getSnapshot: () => getArtifactContextSnapshot(surfaceOwner),
+    })
   } else if (supportsTools && surface === 'mini-app') {
     appToolset.get_app_context = createMiniAppContextTool({
-      getSnapshot: getMiniAppSnapshot,
+      getSnapshot: () => getMiniAppSnapshot(surfaceOwner),
       requestContext: readMiniAppContext,
     })
   }
@@ -610,7 +604,7 @@ export const prepareAiRequestConfig = async ({
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we
   // discover at runtime.
-  const { invokeTool } = useMiniAppStore.getState()
+  const { invokeTool } = miniAppSnapshot
   // Approvals are queued on the chat that provoked them, so the request needs
   // the thread id — a global queue showed one chat's prompt over another's.
   const miniAppTools =
@@ -619,7 +613,20 @@ export const prepareAiRequestConfig = async ({
           app: miniApp,
           tools: miniAppSnapshot.tools,
           invoke: invokeTool,
-          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
+          requestApproval: (tool, args) => {
+            // A turn may reach this tool after its frame closed or navigated.
+            // The close sweep cannot cancel an approval that has not been queued yet.
+            if (getMiniAppSnapshot(surfaceOwner).invokeTool !== invokeTool) {
+              return Promise.resolve('unavailable')
+            }
+            return requestMiniAppApproval({
+              chatThreadId,
+              app: miniApp,
+              tool,
+              args,
+              surfaceOwner: surfaceOwner ?? undefined,
+            })
+          },
         })
       : {}
   // Tracked, not just counted: a tool skipped for a name conflict is not

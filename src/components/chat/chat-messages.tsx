@@ -162,6 +162,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
             <AssistantMessage
               key={message.id}
               message={message}
+              chatThreadId={chatInstance.id}
               isStreaming={isStreaming && isLast}
               isLastMessage={shouldApplyViewport}
               isLastAssistantMessage={message.id === lastAssistantMessage?.id}

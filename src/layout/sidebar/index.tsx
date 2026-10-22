@@ -14,7 +14,7 @@ import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
+import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -167,14 +167,11 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
-            // Web and desktop only, gated on viewport to match `MiniAppPage`
-            // (which explains itself if a deep link lands here anyway).
-            showMiniApps={!isMobile}
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
-            onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
+            onArtifactNavigate={handleNavigate}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

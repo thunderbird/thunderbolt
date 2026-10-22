@@ -65,7 +65,7 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
       {!isMobile && (
         <div className="flex items-center gap-2">
           {actions}
-          <SidebarCloseButton onClick={onClose} aria-label={t`Close`} />
+          <SidebarCloseButton onClick={onClose} aria-label={t`Close panel`} />
         </div>
       )}
     </div>

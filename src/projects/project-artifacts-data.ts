@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { UIMessage } from 'ai'
-import { isRenderHtmlPart, renderHtmlInput, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
+import { artifactId, toHtmlArtifact, type Artifact } from '@/artifacts/artifact'
 import { uuidv7ToDate } from '@/lib/utils'
 
 export type ProjectArtifact = {
@@ -39,7 +40,7 @@ const parseParts = (parts: unknown): UIMessage['parts'] => {
   return parts.filter((part) => part && typeof part === 'object' && typeof part.type === 'string')
 }
 
-/** Collect verified outputs, retaining the tool index so links survive streaming and failed retries. */
+/** Collect verified outputs, using the shared source identity and verification gate. */
 export const collectProjectArtifacts = (
   rows: readonly ArtifactMessageRow[],
   labels: { untitledChat: string; untitledArtifact: string },
@@ -52,20 +53,21 @@ export const collectProjectArtifacts = (
       const chatThreadId = row.chatThreadId
       return parseParts(row.parts)
         .filter(isRenderHtmlPart)
-        .flatMap((part, index) => {
+        .flatMap((part) => {
           const input = renderHtmlInput(part)
-          if (part.state !== 'output-available' || !renderHtmlOutput(part)?.ok || !input.html?.trim()) {
+          const source = toHtmlArtifact(row.id, chatThreadId, part)
+          if (!source || source.source.kind !== 'html') {
             return []
           }
           return [
             {
-              id: `${row.id}-${index}`,
+              id: source.id,
               messageId: row.id,
               toolCallId: part.toolCallId,
               chatThreadId,
               chatTitle: row.chatTitle?.trim() || labels.untitledChat,
               title: input.title?.trim() || labels.untitledArtifact,
-              html: input.html,
+              html: source.source.html,
               createdAt: uuidv7ToDate(row.id),
             },
           ]
@@ -88,5 +90,17 @@ export const readArtifactPins = (value: string | null, artifacts: readonly Pick<
   } catch (error) {
     console.error('[projects] Could not read saved artifact pins', error)
     return []
+  }
+}
+
+/** Adapt project metadata to the shared rendering and runtime boundary. */
+export const toProjectArtifactSource = (artifact: ProjectArtifact): Artifact => {
+  const reference = { kind: 'html' as const, messageId: artifact.messageId, toolCallId: artifact.toolCallId }
+  return {
+    id: artifactId(reference),
+    reference,
+    title: artifact.title,
+    chatThreadId: artifact.chatThreadId,
+    source: { kind: 'html', html: artifact.html },
   }
 }

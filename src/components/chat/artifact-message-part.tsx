@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { renderHtmlInput, renderHtmlOutput, type RenderHtmlPart } from '@/artifacts/render-html-tool'
+import { renderHtmlInput, type RenderHtmlPart } from '@/artifacts/render-html-tool'
+import { toHtmlArtifact } from '@/artifacts/artifact'
 import { Button } from '@/components/ui/button'
-import { useChatStore } from '@/chats/chat-store'
 import { useContentView } from '@/content-view/context'
 import { useThrottle } from '@/hooks/use-throttle'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { PanelRight } from 'lucide-react'
+import { Maximize2, PanelRight } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router'
 import { InlineArtifactCard } from './inline-artifact-card'
 import { useContext } from 'react'
 import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
@@ -19,6 +20,8 @@ const artifactPreviewThrottleMs = 120
 
 type ArtifactMessagePartProps = {
   part: ToolOrDynamicToolUIPart
+  messageId: string
+  chatThreadId: string | null
 }
 
 /**
@@ -29,32 +32,33 @@ type ArtifactMessagePartProps = {
  * the panel the transcript shows a slim placeholder instead. A finished-but-failed
  * call renders nothing here (it stays an ordinary tool call in the group).
  */
-export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
+export const ArtifactMessagePart = ({ part, messageId, chatThreadId }: ArtifactMessagePartProps) => {
   const { t } = useLingui()
   const canvas = useContext(ArtifactCanvasContext)
-  const artifactId = part.toolCallId
+  const { artifactId: routeArtifactId } = useParams()
+  const navigate = useNavigate()
   const input = renderHtmlInput(part as RenderHtmlPart)
   const title = input.title?.trim() || t`Artifact`
 
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
-  const verified = part.state === 'output-available' && renderHtmlOutput(part as RenderHtmlPart)?.ok === true
+  const artifact = toHtmlArtifact(messageId, chatThreadId, part)
 
   // Throttle the streaming HTML into the preview iframe; render the exact HTML once verified.
   const throttledHtml = useThrottle(input.html ?? '', artifactPreviewThrottleMs)
   const html = streaming ? throttledHtml : (input.html ?? '')
 
-  const { state, showArtifact, close } = useContentView()
-  const shownInPanel = state.type === 'artifact' && state.data.artifactId === artifactId
+  const { state, close } = useContentView()
+  const shownInPanel = state.type === 'artifact' && state.data.id === artifact?.id
 
   // Live inline card from the moment the call starts (even before any HTML arrives).
   if (streaming) {
     return <InlineArtifactCard html={html} title={title} streaming />
   }
   // Finished but not verified — it stays an ordinary tool call in the group.
-  if (!verified) {
+  if (!artifact) {
     return null
   }
-  if (canvas?.toolCallId === artifactId) {
+  if (canvas?.messageId === messageId && canvas.toolCallId === part.toolCallId) {
     return (
       <div className="my-2 flex items-center gap-2 rounded-xl border border-border bg-card/50 px-3 py-2">
         <PanelRight className="size-4 shrink-0 text-muted-foreground" />
@@ -67,34 +71,47 @@ export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   }
   // Verified: exactly one of inline or the side panel — never both.
   if (shownInPanel) {
-    return <ArtifactPanelBar title={title} onShowInline={close} />
+    return <ArtifactLocationBar title={title} display="sidebar" onShowInline={close} />
   }
-  return (
-    <InlineArtifactCard
-      html={html}
-      title={title}
-      /* The session rendering this transcript is the one that produced the
-         artifact, so it owns any passage picked out of it. Read at click time
-         rather than subscribed to: this is an event handler, and re-rendering
-         every artifact card on a session change would buy nothing. */
-      onOpenInPanel={() =>
-        showArtifact({ html, title, artifactId, chatThreadId: useChatStore.getState().currentSessionId })
-      }
-    />
-  )
+  if (routeArtifactId === artifact.id) {
+    return (
+      <ArtifactLocationBar
+        title={title}
+        display="workspace"
+        onShowInline={() => {
+          close()
+          void navigate(
+            chatThreadId
+              ? `/chats/${encodeURIComponent(chatThreadId)}?view=chat`
+              : `/artifacts?inline=${encodeURIComponent(artifact.id)}`,
+          )
+        }}
+      />
+    )
+  }
+  return <InlineArtifactCard html={html} title={title} artifact={artifact} />
 }
 
-type ArtifactPanelBarProps = {
+type ArtifactLocationBarProps = {
   title: string
+  display: 'sidebar' | 'workspace'
   onShowInline: () => void
 }
 
-/** Slim placeholder shown in the transcript while the artifact is open in the side panel. */
-const ArtifactPanelBar = ({ title, onShowInline }: ArtifactPanelBarProps) => (
+/** The transcript keeps a location control instead of mounting a duplicate executable frame. */
+const ArtifactLocationBar = ({ title, display, onShowInline }: ArtifactLocationBarProps) => (
   <div className="my-2 flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-3 py-2">
-    <PanelRight className="size-4 shrink-0 text-muted-foreground" />
+    {display === 'sidebar' ? (
+      <PanelRight className="size-4 shrink-0 text-muted-foreground" />
+    ) : (
+      <Maximize2 className="size-4 shrink-0 text-muted-foreground" />
+    )}
     <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-      <Trans>{title} — shown in side panel</Trans>
+      {display === 'sidebar' ? (
+        <Trans>{title} — shown in side panel</Trans>
+      ) : (
+        <Trans>{title} — open beside this chat</Trans>
+      )}
     </span>
     <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={onShowInline}>
       <Trans>Show inline</Trans>

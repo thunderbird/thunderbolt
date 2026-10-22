@@ -2,15 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { EmbeddedErrorStrip } from '@/components/embedded'
+import type { Artifact } from '@/artifacts/artifact'
+import { ArtifactSurface } from '@/artifacts/artifact-surface'
+import { ArtifactControls } from '@/components/artifact/artifact-controls'
+import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
-import { Button } from '@/components/ui/button'
 import { useAppSettled } from '@/hooks/use-app-settled'
 import { useOnScreen } from '@/hooks/use-on-screen'
 import { cn } from '@/lib/utils'
-import { Trans, useLingui } from '@lingui/react/macro'
-import { AppWindow, PanelRight } from 'lucide-react'
+import { Trans } from '@lingui/react/macro'
+import { AppWindow } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 /**
@@ -30,8 +31,8 @@ type InlineArtifactCardProps = {
   title: string
   /** While true, render a live scripts-off preview of the (partial) HTML as it streams in. */
   streaming?: boolean
-  /** Opens the artifact in the side panel; omitted while streaming or when no panel is available. */
-  onOpenInPanel?: () => void
+  /** Present only after the source passes verification. */
+  artifact?: Artifact
 }
 
 /**
@@ -45,10 +46,8 @@ type InlineArtifactCardProps = {
  * the iframe auto-sizes to its content (so a tall artifact grows the card rather
  * than scrolling inside it) and runtime errors surface as a strip.
  */
-export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPanel }: InlineArtifactCardProps) => {
-  const { t } = useLingui()
+export const InlineArtifactCard = ({ html, title, streaming = false, artifact }: InlineArtifactCardProps) => {
   const [open, setOpen] = useState(true)
-  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const settled = useAppSettled()
   const onScreen = useOnScreen(containerRef)
@@ -61,13 +60,13 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
     shownRef.current = true
   }
   const showContent = shownRef.current
-  // Clear a stale error only at a reload boundary (the document changed). The harness reports a
-  // load-time error *before* `ready`, so clearing on `ready` would wipe an error the user never
-  // saw. Adjusting state during render is the React-blessed reset-on-prop-change.
-  const lastHtmlRef = useRef(html)
-  if (lastHtmlRef.current !== html) {
-    lastHtmlRef.current = html
-    setRuntimeError(null)
+  const askAbout = (passages: string[]) => {
+    if (!artifact?.chatThreadId) {
+      return
+    }
+    for (const text of passages) {
+      usePendingQuotesStore.getState().addQuote(artifact.chatThreadId, { text })
+    }
   }
 
   // While generating the header is inert: no collapse, no hover, not focusable.
@@ -116,22 +115,7 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
           // use a stronger translucent-foreground circle that reads on top of it. pr-2 lines the
           // rightmost icon up with the tool accordion's chevron.
           <div className="flex shrink-0 items-center gap-1 pr-2">
-            <ArtifactActions
-              html={html}
-              title={title}
-              buttonClassName="text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/20"
-            />
-            {onOpenInPanel && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-foreground/10 dark:hover:bg-foreground/20"
-                title={t`Open in side panel`}
-                onClick={onOpenInPanel}
-              >
-                <PanelRight className="size-4" />
-              </Button>
-            )}
+            {artifact && <ArtifactControls artifact={artifact} display="inline" />}
           </div>
         )}
       </div>
@@ -144,16 +128,12 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
         {/* min-h-0 lets the row collapse to exactly 0 — without it the grid leaves a ~1px
             sliver of the frame above the card's bottom border when closed. */}
         <div className="min-h-0 overflow-hidden">
-          {!streaming && runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
-          {showContent && (
-            <SandboxedHtmlFrame
-              html={html}
-              title={title}
-              autoHeight
-              allowScripts={!streaming && active}
-              onError={streaming ? undefined : setRuntimeError}
-            />
-          )}
+          {showContent &&
+            (artifact && !streaming ? (
+              <ArtifactSurface artifact={artifact} autoHeight allowScripts={active} onAsk={askAbout} />
+            ) : (
+              <SandboxedHtmlFrame html={html} title={title} autoHeight allowScripts={false} />
+            ))}
         </div>
       </div>
     </div>

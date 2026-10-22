@@ -9,17 +9,7 @@ import { ObjectSidebarContent } from './object-sidebar-content'
 import { SidebarWebview } from './sidebar-webview'
 import { Sideview } from './sideview'
 
-/*
- * Lazy, and the only content view that is.
- *
- * It reaches the whole shared element-picking stack — the overlay, the popover,
- * the selection state machine — none of which any other entry-bundle module
- * needs. A static import put roughly a thousand lines of it into the chunk every
- * user downloads to see a chat, for a panel that only opens when someone clicks
- * an artifact. The inline artifact card keeps `SandboxedHtmlFrame` in the entry
- * bundle on purpose, because chat renders artifacts inline; picking is the part
- * that can wait.
- */
+// The panel's chrome and navigation are needed only when an artifact is opened there.
 const ArtifactSidebarContent = lazy(() =>
   import('./artifact-sidebar-content').then((module) => ({ default: module.ArtifactSidebarContent })),
 )

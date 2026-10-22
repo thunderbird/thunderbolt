@@ -5,4 +5,8 @@
 import { createContext } from 'react'
 
 /** A transcript beside a project canvas renders a shortcut instead of a second live artifact. */
-export const ArtifactCanvasContext = createContext<{ toolCallId: string; reveal: () => void } | null>(null)
+export const ArtifactCanvasContext = createContext<{
+  messageId: string
+  toolCallId: string
+  reveal: () => void
+} | null>(null)

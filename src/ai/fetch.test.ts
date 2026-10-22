@@ -3,6 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { getActiveArtifactSession, useArtifactSessionStore } from '@/artifacts/artifact-session-store'
+import { useArtifactContextStore } from '@/artifacts/artifact-context-store'
+import { useChatStore } from '@/chats/chat-store'
+import { useMiniAppStore } from '@/mini-apps/mini-app-store'
+import type { MiniAppDefinition } from '@/mini-apps/registry'
+import { createMockChatInstance, createMockModel, hydrateStore } from '@/test-utils/chat-store-mocks'
+import { AppWindow } from 'lucide-react'
 import { createModel as insertModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -812,4 +819,159 @@ describe('logical-turn citation registry', () => {
       await teardownTestDatabase()
     }
   })
+})
+
+describe('artifact ownership in prepared requests', () => {
+  const originalEnqueueMiniAppApproval = useChatStore.getState().enqueueMiniAppApproval
+  const chatThreadId = 'artifact-request-chat'
+  const modelId = 'artifact-request-model'
+  const app: MiniAppDefinition = {
+    id: 'reports',
+    name: 'Reports app',
+    description: 'A remote reporting app.',
+    url: 'https://reports.example/app',
+    origin: 'https://reports.example',
+    icon: AppWindow,
+  }
+  const tools = [
+    { name: 'read_view', description: 'Read the report.', annotations: { readOnlyHint: true } },
+    { name: 'write_view', description: 'Change the report.' },
+  ]
+  const httpClient = createClient({
+    prefixUrl: 'https://backend.test',
+    fetch: async () => {
+      throw new Error('Request preparation must not fetch remote data in this fixture')
+    },
+  })
+  const executionOptions = { toolCallId: 'artifact-call', messages: [] }
+
+  /** Register distinct live transports even when two frames display the same configured app. */
+  const openRemote = (owner: string) => {
+    const invoke = mock(async (name: string, _args: unknown) => ({ content: `${owner} ran ${name}` }))
+    const readContext = mock(async () => ({ title: owner, summary: `${owner} current summary` }))
+    useMiniAppStore.getState().openApp(app, owner)
+    useMiniAppStore.getState().setTools(tools, invoke, owner)
+    useMiniAppStore.getState().setContextReader(readContext, owner)
+    useArtifactSessionStore.getState().register({ owner, artifactId: 'reports', kind: 'remote', inline: false })
+    return { invoke, readContext }
+  }
+  const prepare = (mcpClients: NamedMCPClient[] = []) =>
+    prepareAiRequestConfig({ modelId, chatThreadId, httpClient, mcpClients })
+
+  beforeEach(async () => {
+    await setupTestDatabase()
+    await insertModel(getDb(), { id: modelId, provider: 'openai', model: 'gpt-test', name: 'Test', toolUsage: 1 })
+    useArtifactSessionStore.setState({ sessions: new Map(), sequence: 0 })
+    useArtifactContextStore.setState({ sessions: new Map() })
+    useMiniAppStore.setState({ sessions: new Map() })
+    useChatStore.setState({ sessions: new Map(), currentSessionId: null })
+    hydrateStore({
+      id: chatThreadId,
+      chatInstance: createMockChatInstance(),
+      chatThread: null,
+      selectedModel: createMockModel({ id: modelId }),
+      triggerData: null,
+    })
+  })
+
+  afterEach(async () => {
+    for (const session of useChatStore.getState().sessions.values()) {
+      for (const approval of session.miniAppApprovalQueue) {
+        approval.decide('unavailable')
+      }
+    }
+    useArtifactSessionStore.setState({ sessions: new Map(), sequence: 0 })
+    useArtifactContextStore.setState({ sessions: new Map() })
+    useMiniAppStore.setState({ sessions: new Map() })
+    mock.restore()
+    useChatStore.setState({
+      sessions: new Map(),
+      currentSessionId: null,
+      enqueueMiniAppApproval: originalEnqueueMiniAppApproval,
+    })
+    await teardownTestDatabase()
+  })
+
+  it('excludes background remote tools and prompts when foreground HTML owns the request', async () => {
+    const remote = openRemote('background')
+    useArtifactContextStore.getState().openArtifact('HTML report', 'foreground')
+    useArtifactContextStore
+      .getState()
+      .setContext({ title: 'HTML report', summary: 'HTML current summary' }, 'foreground')
+    useArtifactSessionStore.getState().register({
+      owner: 'foreground',
+      artifactId: 'html-report',
+      kind: 'html',
+      inline: false,
+    })
+
+    const request = await prepare()
+
+    expect(request.embeddedSurface).toBe('artifact')
+    expect(request.toolset.app_read_view).toBeUndefined()
+    expect(request.toolset.app_write_view).toBeUndefined()
+    expect(request.stableSystemPrompt).not.toContain(app.name)
+    expect(request.volatileSystemPrompt).not.toContain('background current summary')
+    expect(await request.toolset.get_app_context!.execute!({}, executionOptions)).toContain('HTML current summary')
+    expect(remote.readContext).not.toHaveBeenCalled()
+    expect(remote.invoke).not.toHaveBeenCalled()
+  })
+
+  it('keeps context and tools bound to the selected frame when focus changes during preparation', async () => {
+    const first = openRemote('first-frame')
+    const second = openRemote('second-frame')
+    useArtifactSessionStore.getState().activate('first-frame')
+    const switchFocus = named('focus-switch', async () => {
+      useArtifactSessionStore.getState().activate('second-frame')
+      return {}
+    })
+
+    const request = await prepare([switchFocus])
+
+    expect(getActiveArtifactSession()?.owner).toBe('second-frame')
+    expect(request.embeddedSurface).toBe('mini-app')
+    expect(request.volatileSystemPrompt).toContain('first-frame current summary')
+    expect(request.volatileSystemPrompt).not.toContain('second-frame current summary')
+    expect(await request.toolset.get_app_context!.execute!({}, executionOptions)).toContain(
+      'first-frame current summary',
+    )
+    expect(await request.toolset.app_read_view!.execute!({ report: 'sales' }, executionOptions)).toBe(
+      'first-frame ran read_view',
+    )
+    expect(first.invoke).toHaveBeenCalledWith('read_view', { report: 'sales' })
+    expect(first.readContext).toHaveBeenCalledTimes(2)
+    expect(second.invoke).not.toHaveBeenCalled()
+    expect(second.readContext).not.toHaveBeenCalled()
+
+    useMiniAppStore.getState().closeApp('first-frame')
+    expect(await request.toolset.get_app_context!.execute!({}, executionOptions)).toBe(
+      'No app is currently open, so there is nothing on screen to read.',
+    )
+    expect(second.readContext).not.toHaveBeenCalled()
+  })
+
+  it.each(['closed', 're-handshaked'] as const)(
+    'does not enqueue approval for a captured write after its frame is %s',
+    async (change) => {
+      const original = openRemote('writer')
+      const request = await prepare()
+      const replacementInvoke = mock(async () => ({ content: 'replacement ran' }))
+      if (change === 'closed') {
+        useMiniAppStore.getState().closeApp('writer')
+        useArtifactSessionStore.getState().unregister('writer')
+      } else {
+        useMiniAppStore.getState().resetGuest('writer')
+        useMiniAppStore.getState().setTools(tools, replacementInvoke, 'writer')
+      }
+      const enqueue = spyOn(useChatStore.getState(), 'enqueueMiniAppApproval')
+
+      const execution = request.toolset.app_write_view!.execute!({ report: 'sales' }, executionOptions)
+
+      expect(enqueue).not.toHaveBeenCalled()
+      expect(useChatStore.getState().sessions.get(chatThreadId)?.miniAppApprovalQueue).toEqual([])
+      expect(await execution).toContain('could not be offered for approval, so it did not run')
+      expect(original.invoke).not.toHaveBeenCalled()
+      expect(replacementInvoke).not.toHaveBeenCalled()
+    },
+  )
 })

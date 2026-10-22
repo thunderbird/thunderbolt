@@ -21,8 +21,7 @@ import { chatMessagesTable, chatThreadsTable, projectsTable } from '../db/tables
 import { nowIso } from '../lib/utils'
 import { renderHtmlToolName } from '@/artifacts/constants'
 import { collectProjectArtifacts, type ArtifactMessageRow } from '@/projects/project-artifacts-data'
-import { applyArtifactPresentation, artifactPresentationKeys } from '@/projects/artifact-presentation'
-import { getArtifactPresentationRecords } from './project-artifact-presentation'
+import { useArtifactPresentation } from '@/artifacts/use-artifact-presentation'
 import type { Project } from '../types'
 import { getChatActivityQuery } from './chat-activity-query'
 
@@ -225,21 +224,8 @@ export const useProjectArtifactsState = (projectId: string | undefined) => {
       ),
     [data, t, i18n],
   )
-  const keys = sourceArtifacts.flatMap((artifact) => Object.values(artifactPresentationKeys(artifact.id)))
-  const { data: presentation = [], isLoading: presentationLoading } = useQuery({
-    queryKey: ['artifactPresentation', projectId, ...keys],
-    placeholderData: (previous, query) => (query?.queryKey[1] === projectId ? previous : undefined),
-    query: toCompilableQuery(getArtifactPresentationRecords(db, keys)),
-  })
-  const artifacts = useMemo(() => {
-    const loadedKeys = new Set(presentation.map((record) => record.key))
-    // Keep the existing collection visible, but wait for new entries' deletion metadata.
-    return applyArtifactPresentation(
-      sourceArtifacts.filter((artifact) => loadedKeys.has(artifactPresentationKeys(artifact.id).deletedAt)),
-      presentation,
-    )
-  }, [sourceArtifacts, presentation])
-  return { artifacts: presentationLoading ? [] : artifacts, isLoading: isLoading || presentationLoading }
+  const presentation = useArtifactPresentation(sourceArtifacts, projectId ?? 'none')
+  return { artifacts: presentation.artifacts, isLoading: isLoading || presentation.loading }
 }
 
 /** Live verified artifacts, for callers that do not need a loading indicator. */

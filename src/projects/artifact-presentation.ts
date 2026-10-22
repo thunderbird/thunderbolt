@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ProjectArtifact } from './project-artifacts-data'
-
 /** Separate preferences cannot be overwritten when a source conversation saves its messages again. */
 export const artifactPresentationKeys = (artifactId: string) => ({
   title: `artifact_title.${artifactId}`,
@@ -11,16 +9,17 @@ export const artifactPresentationKeys = (artifactId: string) => ({
 })
 
 /** Apply user names and soft deletion without altering the original tool output or its source chat. */
-export const applyArtifactPresentation = (
-  artifacts: readonly ProjectArtifact[],
+export const applyArtifactPresentation = <T extends { id: string; title: string }>(
+  artifacts: readonly T[],
   settings: readonly { key: string; value: string | null }[],
-): ProjectArtifact[] => {
+): T[] => {
   const values = new Map(settings.map(({ key, value }) => [key, value]))
   return artifacts.flatMap((artifact) => {
     const keys = artifactPresentationKeys(artifact.id)
     if (values.get(keys.deletedAt)) {
       return []
     }
-    return [{ ...artifact, title: values.get(keys.title)?.trim() || artifact.title }]
+    const title = values.get(keys.title)?.trim() || artifact.title
+    return [title === artifact.title ? artifact : { ...artifact, title }]
   })
 }

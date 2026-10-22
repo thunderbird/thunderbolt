@@ -4,7 +4,7 @@
 
 /** Chats that were started from a Mini App. */
 
-import { eq } from 'drizzle-orm'
+import { eq, or } from 'drizzle-orm'
 
 import { chatThreadsTable } from '@/db/tables'
 import { useChatsWithLastActivity, type ChatWithLastActivity } from './chats-with-last-activity'
@@ -23,5 +23,10 @@ export type MiniAppChat = ChatWithLastActivity
  * delete and an app leaves theirs pointing at an id that no longer resolves.
  * That divergence lives in the mutations, not in this read.
  */
-export const useMiniAppChats = (appId: string): MiniAppChat[] =>
-  useChatsWithLastActivity(['miniAppChats', appId], eq(chatThreadsTable.miniAppId, appId))
+export const useMiniAppChats = (appId: string, sourceChatId: string | null = null): MiniAppChat[] =>
+  useChatsWithLastActivity(
+    ['miniAppChats', appId, sourceChatId],
+    sourceChatId
+      ? or(eq(chatThreadsTable.miniAppId, appId), eq(chatThreadsTable.id, sourceChatId))!
+      : eq(chatThreadsTable.miniAppId, appId),
+  )

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { Artifact } from '@/artifacts/artifact'
 import { msg } from '@lingui/core/macro'
 import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
@@ -26,24 +27,8 @@ export type SideviewData = {
   sideviewId: string
 }
 
-/** A verified HTML artifact shown in the side panel. */
-export type ArtifactViewData = {
-  html: string
-  title: string
-  /** The render_html tool-call id; also the key for the render-target toggle. */
-  artifactId: string
-  /**
-   * The conversation that produced it, so a highlighted passage has somewhere
-   * to go.
-   *
-   * Carried with the view rather than read from the route. `/apps/:appId` has
-   * no `chatThreadId` param — its conversation is held by the Mini App panel —
-   * so deriving it from `useParams` dropped every passage picked out of an
-   * artifact opened beside an app, and warned about a missing composer while a
-   * real one was open.
-   */
-  chatThreadId: string | null
-}
+/** The same resolved artifact can appear inline, in this panel, or full screen. */
+export type ArtifactViewData = Artifact
 
 type ContentViewState =
   | { type: null; data: null }
@@ -58,7 +43,7 @@ type ContentViewContextType = {
   showPreview: (url: string) => void
   /** Open a typed sideview (e.g. `'document'`). Passing `null` clears the view. */
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
-  /** Open a verified HTML artifact in the side panel. */
+  /** Open an artifact in the side panel. */
   showArtifact: (data: ArtifactViewData) => void
   close: () => void
   isOpen: boolean

@@ -24,4 +24,6 @@
  * route there.
  */
 export const routeHostsContentView = (pathname: string): boolean =>
-  pathname.startsWith('/apps/') || /^\/projects\/[^/?]+\/artifacts\/[^/?]+\/?(?:\?|$)/.test(pathname)
+  pathname.startsWith('/apps/') ||
+  pathname.startsWith('/artifacts/') ||
+  /^\/projects\/[^/?]+\/artifacts\/[^/?]+\/?(?:\?|$)/.test(pathname)

@@ -71,6 +71,22 @@ const fixture = (
 }
 
 describe('chat compaction control', () => {
+  it('preserves all trailing unanswered messages and refuses a chat with no response yet', async () => {
+    const f = fixture()
+    const pending: ThunderboltUIMessage[] = [
+      { id: 'pending-1', role: 'user', parts: [{ type: 'text', text: 'First unanswered question' }] },
+      { id: 'pending-2', role: 'user', parts: [{ type: 'text', text: 'Follow-up' }] },
+    ]
+    f.instance.messages = [...f.messages, ...pending]
+    await f.instance.compactContext()
+    expect(JSON.parse(String(f.adapterCompact.mock.calls[0][0].body)).messages).toEqual(f.messages)
+    expect(f.instance.messages.slice(-2)).toEqual(pending)
+    expect(f.saved.mock.calls[0][0].messages[0].id).toBe('assistant')
+    f.instance.messages = pending
+    await expect(f.instance.compactContext()).rejects.toThrow('Nothing to compact')
+    expect(f.adapterCompact).toHaveBeenCalledTimes(1)
+  })
+
   it('persists and publishes the checkpoint while preserving all visible messages', async () => {
     const f = fixture()
     await f.instance.compactContext('Preserve decisions')

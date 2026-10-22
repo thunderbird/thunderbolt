@@ -58,8 +58,8 @@ const withoutUsage = (message: AgentMessage): AgentMessage =>
       }
     : message
 
-/** Keep image binaries local, as with ordinary transcript replay; never copy them into synced metadata. */
-const withoutSavedImages = (message: AgentMessage): AgentMessage => {
+/** Persist model-facing content, excluding image binaries and raw tool details used only by the live UI. */
+const toSavedContextMessage = (message: AgentMessage): AgentMessage => {
   if (message.role !== 'user' && message.role !== 'toolResult' && message.role !== 'custom') {
     return message
   }
@@ -68,6 +68,7 @@ const withoutSavedImages = (message: AgentMessage): AgentMessage => {
   }
   return {
     ...message,
+    ...(message.role === 'toolResult' ? { details: undefined } : {}),
     content: message.content.map((part) =>
       part.type === 'image' ? { type: 'text', text: '[Image omitted from saved context]' } : part,
     ),
@@ -118,7 +119,7 @@ export const createHarnessCompaction = (
       return undefined
     }
     const { messages } = await session.buildContext()
-    const retainedTail = messages.filter((message) => message.role !== 'compactionSummary').map(withoutSavedImages)
+    const retainedTail = messages.filter((message) => message.role !== 'compactionSummary').map(toSavedContextMessage)
     const estimate = estimateContextTokens(messages)
     return {
       version: 1,

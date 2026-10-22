@@ -6,21 +6,24 @@ import { useReducer, useTransition } from 'react'
 
 type State = { open: boolean; instructions: string; failed: boolean }
 type Action =
-  | { type: 'open'; open: boolean }
-  | { type: 'instructions'; value: string }
-  | { type: 'failed' }
-  | { type: 'start' }
+  | { type: 'openChanged'; open: boolean }
+  | { type: 'instructionsChanged'; value: string }
+  | { type: 'compactionFailed' }
+  | { type: 'compactionStarted' }
+  | { type: 'compactionSucceeded' }
 
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
-    case 'open':
+    case 'openChanged':
       return { ...state, open: action.open, failed: false }
-    case 'instructions':
+    case 'instructionsChanged':
       return { ...state, instructions: action.value }
-    case 'failed':
+    case 'compactionFailed':
       return { ...state, failed: true }
-    case 'start':
+    case 'compactionStarted':
       return { ...state, failed: false }
+    case 'compactionSucceeded':
+      return { ...state, open: false, failed: false }
   }
 }
 
@@ -32,15 +35,15 @@ export const useContextUsageState = (onCompact?: (instructions?: string) => Prom
     if (!onCompact || pending) {
       return
     }
-    dispatch({ type: 'start' })
+    dispatch({ type: 'compactionStarted' })
     startTransition(async () => {
       try {
         await onCompact(state.instructions.trim() || undefined)
-        dispatch({ type: 'open', open: false })
+        dispatch({ type: 'compactionSucceeded' })
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
           console.error('Context compaction failed', error)
-          dispatch({ type: 'failed' })
+          dispatch({ type: 'compactionFailed' })
         }
       }
     })
@@ -49,7 +52,7 @@ export const useContextUsageState = (onCompact?: (instructions?: string) => Prom
     ...state,
     pending,
     compact,
-    setOpen: (open: boolean) => dispatch({ type: 'open', open }),
-    setInstructions: (value: string) => dispatch({ type: 'instructions', value }),
+    setOpen: (open: boolean) => dispatch({ type: 'openChanged', open }),
+    setInstructions: (value: string) => dispatch({ type: 'instructionsChanged', value }),
   }
 }

@@ -12,8 +12,8 @@ import { CompactionSummaryContent } from './compaction-summary-content'
 const checkpoint: CompactionCheckpoint = {
   version: 1,
   summary: '## Project decisions\n\nKeep **dark mode** and keyboard shortcuts.',
-  tokensBefore: 8000,
-  contextTokens: 2000,
+  tokensBefore: 8_000,
+  contextTokens: 2_000,
   retainedTail: [
     {
       role: 'user',

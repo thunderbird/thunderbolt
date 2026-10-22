@@ -417,7 +417,7 @@ describe('Chat Messages DAL', () => {
       const checkpoint = {
         version: 1 as const,
         summary: 'Decisions',
-        tokensBefore: 9000,
+        tokensBefore: 9_000,
         contextTokens: 123,
         retainedTail: [],
       }

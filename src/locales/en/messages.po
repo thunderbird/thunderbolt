@@ -2761,6 +2761,10 @@ msgstr "Nothing completed the handshake at {0}. Check that the app is running, a
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr "Nothing to ask about there. Try covering some content."
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr "Nothing to compact yet."
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."

@@ -74,6 +74,7 @@ describe('Pi context compaction', () => {
           toolName: 'read',
           toolCallId: 'read-image',
           content: [image],
+          details: { content: [image], structuredContent: { screenshot: image.data } },
           isError: false,
           timestamp: 2,
         },
@@ -93,6 +94,8 @@ describe('Pi context compaction', () => {
       [{ type: 'text', text: '[Image omitted from saved context]' }],
     ])
     expect(JSON.stringify((await f.session.buildContext()).messages)).toContain('LOCAL_IMAGE_BYTES')
+    expect(original.retainedTail[1]).toHaveProperty('details.content.0.data', 'LOCAL_IMAGE_BYTES')
+    expect(checkpoint?.retainedTail[1]).toHaveProperty('details', undefined)
     expect(image.data).toBe('LOCAL_IMAGE_BYTES')
     const restored = await fixture()
     await restoreCompaction(restored.session, JSON.parse(JSON.stringify(checkpoint)))

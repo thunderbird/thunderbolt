@@ -295,8 +295,8 @@ describe('ChatPromptInput', () => {
             contextCompaction: {
               version: 1,
               summary: '## Saved decisions\n\nPreserve the keyboard shortcuts.',
-              tokensBefore: 8000,
-              contextTokens: 2000,
+              tokensBefore: 8_000,
+              contextTokens: 2_000,
               retainedTail: [],
             },
           },

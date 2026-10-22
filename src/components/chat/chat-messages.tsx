@@ -155,15 +155,14 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     [setMessages, regenerate],
   )
 
+  const compactionInLastMessage = compacting && isStreaming && lastMessage?.role === 'assistant'
+
   return (
     <div>
       {visibleMessages.map((message) => {
         const isLast = message.id === lastMessage?.id
         const checkpoint = message.metadata?.contextCompaction
-        // The compaction row replaces a blank loading stub; saved checkpoints
-        // still render when a failed response has no visible content.
-        const hideAssistant =
-          ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length) || (compacting && !rendersContent(message))
+        const hideAssistant = (hasError || pendingEmptyTurnRecovery) && !message.parts?.length
 
         return (
           <Fragment key={message.id}>
@@ -174,6 +173,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
                 isLastMessage={isLast && shouldUseViewportPositioning(visibleMessages.length)}
                 isLastAssistantMessage={message.id === lastAssistantMessage?.id}
                 lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+                activity={isLast && compactionInLastMessage ? <CompactionNotice status="compacting" /> : undefined}
               />
             )}
             {message.role === 'user' && (
@@ -194,7 +194,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         )
       })}
 
-      {compacting && <CompactionNotice status="compacting" />}
+      {compacting && !compactionInLastMessage && <CompactionNotice status="compacting" />}
 
       {/* Keep a loading indicator up while remediation re-delivers + retries, so
           the suppressed error doesn't leave a blank gap. */}

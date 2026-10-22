@@ -19,6 +19,7 @@ type ContextUsageIndicatorProps = {
   onCompact?: (instructions?: string) => Promise<void>
   busy?: boolean
   compacting?: boolean
+  hasHistory?: boolean
   onViewSummary?: () => void
 }
 
@@ -32,6 +33,7 @@ export const ContextUsageIndicator = ({
   onCompact,
   busy,
   compacting,
+  hasHistory = true,
   onViewSummary,
 }: ContextUsageIndicatorProps) => {
   const { t } = useLingui()
@@ -157,14 +159,14 @@ export const ContextUsageIndicator = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    tabIndex={busy && !pending ? 0 : undefined}
+                    tabIndex={(busy || !hasHistory) && !pending ? 0 : undefined}
                     className="inline-flex min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <Button
                       type="button"
                       variant="default"
                       size="sm"
-                      disabled={busy || pending}
+                      disabled={busy || pending || !hasHistory}
                       onClick={state.compact}
                       className="h-auto w-full min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal"
                     >
@@ -172,9 +174,13 @@ export const ContextUsageIndicator = ({
                     </Button>
                   </span>
                 </TooltipTrigger>
-                {busy && !pending && (
+                {(busy || !hasHistory) && !pending && (
                   <TooltipContent className="max-w-56 text-wrap">
-                    <Trans>Wait for the current response to finish before compacting.</Trans>
+                    {busy ? (
+                      <Trans>Wait for the current response to finish before compacting.</Trans>
+                    ) : (
+                      <Trans>Nothing to compact yet.</Trans>
+                    )}
                   </TooltipContent>
                 )}
               </Tooltip>

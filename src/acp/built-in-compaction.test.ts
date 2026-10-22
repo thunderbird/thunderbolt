@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import '@/testing-library'
+import { getClock } from '@/testing-library'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -158,6 +158,130 @@ const metadata = async (response: Response): Promise<UIMessageMetadata> => {
 }
 
 describe('built-in compaction integration', () => {
+  it('waits for a stopped run to unwind before compacting the earlier transcript', async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const f = fixture({
+      beforeResponse: async (request) => {
+        if (!isSummary(request) && f.providerRequests.length === 2) {
+          entered.resolve()
+          // Model/tool teardown can outlive the UI's Stop action.
+          await release.promise
+        }
+      },
+    })
+    const adapter = f.adapter()
+    const first = user('Original task')
+    const completed = [first, assistant('Finished the task.')]
+    const controller = new AbortController()
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      const response = await adapter.fetch(
+        { ...body([...completed, user('Unanswered request')]), signal: controller.signal },
+        f.context,
+      )
+      const result = metadata(response)
+      await entered.promise
+      controller.abort()
+      await result
+      const compacted = Promise.allSettled([adapter.compact!(body(completed), f.context)])
+      await getClock().tickAsync(0)
+      expect(f.requests.filter(isSummary)).toHaveLength(0)
+      release.resolve()
+      expect(await compacted).toEqual([expect.objectContaining({ status: 'fulfilled' })])
+      expect(f.requests.filter(isSummary)).toHaveLength(1)
+      expect(JSON.stringify(f.requests.filter(isSummary))).not.toContain('Unanswered request')
+    } finally {
+      release.resolve()
+      adapter.disconnect()
+    }
+  })
+
+  it.each(['manual', 'send'] as const)('includes intervening agent turns before %s compaction', async (mode) => {
+    const f = fixture()
+    const adapter = f.adapter()
+    const first = user('Original built-in task')
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      const messages = [
+        first,
+        assistant('Finished the task.'),
+        user('Other agent learned the code is 24680'),
+        assistant('Confirmed'),
+      ]
+      if (mode === 'manual') {
+        await adapter.compact!(body(messages), f.context)
+        expect(JSON.stringify(f.requests.filter(isSummary))).toContain('Other agent learned the code is 24680')
+      } else {
+        await metadata(await adapter.fetch(body([...messages, user('Continue')]), f.context))
+        expect(JSON.stringify(f.providerRequests.at(-1))).toContain('Other agent learned the code is 24680')
+      }
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it('keeps live tool evidence when manually compacting an unchanged transcript', async () => {
+    const f = fixture({ toolSteps: 1, toolTokens: 120, toolOutput: 'Unique live tool evidence' })
+    const adapter = f.adapter()
+    const first = user('Look up the detail')
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      await adapter.compact!(body([first, assistant('Finished the task.')]), f.context)
+      expect(JSON.stringify(f.requests.filter(isSummary))).toContain('Unique live tool evidence')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
+  it.each([false, true])(
+    'restores the summary on Retry after an unanswered turn (empty assistant: %s)',
+    async (hasStub) => {
+      const f = fixture()
+      const adapter = f.adapter()
+      const messages = [
+        user('Old context'),
+        assistant('Old answer'),
+        user('Retry this exact request'),
+        ...(hasStub ? [{ ...assistant(''), parts: [{ type: 'step-start' as const }] }] : []),
+      ]
+      const instance = createChatInstance(
+        f.context.threadId,
+        messages,
+        async () => {},
+        f.context.httpClient,
+        f.context.getProxyFetch,
+        {
+          getOrConnectAdapter: async () => adapter,
+          createChat: () => createMockChatInstance(messages),
+          trackEvent: () => {},
+        },
+      )
+      hydrateStore({
+        id: f.context.threadId,
+        chatInstance: instance,
+        chatThread: createMockChatThread(),
+        selectedModel: f.context.selectedModel,
+        triggerData: null,
+      })
+      try {
+        await instance.compactContext('Preserve decisions')
+        expect(instance.messages[1].metadata?.contextCompaction).toBeDefined()
+        expect(instance.messages[2]).toBe(messages[2])
+        expect(JSON.stringify(f.requests.filter(isSummary))).not.toContain('Retry this exact request')
+        f.context.regenerationRevision = 1
+        await metadata(await adapter.fetch(body(instance.messages), f.context))
+        const request = JSON.stringify(f.providerRequests.at(-1))
+        expect(request).toContain('Condensed previous task')
+        expect(request.match(/Retry this exact request/g)).toHaveLength(1)
+        expect(request).not.toContain('Old context')
+        expect(f.requests.filter(isSummary)).toHaveLength(1)
+      } finally {
+        adapter.disconnect()
+      }
+    },
+  )
+
   it.each(['retry', 'send'] as const)('uses durable history after a failed manual save, then %s', async (next) => {
     const f = fixture()
     const adapter = f.adapter()

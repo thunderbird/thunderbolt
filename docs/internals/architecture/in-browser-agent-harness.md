@@ -178,7 +178,9 @@ and the browser check fails unless the build emits exactly one `agent-core-*.js`
 The context circle opens a menu with manual compaction and optional summary instructions.
 The built-in Pi adapter also checks usage before each provider request, including requests
 between tool steps, and compacts at 80% of the selected model's context window. Manual
-compaction waits for an idle conversation; Stop cancels the summary request. Compaction
+compaction waits for an idle conversation; Stop cancels the summary request. Manual
+checkpoints end at the latest assistant message, leaving unanswered user turns
+outside the summary so Retry replays them once, verbatim. Compaction
 uses the selected model and its existing authenticated, proxied or confidential transport.
 A tool-style row in the transcript shows compaction progress. Saved checkpoints render
 as completed rows after their boundary messages, remaining visible across later turns
@@ -198,7 +200,8 @@ same cut as one history. Recheck these adaptations when upgrading Pi.
 Compaction preserves the visible transcript. A versioned checkpoint lives in the boundary
 message's existing encrypted `metadata` column, so it syncs without a schema migration.
 It stores the summary and retained Pi messages, including tool pairs. Structured image
-parts become text markers in the durable copy: image binaries and original attachments
+parts become text markers and raw tool-result `details` are omitted from the durable copy:
+image binaries and original attachments
 stay local, matching ordinary transcript replay. Live Pi messages are not rewritten by
 checkpoint serialization. On reload or model
 change the adapter restores it, then seeds only visible turns after that boundary.
@@ -207,6 +210,8 @@ excluded too. Automatic checkpoints are emitted only when compaction actually ru
 avoiding a copy of the growing context on every subsequent message.
 
 After compaction, the cached harness is marked for rebuilding on the next operation.
+Cache reuse also requires its last user turn to match the supplied transcript, so
+turns from another agent or a newly loaded transcript are included before compaction.
 That rebuild reads the caller's saved checkpoint, so a failed manual save or a Stop
 that closes the stream before automatic checkpoint publication cannot leave an unsaved
 summary active on subsequent requests. Workspace ownership remains with the cache.

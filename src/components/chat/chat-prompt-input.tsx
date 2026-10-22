@@ -58,6 +58,7 @@ import { PromptInput } from '../ui/prompt-input'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
+import { hasAssistantContent } from '@/lib/message-utils'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
@@ -769,6 +770,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onCompact={canCompact ? chatInstance.compactContext : undefined}
             busy={isActive}
             compacting={compacting}
+            hasHistory={messages.some(hasAssistantContent)}
             onViewSummary={summaryView.onViewSummary}
           />
         )}

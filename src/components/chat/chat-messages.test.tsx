@@ -102,13 +102,39 @@ describe('ChatMessages', () => {
   })
 
   describe('compaction history', () => {
+    it.each([false, true])('keeps the streaming viewport reservation during compaction (content: %s)', (hasContent) => {
+      const { container } = renderHistory(
+        [
+          createTestMessage({ id: 'old-user' }),
+          createTestMessage({ id: 'old-answer', role: 'assistant' }),
+          createTestMessage({ id: 'current-user' }),
+          createTestMessage({
+            id: 'streaming-answer',
+            role: 'assistant',
+            parts: hasContent ? [{ type: 'text', text: 'Response so far' }] : [{ type: 'step-start' }],
+          }),
+        ],
+        'streaming',
+      )
+      const wrapper = container.querySelector('[data-message-id="streaming-answer"]')
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' }))
+      expect(container.querySelector('[data-message-id="streaming-answer"]')).toBe(wrapper)
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      expect(wrapper).toHaveTextContent('Compacting…')
+      expect(screen.queryByTestId('loading-status')).toBeNull()
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+      expect(wrapper).toHaveStyle({ minHeight: '72dvh' })
+      expect(screen.queryByTestId('loading-status') !== null).toBe(!hasContent)
+    })
+
     const savedMessage = (id: string, summary: string, role: 'user' | 'assistant' = 'assistant') =>
       createTestMessage({
         id,
         role,
         parts: [{ type: 'text', text: id }],
         metadata: {
-          contextCompaction: { version: 1, summary, tokensBefore: 8000, contextTokens: 2000, retainedTail: [] },
+          contextCompaction: { version: 1, summary, tokensBefore: 8_000, contextTokens: 2_000, retainedTail: [] },
         },
       })
 

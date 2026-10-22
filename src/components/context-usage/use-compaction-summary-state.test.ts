@@ -15,7 +15,7 @@ const checkpointMessage = (summary: string): ThunderboltUIMessage => ({
   role: 'assistant',
   parts: [],
   metadata: {
-    contextCompaction: { version: 1, summary, tokensBefore: 8000, contextTokens: 2000, retainedTail: [] },
+    contextCompaction: { version: 1, summary, tokensBefore: 8_000, contextTokens: 2_000, retainedTail: [] },
   },
 })
 

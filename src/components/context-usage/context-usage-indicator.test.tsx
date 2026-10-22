@@ -11,6 +11,18 @@ import { ContextUsageIndicator } from './context-usage-indicator'
 afterEach(cleanup)
 
 describe('ContextUsageIndicator', () => {
+  it('disables compaction until a response supplies a checkpoint boundary', () => {
+    const compact = mock(async () => {})
+    render(<ContextUsageIndicator usedTokens={20} maxTokens={1_000} onCompact={compact} hasHistory={false} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Context usage' }))
+    const button = screen.getByRole('button', { name: 'Compact now' })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(compact).not.toHaveBeenCalled()
+    fireEvent.focus(button.parentElement!)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Nothing to compact yet.')
+  })
+
   it('opens an accessible context menu with a pointer cursor and compacts immediately', async () => {
     const compact = mock(async () => {})
     render(<ContextUsageIndicator usedTokens={800} maxTokens={1000} onCompact={compact} />)

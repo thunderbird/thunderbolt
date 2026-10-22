@@ -49,6 +49,7 @@ import {
   isRateLimitError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
+import { hasAssistantContent } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
@@ -1122,7 +1123,12 @@ export const createChatInstance = (
     if (instance.status === 'streaming' || instance.status === 'submitted' || retryTimeout) {
       throw new Error('Wait for the current response to finish before compacting')
     }
-    const lastMessage = instance.messages.at(-1)
+    const sourceMessages = instance.messages
+    // Keep unanswered user turns outside the checkpoint so Retry can replay them
+    // verbatim without discarding the summary or sending them twice.
+    const boundaryIndex = sourceMessages.findLastIndex(hasAssistantContent)
+    const messagesToCompact = sourceMessages.slice(0, boundaryIndex + 1)
+    const lastMessage = messagesToCompact.at(-1)
     if (!lastMessage) {
       throw new Error('Nothing to compact')
     }
@@ -1133,12 +1139,11 @@ export const createChatInstance = (
     if (session.chatThread && !matchesThreadConfidentiality(session.selectedModel, session.chatThread)) {
       throw new Error('The selected model does not match the conversation confidentiality')
     }
-    const sourceMessages = instance.messages
     const controller = new AbortController()
     compaction.controller = controller
     useChatStore.getState().updateSession(id, { compactionStatus: 'compacting' })
     try {
-      const checkpoint = await customFetch.compact(sourceMessages, instructions, controller.signal)
+      const checkpoint = await customFetch.compact(messagesToCompact, instructions, controller.signal)
       controller.signal.throwIfAborted()
       if (instance.messages !== sourceMessages) {
         throw new Error('The conversation changed during compaction. Please try again.')

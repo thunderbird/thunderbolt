@@ -33,7 +33,7 @@ describe('prepareBuiltInConversation', () => {
     const checkpoint = {
       version: 1 as const,
       summary: 'Earlier decisions',
-      tokensBefore: 9000,
+      tokensBefore: 9_000,
       contextTokens: 100,
       retainedTail: [],
     }

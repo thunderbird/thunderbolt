@@ -111,8 +111,10 @@ type HarnessRecord = {
 /** A thread's cached build, tagged with the config {@link harnessSignature} it was
  *  built for so a mid-thread config switch is detected and rebuilt. */
 type CachedHarness = {
-  /** Null after compaction: the next operation must use the caller's saved checkpoint. */
+  /** Null after compaction or a failed run: rebuild from the caller's durable transcript. */
   signature: string | null
+  /** Last user turn represented by this session; other agents can extend the transcript. */
+  lastUserMessageId: string | undefined
   /** The build PROMISE (see {@link HarnessCache}). */
   readonly record: Promise<HarnessRecord>
 }
@@ -685,8 +687,8 @@ const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToo
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
- *  when the config {@link harnessSignature} drifts (a mid-thread model / provider /
- *  key / thinking switch). On drift the stale harness is evicted and its run
+ *  when the config {@link harnessSignature} drifts or the transcript's last user
+ *  turn no longer matches. On drift the stale harness is evicted and its run
  *  aborted, but its workspace is KEPT — the rebuild re-seeds history from the
  *  request body and reuses the same `threadId`-keyed workspace, so the conversation
  *  context and the agent's files both survive. Concurrent first-turns share one
@@ -696,10 +698,11 @@ const getOrBuildHarness = (
   cache: HarnessCache,
   threadId: string,
   signature: string,
+  lastUserMessageId: string | undefined,
   build: () => Promise<HarnessRecord>,
 ): CachedHarness => {
   const cached = cache.get(threadId)
-  if (cached && cached.signature === signature) {
+  if (cached && cached.signature === signature && cached.lastUserMessageId === lastUserMessageId) {
     return cached
   }
   // Config drift (or first turn). On drift, abort the stale harness's run and
@@ -714,7 +717,7 @@ const getOrBuildHarness = (
       cache.delete(threadId)
     }
   })
-  const entry = { signature, record }
+  const entry = { signature, lastUserMessageId, record }
   cache.set(threadId, entry)
   return entry
 }
@@ -805,7 +808,9 @@ const fetchViaHarness = async (
   // signature drifts (a mid-thread model / provider / key / thinking / MCP switch).
   context.telemetry?.startPhase('harness_build')
   const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
-  const cached = getOrBuildHarness(cache, context.threadId, signature, () =>
+  const lastUserIndex = messages.findLastIndex((message) => message.role === 'user')
+  const previousUserId = messages.slice(0, lastUserIndex).findLast((message) => message.role === 'user')?.id
+  const cached = getOrBuildHarness(cache, context.threadId, signature, previousUserId, () =>
     buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
   )
   const record = await cached.record
@@ -853,8 +858,15 @@ const fetchViaHarness = async (
           }
         })
         try {
+          // Stop closes the UI before Pi finishes unwinding. Claim this user turn
+          // now so a compaction of earlier history rebuilds instead of reusing it.
+          cached.lastUserMessageId = messages[lastUserIndex].id
           await harness.prompt(prompt.text, { images: prompt.images })
           await harness.waitForIdle()
+        } catch (error) {
+          // An exceptional failure may leave only part of its turn in the session.
+          cached.signature = null
+          throw error
         } finally {
           removeBudgetFloor()
           removeContext()
@@ -971,7 +983,8 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     const previous = splitCompactedHistory(messages)
     const history = await prepareBuiltInHistory(previous.messages)
     const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
-    const cached = getOrBuildHarness(harnessCache, context.threadId, signature, () =>
+    const lastUserId = messages.findLast((message) => message.role === 'user')?.id
+    const cached = getOrBuildHarness(harnessCache, context.threadId, signature, lastUserId, () =>
       buildHarnessRecord(agentCore, context, resolved, history, config, previous.compaction),
     )
     const record = await cached.record

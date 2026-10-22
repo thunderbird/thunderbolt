@@ -29,6 +29,7 @@ type AssistantMessageProps = {
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
   lastAssistantAction?: ReactNode
+  activity?: ReactNode
 }
 
 // While an answer streams, reserve enough room to keep the preceding user
@@ -122,6 +123,7 @@ export const AssistantMessage = memo(
     isLastMessage = false,
     isLastAssistantMessage = false,
     lastAssistantAction,
+    activity,
   }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
@@ -202,13 +204,15 @@ export const AssistantMessage = memo(
         className={showCopyOnHover ? 'group/assistant-message' : undefined}
         style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
-        {partElements.map((partElement, index) => (
-          // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
-          // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
-          <div key={index} className={index === 1 ? '' : animationClasses}>
-            {partElement}
-          </div>
-        ))}
+        {(groupedParts.length > 0 || !activity) &&
+          partElements.map((partElement, index) => (
+            // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
+            // This causes it to appear as if the loading part magically *becomes* the new part without any visual disruption
+            <div key={index} className={index === 1 ? '' : animationClasses}>
+              {partElement}
+            </div>
+          ))}
+        {activity}
         {!isStreaming && (copyText || lastAssistantAction) && (
           <div
             className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
@@ -229,7 +233,8 @@ export const AssistantMessage = memo(
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
-      prevProps.lastAssistantAction === nextProps.lastAssistantAction
+      prevProps.lastAssistantAction === nextProps.lastAssistantAction &&
+      prevProps.activity === nextProps.activity
     )
   },
 )

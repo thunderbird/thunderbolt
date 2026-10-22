@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
-import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
+import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import {
   createChatThread,
   clearAcpSessionIdsForAgent,
-  deleteAllChatThreads,
+  deleteNonProjectChatThreads,
   deleteChatThread,
   getAllChatThreads,
   getChatThread,
@@ -23,6 +23,8 @@ import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { nowIso } from '@/lib/utils'
+import { renameProjectArtifact } from './project-artifact-presentation'
+import { artifactPresentationKeys } from '@/projects/artifact-presentation'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -467,7 +469,7 @@ describe('Chat Threads DAL', () => {
       expect(threads).toEqual([])
     })
 
-    it('should return all threads ordered by creation date (desc)', async () => {
+    it('uses newest creation first when chats have no messages', async () => {
       const db = getDb()
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
@@ -487,8 +489,7 @@ describe('Chat Threads DAL', () => {
 
       const threads = await getAllChatThreads(getDb())
       expect(threads).toHaveLength(2)
-      expect(threads.map((t) => t.id)).toContain(threadId1)
-      expect(threads.map((t) => t.id)).toContain(threadId2)
+      expect(threads.map((t) => t.id)).toEqual([threadId2, threadId1])
     })
   })
 
@@ -695,7 +696,7 @@ describe('Chat Threads DAL', () => {
     })
   })
 
-  describe('deleteAllChatThreads', () => {
+  describe('deleteNonProjectChatThreads', () => {
     it('should soft delete all chat threads (set deletedAt)', async () => {
       const threadId1 = uuidv7()
       const threadId2 = uuidv7()
@@ -711,7 +712,7 @@ describe('Chat Threads DAL', () => {
       const threadsBefore = await getAllChatThreads(getDb())
       expect(threadsBefore).toHaveLength(3)
 
-      await deleteAllChatThreads(getDb())
+      await deleteNonProjectChatThreads(getDb())
 
       // Should not appear in getAllChatThreads
       const threadsAfter = await getAllChatThreads(getDb())
@@ -723,11 +724,76 @@ describe('Chat Threads DAL', () => {
       expect(rawThreads.every((t) => t.deletedAt !== null)).toBe(true)
     })
 
+    it('preserves project chats and their messages while scrubbing only standalone chats', async () => {
+      const db = getDb()
+      const projectChat = uuidv7()
+      const standaloneChat = uuidv7()
+      const projectMessage = uuidv7()
+      const standaloneMessage = uuidv7()
+      await db.insert(chatThreadsTable).values([
+        { id: projectChat, title: 'Project chat', projectId: 'project', isEncrypted: 0 },
+        { id: standaloneChat, title: 'Standalone chat', isEncrypted: 0 },
+      ])
+      await db.insert(chatMessagesTable).values([
+        {
+          id: projectMessage,
+          chatThreadId: projectChat,
+          role: 'assistant',
+          content: 'Keep me',
+          parts: [{ type: 'text', text: 'Saved output' }],
+        },
+        { id: standaloneMessage, chatThreadId: standaloneChat, role: 'user', content: 'Remove me' },
+      ])
+      await renameProjectArtifact(db, `${projectMessage}-0`, 'Saved title')
+      await renameProjectArtifact(db, `${standaloneMessage}-0`, 'Private title to delete')
+      const projectBefore = await getChatThread(db, projectChat)
+      const messagesBefore = await getChatMessages(db, projectChat)
+      await deleteNonProjectChatThreads(db)
+      expect(await getChatThread(db, projectChat)).toEqual(projectBefore)
+      expect(await getChatMessages(db, projectChat)).toEqual(messagesBefore)
+      expect(await getChatThread(db, standaloneChat)).toBeNull()
+      const deletedThread = await db
+        .select()
+        .from(chatThreadsTable)
+        .where(eq(chatThreadsTable.id, standaloneChat))
+        .get()
+      const deletedMessage = await db
+        .select()
+        .from(chatMessagesTable)
+        .where(eq(chatMessagesTable.id, standaloneMessage))
+        .get()
+      expect(deletedThread?.deletedAt).toBeTruthy()
+      expect(deletedThread?.title).toBeNull()
+      expect(deletedMessage?.deletedAt).toBeTruthy()
+      expect(deletedMessage?.content).toBeNull()
+      const saved = await db
+        .select()
+        .from(settingsTable)
+        .where(eq(settingsTable.key, artifactPresentationKeys(`${projectMessage}-0`).title))
+        .get()
+      const removed = await db
+        .select()
+        .from(settingsTable)
+        .where(eq(settingsTable.key, artifactPresentationKeys(`${standaloneMessage}-0`).title))
+        .get()
+      expect(saved?.value).toBe('Saved title')
+      expect(removed?.value).toBeNull()
+      expect(removed?.updatedAt).toBeTruthy()
+      await deleteChatThread(db, projectChat)
+      const singleDeleted = await db
+        .select()
+        .from(settingsTable)
+        .where(eq(settingsTable.key, artifactPresentationKeys(`${projectMessage}-0`).title))
+        .get()
+      expect(singleDeleted?.value).toBeNull()
+      expect(singleDeleted?.updatedAt).toBeTruthy()
+    })
+
     it('should not throw when soft deleting from empty table', async () => {
       const threadsBefore = await getAllChatThreads(getDb())
       expect(threadsBefore).toHaveLength(0)
 
-      await expect(deleteAllChatThreads(getDb())).resolves.toBeUndefined()
+      await expect(deleteNonProjectChatThreads(getDb())).resolves.toBeUndefined()
     })
 
     it('should soft delete all messages when deleting all threads', async () => {
@@ -770,7 +836,7 @@ describe('Chat Threads DAL', () => {
       expect(messagesThread1Before).toHaveLength(2)
       expect(messagesThread2Before).toHaveLength(1)
 
-      await deleteAllChatThreads(getDb())
+      await deleteNonProjectChatThreads(getDb())
 
       // No messages should be returned after deletion
       const messagesThread1After = await getChatMessages(getDb(), threadId1)
@@ -799,8 +865,8 @@ describe('Chat Threads DAL', () => {
       // Soft delete thread 1 with an older datetime
       await db.update(chatThreadsTable).set({ deletedAt: originalDeletedAt }).where(eq(chatThreadsTable.id, threadId1))
 
-      // Now call deleteAllChatThreads - should only update thread 2
-      await deleteAllChatThreads(getDb())
+      // Now call deleteNonProjectChatThreads - should only update thread 2
+      await deleteNonProjectChatThreads(getDb())
 
       // Thread 1 should still have its original deletion datetime
       const rawThreads = await db.select().from(chatThreadsTable)

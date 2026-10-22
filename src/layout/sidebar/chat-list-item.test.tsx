@@ -90,6 +90,15 @@ describe('ChatListItem in minimal mode', () => {
 })
 
 describe('ChatListItem', () => {
+  it('opens the overflow menu by keyboard without navigating to the chat', async () => {
+    const onChatClick = mock()
+    renderWithProviders(createProps({ onChatClick }))
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
+    expect(await waitForElement(() => screen.queryByText('Rename'))).toBeInTheDocument()
+    expect(screen.getByText('Move to project')).toBeInTheDocument()
+    expect(onChatClick).not.toHaveBeenCalled()
+  })
+
   it('shows Rename and Delete options in the right-click context menu', async () => {
     renderWithProviders(createProps())
     fireEvent.contextMenu(screen.getByText('My Chat'))
@@ -152,8 +161,9 @@ describe('ChatListItem', () => {
   })
 
   it('hides the overflow menu on mobile', () => {
+    forceMobileViewport()
     const { container } = renderWithProviders(createProps({ isMobile: true }))
-    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('[data-slot="dropdown-menu-trigger"]')).toBeNull()
   })
 
   it('navigates when clicking the chat item', () => {

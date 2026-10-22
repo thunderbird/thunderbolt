@@ -13,6 +13,11 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#. placeholder {0}: actions.dialog.artifact.title
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "“{0}” will be removed from project artifacts and pinned shortcuts. The original output will remain in its source chat."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "「{filename}」はサイズが大きすぎます（最大 {maxMegabytes}MB）。"
@@ -62,9 +67,9 @@ msgstr "{agentName} は添付ファイルを受け付けません。送信する
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
-msgid "# chat"
-msgid_plural "# chats"
-msgstr[0] "# 件のチャット"
+#~ msgid "# chat"
+#~ msgid_plural "# chats"
+#~ msgstr[0] "# 件のチャット"
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
@@ -89,8 +94,8 @@ msgid "{fileName} will be saved to your Downloads folder."
 msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "{label} — already in this project"
-msgstr "{label} — すでにこのプロジェクトにあります"
+#~ msgid "{label} — already in this project"
+#~ msgstr "{label} — すでにこのプロジェクトにあります"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -156,6 +161,10 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "デバイスが Thunderbolt CLI としてアカウントにサインインしようとしています。ご自身がターミナルで開始した場合のみ承認してください。"
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "A home for what you create"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
@@ -173,8 +182,8 @@ msgid "A new version is available. See the update prompt to install."
 msgstr "新しいバージョンが利用できます。インストールするには更新の案内を確認してください。"
 
 #: src/projects/index.tsx
-msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
+#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
+#~ msgstr "プロジェクトは指示を 1 か所にまとめるため、その中のすべてのチャットが同じコンテキストで始まります。"
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -335,8 +344,9 @@ msgid "All agents"
 msgstr "すべてのエージェント"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "All projects"
-msgstr "すべてのプロジェクト"
+#: src/projects/index.tsx
+#~ msgid "All projects"
+#~ msgstr "すべてのプロジェクト"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
@@ -466,7 +476,24 @@ msgstr "続行しますか？行った変更はすべて失われます。"
 msgid "Artifact"
 msgstr "アーティファクト"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "Artifact downloaded"
+msgstr ""
+
+#: src/projects/rename-artifact-dialog.tsx
+msgid "Artifact name"
+msgstr ""
+
+#: src/projects/project-artifacts-page.tsx
+msgid "Artifact unavailable"
+msgstr ""
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#: src/projects/project-artifact-gallery.tsx
+#: src/projects/project-artifact-grid.tsx
+#: src/projects/project-artifact-workspace.tsx
+#: src/projects/project-artifacts-dialog.tsx
 msgid "Artifacts"
 msgstr "アーティファクト"
 
@@ -602,6 +629,7 @@ msgstr "カレンダー"
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -641,6 +669,10 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "Charts, prototypes, and other artifacts from this project's chats appear here. Pin your favorites to keep them in the sidebar."
+msgstr ""
+
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
 msgstr ""
@@ -654,7 +686,6 @@ msgid "Chat name"
 msgstr "チャット名"
 
 #: src/layout/sidebar/nav-toggle.tsx
-#: src/projects/project-detail-panel.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "チャット"
@@ -763,8 +794,8 @@ msgstr "メールとカレンダーにアクセスするためにメールプロ
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
 #: src/search/commands/use-commands.ts
-msgid "Clear all chats"
-msgstr "すべてのチャットを削除"
+#~ msgid "Clear all chats"
+#~ msgstr "すべてのチャットを削除"
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -814,6 +845,7 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
 #: src/components/window-controls.tsx
+#: src/content-view/header.tsx
 msgid "Close"
 msgstr "閉じる"
 
@@ -1072,6 +1104,18 @@ msgstr "このサーバーに接続できませんでした。URL とサーバ�
 msgid "Could not create the project."
 msgstr "プロジェクトを作成できませんでした。"
 
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not delete the artifact. Please try again."
+msgstr ""
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the project. Please try again."
+msgstr ""
+
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not download the artifact. Please try again."
+msgstr ""
+
 #: src/hooks/use-external-link-dialog.ts
 msgid "Could not open link. Please try again or copy the URL."
 msgstr "リンクを開けませんでした。もう一度お試しいただくか、URL をコピーしてください。"
@@ -1084,9 +1128,17 @@ msgstr "QR コードを読み取れませんでした"
 msgid "Could not read the import file."
 msgstr "インポートファイルを読み取れませんでした。"
 
+#: src/projects/use-project-artifact-actions-state.ts
+msgid "Could not rename the artifact. Please try again."
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Could not render pairing code."
 msgstr "ペアリングコードを表示できませんでした。"
+
+#: src/projects/use-project-artifact-pins.ts
+msgid "Could not save the pin. Please try again."
+msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
@@ -1223,6 +1275,11 @@ msgstr "AI への安全な接続を検証できませんでした。通常は一
 msgid "Create"
 msgstr "作成"
 
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+msgid "Create a project to organize your chats."
+msgstr ""
+
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
 msgstr "エージェントを作成"
@@ -1236,7 +1293,7 @@ msgstr "モデルを作成"
 msgid "Create passkey"
 msgstr "パスキーを作成"
 
-#: src/projects/create-project-panel.tsx
+#: src/projects/project-editor-dialog.tsx
 msgid "Create project"
 msgstr "プロジェクトを作成"
 
@@ -1247,8 +1304,8 @@ msgid "Create Skill"
 msgstr "スキルを作成"
 
 #: src/projects/index.tsx
-msgid "Create your first project"
-msgstr "最初のプロジェクトを作成"
+#~ msgid "Create your first project"
+#~ msgstr "最初のプロジェクトを作成"
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
@@ -1325,6 +1382,10 @@ msgstr "既定の設定"
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#: src/projects/project-artifact-actions-provider.tsx
+#: src/projects/project-artifact-context-menu.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 #: src/skills/library-row.tsx
@@ -1352,20 +1413,43 @@ msgid "Delete agent"
 msgstr "エージェントを削除"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete All Chats"
-msgstr "すべてのチャットを削除"
+#~ msgid "Delete All Chats"
+#~ msgstr "すべてのチャットを削除"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete all chats?"
-msgstr "すべてのチャットを削除しますか？"
+#~ msgid "Delete all chats?"
+#~ msgstr "すべてのチャットを削除しますか？"
 
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
 msgstr "すべてのローカルデータを削除"
 
+#: src/projects/project-artifact-actions-provider.tsx
+msgid "Delete artifact?"
+msgstr ""
+
 #: src/components/delete-chat-dialog.tsx
 msgid "Delete Chat"
 msgstr "チャットを削除"
+
+#: src/components/delete-all-chats-dialog.tsx
+#: src/layout/sidebar/chat-list.tsx
+msgid "Delete chats"
+msgstr ""
+
+#: src/layout/sidebar/chat-actions.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
+#: src/search/commands/use-commands.ts
+msgid "Delete chats outside projects"
+msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+#~ msgid "Delete chats outside projects?"
+#~ msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete chats?"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
@@ -1379,7 +1463,7 @@ msgstr "モデルを削除"
 msgid "Delete My Account"
 msgstr "アカウントを削除"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
 msgstr "プロジェクトを削除"
 
@@ -1408,7 +1492,7 @@ msgstr "この MCP サーバーと保存された認証情報を削除します�
 msgid "Delete this model from your configured models?"
 msgstr "設定済みのモデルからこのモデルを削除しますか？"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete this project?"
 msgstr "このプロジェクトを削除しますか？"
 
@@ -1592,6 +1676,7 @@ msgid "Download App"
 msgstr "アプリをダウンロード"
 
 #: src/components/artifact/artifact-actions.tsx
+#: src/projects/project-artifact-context-menu.tsx
 msgid "Download HTML"
 msgstr "HTML をダウンロード"
 
@@ -1611,7 +1696,7 @@ msgstr "更新をダウンロードしています… {downloadProgress}%"
 msgid "Downloading…"
 msgstr "ダウンロード中…"
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-drop-row.tsx
 msgid "Drop"
 msgstr "ドロップ"
 
@@ -1634,6 +1719,8 @@ msgstr "早期アクセスのログイン"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/library-row.tsx
 msgid "Edit"
 msgstr "編集"
@@ -1651,8 +1738,8 @@ msgid "Edit Model"
 msgstr "モデルを編集"
 
 #: src/projects/index.tsx
-msgid "Edit project"
-msgstr "プロジェクトを編集"
+#~ msgid "Edit project"
+#~ msgstr "プロジェクトを編集"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
@@ -1976,6 +2063,7 @@ msgstr "Gmail とカレンダー"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
+#: src/projects/project-artifacts-page.tsx
 msgid "Go back"
 msgstr "戻る"
 
@@ -2052,6 +2140,10 @@ msgstr "{deviceName} の QR コードを隠す"
 msgid "How Thunderbolt salutes you"
 msgstr "Thunderbolt からの呼びかけ方"
 
+#: src/projects/project-artifact-card.tsx
+msgid "HTML"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "I agree to share this chat session with the Thunderbolt team."
 msgstr ""
@@ -2117,6 +2209,11 @@ msgstr "インポート中…"
 msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 msgstr "プレビュー機能をご利用いただくにあたり、テレメトリーデータの共有による製品改善へのご協力をお願いしています。"
 
+#. placeholder {0}: project.name
+#: src/projects/project-badge.tsx
+msgid "In project: {0}"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "In your own words: what were you trying to do, and what did the agent do instead?"
 msgstr ""
@@ -2175,9 +2272,13 @@ msgstr "確認リンクが無効です。新しいリンクをリクエストし
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS では安全な URL（wss://）が必要です"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "プロジェクトの指示は削除されます。プロジェクト内のチャットは保持され、通常のチャットになります。"
+
+#: src/projects/project-artifacts-page.tsx
+msgid "Its source chat may have been moved or deleted."
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Just synced"
@@ -2437,6 +2538,7 @@ msgid "Modified model"
 msgstr "変更されたモデル"
 
 #: src/components/settings/detail-actions-menu.tsx
+#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
 msgstr "その他"
 
@@ -2445,7 +2547,6 @@ msgid "Move file"
 msgstr "ファイルを移動"
 
 #: src/layout/sidebar/chat-list-item.tsx
-#: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Move to project"
 msgstr "プロジェクトに移動"
@@ -2485,7 +2586,11 @@ msgstr "ネットワークリクエストに失敗しました（ブラウザー
 msgid "New Agent"
 msgstr "新しいエージェント"
 
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#: src/projects/project-artifact-gallery.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "新しいチャット"
@@ -2498,8 +2603,9 @@ msgid "New Chat"
 msgstr "新しいチャット"
 
 #: src/projects/project-detail-panel.tsx
-msgid "New chat in this project"
-msgstr "このプロジェクトで新しいチャット"
+#: src/projects/project-workspace.tsx
+#~ msgid "New chat in this project"
+#~ msgstr "このプロジェクトで新しいチャット"
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
@@ -2513,7 +2619,8 @@ msgstr "新しいデバイスが待機中"
 msgid "New Model"
 msgstr "新しいモデル"
 
-#: src/projects/index.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "新しいプロジェクト"
 
@@ -2535,14 +2642,15 @@ msgid "No agents found"
 msgstr "エージェントが見つかりません"
 
 #: src/projects/project-detail-panel.tsx
-msgid "No artifacts yet."
-msgstr "まだアーティファクトはありません。"
+#~ msgid "No artifacts yet."
+#~ msgstr "まだアーティファクトはありません。"
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
 msgstr "まだチャットはありません"
 
-#: src/projects/project-detail-panel.tsx
+#: src/layout/sidebar/project-tree-row.tsx
 msgid "No chats yet."
 msgstr "まだチャットはありません。"
 
@@ -2578,13 +2686,17 @@ msgstr "デバイスからの接続を受け付けなくなりました"
 msgid "No matches"
 msgstr "一致するものがありません"
 
+#: src/projects/project-artifact-gallery.tsx
+msgid "No matching artifacts"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr "一致する接続はありません。"
 
 #: src/projects/index.tsx
-msgid "No matching projects"
-msgstr "一致するプロジェクトはありません"
+#~ msgid "No matching projects"
+#~ msgstr "一致するプロジェクトはありません"
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "No matching projects."
@@ -2620,12 +2732,16 @@ msgstr "モデルが返されませんでした（サーバーに到達できな
 #~ msgstr ""
 
 #: src/projects/index.tsx
-msgid "No projects yet"
-msgstr "まだプロジェクトはありません"
+#~ msgid "No projects yet"
+#~ msgstr "まだプロジェクトはありません"
 
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-msgstr "まだプロジェクトはありません。プロジェクトページで作成してから、このチャットを移動してください。"
+#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
+#~ msgstr "まだプロジェクトはありません。プロジェクトページで作成してから、このチャットを移動してください。"
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "No projects yet. Create one in the sidebar, then move this chat into it."
+msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
@@ -2749,6 +2865,11 @@ msgstr "OneDrive へのアクセス"
 msgid "Only available in private chats."
 msgstr "プライベートチャットでのみ利用できます。"
 
+#. placeholder {0}: artifact.title
+#: src/projects/project-artifact-card.tsx
+msgid "Open {0}"
+msgstr ""
+
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
 msgstr "{modelName} を開く"
@@ -2763,6 +2884,10 @@ msgstr "{title} を開く"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
+msgstr ""
+
+#: src/projects/project-artifact-context-menu.tsx
+msgid "Open artifact"
 msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
@@ -2805,6 +2930,10 @@ msgstr ""
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "リンクを開く"
+
+#: src/projects/project-artifact-context-menu.tsx
+msgid "Open source chat"
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
@@ -2923,6 +3052,16 @@ msgstr "パーソナライズ"
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "ピン留めの上限（{maxPinnedSkills}）に達しました。先にどれかのピン留めを解除してください。"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin project"
+msgstr ""
+
+#: src/projects/project-artifact-context-menu.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Pin to project"
+msgstr ""
+
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
 msgstr "ピン留めされたスキル {label}"
@@ -2973,6 +3112,11 @@ msgstr "プレビュー機能が無効になります"
 msgid "Preview not available for this file type. Use the download button to view it."
 msgstr "このファイル形式はプレビューできません。ダウンロードボタンから表示してください。"
 
+#. placeholder {0}: artifact.title
+#: src/projects/project-artifact-card.tsx
+msgid "Preview of {0}"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
 msgstr "Webview のプレビューはデスクトップアプリでのみ利用できます"
@@ -2989,8 +3133,17 @@ msgstr "非公開"
 msgid "Processing…"
 msgstr "処理中…"
 
-#: src/layout/sidebar/chat-sidebar.tsx
-#: src/projects/index.tsx
+#: src/projects/project-editor-dialog.tsx
+msgid "Project settings"
+msgstr ""
+
+#: src/projects/project-artifacts-dialog-content.tsx
+#: src/projects/project-artifacts-page.tsx
+msgid "Project unavailable"
+msgstr ""
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "プロジェクト"
@@ -3045,12 +3198,17 @@ msgid "Received an error while testing the model."
 msgstr "モデルのテスト中にエラーが発生しました。"
 
 #: src/layout/sidebar/chat-list.tsx
-msgid "Recent Chats"
-msgstr "最近のチャット"
+#~ msgid "Recent Chats"
+#~ msgstr "最近のチャット"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "Recent Projects"
-msgstr "最近のプロジェクト"
+#~ msgid "Recent Projects"
+#~ msgstr "最近のプロジェクト"
+
+#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
+msgid "Recents"
+msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
@@ -3091,7 +3249,7 @@ msgstr "削除"
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "このデバイスからすべてのチャット、設定、キャッシュデータを削除します。"
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Remove from project"
 msgstr "プロジェクトから削除"
@@ -3119,8 +3277,13 @@ msgid "Removing…"
 msgstr "削除しています…"
 
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/project-artifact-context-menu.tsx
 msgid "Rename"
 msgstr "名前を変更"
+
+#: src/projects/rename-artifact-dialog.tsx
+msgid "Rename artifact"
+msgstr ""
 
 #: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Rename chat"
@@ -3257,6 +3420,7 @@ msgstr "ブリッジをホストしているマシンでこれを実行してか
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
+#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -3309,7 +3473,7 @@ msgstr "最下部にスクロール"
 
 #: src/components/ui/page-search.tsx
 #: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
 msgstr "検索"
@@ -3325,6 +3489,10 @@ msgstr "エージェントを検索"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
 msgstr "OneDrive のファイルやドキュメントを検索して扱います。"
+
+#: src/projects/project-artifact-gallery.tsx
+msgid "Search artifacts"
+msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Search chats, models, skills, agents…"
@@ -3367,7 +3535,6 @@ msgstr "モデルを検索"
 msgid "Search models…"
 msgstr "モデルを検索…"
 
-#: src/projects/index.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Search projects"
 msgstr "プロジェクトを検索"
@@ -3558,8 +3725,50 @@ msgid "Show"
 msgstr "表示"
 
 #: src/components/chat/artifact-message-part.tsx
+msgid "Show artifact"
+msgstr ""
+
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show fewer chats in {0}"
+msgstr ""
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show fewer projects"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show fewer recent chats"
+msgstr ""
+
+#: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr "インラインで表示"
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show less"
+msgstr ""
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show more"
+msgstr ""
+
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show more chats in {0}"
+msgstr ""
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show more projects"
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show more recent chats"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Show QR"
@@ -3742,6 +3951,10 @@ msgstr "問題が発生しました。もう一度お試しください。"
 #: src/components/chat/error-message.tsx
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "問題が発生しました。再試行しています（{retryCount}/{maxRetries}）…"
+
+#: src/projects/project-artifact-workspace.tsx
+msgid "Source chat"
+msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
@@ -4193,6 +4406,14 @@ msgstr ""
 msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
 msgstr "このバージョンの Thunderbolt はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
 
+#: src/components/delete-all-chats-dialog.tsx
+msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
+msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+#~ msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+#~ msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
 msgstr "このデバイスから暗号化されたデータへのアクセスを拒否します。デバイスは同期を再度設定する必要があります。"
@@ -4202,8 +4423,8 @@ msgid "This will permanently delete all of your local data including settings, c
 msgstr "設定、チャット履歴、キャッシュされた情報を含む、すべてのローカルデータが完全に削除されます。この操作は取り消せません。"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "This will permanently delete all your chats."
-msgstr "すべてのチャットが完全に削除されます。"
+#~ msgid "This will permanently delete all your chats."
+#~ msgstr "すべてのチャットが完全に削除されます。"
 
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
@@ -4428,10 +4649,25 @@ msgstr "パスキーでロック解除"
 msgid "Unpin"
 msgstr "ピン留めを解除"
 
+#: src/projects/project-artifact-context-menu.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Unpin from project"
+msgstr ""
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Unpin project"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
 msgstr "{relative}に到達不能"
 
+#: src/dal/projects.ts
+msgid "Untitled artifact"
+msgstr ""
+
+#: src/dal/projects.ts
 #: src/lib/title-generator.ts
 #: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"

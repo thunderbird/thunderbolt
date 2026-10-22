@@ -12,7 +12,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useDatabase } from '@/contexts'
 import { getModel } from '@/dal'
 import { useDebounce } from '@/hooks/use-debounce'
-import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
+import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent as trackEventImpl } from '@/lib/posthog'
 import { useCallback, useMemo, useRef, useState } from 'react'
@@ -132,7 +132,7 @@ export const SearchPalette = ({
 
   const [logoutOpen, setLogoutOpen] = useState(false)
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
-  const deleteAllChats = useDeleteAllChats()
+  const deleteAllChats = useDeleteNonProjectChats()
 
   const commandOpts = useMemo(
     () => ({

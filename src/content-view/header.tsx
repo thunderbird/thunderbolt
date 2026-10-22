@@ -9,6 +9,7 @@ import { useMacWindowControlsClearance } from '@/hooks/use-window-controls-safe-
 import { isFramelessControlsPlatform, isTauriDesktop } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { type ReactNode } from 'react'
+import { useLingui } from '@lingui/react/macro'
 
 type ContentViewHeaderProps = {
   title: string
@@ -22,6 +23,7 @@ type ContentViewHeaderProps = {
  * Provides consistent layout with title, optional actions, and close button
  */
 export const ContentViewHeader = ({ title, onClose, actions, className = '' }: ContentViewHeaderProps) => {
+  const { t } = useLingui()
   const { isMobile } = useResponsiveModalContext()
   // At mobile width the content view fills the whole window, putting this
   // header's top-left under the macOS traffic lights — start the title to
@@ -63,7 +65,7 @@ export const ContentViewHeader = ({ title, onClose, actions, className = '' }: C
       {!isMobile && (
         <div className="flex items-center gap-2">
           {actions}
-          <SidebarCloseButton onClick={onClose} />
+          <SidebarCloseButton onClick={onClose} aria-label={t`Close`} />
         </div>
       )}
     </div>

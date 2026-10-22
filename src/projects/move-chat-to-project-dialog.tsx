@@ -62,7 +62,7 @@ const ProjectOptions = ({
   if (projects.length === 0) {
     return (
       <p className="py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
-        <Trans>No projects yet. Create one from the Projects page, then move this chat into it.</Trans>
+        <Trans>No projects yet. Create one in the sidebar, then move this chat into it.</Trans>
       </p>
     )
   }

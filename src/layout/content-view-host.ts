@@ -23,4 +23,5 @@
  * breakpoint, and `main-layout`'s full-window dialog keeps serving every
  * route there.
  */
-export const routeHostsContentView = (pathname: string): boolean => pathname.startsWith('/apps/')
+export const routeHostsContentView = (pathname: string): boolean =>
+  pathname.startsWith('/apps/') || /^\/projects\/[^/?]+\/artifacts\/[^/?]+\/?(?:\?|$)/.test(pathname)

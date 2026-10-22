@@ -24,6 +24,7 @@ import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { SidebarSection } from './types'
 
 type NavItem = {
@@ -66,12 +67,14 @@ type SettingsSidebarContentProps = {
   isCollapsed: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
+  onSearchClick?: () => void
 }
 
 export const SettingsSidebarContent = ({
   isCollapsed,
   onSectionChange,
   onSettingsNavigate,
+  onSearchClick,
 }: SettingsSidebarContentProps) => {
   const { i18n } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
@@ -87,20 +90,22 @@ export const SettingsSidebarContent = ({
     ? navGroups
     : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
 
+  const headerControls = (
+    <SidebarHeaderActions onSearchClick={onSearchClick}>
+      <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
+    </SidebarHeaderActions>
+  )
+
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader
-        onToggle={toggleSidebar}
-        navToggle={<SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />}
-      />
+      <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
 
       {isCollapsed && (
-        // pb-0: the next group's own top padding provides the 8px gap,
-        // matching the toggle→New Chat spacing on the chats rail. pt-2 gives
-        // the toggle the same 8px above as the rail leaves on its sides.
         <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
-            <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+            <SidebarHeaderActions vertical onSearchClick={onSearchClick}>
+              <SidebarNavToggle vertical activeSection="settings" onSectionChange={onSectionChange} />
+            </SidebarHeaderActions>
           </SidebarGroupContent>
         </SidebarGroup>
       )}
@@ -120,9 +125,7 @@ export const SettingsSidebarContent = ({
             )}
           >
             {isMobile && index === 0 && (
-              <div className="flex h-[var(--touch-height-lg)] items-center">
-                <SidebarNavToggle activeSection="settings" onSectionChange={onSectionChange} />
-              </div>
+              <div className="flex h-[var(--touch-height-lg)] items-center">{headerControls}</div>
             )}
             <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
               {i18n._(group.label)}

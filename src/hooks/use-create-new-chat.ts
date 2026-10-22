@@ -20,8 +20,12 @@ import { useNavigate } from 'react-router'
 export const useCreateNewChat = () => {
   const navigate = useNavigate()
 
-  return useCallback(() => {
-    trackEvent('chat_new_clicked')
-    navigate('/chats/new', { state: { focusComposer: true } })
-  }, [navigate])
+  return useCallback(
+    (projectId?: string) => {
+      trackEvent('chat_new_clicked')
+      const search = projectId ? `?${new URLSearchParams({ projectId })}` : ''
+      navigate(`/chats/new${search}`, { state: { focusComposer: true } })
+    },
+    [navigate],
+  )
 }

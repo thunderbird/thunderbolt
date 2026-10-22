@@ -4,13 +4,14 @@
 
 import { defaultChatTitle } from '@/lib/constants'
 
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, exists, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
-import { chatMessagesTable, chatThreadsTable } from '../db/tables'
+import { chatMessagesTable, chatThreadsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import { type ChatThread, type Model } from '@/types'
 import { getModel } from './models'
 import type { DrizzleQueryWithPromise } from '@/types'
+import { getChatActivityQuery } from './chat-activity-query'
 
 /**
  * Where a chat came from.
@@ -44,14 +45,10 @@ export const isChatThreadDeleted = async (db: AnyDrizzleDatabase, id: string): P
 }
 
 /**
- * Gets all chat threads ordered by creation date (excluding soft-deleted)
+ * Gets live chats ordered by latest message activity, with creation as the floor.
  */
 export const getAllChatThreads = (db: AnyDrizzleDatabase) => {
-  const query = db
-    .select()
-    .from(chatThreadsTable)
-    .where(isNull(chatThreadsTable.deletedAt))
-    .orderBy(desc(chatThreadsTable.id))
+  const query = getChatActivityQuery(db)
   return query as typeof query & DrizzleQueryWithPromise<ChatThread>
 }
 
@@ -186,6 +183,29 @@ export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string
   return query as typeof query & DrizzleQueryWithPromise<{ contextSize: number | null }>
 }
 
+/** Scrub artifact presentation preferences along with the chats that own their source messages. */
+const deleteChatArtifactPresentation = async (db: AnyDrizzleDatabase, chats: SQL, deletedAt: string): Promise<void> => {
+  const titlePrefix = sql`'artifact_title.' || ${chatMessagesTable.id} || '-'`
+  const deletedPrefix = sql`'artifact_deleted_at.' || ${chatMessagesTable.id} || '-'`
+  const source = db
+    .select({ id: chatMessagesTable.id })
+    .from(chatMessagesTable)
+    .innerJoin(chatThreadsTable, eq(chatThreadsTable.id, chatMessagesTable.chatThreadId))
+    .where(
+      and(
+        chats,
+        or(
+          sql`substr(${settingsTable.key}, 1, length(${titlePrefix})) = ${titlePrefix}`,
+          sql`substr(${settingsTable.key}, 1, length(${deletedPrefix})) = ${deletedPrefix}`,
+        ),
+      ),
+    )
+  await db
+    .update(settingsTable)
+    .set({ value: null, updatedAt: deletedAt })
+    .where(and(isNotNull(settingsTable.value), exists(source)))
+}
+
 /**
  * Soft deletes a specific chat thread by ID (sets deletedAt datetime)
  * Also soft-deletes all associated messages that haven't been deleted yet
@@ -194,6 +214,7 @@ export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string
 export const deleteChatThread = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
   const deletedAt = nowIso()
   await db.transaction(async (tx) => {
+    await deleteChatArtifactPresentation(tx, eq(chatThreadsTable.id, id), deletedAt)
     await tx
       .update(chatMessagesTable)
       .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
@@ -206,21 +227,31 @@ export const deleteChatThread = async (db: AnyDrizzleDatabase, id: string): Prom
 }
 
 /**
- * Soft deletes all chat threads (sets deletedAt datetime)
- * Also soft-deletes all associated messages
+ * Soft deletes chats outside projects and their associated messages.
+ * Project chats, messages, and artifacts are preserved.
  * Scrubs all nullable columns for privacy
  * Only updates records that haven't been deleted yet to preserve original deletion datetimes
  */
-export const deleteAllChatThreads = async (db: AnyDrizzleDatabase): Promise<void> => {
+export const deleteNonProjectChatThreads = async (db: AnyDrizzleDatabase): Promise<void> => {
   const deletedAt = nowIso()
+  const target = sql`${chatThreadsTable.projectId} IS NULL AND ${chatThreadsTable.deletedAt} IS NULL`
   await db.transaction(async (tx) => {
+    await deleteChatArtifactPresentation(tx, target, deletedAt)
     await tx
       .update(chatMessagesTable)
       .set({ ...clearNullableColumns(chatMessagesTable), deletedAt })
-      .where(isNull(chatMessagesTable.deletedAt))
+      .where(
+        and(
+          isNull(chatMessagesTable.deletedAt),
+          inArray(
+            chatMessagesTable.chatThreadId,
+            tx.select({ id: chatThreadsTable.id }).from(chatThreadsTable).where(target),
+          ),
+        ),
+      )
     await tx
       .update(chatThreadsTable)
       .set({ ...clearNullableColumns(chatThreadsTable), deletedAt })
-      .where(isNull(chatThreadsTable.deletedAt))
+      .where(target)
   })
 }

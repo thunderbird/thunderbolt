@@ -11,6 +11,7 @@ import { mockIntersectionObserver } from '@/test-utils/mock-intersection-observe
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { ArtifactMessagePart } from './artifact-message-part'
+import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
 
 type PartOverrides = {
   toolCallId: string
@@ -37,6 +38,21 @@ const renderPart = (part: ToolOrDynamicToolUIPart) =>
   )
 
 describe('ArtifactMessagePart', () => {
+  it('keeps an artifact in its project canvas when the source chat opens', () => {
+    const actions: string[] = []
+    const { container, getByText } = render(
+      <ContentViewProvider>
+        <ArtifactCanvasContext value={{ toolCallId: 'canvas', reveal: () => actions.push('reveal') }}>
+          <ArtifactMessagePart
+            part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
+          />
+        </ArtifactCanvasContext>
+      </ContentViewProvider>,
+    )
+    expect(container.querySelector('iframe')).toBeNull()
+    fireEvent.click(getByText('Show artifact'))
+    expect(actions).toEqual(['reveal'])
+  })
   let restoreIntersectionObserver: () => void
   beforeEach(() => {
     restoreIntersectionObserver = mockIntersectionObserver(true)

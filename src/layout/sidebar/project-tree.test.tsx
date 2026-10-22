@@ -201,6 +201,29 @@ it('opens project creation from the collapsed menu without losing dialog focus',
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
 })
 
+it('opens project creation by long-pressing the mobile Projects heading without toggling it', async () => {
+  forceMobileViewport()
+  render(tree(false, true), { wrapper: createWrapper() })
+  const section = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
+  fireEvent.click(section)
+  expect(section).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('button', { name: 'New project' })).not.toBeInTheDocument()
+
+  fireEvent.touchStart(section, { touches: [{ clientX: 20, clientY: 20 }] })
+  act(() => getClock().tick(500))
+  fireEvent.touchEnd(section)
+  fireEvent.click(section)
+  expect(section).toHaveAttribute('aria-expanded', 'false')
+
+  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'New project' })))
+  const dialog = await waitForElement(() => screen.queryByRole('dialog', { name: 'Create project' }))
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  expect(section).toHaveAttribute('aria-expanded', 'false')
+})
+
 it.each(['context', 'overflow', 'mobile'])('offers the same working project actions from the %s menu', async (menu) => {
   const isMobile = menu === 'mobile'
   if (isMobile) {

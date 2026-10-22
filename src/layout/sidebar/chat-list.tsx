@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { Flame } from 'lucide-react'
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
 import { MobileSidebarScrim } from '@/components/ui/scrim'
@@ -114,16 +115,25 @@ export const ChatList = ({
       expanded={sectionExpanded}
       onToggle={() => setSectionExpanded((expanded) => !expanded)}
       controls="sidebar-recent-chats-content"
-    >
-      <Trans>Recents</Trans>
-    </SidebarSectionToggle>
+      label={t`Recents`}
+      mobileAction={
+        isMobile
+          ? {
+              label: t`Delete chats`,
+              icon: <Flame className="size-4" />,
+              disabled: deleteAllChatsMutation.isPending,
+              onSelect: () => deleteAllChatsDialogRef.current?.open(),
+            }
+          : undefined
+      }
+    />
   )
 
   const chatActions = (
     <ChatActions
       showSearch={!sharedScrollRef}
       isCollapsed={isCollapsed}
-      showClearAll={hasListContent}
+      showClearAll={hasListContent && !(isMobile && sharedScrollRef)}
       deleteAllChatsMutation={deleteAllChatsMutation}
       deleteAllChatsDialogRef={deleteAllChatsDialogRef}
       onSearchClick={onSearchClick}
@@ -137,8 +147,8 @@ export const ChatList = ({
       ref={mobileHeaderRef}
       data-slot="mobile-sidebar-header"
       className={cn(
-        'z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]',
-        sharedScrollRef ? 'relative' : 'absolute inset-x-0 top-0',
+        'z-10 pt-[calc(var(--header-safe-area-top)+0.5rem)]',
+        sharedScrollRef ? 'relative' : 'absolute inset-x-0 top-0 px-2',
       )}
     >
       {!sharedScrollRef && <MobileSidebarScrim data-slot="mobile-sidebar-header-scrim" />}

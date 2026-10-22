@@ -98,12 +98,52 @@ it.each([false, true])('collapses Recents and restores its expanded preview (mob
   expect(section).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryAllByRole('button', { name: 'Recent chat 1' })).toHaveLength(0)
   expect(screen.queryByRole('button', { name: 'Show more recent chats' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Delete chats outside projects' })).toBeVisible()
+  if (isMobile) {
+    expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
+  } else {
+    expect(screen.getByRole('button', { name: 'Delete chats outside projects' })).toBeVisible()
+  }
 
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('Recent chat 10')).toBeVisible()
   expect(screen.queryByText('Recent chat 11')).not.toBeInTheDocument()
+})
+
+it('opens the protected burn confirmation by long-pressing Recents without toggling the section', async () => {
+  forceMobileViewport()
+  render(<Fixture isMobile />, { wrapper: createTestProvider() })
+  const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
+
+  fireEvent.touchStart(section, { touches: [{ clientX: 20, clientY: 20 }] })
+  act(() => getClock().tick(500))
+  fireEvent.touchEnd(section)
+  fireEvent.click(section)
+  expect(section).toHaveAttribute('aria-expanded', 'true')
+
+  fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Delete chats' })))
+  const dialog = await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete chats?' }))
+  expect(dialog).toHaveTextContent("Chats in projects won't be deleted.")
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  fireEvent.click(section)
+  expect(section).toHaveAttribute('aria-expanded', 'false')
+})
+
+it('does not open the Recents menu when a touch becomes a scroll', async () => {
+  forceMobileViewport()
+  render(<Fixture isMobile />, { wrapper: createTestProvider() })
+  const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  fireEvent.touchStart(section, { touches: [{ clientX: 20, clientY: 20 }] })
+  fireEvent.touchMove(section, { touches: [{ clientX: 20, clientY: 50 }] })
+  act(() => getClock().tick(500))
+  fireEvent.touchEnd(section)
+  expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
+  expect(section).toHaveAttribute('aria-expanded', 'true')
 })
 
 it('shows one Recents rail button and reveals five chats at a time inside its menu', async () => {

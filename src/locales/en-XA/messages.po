@@ -1446,6 +1446,7 @@ msgid "Delete Chat"
 msgstr ""
 
 #: src/components/delete-all-chats-dialog.tsx
+#: src/layout/sidebar/chat-list.tsx
 msgid "Delete chats"
 msgstr ""
 

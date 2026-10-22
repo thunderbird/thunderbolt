@@ -216,16 +216,16 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
   })
 
-  it('reveals the project control on first submit without remounting the sliding agent picker', async () => {
+  it('keeps the project control visible while it swaps places with the agent on first submit', async () => {
     const project = await createProject(getDb(), { name: 'Launch' })
     const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
     render(<Header />, { wrapper: TestWrapper })
     await flushAgentsQuery()
 
     const trigger = screen.getByTestId('agent-selector-trigger')
-    const projectControl = screen.getByTitle('In project: Launch')
-    expect(screen.queryByRole('button', { name: 'In project: Launch' })).toBeNull()
-    expect(projectControl.parentElement).toHaveAttribute('inert')
+    const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
+    expect(projectControl).toBeVisible()
+    expect(projectControl.parentElement).toHaveClass('right-2', 'translate-x-0')
 
     act(() => chat.submit())
     await flushAgentsQuery()
@@ -233,8 +233,8 @@ describe('Header', () => {
     expect(useChatStore.getState().sessions.get('thread-1')?.chatThread).toBeNull()
     expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
     expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
-    expect(projectControl.parentElement).not.toHaveAttribute('inert')
-    expect(projectControl.parentElement).toHaveClass('opacity-100', 'delay-300')
+    expect(projectControl).toBeVisible()
+    expect(projectControl.parentElement).toHaveClass('-translate-x-[calc(var(--touch-height-lg)+0.5rem)]')
   })
 
   it('shows the project control when opening an existing mobile chat', async () => {

@@ -51,8 +51,8 @@ type HeaderAgentSelectorProps = {
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Mobile project control, shown beside the compact agent circle after docking. */
-  leading?: ReactNode
+  /** Mobile project control that moves left as the agent picker docks beside it. */
+  projectControl?: ReactNode
 }
 
 const HeaderAgentSelector = ({
@@ -62,7 +62,7 @@ const HeaderAgentSelector = ({
   onSelect,
   onAddAgent,
   mobile,
-  leading,
+  projectControl,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
   const isReplying = status === 'streaming' || status === 'submitted'
@@ -103,30 +103,30 @@ const HeaderAgentSelector = ({
     // The trigger width stays fixed throughout. Its labeled pill and logo-only
     // circle crossfade internally (see AgentSelector), so this wrapper only
     // animates translate and both directions remain compositor-driven.
-    <div
-      {...mobile.dragProps}
-      className={cn(
-        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-        collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
-      )}
-    >
-      {/* The transparent agent pill keeps its full width. Anchor to its right
-          edge so the project sits beside the visible circle, above the hidden
-          pill's hit area. The fade waits for the 300ms docking transition. */}
-      {leading && (
+    <>
+      {projectControl && (
         <div
-          aria-hidden={!collapsed}
-          inert={!collapsed}
+          {...mobile.dragProps}
           className={cn(
-            'absolute right-[calc(var(--touch-height-lg)+0.5rem)] z-20 transition-[opacity,visibility] duration-150 motion-reduce:transition-none',
-            collapsed ? 'visible opacity-100 delay-300' : 'invisible pointer-events-none opacity-0 delay-0',
+            'absolute top-2 right-2 z-10 transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? '-translate-x-[calc(var(--touch-height-lg)+0.5rem)]' : 'translate-x-0',
           )}
         >
-          {leading}
+          {projectControl}
         </div>
       )}
-      {selector}
-    </div>
+      {/* Cross above the project while docking. Only the visible agent trigger
+          accepts taps, leaving the project accessible under the empty pill. */}
+      <div
+        {...mobile.dragProps}
+        className={cn(
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
+        )}
+      >
+        {selector}
+      </div>
+    </>
   )
 }
 
@@ -283,7 +283,7 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
-      leading={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
+      projectControl={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
@@ -357,8 +357,8 @@ export const Header = () => {
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
-        {/* Desktop keeps the project name beside the selector; mobile puts an
-            icon-only control inside the selector's moving wrapper. */}
+        {/* Desktop keeps the project name beside the selector; mobile has an
+            independently positioned icon-only control. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
       {privateSwitchDialog}

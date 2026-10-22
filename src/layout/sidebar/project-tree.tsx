@@ -5,9 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { FolderMinus, Plus } from 'lucide-react'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
-import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
-import { cn } from '@/lib/utils'
 import { unassignDropId } from '@/projects/chat-drop'
 import { ProjectEditorDialog } from '@/projects/project-editor-dialog'
 import { ProjectDropRow } from './project-drop-row'
@@ -53,18 +51,28 @@ export const ProjectTree = (props: ProjectTreeProps) => {
   return (
     <div>
       <div className="flex items-center justify-between max-md:mb-2">
-        <SidebarSectionToggle expanded={sectionExpanded} onToggle={toggleSection} controls="sidebar-projects-section">
-          <Trans>Projects</Trans>
-        </SidebarSectionToggle>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
-          aria-label={t`New project`}
-          onClick={openEditor}
-        >
-          <Plus className="size-4" />
-        </Button>
+        <SidebarSectionToggle
+          expanded={sectionExpanded}
+          onToggle={toggleSection}
+          controls="sidebar-projects-section"
+          label={t`Projects`}
+          mobileAction={
+            props.isMobile
+              ? { label: t`New project`, icon: <Plus className="size-4" />, onSelect: openEditor }
+              : undefined
+          }
+        />
+        {!props.isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={mutedIconButtonClass}
+            aria-label={t`New project`}
+            onClick={openEditor}
+          >
+            <Plus className="size-4" />
+          </Button>
+        )}
       </div>
       {/* Reserve space for the drop/focus rings without shifting the rows. */}
       <div id="sidebar-projects-section" hidden={!sectionExpanded} className="-m-1 p-1">

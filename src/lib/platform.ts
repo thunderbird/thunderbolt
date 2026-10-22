@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
+import { isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
-import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
 export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
@@ -281,38 +280,7 @@ export const isIndexedDbAvailable = async (idb?: IDBFactory | null): Promise<boo
   }
 }
 
-// -----------------------------------------------------------------------------
-// Capabilities
-// -----------------------------------------------------------------------------
-
-export type Capabilities = {
-  native_fetch: boolean
-}
-
-const defaultCapabilities: Capabilities = { native_fetch: false }
-
-// Fetch once, then memoize for the rest of the session.
-const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
-  if (!isTauri()) {
-    return defaultCapabilities
-  }
-
-  try {
-    return await invoke<Capabilities>('capabilities')
-  } catch (err) {
-    console.error('Failed to retrieve capabilities:', err)
-    return defaultCapabilities
-  }
-}, 'capabilities')
-
-export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
-
-/**
- * Determines the appropriate database type based on the platform and the
- * capabilities exposed by the backend.
- *
- * Note: this is asynchronous because we might need to query the backend once.
- */
+/** Return the app database implementation. */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
 }

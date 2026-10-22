@@ -75,9 +75,9 @@ export const AddModelForm = ({
   // provider (the form's first control).
   const providerTriggerRef = useAutofocusOnMount<HTMLButtonElement>()
 
+  // Stays visible when the catalog fails: its "Custom" entry is the manual fallback.
   const showModelSelection =
-    !catalogError &&
-    (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
+    providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url))
 
   return (
     <Form {...form}>

@@ -11,10 +11,10 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { HttpClient } from './http'
 import { getAuthToken } from './auth-token'
 import { createMcpIrohTransport } from './mcp-iroh-transport'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { createProxyFetch } from './proxy-fetch'
 
 /** Remote transport kind. `iroh` dials a peer-to-peer CLI bridge by NodeId/ticket;
- *  http/sse hit a URL through the universal proxy. stdio (local) servers are
+ *  http/sse use `createProxyFetch`: direct on Tauri with Use Cloud Proxy off, proxied otherwise. stdio (local) servers are
  *  connected by THU-575, not here. */
 export type MCPTransportType = 'http' | 'sse' | 'iroh'
 
@@ -87,12 +87,11 @@ export const createMcpTransport = (
   // Authenticate the proxy hop with the Thunderbolt session bearer (the same getter the
   // app-wide ProxyFetchProvider uses) — without it `/v1/proxy` returns 401. The upstream
   // MCP credential rides separately as `X-Proxy-Passthrough-Authorization` (createProxyFetch
-  // promotes the plain `Authorization` we set in buildMcpHeaders). `getProxyEnabled` honours
+  // promotes the plain `Authorization` we set in buildMcpHeaders). The default policy honours
   // the Tauri standalone toggle; web always proxies (CORS forces it).
   const proxyFetch = createProxyFetch({
     cloudUrl,
     getProxyAuthToken: getAuthToken,
-    getProxyEnabled: () => computeEffectiveProxyEnabled(),
   })
   const options = {
     fetch: (input: string | URL, init?: RequestInit) => proxyFetch(input, init),

@@ -2748,6 +2748,10 @@ msgstr "A validação do OAuth falhou"
 msgid "Objects"
 msgstr "Objetos"
 
+#: src/settings/preferences.tsx
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. As alterações serão sincronizadas quando você voltar a ficar online."
@@ -4733,8 +4737,8 @@ msgid "What's in it?"
 msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-msgstr "Quando ativado, as solicitações passam pelo proxy na nuvem do Thunderbolt."
+#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgstr "Quando ativado, as solicitações passam pelo proxy na nuvem do Thunderbolt."
 
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"

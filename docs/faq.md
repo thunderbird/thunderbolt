@@ -68,7 +68,7 @@ Sync and authentication stay inside your deployment, and prompts go wherever you
 | A cloud provider with your key      | That provider                                                                                    |
 | A system-managed confidential model | A hardware-isolated enclave outside your network, which neither the vendor nor you can read into |
 
-Provider calls do not go straight from the app. They are relayed through your own backend, which forwards the bytes and hands back the response. Browsers cannot call most provider APIs directly, and the published desktop and mobile builds take the same path. The user's key passes through untouched and is never stored, and your access logs record the destination hostname but not the request path.
+Desktop and mobile call providers directly from the device by default. **Settings → Preferences → Network → Use Cloud Proxy** opts into routing these requests through your backend. The web app always uses the backend because browsers cannot call most provider APIs directly. Custom loopback models always connect directly. For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy. When relaying, the backend forwards the user's key untouched without storing it, and access logs record the destination hostname but not the request path.
 
 ### Are file attachments stored on the server?
 
@@ -124,7 +124,7 @@ Override them with `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYM
 
 ### Are user API keys visible to the server?
 
-Not stored, no. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync, so no central copy exists and a user who signs in on a second device has to enter it again there, or bring it across in a data export. The key does pass through your server on each request, because the browser cannot call most provider APIs directly: it is forwarded and discarded, never written down, and access logs record only the destination hostname. A user's own Tinfoil key is the exception, going straight to the enclave.
+Not stored, no. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync, so no central copy exists and a user who signs in on a second device has to enter it again there, or bring it across in a data export. The key passes through your server in the web app and when **Use Cloud Proxy** is on in the desktop or mobile app: it is forwarded and discarded, never written down, and access logs record only the destination hostname. With the switch off (the default in desktop and mobile), provider requests go directly from the device. With your own Tinfoil key, Thunderbolt verifies Tinfoil's protected server before sending requests directly to it.
 
 ## Running it
 

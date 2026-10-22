@@ -117,9 +117,9 @@ Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load
 
 Confidential models are the ones that run inside a hardware-isolated enclave, which the app verifies before it sends anything. See [Models and providers](./models.md) for what that means in practice.
 
-Two paths reach hosts you cannot list in advance. A user who supplies their own provider key, or connects a tool server over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools), has those requests forwarded by your API service, because a browser cannot call most of those endpoints itself. Pasting a link also makes the server fetch that page to build a preview. A strict outbound allowlist will break both. The hosted agent's MCP servers, by contrast, are hosts you name yourself in `AGENT_MCP_SERVERS`; add them to the allowlist if you set one.
+Two paths reach hosts you cannot list in advance. A user who supplies their own provider key, or connects a tool server over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools), has those requests forwarded by your API service in the web app and in desktop/mobile with **Use Cloud Proxy** on. With it off (the default) in desktop and mobile, own-key model and HTTP/SSE MCP traffic goes directly from the device. Pasting a link also makes the server fetch that page to build a preview. A strict outbound allowlist will break both. The hosted agent's MCP servers, by contrast, are hosts you name yourself in `AGENT_MCP_SERVERS`; add them to the allowlist if you set one.
 
-Every published build reaches model providers through your server, desktop and mobile included. A direct device-to-provider path exists in the source, but no released build enables the flag that turns it on, so plan outbound access from your server.
+Plan outbound access from your server for the web app and desktop/mobile users who enable **Use Cloud Proxy**. Desktop and mobile users with it off need outbound access from their devices instead. Custom loopback models always connect directly from the device.
 
 ## Identity
 

@@ -9,9 +9,11 @@ operator of a deployment.
 
 Conversations live on each device first, and reach your server only once sync is on for that device.
 Synced content is encrypted on the device, so you cannot read a user's chats from your database
-unless you run organizational key escrow, though every turn still passes through your relay in
-plaintext. Provider API keys stay on the device that entered them and never reach your server or
-another device. Uploaded files stay on the device too, and are sent only inside the request that
+unless you run organizational key escrow. Own-key model and HTTP/SSE MCP traffic passes through
+your Thunderbolt server in the web app and in desktop/mobile with **Use Cloud Proxy** on. With it
+off (the default) in desktop and mobile, those requests go directly from the device. Provider API
+keys are stored only on the device that entered them; a relayed request forwards the key without
+storing it. Uploaded files stay on the device too, and are sent only inside the request that
 answers that turn.
 
 A prompt goes to whichever model provider answers it, and to a web search provider if the model
@@ -93,22 +95,23 @@ request.
 
 ## What leaves your deployment
 
-| Destination                                    | What it receives                                                                                                                           | How to stop it                                                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model providers the user adds                  | The prompt, conversation history, and attachments, plus the user's own API key                                                             | Point users at a local model server instead                                                                                                     |
-| Tool servers and external agents the user adds | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential | `ALLOW_CUSTOM_AGENTS=false` hides the add-agent control; it is not enforced server-side. MCP servers have no equivalent switch                  |
-| Managed models you configure                   | Depends on the tier, see below                                                                                                             | Leave the provider keys unset                                                                                                                   |
-| Exa (web search, page fetch)                   | The search query, and the URL of any page the model reads                                                                                  | Leave `EXA_API_KEY` unset and neither tool can call out. A user can also switch the **Thunderbolt** connection off under Settings → Connections |
-| Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                               | Not separately configurable today                                                                                                               |
-| Resend                                         | The recipient address for sign-in codes                                                                                                    | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
-| PostHog                                        | Product analytics, never prompt or response content                                                                                        | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
-| The Thunderbolt team                           | Nothing beyond the desktop update check, unless you configure debug transcript forwarding                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
-| The update feed (desktop only)                 | App version, OS, architecture and IP, shortly after each launch                                                                            | Rebuild the app with `updater.endpoints` removed                                                                                                |
+| Destination                                    | What it receives                                                                                                                                                                                                                                                        | How to stop it                                                                                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model providers the user adds                  | The prompt, conversation history, and attachments, plus the user's own API key. With Use Cloud Proxy off (the desktop/mobile default), providers get requests directly from the device and see its IP address                                                           | Point users at a local model server instead                                                                                                     |
+| Tool servers and external agents the user adds | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential. With Use Cloud Proxy off (the desktop/mobile default), servers get requests directly from the device and see its IP address | `ALLOW_CUSTOM_AGENTS=false` hides the add-agent control; it is not enforced server-side. MCP servers have no equivalent switch                  |
+| Managed models you configure                   | Depends on the tier, see below                                                                                                                                                                                                                                          | Leave the provider keys unset                                                                                                                   |
+| Exa (web search, page fetch)                   | The search query, and the URL of any page the model reads                                                                                                                                                                                                               | Leave `EXA_API_KEY` unset and neither tool can call out. A user can also switch the **Thunderbolt** connection off under Settings → Connections |
+| Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                                                                                                                                                            | Not separately configurable today                                                                                                               |
+| Resend                                         | The recipient address for sign-in codes                                                                                                                                                                                                                                 | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
+| PostHog                                        | Product analytics, never prompt or response content                                                                                                                                                                                                                     | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
+| The Thunderbolt team                           | Nothing beyond the desktop update check, unless you configure debug transcript forwarding                                                                                                                                                                               | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
+| The update feed (desktop only)                 | App version, OS, architecture and IP, shortly after each launch                                                                                                                                                                                                         | Rebuild the app with `updater.endpoints` removed                                                                                                |
 
-Requests to a user-added provider or tool server pass through your server, because a browser cannot
-call most provider APIs directly. Your server forwards the bytes and the user's credential untouched
-and stores neither. Access logs record the upstream hostname, not the full URL, so a user's browsing
-is not written into your logs.
+Own-key model and HTTP/SSE MCP requests pass through your Thunderbolt server in the web app
+and in desktop/mobile with **Use Cloud Proxy** on. With it off (the default) in desktop and mobile,
+they go directly from the device. When relaying, your server forwards the bytes and the user's
+credential untouched and stores neither. Access logs record the upstream hostname, not the full URL,
+so a user's browsing is not written into your logs.
 
 > Tracing is the exception. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, each request's headers are
 > recorded alongside the trace, and those headers carry the forwarded credential and the full
@@ -117,7 +120,8 @@ is not written into your logs.
 A model server on the user's own machine, such as Ollama or LM Studio, is the exception: the app
 calls it directly, so the prompt and reply never cross your infrastructure. The rest of the turn
 still does, including synced rows, link previews, web-search calls and analytics. The bypass covers
-loopback addresses only, so a model server elsewhere on the LAN is not included.
+loopback models on every platform. Desktop and mobile can also reach models and HTTP/SSE MCP
+servers elsewhere on the LAN directly with Use Cloud Proxy off.
 
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
@@ -199,12 +203,14 @@ user's conversations. What follows is about direct access to your own database a
   request reached.
 - Every field outside the encrypted list above, for every account with sync on.
 - Rows synced in plain text before a deployment upgraded to always-on encryption.
-- Plaintext prompts, replies and attachments in transit, for every model except one on the user's own
-  loopback address. Encryption covers stored rows, not the relay.
+- Plaintext prompts, replies and attachments in transit for requests relayed through your server:
+  own-key models in the web app or with Use Cloud Proxy on in desktop/mobile, and managed models
+  except confidential inference. Direct device requests bypass the relay. Encryption covers stored rows.
 
 **You cannot see**
 
-- Provider API keys, tool server credentials, or external agent credentials. None are ever uploaded.
+- Stored provider API keys, tool server credentials, or external agent credentials. They are excluded
+  from sync, but own-key model and HTTP/SSE MCP credentials pass through your server in relayed requests.
 - Uploaded file contents, which never reach your server for storage.
 - Prompts or responses on the confidential inference tier.
 - Encrypted content, including messages, with no way to recover it for a user who loses every

@@ -170,7 +170,7 @@ const distanceUnitOptions = ['metric', 'imperial'] as const
 const temperatureUnitOptions = ['c', 'f'] as const
 const timeFormatOptions = ['12h', '24h'] as const
 
-export default function PreferencesSettingsPage() {
+const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: () => boolean }) => {
   const { t } = useLingui()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
@@ -194,17 +194,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
-  const runningInTauri = isTauri()
+  const runningInTauri = isStandalone()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyDisabled = !runningInTauri || (!isAuthenticated && !effectiveProxyEnabled)
   const proxyTooltipReason = !runningInTauri
     ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
     : t`Sign in to enable cloud proxy.`
-  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -1012,32 +1012,33 @@ export default function PreferencesSettingsPage() {
               <Trans>Use Cloud Proxy</Trans>
             </label>
             <p className="text-sm text-muted-foreground">
-              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
+              <Trans>
+                Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's
+                backend. Local (loopback) models always connect directly.
+              </Trans>
             </p>
           </div>
-          {proxyDisabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label={proxyTooltipReason}>
-                  <Switch
-                    checked={proxyChecked}
-                    disabled
-                    aria-label={t`Use Cloud Proxy`}
-                    className="pointer-events-none"
-                  />
-                </span>
-              </TooltipTrigger>
+          <Tooltip open={proxyDisabled && tooltipOpen} onOpenChange={setTooltipOpen}>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={proxyDisabled ? 0 : undefined}
+                aria-label={proxyDisabled ? proxyTooltipReason : undefined}
+              >
+                <Switch
+                  checked={effectiveProxyEnabled}
+                  onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+                  disabled={proxyDisabled}
+                  aria-label={t`Use Cloud Proxy`}
+                  className={proxyDisabled ? 'pointer-events-none' : undefined}
+                />
+              </span>
+            </TooltipTrigger>
+            {proxyDisabled && (
               <TooltipContent side="top">
                 <p>{proxyTooltipReason}</p>
               </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch
-              checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label={t`Use Cloud Proxy`}
-            />
-          )}
+            )}
+          </Tooltip>
         </div>
       </SectionCard>
 
@@ -1286,3 +1287,5 @@ export default function PreferencesSettingsPage() {
     </SettingsPageShell>
   )
 }
+
+export default PreferencesSettingsPage

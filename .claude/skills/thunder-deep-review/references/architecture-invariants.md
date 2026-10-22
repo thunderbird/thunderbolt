@@ -3,6 +3,7 @@
 Global properties that survive across subsystems. Verify any change against the relevant ones; cite `INV-NN` when a finding rests on one. Condensed from the architecture deep-dive — read the full `01..10-*.md` docs for detail.
 
 ## Index (titles)
+
 - Identity & Tenancy: INV-01..05
 - Trust & Auth: INV-06..13
 - E2E Encryption: INV-14..29
@@ -14,6 +15,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - Tauri Shell: INV-75..80
 
 ## Identity & Tenancy
+
 - **INV-01** `user_id` always from JWT, never client payload; the sync streams scope every row to `auth.user_id()`. Cross-tenant leak structurally impossible.
 - **INV-02** `X-Device-ID` mandatory on every PowerSync token request + upload (400 `DEVICE_ID_REQUIRED`).
 - **INV-03** Device id is client-generated UUID v4 in `localStorage[thunderbolt_device_id]`; backend never mints.
@@ -21,6 +23,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-05** PR-preview envs bypass auth (`shouldBypassWaitlist`).
 
 ## Trust & Authentication
+
 - **INV-06** Bearer = `rawToken.HMAC_b64`; verified with `timingSafeEqual`; PowerSync path-2 verifies signature independently.
 - **INV-07** `tauri://localhost` always trusted origin; backend's own origin auto-added.
 - **INV-08** SSO sign-in links to an existing user only through the `resolveUser` hook, and only when that user's email is verified; the adapter runs native transactions only when authMode ∈ {oidc, saml}.
@@ -31,6 +34,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-13** Post-update redirect flag set before relaunch; consumed once.
 
 ## E2E Encryption (always on)
+
 - **INV-14** CK is AES-256-GCM, single algo/length everywhere.
 - **INV-15** Hybrid envelope V1 (`0x01`), exactly 1194 bytes.
 - **INV-16** Wrapping key one-shot, HKDF-SHA-256 over `ssEcdh||ssMlkem`.
@@ -49,6 +53,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-29** Approve-device never touches local non-extractable CK.
 
 ## Sync Pipeline
+
 - **INV-30** Lines without bucket data and non-line commands reach `SqliteBucketStorage.control()` byte-identical; sync-data lines are re-encoded in their original format.
 - **INV-31** Re-encoded payload always same wire format (JSON/BSON in = out).
 - **INV-32** Two sync worker hostings of the same `ThunderboltSharedSyncImplementation` — custom SharedWorker (Chrome/Edge/FF) vs dedicated Worker (Safari/iOS/Tauri); the main-thread adapter carries sync only when it runs in the tab (Android, IndexedDB fallback).
@@ -59,6 +64,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-37** Error→reset mapping: 410→account_deleted; 403 DEVICE_DISCONNECTED→device_revoked; 409 DEVICE_ID_TAKEN→reset; 400 DEVICE_ID_REQUIRED→reset; 401→session_expired, which re-asks get-session; get-session answers a revoked X-Device-ID with 403 DEVICE_DISCONNECTED, token or not.
 
 ## Persistence & Soft-Delete
+
 - **INV-38** Frontend NEVER hard-deletes — `deletedAt = nowIso()`. Hard delete only in account/device flows.
 - **INV-39** Backend prefers soft-delete; hard delete only for account deletion, PowerSync DELETE, device revoke.
 - **INV-40** `settings` is the only frontend table without `deletedAt` (only hard-delete in frontend DAL).
@@ -72,6 +78,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-48** `defaultHash` is the modification tracker — `update*` strips it; `reset*ToDefault` recomputes.
 
 ## Backend Skeleton
+
 - **INV-49** Single Elysia tree at `/v1`; Better Auth uses `.all('/*')` not `.mount()` (mount bypasses rate limiting).
 - **INV-50** `safeErrorHandler` re-applied per plugin (Elysia confines `onError`).
 - **INV-51** Error envelope always `{success:false, data:null, error:reasonPhrase}`; internals never leak.
@@ -87,26 +94,29 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-61** IP-keyed rate limit skips `'unknown'`.
 
 ## AI / Chat / MCP
+
 - **INV-62** User's outbound message persisted before model invoked (crash-safe).
 - **INV-63** Partial assistant messages persisted ≤ every 200ms while streaming.
 - **INV-64** `stepCountIs(maxSteps)` is the only stop condition; final-step nudge disables tools.
 - **INV-65** Backend `/v1/inference/*` only accepts `stream:true`; privileged roles after `messages[0]` downgraded to user.
-- **INV-66** MCP traffic rides universal proxy `/v1/proxy`; proxy hop authed with session bearer, upstream MCP cred rides as `X-Proxy-Passthrough-Authorization`.
+- **INV-66** HTTP/SSE MCP is device-direct on Tauri with Use Cloud Proxy off (the default); web and Tauri with it on use `/v1/proxy`, authenticated with the session bearer/cookie and the upstream credential in `X-Proxy-Passthrough-Authorization`.
 - **INV-67** PostHog `privacy_mode===true` when configured; conversation content never in `$ai_input`/`$ai_output`.
 - **INV-68** MCP server config AND credentials are local-only (never synced/E2EE'd); `mcp_secrets` is bearer|oauth union.
 - **INV-69** Encryption mismatch fatal — `chatThread.isEncrypted !== selectedModel.isConfidential` throws synchronously.
 - **INV-70** Widget tags must be self-closing `<widget:name … />`; parser silently drops invalid widgets.
 
 ## Frontend Devices & Reset
+
 - **INV-71** Single canonical reset: `clearLocalData()` → `window.location.replace(...)`.
 - **INV-72** Current-device-revoked dual-tracked (`powersyncCredentialsInvalid` event + React Query watcher).
 - **INV-73** Sign-in modal suppressed once a reset (revocation or deletion) is under way.
 - **INV-74** `hadDeviceOnceRef` distinguishes first-load from post-deletion sync wipe.
 
 ## Tauri Shell
+
 - **INV-75** Window hidden until React mounts (`visible:false`).
 - **INV-76** Single instance per OS (focuses existing window).
-- **INV-77** `tauri-plugin-http` capability gated by `native_fetch` flag.
+- **INV-77** `tauri-plugin-http` is registered unconditionally on desktop and mobile; native requests need no capability probe.
 - **INV-78** CSP `connect-src` explicit allow (backend 8000, Ollama 11434); `script-src 'self'`.
 - **INV-79** Backend proxy CSP `sandbox` — every proxied response sets sandbox + `Content-Disposition: attachment` + `nosniff` + CORP.
 - **INV-80** `createSafeFetch` IP-pins every redirect hop (DNS before connect; max 5 redirects).

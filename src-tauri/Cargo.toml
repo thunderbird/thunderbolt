@@ -15,10 +15,6 @@ default-run = "thunderbolt"
 name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[features]
-default = []
-native_fetch = []
-
 [workspace]
 members = ["plugins/tauri-plugin-passkey"]
 default-members = ["."]
@@ -51,7 +47,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 hex = "0.4"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = "2.5.9"
+tauri-plugin-http = { version = "2.5.9", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "charset", "macos-system-configuration"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.4"

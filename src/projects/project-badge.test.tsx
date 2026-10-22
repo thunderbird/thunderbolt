@@ -13,6 +13,7 @@ import { ProjectBadge } from './project-badge'
 
 afterEach(() => {
   cleanup()
+  useChatStore.setState({ currentSessionId: null, sessions: new Map() })
   useConfigStore.setState({ config: {}, configLoaded: false })
 })
 

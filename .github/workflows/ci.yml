@@ -49,6 +49,7 @@ jobs:
               - 'src-tauri/build.rs'
               - 'src-tauri/rust-toolchain.toml'
               - 'src-tauri/.cargo/**'
+              - 'src-tauri/capabilities/**'
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'

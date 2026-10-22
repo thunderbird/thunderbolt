@@ -12,7 +12,7 @@ import { getAuthToken } from './auth-token'
 import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
 import { isUnauthorizedError } from './mcp-errors'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { createProxyFetch } from './proxy-fetch'
 
 type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
 type MCPTools = Awaited<ReturnType<SdkMcpClient['tools']>>
@@ -106,7 +106,6 @@ export const resolveMcpAccessToken = async (
     const fetchFn = createProxyFetch({
       cloudUrl,
       getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
     })
     return ensureValidToken(db, serverId, fetchFn)
   }

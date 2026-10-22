@@ -19,6 +19,7 @@ import { createModel, getAvailableModels } from '@/dal'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
+import { addableProviders } from './model-policy'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
@@ -31,7 +32,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['anthropic', 'openai', 'custom', 'openrouter', 'otari', 'tinfoil']),
+      provider: z.enum(addableProviders),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),

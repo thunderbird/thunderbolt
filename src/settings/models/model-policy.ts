@@ -4,6 +4,15 @@
 
 import type { Model } from '@/types'
 
+export const addableProviders = [
+  'anthropic',
+  'openai',
+  'custom',
+  'openrouter',
+  'otari',
+  'tinfoil',
+] as const satisfies readonly Model['provider'][]
+
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 
 /** Maps an API-key edit to DAL semantics: keep → undefined, clear → null, replace → the value. */

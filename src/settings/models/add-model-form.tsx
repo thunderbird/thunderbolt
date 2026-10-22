@@ -15,16 +15,10 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
-import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { addableProviders, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 import { customProviderLabel, providerLabels } from './model-presentation'
 import type { AddModelFormValues } from './use-add-model-form'
-
-/** User-configurable providers in display order; Thunderbolt models arrive from the deployment. */
-const providerOptions = (Object.keys(providerLabels) as Model['provider'][]).filter(
-  (provider) => provider !== 'thunderbolt',
-)
 
 type AddModelFormProps = {
   form: UseFormReturn<AddModelFormValues>
@@ -102,7 +96,7 @@ export const AddModelForm = ({
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerOptions.map((provider) => (
+                    {addableProviders.map((provider) => (
                       <SelectItem key={provider} value={provider}>
                         {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
                       </SelectItem>

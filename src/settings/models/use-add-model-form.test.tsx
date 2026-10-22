@@ -16,6 +16,7 @@ import { stubJsonResponse } from '@/test-utils/http'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
+import { addableProviders } from './model-policy'
 import { createAddModelFormSchema, generateModelName, useAddModelForm } from './use-add-model-form'
 
 describe('generateModelName', () => {
@@ -46,6 +47,17 @@ describe('generateModelName', () => {
 })
 
 describe('Otari form validation', () => {
+  it('accepts every addable provider and excludes the managed provider', () => {
+    const schema = createAddModelFormSchema(i18n)
+    for (const provider of addableProviders) {
+      expect(
+        schema.safeParse({ provider, name: 'Model', model: 'model', apiKey: 'key', url: 'https://example.com/v1' })
+          .success,
+      ).toBe(true)
+    }
+    expect(addableProviders).not.toContain('thunderbolt')
+  })
+
   it('requires a token and model, and uses the fixed hosted URL', () => {
     const schema = createAddModelFormSchema(i18n)
     const values = { provider: 'otari', name: 'GPT', model: 'openai:gpt-4o', apiKey: 'tk-user' }

@@ -11,6 +11,7 @@ const emptyContext: ArtifactContextSnapshot = { title: null, context: null }
 type ArtifactContextState = {
   sessions: ReadonlyMap<string, ArtifactContextSnapshot>
   openArtifact: (title: string, owner: string) => void
+  renameArtifact: (title: string, owner: string) => void
   setContext: (context: ArtifactContext, owner: string) => void
   closeArtifact: (owner: string) => void
 }
@@ -20,6 +21,14 @@ export const useArtifactContextStore = create<ArtifactContextState>((set) => ({
   sessions: new Map(),
   openArtifact: (title, owner) =>
     set((state) => ({ sessions: new Map(state.sessions).set(owner, { title, context: null }) })),
+  renameArtifact: (title, owner) =>
+    set((state) => {
+      const session = state.sessions.get(owner)
+      if (!session || session.title === title) {
+        return state
+      }
+      return { sessions: new Map(state.sessions).set(owner, { ...session, title }) }
+    }),
   setContext: (context, owner) =>
     set((state) => {
       const session = state.sessions.get(owner)

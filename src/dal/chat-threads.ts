@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultChatTitle } from '@/lib/constants'
+import { encodeBase64Url } from '@shared/base64url'
 
-import { and, eq, exists, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable, settingsTable } from '../db/tables'
 import { clearNullableColumns, nowIso } from '../lib/utils'
@@ -185,25 +186,28 @@ export const getContextSizeForThread = (db: AnyDrizzleDatabase, threadId: string
 
 /** Scrub artifact presentation preferences along with the chats that own their source messages. */
 const deleteChatArtifactPresentation = async (db: AnyDrizzleDatabase, chats: SQL, deletedAt: string): Promise<void> => {
-  const titlePrefix = sql`'artifact_title.' || ${chatMessagesTable.id} || '-'`
-  const deletedPrefix = sql`'artifact_deleted_at.' || ${chatMessagesTable.id} || '-'`
-  const source = db
+  const messages = await db
     .select({ id: chatMessagesTable.id })
     .from(chatMessagesTable)
     .innerJoin(chatThreadsTable, eq(chatThreadsTable.id, chatMessagesTable.chatThreadId))
-    .where(
-      and(
-        chats,
-        or(
-          sql`substr(${settingsTable.key}, 1, length(${titlePrefix})) = ${titlePrefix}`,
-          sql`substr(${settingsTable.key}, 1, length(${deletedPrefix})) = ${deletedPrefix}`,
-        ),
-      ),
-    )
+    .where(chats)
+  const prefixes = messages.flatMap(({ id }) =>
+    [`${id}-`, `html:${encodeBase64Url(id)}:`].flatMap((source) =>
+      ['artifact_title.', 'artifact_deleted_at.', 'artifact-pin:'].map((key) => `${key}${source}`),
+    ),
+  )
   await db
     .update(settingsTable)
     .set({ value: null, updatedAt: deletedAt })
-    .where(and(isNotNull(settingsTable.value), exists(source)))
+    .where(
+      and(
+        isNotNull(settingsTable.value),
+        sql`EXISTS (
+      SELECT 1 FROM json_each(${JSON.stringify(prefixes)}) AS artifact_prefix
+      WHERE substr(${settingsTable.key}, 1, length(artifact_prefix.value)) = artifact_prefix.value
+    )`,
+      ),
+    )
 }
 
 /**

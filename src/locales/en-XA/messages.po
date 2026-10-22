@@ -507,7 +507,6 @@ msgstr ""
 
 #: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/artifact-section.tsx
-#: src/layout/sidebar/project-tree-menu.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
@@ -1149,7 +1148,7 @@ msgstr ""
 msgid "Could not delete the artifact. Please try again."
 msgstr ""
 
-#: src/projects/use-project-actions-state.ts
+#: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the project. Please try again."
 msgstr ""
 
@@ -1518,7 +1517,7 @@ msgstr ""
 msgid "Delete My Account"
 msgstr ""
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
 msgstr ""
 
@@ -1547,7 +1546,7 @@ msgstr ""
 msgid "Delete this model from your configured models?"
 msgstr ""
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete this project?"
 msgstr ""
 
@@ -2335,7 +2334,7 @@ msgstr ""
 msgid "iOS requires a secure URL (wss://)"
 msgstr ""
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr ""
 
@@ -2649,7 +2648,6 @@ msgstr ""
 msgid "New Agent"
 msgstr ""
 
-#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
@@ -3142,6 +3140,11 @@ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
+msgstr ""
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin project"
 msgstr ""
 
 #: src/projects/project-artifact-context-menu.tsx
@@ -4775,6 +4778,11 @@ msgstr ""
 #: src/projects/project-artifact-context-menu.tsx
 #: src/projects/project-artifact-workspace.tsx
 msgid "Unpin from project"
+msgstr ""
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Unpin project"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx

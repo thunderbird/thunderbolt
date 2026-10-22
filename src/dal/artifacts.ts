@@ -87,10 +87,12 @@ const parseMessageParts = (value: unknown): UIMessage['parts'] => {
 /** Resolve source rows without maintaining a second artifact content store. */
 export const artifactsFromMessages = (rows: readonly ArtifactMessageRow[]): Artifact[] =>
   rows.flatMap((row) =>
-    parseMessageParts(row.parts).flatMap((part) => {
-      const artifact = toHtmlArtifact(row.id, row.chatThreadId, part)
-      return artifact ? [artifact] : []
-    }),
+    parseMessageParts(row.parts)
+      .filter(isRenderHtmlPart)
+      .flatMap((part, index) => {
+        const artifact = toHtmlArtifact(row.id, row.chatThreadId, part, index)
+        return artifact ? [artifact] : []
+      }),
   )
 
 /** Keep a verified, not-yet-saved snapshot until persistence provides a newer verdict or a tombstone. */
@@ -105,16 +107,16 @@ export const resolvePresentedArtifact = (
     return null
   }
   const toolCallId = snapshot.reference.toolCallId
-  const part = parseMessageParts(row.parts).find(
-    (candidate) => isRenderHtmlPart(candidate) && candidate.toolCallId === toolCallId,
-  )
+  const parts = parseMessageParts(row.parts).filter(isRenderHtmlPart)
+  const index = parts.findIndex((candidate) => candidate.toolCallId === toolCallId)
+  const part = parts[index]
   if (!part || !isRenderHtmlPart(part)) {
     return snapshot
   }
   if (part.state === 'input-streaming' || part.state === 'input-available') {
     return snapshot
   }
-  return toHtmlArtifact(row.id, row.chatThreadId, part)
+  return toHtmlArtifact(row.id, row.chatThreadId, part, index)
 }
 
 /** Read only valid, explicitly pinned identities; malformed preferences cannot create renderable content. */

@@ -8,18 +8,24 @@ export const artifactPresentationKeys = (artifactId: string) => ({
   deletedAt: `artifact_deleted_at.${artifactId}`,
 })
 
+/** Canonical preferences take priority; older project references remain readable. */
+export const artifactPresentationIds = (artifact: { id: string; legacyIds?: readonly string[] }): string[] => [
+  artifact.id,
+  ...(artifact.legacyIds ?? []),
+]
+
 /** Apply user names and soft deletion without altering the original tool output or its source chat. */
-export const applyArtifactPresentation = <T extends { id: string; title: string }>(
+export const applyArtifactPresentation = <T extends { id: string; title: string; legacyIds?: readonly string[] }>(
   artifacts: readonly T[],
   settings: readonly { key: string; value: string | null }[],
 ): T[] => {
   const values = new Map(settings.map(({ key, value }) => [key, value]))
   return artifacts.flatMap((artifact) => {
-    const keys = artifactPresentationKeys(artifact.id)
-    if (values.get(keys.deletedAt)) {
+    const keys = artifactPresentationIds(artifact).map(artifactPresentationKeys)
+    if (keys.some((key) => values.get(key.deletedAt))) {
       return []
     }
-    const title = values.get(keys.title)?.trim() || artifact.title
+    const title = keys.map((key) => values.get(key.title)?.trim()).find(Boolean) || artifact.title
     return [title === artifact.title ? artifact : { ...artifact, title }]
   })
 }

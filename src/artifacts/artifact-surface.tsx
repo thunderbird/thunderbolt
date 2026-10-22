@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
 import { EmbeddedErrorStrip } from '@/components/embedded'
 import { cn } from '@/lib/utils'
@@ -39,14 +39,20 @@ const HtmlArtifactSurface = ({ html, title, owner, onAsk, autoHeight, allowScrip
     setRuntimeError(null)
   }
 
+  const openContext = useEffectEvent(() => useArtifactContextStore.getState().openArtifact(title, owner))
+
   // Context is an external agent-facing resource, scoped to this rendered document.
   useEffect(() => {
     if (!allowScripts) {
       return
     }
-    useArtifactContextStore.getState().openArtifact(title, owner)
+    openContext()
     return () => useArtifactContextStore.getState().closeArtifact(owner)
-  }, [html, title, owner, allowScripts])
+  }, [html, owner, allowScripts])
+
+  useEffect(() => {
+    useArtifactContextStore.getState().renameArtifact(title, owner)
+  }, [title, owner, allowScripts])
 
   const publishContext = useCallback(
     (context: ArtifactContext) => {

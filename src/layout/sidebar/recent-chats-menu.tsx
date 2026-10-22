@@ -79,7 +79,7 @@ export const RecentChatsMenu = ({
         </div>
         <ChatMenuItems chatThreads={chatThreads} currentChatThreadId={currentChatThreadId} onChatClick={onChatClick} />
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={createNewChat}>
+        <DropdownMenuItem onSelect={() => createNewChat()}>
           <Plus />
           <Trans>New chat</Trans>
         </DropdownMenuItem>

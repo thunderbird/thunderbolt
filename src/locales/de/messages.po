@@ -507,7 +507,6 @@ msgstr ""
 
 #: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/artifact-section.tsx
-#: src/layout/sidebar/project-tree-menu.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
@@ -1149,7 +1148,7 @@ msgstr "Das Projekt konnte nicht erstellt werden."
 msgid "Could not delete the artifact. Please try again."
 msgstr ""
 
-#: src/projects/use-project-actions-state.ts
+#: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the project. Please try again."
 msgstr ""
 
@@ -1518,7 +1517,7 @@ msgstr "Modell löschen"
 msgid "Delete My Account"
 msgstr "Mein Konto löschen"
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
 msgstr "Projekt löschen"
 
@@ -1547,7 +1546,7 @@ msgstr "Diesen MCP-Server und seine gespeicherten Anmeldedaten löschen?"
 msgid "Delete this model from your configured models?"
 msgstr "Dieses Modell aus Ihren konfigurierten Modellen löschen?"
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete this project?"
 msgstr "Dieses Projekt löschen?"
 
@@ -2335,7 +2334,7 @@ msgstr "Ungültiger Bestätigungslink. Bitte fordern Sie einen neuen an."
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS erfordert eine sichere URL (wss://)"
 
-#: src/projects/project-actions.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Die Anweisungen werden entfernt. Chats im Projekt bleiben erhalten und werden zu normalen Chats."
 
@@ -2649,7 +2648,6 @@ msgstr "Netzwerkanfrage fehlgeschlagen (der Browser hat die Anfrage blockiert od
 msgid "New Agent"
 msgstr "Neuer Agent"
 
-#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
@@ -3143,6 +3141,11 @@ msgstr ""
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "Pin-Limit erreicht ({maxPinnedSkills}). Lösen Sie zuerst einen."
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin project"
+msgstr ""
 
 #: src/projects/project-artifact-context-menu.tsx
 #: src/projects/project-artifact-workspace.tsx
@@ -4775,6 +4778,11 @@ msgstr ""
 #: src/projects/project-artifact-context-menu.tsx
 #: src/projects/project-artifact-workspace.tsx
 msgid "Unpin from project"
+msgstr ""
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Unpin project"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx

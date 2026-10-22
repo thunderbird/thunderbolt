@@ -15,6 +15,7 @@ export type ArtifactReference =
 
 export type Artifact = {
   id: string
+  legacyIds?: readonly string[]
   reference: ArtifactReference
   title: string
   chatThreadId: string | null
@@ -58,6 +59,7 @@ export const toHtmlArtifact = (
   messageId: string,
   chatThreadId: string | null,
   part: UIMessage['parts'][number],
+  legacyIndex?: number,
 ): Artifact | null => {
   if (
     !messageId ||
@@ -76,6 +78,10 @@ export const toHtmlArtifact = (
   const reference: ArtifactReference = { kind: 'html', messageId, toolCallId: part.toolCallId }
   return {
     id: artifactId(reference),
+    legacyIds: [
+      `${messageId}-${part.toolCallId}`,
+      ...(legacyIndex === undefined ? [] : [`${messageId}-${legacyIndex}`]),
+    ],
     reference,
     title: input.title?.trim() || i18n._(untitledArtifact),
     chatThreadId,

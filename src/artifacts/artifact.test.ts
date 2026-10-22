@@ -73,6 +73,7 @@ describe('artifact source adapters', () => {
     expect(artifact).toEqual({
       id: artifactId({ kind: 'html', messageId: 'message-1', toolCallId: 'call-1' }),
       reference: { kind: 'html', messageId: 'message-1', toolCallId: 'call-1' },
+      legacyIds: ['message-1-call-1'],
       title: 'Dashboard',
       chatThreadId: 'chat-1',
       source: { kind: 'html', html: '<h1>Sales</h1>' },

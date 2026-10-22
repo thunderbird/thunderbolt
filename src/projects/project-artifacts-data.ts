@@ -6,9 +6,11 @@ import type { UIMessage } from 'ai'
 import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
 import { artifactId, toHtmlArtifact, type Artifact } from '@/artifacts/artifact'
 import { uuidv7ToDate } from '@/lib/utils'
+import { artifactPresentationIds } from './artifact-presentation'
 
 export type ProjectArtifact = {
   id: string
+  legacyIds?: readonly string[]
   messageId: string
   toolCallId: string
   chatThreadId: string
@@ -53,15 +55,16 @@ export const collectProjectArtifacts = (
       const chatThreadId = row.chatThreadId
       return parseParts(row.parts)
         .filter(isRenderHtmlPart)
-        .flatMap((part) => {
+        .flatMap((part, index) => {
           const input = renderHtmlInput(part)
-          const source = toHtmlArtifact(row.id, chatThreadId, part)
+          const source = toHtmlArtifact(row.id, chatThreadId, part, index)
           if (!source || source.source.kind !== 'html') {
             return []
           }
           return [
             {
               id: source.id,
+              legacyIds: source.legacyIds,
               messageId: row.id,
               toolCallId: part.toolCallId,
               chatThreadId,
@@ -75,8 +78,8 @@ export const collectProjectArtifacts = (
     })
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
-/** Read the synced pin list, ignoring removed artifacts and duplicate/stale references. */
-export const readArtifactPins = (value: string | null, artifacts: readonly Pick<ProjectArtifact, 'id'>[]): string[] => {
+/** Read every saved pin, including sources that have not arrived through sync yet. */
+export const readSavedArtifactPins = (value: string | null): string[] => {
   if (!value) {
     return []
   }
@@ -85,8 +88,7 @@ export const readArtifactPins = (value: string | null, artifacts: readonly Pick<
     if (!Array.isArray(parsed)) {
       throw new Error('Saved artifact pins must be an array')
     }
-    const liveIds = new Set(artifacts.map((artifact) => artifact.id))
-    return [...new Set(parsed.filter((id): id is string => typeof id === 'string' && liveIds.has(id)))]
+    return [...new Set(parsed.filter((id): id is string => typeof id === 'string'))]
   } catch (error) {
     console.error('[projects] Could not read saved artifact pins', error)
     return []
@@ -98,9 +100,30 @@ export const toProjectArtifactSource = (artifact: ProjectArtifact): Artifact => 
   const reference = { kind: 'html' as const, messageId: artifact.messageId, toolCallId: artifact.toolCallId }
   return {
     id: artifactId(reference),
+    legacyIds: artifact.legacyIds,
     reference,
     title: artifact.title,
     chatThreadId: artifact.chatThreadId,
     source: { kind: 'html', html: artifact.html },
   }
+}
+
+/** Only display shortcuts whose source is currently available. */
+export const readArtifactPins = (
+  value: string | null,
+  artifacts: readonly Pick<ProjectArtifact, 'id' | 'legacyIds'>[],
+): string[] => {
+  const liveIds = new Set(artifacts.map((artifact) => artifact.id))
+  return normalizeArtifactPins(readSavedArtifactPins(value), artifacts).filter((id) => liveIds.has(id))
+}
+
+/** Upgrade known aliases on write while retaining pins whose sources have not synced yet. */
+export const normalizeArtifactPins = (
+  ids: readonly string[],
+  artifacts: readonly Pick<ProjectArtifact, 'id' | 'legacyIds'>[],
+): string[] => {
+  const aliases = new Map(
+    artifacts.flatMap((artifact) => artifactPresentationIds(artifact).map((id) => [id, artifact.id] as const)),
+  )
+  return [...new Set(ids.map((id) => aliases.get(id) ?? id))]
 }

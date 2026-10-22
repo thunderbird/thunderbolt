@@ -5,7 +5,7 @@
 import { useConfigStore } from '@/api/config-store'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { getDb } from '@/db/database'
-import { chatThreadsTable } from '@/db/tables'
+import { chatThreadsTable, projectsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
 import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -152,6 +152,27 @@ describe('Sidebar reactivity', () => {
 
     afterEach(() => {
       useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it('keeps chats visible until their live projects arrive through sync', async () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      const projectId = uuidv7()
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: uuidv7(), title: 'Waiting for project', projectId, isEncrypted: 0 })
+      const { triggerChange } = renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads', 'projects'],
+        wrapper: SidebarTestWrapper,
+      })
+      await waitForElement(() => screen.queryByText('Waiting for project'))
+      expect(screen.queryByText('Waiting for project')).not.toBeNull()
+      await getDb().insert(projectsTable).values({ id: projectId, name: 'Synced project' })
+      await act(async () => {
+        triggerChange(['projects'])
+        await getClock().runAllAsync()
+      })
+      await waitForElement(() => screen.queryByText('Synced project'))
+      expect(screen.queryByText('Waiting for project')).toBeNull()
     })
 
     it('offers the Settings section by default', () => {

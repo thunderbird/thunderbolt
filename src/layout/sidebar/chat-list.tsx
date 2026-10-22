@@ -133,7 +133,7 @@ export const ChatList = ({
     <ChatActions
       showSearch={!sharedScrollRef}
       isCollapsed={isCollapsed}
-      showClearAll={hasListContent && !(isMobile && sharedScrollRef)}
+      showClearAll={hasListContent}
       deleteAllChatsMutation={deleteAllChatsMutation}
       deleteAllChatsDialogRef={deleteAllChatsDialogRef}
       onSearchClick={onSearchClick}

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { ArtifactSurface } from './artifact-surface'
 import { artifactId, type Artifact } from './artifact'
 import { getActiveArtifactSession, useArtifactSessionStore } from './artifact-session-store'
-import { getArtifactContextSnapshot } from './artifact-context-store'
+import { getArtifactContextSnapshot, useArtifactContextStore } from './artifact-context-store'
 
 const artifact: Artifact = {
   id: artifactId({ kind: 'html', messageId: 'message', toolCallId: 'call' }),
@@ -20,6 +20,26 @@ const artifact: Artifact = {
 const ask = () => {}
 
 describe('ArtifactSurface', () => {
+  it('preserves frame context on rename but clears it when the document changes', () => {
+    const { container, rerender, unmount } = render(<ArtifactSurface artifact={artifact} onAsk={ask} />)
+    const frame = container.querySelector('iframe')
+    const owner = getActiveArtifactSession()!.owner
+    const context = { title: 'Revenue', summary: 'The selected quarter is Q3.' }
+    act(() => useArtifactContextStore.getState().setContext(context, owner))
+    rerender(<ArtifactSurface artifact={{ ...artifact, title: 'Renamed' }} onAsk={ask} />)
+    expect(container.querySelector('iframe')).toBe(frame)
+    expect(getArtifactContextSnapshot(owner)).toEqual({ title: 'Renamed', context })
+    rerender(
+      <ArtifactSurface
+        artifact={{ ...artifact, title: 'New document', source: { kind: 'html', html: '<h1>New</h1>' } }}
+        onAsk={ask}
+      />,
+    )
+    expect(getArtifactContextSnapshot(owner)).toEqual({ title: 'New document', context: null })
+    unmount()
+    expect(getArtifactContextSnapshot(owner)).toEqual({ title: null, context: null })
+  })
+
   it('keeps scripts-off previews out of agent context and under the offline sandbox', () => {
     const { container } = render(<ArtifactSurface artifact={artifact} onAsk={ask} allowScripts={false} autoHeight />)
     const frame = container.querySelector('iframe')

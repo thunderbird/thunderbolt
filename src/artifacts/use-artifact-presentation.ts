@@ -6,12 +6,21 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
 import { getArtifactPresentationRecords } from '@/dal/project-artifact-presentation'
-import { applyArtifactPresentation, artifactPresentationKeys } from '@/projects/artifact-presentation'
+import {
+  applyArtifactPresentation,
+  artifactPresentationKeys,
+  artifactPresentationIds,
+} from '@/projects/artifact-presentation'
 
 /** Keep names and soft deletion consistent across project, library, pinned and open presentations. */
-export const useArtifactPresentation = <T extends { id: string; title: string }>(artifacts: T[], scope: string) => {
+export const useArtifactPresentation = <T extends { id: string; title: string; legacyIds?: readonly string[] }>(
+  artifacts: T[],
+  scope: string,
+) => {
   const db = useDatabase()
-  const keys = artifacts.flatMap((artifact) => Object.values(artifactPresentationKeys(artifact.id)))
+  const keys = artifacts.flatMap((artifact) =>
+    artifactPresentationIds(artifact).flatMap((id) => Object.values(artifactPresentationKeys(id))),
+  )
   const query = useQuery({
     queryKey: ['artifactPresentation', scope, ...keys],
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === scope ? previous : undefined),
@@ -21,7 +30,9 @@ export const useArtifactPresentation = <T extends { id: string; title: string }>
   const loadedKeys = new Set(records.map((record) => record.key))
   return {
     artifacts: applyArtifactPresentation(
-      artifacts.filter((artifact) => loadedKeys.has(artifactPresentationKeys(artifact.id).deletedAt)),
+      artifacts.filter((artifact) =>
+        artifactPresentationIds(artifact).every((id) => loadedKeys.has(artifactPresentationKeys(id).deletedAt)),
+      ),
       records,
     ),
     loading: query.isLoading,

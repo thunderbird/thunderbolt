@@ -37,8 +37,10 @@ catch, mostly multi-device convergence of default data.
   check starts after reconciliation and binding.
 - **Step 7 preserves the existing native setup boundary before content appears.** Deferring this
   step would extend the window without close-to-tray handling into usable content. On web this step is a no-op.
-  Step 8 does not gate content: analytics attaches after a rendering opportunity. Retry/unmount
-  cancels pending scheduling and prevents old results from replacing the current app state.
+  Step 8 does not gate content: analytics attaches after a rendering opportunity. Hidden tabs use
+  a timer instead, including if the tab becomes hidden while a frame is pending. Browser timer
+  throttling still applies, but initialization does not wait for the tab to become visible.
+  Retry/unmount cancels pending scheduling and prevents old results from replacing the current app state.
 - **`step2b_db_ready` is a bounded `select 1`.** PowerSync defers its expensive ready gate (WASM
   compile, OPFS open, schema replace) to the first query, so absorbing it here keeps `step4`
   measuring reconcile rather than storage setup. The bound matters: a locked or unusable local
@@ -243,8 +245,8 @@ route, sync/encryption state and cache conditions. Report fresh profiles and ret
 separately. A deliberately delayed service is a useful regression scenario, but must be labeled as
 an injected delay rather than representative production latency.
 
-`app_content_ready` follows committed chat content and two animation frames. It preserves an early
-milestone even if analytics attaches later. This is a rendering-opportunity measurement, not proof
+`app_content_ready` follows committed chat content and two animation frames, or a timer when the
+page is hidden. It preserves an early milestone even if analytics attaches later. This is a rendering-opportunity measurement, not proof
 of compositor paint or first-send readiness; a visible onboarding dialog can still cover the
 composer. Keep navigation-to-content alongside spinner-to-content so moving the spinner cannot
 manufacture a gain. Video/filmstrip review supplies the visual check.

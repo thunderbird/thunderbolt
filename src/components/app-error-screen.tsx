@@ -40,11 +40,10 @@ const generateSupportEmail = (error: HandleError) => {
 
 type AppErrorScreenProps = {
   error: HandleError
-  isClearingDatabase: boolean
   onClearDatabase: () => void
 }
 
-export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: AppErrorScreenProps) => {
+export const AppErrorScreen = ({ error, onClearDatabase }: AppErrorScreenProps) => {
   const isDatabaseError = error.code === 'MIGRATION_FAILED' || error.code === 'DATABASE_INIT_FAILED'
 
   return (
@@ -58,8 +57,8 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
         {isDatabaseError && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isClearingDatabase}>
-                {isClearingDatabase ? <Trans>Clearing Database…</Trans> : <Trans>Clear Local Database</Trans>}
+              <Button variant="destructive">
+                <Trans>Clear Local Database</Trans>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>

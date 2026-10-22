@@ -301,7 +301,7 @@ export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
-  const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
+  const { initData, initError, clearDatabase } = useAppInitialization()
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
@@ -353,7 +353,7 @@ export const App = () => {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
         return <StorageUnavailableScreen />
       }
-      return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
+      return <AppErrorScreen error={initError} onClearDatabase={clearDatabase} />
     }
 
     // TODO: PowerSync is our only database provider, so we can safely assert it's not null.

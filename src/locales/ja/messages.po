@@ -795,8 +795,8 @@ msgid "Clear sky"
 msgstr "晴れ"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database…"
-msgstr "データベースを消去しています…"
+#~ msgid "Clearing Database…"
+#~ msgstr "データベースを消去しています…"
 
 #: src/settings/devices.tsx
 msgid "CLI"

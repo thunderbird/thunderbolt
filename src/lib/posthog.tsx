@@ -15,6 +15,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
 // Only fixed startup events are buffered: no unbounded queue of user activity.
+const startupEvents = new Set<EventType>(['app_init_timing', 'app_chat_ready', 'app_content_ready'])
 const pendingStartupEvents = new Map<EventType, Record<string, unknown> | undefined>()
 
 /**
@@ -329,7 +330,7 @@ export const trackEvent = (eventName: EventType, properties?: Record<string, unk
   try {
     if (posthogClient) {
       posthogClient.capture(eventName, properties)
-    } else if (eventName === 'app_chat_ready' || eventName === 'app_init_timing' || eventName === 'app_content_ready') {
+    } else if (startupEvents.has(eventName)) {
       pendingStartupEvents.set(eventName, properties)
     }
   } catch (error) {

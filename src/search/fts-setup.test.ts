@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Database } from 'bun:sqlite'
+import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import type { CommonPowerSyncDatabase } from '@powersync/web'
+import { LockContext, type RawQueryResult, type SqliteRecord, type Transaction } from '@powersync/common'
 import { AppSchema } from '@/db/powersync/schema'
 import type { SearchEntityConfig } from './registry'
 import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql, createSearchIndex } from './fts-setup'
@@ -265,32 +265,41 @@ describe('createSearchIndex transactions', () => {
       const table = AppSchema.tables.find((candidate) => candidate.name === cfg.tableName)!
       sqlite.run(`CREATE TABLE ${table.internalName} (id TEXT PRIMARY KEY, data TEXT)`)
     }
-    const transaction = {
-      execute: async (sql: string) => {
+    const transaction = new (class extends LockContext implements Transaction {
+      async executeRaw(sql: string, parameters: SQLQueryBindings[] = []): Promise<RawQueryResult> {
         await beforeExecute(sql)
-        return sqlite.run(sql)
-      },
-      getAll: async <T>(sql: string, parameters: string[] = []) => sqlite.query(sql).all(...parameters) as T[],
-    }
+        const statement = sqlite.query<SqliteRecord, SQLQueryBindings[]>(sql)
+        const rows = statement.all(...parameters)
+        const columnNames = statement.columnNames
+        return { columnNames, rawRows: rows.map((row) => columnNames.map((name) => row[name])) }
+      }
+      async commit() {
+        sqlite.run('COMMIT')
+      }
+      async rollback() {
+        sqlite.run('ROLLBACK')
+      }
+    })()
     const queue: Promise<void>[] = []
-    const powerSync = {
-      writeTransaction: async (callback: (tx: typeof transaction) => Promise<void>) => {
+    const powerSync: Parameters<typeof createSearchIndex>[0] = {
+      writeTransaction: async <T>(callback: (tx: Transaction) => Promise<T>): Promise<T> => {
         const previous = queue.at(-1)
         const completion = Promise.withResolvers<void>()
         queue.push(completion.promise)
         await previous
         sqlite.run('BEGIN IMMEDIATE')
         try {
-          await callback(transaction)
-          sqlite.run('COMMIT')
+          const result = await callback(transaction)
+          await transaction.commit()
+          return result
         } catch (error) {
-          sqlite.run('ROLLBACK')
+          await transaction.rollback()
           throw error
         } finally {
           completion.resolve()
         }
       },
-    } as unknown as CommonPowerSyncDatabase
+    }
     return { sqlite, powerSync }
   }
 

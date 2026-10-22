@@ -11,16 +11,18 @@ type LoadingProps = {
   size?: number
 }
 
+const spinPeriodMs = 1000
+
 export const Loading: FC<LoadingProps> = ({ className, size = 24 }) => {
   // Startup, auth and route loading mount separate spinners. Share their phase
   // so replacing one with another doesn't visibly restart the rotation.
-  const [animationDelay] = useState(() => `${-(performance.now() % 1000)}ms`)
+  const [animationDelay] = useState(() => `${-(performance.now() % spinPeriodMs)}ms`)
   useEffect(markSpinnerMounted, [])
   return (
     <div className="flex items-center justify-center w-full h-[100vh]">
       <Loader2
         className={`animate-spin text-gray-500 ${className || ''}`}
-        style={{ animationDelay, animationDuration: '1s' }}
+        style={{ animationDelay, animationDuration: `${spinPeriodMs}ms` }}
         size={size}
       />
     </div>

@@ -819,8 +819,8 @@ msgid "Clear sky"
 msgstr "Ciel dégagé"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database…"
-msgstr "Effacement de la base de données…"
+#~ msgid "Clearing Database…"
+#~ msgstr "Effacement de la base de données…"
 
 #: src/settings/devices.tsx
 msgid "CLI"

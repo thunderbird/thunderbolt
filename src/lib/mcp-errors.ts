@@ -8,8 +8,6 @@ import { SseError } from '@modelcontextprotocol/sdk/client/sse.js'
 import { ZodError } from 'zod/v4'
 import { isUnauthorizedError } from './mcp-unauthorized-error'
 
-export { isUnauthorizedError }
-
 /** Expected SDK/transport and response-decoding failures. Only use at the
  * client.tools() IO boundary; keep application tool processing outside its catch. */
 export const isMcpDiscoveryError = (err: unknown): err is Error => {

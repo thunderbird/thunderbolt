@@ -807,8 +807,8 @@ msgid "Clear sky"
 msgstr ""
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database…"
-msgstr ""
+#~ msgid "Clearing Database…"
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "CLI"

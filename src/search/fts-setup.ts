@@ -144,7 +144,9 @@ const resolveInternalName = (tableName: string): string => {
  * the new version in {@link searchMetaTable}. Validation and rebuilding share a
  * write transaction so failed repairs roll back and concurrent callers serialize.
  */
-export const createSearchIndex = async (powerSync: CommonPowerSyncDatabase): Promise<void> => {
+export const createSearchIndex = async (
+  powerSync: Pick<CommonPowerSyncDatabase, 'writeTransaction'>,
+): Promise<void> => {
   await powerSync.writeTransaction(async (transaction) => {
     await transaction.execute(`CREATE TABLE IF NOT EXISTS ${searchMetaTable} (version INTEGER)`)
 

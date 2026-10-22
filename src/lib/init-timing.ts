@@ -45,7 +45,7 @@ export const markSpinnerMounted = (): void => {
   performance.mark('thunderbolt:spinner-mounted')
 }
 
-/** Marks committed chat content after a rendering opportunity, once per page. */
+/** Marks committed chat content after yielding to rendering or a hidden-tab timer, once per page. */
 export const markContentReady = (): Record<string, number | null> | null => {
   if (state.contentReadyMs !== null) {
     return null

@@ -256,6 +256,46 @@ describe('useAppInitialization', () => {
     expect(result.current.initError).toBeUndefined()
   })
 
+  it('clears the previous error while resetting and reports a failed reset', async () => {
+    const database = getCurrentDatabase()!
+    const closing = Promise.withResolvers<void>()
+    const close = spyOn(database, 'close')
+      .mockRejectedValueOnce(new Error('First database close failed'))
+      .mockImplementation(() => closing.promise)
+    const client = createMockHttpClient(mockPostHogConfig)
+    const { result, unmount } = renderHook(() => useAppInitialization(client), {
+      wrapper: createTestProvider({ mockResponse: mockPostHogConfig }),
+    })
+    try {
+      await act(async () => {
+        await getClock().runAllAsync()
+        await result.current.clearDatabase()
+      })
+      expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
+      expect(result.current.isInitializing).toBe(false)
+
+      let clearing: Promise<void> = Promise.resolve()
+      act(() => {
+        clearing = result.current.clearDatabase()
+      })
+      expect(close).toHaveBeenCalledTimes(2)
+      expect(result.current.initError).toBeUndefined()
+      expect(result.current.initData).toBeUndefined()
+      expect(result.current.isInitializing).toBe(true)
+
+      await act(async () => {
+        closing.reject(new Error('Second database close failed'))
+        await clearing
+      })
+      expect(result.current.initError?.code).toBe('DATABASE_INIT_FAILED')
+      expect(result.current.initError?.message).toBe('Failed to clear database')
+      expect(result.current.isInitializing).toBe(false)
+    } finally {
+      unmount()
+      close.mockRestore()
+    }
+  })
+
   it('does not replace a successful retry with an earlier database-reset failure', async () => {
     const database = getCurrentDatabase()!
     const closing = Promise.withResolvers<void>()

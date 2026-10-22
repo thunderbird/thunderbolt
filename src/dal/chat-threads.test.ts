@@ -25,6 +25,9 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './te
 import { nowIso } from '@/lib/utils'
 import { renameProjectArtifact } from './project-artifact-presentation'
 import { artifactPresentationKeys } from '@/projects/artifact-presentation'
+import { artifactId } from '@/artifacts/artifact'
+import { artifactPinKey, setArtifactPinned } from './artifacts'
+import { softDeleteProjectArtifact } from './project-artifact-presentation'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -65,6 +68,40 @@ describe('Chat Threads DAL', () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
   })
+
+  it.each(['single', 'bulk'] as const)(
+    'scrubs canonical titles, tombstones, and pins during %s deletion',
+    async (mode) => {
+      const db = getDb()
+      await db.insert(chatThreadsTable).values([{ id: 'removed' }, { id: 'retained', projectId: 'project' }])
+      await db.insert(chatMessagesTable).values([
+        { id: 'message_removed', chatThreadId: 'removed', role: 'assistant' },
+        { id: 'message_retained', chatThreadId: 'retained', role: 'assistant' },
+      ])
+      const removed = artifactId({ kind: 'html', messageId: 'message_removed', toolCallId: 'call' })
+      const retained = artifactId({ kind: 'html', messageId: 'message_retained', toolCallId: 'call' })
+      const remote = artifactId({ kind: 'remote', appId: 'message_removed' })
+      for (const id of [removed, retained, remote]) {
+        await renameProjectArtifact(db, id, 'Sensitive title')
+        await softDeleteProjectArtifact(db, id)
+        await setArtifactPinned(db, id, true)
+      }
+      if (mode === 'single') {
+        await deleteChatThread(db, 'removed')
+      } else {
+        await deleteNonProjectChatThreads(db)
+      }
+      const values = new Map((await db.select().from(settingsTable)).map((row) => [row.key, row.value]))
+      for (const key of [...Object.values(artifactPresentationKeys(removed)), artifactPinKey(removed)]) {
+        expect(values.get(key)).toBeNull()
+      }
+      for (const id of [retained, remote]) {
+        expect(values.get(artifactPresentationKeys(id).title)).toBe('Sensitive title')
+        expect(values.get(artifactPresentationKeys(id).deletedAt)).toBeTruthy()
+        expect(values.get(artifactPinKey(id))).toBe('true')
+      }
+    },
+  )
 
   describe('clearAcpSessionIdsForAgent', () => {
     it('clears live thread sessions while preserving soft-deleted thread sessions', async () => {

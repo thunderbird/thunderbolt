@@ -2,57 +2,52 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * What the open artifact is showing, for the model to read.
- *
- * Mirrors `mini-app-store.ts` on purpose: both surfaces publish upward, the
- * host caches the last thing it heard, and `get_app_context` serves whichever
- * one is open. The user asks "what does this show?" about a rectangle on their
- * screen and shouldn't have to know which kind it is.
- *
- * Registered only while the artifact panel is open, and cleared on close — a
- * stale context outliving its panel would have the model confidently describing
- * something the user can no longer see.
- */
-
 import type { ArtifactContext } from '@/artifacts/harness'
 import { create } from 'zustand'
 
+export type ArtifactContextSnapshot = { title: string | null; context: ArtifactContext | null }
+const emptyContext: ArtifactContextSnapshot = { title: null, context: null }
+
 type ArtifactContextState = {
-  /** Title of the open artifact, or null when no panel is open. */
-  title: string | null
-  /** The last context the page published. Null until it reports one. */
-  context: ArtifactContext | null
-  /**
-   * When this panel opened, for deciding which surface `get_app_context`
-   * describes when a Mini App is also mounted. See `openedAt` on the Mini App
-   * store — the two are compared, so they have to mean the same thing.
-   */
-  openedAt: number | null
-  openArtifact: (title: string) => void
-  setContext: (context: ArtifactContext) => void
-  closeArtifact: () => void
+  sessions: ReadonlyMap<string, ArtifactContextSnapshot>
+  openArtifact: (title: string, owner: string) => void
+  renameArtifact: (title: string, owner: string) => void
+  setContext: (context: ArtifactContext, owner: string) => void
+  closeArtifact: (owner: string) => void
 }
 
+/** Context belongs to a mounted HTML frame, never whichever frame happened to report last. */
 export const useArtifactContextStore = create<ArtifactContextState>((set) => ({
-  title: null,
-  context: null,
-  openedAt: null,
-  // Clears any previous context: opening a second artifact must not inherit the
-  // first one's description while the new page is still loading.
-  openArtifact: (title) => set({ title, context: null, openedAt: Date.now() }),
-  setContext: (context) => set({ context }),
-  closeArtifact: () => set({ title: null, context: null, openedAt: null }),
+  sessions: new Map(),
+  openArtifact: (title, owner) =>
+    set((state) => ({ sessions: new Map(state.sessions).set(owner, { title, context: null }) })),
+  renameArtifact: (title, owner) =>
+    set((state) => {
+      const session = state.sessions.get(owner)
+      if (!session || session.title === title) {
+        return state
+      }
+      return { sessions: new Map(state.sessions).set(owner, { ...session, title }) }
+    }),
+  setContext: (context, owner) =>
+    set((state) => {
+      const session = state.sessions.get(owner)
+      if (!session) {
+        return state
+      }
+      return { sessions: new Map(state.sessions).set(owner, { ...session, context }) }
+    }),
+  closeArtifact: (owner) =>
+    set((state) => {
+      if (!state.sessions.has(owner)) {
+        return state
+      }
+      const sessions = new Map(state.sessions)
+      sessions.delete(owner)
+      return { sessions }
+    }),
 }))
 
-export type ArtifactContextSnapshot = {
-  title: string | null
-  context: ArtifactContext | null
-  openedAt: number | null
-}
-
-/** Read outside React — the tool layer runs beyond the component tree. */
-export const getArtifactContextSnapshot = (): ArtifactContextSnapshot => {
-  const { title, context, openedAt } = useArtifactContextStore.getState()
-  return { title, context, openedAt }
-}
+/** Read the selected frame only; a removed owner cannot expose a different artifact's context. */
+export const getArtifactContextSnapshot = (owner: string | null): ArtifactContextSnapshot =>
+  (owner ? useArtifactContextStore.getState().sessions.get(owner) : null) ?? emptyContext

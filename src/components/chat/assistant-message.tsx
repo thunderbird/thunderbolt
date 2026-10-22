@@ -25,6 +25,7 @@ import { TextPart } from './text-part'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
+  chatThreadId?: string | null
   isStreaming: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
@@ -57,6 +58,7 @@ export const mountMessageParts = (
   sources?: SourceMetadata[],
   haystackReferences?: HaystackReferenceMeta[],
   mcpTools?: UIMessageMetadata['mcpTools'],
+  chatThreadId: string | null = null,
 ) => {
   const partElements: ReactNode[] = []
 
@@ -107,7 +109,13 @@ export const mountMessageParts = (
         break
       case 'tool':
         // groupMessageParts only lifts render_html tool parts out of the group.
-        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
+        partElements.push(
+          <ArtifactMessagePart
+            part={part as ToolOrDynamicToolUIPart}
+            messageId={messageId}
+            chatThreadId={chatThreadId}
+          />,
+        )
         break
     }
   })
@@ -118,6 +126,7 @@ export const mountMessageParts = (
 export const AssistantMessage = memo(
   ({
     message,
+    chatThreadId = null,
     isStreaming,
     isLastMessage = false,
     isLastAssistantMessage = false,
@@ -151,6 +160,7 @@ export const AssistantMessage = memo(
           sources,
           haystackReferences,
           mcpTools,
+          chatThreadId,
         ),
       [
         groupedParts,
@@ -161,6 +171,7 @@ export const AssistantMessage = memo(
         sources,
         haystackReferences,
         mcpTools,
+        chatThreadId,
       ],
     )
 

@@ -97,7 +97,7 @@ export const SelectableArtifact = ({
         <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={pickAt} onCancel={dismiss} />
       )}
 
-      {mode.kind === 'idle' && !selection && (
+      {allowScripts !== false && mode.kind === 'idle' && !selection && (
         <Button
           onClick={startPicking}
           variant="secondary"

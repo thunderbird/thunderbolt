@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, spyOn } from 'bun:test'
-import { collectProjectArtifacts, readArtifactPins, readSavedArtifactPins } from './project-artifacts-data'
+import { artifactId } from '@/artifacts/artifact'
+import {
+  collectProjectArtifacts,
+  readArtifactPins,
+  readSavedArtifactPins,
+  normalizeArtifactPins,
+} from './project-artifacts-data'
 
 const labels = { untitledArtifact: 'Unbenannt', untitledChat: 'Neuer Chat' }
 const messageId = '01a15fe6-ee73-770a-b8e0-8e5b4d55d747'
@@ -32,7 +38,9 @@ describe('project artifacts', () => {
   it('retains distinct, stable links after failed retries with the same title', () => {
     const failed = part('retry', { output: { ok: false, errors: ['invalid'] } })
     const result = collect([failed, part('a'), part('b')])
-    expect(result.map((artifact) => artifact.id)).toEqual([`${messageId}-a`, `${messageId}-b`])
+    expect(result.map((artifact) => artifact.id)).toEqual(
+      ['a', 'b'].map((toolCallId) => artifactId({ kind: 'html', messageId, toolCallId })),
+    )
     expect(collect([part('retry'), part('a'), part('b')])[1].id).toBe(result[0].id)
     expect(collect([part('b'), part('a')])[1].id).toBe(result[0].id)
     expect(collect([part('a')])[0].id).toBe(result[0].id)
@@ -67,6 +75,13 @@ describe('project artifacts', () => {
 })
 
 describe('artifact pins', () => {
+  it('resolves old tool-call and positional pins and retains unsynced entries on write', () => {
+    const sources = collect([part('a'), part('b')])
+    const saved = [`${messageId}-0`, `${messageId}-a`, `${messageId}-b`, 'unloaded']
+    expect(readArtifactPins(JSON.stringify(saved), sources)).toEqual(sources.map((item) => item.id))
+    expect(normalizeArtifactPins(saved, sources)).toEqual([...sources.map((item) => item.id), 'unloaded'])
+  })
+
   const artifacts = [{ id: 'a' }, { id: 'b' }]
   it('preserves saved order and removes duplicate, deleted, or moved artifacts', () => {
     expect(readArtifactPins('["b","removed","a","b",42]', artifacts)).toEqual(['b', 'a'])

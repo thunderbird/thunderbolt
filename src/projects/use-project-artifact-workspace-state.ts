@@ -9,7 +9,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import type { Project } from '@/types'
 import type { ProjectArtifact } from './project-artifacts-data'
 import { useProjectArtifactPins } from './use-project-artifact-pins'
-import { useProjectArtifactCanvasState } from './use-project-artifact-canvas-state'
 import { useProjectArtifactsDialog } from './use-project-artifacts-dialog'
 
 /** Coordinate the artifact canvas, source conversation, and quote handoff. */
@@ -22,7 +21,6 @@ export const useProjectArtifactWorkspaceState = (
   const { isMobile } = useIsMobile()
   const chat = useEmbeddedChatPanelState()
   const contentView = useContentView()
-  const canvas = useProjectArtifactCanvasState(artifact.html, artifact.title, !contentView.isOpen)
   const pins = useProjectArtifactPins(project.id, artifacts)
   const pinned = pins.pinnedIds.includes(artifact.id)
   const showChat = chat.openChatId === artifact.chatThreadId
@@ -46,7 +44,6 @@ export const useProjectArtifactWorkspaceState = (
     artifactsDialog,
     chat,
     contentView,
-    canvas,
     pins,
     pinned,
     showChat,

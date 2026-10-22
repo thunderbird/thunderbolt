@@ -1,5 +1,9 @@
 # Mini Apps
 
+Mini Apps are the remote source adapter in the [unified artifact system](unified-artifacts.md).
+The backend registry still owns remote URLs, origin trust and token capabilities;
+user pins now own navigation-sidebar visibility.
+
 A Mini App is a customer's web app, deployed at its own URL, embedded in Thunderbolt as a first-class page with a
 bridge so the assistant beside it can read and act on what the user is looking at.
 
@@ -101,22 +105,10 @@ Mini Apps are _cooperative_ — they send `frame-ancestors` naming us — so a p
 and gives us `postMessage` for free. The native webview exists for arbitrary sites that send `X-Frame-Options`,
 which no Mini App does.
 
-| Surface               | Embed  | Open                                                                                             |
-| --------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| Web (desktop browser) | iframe | —                                                                                                |
-| Tauri desktop         | iframe | `frame-src 'self' https:` — any HTTPS app origin loads; see below for why it is not an allowlist |
-| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                              |
-| Mobile web            | —      | not offered — same gate                                                                          |
-
-**Mini Apps are web and desktop only** (THU-830). The gate is on _viewport_, not platform: the split view,
-highlight-to-ask and element picking all need pointer input and room, and a 700px browser window is as unworkable as a
-phone. `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the desktop window keeps the feature
-while narrowing a browser does not.
-
-Below the breakpoint the sidebar entry is hidden and the route renders a size notice rather than disappearing — a
-deep link out of a synced chat, or someone narrowing their window mid-session, is told what happened instead of
-hitting Not Found. An earlier cut overlaid the chat on the app for phones; that layout is gone, so nothing here
-depends on iOS Safari's COEP support being confirmed.
+The shared artifact workspace renders both HTML and remote sources. Wide views
+can show a conversation beside the artifact; narrow views show one pane at a
+time with a close control returning to the artifact. Remote applications still
+need to support their host browser and available viewport themselves.
 
 **The desktop CSP allows any HTTPS origin to be framed, and deliberately does not name them.** Tauri compiles its
 CSP in at startup while the registry moved to runtime config (`MINI_APPS`), so the two cannot be reconciled: a
@@ -161,8 +153,9 @@ close) and the window-control clearances a right-hand pane needs.
 
 ## Running one locally
 
-There is nothing to switch on. An app appears in the sidebar as soon as the backend registers it, on a viewport
-wide enough for the split view.
+Open a registered app using `/apps/:appId`. Pin it from
+its full-screen or side-panel view to add it to the navigation sidebar. The same controls
+work for generated HTML; environment variables are not user pin preferences.
 
 ```sh
 # 1. an app to embed — the starter template, which is what MINI_APPS defaults to in development
@@ -174,9 +167,9 @@ bun run dev                                                   # web, on :1420
 bun run tauri:dev:desktop                                     # or the desktop app
 ```
 
-"Order Book" appears under Apps in the sidebar. If it doesn't, in order: is the template actually up on :5190; did
-you restart the **backend** after touching `MINI_APPS` (`getSettings()` memoizes per process); and is the window
-wide enough (below the breakpoint the entry is hidden and the route shows a size notice).
+Open `/apps/order-book` and pin "Order Book" to keep it in the Artifacts section.
+If it does not load, check that the template is running on :5190 and restart the
+**backend** after changing `MINI_APPS` (`getSettings()` memoizes per process).
 
 Registering something else means editing `MINI_APPS` — see the block in `backend/.env.example`. Two things bite:
 
@@ -480,7 +473,7 @@ src/mini-apps/mini-app-auth.ts          token fetch
 src/mini-apps/mini-app-tools.ts         app tools as model tools, plus their prompt section
 src/mini-apps/mini-app-approval.ts      the write-approval gate and its deadline
 src/mini-apps/approval-outcome.ts       how an approval ended, which the model is told
-src/mini-apps/mini-app-store.ts         which app is open, for callers outside React
+src/mini-apps/mini-app-store.ts         owner-scoped remote RPC and tool sessions
 src/mini-apps/mini-app-context-tool.ts  get_app_context for an app
 src/mini-apps/mini-app-prompt.ts        the app's section of the system prompt
 src/mini-apps/use-mini-app-chat-panel-state.ts  which conversation the panel shows
@@ -495,8 +488,12 @@ backend/src/config/settings.ts          MINI_APPS parsing
 
 Chat provenance is part of this feature too, and lives outside `src/mini-apps/`: `chat_threads.mini_app_id`
 (migration 0029) records which app a chat came from, `MiniAppChatBadge` shows it on a sidebar row,
-`MiniAppChatBanner` says so at the top of the chat, and `useChatDestination` is what reopens such a chat inside its
-app rather than at `/chats/:id`.
+`MiniAppChatBanner` says so at the top of the chat, and `useChatDestination` reopens such a chat inside the shared artifact workspace.
+Legacy `/apps/:appId` URLs redirect there with their chat query preserved.
+Generated artifacts use canonical artifact IDs in the same textual provenance
+column; existing remote chats retain their raw configured IDs. A standalone
+`?view=chat` URL bypasses reopening the artifact, including when its source has
+been deleted.
 
 A starter template for a new app — the embedding headers above, the guest half of the bridge, and a worked
 `ui/get-context` — is answered, and is the canonical guest implementation:

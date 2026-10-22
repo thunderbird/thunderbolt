@@ -35,9 +35,8 @@ import {
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { ArtifactSection } from './artifact-section'
 import { useProjectsState } from '@/dal/projects'
-import { useMiniApps } from '@/mini-apps/use-mini-apps'
-import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
@@ -63,12 +62,11 @@ type ChatSidebarContentProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
-  showMiniApps: boolean
   activeSection: SidebarSection
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onTasksClick: () => void
-  onMiniAppClick: (appId: string) => void
+  onArtifactNavigate: (path: string) => void
   onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
@@ -94,31 +92,6 @@ const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
   )
 }
 
-/**
- * One entry per registered Mini App. Rendered straight from the registry so
- * onboarding a customer app is a config entry, not a sidebar change.
- */
-const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
-  const { apps } = useMiniApps()
-  return (
-    <>
-      {apps.map((app) => (
-        <SidebarMenuItem key={app.id}>
-          <SidebarMenuButton
-            onClick={() => onClick(app.id)}
-            tooltip={app.description}
-            className="cursor-pointer"
-            isActive={pathname === miniAppPath(app.id)}
-          >
-            <app.icon className="size-[var(--icon-size-default)]" />
-            <span>{app.name}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-    </>
-  )
-}
-
 export const ChatSidebarContent = ({
   isMobile,
   isCollapsed,
@@ -130,12 +103,11 @@ export const ChatSidebarContent = ({
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
-  showMiniApps,
   activeSection,
   onSectionChange,
   onCreateNewChat,
   onTasksClick,
-  onMiniAppClick,
+  onArtifactNavigate,
   onChatClick,
   onRename,
   onSearchClick,
@@ -279,10 +251,14 @@ export const ChatSidebarContent = ({
                     {showTasks && (
                       <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                     )}
-                    {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
                   </SidebarMenu>
                   {/* Drop targets for dragging a chat into a project. */}
                   {projectTree}
+                  <ArtifactSection
+                    pathname={location.pathname}
+                    isCollapsed={isCollapsed}
+                    onNavigate={onArtifactNavigate}
+                  />
                 </SidebarGroupContent>
               </SidebarGroup>
             )}
@@ -310,7 +286,9 @@ export const ChatSidebarContent = ({
                   {showTasks && (
                     <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                   )}
-                  {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
+                  <SidebarMenuItem>
+                    <ArtifactSection pathname={location.pathname} isCollapsed={false} onNavigate={onArtifactNavigate} />
+                  </SidebarMenuItem>
                 </SidebarMenu>
               }
               onChatClick={onChatClick}

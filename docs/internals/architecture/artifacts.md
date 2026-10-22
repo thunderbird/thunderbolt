@@ -1,5 +1,10 @@
 # HTML Artifacts
 
+Generated HTML is one source in the [unified artifact system](unified-artifacts.md).
+Configured Mini Apps are its remote source. Both share the artifact surfaces,
+pins, inline/sidebar/full-page displays, and a full-page conversation workspace.
+This document covers the HTML adapter and its security boundary.
+
 An **artifact** is a self-contained HTML page the model writes and the app runs
 in the user's browser. It is the one place model-authored code executes on the
 user's device.
@@ -177,34 +182,27 @@ therefore still opens under the offline policy.
 
 ## Surfaces
 
-`ArtifactMessagePart`
-([`src/components/chat/artifact-message-part.tsx`](../../../src/components/chat/artifact-message-part.tsx))
-picks one of three states:
+`src/artifacts/artifact.ts` gives every verified HTML source an identity built
+from its message ID and tool-call ID. Streaming remains a scripts-off preview;
+only completed successful verdicts become executable artifacts. Transcript,
+project, dialog and full-page resolution use the same guard.
 
-| State                       | What renders                                                            |
-| --------------------------- | ----------------------------------------------------------------------- |
-| Streaming                   | An inline card with a live, **scripts-off** preview of the partial HTML |
-| Verified, panel closed      | The interactive inline card                                             |
-| Verified, open in the panel | A slim "shown in side panel" bar with a _Show inline_ button            |
+`ArtifactSurface` chooses the HTML or remote adapter. `ArtifactControls` shares
+pin/unpin and display actions across all hosts; source copy/download is an HTML
+capability. Inline HTML now also has the same selection and context support as
+the expanded displays. A transcript placeholder prevents a second executable
+copy while the same artifact is open in the sidebar or its own workspace.
 
-`groupMessageParts` lifts the artifact out of the tool-call group, gated on
-`artifactRendersStandalone`
-([`src/lib/assistant-message.ts:53`](../../../src/lib/assistant-message.ts)): it
-lifts out from the moment the call starts and while it verifies; only a
-_finished_ call that failed or errored stays in the group as an ordinary tool
-call.
+`ArtifactSidebarContent` follows the source's persisted updates and tombstones,
+while allowing a newly verified snapshot to render before its debounced message
+save lands. `ArtifactWorkspace` hosts either source alongside chat, history and
+selection-to-composer actions. Switching displays remounts the guest document;
+its JavaScript memory is not persistent.
 
-### Inline vs. side panel
-
-An artifact lives inline or in the side panel, never both. The panel is one of
-four open `ContentViewState` kinds (`object-view`, `preview`, `sideview`,
-`artifact`, plus a closed state;
-[`src/content-view/context.tsx:37`](../../../src/content-view/context.tsx)),
-mounted by `main-layout.tsx` and rendered by
-[`src/content-view/artifact-sidebar-content.tsx`](../../../src/content-view/artifact-sidebar-content.tsx).
-Both surfaces share `SandboxedHtmlFrame`, `ArtifactActions` (copy source,
-download) and `ArtifactErrorStrip`, so a post-load runtime error looks the same
-in either.
+The active assistant context belongs to a mounted session owner. The common
+session registry selects the active owner; HTML context and remote RPC/tool
+adapters keep their own transport state. Cleanup and late replies are scoped to
+the owner, and a background frame cannot supply another surface's tools.
 
 ### Streaming and script activation
 
@@ -245,8 +243,16 @@ for `render_html` parts, newest-first.
 
 - A `parts LIKE '%render_html%'` filter narrows the scan before any JSON is
   parsed.
-- An artifact's key is `messageId-index`, since one message can emit several
-  calls and two can share a title.
+- An artifact's canonical key encodes `messageId` and `toolCallId`, independent
+  of its title or position in the parts array. Only verified results are listed.
+- Pins use one encrypted settings value per artifact, without copying HTML.
+  Unpinning writes false; deleting the source chat makes its pins unavailable.
+- The collapsible Artifacts sidebar section contains pins; it has no separate library page or browsing modal. `/artifacts` redirects to a new chat. `/artifacts/:artifactId`
+  resolves a source directly, whether or not it is pinned.
+- Pinned rows expose Open artifact, Open source chat (when available), Rename,
+  and Unpin through a context menu, including in the collapsed sidebar. Rename
+  uses the same synced presentation metadata for HTML and remote artifacts;
+  the dialog belongs to the section so closing a menu cannot discard its draft.
 - That query assumes message JSON is plaintext locally, called out as untested
   under E2EE in [projects.md](projects.md#known-gaps). The same caveat applies
   to the FTS index.

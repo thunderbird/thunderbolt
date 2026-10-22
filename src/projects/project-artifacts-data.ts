@@ -3,11 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { UIMessage } from 'ai'
-import { isRenderHtmlPart, renderHtmlInput, renderHtmlOutput } from '@/artifacts/render-html-tool'
+import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
+import { artifactId, toHtmlArtifact, type Artifact } from '@/artifacts/artifact'
 import { uuidv7ToDate } from '@/lib/utils'
+import { artifactPresentationIds } from './artifact-presentation'
 
 export type ProjectArtifact = {
   id: string
+  legacyIds?: readonly string[]
   messageId: string
   toolCallId: string
   chatThreadId: string
@@ -39,7 +42,7 @@ const parseParts = (parts: unknown): UIMessage['parts'] => {
   return parts.filter((part) => part && typeof part === 'object' && typeof part.type === 'string')
 }
 
-/** Collect verified outputs, using tool-call identity so saved presentation survives insertion and reordering. */
+/** Collect verified outputs, using the shared source identity and verification gate. */
 export const collectProjectArtifacts = (
   rows: readonly ArtifactMessageRow[],
   labels: { untitledChat: string; untitledArtifact: string },
@@ -52,20 +55,22 @@ export const collectProjectArtifacts = (
       const chatThreadId = row.chatThreadId
       return parseParts(row.parts)
         .filter(isRenderHtmlPart)
-        .flatMap((part) => {
+        .flatMap((part, index) => {
           const input = renderHtmlInput(part)
-          if (part.state !== 'output-available' || !renderHtmlOutput(part)?.ok || !input.html?.trim()) {
+          const source = toHtmlArtifact(row.id, chatThreadId, part, index)
+          if (!source || source.source.kind !== 'html') {
             return []
           }
           return [
             {
-              id: `${row.id}-${part.toolCallId}`,
+              id: source.id,
+              legacyIds: source.legacyIds,
               messageId: row.id,
               toolCallId: part.toolCallId,
               chatThreadId,
               chatTitle: row.chatTitle?.trim() || labels.untitledChat,
               title: input.title?.trim() || labels.untitledArtifact,
-              html: input.html,
+              html: source.source.html,
               createdAt: uuidv7ToDate(row.id),
             },
           ]
@@ -90,8 +95,35 @@ export const readSavedArtifactPins = (value: string | null): string[] => {
   }
 }
 
+/** Adapt project metadata to the shared rendering and runtime boundary. */
+export const toProjectArtifactSource = (artifact: ProjectArtifact): Artifact => {
+  const reference = { kind: 'html' as const, messageId: artifact.messageId, toolCallId: artifact.toolCallId }
+  return {
+    id: artifactId(reference),
+    legacyIds: artifact.legacyIds,
+    reference,
+    title: artifact.title,
+    chatThreadId: artifact.chatThreadId,
+    source: { kind: 'html', html: artifact.html },
+  }
+}
+
 /** Only display shortcuts whose source is currently available. */
-export const readArtifactPins = (value: string | null, artifacts: readonly Pick<ProjectArtifact, 'id'>[]): string[] => {
+export const readArtifactPins = (
+  value: string | null,
+  artifacts: readonly Pick<ProjectArtifact, 'id' | 'legacyIds'>[],
+): string[] => {
   const liveIds = new Set(artifacts.map((artifact) => artifact.id))
-  return readSavedArtifactPins(value).filter((id) => liveIds.has(id))
+  return normalizeArtifactPins(readSavedArtifactPins(value), artifacts).filter((id) => liveIds.has(id))
+}
+
+/** Upgrade known aliases on write while retaining pins whose sources have not synced yet. */
+export const normalizeArtifactPins = (
+  ids: readonly string[],
+  artifacts: readonly Pick<ProjectArtifact, 'id' | 'legacyIds'>[],
+): string[] => {
+  const aliases = new Map(
+    artifacts.flatMap((artifact) => artifactPresentationIds(artifact).map((id) => [id, artifact.id] as const)),
+  )
+  return [...new Set(ids.map((id) => aliases.get(id) ?? id))]
 }

@@ -73,7 +73,7 @@ const hasChatRow = (chatThreadId: string, hasDraft: boolean): boolean => {
 }
 
 /** Share the draft-to-saved lifecycle between mini-app and project chat panes. */
-export const useEmbeddedChatPanelState = (): EmbeddedChatPanelState => {
+export const useEmbeddedChatPanelState = (initialDraftChatId: string | null = null): EmbeddedChatPanelState => {
   /*
    * Two sources, because they are genuinely two states. A persisted thread is
    * addressable, so it lives in `?chat=` and survives a reload or a shared link.
@@ -83,7 +83,7 @@ export const useEmbeddedChatPanelState = (): EmbeddedChatPanelState => {
    * which point `handleChatCreated` promotes it into `?chat=`.
    */
   const [searchParams, setSearchParams] = useSearchParams()
-  const [draftChatId, setDraftChatId] = useState<string | null>(null)
+  const [draftChatId, setDraftChatId] = useState<string | null>(() => initialDraftChatId)
   /*
    * The id on screen while the URL does not carry it yet.
    *
@@ -99,7 +99,7 @@ export const useEmbeddedChatPanelState = (): EmbeddedChatPanelState => {
    * requested chat hidden, or an emptied query showing an open, empty panel.
    * Openness is derived again, and the gap is closed at the source.
    */
-  const [localChatId, setLocalChatId] = useState<string | null>(null)
+  const [localChatId, setLocalChatId] = useState<string | null>(() => initialDraftChatId)
 
   /*
    * The URL wins. It is the addressable truth, so navigation is always

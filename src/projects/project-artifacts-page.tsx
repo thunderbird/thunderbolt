@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useProjectArtifactsState, useProjectsState } from '@/dal/projects'
 import { PageFallback } from '@/loading'
+import { artifactPresentationIds } from './artifact-presentation'
 import { ProjectArtifactWorkspace } from './project-artifact-workspace'
 
 const ProjectArtifactsView = () => {
@@ -19,7 +20,7 @@ const ProjectArtifactsView = () => {
   const { projects, isLoading } = useProjectsState()
   const { artifacts, isLoading: artifactsLoading } = useProjectArtifactsState(projectId)
   const project = projects.find((item) => item.id === projectId)
-  const artifact = artifacts.find((item) => item.id === artifactId)
+  const artifact = artifacts.find((item) => artifactPresentationIds(item).includes(artifactId ?? ''))
   if (!artifactId && projectId) {
     const params = new URLSearchParams({ projectId, artifacts: projectId })
     return <Navigate replace to={`/chats/new?${params}`} />

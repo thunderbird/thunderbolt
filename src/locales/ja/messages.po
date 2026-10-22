@@ -58,8 +58,8 @@ msgstr[0] "# 個のツール"
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
-msgid "{0} is only available on desktop"
-msgstr ""
+#~ msgid "{0} is only available on desktop"
+#~ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
@@ -130,6 +130,10 @@ msgstr[0] "このファイルには # 行が含まれています。"
 msgid "Completed # step in {duration}"
 msgid_plural "Completed # steps in {duration}"
 msgstr[0] "{duration}で# ステップ完了"
+
+#: src/components/chat/artifact-message-part.tsx
+msgid "{title} — open beside this chat"
+msgstr ""
 
 #: src/components/chat/artifact-message-part.tsx
 msgid "{title} — shown in side panel"
@@ -472,6 +476,7 @@ msgstr "承認中…"
 msgid "Are you sure? You will lose any changes that you made."
 msgstr "続行しますか？行った変更はすべて失われます。"
 
+#: src/artifacts/artifact.ts
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
 msgstr "アーティファクト"
@@ -488,6 +493,8 @@ msgstr ""
 msgid "Artifact unavailable"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section-menu.tsx
+#: src/layout/sidebar/artifact-section.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
@@ -504,6 +511,10 @@ msgstr "確認"
 #: src/components/embedded/selection-popover.tsx
 msgid "Ask about this"
 msgstr ""
+
+#: src/artifacts/artifact-browser-content.tsx
+#~ msgid "Ask in a chat to create an interactive page, chart, or app. It will appear here."
+#~ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
@@ -572,6 +583,10 @@ msgstr "利用できるツール:"
 msgid "Back to App"
 msgstr "アプリに戻る"
 
+#: src/artifacts/artifact-page.tsx
+msgid "Back to chat"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "ベース URL"
@@ -587,6 +602,12 @@ msgstr "ブリッジ"
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Bridge target"
 msgstr "ブリッジのターゲット"
+
+#: src/artifacts/artifact-page.tsx
+#: src/layout/sidebar/artifact-section-menu.tsx
+#: src/layout/sidebar/artifact-section.tsx
+#~ msgid "Browse artifacts"
+#~ msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Browser"
@@ -673,8 +694,12 @@ msgstr "変更は保存されましたが、再接続に失敗しました。も
 msgid "Charts, prototypes, and other artifacts from this project's chats appear here. Pin your favorites to keep them in the sidebar."
 msgstr ""
 
-#: src/mini-apps/mini-app-page.tsx
+#: src/artifacts/artifact-workspace.tsx
 msgid "Chat"
+msgstr ""
+
+#: src/components/artifact/artifact-controls.tsx
+msgid "Chat about artifact"
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
@@ -845,7 +870,6 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
 #: src/components/window-controls.tsx
-#: src/content-view/header.tsx
 msgid "Close"
 msgstr "閉じる"
 
@@ -860,6 +884,10 @@ msgstr "詳細を閉じる"
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Close navigation"
 msgstr "ナビゲーションを閉じる"
+
+#: src/content-view/header.tsx
+msgid "Close panel"
+msgstr ""
 
 #: src/skills/reorder-panel.tsx
 msgid "Close reorder"
@@ -1128,6 +1156,7 @@ msgstr "QR コードを読み取れませんでした"
 msgid "Could not read the import file."
 msgstr "インポートファイルを読み取れませんでした。"
 
+#: src/layout/sidebar/use-artifact-section-actions.ts
 #: src/projects/use-project-artifact-actions-state.ts
 msgid "Could not rename the artifact. Please try again."
 msgstr ""
@@ -1143,6 +1172,11 @@ msgstr ""
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr "プロジェクトを保存できませんでした。"
+
+#: src/components/artifact/artifact-controls.tsx
+#: src/layout/sidebar/use-artifact-section-actions.ts
+msgid "Could not update the artifact pin. Try again."
+msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "Couldn't add a passkey. Please try again."
@@ -1192,6 +1226,10 @@ msgstr "更新をダウンロードできませんでした。"
 msgid "Couldn't load {name}"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Couldn't load pinned artifacts."
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "絵文字の一覧を読み込めませんでした。このピッカーを閉じて開き直してください。"
@@ -1200,9 +1238,13 @@ msgstr "絵文字の一覧を読み込めませんでした。このピッカー
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "このアプリのペアリング ID を読み込めませんでした: {error}"
 
-#: src/mini-apps/mini-app-page.tsx
-msgid "Couldn't load your apps. Check your connection and reload."
+#: src/artifacts/artifact-page.tsx
+msgid "Couldn't load this artifact. Check your connection and reload."
 msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Couldn't load your apps. Check your connection and reload."
+#~ msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -2012,6 +2054,10 @@ msgstr "食べ物と飲み物"
 msgid "From {0}"
 msgstr ""
 
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From an artifact"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2127,6 +2173,10 @@ msgstr "クラッシュ、パフォーマンス、利用状況などの匿名の
 #: src/skills/skill-form.tsx
 msgid "Helps the agent decide when to use this skill. Be specific about when it applies."
 msgstr "このスキルをいつ使うかをエージェントが判断する助けになります。どんなときに当てはまるかを具体的に記述してください。"
+
+#: src/artifacts/artifact-browser-content.tsx
+#~ msgid "Hide preview"
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Hide QR"
@@ -2476,8 +2526,8 @@ msgstr "メートル法"
 #~ msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Mini Apps are only available on desktop"
-msgstr ""
+#~ msgid "Mini Apps are only available on desktop"
+#~ msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
@@ -2690,6 +2740,10 @@ msgstr "一致するものがありません"
 msgid "No matching artifacts"
 msgstr ""
 
+#: src/artifacts/artifact-browser-content.tsx
+#~ msgid "No matching artifacts."
+#~ msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr "一致する接続はありません。"
@@ -2886,6 +2940,8 @@ msgstr "{title} を開く"
 msgid "Open app"
 msgstr ""
 
+#: src/layout/sidebar/artifact-context-menu.tsx
+#: src/mini-apps/mini-app-chat-banner.tsx
 #: src/projects/project-artifact-context-menu.tsx
 msgid "Open artifact"
 msgstr ""
@@ -2894,9 +2950,17 @@ msgstr ""
 #~ msgid "Open chat"
 #~ msgstr ""
 
+#: src/artifacts/artifact-page.tsx
+msgid "Open conversation"
+msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "外部リンクを開く"
+
+#: src/components/artifact/artifact-controls.tsx
+msgid "Open full screen"
+msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 #: src/content-view/sidebar-webview.tsx
@@ -2911,7 +2975,7 @@ msgstr "ブラウザーで開く"
 msgid "Open in new tab"
 msgstr "新しいタブで開く"
 
-#: src/components/chat/inline-artifact-card.tsx
+#: src/components/artifact/artifact-controls.tsx
 msgid "Open in side panel"
 msgstr "サイドパネルで開く"
 
@@ -2924,13 +2988,14 @@ msgid "Open in Sidebar"
 msgstr "サイドバーで開く"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
-msgstr ""
+#~ msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+#~ msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "リンクを開く"
 
+#: src/layout/sidebar/artifact-context-menu.tsx
 #: src/projects/project-artifact-context-menu.tsx
 msgid "Open source chat"
 msgstr ""
@@ -2984,6 +3049,10 @@ msgstr "Outlook とカレンダー"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Overcast"
 msgstr "曇り"
+
+#: src/artifacts/artifact-browser-content.tsx
+#~ msgid "Pages and apps from your chats and workspace. Pin one to keep it in your sidebar."
+#~ msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Pair {deviceName}"
@@ -3047,6 +3116,15 @@ msgstr "許可が必要です"
 #: src/settings/preferences.tsx
 msgid "Personalization"
 msgstr "パーソナライズ"
+
+#: src/components/artifact/artifact-controls.tsx
+msgid "Pin artifact"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section-menu.tsx
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Pin artifacts to keep them here."
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
@@ -3276,6 +3354,7 @@ msgstr "パスキーを削除しますか？"
 msgid "Removing…"
 msgstr "削除しています…"
 
+#: src/layout/sidebar/artifact-context-menu.tsx
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/project-artifact-context-menu.tsx
 msgid "Rename"
@@ -3573,8 +3652,8 @@ msgstr "画面のドキュメントをご覧ください。"
 msgid "See the equation on screen."
 msgstr "画面の数式をご覧ください。"
 
+#: src/artifacts/remote-artifact-surface.tsx
 #: src/components/artifact/selectable-artifact.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Select"
 msgstr ""
 
@@ -3728,6 +3807,10 @@ msgstr "表示"
 msgid "Show artifact"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Show fewer artifacts"
+msgstr ""
+
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
 msgid "Show fewer chats in {0}"
@@ -3741,20 +3824,32 @@ msgstr ""
 msgid "Show fewer recent chats"
 msgstr ""
 
+#: src/artifacts/artifact-workspace.tsx
+#: src/projects/project-artifact-workspace.tsx
+msgid "Show here"
+msgstr ""
+
+#: src/components/artifact/artifact-controls.tsx
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr "インラインで表示"
 
+#: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show less"
 msgstr ""
 
+#: src/layout/sidebar/artifact-section-menu.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show more"
+msgstr ""
+
+#: src/layout/sidebar/artifact-section.tsx
+msgid "Show more artifacts"
 msgstr ""
 
 #. placeholder {0}: project.name
@@ -3934,6 +4029,10 @@ msgstr "顔と人"
 msgid "Snow grains"
 msgstr "霧雪"
 
+#: src/artifacts/artifact-browser-content.tsx
+#~ msgid "Some artifacts couldn't be loaded. Check your connection and reload."
+#~ msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -3973,12 +4072,17 @@ msgid "Start voice mode"
 msgstr "音声モードを開始"
 
 #. placeholder {0}: app.name
+#. placeholder {0}: artifact.title
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Started from {0}"
 msgstr ""
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Started from an app that is no longer available"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an artifact that is no longer available"
 msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
@@ -4251,6 +4355,11 @@ msgstr "思考中"
 #: src/components/ui/chat-nav-button.tsx
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "この操作は取り消せません。このチャットとすべてのメッセージが完全に削除されます。"
+
+#: src/artifacts/artifact-page.tsx
+#: src/content-view/artifact-sidebar-content.tsx
+msgid "This artifact is no longer available."
+msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
@@ -4648,6 +4757,11 @@ msgstr "パスキーでロック解除"
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "ピン留めを解除"
+
+#: src/components/artifact/artifact-controls.tsx
+#: src/layout/sidebar/artifact-context-menu.tsx
+msgid "Unpin artifact"
+msgstr ""
 
 #: src/projects/project-artifact-context-menu.tsx
 #: src/projects/project-artifact-workspace.tsx

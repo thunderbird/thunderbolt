@@ -49,6 +49,8 @@ export type PendingPermission = {
 export type PendingMiniAppApproval = {
   /** The app the call is for; the sweep on close/re-handshake keys on it. */
   appId: string
+  /** Mounted frame that owns the request; two views of one app are independent. */
+  surfaceOwner?: string
   /**
    * The app's display name, captured when the call was made.
    *
@@ -171,7 +173,7 @@ type ChatStoreActions = {
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
   enqueueMiniAppApproval(id: string, pending: PendingMiniAppApproval): boolean
   dequeueMiniAppApproval(id: string, pending: PendingMiniAppApproval): void
-  cancelMiniAppApprovals(appId: string): void
+  cancelMiniAppApprovals(appId: string, surfaceOwner?: string): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
   setSelectedModel(id: string, modelId: string | null, deps?: SetSelectedModelDeps): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
@@ -408,11 +410,13 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
    *
    * `decide` dequeues itself, so this only has to call it.
    */
-  cancelMiniAppApprovals: (appId) => {
+  cancelMiniAppApprovals: (appId, surfaceOwner) => {
     // Snapshotted before deciding: each `decide` writes back through the store,
     // so iterating the live map would walk a collection being replaced.
     const queuedForApp = [...get().sessions.values()].flatMap((session) =>
-      session.miniAppApprovalQueue.filter((pending) => pending.appId === appId),
+      session.miniAppApprovalQueue.filter(
+        (pending) => pending.appId === appId && (surfaceOwner === undefined || pending.surfaceOwner === surfaceOwner),
+      ),
     )
     // `unavailable`, not `denied`: the user never saw these, so telling the model
     // they were declined would put a decision in their mouth.

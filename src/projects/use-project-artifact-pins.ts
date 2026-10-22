@@ -5,7 +5,12 @@
 import { useState } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { useSettings } from '@/hooks/use-settings'
-import { readArtifactPins, readSavedArtifactPins, type ProjectArtifact } from './project-artifacts-data'
+import {
+  readArtifactPins,
+  readSavedArtifactPins,
+  normalizeArtifactPins,
+  type ProjectArtifact,
+} from './project-artifacts-data'
 
 /** Pins use existing synced settings, with one independent list per project. */
 export const useProjectArtifactPins = (projectId: string, artifacts: readonly ProjectArtifact[]) => {
@@ -17,7 +22,7 @@ export const useProjectArtifactPins = (projectId: string, artifacts: readonly Pr
   const [error, setError] = useState<string | null>(null)
   const togglePin = async (id: string) => {
     setError(null)
-    const savedIds = readSavedArtifactPins(setting.value)
+    const savedIds = normalizeArtifactPins(readSavedArtifactPins(setting.value), artifacts)
     const next = savedIds.includes(id) ? savedIds.filter((pin) => pin !== id) : [...savedIds, id]
     try {
       await setting.setValue(JSON.stringify(next))

@@ -6,8 +6,10 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { LayoutGrid, MessageCircle, Pin, PinOff } from 'lucide-react'
 import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
 import { ChatHydrateHandler } from '@/chats/detail'
-import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
+import { ArtifactSurface } from '@/artifacts/artifact-surface'
+import { ArtifactControls } from '@/components/artifact/artifact-controls'
+import { toProjectArtifactSource } from './project-artifacts-data'
+import { useNavigate } from 'react-router'
 import ChatUI from '@/components/chat/chat-ui'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { EmbeddedErrorStrip } from '@/components/embedded'
@@ -28,11 +30,12 @@ export const ProjectArtifactWorkspace = ({
   artifacts: ProjectArtifact[]
 }) => {
   const { t } = useLingui()
+  const navigate = useNavigate()
+  const source = toProjectArtifactSource(artifact)
   const {
     artifactsDialog,
     chat,
     contentView,
-    canvas,
     pins,
     pinned,
     showChat,
@@ -44,7 +47,7 @@ export const ProjectArtifactWorkspace = ({
   } = useProjectArtifactWorkspaceState(project, artifact, artifacts)
 
   return (
-    <ArtifactCanvasContext value={{ toolCallId: artifact.toolCallId, reveal }}>
+    <ArtifactCanvasContext value={{ messageId: artifact.messageId, toolCallId: artifact.toolCallId, reveal }}>
       <div className="@container/project-artifact relative h-full min-h-0 pt-[var(--header-inset)]">
         <div className="relative flex h-full [--project-chat-width:100cqw] @min-[960px]/project-artifact:[--project-chat-width:clamp(360px,38cqw,480px)]">
           <div
@@ -76,7 +79,14 @@ export const ProjectArtifactWorkspace = ({
               >
                 {pinned ? <PinOff /> : <Pin />}
               </Button>
-              <ArtifactActions html={artifact.html} title={artifact.title} />
+              <ArtifactControls
+                artifact={source}
+                display="fullscreen"
+                onShowInline={() => {
+                  contentView.close()
+                  void navigate(`/chats/${encodeURIComponent(artifact.chatThreadId)}?view=chat`)
+                }}
+              />
               <Button
                 variant={showChat ? 'secondary' : 'outline'}
                 size="sm"
@@ -88,15 +98,14 @@ export const ProjectArtifactWorkspace = ({
               </Button>
             </header>
             {pins.error && <EmbeddedErrorStrip message={pins.error} />}
-            {canvas.error && <EmbeddedErrorStrip message={canvas.error} />}
             <div className="mx-4 min-h-0 flex-1 overflow-hidden rounded-xl border bg-white md:mx-6">
-              <SelectableArtifact
-                html={artifact.html}
-                title={artifact.title}
-                onAsk={askAbout}
-                onError={canvas.onError}
-                onContextChange={canvas.onContextChange}
-              />
+              {contentView.state.type === 'artifact' && contentView.state.data.id === source.id ? (
+                <Button variant="ghost" onClick={contentView.close}>
+                  <Trans>Show here</Trans>
+                </Button>
+              ) : (
+                <ArtifactSurface artifact={source} onAsk={askAbout} onChatOpen={openSourceChat} />
+              )}
             </div>
           </div>
           <DetailPanelSurface

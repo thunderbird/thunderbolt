@@ -297,11 +297,12 @@ const resolveHostPlatform = (): MiniAppPlatform => {
 
 export type UseMiniAppBridgeOptions = {
   app: MiniAppDefinition
+  owner: string
   /** Called when the guest sends `ui/open-chat`. */
   onChatOpen: (prompt: string | undefined) => void
 }
 
-export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
+export const useMiniAppBridge = ({ app, owner, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const httpClient = useHttpClient()
   const [{ status, handshakeEpoch, toolsEpoch, runtimeError }, dispatch] = useReducer(
@@ -323,7 +324,19 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const locale = useActiveLocale()
   const setTools = useMiniAppStore((state) => state.setTools)
   const setContextReader = useMiniAppStore((state) => state.setContextReader)
-  const resetGuest = useMiniAppStore((state) => state.resetGuest)
+  const [pending] = useState(() => createPendingRequests())
+  const guestRevisionRef = useRef(0)
+  const resetGuest = useCallback(() => {
+    guestRevisionRef.current += 1
+    pending.abortAll()
+    useMiniAppStore.getState().resetGuest(owner)
+  }, [owner, pending])
+
+  // Register this external frame for exactly its mounted lifetime.
+  useEffect(() => {
+    useMiniAppStore.getState().openApp(app, owner)
+    return () => useMiniAppStore.getState().closeApp(owner)
+  }, [app, owner])
 
   // Held in a ref so a new callback identity from the parent doesn't tear down
   // and re-add the message listener mid-session (which would drop in-flight
@@ -385,9 +398,6 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * on a document two generations old.
    */
   const loadGenerationRef = useRef(0)
-  // Correlation, timeouts and always-settling are shared with artifacts — see
-  // `pending-requests.ts`. Only the envelope and the trust check differ.
-  const [pending] = useState(() => createPendingRequests())
 
   const post = useCallback(
     (message: MiniAppHostMessage) => {
@@ -506,6 +516,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         // Only minted when the guest declared the capability — an app that never
         // asked shouldn't cause a credential to exist. Bounded, because this
         // blocks the reply: see `tokenMintTimeoutMs`.
+        const revision = guestRevisionRef.current
         const auth = capabilities.auth
           ? await fetchMiniAppToken(
               httpClient,
@@ -513,6 +524,12 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
               AbortSignal.any([lifetime.signal, AbortSignal.timeout(tokenMintTimeoutMs)]),
             )
           : null
+
+        // An auth response belongs to the document that requested it. Navigation
+        // while the HTTP request is pending must not revive that old handshake.
+        if (lifetime.signal.aborted || revision !== guestRevisionRef.current) {
+          return
+        }
 
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
@@ -565,7 +582,11 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           })
           return
         }
+        const revision = guestRevisionRef.current
         const refreshed = await fetchMiniAppToken(httpClient, app.id, lifetime.signal)
+        if (lifetime.signal.aborted || revision !== guestRevisionRef.current) {
+          return
+        }
         post(
           refreshed
             ? { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: refreshed }
@@ -692,6 +713,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     return () => {
       window.removeEventListener('message', handleMessage)
       lifetime.abort()
+      guestRevisionRef.current += 1
       // Resolve rather than leak: a caller awaiting a query when the user
       // navigates away should get an empty answer, not a promise that never settles.
       pending.abortAll()
@@ -818,7 +840,17 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         // indistinguishable from the model choosing not to call it.
         console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed tool descriptor(s) from tools/list`)
       }
-      setTools(tools, callTool)
+      const revision = guestRevisionRef.current
+      setTools(
+        tools,
+        async (name, args) => {
+          if (revision !== guestRevisionRef.current) {
+            return { content: 'The app document changed before this tool could run.', isError: true }
+          }
+          return await callTool(name, args)
+        },
+        owner,
+      )
     }
     void discover()
     return () => {
@@ -827,7 +859,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // `callTool` and `request` are stable for the life of a connection, and a
     // different `app.id` arrives as a different route and remounts this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, handshakeEpoch, toolsEpoch, request, setTools])
+  }, [status, handshakeEpoch, toolsEpoch, request, setTools, owner])
 
   /**
    * A new document committed in the frame.
@@ -978,8 +1010,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * over a stale `status` and answers for a connection that has gone.
    */
   useEffect(() => {
-    setContextReader(requestContext)
-  }, [requestContext, setContextReader])
+    setContextReader(requestContext, owner)
+  }, [requestContext, setContextReader, owner, handshakeEpoch])
 
   /** The user's answer to the save on screen. */
   const answerDownload = useCallback(

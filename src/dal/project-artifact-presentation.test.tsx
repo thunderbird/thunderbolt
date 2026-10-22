@@ -45,6 +45,22 @@ beforeEach(async () => {
   await db.insert(chatMessagesTable).values({ id: messageId, chatThreadId: 'chat', role: 'assistant', parts })
 })
 
+it('loads legacy project names and tombstones through the live presentation query', async () => {
+  await renameProjectArtifact(getDb(), `${messageId}-0`, 'Legacy name')
+  await softDeleteProjectArtifact(getDb(), `${messageId}-Second`)
+  const { triggerChange } = renderWithReactivity(<Collection />, {
+    tables: ['settings', 'chat_messages', 'chat_threads'],
+  })
+  await waitForElement(() => screen.queryByText('Legacy name'))
+  expect(screen.getByTestId('collection').textContent).toBe('Legacy name')
+  await act(async () => {
+    await renameProjectArtifact(getDb(), artifacts[0].id, 'Canonical name')
+    triggerChange(['settings'])
+  })
+  await waitForElement(() => screen.queryByText('Canonical name'))
+  expect(screen.getByTestId('collection').textContent).toBe('Canonical name')
+})
+
 it('persists a rename without changing the source output, sibling artifact, or pinned identity', async () => {
   await renameProjectArtifact(getDb(), artifacts[0].id, '  Updated name  ')
   const result = await presented()

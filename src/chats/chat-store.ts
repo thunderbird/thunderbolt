@@ -4,7 +4,8 @@
 
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
-import { updateChatThread } from '@/dal/chat-threads'
+import { isModelAllowedForAgent } from '@/defaults/agents'
+import { needsApiKey } from '@/settings/models/model-policy'
 import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -80,6 +81,8 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
 export type ChatSession = {
   chatInstance: Chat<ThunderboltUIMessage>
   chatThread: ChatThread | null
+  /** First send or voice start fixes the agent before persistence finishes. */
+  agentLocked?: boolean
   connectionStatus: ConnectionStatus
   connectionError: Error | null
   id: string
@@ -253,8 +256,13 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   applyDiscoveredDefaultAgent: (defaultAgent, agents, preference) => {
     const nextSessions = new Map(get().sessions)
     for (const session of get().sessions.values()) {
-      const isUnstartedNewChat = !session.chatThread && session.chatInstance.messages.length === 0
+      const isUnstartedNewChat =
+        !session.agentLocked && !session.chatThread && session.chatInstance.messages.length === 0
       if (!isUnstartedNewChat || session.agentChosenByUser) {
+        const selectedAgent = agents.find((agent) => agent.id === session.selectedAgent.id)
+        if (selectedAgent && session.selectedAgent.enabled === 0) {
+          nextSessions.set(session.id, { ...session, selectedAgent })
+        }
         continue
       }
       const selectedAgent = resolveSessionAgent(agents, {
@@ -262,7 +270,11 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         discoveredDefaultAgent: defaultAgent ?? undefined,
       })
       if (selectedAgent.id !== session.selectedAgent.id) {
-        nextSessions.set(session.id, { ...session, selectedAgent })
+        nextSessions.set(session.id, {
+          ...session,
+          selectedAgent,
+          selectedModel: resolveSessionModel(selectedAgent, session.selectedModel, get().models),
+        })
       }
     }
     set({ agentDiscovery: { status: 'done', defaultAgent, agents }, sessions: nextSessions })
@@ -310,12 +322,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   setModels: (models) => {
     const swapped = [...get().sessions].flatMap(([id, session]) => {
-      const selectedModel = resolveSessionModel(
-        session.selectedAgent,
-        session.chatThread,
-        session.selectedModel,
-        models,
-      )
+      const selectedModel = resolveSessionModel(session.selectedAgent, session.selectedModel, models)
       return selectedModel === session.selectedModel ? [] : [[id, { ...session, selectedModel }] as const]
     })
     if (swapped.length === 0) {
@@ -428,31 +435,25 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    const agentChanged = session.selectedAgent.id !== agent.id
-    const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
+    const started =
+      session.agentLocked ||
+      session.chatThread ||
+      session.chatInstance.messages.length > 0 ||
+      session.chatInstance.status === 'submitted' ||
+      session.chatInstance.status === 'streaming'
+    if (started) {
+      if (session.selectedAgent.id === agent.id) {
+        return
+      }
+      throw new Error('Cannot change the agent after a chat has started')
+    }
+    const selectedModel = resolveSessionModel(agent, session.selectedModel, models)
     const nextSessions = new Map(sessions)
-    const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    // Session-only: the user picked an agent, not this model, so `selected_model` stays put.
-    const selectedModel = resolveSessionModel(agent, nextChatThread, session.selectedModel, models)
-    nextSessions.set(id, {
-      ...session,
-      chatThread: nextChatThread,
-      selectedAgent: agent,
-      selectedModel,
-      agentChosenByUser: true,
-    })
-
+    nextSessions.set(id, { ...session, selectedAgent: agent, selectedModel, agentChosenByUser: true })
     set({ sessions: nextSessions })
 
     const db = getDb()
-
-    if (session.chatThread) {
-      await updateChatThread(db, session.chatThread.id, threadPatch)
-    }
-
-    // Persist the global last-used agent so new chats default to it (mirrors
-    // `setSelectedModel`). The per-thread write above keeps existing chats
-    // pinned to their own agent.
+    // Only new chats inherit this preference; each persisted chat owns its agent.
     await updateSettings(db, { selected_agent: agent.id })
 
     trackEvent('agent_select', { agent: agent.id })
@@ -471,6 +472,15 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
     if (!session) {
       throw new Error('No session found')
+    }
+
+    if (
+      !isModelAllowedForAgent(session.selectedAgent, model) ||
+      model.enabled !== 1 ||
+      model.deletedAt ||
+      needsApiKey(model)
+    ) {
+      throw new Error('This model is not available for the selected agent')
     }
 
     const nextSessions = new Map(sessions)

@@ -62,6 +62,18 @@ msgstr ""
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr ""
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "{agentName} is built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+msgstr ""
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "{agentName} uses Opus 5.5. Fireworks voice models have not been configured yet."
+msgstr ""
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "{agentName} uses Tinfoil models for private chat and voice."
+msgstr ""
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
@@ -331,6 +343,10 @@ msgstr ""
 msgid "Advanced (JSON)"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Agent voice settings"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -411,8 +427,8 @@ msgid "Anything else you'd like to share?"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "API key"
-msgstr ""
+#~ msgid "API key"
+#~ msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -558,8 +574,8 @@ msgid "Back to App"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Base URL"
-msgstr ""
+#~ msgid "Base URL"
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Bearer token or API key"
@@ -883,6 +899,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
+msgstr ""
+
+#: src/components/agent-description.ts
+msgid "Confidential AI"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
@@ -1289,12 +1309,12 @@ msgid "Custom"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Custom — OpenAI-compatible endpoint"
-msgstr ""
+#~ msgid "Custom — OpenAI-compatible endpoint"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "Custom voice provider"
-msgstr ""
+#~ msgid "Custom voice provider"
+#~ msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Customized model"
@@ -1640,6 +1660,10 @@ msgstr ""
 msgid "e.g., gpt-4-turbo-preview"
 msgstr ""
 
+#: src/settings/voice.tsx
+msgid "Each agent defines its own speech-to-text and text-to-speech models."
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Early Access Login"
 msgstr ""
@@ -1916,6 +1940,10 @@ msgstr ""
 msgid "Finish securing after revoking {deviceName}"
 msgstr ""
 
+#: src/settings/voice.tsx
+msgid "Fireworks voice models have not been selected yet. Voice is unavailable for this agent."
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr ""
@@ -2134,8 +2162,8 @@ msgid "In your own words: what were you trying to do, and what did the agent do 
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
-msgstr ""
+#~ msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
@@ -2282,8 +2310,8 @@ msgid "Listening"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Load models"
-msgstr ""
+#~ msgid "Load models"
+#~ msgstr ""
 
 #: src/components/embedded/surface-status.tsx
 msgid "Loading {name}…"
@@ -2610,6 +2638,10 @@ msgstr ""
 msgid "No matching skills."
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "No models are configured for {agentName}. Enable a supported model in Settings."
+msgstr ""
+
 #: src/settings/models/models-list.tsx
 msgid "No models configured"
 msgstr ""
@@ -2624,8 +2656,8 @@ msgid "No models found."
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
-msgstr ""
+#~ msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
+#~ msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "No passkeys yet"
@@ -2660,12 +2692,12 @@ msgid "No tasks yet"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "None of your models can be used in this chat. Choose another agent to send."
-msgstr ""
+#~ msgid "None of your models can be used in this chat. Choose another agent to send."
+#~ msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Not available in private chats."
-msgstr ""
+#~ msgid "Not available in private chats."
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Not configured"
@@ -2758,7 +2790,12 @@ msgid "OneDrive Access"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
-msgid "Only available in private chats."
+#~ msgid "Only available in private chats."
+#~ msgstr ""
+
+#. placeholder {0}: agent.name
+#: src/components/settings/agents/agent-row.tsx
+msgid "Open {0}"
 msgstr ""
 
 #: src/settings/models/models-list.tsx
@@ -2840,8 +2877,8 @@ msgid "Optional"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Optional — leave blank for local servers that don’t require auth."
-msgstr ""
+#~ msgid "Optional — leave blank for local servers that don’t require auth."
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Optional — what this project is for"
@@ -2956,8 +2993,20 @@ msgid "Please wait while we verify your link."
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
+#~ msgid "Point at any server exposing /v1/audio/transcriptions and /v1/audio/speech. Its CORS must allow this app’s origin."
+#~ msgstr ""
+
+#: src/components/ui/agent-selector/agent-selector.tsx
+#~ msgid "Powered by Opus 5.5"
+#~ msgstr ""
+
+#: src/components/agent-description.ts
+msgid "Powerful frontier AI"
 msgstr ""
+
+#: src/components/ui/agent-selector/agent-selector.tsx
+#~ msgid "Powerful frontier models"
+#~ msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -2990,8 +3039,8 @@ msgid "Preview webview is only available in the desktop app"
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
-msgid "Privacy"
-msgstr ""
+#~ msgid "Privacy"
+#~ msgstr ""
 
 #: src/components/ui/private-badge.tsx
 msgid "Private"
@@ -3464,8 +3513,8 @@ msgid "Send message"
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "Send this private chat to {agentName}?"
-msgstr ""
+#~ msgid "Send this private chat to {agentName}?"
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
@@ -3760,8 +3809,8 @@ msgid "Speaking"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
-msgstr ""
+#~ msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using Thunderbolt"
@@ -3821,9 +3870,13 @@ msgstr ""
 msgid "Suggested"
 msgstr ""
 
+#: src/components/settings/agents/agent-detail.tsx
+#~ msgid "Superbolt uses Opus 5.5. Fireworks voice models have not been configured yet."
+#~ msgstr ""
+
 #: src/components/ui/header.tsx
-msgid "Switch Agent"
-msgstr ""
+#~ msgid "Switch Agent"
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Switch to {suggestedLanguageLabel}"
@@ -3896,7 +3949,6 @@ msgstr ""
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/mcp-server-form.tsx
-#: src/settings/voice.tsx
 msgid "Test connection"
 msgstr ""
 
@@ -3939,6 +3991,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
+msgstr ""
+
+#: src/voice/ui/use-voice-session.ts
+msgid "The agent for this voice session changed. Start voice mode again."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -4067,6 +4123,10 @@ msgstr ""
 msgid "This chat uses {agentName}, which is not available on this platform."
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "This chat's agent is unavailable. Start a new chat to use another agent."
+msgstr ""
+
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr ""
@@ -4076,8 +4136,8 @@ msgid "This conversation is too large for the model's context window. Start a ne
 msgstr ""
 
 #: src/components/ui/header.tsx
-msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
-msgstr ""
+#~ msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "This device"
@@ -4158,8 +4218,8 @@ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 #: src/voice/ui/use-voice-session.ts
-msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
-msgstr ""
+#~ msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "this project"
@@ -4246,8 +4306,8 @@ msgid "Thought for {duration}"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Thunderbolt (hosted, private)"
-msgstr ""
+#~ msgid "Thunderbolt (hosted, private)"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
@@ -4258,8 +4318,8 @@ msgid "Thunderbolt is open-source"
 msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-msgstr ""
+#~ msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+#~ msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
 msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
@@ -4268,6 +4328,10 @@ msgstr ""
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr ""
+
+#: src/components/settings/agents/agent-detail.tsx
+#~ msgid "Thunderbolt uses Tinfoil models for private chat and voice."
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Calendar"
@@ -4609,7 +4673,16 @@ msgid "Voice"
 msgstr ""
 
 #: src/settings/voice.tsx
-msgid "Voice engine"
+#~ msgid "Voice engine"
+#~ msgstr ""
+
+#: src/settings/voice.tsx
+#: src/voice/agent-voice.ts
+msgid "Voice is not available for this agent."
+msgstr ""
+
+#: src/voice/agent-voice.ts
+msgid "Voice is not configured for this agent yet."
 msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx

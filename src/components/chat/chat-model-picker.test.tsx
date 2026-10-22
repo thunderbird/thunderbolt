@@ -4,7 +4,7 @@
 
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import {
   createMockChatInstance,
   createMockChatThread,
@@ -55,8 +55,8 @@ const managedHttpAgent: Agent = {
   userId: null,
 }
 
-const gpt4 = createMockModel({ id: 'model-1', name: 'GPT-4', provider: 'thunderbolt', isSystem: 1 })
-const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'thunderbolt', isSystem: 1 })
+const gpt4 = createMockModel({ id: 'model-1', name: 'GPT-4', provider: 'tinfoil', isSystem: 1 })
+const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'tinfoil', isSystem: 1 })
 
 const QueryWrapper = createQueryTestWrapper()
 
@@ -130,6 +130,30 @@ describe('ChatModelPicker', () => {
     render(<ChatModelPicker />, { wrapper: TestWrapper })
 
     expect(screen.getByText('GPT-4')).toBeInTheDocument()
+  })
+
+  it('only offers Tinfoil models for Thunderbolt, without model privacy labels', () => {
+    const opus = createMockModel({ id: 'opus', name: 'Opus 5.5', provider: 'thunderbolt', model: 'opus-5-5' })
+    setupWithAgent(builtInAgent, [gpt4, gpt5, opus])
+    render(<ChatModelPicker />, { wrapper: TestWrapper })
+
+    fireEvent.click(screen.getByText('GPT-4'))
+
+    expect(screen.getByText('GPT-5')).toBeInTheDocument()
+    expect(screen.queryByText('Opus 5.5')).toBeNull()
+    expect(screen.queryByText('Private')).toBeNull()
+  })
+
+  it('only offers Opus 5.5 for Zeus', () => {
+    const opus = createMockModel({ id: 'opus', name: 'Opus 5.5', provider: 'thunderbolt', model: 'opus-5-5' })
+    setupWithAgent(zeusAgent, [opus, gpt4, gpt5])
+    render(<ChatModelPicker />, { wrapper: TestWrapper })
+
+    fireEvent.click(screen.getByText('Opus 5.5'))
+
+    expect(screen.queryByText('GPT-4')).toBeNull()
+    expect(screen.queryByText('GPT-5')).toBeNull()
+    expect(screen.queryByText('Private')).toBeNull()
   })
 
   it('renders nothing when the selected agent is remote-acp', () => {

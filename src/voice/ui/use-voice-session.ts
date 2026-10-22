@@ -7,19 +7,19 @@
  * from the current chat's `Chat` instance so a voice turn is a real chat turn,
  * and exposes the state/transcripts the overlay renders.
  */
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
-import { useDatabase } from '@/contexts'
-import { builtInAgent } from '@/defaults/agents'
-import { getSettings } from '@/dal'
+import { assertSessionCanSend } from '@/chats/session-policy'
 import type { ThunderboltUIMessage } from '@/types'
+import { agentVoiceUnavailableMessage } from '@/voice/agent-voice'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
 import { setVoiceModeActive } from '@/voice/voice-mode'
+import { toVoiceErrorMessage } from '@/voice/voice-error'
 import type { Chat } from '@ai-sdk/react'
-import { i18n, type MessageDescriptor } from '@lingui/core'
+import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { useEffect, useMemo, useReducer, useRef } from 'react'
 
 /** Thrown by a voice send the private auto-run hold refuses; `toVoiceOverlayError` translates it. */
@@ -33,11 +33,12 @@ class PrivateChatHeldError extends Error {
   }
 }
 
-// The composer notice's copy, so the overlay and the notice read alike in every locale.
-const privateChatHeldMessage = (agentName: string, builtInAgentName: string | null): MessageDescriptor =>
-  builtInAgentName
-    ? msg`This private chat won't run on ${agentName}. Switch to ${builtInAgentName} to run it.`
-    : msg`This private chat won't run on ${agentName}.`
+class VoiceAgentChangedError extends Error {
+  constructor() {
+    super('The agent for this voice session changed')
+    this.name = 'VoiceAgentChangedError'
+  }
+}
 
 /**
  * The line the voice overlay shows for a session error. A held private chat gets
@@ -45,11 +46,14 @@ const privateChatHeldMessage = (agentName: string, builtInAgentName: string | nu
  * a string; any other error is shown as thrown.
  */
 export const toVoiceOverlayError = (error: unknown): string => {
-  if (!(error instanceof PrivateChatHeldError)) {
-    return String(error)
+  if (error instanceof VoiceAgentChangedError) {
+    return i18n._(msg`The agent for this voice session changed. Start voice mode again.`)
   }
-  const builtInAgentName = selectBuiltInAgentEnabled(useConfigStore.getState().config) ? builtInAgent.name : null
-  return i18n._(privateChatHeldMessage(error.agentName, builtInAgentName))
+  if (error instanceof PrivateChatHeldError) {
+    const { agentName } = error
+    return i18n._(msg`This private chat won't run on ${agentName}.`)
+  }
+  return String(error)
 }
 
 /**
@@ -63,11 +67,13 @@ export const toVoiceOverlayError = (error: unknown): string => {
  * chat to a non-built-in agent either. The rejection lands in the session's
  * error state.
  */
-export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: string): ReplyChat => ({
+export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: string, agentId: string): ReplyChat => ({
   sendMessage: async (message) => {
     const session = useChatStore.getState().sessions.get(chatThreadId)
+    if (!session || session.selectedAgent.id !== agentId) {
+      throw new VoiceAgentChangedError()
+    }
     if (
-      session &&
       isPrivateAutoRunBlocked({
         chatThread: session.chatThread,
         agent: session.selectedAgent,
@@ -94,11 +100,25 @@ type VoiceUiState = {
 
 const initial: VoiceUiState = { active: false, state: 'idle', error: null }
 
-export const useVoiceSession = () => {
+/** Keep the audio graph out of the composer's entry bundle until voice starts. */
+const loadVoiceRuntime = async () => {
+  const [{ createVoiceSession }, { createVoiceEngine }, { createChatReply }] = await Promise.all([
+    import('@/voice/session'),
+    import('@/voice/engine/router'),
+    import('@/voice/chat-reply'),
+  ])
+  return { createVoiceSession, createVoiceEngine, createChatReply }
+}
+
+type VoiceRun = { controller: AbortController; session: VoiceSession | null }
+
+export const useVoiceSession = (loadRuntime = loadVoiceRuntime) => {
   const session = useCurrentChatSession()
-  const db = useDatabase()
+  const { i18n: activeI18n } = useLingui()
+  const unavailableMessage = agentVoiceUnavailableMessage(session.selectedAgent)
+  const unavailableReason = unavailableMessage ? activeI18n._(unavailableMessage) : null
   const [ui, patch] = useReducer((s: VoiceUiState, p: Partial<VoiceUiState>): VoiceUiState => ({ ...s, ...p }), initial)
-  const sessionRef = useRef<VoiceSession | null>(null)
+  const runRef = useRef<VoiceRun | null>(null)
   // Live mic level, updated ~30×/s. A ref (not state) so the waveform can read it
   // in a rAF loop without re-rendering the composer on every frame.
   const levelRef = useRef(0)
@@ -108,7 +128,7 @@ export const useVoiceSession = () => {
   const outputLevelRef = useMemo<{ readonly current: number }>(
     () => ({
       get current() {
-        return sessionRef.current?.getOutputLevel() ?? 0
+        return runRef.current?.session?.getOutputLevel() ?? 0
       },
     }),
     [],
@@ -119,71 +139,97 @@ export const useVoiceSession = () => {
   // chat — start again elsewhere and one utterance hits two chats at once.
   useEffect(
     () => () => {
-      void sessionRef.current?.stop()
-      sessionRef.current = null
+      const run = runRef.current
+      runRef.current = null
+      run?.controller.abort()
+      void run?.session?.stop()
       setVoiceModeActive(false)
     },
     [],
   )
 
   const start = async () => {
-    if (sessionRef.current) {
+    if (runRef.current) {
       return
-    } // already running — never stack a second session
+    }
+    const run: VoiceRun = { controller: new AbortController(), session: null }
+    runRef.current = run
     patch({ active: true, error: null, state: 'idle' })
-    // Flag voice as active so the chat send path injects the voice self-context
-    // system note (see `voice-mode.ts`); cleared on stop / startup failure.
-    setVoiceModeActive(true)
     try {
-      // Lazy-load the voice runtime (session + engines + VAD/playback/aggregator
-      // graph) only when the user actually starts voice — it's a non-critical
-      // feature and must stay out of the always-mounted chat composer's entry
-      // bundle. Read the flag authoritatively from the DB here too (not via a
-      // reactive hook that returns `false` until its query resolves) so a custom
-      // provider is never bypassed for the hardwired engine on a cold start.
-      const [{ createVoiceSession }, { createVoiceEngine }, { createChatReply }, { experimentalFeatureVoice }] =
-        await Promise.all([
-          import('@/voice/session'),
-          import('@/voice/engine/router'),
-          import('@/voice/chat-reply'),
-          getSettings(db, { experimental_feature_voice: false }),
-        ])
+      const currentSession = useChatStore.getState().sessions.get(session.id)
+      if (!currentSession) {
+        throw new VoiceAgentChangedError()
+      }
+      assertSessionCanSend(currentSession)
+      const unavailable = agentVoiceUnavailableMessage(currentSession.selectedAgent)
+      if (unavailable) {
+        runRef.current = null
+        patch({ error: activeI18n._(unavailable) })
+        return
+      }
+      const agentId = currentSession.selectedAgent.id
+      useChatStore.getState().updateSession(session.id, { agentLocked: true })
+      setVoiceModeActive(true)
+      const { createVoiceSession, createVoiceEngine, createChatReply } = await loadRuntime()
+      if (run.controller.signal.aborted) {
+        return
+      }
+      const liveSession = useChatStore.getState().sessions.get(session.id)
+      if (!liveSession || liveSession.selectedAgent.id !== agentId) {
+        throw new VoiceAgentChangedError()
+      }
+      assertSessionCanSend(liveSession)
       const voice = createVoiceSession({
-        engine: createVoiceEngine(experimentalFeatureVoice),
+        engine: createVoiceEngine(liveSession.selectedAgent),
         // The transcript + reply render as normal chat bubbles via sendMessage, so
         // the UI itself only needs the session state.
-        reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
-        onState: (state) => patch({ state }),
+        reply: createChatReply(toReplyChat(liveSession.chatInstance, session.id, agentId)),
+        onState: (state) => {
+          if (!run.controller.signal.aborted) {
+            patch({ state })
+          }
+        },
         onError: (error) => {
           console.error('[voice]', error)
-          patch({ error: toVoiceOverlayError(error) })
+          if (!run.controller.signal.aborted) {
+            patch({ error: toVoiceOverlayError(error) })
+          }
         },
         onLevel: (level) => {
           levelRef.current = level
         },
       })
-      sessionRef.current = voice
+      run.session = voice
       await voice.start()
     } catch (error) {
+      if (run.controller.signal.aborted) {
+        return
+      }
       // Startup failures are usually getUserMedia (mic blocked / missing / in use)
       // — surface an actionable message instead of a raw DOMException name. Tear
       // the partial session down (its playback ctx already exists) and clear the
       // ref so the mic button can start a fresh one.
       console.error('[voice]', error)
-      await sessionRef.current?.stop()
-      sessionRef.current = null
+      await run.session?.stop()
+      if (run.controller.signal.aborted) {
+        return
+      }
+      runRef.current = null
       setVoiceModeActive(false)
-      const { toVoiceErrorMessage } = await import('@/voice/voice-error')
-      patch({ error: toVoiceErrorMessage(error) })
+      patch({
+        error: error instanceof VoiceAgentChangedError ? toVoiceOverlayError(error) : toVoiceErrorMessage(error),
+      })
     }
   }
 
   const stop = async () => {
-    await sessionRef.current?.stop()
-    sessionRef.current = null
+    const run = runRef.current
+    runRef.current = null
+    run?.controller.abort()
     setVoiceModeActive(false)
     patch({ active: false, state: 'idle' })
+    await run?.session?.stop()
   }
 
-  return { ...ui, start, stop, levelRef, outputLevelRef }
+  return { ...ui, available: unavailableMessage === null, unavailableReason, start, stop, levelRef, outputLevelRef }
 }

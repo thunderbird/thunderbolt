@@ -148,7 +148,7 @@ const advanceVersionMarker = async (
  *   When updating, the existing row's value is kept for each listed field and
  *   the stored `defaultHash` reflects that post-freeze state. Protects
  *   identity-critical columns whose values establish downstream contracts —
- *   e.g. `isConfidential` on models (encrypted threads bind to it at creation)
+ *   e.g. `isConfidential` on models (older clients bind thread privacy to it)
  *   and `provider` (routing). A server-shipped OTA payload cannot flip these
  *   on a bundle-known id; a new value ships under a fresh id. Only applies to
  *   updates — inserts use the default as-is.
@@ -541,11 +541,8 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
     // a mid-sync device stays non-mutating.
     //
     // `frozenFields` protects two identity-critical columns from OTA drift:
-    // - `isConfidential`: an encrypted thread binds `isEncrypted` to the
-    //   model's `isConfidential` at creation and the send guard enforces
-    //   equality; a server slip that flips this on a live row would strand
-    //   every encrypted thread bound to that id (see the Flash-fresh-id
-    //   comment in `shared/defaults/models.ts`).
+    // - `isConfidential`: older clients still bind thread privacy to this field.
+    //   Keep their synced rows stable while newer clients use agent-owned privacy.
     // - `provider`: routes inference to the correct upstream; flipping it
     //   under an existing id would silently misroute or break sends.
     // OTA can still update name, description, contextWindow, tool flags, etc.

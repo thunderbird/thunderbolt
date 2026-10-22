@@ -11,6 +11,8 @@ import { Link } from 'react-router'
 
 import { testAcpConnection as defaultTestAcpConnection } from '@/acp'
 import { useFormatters } from '@/i18n/use-formatters'
+import { isPrivateAgent } from '@/defaults/agents'
+import { getAgentDescription } from '@/components/agent-description'
 import { iconForAgent } from '@/components/agent-icon'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
@@ -73,7 +75,7 @@ const agentFlavor = (agent: Agent): AgentFlavor => {
 
 /**
  * Slide-in detail panel for a single agent, one shared anatomy for all three
- * flavors (built-in / system / custom): identity header with provenance
+ * flavors (built-in / system / custom): identity header with a description
  * subtitle, scrollable body sections separated by hairline dividers (same
  * transparent-on-surface idiom as the skills detail), and management tucked
  * into the ⋯ menu. Built-in and system agents are read-only; customs edit
@@ -89,6 +91,7 @@ export const AgentDetail = ({
   testAcpConnection = defaultTestAcpConnection,
 }: AgentDetailProps) => {
   const agentName = agent.name
+  const { i18n } = useLingui()
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
   const isEditable = flavor === 'custom' && !!currentUserId && agent.userId === currentUserId
@@ -131,11 +134,11 @@ export const AgentDetail = ({
         </IconTile>
       }
       title={agent.name}
-      subtitle={agentProvenanceLine(agent)}
+      subtitle={getAgentDescription(agent, i18n) || agentProvenanceLine(agent)}
       actions={managementMenu}
       onClose={onClose}
     >
-      {flavor === 'built-in' && <BuiltInBody />}
+      {flavor === 'built-in' && <BuiltInBody agent={agent} />}
       {flavor === 'system' && <SystemBody agent={agent} />}
       {flavor === 'custom' && (
         <CustomBody agent={agent} isEditable={isEditable} onUpdate={onUpdate} testAcpConnection={testAcpConnection} />
@@ -178,9 +181,10 @@ export const AgentDetail = ({
   )
 }
 
-/** Read-only info view for the built-in Thunderbolt agent: what it is, plus
+/** Read-only info view for built-in agents: what it is, plus
  *  live links into the Library surfaces it draws on. */
-const BuiltInBody = () => {
+const BuiltInBody = ({ agent }: { agent: Agent }) => {
+  const agentName = agent.name
   const { t } = useLingui()
   const db = useDatabase()
   const { skills } = useLibrarySkills()
@@ -198,11 +202,19 @@ const BuiltInBody = () => {
         </DetailSectionTitle>
         <p className="text-base leading-snug text-foreground">
           <Trans>
-            Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have
-            enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on.
+            {agentName} is built into the app — always here, no setup needed. It draws on everything you have enabled in
+            your library (skills, integrations, and MCP servers) to help with whatever you are working on.
           </Trans>
         </p>
       </div>
+
+      <p className="text-base leading-snug text-muted-foreground">
+        {isPrivateAgent(agent) ? (
+          <Trans>{agentName} uses Tinfoil models for private chat and voice.</Trans>
+        ) : (
+          <Trans>{agentName} uses Opus 5.5. Fireworks voice models have not been configured yet.</Trans>
+        )}
+      </p>
 
       <DetailDivider />
 

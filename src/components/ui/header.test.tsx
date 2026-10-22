@@ -7,8 +7,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { agentsSystemTable } from '@/db/tables'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { createMockChatThread, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
@@ -39,21 +38,6 @@ const customAgent: Agent = {
   enabled: 1,
   deletedAt: null,
   userId: 'user-1',
-}
-
-/** The backend's hosted agent, which receives a chat's history unencrypted. */
-const hostedAgent: Agent = {
-  id: 'hosted-agent',
-  name: 'Assistant',
-  type: 'managed-http',
-  transport: 'http',
-  url: '/v1/agent/chat',
-  description: null,
-  icon: null,
-  isSystem: 1,
-  enabled: 1,
-  deletedAt: null,
-  userId: null,
 }
 
 /** Wraps the component in everything `Header` touches: a router (it reads
@@ -149,7 +133,7 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
-    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass('top-2')
+    expect(screen.getByTestId('agent-selector-trigger').parentElement).toHaveClass('top-2')
   })
 
   it('keeps showing the thread agent after the synced list hydrates', async () => {
@@ -196,7 +180,7 @@ describe('Header', () => {
 
     render(<Header />, { wrapper: TestWrapper })
 
-    const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
+    const wrapper = screen.getByTestId('agent-selector-trigger').parentElement
     // `left` stays fixed — only `translate` differs between the two states,
     // so the dock slide can run entirely on the compositor.
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
@@ -234,8 +218,8 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
   })
 
-  it('opens agent creation over the current chat route', async () => {
-    setupWithAgent(builtInAgent)
+  it('opens agent creation over the current new-chat route', async () => {
+    setupWithAgent(builtInAgent, { withThread: false })
     render(<Header />, { wrapper: TestWrapper })
 
     fireEvent.click(screen.getByTestId('agent-selector-trigger'))
@@ -244,88 +228,41 @@ describe('Header', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
   })
 
-  describe('switching a private chat off the built-in agent', () => {
-    const seedHostedAgent = () =>
-      getDb().insert(agentsSystemTable).values({
-        id: hostedAgent.id,
-        name: hostedAgent.name,
-        type: 'managed-http',
-        transport: 'http',
-        url: '/v1/agent/chat',
-        fetchedAt: new Date().toISOString(),
-      })
-
-    const pickHostedAgent = async () => {
+  describe('agent identity is fixed once a chat starts', () => {
+    it.each([0, 1] as const)('does not offer switching on an existing chat with isEncrypted %i', (isEncrypted) => {
+      setupWithAgent(builtInAgent, { isEncrypted })
       render(<Header />, { wrapper: TestWrapper })
-      await flushAgentsQuery()
+
+      const trigger = screen.getByTestId('agent-selector-trigger')
+      expect(trigger.closest('button')).toBeNull()
+      fireEvent.click(trigger)
+      expect(screen.queryByText('Zeus')).toBeNull()
+      expect(screen.queryByText('Add Agent')).toBeNull()
+    })
+
+    it('allows choosing Zeus before the first message', async () => {
+      setupWithAgent(builtInAgent, { withThread: false })
+      render(<Header />, { wrapper: TestWrapper })
       fireEvent.click(screen.getByTestId('agent-selector-trigger'))
-      fireEvent.click(await screen.findByText(hostedAgent.name))
-    }
-
-    const currentAgentId = () => useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id
-
-    it('asks first, and Cancel keeps the built-in agent', async () => {
-      await seedHostedAgent()
-      setupWithAgent(builtInAgent, { isEncrypted: 1 })
-      await pickHostedAgent()
-
-      expect(await screen.findByText('Send this private chat to Assistant?')).toBeInTheDocument()
-      expect(currentAgentId()).toBe(builtInAgent.id)
-
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-      await flushAgentsQuery()
-
-      expect(currentAgentId()).toBe(builtInAgent.id)
-    })
-
-    it('switches once the user confirms', async () => {
-      await seedHostedAgent()
-      setupWithAgent(builtInAgent, { isEncrypted: 1 })
-      await pickHostedAgent()
-
-      fireEvent.click(await screen.findByRole('button', { name: 'Switch Agent' }))
-      await flushAgentsQuery()
-
-      expect(currentAgentId()).toBe(hostedAgent.id)
-    })
-
-    it('closes a pending prompt when the user moves to another chat, so it cannot switch that one', async () => {
-      await seedHostedAgent()
-      setupWithAgent(builtInAgent, { isEncrypted: 1 })
-      await pickHostedAgent()
-      expect(await screen.findByText('Send this private chat to Assistant?')).toBeInTheDocument()
-
-      act(() => {
-        hydrateStore({
-          chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-2' }),
-          chatThread: createMockChatThread({ id: 'thread-2' }),
-          id: 'thread-2',
-          selectedModel: createMockModel(),
-          triggerData: null,
-        })
+      await act(async () => {
+        fireEvent.click(screen.getByText('Zeus'))
       })
-      await flushAgentsQuery()
-
-      expect(screen.queryByRole('button', { name: 'Switch Agent' })).toBeNull()
-      expect(useChatStore.getState().sessions.get('thread-2')?.selectedAgent.id).toBe(builtInAgent.id)
-
-      act(() => {
-        useChatStore.getState().setCurrentSessionId('thread-1')
-      })
-      await flushAgentsQuery()
-
-      expect(screen.queryByRole('button', { name: 'Switch Agent' })).toBeNull()
-      expect(currentAgentId()).toBe(builtInAgent.id)
+      expect(useChatStore.getState().sessions.get('thread-1')?.selectedAgent.id).toBe(zeusAgent.id)
     })
 
-    it('switches a chat that is not private without asking', async () => {
-      await seedHostedAgent()
-      setupWithAgent(builtInAgent)
-      await pickHostedAgent()
-      await flushAgentsQuery()
+    it('holds the identity after messages exist, before the thread has persisted', () => {
+      setupWithAgent(builtInAgent, { withThread: false })
+      const session = useChatStore.getState().sessions.get('thread-1')!
+      session.chatInstance.messages = [{ id: 'message', role: 'user', parts: [{ type: 'text', text: 'hello' }] }]
+      render(<Header />, { wrapper: TestWrapper })
+      expect(screen.getByTestId('agent-selector-trigger').closest('button')).toBeNull()
+    })
 
-      expect(screen.queryByText('Send this private chat to Assistant?')).toBeNull()
-      expect(currentAgentId()).toBe(hostedAgent.id)
+    it('holds the identity while a voice session is preparing the first message', () => {
+      setupWithAgent(builtInAgent, { withThread: false })
+      useChatStore.getState().updateSession('thread-1', { agentLocked: true })
+      render(<Header />, { wrapper: TestWrapper })
+      expect(screen.getByTestId('agent-selector-trigger').closest('button')).toBeNull()
     })
   })
 })

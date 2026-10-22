@@ -8,10 +8,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
+import { getAgentDescription } from '@/components/agent-description'
 import { iconForAgent } from '@/components/agent-icon'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { ChevronDown } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 export type AgentSelectorProps = {
   selectedAgent: Agent
@@ -19,6 +20,8 @@ export type AgentSelectorProps = {
   onSelect: (agent: Agent) => void
   onAddAgent?: () => void
   disabled?: boolean
+  /** An existing chat keeps its agent; display its identity without a menu. */
+  readOnly?: boolean
   /** Collapses the trigger into a circular icon-only button (the mobile
    *  header's top-right control, matching the sidebar toggle's muted circle).
    *  The label and paddings transition, so toggling this mid-mount morphs the
@@ -37,6 +40,7 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   return {
     id: agent.id,
     label: agent.name,
+    description: agent.description ?? undefined,
     // The logo reads slightly smaller than the lucide glyphs at equal box
     // size, so it gets a half-step bump.
     icon: <Icon className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')} />,
@@ -44,12 +48,20 @@ const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
   }
 }
 
-/** Compact item renderer — label-only rows (no descriptions) at
- *  `--font-size-body` (16px mobile / 14px desktop) so the menu stays tight. */
+/** Keep the name prominent and the short description on a quieter second line. */
 const renderAgentItem = (item: SearchableMenuItem<AgentItemData>, isSelected: boolean) => (
-  <div className={cn(searchableMenuRowClass, isSelected ? 'bg-accent' : 'hover:bg-accent/50')}>
+  <div
+    className={cn(searchableMenuRowClass, 'h-auto py-2 max-md:h-auto', isSelected ? 'bg-accent' : 'hover:bg-accent/50')}
+  >
     {item.icon && <span className="flex-shrink-0">{item.icon}</span>}
-    <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate font-medium">{item.label}</span>
+      {item.description && (
+        <span className="mt-0.5 block text-[length:var(--font-size-xs)] leading-snug text-muted-foreground line-clamp-2">
+          {item.description}
+        </span>
+      )}
+    </span>
   </div>
 )
 
@@ -81,29 +93,22 @@ export const AgentSelector = ({
   onSelect,
   onAddAgent,
   disabled = false,
+  readOnly = false,
   collapsed = false,
   side,
   align,
 }: AgentSelectorProps) => {
-  const { t } = useLingui()
-  const items = useMemo(() => buildAgentItems(agents), [agents])
+  const { t, i18n } = useLingui()
+  const items = buildAgentItems(agents).map((item) => ({
+    ...item,
+    description: item.data ? getAgentDescription(item.data.agent, i18n) : item.description,
+  }))
 
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
-  // One agent and no way to add another leaves nothing to choose, so the
-  // trigger renders as a plain label: no chevron, no menu, and no dimming
-  // while a reply streams, since there is no switch to hold back. Minimal mode
-  // never renders the selector at all (see `Header`).
-  //
-  // That only holds when the sole available agent is the selected one. An
-  // existing chat can still hold the built-in fallback it was given before
-  // hosted-agent discovery finished (discovery skips existing chats), so with
-  // the hosted agent as the only agent on offer the menu stays as the one way
-  // to switch. The chat's agent is deliberately not switched
-  // for the user: that is a persisted write.
   const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
-  const isLabel = !soleAgentIsOther && agents.length <= 1 && !onAddAgent
+  const isLabel = readOnly || (!soleAgentIsOther && agents.length <= 1 && !onAddAgent)
   const dimmed = disabled && !isLabel
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {

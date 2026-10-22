@@ -15,7 +15,7 @@ import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { createMockChatInstance, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -44,7 +44,7 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    selectedModel: createMockModel({ id: 'm1' }),
     triggerData: null,
   })
 }
@@ -93,8 +93,10 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     id: sessionId,
     selectedModel: {
       id: 'm1',
-      model: 'claude-opus',
-      provider: 'anthropic',
+      model: 'deepseek-v4-1-flash',
+      provider: 'tinfoil',
+      enabled: 1,
+      isSystem: 1,
       apiKey: 'secret',
       isConfidential: 0,
     } as never,
@@ -249,7 +251,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     'resolves a /weather token for a non-built-in agent only outside minimal mode (%s)',
     async (minimalMode, expected) => {
       useConfigStore.setState({ config: { minimalMode } })
-      const remote: Agent = { ...builtInAgent, id: 'remote', type: 'managed-http' }
+      const remote: Agent = { ...builtInAgent, id: 'remote', type: 'managed-http', transport: 'http' }
       useChatStore.getState().updateSession(sessionId, { selectedAgent: remote })
       const seen: Array<string[] | undefined> = []
       const adapter: AgentAdapter = {
@@ -327,8 +329,8 @@ describe('createAgentRoutingFetch — connection status', () => {
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
   })
 
-  it('re-enters connecting when agent identity changes between calls', async () => {
-    const altAgent: Agent = { ...builtInAgent, id: 'alt' }
+  it('rejects changing agent identity after routing has started', async () => {
+    const altAgent: Agent = { ...builtInAgent, id: 'alt', type: 'remote-acp', transport: 'websocket' }
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
@@ -339,9 +341,9 @@ describe('createAgentRoutingFetch — connection status', () => {
 
     await fetch('https://x', { body: '{}' } as RequestInit)
     useChatStore.getState().updateSession(sessionId, { selectedAgent: altAgent })
-    await fetch('https://x', { body: '{}' } as RequestInit)
+    await expect(fetch('https://x', { body: '{}' } as RequestInit)).rejects.toThrow('Cannot change the agent')
 
-    expect(connectToAgent).toHaveBeenCalledTimes(2)
+    expect(connectToAgent).toHaveBeenCalledTimes(1)
     expect(useChatStore.getState().sessions.get(sessionId)!.connectionStatus).toBe('ready')
   })
 
@@ -874,25 +876,15 @@ describe('createChatInstance — retry policy', () => {
     expect(wakeAdapterReconnect).toHaveBeenCalledWith(builtInAgent.id)
   })
 
-  it.each([
-    ['the built-in agent', builtInAgent, true],
-    ['the hosted agent, which ignores the selected model', { ...builtInAgent, type: 'managed-http' } as Agent, false],
-  ])("enforces a private chat's model lock for %s: %p", async (_label, agent, enforced) => {
+  it('enforces agent model policy for sends before any history is transmitted', async () => {
     const { instance, sendMessage } = createRetryHarness()
     useChatStore.getState().updateSession(sessionId, {
-      selectedAgent: agent,
-      chatThread: createMockChatThread({ id: sessionId, isEncrypted: 1 }),
+      selectedModel: createMockModel({ provider: 'thunderbolt', model: 'opus-5-5' }),
     })
-
-    const sending = instance.sendMessage({ text: 'hi' })
-
-    if (enforced) {
-      await expect(sending).rejects.toThrow('This model is not available for encrypted conversations.')
-      expect(sendMessage).not.toHaveBeenCalled()
-    } else {
-      await sending
-      expect(sendMessage).toHaveBeenCalledTimes(1)
-    }
+    await expect(instance.sendMessage({ text: 'hi' })).rejects.toThrow(
+      'This model is not available for the selected agent',
+    )
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('throws the friendly guard (not a TypeError) when a turn starts with no selected model', async () => {
@@ -992,7 +984,9 @@ describe('createChatInstance — retry policy', () => {
   ] as const)('keeps a %s turn stamped as engine %p once it finishes', async (type, engine) => {
     const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
     const { finishSuccessfully, instance } = createRetryHarness(saveMessages)
-    useChatStore.getState().updateSession(sessionId, { selectedAgent: { ...builtInAgent, type } })
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: { ...builtInAgent, type, transport: type === 'managed-http' ? 'http' : 'websocket' },
+    })
     setDebugTranscriptCaptureEnabled(true)
 
     await instance.sendMessage({ text: 'route this turn' })
@@ -1043,8 +1037,8 @@ describe('createChatInstance — retry policy', () => {
     const receiveProperties = receiveCall[1] as TurnTelemetryPayload
     const summaryProperties = summaryCalls[0]![1] as TurnTelemetryPayload
 
-    expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
-    expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
+    expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' })
+    expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' })
     expect(JSON.stringify(sendProperties)).not.toContain('secret')
     expect(summaryCalls).toHaveLength(1)
     expect(summaryProperties.outcome).toBe('success')
@@ -1170,9 +1164,9 @@ describe('createChatInstance — retry policy', () => {
       const autoRetry = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
       const retrySuccess = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_retry_success')?.[1]
       const successSummary = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
-      expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
+      expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
+      expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
       expect((autoRetry as TurnTelemetryPayload).trace_id).toBe((successSummary as TurnTelemetryPayload).trace_id)
 
       const exhaustedHarness = createRetryHarness()
@@ -1193,8 +1187,8 @@ describe('createChatInstance — retry policy', () => {
       const errorSummary = exhaustedHarness.trackEvent.mock.calls.find(
         ([event]) => event === 'chat_turn_completed',
       )?.[1]
-      expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
+      expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
+      expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
       expect((retriesExhausted as TurnTelemetryPayload).trace_id).toBe((errorSummary as TurnTelemetryPayload).trace_id)
     } finally {
       random.mockRestore()
@@ -1405,7 +1399,9 @@ describe('createChatInstance — retry policy', () => {
     await finish
 
     const reply = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')?.[1]
-    expect(reply).toEqual(expect.objectContaining({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' }))
+    expect(reply).toEqual(
+      expect.objectContaining({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' }),
+    )
   })
 
   it('keeps a turn that starts mid-save on its own trace and state', async () => {
@@ -1491,7 +1487,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     chatInstance: instance,
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    selectedModel: createMockModel({ id: 'm1', provider: 'tinfoil', isSystem: 1, isConfidential: 1 }),
     triggerData: null,
   })
   return { instance, attempts }

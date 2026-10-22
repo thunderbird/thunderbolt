@@ -10,8 +10,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, modelsTable } from '@/db/tables'
-import { builtInAgent } from '@/defaults/agents'
+import { agentsSystemTable, chatThreadsTable, modelsTable } from '@/db/tables'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
@@ -36,7 +36,7 @@ const createSystemModel = async () => {
     id: modelId,
     provider: 'thunderbolt',
     name: 'System Model',
-    model: 'gpt-oss-120b',
+    model: 'opus-5-5',
     isSystem: 1,
     enabled: 1,
     isConfidential: 0,
@@ -62,7 +62,7 @@ const createTestModel = async () => {
     id: modelId,
     provider: 'thunderbolt',
     name: 'Test Model',
-    model: 'gpt-oss-120b',
+    model: 'opus-5-5',
     isSystem: 0,
     enabled: 1,
     isConfidential: 0,
@@ -400,7 +400,8 @@ describe('useHydrateChatStore', () => {
 
     it('keeps a persisted thread with no agent of its own off the discovered default', async () => {
       // Automation runs and threads from before `agent_id` existed have none.
-      const threadId = await createTestThread(await createTestModel())
+      const threadId = uuidv7()
+      await getDb().insert(chatThreadsTable).values({ id: threadId, agentId: null, isEncrypted: 0 })
       await seedDiscoveredDefault()
 
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
@@ -410,7 +411,8 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
 
-      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(getCurrentSession()?.selectedAgent.id).toBe(zeusAgent.id)
+      expect((await getThread(getDb(), threadId))?.agentId).toBe(zeusAgent.id)
     })
 
     it('keeps a new chat on the built-in agent when the user has picked a model', async () => {
@@ -462,7 +464,7 @@ describe('useHydrateChatStore', () => {
     })
   })
 
-  describe('model for a thread that falls back to the built-in agent', () => {
+  describe('persisted agent identity', () => {
     /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
     const createConfidentialModel = async () => {
       const modelId = uuidv7()
@@ -485,11 +487,9 @@ describe('useHydrateChatStore', () => {
       const confidentialModelId = await createConfidentialModel()
       await updateSettings(getDb(), { selected_model: confidentialModelId })
       const threadId = uuidv7()
-      await createChatThread(
-        getDb(),
-        { id: threadId, title: 'Synced', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0, ...thread },
-        (await getModel(getDb(), confidentialModelId))!,
-      )
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: threadId, title: 'Synced', ...thread })
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
         wrapper: TestWrapper,
       })
@@ -499,19 +499,32 @@ describe('useHydrateChatStore', () => {
       return getCurrentSession()
     }
 
-    it('swaps in a non-confidential model when a hosted thread opens before discovery seeds its agent', async () => {
+    it('holds the persisted agent identity when discovery has not seeded it yet', async () => {
       // Fresh device: the thread synced, `agents_system` has no hosted row yet.
       const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
 
-      expect(session?.selectedAgent.id).toBe(builtInAgent.id)
-      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
-    })
-
-    it('keeps the model of a thread whose confidentiality already matches it', async () => {
-      const session = await hydrateThread({ isEncrypted: 1 })
-
+      expect(session?.selectedAgent).toMatchObject({ id: 'hosted-agent', enabled: 0 })
+      expect(session?.chatThread?.agentId).toBe('hosted-agent')
       expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
     })
+
+    it.each([
+      { agentId: undefined, isEncrypted: 1 as const, expectedAgent: builtInAgent },
+      { agentId: builtInAgent.id, isEncrypted: 1 as const, expectedAgent: builtInAgent },
+      { agentId: undefined, isEncrypted: 0 as const, expectedAgent: zeusAgent },
+      { agentId: builtInAgent.id, isEncrypted: 0 as const, expectedAgent: zeusAgent },
+    ])(
+      'binds legacy $agentId / $isEncrypted to the matching built-in agent',
+      async ({ agentId, isEncrypted, expectedAgent }) => {
+        const session = await hydrateThread({ agentId, isEncrypted })
+
+        expect(session?.selectedAgent.id).toBe(expectedAgent.id)
+        expect(session?.chatThread?.agentId).toBe(expectedAgent.id)
+        expect(session?.selectedModel.provider).toBe(isEncrypted === 1 ? 'tinfoil' : 'thunderbolt')
+        expect(session?.selectedModel.model).toBe(isEncrypted === 1 ? 'kimi-k2' : 'opus-5-5')
+        expect((await getThread(getDb(), session!.id))?.agentId).toBe(expectedAgent.id)
+      },
+    )
   })
 
   describe('project assignment', () => {
@@ -592,9 +605,10 @@ describe('useHydrateChatStore', () => {
     })
 
     it.each([
-      ['the hosted agent, never private, since its content reaches the backend', true, 0],
-      ['the built-in agent, private on a confidential model', false, 1],
-    ])('creates a new thread on %s', async (_label, onHostedAgent, isEncrypted) => {
+      { agentId: 'hosted-agent', isEncrypted: 0 },
+      { agentId: builtInAgent.id, isEncrypted: 1 },
+      { agentId: zeusAgent.id, isEncrypted: 0 },
+    ])('creates a new thread on $agentId with agent-owned privacy', async ({ agentId, isEncrypted }) => {
       const confidentialModelId = uuidv7()
       await getDb().insert(modelsTable).values({
         id: confidentialModelId,
@@ -611,9 +625,10 @@ describe('useHydrateChatStore', () => {
         url: null,
         defaultHash: null,
       })
-      if (onHostedAgent) {
+      if (agentId === 'hosted-agent') {
         await seedDiscoveredDefault()
       }
+      await updateSettings(getDb(), { selected_agent: agentId })
       const threadId = uuidv7()
       const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true }), { wrapper: TestWrapper })
       await act(async () => {
@@ -626,7 +641,7 @@ describe('useHydrateChatStore', () => {
         await result.current.saveMessages({ id: threadId, messages: [createTestMessage()] })
       })
 
-      expect(getCurrentSession()?.selectedAgent.type).toBe(onHostedAgent ? 'managed-http' : 'built-in')
+      expect(getCurrentSession()?.selectedAgent.id).toBe(agentId)
       expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
     })
 

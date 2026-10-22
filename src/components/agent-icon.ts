@@ -5,6 +5,8 @@
 import { Bot, Brain, Globe, MessageCircle, Server, Sparkles } from 'lucide-react'
 import type { ComponentType } from 'react'
 
+import { isPrivateAgent } from '@/defaults/agents'
+import { GradientLock } from '@/components/ui/gradient-lock'
 import { AppLogo } from '@/components/app-logo'
 import type { Agent } from '@/types/acp'
 
@@ -20,13 +22,13 @@ const systemAgentIcons = new Map<string, ComponentType<{ className?: string }>>(
   ['sparkles', Sparkles],
 ])
 
-/** Visual icon for each agent flavor: built-in (app logo), system/managed
+/** Visual icon for each agent flavor: built-in (gradient lock or app logo), system/managed
  *  (the icon the deployment named, else server), remote (globe). Shared by the
  *  Settings agent list and the chat header selector so the two stay
  *  perceptually consistent. */
 export const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
   if (agent.type === 'built-in') {
-    return AppLogo
+    return isPrivateAgent(agent) ? GradientLock : AppLogo
   }
   if (agent.type === 'managed-acp' || agent.type === 'managed-http') {
     return (agent.icon && systemAgentIcons.get(agent.icon)) || Server

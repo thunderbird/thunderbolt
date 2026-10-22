@@ -10,7 +10,7 @@ import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
-import { builtInAgent } from '../defaults/agents'
+import { builtInAgents } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
 import type { Agent } from '@/types/acp'
 import { customAgentTypes, type CustomAgentType } from '@shared/acp-types'
@@ -103,7 +103,7 @@ export const composeAllAgents = (
   systemAgents: Agent[],
   customAgents: Agent[],
   options: { includeBuiltIn?: boolean } = {},
-): Agent[] => [...(options.includeBuiltIn === false ? [] : [builtInAgent]), ...systemAgents, ...customAgents]
+): Agent[] => [...(options.includeBuiltIn === false ? [] : builtInAgents), ...systemAgents, ...customAgents]
 
 /** Load the combined agent list once, in the same order as {@link useAllAgents},
  *  for code that cannot use the live hook, such as the discovery bootstrap effect
@@ -179,7 +179,7 @@ const connectionInvalidatingFields = ['url', 'transport', 'type'] as const satis
  *  Returns whether the persisted wire identity changed so callers can refresh
  *  any active in-memory chat sessions for the agent. */
 export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: UpdateAgentPatch): Promise<boolean> => {
-  if (id === builtInAgent.id) {
+  if (builtInAgents.some((agent) => agent.id === id)) {
     throw new Error(`updateAgent: refusing to edit built-in agent "${id}"`)
   }
   if (Object.keys(patch).length === 0) {
@@ -228,7 +228,7 @@ export const updateAgent = async (db: AnyDrizzleDatabase, id: string, patch: Upd
  *  table and cannot be removed. Disposes the agent's warm ACP connection so a
  *  deleted agent leaves no live transport behind. */
 export const deleteAgent = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
-  if (id === builtInAgent.id) {
+  if (builtInAgents.some((agent) => agent.id === id)) {
     throw new Error(`deleteAgent: refusing to delete built-in agent "${id}"`)
   }
   await db

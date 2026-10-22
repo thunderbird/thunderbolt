@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isBuiltInAgent } from '@/defaults/agents'
+import { isPrivateAgent } from '@/defaults/agents'
 import type { ChatThread } from '@/types'
 import type { ChatStatus, UIMessage } from 'ai'
 import type { Agent } from '@/types/acp'
@@ -10,12 +10,11 @@ import type { Agent } from '@/types/acp'
 /**
  * Whether sending this thread to `agent` would take a private chat off the
  * device in plaintext. A private chat (`isEncrypted` 1) is kept private by the
- * built-in agent's confidential-model lock; every other agent receives its
- * history as is. The header agent picker asks before such a switch, and
- * `isPrivateAutoRunBlocked` builds on it for the auto-run.
+ * private agent's model policy; other agents receive history as is. This
+ * remains a send guard for legacy or inconsistent synced data.
  */
 export const exposesPrivateThread = (chatThread: ChatThread | null | undefined, agent: Agent): boolean =>
-  chatThread?.isEncrypted === 1 && !isBuiltInAgent(agent)
+  chatThread?.isEncrypted === 1 && !isPrivateAgent(agent)
 
 /**
  * Whether `useChatAutomation` is holding back this chat's unanswered last turn

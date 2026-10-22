@@ -11,7 +11,13 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '@shared/defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { nowIso } from '@/lib/utils'
-import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
+import {
+  createAutomation,
+  getAllPrompts,
+  getTriggerPromptForThread,
+  resetAutomationToDefault,
+  runAutomation,
+} from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { type Prompt } from '@/types'
 
@@ -27,6 +33,16 @@ describe('Prompts DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  it('does not silently change an automation to a different model when no agent supports it', async () => {
+    const db = getDb()
+    await db
+      .insert(modelsTable)
+      .values({ id: 'unsupported', provider: 'openai', model: 'custom-model', name: 'Custom' })
+    await createAutomation(db, { id: 'automation', prompt: 'Run', modelId: 'unsupported' })
+    await expect(runAutomation(db, 'automation')).rejects.toThrow('No agent supports this automation')
+    expect(await db.select().from(chatThreadsTable)).toHaveLength(0)
   })
 
   describe('getAllPrompts', () => {

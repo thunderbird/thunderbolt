@@ -5,6 +5,7 @@
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { ModelSelector } from '@/components/ui/model-selector'
+import { isModelAllowedForAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 /**
@@ -20,9 +21,11 @@ export const ChatModelPicker = () => {
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const { openCreateItem } = useCreateItem()
   const { isMobile } = useIsMobile()
-  const { id: chatThreadId, selectedAgent, selectedModel, chatThread } = useCurrentChatSession()
+  const { id: chatThreadId, selectedAgent, selectedModel } = useCurrentChatSession()
 
-  if (selectedAgent.type !== 'built-in' || models.length === 0) {
+  const agentModels = models.filter((model) => isModelAllowedForAgent(selectedAgent, model))
+
+  if (selectedAgent.type !== 'built-in' || agentModels.length === 0) {
     return null
   }
 
@@ -33,9 +36,8 @@ export const ChatModelPicker = () => {
   return (
     <ModelSelector
       variant="composer"
-      models={models}
+      models={agentModels}
       selectedModel={selectedModel ?? null}
-      chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
       onAddModels={() => openCreateItem({ kind: 'model' })}
       side={isMobile ? 'top' : 'bottom'}

@@ -42,6 +42,11 @@ export type AgentCapabilities = {
   }
 }
 
+/** Speech models belong to an agent; Fireworks remains unavailable until selected. */
+export type AgentVoiceConfig =
+  | { provider: 'tinfoil'; sttModel: string; ttsModel: string; ttsVoice: string }
+  | { provider: 'fireworks'; sttModel: null; ttsModel: null; ttsVoice: null }
+
 /** Unified Agent row used across UI, DAL, and chat routing. Combines fields
  *  from the synced `agents` table (user customs), the local-only `agents_system`
  *  table (env-var-discovered), and the hardcoded built-in default. */
@@ -57,6 +62,9 @@ export type Agent = {
   url: string | null
   description: string | null
   icon: string | null
+  /** Whether this agent keeps inference and voice inside confidential compute. */
+  isPrivate?: boolean
+  voice?: AgentVoiceConfig
   isSystem: 0 | 1
   enabled: 0 | 1
   deletedAt: string | null

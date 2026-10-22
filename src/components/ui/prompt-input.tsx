@@ -4,7 +4,6 @@
 
 import { AutosizeTextarea } from '@/components/ui/autosize-textarea'
 import { Button } from '@/components/ui/button'
-import { type ChatThread } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { useLingui } from '@lingui/react/macro'
@@ -54,7 +53,6 @@ type PromptInputProps = {
    *  button that occupies the send slot until the user types or attaches. */
   emptyStateAction?: ReactNode
   // Model selection props - optional, only used in automation modal
-  chatThread?: ChatThread | null
   models?: Model[]
   selectedModel?: Model | null
   onModelChange?: (modelId: string) => void
@@ -108,7 +106,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       footerStartElements,
       footerEndElements,
       emptyStateAction,
-      chatThread = null,
       models,
       selectedModel,
       onModelChange,
@@ -232,7 +229,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             {footerEndElements}
             {showModelSelect && (
               <ModelSelector
-                chatThread={chatThread}
                 models={models}
                 selectedModel={selectedModel ?? null}
                 onModelChange={onModelChange}

@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
-import { resolveSessionAgent } from './resolve-session-agent'
+import { persistedThreadAgentId, resolveSessionAgent } from './resolve-session-agent'
 
 const agentWithId = (id: string): Agent => ({ ...builtInAgent, id, type: 'managed-acp', isSystem: 1 })
 
@@ -49,12 +49,26 @@ describe('resolveSessionAgent', () => {
     expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates).id).toBe('first-system')
   })
 
-  it('falls back past ids that no longer resolve to the first available agent', () => {
+  it('keeps an unavailable saved agent instead of rerouting its history', () => {
     const candidates = { threadAgentId: 'deleted', lastUsedAgentId: 'gone' }
-    expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates).id).toBe('first-system')
+    expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates)).toMatchObject({ id: 'deleted', enabled: 0 })
   })
 
-  it('uses the built-in agent as the safety net only when no agent is available', () => {
-    expect(resolveSessionAgent([], { lastUsedAgentId: 'gone' })).toBe(builtInAgent)
+  it('holds the chat when no agent is available', () => {
+    expect(resolveSessionAgent([], { lastUsedAgentId: 'gone' })).toMatchObject({ id: builtInAgent.id, enabled: 0 })
+  })
+})
+
+describe('persistedThreadAgentId', () => {
+  it('maps legacy built-in chats by their established privacy, never the current preference', () => {
+    for (const agentId of [null, builtInAgent.id]) {
+      expect(persistedThreadAgentId({ agentId, isEncrypted: 1 })).toBe(builtInAgent.id)
+      expect(persistedThreadAgentId({ agentId, isEncrypted: 0 })).toBe(zeusAgent.id)
+    }
+  })
+  it('keeps explicit external and Zeus identities', () => {
+    for (const agentId of ['external-agent', zeusAgent.id]) {
+      expect(persistedThreadAgentId({ agentId, isEncrypted: 1 })).toBe(agentId)
+    }
   })
 })

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { builtInAgent, builtInAgents, isPrivateAgent, zeusAgent } from '@/defaults/agents'
 import { defaultChatTitle } from '@/lib/constants'
 
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
@@ -79,10 +80,16 @@ export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise
 export const createChatThread = async (
   db: AnyDrizzleDatabase,
   data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> &
-    ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 },
+    ChatThreadOrigin & { agentId?: string | null },
   model: Model,
 ): Promise<void> => {
-  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: data.isEncrypted ?? model.isConfidential })
+  const agentId = data.agentId ?? (model.provider === 'tinfoil' ? builtInAgent.id : zeusAgent.id)
+  const agent = builtInAgents.find((candidate) => candidate.id === agentId)
+  await db.insert(chatThreadsTable).values({
+    ...data,
+    agentId,
+    isEncrypted: agent && isPrivateAgent(agent) ? 1 : 0,
+  })
 }
 
 /**
@@ -123,10 +130,8 @@ export const clearAcpSessionIdsForAgent = async (db: AnyDrizzleDatabase, agentId
  * on creation. Existing threads are returned untouched — caller is responsible
  * for any subsequent updates via `updateChatThread`.
  *
- * `isEncrypted` (the "private chat" flag, which locks the thread to models of
- * the same confidentiality) defaults to the model's `isConfidential`. Pass 0
- * for a chat whose content leaves the device unencrypted regardless of model,
- * as the hosted agent's does.
+ * `isEncrypted` is derived from the owning agent. Legacy callers without an
+ * agent choose Vesta for Tinfoil and Zeus for other models.
  *
  * Origin fields are grouped rather than trailing positionally: they are all
  * optional and all nullable, so `(db, id, model, null, projectId)` gave no
@@ -136,12 +141,7 @@ export const getOrCreateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   modelId: string,
-  {
-    agentId = null,
-    projectId = null,
-    miniAppId = null,
-    isEncrypted,
-  }: ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 } = {},
+  { agentId = null, projectId = null, miniAppId = null }: ChatThreadOrigin & { agentId?: string | null } = {},
 ): Promise<ChatThread> => {
   const thread = await getChatThread(db, id)
 
@@ -165,7 +165,6 @@ export const getOrCreateChatThread = async (
       agentId,
       projectId,
       miniAppId,
-      isEncrypted,
     },
     model,
   )

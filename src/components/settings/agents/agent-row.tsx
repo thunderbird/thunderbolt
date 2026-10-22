@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
+import { getAgentDescription } from '@/components/agent-description'
 import { iconForAgent } from '@/components/agent-icon'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
@@ -21,22 +22,23 @@ type AgentRowProps = {
 }
 
 /**
- * A single agent list row: icon + name on the primary line, provenance on the
+ * A single agent list row: icon + name on the primary line, a description on the
  * secondary line, and a chevron. Every row opens the slide-in detail panel;
  * a disabled custom agent renders dimmed with a "Disabled" suffix so its
  * state stays visible without a switch on the row.
  */
 export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
-  const { t } = useLingui()
+  const { t, i18n } = useLingui()
   const Icon = iconForAgent(agent)
   const disabled = agent.enabled !== 1
+  const description = getAgentDescription(agent, i18n) || agentProvenanceLine(agent)
 
   return (
     <AgentListRow
       testId={`agent-row-${agent.id}`}
       isSelected={isSelected}
       onOpen={() => onOpen(agent)}
-      ariaLabel={`Open ${agent.name}`}
+      ariaLabel={t`Open ${agent.name}`}
       isDimmed={disabled}
       icon={
         // The logo reads slightly smaller than the lucide glyphs at equal
@@ -50,7 +52,7 @@ export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
       subtitleTestId={`agent-provenance-${agent.id}`}
       subtitle={
         <>
-          {agentProvenanceLine(agent)}
+          {description}
           {disabled && <> · {t`Disabled`}</>}
         </>
       }

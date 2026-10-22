@@ -9,7 +9,6 @@ import { SettingsEmptyState } from '@/components/settings/settings-empty-state'
 import { SettingsListBody, settingsListBodyRowsClass, SettingsSelectableRow } from '@/components/settings/settings-list'
 import { Button } from '@/components/ui/button'
 import { needsApiKey } from './model-policy'
-import { PrivateBadge } from '@/components/ui/private-badge'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Model } from '@/types'
@@ -56,7 +55,6 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
                   </TooltipProvider>
                 )}
                 <span className="truncate">{model.name}</span>
-                {!!model.isConfidential && <PrivateBadge />}
               </span>
             }
             subtitle={getProviderDisplay(i18n, model)}

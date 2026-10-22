@@ -20,8 +20,7 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
-import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
-import { isHostedAgent } from '@/defaults/agents'
+import { customRowToAgent, systemRowToAgent, loadAllAgents } from '@/dal/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
@@ -35,7 +34,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
-import { resolveSessionAgent } from './resolve-session-agent'
+import { persistedThreadAgentId, resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 
@@ -144,9 +143,6 @@ export const useHydrateChatStore = ({
       // on this first save, so both must ride the session to reach it.
       projectId: session.projectId,
       miniAppId: session.miniAppId,
-      // The hosted agent sends the chat to the backend unencrypted, so its threads
-      // are never private chats, whatever the (unused) selected model is.
-      isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
     })
 
     // Save messages and update context size using DAL
@@ -202,7 +198,14 @@ export const useHydrateChatStore = ({
     if (sessions.has(id)) {
       setCurrentSessionId(id)
 
-      const models = await getAvailableModels(db)
+      const [models, agents] = await Promise.all([
+        getAvailableModels(db),
+        loadAllAgents(db, { includeBuiltIn: selectBuiltInAgentEnabled(useConfigStore.getState().config) }),
+      ])
+      const currentSession = useChatStore.getState().sessions.get(id)!
+      // Refresh availability without replacing the chat's owning identity.
+      const selectedAgent = resolveSessionAgent(agents, { threadAgentId: currentSession.selectedAgent.id })
+      useChatStore.getState().updateSession(id, { selectedAgent })
 
       // Store the provider's getter (not a snapshot) so each send reads the
       // current connected clients, including any swapped in by a reconnect.
@@ -213,7 +216,7 @@ export const useHydrateChatStore = ({
       setIsReady(true)
       trackChatReadyOnce()
       // `sessions.has(id)` above guarantees the session is present.
-      const existingSession = sessions.get(id)!
+      const existingSession = useChatStore.getState().sessions.get(id)!
       maybePrewarmBuiltInAgent(existingSession.selectedAgent, existingSession.selectedModel)
 
       return
@@ -258,12 +261,20 @@ export const useHydrateChatStore = ({
         ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
         : allAgents
     const selectedAgent = resolveSessionAgent(knownAgents, {
-      threadAgentId: chatThread?.agentId,
+      threadAgentId: chatThread ? persistedThreadAgentId(chatThread) : undefined,
       lastUsedAgentId: settings.selectedAgent,
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
     })
-    const selectedModel = resolveSessionModel(selectedAgent, chatThread, defaultModel, models)
+    // Bind legacy rows once, so changing preferences cannot reroute an existing chat.
+    const boundChatThread =
+      chatThread && chatThread.agentId !== selectedAgent.id
+        ? { ...chatThread, agentId: selectedAgent.id, acpSessionId: null }
+        : chatThread
+    if (boundChatThread && boundChatThread !== chatThread) {
+      await updateChatThread(db, id, { agentId: selectedAgent.id, acpSessionId: null })
+    }
+    const selectedModel = resolveSessionModel(selectedAgent, defaultModel, models)
 
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
@@ -285,7 +296,7 @@ export const useHydrateChatStore = ({
 
     createSession({
       chatInstance,
-      chatThread,
+      chatThread: boundChatThread,
       connectionStatus: 'idle',
       connectionError: null,
       id,
@@ -294,8 +305,7 @@ export const useHydrateChatStore = ({
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
       stopping: false,
-      // Persisted via `chatThreads.agentId`; resolved above (first available
-      // agent when the persisted id no longer matches).
+      // Existing chats keep their persisted agent, including unavailable ones.
       selectedAgent,
       agentChosenByUser: false,
       selectedModel,

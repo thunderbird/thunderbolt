@@ -8,7 +8,7 @@ import { builtInAgent } from '@/defaults/agents'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { createMockChatInstance, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { useChatStore } from './chat-store'
@@ -36,7 +36,7 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    selectedModel: createMockModel({ id: 'm1', provider: 'tinfoil', isSystem: 1, isConfidential: 1 }),
     triggerData: null,
   })
 }

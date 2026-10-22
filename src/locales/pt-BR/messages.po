@@ -768,11 +768,11 @@ msgstr "Verificando…"
 #~ msgid "Choose a starting folder. The agent can access files and run commands on your computer, including outside this folder."
 #~ msgstr ""
 
-#: src/acp/built-in-adapter.ts
+#: src/components/chat/error-message.tsx
 msgid "Choose a tool-capable model to use this computer"
 msgstr ""
 
-#: src/acp/built-in-adapter.ts
+#: src/components/chat/error-message.tsx
 msgid "Choose a working folder before using this computer"
 msgstr ""
 
@@ -901,7 +901,7 @@ msgstr "Fechar a reordenação"
 msgid "Cloud"
 msgstr ""
 
-#: src/acp/built-in-adapter.ts
+#: src/components/chat/error-message.tsx
 msgid "Cloud execution is not available yet"
 msgstr ""
 
@@ -949,7 +949,7 @@ msgstr "Conclua a configuração para começar a usar o Thunderbolt"
 msgid "Completing…"
 msgstr "Concluindo…"
 
-#: src/acp/built-in-adapter.ts
+#: src/components/chat/error-message.tsx
 msgid "Computer execution requires the desktop app"
 msgstr ""
 
@@ -4224,7 +4224,7 @@ msgstr "Este link é inválido. Solicite um novo."
 msgid "This link uses an address the app cannot open."
 msgstr "Este endereço não pode ser aberto pelo app."
 
-#: src/acp/built-in-adapter.ts
+#: src/components/chat/error-message.tsx
 msgid "This model cannot run on this computer. Choose a tool-capable supported model."
 msgstr ""
 

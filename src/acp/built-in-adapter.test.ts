@@ -15,6 +15,7 @@ import '@/testing-library'
 import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { i18n } from '@lingui/core'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
@@ -1159,6 +1160,20 @@ const createBudgetAdapter = (
   const requests: ProviderRequest[] = []
   const searches: string[] = []
   const writes: string[] = []
+  const nativeCalls: Array<{ command: string; args: Record<string, unknown> }> = []
+  const nativeCleanup = { pending: Promise.withResolvers<void>() }
+  const invokeNative: ConstructorParameters<typeof realAgentCore.NativeExecutionEnv>[1] = async <T>(
+    command: string,
+    args: Record<string, unknown>,
+  ): Promise<T> => {
+    if (command !== 'agent_cleanup_output_files') {
+      throw new Error(`Unexpected native command: ${command}`)
+    }
+    nativeCalls.push({ command, args })
+    nativeCleanup.pending.resolve()
+    nativeCleanup.pending = Promise.withResolvers<void>()
+    return undefined as T
+  }
   const httpClient = createClient({
     prefixUrl: 'https://backend.test',
     fetch: async (input) => {
@@ -1211,6 +1226,15 @@ const createBudgetAdapter = (
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
     loadAgentCore: async () => ({
       ...realAgentCore,
+      NativeExecutionEnv: class extends realAgentCore.NativeExecutionEnv {
+        constructor(
+          cwd: string,
+          _invoke: ConstructorParameters<typeof realAgentCore.NativeExecutionEnv>[1],
+          owner?: string,
+        ) {
+          super(cwd, invokeNative, owner)
+        }
+      },
       removeAgentWorkspace: async (threadId) => {
         await realAgentCore.removeAgentWorkspace(threadId)
         workspaceRemoved.resolve()
@@ -1273,6 +1297,10 @@ const createBudgetAdapter = (
     searches,
     writes,
     registrations,
+    nativeCalls,
+    get nativeCleanup() {
+      return nativeCleanup.pending.promise
+    },
     workspaceRemoved: workspaceRemoved.promise,
   }
 }
@@ -1302,6 +1330,161 @@ describe('real Pi approvals', () => {
       expect(await env.exists('kept.txt')).toMatchObject({ ok: true, value: false })
     } finally {
       run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('retains native output through rebuilds and removes it after switching back to sandbox', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const run = createBudgetAdapter(['Computer ready.', 'Folder changed.', 'Sandbox ready.'])
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      run.context.execution = { location: 'sandbox', access: 'full' }
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.nativeCalls).toHaveLength(0)
+      const cleaned = run.nativeCleanup
+      run.adapter.disconnect()
+      await Promise.all([cleaned, run.workspaceRemoved])
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('cleans native output even when a replacement harness fails to build', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const onHarness = mock(() => {})
+    const run = createBudgetAdapter(['Ready.'], undefined, onHarness)
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      await run.send()
+      onHarness.mockImplementation(() => {
+        throw new Error('Harness build failed')
+      })
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      await expect(run.send()).rejects.toThrow('Harness build failed')
+      expect(run.nativeCalls).toHaveLength(0)
+      const cleaned = run.nativeCleanup
+      run.adapter.disconnect()
+      await cleaned
+      expect(run.nativeCalls).toEqual([{ command: 'agent_cleanup_output_files', args: { owner: expect.any(String) } }])
+    } finally {
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('cleans a disconnected native rebuild after its pending abort without touching the reused adapter', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const abortStarted = Promise.withResolvers<void>()
+    const releaseAbort = Promise.withResolvers<void>()
+    const harnesses: AgentHarness[] = []
+    const run = createBudgetAdapter(['Computer ready.', 'New lifetime ready.'], undefined, (harness) => {
+      if (harnesses.length === 0) {
+        const abort = harness.abort.bind(harness)
+        harness.abort = async () => {
+          abortStarted.resolve()
+          await releaseAbort.promise
+          return await abort()
+        }
+      }
+      harnesses.push(harness)
+    })
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', cwd: '/first-folder', access: 'full' }
+      await run.send()
+      run.context.execution = { location: 'computer', cwd: '/second-folder', access: 'full' }
+      const rebuilding = run.send()
+      await abortStarted.promise
+      const disconnectedCleanup = run.nativeCleanup
+      run.adapter.disconnect()
+      expect(run.nativeCalls).toHaveLength(0)
+
+      // The same adapter can start a new lifetime while the old rebuild is waiting.
+      await run.send()
+      expect(harnesses).toHaveLength(2)
+      releaseAbort.resolve()
+      await Promise.all([expect(rebuilding).rejects.toThrow('Agent disconnected'), disconnectedCleanup])
+      expect(harnesses).toHaveLength(2)
+      expect(run.requests).toHaveLength(2)
+      expect(run.nativeCalls).toHaveLength(1)
+
+      const reusedCleanup = run.nativeCleanup
+      run.adapter.disconnect()
+      await reusedCleanup
+      expect(run.nativeCalls).toHaveLength(2)
+      const owners = run.nativeCalls.map(({ args }) => args.owner)
+      expect(owners).toEqual([expect.any(String), expect.any(String)])
+      expect(owners[0]).not.toBe(owners[1])
+    } finally {
+      releaseAbort.resolve()
+      run.adapter.disconnect()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('gives overlapping adapter lifetimes separate native output ownership', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const runs = [createBudgetAdapter(['Ready.']), createBudgetAdapter(['Ready.'])]
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      for (const run of runs) {
+        run.context.execution = { location: 'computer', cwd: '/same-folder', access: 'full' }
+        await run.send()
+      }
+      const cleaned = runs.map((run) => run.nativeCleanup)
+      runs[0].adapter.disconnect()
+      await cleaned[0]
+      expect(runs[0].nativeCalls).toHaveLength(1)
+      expect(runs[1].nativeCalls).toHaveLength(0)
+      runs[1].adapter.disconnect()
+      await cleaned[1]
+      const owners = runs.flatMap((run) => run.nativeCalls.map(({ args }) => args.owner))
+      expect(owners).toHaveLength(2)
+      expect(new Set(owners).size).toBe(2)
+    } finally {
+      for (const run of runs) {
+        run.adapter.disconnect()
+      }
       isTauri.mockRestore()
       platform.mockRestore()
       if (descriptor) {
@@ -1421,14 +1604,57 @@ describe('real Pi approvals', () => {
     }
   })
 
-  it('rejects native and cloud execution on web before any provider request', async () => {
+  it('keeps desktop configuration failures in English without contacting the provider', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'isTauri')
+    const isTauri = spyOn(tauriCore, 'isTauri').mockReturnValue(true)
+    const platform = spyOn(tauriOs, 'platform').mockReturnValue('macos')
+    const translate = spyOn(i18n, '_').mockImplementation(() => 'Translated display message')
     const run = createBudgetAdapter([])
-    run.context.execution = { location: 'computer', access: 'full', cwd: '/real' }
-    await expect(run.send()).rejects.toThrow('desktop app')
-    run.context.execution = { location: 'cloud', access: 'ask' }
-    await expect(run.send()).rejects.toThrow('not available')
-    expect(run.requests).toHaveLength(0)
-    run.adapter.disconnect()
+    try {
+      Object.defineProperty(window, 'isTauri', { configurable: true, value: true })
+      run.context.execution = { location: 'computer', access: 'ask', cwd: '' }
+      await expect(run.send()).rejects.toThrow('Choose a working folder before using this computer')
+
+      run.context.execution = { location: 'computer', access: 'ask', cwd: '/real' }
+      run.context.selectedModel = { ...run.context.selectedModel, toolUsage: 0 }
+      await expect(run.send()).rejects.toThrow('Choose a tool-capable model to use this computer')
+
+      run.context.selectedModel = {
+        ...run.context.selectedModel,
+        toolUsage: 1,
+        provider: 'anthropic',
+        model: 'unknown-model',
+      }
+      await expect(run.send()).rejects.toThrow(
+        'This model cannot run on this computer. Choose a tool-capable supported model.',
+      )
+      expect(run.requests).toHaveLength(0)
+    } finally {
+      run.adapter.disconnect()
+      translate.mockRestore()
+      isTauri.mockRestore()
+      platform.mockRestore()
+      if (descriptor) {
+        Object.defineProperty(window, 'isTauri', descriptor)
+      } else {
+        Reflect.deleteProperty(window, 'isTauri')
+      }
+    }
+  })
+
+  it('keeps execution errors in English before any provider request, regardless of locale', async () => {
+    const run = createBudgetAdapter([])
+    const translate = spyOn(i18n, '_').mockImplementation(() => 'Translated display message')
+    try {
+      run.context.execution = { location: 'computer', access: 'full', cwd: '/real' }
+      await expect(run.send()).rejects.toThrow('Computer execution requires the desktop app')
+      run.context.execution = { location: 'cloud', access: 'ask' }
+      await expect(run.send()).rejects.toThrow('Cloud execution is not available yet')
+      expect(run.requests).toHaveLength(0)
+    } finally {
+      translate.mockRestore()
+      run.adapter.disconnect()
+    }
   })
 })
 

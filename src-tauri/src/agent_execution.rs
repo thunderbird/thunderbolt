@@ -6,6 +6,9 @@
 //! Only the trusted main webview can call it; the agent's tools are approval-gated
 //! before crossing IPC. User files are never removed when a chat is disposed.
 
+mod process_tree;
+
+use crate::agent_output_files::OutputFiles;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
@@ -71,7 +74,7 @@ pub async fn agent_pick_workspace(
         let initial = path
             .map(PathBuf::from)
             .filter(|path| path.is_dir())
-            .unwrap_or(webview.path().home_dir().map_err(|e| e.to_string())?);
+            .map_or_else(|| webview.path().home_dir().map_err(|e| e.to_string()), Ok)?;
         let (sender, receiver) = tokio::sync::oneshot::channel();
         webview
             .dialog()
@@ -108,38 +111,45 @@ pub enum FileOperation {
     Temp,
 }
 
-#[tauri::command]
-pub async fn agent_fs(
-    webview: tauri::Webview,
+#[derive(serde::Deserialize)]
+pub struct FileRequest {
+    owner: String,
     cwd: String,
     operation: FileOperation,
     path: Option<String>,
     content: Option<Vec<u8>>,
     prefix: Option<String>,
     suffix: Option<String>,
+}
+
+#[tauri::command]
+pub async fn agent_fs(
+    webview: tauri::Webview,
+    output_files: tauri::State<'_, OutputFiles>,
+    request: FileRequest,
 ) -> Result<Value, String> {
+    let FileRequest {
+        owner,
+        cwd,
+        operation,
+        path,
+        content,
+        prefix,
+        suffix,
+    } = request;
     require_main(&webview)?;
     let temp_root = webview.path().temp_dir().map_err(|e| e.to_string())?;
+    let output_files = output_files.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         if matches!(operation, FileOperation::Temp) {
-            // Names are generated here; callers cannot turn a log into an arbitrary write.
-            let clean = |value: Option<String>| -> Result<String, String> {
-                let value = value.unwrap_or_default();
-                if value
-                    .chars()
-                    .any(|c| !c.is_ascii_alphanumeric() && !"-_.".contains(c))
-                {
-                    return Err("Invalid temporary filename".into());
-                }
-                Ok(value)
-            };
-            let file = tempfile::Builder::new()
-                .prefix(&clean(prefix)?)
-                .suffix(&clean(suffix)?)
-                .tempfile_in(temp_root)
-                .map_err(|e| e.to_string())?;
-            let (_, path) = file.keep().map_err(|e| e.to_string())?;
-            return Ok(json!(path));
+            return output_files
+                .create(
+                    &owner,
+                    &temp_root,
+                    prefix.as_deref().unwrap_or_default(),
+                    suffix.as_deref().unwrap_or_default(),
+                )
+                .map(|path| json!(path));
         }
         let path = resolve_path(&cwd, &path.ok_or("Missing path")?)?;
         match operation {
@@ -160,6 +170,19 @@ pub async fn agent_fs(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn agent_cleanup_output_files(
+    webview: tauri::Webview,
+    output_files: tauri::State<'_, OutputFiles>,
+    owner: String,
+) -> Result<(), String> {
+    require_main(&webview)?;
+    let output_files = output_files.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || output_files.cleanup(&owner))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -264,21 +287,6 @@ async fn finish_capture(
     Ok(text)
 }
 
-async fn stop_process_tree(pid: u32) {
-    #[cfg(unix)]
-    unsafe {
-        // Kill the shell's group. Descendants that deliberately detach are outside it.
-        libc::kill(-(pid as i32), libc::SIGKILL);
-    }
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .output()
-            .await;
-    }
-}
-
 async fn run_shell(
     command: &str,
     cwd: &str,
@@ -326,7 +334,8 @@ async fn run_shell(
         _ = cancel.changed() => Ok((-1, Some("aborted"))),
         _ = tokio::time::sleep(Duration::from_secs_f64(timeout)) => Ok((-1, Some("timeout"))),
     };
-    stop_process_tree(pid).await;
+    let shell_running = !matches!(&outcome, Ok((_, None)));
+    let cleanup = process_tree::stop(pid, shell_running).await;
     let _ = child.kill().await;
     let _ = child.wait().await;
     let (stdout, stderr) = tokio::join!(
@@ -334,6 +343,7 @@ async fn run_shell(
         finish_capture(stderr, stderr_output)
     );
     let (exit_code, failure) = outcome?;
+    cleanup?;
     Ok(ShellOutput {
         stdout: stdout?,
         stderr: stderr?,
@@ -451,6 +461,92 @@ mod tests {
         assert!(!dir.path().join("unwanted").exists());
     }
 
+    // Run in a separate test process so setsid never changes the test runner's session.
+    #[test]
+    #[ignore = "subprocess helper for detached command cancellation tests"]
+    fn detached_session_helper() {
+        if std::env::var_os("THUNDERBOLT_DETACHED_TEST").is_none() {
+            return;
+        }
+        assert!(unsafe { libc::setsid() } >= 0);
+        let status = std::process::Command::new("/bin/bash")
+            .args([
+                "-c",
+                "printf detached; touch started; sleep 1.5; touch unwanted",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+
+    async fn run_detached_command(cancel_on_start: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let (sender, cancel) = watch::channel(false);
+        let stop_sender = sender.clone();
+        let started = dir.path().join("started");
+        let stop = tokio::spawn(async move {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !started.exists() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("detached descendant did not start");
+            if cancel_on_start {
+                stop_sender.send_replace(true);
+            }
+        });
+        let mut unrelated = Command::new("/bin/sleep")
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let executable = std::env::current_exe().unwrap();
+        let command = format!(
+            "'{}' --ignored --exact agent_execution::tests::detached_session_helper --nocapture & wait",
+            executable.to_str().unwrap().replace('\'', "'\\''")
+        );
+        let output = tokio::time::timeout(
+            Duration::from_secs(4),
+            run_shell(
+                &command,
+                dir.path().to_str().unwrap(),
+                HashMap::from([("THUNDERBOLT_DETACHED_TEST".into(), "1".into())]),
+                if cancel_on_start { 5.0 } else { 0.7 },
+                cancel,
+            ),
+        )
+        .await
+        .expect("detached descendants must not hold Stop or timeout pending")
+        .unwrap();
+        stop.await.unwrap();
+        assert_eq!(
+            output.failure,
+            Some(if cancel_on_start {
+                "aborted"
+            } else {
+                "timeout"
+            })
+        );
+        assert!(output.stdout.contains("detached"));
+        assert!(!output.stdout.contains("Stopped capturing"));
+        tokio::time::sleep(Duration::from_millis(1600)).await;
+        assert!(!dir.path().join("unwanted").exists());
+        assert!(unrelated.try_wait().unwrap().is_none());
+        unrelated.kill().await.unwrap();
+        drop(sender);
+    }
+
+    #[tokio::test]
+    async fn stop_cancels_detached_session_descendants() {
+        run_detached_command(true).await;
+    }
+
+    #[tokio::test]
+    async fn timeout_cancels_detached_session_descendants() {
+        run_detached_command(false).await;
+    }
+
     #[tokio::test]
     async fn shell_reads_and_writes_real_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -470,6 +566,26 @@ mod tests {
             std::fs::read_to_string(dir.path().join("result.txt")).unwrap(),
             "native"
         );
+    }
+
+    #[tokio::test]
+    async fn completed_shell_stops_remaining_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_sender, cancel) = watch::channel(false);
+        let output = run_shell(
+            "(touch started; sleep 0.3; touch unwanted) & while [ ! -f started ]; do sleep 0.01; done; printf finished",
+            dir.path().to_str().unwrap(),
+            HashMap::new(),
+            5.0,
+            cancel,
+        )
+        .await
+        .unwrap();
+        assert_eq!(output.failure, None);
+        assert_eq!(output.stdout, "finished");
+        assert!(dir.path().join("started").exists());
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(!dir.path().join("unwanted").exists());
     }
 
     #[tokio::test]

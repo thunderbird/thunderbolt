@@ -14,6 +14,7 @@ export class NativeExecutionEnv implements CodingEnvironment {
   constructor(
     readonly cwd: string,
     private readonly invoke: NativeInvoke,
+    private readonly owner: string = crypto.randomUUID(),
   ) {}
 
   private async file<T>(
@@ -26,7 +27,9 @@ export class NativeExecutionEnv implements CodingEnvironment {
       return err(new FileError('aborted', 'aborted', path ?? this.cwd))
     }
     try {
-      return ok(await this.invoke<T>('agent_fs', { cwd: this.cwd, operation, path, ...extra }))
+      return ok(
+        await this.invoke<T>('agent_fs', { request: { cwd: this.cwd, owner: this.owner, operation, path, ...extra } }),
+      )
     } catch (error) {
       return err(new FileError('unknown', String(error), path ?? this.cwd))
     }
@@ -48,6 +51,11 @@ export class NativeExecutionEnv implements CodingEnvironment {
 
   createTempFile(options?: { prefix?: string; suffix?: string }) {
     return this.file<string>('temp', undefined, { prefix: options?.prefix, suffix: options?.suffix })
+  }
+
+  /** Remove only app-created output logs after the owning chat has stopped. */
+  async cleanup(): Promise<void> {
+    await this.invoke('agent_cleanup_output_files', { owner: this.owner })
   }
 
   async exec(command: string, options?: ShellExecOptions): Promise<Result<ShellOutput, ExecutionError>> {

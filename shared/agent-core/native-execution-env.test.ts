@@ -11,7 +11,7 @@ const bridge = (respond: (command: string, args: Record<string, unknown>) => unk
   const calls: Array<{ command: string; args: Record<string, unknown> }> = []
   const invoke: NativeInvoke = async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
     calls.push({ command, args })
-    return (await respond(command, args)) as T
+    return (await respond(command, command === 'agent_fs' ? (args.request as Record<string, unknown>) : args)) as T
   }
   return { calls, invoke }
 }
@@ -39,7 +39,33 @@ describe('native coding environment', () => {
     const result = await read.execute('read', { path: 'file.txt' })
     expect(result.content).toEqual([{ type: 'text', text: 'second' }])
     expect(calls.every(({ command }) => command === 'agent_fs')).toBe(true)
-    expect(calls.filter(({ args }) => args.operation === 'read')).toHaveLength(2)
+    expect(calls.filter(({ args }) => (args.request as Record<string, unknown>)?.operation === 'read')).toHaveLength(2)
+  })
+
+  it('keeps output logs owned by the chat across environment rebuilds and cleans them up explicitly', async () => {
+    const { invoke, calls } = bridge((command, args) => {
+      if (command === 'agent_fs' && args.operation === 'temp') {
+        return '/tmp/owned-output.log'
+      }
+    })
+    const first = new NativeExecutionEnv('/first-folder', invoke, 'chat-owner')
+    const rebuilt = new NativeExecutionEnv('/second-folder', invoke, 'chat-owner')
+    expect(await first.createTempFile({ prefix: 'pi-bash-', suffix: '.log' })).toEqual({
+      ok: true,
+      value: '/tmp/owned-output.log',
+    })
+    await rebuilt.writeFile('/tmp/owned-output.log', 'output')
+    expect(calls.every(({ args }) => (args.request as Record<string, unknown>).owner === 'chat-owner')).toBe(true)
+    expect(calls.some(({ command }) => command === 'agent_cleanup_output_files')).toBe(false)
+    await rebuilt.cleanup()
+    expect(calls.at(-1)).toEqual({ command: 'agent_cleanup_output_files', args: { owner: 'chat-owner' } })
+  })
+
+  it('surfaces failures when owned output cannot be removed', async () => {
+    const { invoke } = bridge(() => {
+      throw new Error('Permission denied')
+    })
+    await expect(new NativeExecutionEnv('/real', invoke).cleanup()).rejects.toThrow('Permission denied')
   })
 
   it('cancels a command even when Stop arrives while registration is pending', async () => {

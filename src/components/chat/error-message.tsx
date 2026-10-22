@@ -32,11 +32,26 @@ const inferenceQuotaMessages = {
   '7d': msg`You've reached your AI usage limit for the current 7-day window. Try again later.`,
 } satisfies Record<InferenceQuotaWindow, MessageDescriptor>
 
+const agentExecutionErrorMessages = new Map<string, MessageDescriptor>([
+  [
+    'This model cannot run on this computer. Choose a tool-capable supported model.',
+    msg`This model cannot run on this computer. Choose a tool-capable supported model.`,
+  ],
+  ['Cloud execution is not available yet', msg`Cloud execution is not available yet`],
+  ['Computer execution requires the desktop app', msg`Computer execution requires the desktop app`],
+  ['Choose a working folder before using this computer', msg`Choose a working folder before using this computer`],
+  ['Choose a tool-capable model to use this computer', msg`Choose a tool-capable model to use this computer`],
+])
+
 const agentRunInProgressMessage = msg`The agent is still finishing your previous message. Try again in a minute.`
 const agentInstructionsTooLargeMessage = msg`The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.`
 
 /** Resolve final chat error copy after automatic retries stop. */
 const getFinalChatErrorMessage = (error?: Error | null): MessageDescriptor => {
+  const executionMessage = error && agentExecutionErrorMessages.get(error.message)
+  if (executionMessage) {
+    return executionMessage
+  }
   if (isAgentRunInProgressError(error)) {
     return agentRunInProgressMessage
   }

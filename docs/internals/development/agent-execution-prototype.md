@@ -58,10 +58,13 @@ through this contract; the tools no longer bypass it with direct ZenFS calls.
 host paths, and runs commands. Approvals are enforced at the tool boundary in the
 trusted main frontend, not as an OS sandbox or a protection against compromised
 application code. Native commands default to 120 seconds, accept up to 3600
-seconds, and retain up to 4 MiB per output stream. Reads accept regular files up
+seconds, and retain up to 4 MiB per output stream. App-created output logs are
+owned by the adapter and removed after its chats stop, including after
+environment switches; user files are never included in this cleanup. Reads accept regular files up
 to 25 MiB. Unix commands run in their own process group, terminated on Stop,
-timeout, and completion. Descendants that deliberately detach from that group
-can outlive the command; this is host access, not OS isolation. Output draining
+timeout, and completion. Cleanup freezes and kills the live descendant tree,
+including children that create a new session. Already reparented daemons are
+outside that tree; this is host access, not OS isolation. Output draining
 is bounded so detached pipes cannot block Stop. Persistent background servers
 are not supported. Windows requires `bash` on PATH and uses `taskkill /T` for cancellation;
 the prototype's native tests exercise macOS/Unix.

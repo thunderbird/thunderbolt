@@ -66,8 +66,6 @@ import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } fro
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform, isTauriDesktop } from '@/lib/platform'
 import { invoke } from '@tauri-apps/api/core'
-import { i18n } from '@lingui/core'
-import { msg } from '@lingui/core/macro'
 import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
 import { createToolAuthorizer } from '@/agent-execution/approval'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
@@ -123,6 +121,13 @@ type CachedHarness = {
  *  build; a failed build is evicted so the next turn retries against a fresh
  *  harness. */
 type HarnessCache = Map<string, CachedHarness>
+
+/** Native output belongs to one adapter lifetime, independent of harness rebuilds. */
+type NativeOutputScope = {
+  readonly owner: string
+  closed: boolean
+  cleanup?: () => Promise<void>
+}
 
 /** Stable and volatile prompt parts needed by the Pi harness. */
 type AppHarnessSystemPromptConfig = Pick<
@@ -593,12 +598,19 @@ const buildHarnessRecord = async (
   resolved: ResolvedPiModel,
   history: readonly SeedTurn[],
   config: AppHarnessSystemPromptConfig,
+  nativeOutput: NativeOutputScope,
 ): Promise<HarnessRecord> => {
+  if (nativeOutput.closed) {
+    throw new Error('Agent disconnected')
+  }
   const execution = context.execution ?? defaultAgentExecution
   const native =
     execution.location === 'computer'
-      ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke), cwd: execution.cwd }
+      ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke, nativeOutput.owner), cwd: execution.cwd }
       : undefined
+  if (native) {
+    nativeOutput.cleanup = () => native.env.cleanup()
+  }
   const systemPrompt = { current: composeAppHarnessSystemPrompt(config, execution) }
   const harness = await agentCore.buildAppHarness({
     model: resolved.descriptor,
@@ -786,10 +798,15 @@ const disposeHarness = async (record: HarnessRecord): Promise<void> => {
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the
  *  adapter's synchronous `disconnect` doesn't await teardown; a never-resolved or
  *  rejected build is swallowed so no straggler escapes as an unhandled rejection. */
-const disposeAllHarnesses = (cache: HarnessCache): void => {
+const disposeAllHarnesses = (cache: HarnessCache, nativeOutput: NativeOutputScope): void => {
+  nativeOutput.closed = true
   const cached = [...cache.values()]
   cache.clear()
-  void Promise.all(cached.map(({ record }) => record.then(disposeHarness).catch(() => {})))
+  const dispose = async () => {
+    await Promise.all(cached.map(({ record }) => record.then(disposeHarness).catch(() => {})))
+    await nativeOutput.cleanup?.()
+  }
+  void dispose().catch(console.error)
 }
 
 /** Run the built-in request on the thread's persistent in-browser Pi harness and
@@ -799,6 +816,7 @@ const fetchViaHarness = async (
   init: RequestInit,
   context: AgentAdapterContext,
   cache: HarnessCache,
+  nativeOutput: NativeOutputScope,
   fallback: () => Promise<Response>,
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
@@ -833,7 +851,7 @@ const fetchViaHarness = async (
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   if (!resolved) {
     if (context.execution?.location === 'computer') {
-      throw new Error(i18n._(msg`This model cannot run on this computer. Choose a tool-capable supported model.`))
+      throw new Error('This model cannot run on this computer. Choose a tool-capable supported model.')
     }
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
@@ -859,8 +877,11 @@ const fetchViaHarness = async (
   const execution = context.execution ?? defaultAgentExecution
   // Access changes refresh the tools and prompt below without discarding tool history.
   const signature = `${harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)}|execution:${JSON.stringify([execution.location, execution.cwd])}`
+  if (nativeOutput.closed) {
+    throw new Error('Agent disconnected')
+  }
   const record = await getOrBuildHarness(cache, context.threadId, signature, () =>
-    buildHarnessRecord(agentCore, context, resolved, history, config),
+    buildHarnessRecord(agentCore, context, resolved, history, config, nativeOutput),
   )
   await prepareHarnessForSend(agentCore, record, config, context)
   context.telemetry?.endPhase('harness_build')
@@ -871,6 +892,9 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
+        if (nativeOutput.closed) {
+          throw new Error('Agent disconnected')
+        }
         // A replay has no current-attempt tool history to synthesize from. The live
         // harness instead reaches the floor through tool_result and keeps its evidence.
         if (context.webToolBudget?.probe.isExhausted) {
@@ -934,6 +958,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
   // across all of that thread's turns; `disconnect` disposes them all.
   const harnessCache: HarnessCache = new Map()
+  const nativeOutput: { current: NativeOutputScope } = { current: { owner: crypto.randomUUID(), closed: false } }
 
   /** Legacy engine — every provider the Pi harness doesn't (yet) serve. */
   const fetchViaLegacyPipeline = (init: RequestInit, context: AgentAdapterContext): Promise<Response> =>
@@ -959,17 +984,17 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     const execution = context.execution ?? defaultAgentExecution
     if (execution.location === 'cloud') {
-      throw new Error(i18n._(msg`Cloud execution is not available yet`))
+      throw new Error('Cloud execution is not available yet')
     }
     if (execution.location === 'computer') {
       if (!isTauriDesktop()) {
-        throw new Error(i18n._(msg`Computer execution requires the desktop app`))
+        throw new Error('Computer execution requires the desktop app')
       }
       if (!execution.cwd) {
-        throw new Error(i18n._(msg`Choose a working folder before using this computer`))
+        throw new Error('Choose a working folder before using this computer')
       }
       if (context.selectedModel.toolUsage === 0 || !isPiModelCandidate(context.selectedModel)) {
-        throw new Error(i18n._(msg`Choose a tool-capable model to use this computer`))
+        throw new Error('Choose a tool-capable model to use this computer')
       }
     }
     if (isPiModelCandidate(context.selectedModel)) {
@@ -977,6 +1002,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
         init,
         context,
         harnessCache,
+        nativeOutput.current,
         () => fetchViaLegacyPipeline(init, context),
         loadAgentCore,
         prepareConfig,
@@ -994,6 +1020,10 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     // No ACP wire to warm. Each thread's harness IS persistent, so disconnect
     // disposes every cached harness and removes its isolated workspace.
     ensureSession: async () => {},
-    disconnect: () => disposeAllHarnesses(harnessCache),
+    disconnect: () => {
+      const previousOutput = nativeOutput.current
+      nativeOutput.current = { owner: crypto.randomUUID(), closed: false }
+      disposeAllHarnesses(harnessCache, previousOutput)
+    },
   }
 }

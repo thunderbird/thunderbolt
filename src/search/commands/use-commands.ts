@@ -9,14 +9,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
-import {
-  getWebOsPlatform,
-  isMacDesktop,
-  isMobile,
-  isTauri,
-  isWebDesktopPlatform,
-  isWebMobilePlatform,
-} from '@/lib/platform'
+import { getWebOsPlatform, isMacDesktop, isTauri, isTouchPlatform, isWebDesktopPlatform } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
 import type { I18n, MessageDescriptor } from '@lingui/core'
@@ -199,7 +192,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
     },
     showDownloadApp: showAppDownloads && !isTauri() && isWebDesktopPlatform(),
     isMac: isMacPlatform(),
-    showShortcuts: !isMobile() && !isWebMobilePlatform(),
+    showShortcuts: !isTouchPlatform(),
     // "New chat" navigates, so dismiss the mobile sidebar drawer first (no-op on
     // desktop / when closed) — the palette's `handleCommand` only closes it for
     // `to` commands, and this is a `run` command.

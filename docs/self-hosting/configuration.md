@@ -215,6 +215,8 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 
 `MINIMAL_MODE=true` hides the Settings section, the header's agent name, the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
 
+Minimal mode has no theme control: the app follows the visitor's stored theme, which is the system theme unless they chose otherwise before minimal mode was on.
+
 ### Hosted agent
 
 `AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls one model upstream. `AGENT_MODEL` takes one of two shapes: a Fireworks serverless id, `accounts/fireworks/models/<name>`, which runs on Fireworks with `FIREWORKS_API_KEY`, or a bare Anthropic id, which runs on Anthropic with `ANTHROPIC_API_KEY`. The API refuses to start on an id it does not support or when the provider's key is unset; Fireworks models in other accounts are not supported yet. Each supported id also needs a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The supported ids and their seeded prices are listed under [Model prices](./models.md#model-prices). The agent can call read-only tools on the MCP servers in `AGENT_MCP_SERVERS` (see [Tools](#hosted-agent-tools) below).

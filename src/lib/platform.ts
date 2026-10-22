@@ -121,6 +121,9 @@ export const isWebMobilePlatform = (): boolean => {
   return p === 'ios' || p === 'android'
 }
 
+/** Phones and tablets: the Tauri mobile apps and iOS/Android browsers, including iPadOS posing as macOS. */
+export const isTouchPlatform = (): boolean => isMobile() || isWebMobilePlatform()
+
 /** Returns true when the web browser is running on a desktop OS (macOS, Windows, Linux). */
 export const isWebDesktopPlatform = (): boolean => {
   const p = getWebOsPlatform()

@@ -22,6 +22,13 @@ describe('resolveSessionModel', () => {
     expect(resolveSessionModel(zeusAgent, confidential, models).id).toBe(standard.id)
   })
 
+  it('keeps user-added models usable without the hosted catalog, and prefers Opus when switching agents', () => {
+    const custom = createMockModel({ id: 'custom', provider: 'custom', model: 'local-model', isConfidential: 0 })
+    expect(resolveSessionModel(zeusAgent, confidential, [custom])).toBe(custom)
+    expect(resolveSessionModel(zeusAgent, custom, [custom, standard])).toBe(custom)
+    expect(resolveSessionModel(zeusAgent, confidential, [custom, standard])).toBe(standard)
+  })
+
   it('skips unavailable models and missing API keys', () => {
     const disabled = { ...confidential, id: 'disabled', enabled: 0 }
     const deleted = { ...confidential, id: 'deleted', deletedAt: '2026-10-21T00:00:00.000Z' }

@@ -168,7 +168,6 @@ export const useVoiceSession = (loadRuntime = loadVoiceRuntime) => {
         return
       }
       const agentId = currentSession.selectedAgent.id
-      useChatStore.getState().updateSession(session.id, { agentLocked: true })
       setVoiceModeActive(true)
       const { createVoiceSession, createVoiceEngine, createChatReply } = await loadRuntime()
       if (run.controller.signal.aborted) {
@@ -201,6 +200,14 @@ export const useVoiceSession = (loadRuntime = loadVoiceRuntime) => {
       })
       run.session = voice
       await voice.start()
+      if (run.controller.signal.aborted) {
+        return
+      }
+      const startedSession = useChatStore.getState().sessions.get(session.id)
+      if (!startedSession || startedSession.selectedAgent.id !== agentId) {
+        throw new VoiceAgentChangedError()
+      }
+      useChatStore.getState().updateSession(session.id, { agentLocked: true })
     } catch (error) {
       if (run.controller.signal.aborted) {
         return

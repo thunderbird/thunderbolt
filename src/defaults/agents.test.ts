@@ -24,11 +24,11 @@ describe('built-in agents', () => {
     expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, provider: 'custom' })).toBe(false)
   })
 
-  it('allows only Thunderbolt-hosted Opus 5.5 for Zeus', () => {
+  it('allows hosted and user-added non-Tinfoil models for Zeus', () => {
     expect(isModelAllowedForAgent(zeusAgent, defaultModelOpus55)).toBe(true)
     expect(isModelAllowedForAgent(zeusAgent, defaultModelGlm53)).toBe(false)
-    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'custom' })).toBe(false)
-    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, model: 'other-model' })).toBe(false)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'custom' })).toBe(true)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, model: 'other-model' })).toBe(true)
   })
 
   it('leaves remote model selection to the agent and rejects unknown built-ins', () => {

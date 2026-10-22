@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isAgentAvailable } from '@/acp/agent-availability'
-import { isBuiltInAgent, isModelAllowedForAgent } from '@/defaults/agents'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { isBuiltInAgent, isModelAvailableForAgent } from '@/defaults/agents'
 import type { ChatSession } from './chat-store'
 import { exposesPrivateThread } from './private-thread'
 
@@ -28,12 +27,7 @@ export const assertSessionCanSend = (
   if (!selectedModel) {
     throw new Error('No selected model')
   }
-  if (
-    !isModelAllowedForAgent(selectedAgent, selectedModel) ||
-    selectedModel.enabled !== 1 ||
-    selectedModel.deletedAt ||
-    needsApiKey(selectedModel)
-  ) {
+  if (!isModelAvailableForAgent(selectedAgent, selectedModel)) {
     throw new Error('This model is not available for the selected agent')
   }
 }

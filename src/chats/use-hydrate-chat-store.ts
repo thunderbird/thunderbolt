@@ -154,6 +154,11 @@ export const useHydrateChatStore = ({
       miniAppId: session.miniAppId,
     })
 
+    // Persist a legacy agent mapping only when the user resumes the conversation.
+    if (thread && thread.agentId !== session.selectedAgent.id) {
+      await updateChatThread(db, id, { agentId: session.selectedAgent.id, acpSessionId: null })
+    }
+
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
 
@@ -275,14 +280,11 @@ export const useHydrateChatStore = ({
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
     })
-    // Bind legacy rows once, so changing preferences cannot reroute an existing chat.
+    // Resolve legacy ownership in memory; merely reading a chat must not rewrite synced data.
     const boundChatThread =
       chatThread && chatThread.agentId !== selectedAgent.id
         ? { ...chatThread, agentId: selectedAgent.id, acpSessionId: null }
         : chatThread
-    if (boundChatThread && boundChatThread !== chatThread) {
-      await updateChatThread(db, id, { agentId: selectedAgent.id, acpSessionId: null })
-    }
     const selectedModel = resolveSessionModel(selectedAgent, defaultModel, models)
 
     // A persisted thread owns its project; a brand-new chat started from a

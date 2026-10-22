@@ -447,6 +447,10 @@ describe('useHydrateChatStore', () => {
       })
 
       expect(getCurrentSession()?.selectedAgent.id).toBe(zeusAgent.id)
+      expect((await getThread(getDb(), threadId))?.agentId).toBeNull()
+      await act(async () => {
+        await result.current.saveMessages({ id: threadId, messages: [] })
+      })
       expect((await getThread(getDb(), threadId))?.agentId).toBe(zeusAgent.id)
     })
 
@@ -557,7 +561,7 @@ describe('useHydrateChatStore', () => {
         expect(session?.chatThread?.agentId).toBe(expectedAgent.id)
         expect(session?.selectedModel.provider).toBe(isEncrypted === 1 ? 'tinfoil' : 'thunderbolt')
         expect(session?.selectedModel.model).toBe(isEncrypted === 1 ? 'kimi-k2' : 'opus-5-5')
-        expect((await getThread(getDb(), session!.id))?.agentId).toBe(expectedAgent.id)
+        expect((await getThread(getDb(), session!.id))?.agentId).toBe(agentId ?? null)
       },
     )
   })

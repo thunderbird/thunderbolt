@@ -67,8 +67,7 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
-import { isBuiltInAgent, isModelAllowedForAgent } from '@/defaults/agents'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { isBuiltInAgent, isModelAvailableForAgent } from '@/defaults/agents'
 import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
@@ -335,12 +334,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
     const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
-    const noModelForAgent =
-      isBuiltInAgent(selectedAgent) &&
-      (!isModelAllowedForAgent(selectedAgent, selectedModel) ||
-        selectedModel.enabled !== 1 ||
-        !!selectedModel.deletedAt ||
-        needsApiKey(selectedModel))
+    const noModelForAgent = isBuiltInAgent(selectedAgent) && !isModelAvailableForAgent(selectedAgent, selectedModel)
     // `useChatAutomation` holds back the unanswered last turn of a private chat
     // on a non-built-in agent. Say so, and hold a typed send too: it would carry
     // the private history to that agent unencrypted.

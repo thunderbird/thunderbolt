@@ -4,8 +4,7 @@
 
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
-import { isModelAllowedForAgent } from '@/defaults/agents'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { isModelAvailableForAgent } from '@/defaults/agents'
 import { getDb } from '@/db/database'
 import { type NamedMCPClient, type ReconnectClient } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -495,12 +494,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
       throw new Error('No session found')
     }
 
-    if (
-      !isModelAllowedForAgent(session.selectedAgent, model) ||
-      model.enabled !== 1 ||
-      model.deletedAt ||
-      needsApiKey(model)
-    ) {
+    if (!isModelAvailableForAgent(session.selectedAgent, model)) {
       throw new Error('This model is not available for the selected agent')
     }
 

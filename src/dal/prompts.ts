@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { builtInAgents, isModelAllowedForAgent } from '@/defaults/agents'
+import { builtInAgentForModel } from '@/defaults/agents'
 import { and, asc, eq, isNull, like } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
@@ -169,10 +169,7 @@ export const runAutomation = async (db: AnyDrizzleDatabase, promptId: string): P
     throw new Error('Model not found')
   }
 
-  const agent = builtInAgents.find((candidate) => isModelAllowedForAgent(candidate, model))
-  if (!agent) {
-    throw new Error('No agent supports this automation’s model')
-  }
+  const agent = builtInAgentForModel(model)
 
   const threadId = uuidv7()
 

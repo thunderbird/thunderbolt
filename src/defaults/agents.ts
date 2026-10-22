@@ -4,7 +4,7 @@
 
 import type { Agent } from '@/types/acp'
 import type { Model } from '@/types'
-import { defaultModelOpus55 } from '@shared/defaults/models'
+import { needsApiKey } from '@/settings/models/model-policy'
 
 /**
  * The built-in confidential agent, Vesta. Lives in code only — never a DB row.
@@ -35,7 +35,7 @@ export const builtInAgent: Agent = {
   userId: null,
 }
 
-/** The built-in assistant using Thunderbolt-hosted Opus. */
+/** The non-confidential built-in assistant, defaulting to Thunderbolt-hosted Opus. */
 export const zeusAgent: Agent = {
   ...builtInAgent,
   id: 'superbolt-built-in',
@@ -65,12 +65,21 @@ export const isModelAllowedForAgent = (agent: Agent, model: Pick<Model, 'provide
   if (agent.id === builtInAgent.id) {
     return model.provider === 'tinfoil'
   }
-  return (
-    agent.id === zeusAgent.id &&
-    model.provider === defaultModelOpus55.provider &&
-    model.model === defaultModelOpus55.model
-  )
+  return agent.id === zeusAgent.id && model.provider !== 'tinfoil'
 }
+
+/** Resolve the built-in owner from the same policy used by model selection and sends. */
+export const builtInAgentForModel = (model: Pick<Model, 'provider' | 'model'>): Agent => {
+  const agent = builtInAgents.find((candidate) => isModelAllowedForAgent(candidate, model))
+  if (!agent) {
+    throw new Error('No built-in agent supports this model')
+  }
+  return agent
+}
+
+/** Shared availability gate for selection, resolution, the composer, and sending. */
+export const isModelAvailableForAgent = (agent: Agent, model: Model): boolean =>
+  isModelAllowedForAgent(agent, model) && model.enabled === 1 && !model.deletedAt && !needsApiKey(model)
 
 /**
  * Whether an agent is an in-process built-in agent (vs. an ACP

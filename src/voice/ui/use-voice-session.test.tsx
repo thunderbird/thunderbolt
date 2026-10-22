@@ -144,6 +144,21 @@ describe('useVoiceSession startup', () => {
     }
   })
 
+  it('locks only after a successful microphone start and leaves failures retryable', async () => {
+    setupPrivateThread(builtInAgent)
+    const deferred = deferredVoiceRuntime()
+    deferred.resolve()
+    deferred.session.start.mockImplementationOnce(async () => {
+      throw new DOMException('Denied', 'NotAllowedError')
+    })
+    const { result } = renderHook(() => useVoiceSession(deferred.load))
+    await act(() => result.current.start())
+    expect(useChatStore.getState().sessions.get('thread-1')?.agentLocked).not.toBe(true)
+    expect(deferred.session.stop).toHaveBeenCalledTimes(1)
+    await act(() => result.current.start())
+    expect(useChatStore.getState().sessions.get('thread-1')?.agentLocked).toBe(true)
+  })
+
   it('does not open a microphone after stop cancels a pending runtime import', async () => {
     setupPrivateThread(builtInAgent)
     const deferred = deferredVoiceRuntime()
@@ -152,7 +167,7 @@ describe('useVoiceSession startup', () => {
     act(() => {
       startup = result.current.start()
     })
-    expect(useChatStore.getState().sessions.get('thread-1')?.agentLocked).toBe(true)
+    expect(useChatStore.getState().sessions.get('thread-1')?.agentLocked).not.toBe(true)
 
     await act(() => result.current.stop())
     await act(async () => {

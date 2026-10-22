@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { builtInAgent, builtInAgents, isPrivateAgent, zeusAgent } from '@/defaults/agents'
+import { builtInAgentForModel, builtInAgents, isPrivateAgent } from '@/defaults/agents'
 import { defaultChatTitle } from '@/lib/constants'
 
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
@@ -83,7 +83,7 @@ export const createChatThread = async (
     ChatThreadOrigin & { agentId?: string | null },
   model: Model,
 ): Promise<void> => {
-  const agentId = data.agentId ?? (model.provider === 'tinfoil' ? builtInAgent.id : zeusAgent.id)
+  const agentId = data.agentId ?? builtInAgentForModel(model).id
   const agent = builtInAgents.find((candidate) => candidate.id === agentId)
   await db.insert(chatThreadsTable).values({
     ...data,

@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isBuiltInAgent, isModelAllowedForAgent } from '@/defaults/agents'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { isBuiltInAgent, isModelAvailableForAgent, zeusAgent } from '@/defaults/agents'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import type { Model } from '@/types'
 import type { Agent } from '@/types/acp'
 
@@ -18,11 +18,17 @@ export const resolveSessionModel = (agent: Agent, currentModel: Model, models: M
   if (!isBuiltInAgent(agent)) {
     return currentModel
   }
-  const isAvailable = (model: Model) =>
-    model.enabled === 1 && !model.deletedAt && !needsApiKey(model) && isModelAllowedForAgent(agent, model)
+  const isAvailable = (model: Model) => isModelAvailableForAgent(agent, model)
   const latestModel = models.find((model) => model.id === currentModel.id) ?? { ...currentModel, enabled: 0 }
   if (isAvailable(latestModel)) {
     return latestModel
   }
-  return models.find(isAvailable) ?? latestModel
+  const availableModels = models.filter(isAvailable)
+  const defaultModel =
+    agent.id === zeusAgent.id
+      ? availableModels.find(
+          (model) => model.provider === defaultModelOpus55.provider && model.model === defaultModelOpus55.model,
+        )
+      : undefined
+  return defaultModel ?? availableModels[0] ?? latestModel
 }

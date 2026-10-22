@@ -4,14 +4,17 @@
 
 import type { Model } from '@/types'
 
-export const addableProviders = [
-  'anthropic',
-  'openai',
-  'custom',
-  'openrouter',
-  'otari',
-  'tinfoil',
-] as const satisfies readonly Model['provider'][]
+/** Picker membership and order; the mapped type makes provider additions exhaustive. */
+const addableProviderValues = {
+  tinfoil: 'tinfoil',
+  anthropic: 'anthropic',
+  openai: 'openai',
+  openrouter: 'openrouter',
+  otari: 'otari',
+  custom: 'custom',
+} as const satisfies { [Provider in Exclude<Model['provider'], 'thunderbolt'>]: Provider }
+
+export const addableProviders = Object.values(addableProviderValues)
 
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 

@@ -14,9 +14,7 @@ import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
-/** Canonical display names for model providers — the single source for labels.
- *  Key order is the provider-picker menu order (the add form derives its options
- *  from these keys, so a new provider can't silently drop out of the picker). */
+/** Canonical display names; picker membership and order live in `addableProviders`. */
 // Brand names, deliberately not translated. The one exception is `custom`,
 // which is real copy — callers substitute a translated label for it (see
 // `customProviderLabel`).

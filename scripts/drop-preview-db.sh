@@ -22,7 +22,9 @@
 # stops the stack's PowerSync service, registers a one-off task definition
 # derived from the backend's, overrides the entryPoint to bypass the
 # migrate-on-boot logic, and drops PowerSync's replication slots and both
-# databases against `POSTGRES_ADMIN_URL`. A slot left behind would block the
+# databases against `POSTGRES_ADMIN_URL`. A stopped Fargate task rarely closes its
+# replication connection cleanly, so Postgres keeps the slot active until its WAL
+# sender times out; the drop ends that connection first. A slot left behind would block the
 # drop and pin WAL on the shared instance.
 #
 # Usage: drop-preview-db.sh <PR_NUMBER>
@@ -87,7 +89,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 aws ecs describe-task-definition --task-definition "$TASKDEF" --region "$AWS_REGION" \
   --query 'taskDefinition' > "$WORKDIR/source.json"
 
-DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL); const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
+DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL); await admin`SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = ${dbName} AND active_pid IS NOT NULL`; const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
 
 jq --arg cmd "$DROP_CMD" --arg family "tb-${STACK}-db-drop" '
   {containerDefinitions, family: $family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}

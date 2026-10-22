@@ -104,7 +104,7 @@ export const ProjectTreeMenu = ({
                         onOpenArtifacts={() => artifacts.open(project.id)}
                         onTogglePin={() =>
                           startTransition(async () => {
-                            await setProjectPinned(db, project.id, project.pinnedOrder === null ? -Date.now() : null)
+                            await setProjectPinned(db, project.id, project.pinnedOrder === null ? 0 : null)
                           })
                         }
                         onEdit={() => openManagement(project, 'edit')}

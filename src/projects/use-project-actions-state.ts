@@ -67,7 +67,7 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
     },
     onTogglePin: () => {
       startTransition(async () => {
-        await setProjectPinned(db, projectId, pinned ? null : -Date.now())
+        await setProjectPinned(db, projectId, pinned ? null : 0)
       })
     },
     onEdit: () => openDialog('edit'),

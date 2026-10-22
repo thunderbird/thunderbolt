@@ -22,7 +22,7 @@ describe('built-in agents', () => {
     expect(isModelAllowedForAgent(builtInAgent, defaultModelGlm53)).toBe(true)
     expect(isModelAllowedForAgent(builtInAgent, defaultModelOpus55)).toBe(false)
     expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, provider: 'custom' })).toBe(false)
-    expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, model: 'other-model' })).toBe(false)
+    expect(isModelAllowedForAgent(builtInAgent, { ...defaultModelDeepSeekV41Flash, id: 'user-added' })).toBe(false)
   })
 
   it('allows only hosted Opus 5.5 for Zeus', () => {
@@ -31,7 +31,14 @@ describe('built-in agents', () => {
     expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'custom' })).toBe(false)
     expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'openai' })).toBe(false)
     expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, provider: 'anthropic' })).toBe(false)
-    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, model: 'other-model' })).toBe(false)
+    expect(isModelAllowedForAgent(zeusAgent, { ...defaultModelOpus55, id: 'user-added' })).toBe(false)
+  })
+
+  it('keeps preconfigured identities usable after OTA or synced model-slug upgrades', () => {
+    const updatedOpus = { ...defaultModelOpus55, model: 'opus-next' }
+    const updatedTinfoil = { ...defaultModelGlm53, model: 'glm-next' }
+    expect(isModelAllowedForAgent(zeusAgent, updatedOpus)).toBe(true)
+    expect(isModelAllowedForAgent(builtInAgent, updatedTinfoil)).toBe(true)
   })
 
   it('leaves remote model selection to the agent and rejects unknown built-ins', () => {

@@ -63,7 +63,7 @@ describe('useContextTracking reactivity', () => {
 
   it('updates when chat_threads contextSize changes', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
 
     await createModel(db, {
@@ -115,7 +115,7 @@ describe('useContextTracking reactivity', () => {
 
   it('flips isOverflowing to true when additionalInputTokens (Skills v1) pushes total past the context window', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
 
     // Tiny model: 100-token window. Easy to overflow with skill instructions.
@@ -155,7 +155,7 @@ describe('useContextTracking reactivity', () => {
 
   it('keeps isOverflowing false when additionalInputTokens is zero and the thread is well under the window', async () => {
     const db = getDb()
-    const modelId = uuidv7()
+    const modelId = defaultModelOpus55.id
     const threadId = uuidv7()
     await createModel(db, {
       id: modelId,

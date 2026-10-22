@@ -8,6 +8,7 @@
  * each call to the injected `connectToAgent`.
  */
 
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
 import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
@@ -44,7 +45,7 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: createMockModel({ id: 'm1' }),
+    selectedModel: createMockModel({ id: defaultModelDeepSeekV41Flash.id }),
     triggerData: null,
   })
 }
@@ -92,7 +93,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     chatThread: null,
     id: sessionId,
     selectedModel: {
-      id: 'm1',
+      id: defaultModelDeepSeekV41Flash.id,
       model: 'deepseek-v4-1-flash',
       provider: 'tinfoil',
       enabled: 1,
@@ -1037,8 +1038,16 @@ describe('createChatInstance — retry policy', () => {
     const receiveProperties = receiveCall[1] as TurnTelemetryPayload
     const summaryProperties = summaryCalls[0]![1] as TurnTelemetryPayload
 
-    expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' })
-    expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' })
+    expect(sendProperties).toMatchObject({
+      model_id: defaultModelDeepSeekV41Flash.id,
+      model_name: 'deepseek-v4-1-flash',
+      provider: 'tinfoil',
+    })
+    expect(receiveProperties).toMatchObject({
+      model_id: defaultModelDeepSeekV41Flash.id,
+      model_name: 'deepseek-v4-1-flash',
+      provider: 'tinfoil',
+    })
     expect(JSON.stringify(sendProperties)).not.toContain('secret')
     expect(summaryCalls).toHaveLength(1)
     expect(summaryProperties.outcome).toBe('success')
@@ -1164,9 +1173,15 @@ describe('createChatInstance — retry policy', () => {
       const autoRetry = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
       const retrySuccess = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_retry_success')?.[1]
       const successSummary = retryHarness.trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
-      expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
-      expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
-      expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
+      expect(autoRetry).toEqual(
+        expect.objectContaining({ model_id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil' }),
+      )
+      expect(retrySuccess).toEqual(
+        expect.objectContaining({ model_id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil' }),
+      )
+      expect(successSummary).toEqual(
+        expect.objectContaining({ model_id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil' }),
+      )
       expect((autoRetry as TurnTelemetryPayload).trace_id).toBe((successSummary as TurnTelemetryPayload).trace_id)
 
       const exhaustedHarness = createRetryHarness()
@@ -1187,8 +1202,12 @@ describe('createChatInstance — retry policy', () => {
       const errorSummary = exhaustedHarness.trackEvent.mock.calls.find(
         ([event]) => event === 'chat_turn_completed',
       )?.[1]
-      expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
-      expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'tinfoil' }))
+      expect(retriesExhausted).toEqual(
+        expect.objectContaining({ model_id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil' }),
+      )
+      expect(errorSummary).toEqual(
+        expect.objectContaining({ model_id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil' }),
+      )
       expect((retriesExhausted as TurnTelemetryPayload).trace_id).toBe((errorSummary as TurnTelemetryPayload).trace_id)
     } finally {
       random.mockRestore()
@@ -1400,7 +1419,11 @@ describe('createChatInstance — retry policy', () => {
 
     const reply = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')?.[1]
     expect(reply).toEqual(
-      expect.objectContaining({ model_id: 'm1', model_name: 'deepseek-v4-1-flash', provider: 'tinfoil' }),
+      expect.objectContaining({
+        model_id: defaultModelDeepSeekV41Flash.id,
+        model_name: 'deepseek-v4-1-flash',
+        provider: 'tinfoil',
+      }),
     )
   })
 
@@ -1487,7 +1510,12 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     chatInstance: instance,
     chatThread: null,
     id: sessionId,
-    selectedModel: createMockModel({ id: 'm1', provider: 'tinfoil', isSystem: 1, isConfidential: 1 }),
+    selectedModel: createMockModel({
+      id: defaultModelDeepSeekV41Flash.id,
+      provider: 'tinfoil',
+      isSystem: 1,
+      isConfidential: 1,
+    }),
     triggerData: null,
   })
   return { instance, attempts }

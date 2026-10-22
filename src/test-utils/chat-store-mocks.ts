@@ -6,6 +6,7 @@ import { clearAdapterCache } from '@/acp/adapter-cache'
 import { useChatStore } from '@/chats/chat-store'
 import { builtInAgent } from '@/defaults/agents'
 import { assertSessionCanSend } from '@/chats/session-policy'
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/types'
 import { type Chat } from '@ai-sdk/react'
 import { mock } from 'bun:test'
@@ -15,7 +16,7 @@ import { mock } from 'bun:test'
  */
 export const createMockModel = (overrides?: Partial<Model>): Model =>
   ({
-    id: 'model-1',
+    id: defaultModelDeepSeekV41Flash.id,
     provider: 'tinfoil',
     name: 'Test Model',
     model: 'deepseek-v4-1-flash',
@@ -140,7 +141,7 @@ export const createMockChatInstanceWithValidation = (
  * Default model used when selectedModel is null but a session needs to be created
  */
 const defaultTestModel: Model = {
-  id: 'default-model',
+  id: defaultModelDeepSeekV41Flash.id,
   provider: 'tinfoil',
   name: 'Default Model',
   model: 'deepseek-v4-1-flash',

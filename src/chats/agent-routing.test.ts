@@ -52,7 +52,7 @@ const otherRemoteAgent: Agent = {
 }
 
 const mockModel: Model = {
-  id: 'model-1',
+  id: defaultModelDeepSeekV41Flash.id,
   provider: 'tinfoil',
   name: 'Test Model',
   model: defaultModelDeepSeekV41Flash.model,

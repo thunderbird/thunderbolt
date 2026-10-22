@@ -55,29 +55,27 @@ export const isPrivateAgent = (agent: Agent): boolean =>
   isBuiltInAgent(agent) && agent.id === builtInAgent.id && agent.isPrivate === true
 
 /**
- * Built-in agents use only their preconfigured models. Check provider and model
- * instead of the legacy confidentiality label so editing that label cannot
- * bypass the policy. User-created remote agents select their own models upstream.
+ * Built-in agents use only their preconfigured model identities and providers.
+ * Stable row IDs survive model-slug updates from OTA defaults and newer devices.
+ * User-created remote agents select their own models upstream.
  */
-export const isModelAllowedForAgent = (agent: Agent, model: Pick<Model, 'provider' | 'model'>): boolean => {
+export const isModelAllowedForAgent = (agent: Agent, model: Pick<Model, 'id' | 'provider'>): boolean => {
   if (!isBuiltInAgent(agent)) {
     return true
   }
   if (agent.id === builtInAgent.id) {
     return (
       model.provider === 'tinfoil' &&
-      defaultModels.some((configured) => configured.provider === 'tinfoil' && configured.model === model.model)
+      defaultModels.some((configured) => configured.provider === 'tinfoil' && configured.id === model.id)
     )
   }
   return (
-    agent.id === zeusAgent.id &&
-    model.provider === defaultModelOpus55.provider &&
-    model.model === defaultModelOpus55.model
+    agent.id === zeusAgent.id && model.provider === defaultModelOpus55.provider && model.id === defaultModelOpus55.id
   )
 }
 
 /** Resolve the built-in owner from the same policy used by model selection and sends. */
-export const builtInAgentForModel = (model: Pick<Model, 'provider' | 'model'>): Agent => {
+export const builtInAgentForModel = (model: Pick<Model, 'id' | 'provider'>): Agent => {
   const agent = builtInAgents.find((candidate) => isModelAllowedForAgent(candidate, model))
   if (!agent) {
     throw new Error('No built-in agent supports this model')

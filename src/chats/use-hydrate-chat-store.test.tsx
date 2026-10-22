@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53, defaultModelOpus55 } from '@shared/defaults/models'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
@@ -31,23 +32,26 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
  */
 const createSystemModel = async () => {
   const db = getDb()
-  const modelId = uuidv7()
+  const modelId = defaultModelOpus55.id
 
-  await db.insert(modelsTable).values({
-    id: modelId,
-    provider: 'thunderbolt',
-    name: 'System Model',
-    model: 'opus-5-5',
-    isSystem: 1,
-    enabled: 1,
-    isConfidential: 0,
-    contextWindow: 131072,
-    toolUsage: 1,
-    startWithReasoning: 0,
-    deletedAt: null,
-    url: null,
-    defaultHash: null,
-  })
+  await db
+    .insert(modelsTable)
+    .values({
+      id: modelId,
+      provider: 'thunderbolt',
+      name: 'System Model',
+      model: 'opus-5-5',
+      isSystem: 1,
+      enabled: 1,
+      isConfidential: 0,
+      contextWindow: 131072,
+      toolUsage: 1,
+      startWithReasoning: 0,
+      deletedAt: null,
+      url: null,
+      defaultHash: null,
+    })
+    .onConflictDoNothing()
 
   return modelId
 }
@@ -57,16 +61,16 @@ const createSystemModel = async () => {
  */
 const createTestModel = async () => {
   const db = getDb()
-  const modelId = uuidv7()
+  const modelId = defaultModelGlm53.id
 
   await db.insert(modelsTable).values({
     id: modelId,
-    provider: 'thunderbolt',
+    provider: 'tinfoil',
     name: 'Test Model',
-    model: 'opus-5-5',
-    isSystem: 0,
+    model: defaultModelGlm53.model,
+    isSystem: 1,
     enabled: 1,
-    isConfidential: 0,
+    isConfidential: 1,
     contextWindow: 131072,
     toolUsage: 1,
     startWithReasoning: 0,
@@ -506,12 +510,12 @@ describe('useHydrateChatStore', () => {
   describe('persisted agent identity', () => {
     /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
     const createConfidentialModel = async () => {
-      const modelId = uuidv7()
+      const modelId = defaultModelDeepSeekV41Flash.id
       await getDb().insert(modelsTable).values({
         id: modelId,
         provider: 'tinfoil',
         name: 'Confidential Model',
-        model: 'kimi-k2',
+        model: defaultModelDeepSeekV41Flash.model,
         isSystem: 1,
         enabled: 1,
         isConfidential: 1,
@@ -560,7 +564,9 @@ describe('useHydrateChatStore', () => {
         expect(session?.selectedAgent.id).toBe(expectedAgent.id)
         expect(session?.chatThread?.agentId).toBe(expectedAgent.id)
         expect(session?.selectedModel.provider).toBe(isEncrypted === 1 ? 'tinfoil' : 'thunderbolt')
-        expect(session?.selectedModel.model).toBe(isEncrypted === 1 ? 'kimi-k2' : 'opus-5-5')
+        expect(session?.selectedModel.model).toBe(
+          isEncrypted === 1 ? defaultModelDeepSeekV41Flash.model : defaultModelOpus55.model,
+        )
         expect((await getThread(getDb(), session!.id))?.agentId).toBe(agentId ?? null)
       },
     )

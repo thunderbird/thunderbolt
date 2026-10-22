@@ -39,7 +39,7 @@ afterAll(async () => {
  */
 const createTestModel = async () => {
   const db = getDb()
-  const modelId = uuidv7()
+  const modelId = defaultModelOpus55.id
 
   await db.insert(modelsTable).values({
     id: modelId,

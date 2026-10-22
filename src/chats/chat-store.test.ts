@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53, defaultModelOpus55 } from '@shared/defaults/models'
 import { getSettings } from '@/dal'
 import { getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
@@ -271,8 +272,8 @@ describe('chat-store', () => {
 
   describe('setModels', () => {
     it('re-resolves a model outside the agent policy without changing the agent', () => {
-      const wrong = createMockModel({ id: 'opus', provider: 'thunderbolt', model: 'opus-5-5' })
-      const fitting = createMockModel({ id: 'tinfoil' })
+      const wrong = createMockModel({ id: defaultModelOpus55.id, provider: 'thunderbolt', model: 'opus-5-5' })
+      const fitting = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,
@@ -288,8 +289,8 @@ describe('chat-store', () => {
 
   describe('setSelectedModel', () => {
     it('should throw error when model is not found', async () => {
-      const model1 = createMockModel({ id: 'model-1' })
-      const model2 = createMockModel({ id: 'model-2' })
+      const model1 = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
+      const model2 = createMockModel({ id: defaultModelGlm53.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -307,8 +308,8 @@ describe('chat-store', () => {
     })
 
     it('should set selected model and update settings', async () => {
-      const model1 = createMockModel({ id: 'model-1', name: 'Model 1' })
-      const model2 = createMockModel({ id: 'model-2', name: 'Model 2' })
+      const model1 = createMockModel({ id: defaultModelDeepSeekV41Flash.id, name: 'Model 1' })
+      const model2 = createMockModel({ id: defaultModelGlm53.id, name: 'Model 2' })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -320,19 +321,19 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('test-id', 'model-2')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelGlm53.id)
 
       const session = getCurrentSession()
       expect(session?.selectedModel).toBe(model2)
-      expect(session?.selectedModel?.id).toBe('model-2')
+      expect(session?.selectedModel?.id).toBe(defaultModelGlm53.id)
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings(getDb(), { selected_model: String })
-      expect(settings.selectedModel).toBe('model-2')
+      expect(settings.selectedModel).toBe(defaultModelGlm53.id)
     })
 
     it('should update settings with correct model id', async () => {
-      const model = createMockModel({ id: 'custom-model-id' })
+      const model = createMockModel({ id: defaultModelGlm53.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -344,15 +345,15 @@ describe('chat-store', () => {
         triggerData: null,
       })
 
-      await useChatStore.getState().setSelectedModel('test-id', 'custom-model-id')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelGlm53.id)
 
       // Verify updateSettings was called by checking the database
       const settings = await getSettings(getDb(), { selected_model: String })
-      expect(settings.selectedModel).toBe('custom-model-id')
+      expect(settings.selectedModel).toBe(defaultModelGlm53.id)
     })
 
     it('should complete without errors when setting model', async () => {
-      const model = createMockModel({ id: 'tracked-model' })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id })
 
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
@@ -366,14 +367,14 @@ describe('chat-store', () => {
 
       // trackEvent is called but we don't verify it to avoid module mocking
       // The function is safe to call and won't throw even if posthogClient is null
-      await useChatStore.getState().setSelectedModel('test-id', 'tracked-model')
+      await useChatStore.getState().setSelectedModel('test-id', defaultModelDeepSeekV41Flash.id)
 
       const session = getCurrentSession()
-      expect(session?.selectedModel?.id).toBe('tracked-model')
+      expect(session?.selectedModel?.id).toBe(defaultModelDeepSeekV41Flash.id)
     })
 
     it('invokes the prewarm wrapper with the selected model (wrapper owns the tinfoil/system guard)', async () => {
-      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil', isSystem: 1 })
       const prewarmSystemModel = mock(async () => {})
 
       hydrateStore({
@@ -393,7 +394,7 @@ describe('chat-store', () => {
     })
 
     it('does not propagate prewarm errors into model selection', async () => {
-      const model = createMockModel({ id: 'tinfoil-system-model', provider: 'tinfoil', isSystem: 1 })
+      const model = createMockModel({ id: defaultModelDeepSeekV41Flash.id, provider: 'tinfoil', isSystem: 1 })
       const prewarmFailure = Promise.reject(new Error('attestation failed'))
       void prewarmFailure.catch(() => undefined)
       const prewarmSystemModel = mock(() => prewarmFailure)
@@ -700,7 +701,12 @@ describe('chat-store', () => {
 
     it('selects Opus when choosing Zeus before starting a chat', async () => {
       const tinfoil = createMockModel()
-      const opus = createMockModel({ id: 'opus', provider: 'thunderbolt', model: 'opus-5-5', isConfidential: 0 })
+      const opus = createMockModel({
+        id: defaultModelOpus55.id,
+        provider: 'thunderbolt',
+        model: 'opus-5-5',
+        isConfidential: 0,
+      })
       hydrateStore({
         chatInstance: createMockChatInstanceWithValidation(),
         chatThread: null,

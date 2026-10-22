@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash, defaultModelGlm53, defaultModelOpus55 } from '@shared/defaults/models'
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent, zeusAgent } from '@/defaults/agents'
@@ -55,8 +56,8 @@ const managedHttpAgent: Agent = {
   userId: null,
 }
 
-const gpt4 = createMockModel({ id: 'model-1', name: 'GPT-4', provider: 'tinfoil', isSystem: 1 })
-const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'tinfoil', isSystem: 1 })
+const gpt4 = createMockModel({ id: defaultModelDeepSeekV41Flash.id, name: 'GPT-4', provider: 'tinfoil', isSystem: 1 })
+const gpt5 = createMockModel({ id: defaultModelGlm53.id, name: 'GPT-5', provider: 'tinfoil', isSystem: 1 })
 
 const QueryWrapper = createQueryTestWrapper()
 
@@ -133,7 +134,12 @@ describe('ChatModelPicker', () => {
   })
 
   it('only offers Tinfoil models for Thunderbolt, without model privacy labels', () => {
-    const opus = createMockModel({ id: 'opus', name: 'Opus 5.5', provider: 'thunderbolt', model: 'opus-5-5' })
+    const opus = createMockModel({
+      id: defaultModelOpus55.id,
+      name: 'Opus 5.5',
+      provider: 'thunderbolt',
+      model: 'opus-5-5',
+    })
     setupWithAgent(builtInAgent, [gpt4, gpt5, opus])
     render(<ChatModelPicker />, { wrapper: TestWrapper })
 
@@ -145,7 +151,12 @@ describe('ChatModelPicker', () => {
   })
 
   it('only offers Opus 5.5 for Zeus', () => {
-    const opus = createMockModel({ id: 'opus', name: 'Opus 5.5', provider: 'thunderbolt', model: 'opus-5-5' })
+    const opus = createMockModel({
+      id: defaultModelOpus55.id,
+      name: 'Opus 5.5',
+      provider: 'thunderbolt',
+      model: 'opus-5-5',
+    })
     setupWithAgent(zeusAgent, [opus, gpt4, gpt5])
     render(<ChatModelPicker />, { wrapper: TestWrapper })
 
@@ -204,7 +215,7 @@ describe('ChatModelPicker', () => {
     })
 
     const session = useChatStore.getState().sessions.get('thread-1')
-    expect(session?.selectedModel.id).toBe('model-2')
+    expect(session?.selectedModel.id).toBe(defaultModelGlm53.id)
   })
 
   it('opens model creation over the current route', async () => {

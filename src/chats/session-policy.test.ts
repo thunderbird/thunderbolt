@@ -2,13 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import { describe, expect, it } from 'bun:test'
 import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { createMockChatThread, createMockModel } from '@/test-utils/chat-store-mocks'
 import { assertSessionCanSend } from './session-policy'
 
 const tinfoil = createMockModel()
-const opus = createMockModel({ provider: 'thunderbolt', model: 'opus-5-5', isConfidential: 0 })
+const opus = createMockModel({
+  id: defaultModelOpus55.id,
+  provider: 'thunderbolt',
+  model: 'opus-5-5',
+  isConfidential: 0,
+})
 
 describe('assertSessionCanSend', () => {
   it.each([builtInAgent, zeusAgent])('holds an unavailable agent instead of routing elsewhere ($name)', (agent) => {

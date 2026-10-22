@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import {
   createMockChatInstance,
@@ -390,7 +391,7 @@ describe('ChatPromptInput', () => {
       })
 
       expect(trackEvent).toHaveBeenCalledWith('chat_send_prompt_overflow', {
-        model_id: 'model-1',
+        model_id: defaultModelDeepSeekV41Flash.id,
         model_name: 'deepseek-v4-1-flash',
         provider: 'tinfoil',
         length: 8,
@@ -582,7 +583,7 @@ describe('ChatPromptInput', () => {
     }
 
     it('says why and holds the send instead of throwing on it', async () => {
-      const { sendMessage, submit } = renderWithModel(createMockModel({ provider: 'openai' }))
+      const { sendMessage, submit } = renderWithModel(createMockModel({ id: 'unsupported', provider: 'openai' }))
 
       expect(screen.getByRole('alert')).toHaveTextContent(
         `No models are configured for ${builtInAgent.name}. Enable a supported model in Settings.`,
@@ -605,11 +606,11 @@ describe('ChatPromptInput', () => {
     )
 
     it('clears the notice and selects a model once one that fits is added', async () => {
-      const confidentialModel = createMockModel({ provider: 'openai' })
+      const confidentialModel = createMockModel({ id: 'unsupported', provider: 'openai' })
       renderWithModel(confidentialModel)
       expect(screen.getByRole('alert')).toBeInTheDocument()
 
-      const added = createMockModel({ id: 'added', provider: 'tinfoil' })
+      const added = createMockModel()
       act(() => {
         useChatStore.getState().setModels([confidentialModel, added])
       })

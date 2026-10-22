@@ -36,7 +36,7 @@ const hydrate = () => {
     chatInstance: createMockChatInstance(),
     chatThread: null,
     id: sessionId,
-    selectedModel: createMockModel({ id: 'm1', provider: 'tinfoil', isSystem: 1, isConfidential: 1 }),
+    selectedModel: createMockModel(),
     triggerData: null,
   })
 }

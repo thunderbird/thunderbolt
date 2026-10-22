@@ -53,6 +53,7 @@ describe('Otari form validation', () => {
     expect(schema.safeParse({ ...values, apiKey: '' }).success).toBe(false)
     expect(schema.safeParse({ ...values, apiKey: undefined }).success).toBe(false)
     expect(schema.safeParse({ ...values, model: '' }).success).toBe(false)
+    expect(schema.safeParse({ ...values, provider: 'thunderbolt' }).success).toBe(false)
   })
 })
 
@@ -131,12 +132,12 @@ describe('useAddModelForm', () => {
 
     await act(async () => {
       result.current.onSubmit({
-        provider: 'thunderbolt',
+        provider: 'anthropic',
         name: 'New Chat Model',
         model: 'new-chat-model',
         customModel: '',
         url: '',
-        apiKey: '',
+        apiKey: 'sk-test',
       })
       await getClock().runAllAsync()
     })
@@ -160,12 +161,12 @@ describe('useAddModelForm', () => {
     try {
       await act(async () => {
         result.current.onSubmit({
-          provider: 'thunderbolt',
+          provider: 'anthropic',
           name: 'Broken Model',
           model: 'broken-model',
           customModel: '',
           url: '',
-          apiKey: '',
+          apiKey: 'sk-test',
         })
         await getClock().runAllAsync()
       })
@@ -191,12 +192,12 @@ describe('useAddModelForm', () => {
 
     await act(async () => {
       result.current.onSubmit({
-        provider: 'thunderbolt',
+        provider: 'anthropic',
         name: 'My Custom Model',
         model: 'ignored-model',
         customModel: 'gpt-4-turbo-preview',
         url: '',
-        apiKey: '',
+        apiKey: 'sk-test',
       })
       await getClock().runAllAsync()
     })

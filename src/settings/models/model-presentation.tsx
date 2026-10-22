@@ -23,10 +23,10 @@ import type { Model } from '@/types'
 export const providerLabels: Record<Model['provider'], string> = {
   thunderbolt: 'Thunderbolt',
   tinfoil: 'Tinfoil',
+  anthropic: 'Anthropic',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
-  otari: 'Otari (Mozilla.ai)',
-  anthropic: 'Anthropic',
+  otari: 'Otari',
   custom: 'Custom',
 }
 

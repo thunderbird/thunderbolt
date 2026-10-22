@@ -31,7 +31,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'otari', 'tinfoil']),
+      provider: z.enum(['anthropic', 'openai', 'custom', 'openrouter', 'otari', 'tinfoil']),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -42,13 +42,10 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       message: i18n._(urlRequiredForCustom),
       path: ['url'],
     })
-    .refine(
-      (data) =>
-        data.provider === 'thunderbolt' ||
-        data.provider === 'custom' ||
-        (data.apiKey !== undefined && data.apiKey.length > 0),
-      { message: i18n._(apiKeyRequired), path: ['apiKey'] },
-    )
+    .refine((data) => data.provider === 'custom' || (data.apiKey !== undefined && data.apiKey.length > 0), {
+      message: i18n._(apiKeyRequired),
+      path: ['apiKey'],
+    })
 
 export type AddModelFormValues = z.infer<ReturnType<typeof createAddModelFormSchema>>
 
@@ -117,7 +114,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
     defaultValues: {
-      provider: 'thunderbolt',
+      provider: 'anthropic',
       name: '',
       model: '',
       customModel: '',
@@ -214,7 +211,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.clearErrors()
   }
 
-  const changeProvider = (nextProvider: Model['provider']) => {
+  const changeProvider = (nextProvider: AddModelFormValues['provider']) => {
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
@@ -234,7 +231,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   // locale after a language switch. See the Localization section in AGENTS.md.
   const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
-    return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
+    return [...items, customModelItem(i18n)]
   }
   const modelItems = buildModelItems()
   const supportsTools =

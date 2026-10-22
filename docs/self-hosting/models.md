@@ -116,14 +116,14 @@ If the enclave cannot be verified, the message fails with an error saying so. Th
 
 Users add models in **Settings → Models**.
 
-| Provider           | API key  | Endpoint URL | Catalog fills itself in            |
-| ------------------ | -------- | ------------ | ---------------------------------- |
-| Anthropic          | Required | No           | Yes, once the key is valid         |
-| OpenAI             | Required | No           | Yes, once the key is valid         |
-| OpenRouter         | Required | No           | Yes, once the key is valid         |
-| Otari (Mozilla.ai) | Required | No           | Yes, once the key is valid         |
-| Tinfoil            | Required | No           | Yes, no key needed to list         |
-| Custom             | Optional | Required     | Only if the endpoint publishes one |
+| Provider   | API key  | Endpoint URL | Catalog fills itself in            |
+| ---------- | -------- | ------------ | ---------------------------------- |
+| Anthropic  | Required | No           | Yes, once the key is valid         |
+| OpenAI     | Required | No           | Yes, once the key is valid         |
+| OpenRouter | Required | No           | Yes, once the key is valid         |
+| Otari      | Required | No           | Yes, once the key is valid         |
+| Tinfoil    | Required | No           | Yes, no key needed to list         |
+| Custom     | Optional | Required     | Only if the endpoint publishes one |
 
 The key is stored on the device it was typed on and is never synced to other devices, so a user who adds a model on a laptop will be asked for the key again on their phone. It never reaches your database and is not part of any configuration the server publishes.
 

@@ -122,12 +122,13 @@ describe('add model form', () => {
       fireEvent.keyDown(within(panel).getByRole('combobox', { name: 'Provider' }), { key: 'ArrowDown' })
       await getClock().runAllAsync()
     })
-    fireEvent.click(screen.getByRole('option', { name: 'Otari (Mozilla.ai)' }))
+    expect(screen.queryByRole('option', { name: 'Thunderbolt' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: 'Otari' }))
     await act(async () => {
       await getClock().runAllAsync()
     })
 
-    expect(within(panel).getByRole('combobox', { name: 'Provider' })).toHaveTextContent('Otari (Mozilla.ai)')
+    expect(within(panel).getByRole('combobox', { name: 'Provider' })).toHaveTextContent('Otari')
     expect(within(panel).getByLabelText('API Key')).toHaveAttribute('type', 'password')
     expect(within(panel).queryByLabelText('URL')).not.toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: 'Add Model' })).toBeDisabled()
@@ -197,7 +198,7 @@ describe('add model form', () => {
 
     fireEvent.click(screen.getByText('select model'))
     expect(screen.getByTestId('panel-kind')).toHaveTextContent('detail')
-    expect(screen.getByTestId('provider')).toHaveTextContent('thunderbolt')
+    expect(screen.getByTestId('provider')).toHaveTextContent('anthropic')
     expect(screen.getByTestId('api-key')).toBeEmptyDOMElement()
 
     fireEvent.click(screen.getByText('open add'))

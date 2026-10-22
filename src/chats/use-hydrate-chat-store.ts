@@ -20,7 +20,7 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
-import { customRowToAgent, systemRowToAgent, loadAllAgents } from '@/dal/agents'
+import { customRowToAgent, systemRowToAgent, loadAllAgents, useAllAgents } from '@/dal/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
@@ -30,7 +30,7 @@ import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
@@ -105,6 +105,15 @@ export const useHydrateChatStore = ({
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
+  const agents = useAllAgents()
+
+  // PowerSync can deliver a saved custom agent after discovery and chat hydration.
+  // Keep the external session store usable without changing the chat's owning ID.
+  useEffect(() => {
+    if (isReady) {
+      useChatStore.getState().recoverUnavailableAgents(agents)
+    }
+  }, [agents, isReady])
 
   const { getEnabledClients, reconnectClient } = useMCP()
 

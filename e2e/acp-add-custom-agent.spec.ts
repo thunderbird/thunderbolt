@@ -70,10 +70,9 @@ test.describe('ACP add custom agent', () => {
 
     // The new row is rendered by name. PowerSync's live query feeds the list
     // from the synced `agents` table so the row should appear without a manual
-    // reload. Rows show a provenance line (host) rather than the description —
-    // the description lives in the detail panel.
+    // reload. The shared agent description appears in the row and selector.
     await expect(page.getByText('Test Agent')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText('Connected agent · invalid.example.test')).toBeVisible()
+    await expect(page.getByText('Test description', { exact: true })).toBeVisible()
 
     expect(errors).toHaveLength(0)
   })

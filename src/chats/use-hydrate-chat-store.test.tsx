@@ -6,6 +6,7 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
+import { getClock } from '@/testing-library'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
@@ -182,6 +183,40 @@ describe('useHydrateChatStore', () => {
     // Reset store state after each test
     resetStore()
     await resetTestDatabase()
+  })
+
+  it('recovers a saved custom agent when the live agents query updates after hydration', async () => {
+    const threadId = uuidv7()
+    const agentId = uuidv7()
+    await getDb().insert(chatThreadsTable).values({ id: threadId, title: 'Waiting', agentId, acpSessionId: 'retained' })
+    useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+    const QueryWrapper = createQueryTestWrapper()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter>
+        <QueryWrapper>
+          <MCPProvider>{children}</MCPProvider>
+        </QueryWrapper>
+      </MemoryRouter>
+    )
+    const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper })
+    await act(async () => {
+      await result.current.hydrateChatStore()
+    })
+    expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: agentId, enabled: 0 })
+    await createAgent(getDb(), {
+      id: agentId,
+      name: 'Arrived',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.example/ws',
+      userId: 'user',
+    })
+    await act(async () => {
+      await QueryWrapper.queryClient.refetchQueries({ queryKey: ['agents'] })
+      await getClock().tickAsync(0)
+    })
+    expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: agentId, enabled: 1, name: 'Arrived' })
+    expect(getCurrentSession()?.chatThread?.acpSessionId).toBe('retained')
   })
 
   describe('isReady state', () => {

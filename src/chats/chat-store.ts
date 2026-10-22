@@ -151,6 +151,7 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
+  recoverUnavailableAgents(agents: Agent[]): void
   /** Record what discovery reported as the default agent (null when it names
    *  none, or answered 401/403) and re-run `resolveSessionAgent` for every chat
    *  that is brand-new, unstarted and still on the agent the fallback chain gave
@@ -251,6 +252,26 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     if (changed) {
       set({ sessions: nextSessions })
     }
+  },
+
+  recoverUnavailableAgents: (agents) => {
+    const recovered = [...get().sessions.values()].flatMap((session) => {
+      if (session.selectedAgent.enabled !== 0) {
+        return []
+      }
+      const agent = agents.find(
+        (agent) => agent.id === session.selectedAgent.id && agent.enabled === 1 && !agent.deletedAt,
+      )
+      return agent ? [{ ...session, selectedAgent: agent }] : []
+    })
+    if (recovered.length === 0) {
+      return
+    }
+    const sessions = new Map(get().sessions)
+    for (const session of recovered) {
+      sessions.set(session.id, session)
+    }
+    set({ sessions })
   },
 
   applyDiscoveredDefaultAgent: (defaultAgent, agents, preference) => {

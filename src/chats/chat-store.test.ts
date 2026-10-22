@@ -520,6 +520,22 @@ describe('chat-store', () => {
       expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
     })
 
+    it('recovers only matching available identities after discovery has finished', async () => {
+      await seedThreadSession('late-sync', { ...customAgent, enabled: 0, url: null }, 'saved-session')
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+      useChatStore.getState().recoverUnavailableAgents([{ ...customAgent, id: 'other' }])
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(0)
+      useChatStore.getState().recoverUnavailableAgents([{ ...customAgent, enabled: 0 }])
+      expect(getCurrentSession()?.selectedAgent.enabled).toBe(0)
+      useChatStore.getState().recoverUnavailableAgents([customAgent])
+      expect(getCurrentSession()?.selectedAgent).toBe(customAgent)
+      expect(getCurrentSession()?.chatThread?.agentId).toBe(customAgent.id)
+      expect(getCurrentSession()?.chatThread?.acpSessionId).toBe('saved-session')
+      const sessions = useChatStore.getState().sessions
+      useChatStore.getState().recoverUnavailableAgents([customAgent])
+      expect(useChatStore.getState().sessions).toBe(sessions)
+    })
+
     describe('applyDiscoveredDefaultAgent', () => {
       const model = createMockModel()
       const newChat = { chatThread: null, mcpClients: [], models: [model], selectedModel: model, triggerData: null }

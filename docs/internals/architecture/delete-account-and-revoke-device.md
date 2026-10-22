@@ -16,7 +16,7 @@ Both end the same way. Revocation is the action you take for a lost or stolen de
 ### Delete Account
 
 1. User confirms "Delete My Account" in **Settings > Preferences**.
-2. `handleDeleteAccount` calls `DELETE /v1/account`, then runs `clearLocalData()` and reloads (`src/settings/preferences.tsx:538-552`).
+2. `useDeleteAccount` calls `DELETE /v1/account`, then runs `clearLocalData()` and replaces the current location with `/account-deleted`. Local deletion and the sync listener therefore reach the same confirmation page.
 3. The backend deletes the `user` row (`backend/src/dal/users.ts:28`); the synced tables cascade on `user_id`.
 4. Each **other signed-in device** clears local data and redirects to `/account-deleted`, triggered by whichever comes first:
    - A token refresh answered **410 Gone** with `code: 'ACCOUNT_DELETED'` (`backend/src/api/powersync.ts:229-232`).

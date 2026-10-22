@@ -21,13 +21,13 @@ describe('DeleteAllChatsDialog', () => {
     render(<DeleteAllChatsDialog ref={ref} onConfirm={() => {}} />)
     act(() => ref.current?.open())
 
-    expect(screen.getByRole('alertdialog', { name: 'Delete chats outside projects?' })).toHaveAttribute(
+    expect(screen.getByRole('alertdialog', { name: 'Delete chats?' })).toHaveAttribute(
       'data-slot',
       'alert-dialog-content',
     )
     expect(document.querySelector('[data-slot="drawer-content"]')).not.toBeInTheDocument()
     expect(
-      screen.getByText("This will delete all chats that aren't in a project. Chats inside projects will be kept."),
+      screen.getByText("This will delete all chats outside projects. Chats in projects won't be deleted."),
     ).toBeInTheDocument()
   })
 
@@ -38,7 +38,7 @@ describe('DeleteAllChatsDialog', () => {
     render(<DeleteAllChatsDialog ref={ref} onConfirm={onConfirm} />)
     act(() => ref.current?.open())
 
-    const sheet = screen.getByRole('alertdialog', { name: 'Delete chats outside projects?' })
+    const sheet = screen.getByRole('alertdialog', { name: 'Delete chats?' })
     expect(sheet).toHaveAttribute('data-slot', 'drawer-content')
     expect(sheet).toHaveAttribute('data-swipe-direction', 'down')
     await act(async () => {

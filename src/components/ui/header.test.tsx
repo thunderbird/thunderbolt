@@ -5,6 +5,7 @@
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
+import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { agentsSystemTable } from '@/db/tables'
@@ -79,21 +80,31 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
   )
 }
 
+/** Drives the real status subscription without starting a network request. */
+class HeaderTestChat extends Chat<ThunderboltUIMessage> {
+  submit = () => this.setStatus({ status: 'submitted' })
+}
+
 /** Hydrates a session on the canonical `thread-1`, then patches its
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
  *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
  *  simulate an unsaved new chat (no thread row yet). */
 const setupWithAgent = (
   agent: Agent,
-  { withThread = true, isEncrypted = 0 }: { withThread?: boolean; isEncrypted?: 0 | 1 } = {},
+  {
+    withThread = true,
+    isEncrypted = 0,
+    projectId = null,
+  }: { withThread?: boolean; isEncrypted?: 0 | 1; projectId?: string | null } = {},
 ) => {
+  const chatInstance = new HeaderTestChat({ id: 'thread-1' })
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
-    chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
-    chatThread: withThread ? createMockChatThread({ agentId: agent.id, isEncrypted }) : null,
+    chatInstance,
+    chatThread: withThread ? createMockChatThread({ agentId: agent.id, isEncrypted, projectId }) : null,
     id: 'thread-1',
     models: [createMockModel()],
     selectedModel: createMockModel(),
@@ -106,9 +117,10 @@ const setupWithAgent = (
       return state
     }
     const nextSessions = new Map(state.sessions)
-    nextSessions.set('thread-1', { ...session, selectedAgent: agent })
+    nextSessions.set('thread-1', { ...session, selectedAgent: agent, projectId })
     return { sessions: nextSessions }
   })
+  return chatInstance
 }
 
 /** Flushes the `useAllAgents` TanStack/PowerSync query so the seeded rows land
@@ -202,6 +214,36 @@ describe('Header', () => {
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
     expect(wrapper).not.toHaveClass('[translate:-50%_0]')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+  })
+
+  it('reveals the project control on first submit without remounting the sliding agent picker', async () => {
+    const project = await createProject(getDb(), { name: 'Launch' })
+    const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    const projectControl = screen.getByTitle('In project: Launch')
+    expect(screen.queryByRole('button', { name: 'In project: Launch' })).toBeNull()
+    expect(projectControl.parentElement).toHaveAttribute('inert')
+
+    act(() => chat.submit())
+    await flushAgentsQuery()
+
+    expect(useChatStore.getState().sessions.get('thread-1')?.chatThread).toBeNull()
+    expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
+    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
+    expect(projectControl.parentElement).not.toHaveAttribute('inert')
+    expect(projectControl.parentElement).toHaveClass('opacity-100', 'delay-300')
+  })
+
+  it('shows the project control when opening an existing mobile chat', async () => {
+    const project = await createProject(getDb(), { name: 'Launch' })
+    setupWithAgent(customAgent, { projectId: project.id })
+    render(<Header />, { wrapper: TestWrapper })
+    await flushAgentsQuery()
+
+    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBeInTheDocument()
   })
 
   it('hides the agent selector in minimal mode', () => {

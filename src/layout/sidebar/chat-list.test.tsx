@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, expect, it } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, expect, it, mock } from 'bun:test'
 import { useRef } from 'react'
+import { MemoryRouter, useLocation } from 'react-router'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { mockVirtuaMeasurement } from '@/test-utils/mock-virtua-measurement'
@@ -13,6 +14,8 @@ import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { ChatList } from './chat-list'
+import { getClock } from '@/testing-library'
+import type { ChatListProps } from './types'
 
 let restoreMeasurement: () => void
 beforeAll(async () => {
@@ -36,30 +39,46 @@ const chats = Array.from({ length: 12 }, (_, index) => ({
   isEncrypted: 0,
 }))
 
-const Fixture = ({ isMobile }: { isMobile: boolean }) => {
+const LocationProbe = () => {
+  const location = useLocation()
+  return <output aria-label="Location">{location.pathname + location.search}</output>
+}
+
+const Fixture = ({
+  isMobile,
+  isCollapsed = false,
+  onChatClick = () => {},
+}: {
+  isMobile: boolean
+  isCollapsed?: boolean
+  onChatClick?: ChatListProps['onChatClick']
+}) => {
   const scrollRef = useRef<HTMLDivElement>(null)
   return (
-    <SidebarProvider>
-      <div ref={scrollRef}>
-        <ChatList
-          sharedScrollRef={scrollRef}
-          chatThreads={chats}
-          isCollapsed={false}
-          isMobile={isMobile}
-          mobileNavToggle={null}
-          mobileSecondaryNavigation={null}
-          deleteAllChatsMutation={{ mutate: () => {}, isPending: false } as never}
-          deleteChatMutation={{ mutate: () => {}, isPending: false } as never}
-          deleteAllChatsDialogRef={{ current: null }}
-          deleteChatDialogRef={{ current: null }}
-          threadIdRef={{ current: null }}
-          onChatClick={() => {}}
-          onRename={() => {}}
-          onMoveToProject={() => {}}
-          onSearchClick={() => {}}
-        />
-      </div>
-    </SidebarProvider>
+    <MemoryRouter initialEntries={['/chats/current?projectId=project-1']}>
+      <SidebarProvider>
+        <div ref={scrollRef}>
+          <ChatList
+            sharedScrollRef={scrollRef}
+            chatThreads={chats}
+            isCollapsed={isCollapsed}
+            isMobile={isMobile}
+            mobileNavToggle={null}
+            mobileSecondaryNavigation={null}
+            deleteAllChatsMutation={{ mutate: () => {}, isPending: false } as never}
+            deleteChatMutation={{ mutate: () => {}, isPending: false } as never}
+            deleteAllChatsDialogRef={{ current: null }}
+            deleteChatDialogRef={{ current: null }}
+            threadIdRef={{ current: null }}
+            onChatClick={onChatClick}
+            onRename={() => {}}
+            onMoveToProject={() => {}}
+            onSearchClick={() => {}}
+          />
+        </div>
+      </SidebarProvider>
+      <LocationProbe />
+    </MemoryRouter>
   )
 }
 
@@ -85,4 +104,41 @@ it.each([false, true])('collapses Recents and restores its expanded preview (mob
   expect(section).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('Recent chat 10')).toBeVisible()
   expect(screen.queryByText('Recent chat 11')).not.toBeInTheDocument()
+})
+
+it('shows one Recents rail button and reveals five chats at a time inside its menu', async () => {
+  const onChatClick = mock(() => {})
+  render(<Fixture isMobile={false} isCollapsed onChatClick={onChatClick} />, { wrapper: createTestProvider() })
+  const trigger = screen.getByRole('button', { name: 'Recents' })
+  expect(screen.queryByText('Recent chat 1')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Delete chats outside projects' })).not.toBeInTheDocument()
+
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  await waitForElement(() => screen.queryByRole('menuitem', { name: 'Recent chat 1' }))
+  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(5)
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' }))
+  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(10)
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Recent chat 9' }))
+  expect(onChatClick).toHaveBeenCalledWith('chat-9', null)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'New chat' })))
+  expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent('/chats/new')
+  expect(screen.getByRole('status', { name: 'Location' })).not.toHaveTextContent('projectId')
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+})
+
+it('opens the protected burn confirmation from the Recents menu and keeps focus in the dialog', async () => {
+  render(<Fixture isMobile={false} isCollapsed />, { wrapper: createTestProvider() })
+  const trigger = screen.getByRole('button', { name: 'Recents' })
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Delete chats outside projects' })))
+  const dialog = await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete chats?' }))
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
 })

@@ -6,25 +6,18 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
 import { MobileSidebarScrim } from '@/components/ui/scrim'
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@/components/ui/sidebar'
+import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
-import { Flame, Loader2, Search } from 'lucide-react'
 import { useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
 import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
-import { RailDivider } from './rail-divider'
 import type { ChatListProps } from './types'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
 import { useSharedChatListMetrics } from './use-shared-chat-list-metrics'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import { SidebarSectionToggle } from './sidebar-section-toggle'
+import { RecentChatsMenu } from './recent-chats-menu'
 
 /** Virtua's list container, rendered as the semantic `ul` the rows live in. */
 const VirtualChatMenu = ({ style, children, ref }: CustomContainerComponentProps) => (
@@ -105,7 +98,7 @@ export const ChatList = ({
 }: ChatListProps & { sharedScrollRef?: RefObject<HTMLDivElement | null> }) => {
   const { t } = useLingui()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const shared = useSharedChatListMetrics(sharedScrollRef)
+  const shared = useSharedChatListMetrics(isCollapsed ? undefined : sharedScrollRef)
   const preview = useSidebarPreviewState(chatThreads, currentChatThreadId)
   const [sectionExpanded, setSectionExpanded] = useState(true)
   const showChats = !sharedScrollRef || isCollapsed || sectionExpanded
@@ -165,42 +158,18 @@ export const ChatList = ({
     </div>
   )
 
-  // Desktop: an in-flow label row while expanded, or the icon rail while
-  // collapsed. Search is always shown; the clear-all action, rail divider, and
-  // "Recents" label only appear once there are chats.
+  // Collapsed navigation keeps all recent chats behind one rail button.
   const desktopChrome = isCollapsed ? (
     <SidebarMenu className="flex-shrink-0">
       <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={onSearchClick}
-          tooltip={t`Search`}
-          className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-        >
-          <Search className="size-[var(--icon-size-default)]" />
-        </SidebarMenuButton>
+        <RecentChatsMenu
+          chatThreads={chatThreads}
+          currentChatThreadId={currentChatThreadId}
+          onChatClick={onChatClick}
+          deleteAllChatsMutation={deleteAllChatsMutation}
+          deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+        />
       </SidebarMenuItem>
-      {hasListContent && (
-        <>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={() => deleteAllChatsDialogRef.current?.open()}
-              disabled={deleteAllChatsMutation.isPending}
-              tooltip={t`Delete chats outside projects`}
-              className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-            >
-              {deleteAllChatsMutation.isPending ? (
-                <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-              ) : (
-                <Flame className="size-[var(--icon-size-default)]" />
-              )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-          <li aria-hidden>
-            <RailDivider className="my-1.5" />
-          </li>
-        </>
-      )}
     </SidebarMenu>
   ) : (
     <div className="flex items-center justify-between flex-shrink-0">
@@ -230,6 +199,7 @@ export const ChatList = ({
       >
         {isMobile ? mobileChrome : desktopChrome}
         <div
+          hidden={isCollapsed}
           ref={sharedScrollRef ? undefined : scrollContainerRef}
           id="sidebar-recent-chats"
           data-slot={sharedScrollRef ? 'chat-list' : 'chat-list-scroll'}
@@ -272,7 +242,7 @@ export const ChatList = ({
               before scrolling crashes it. Tests stub measurement instead
               (see test-utils/mock-virtua-measurement.ts). */}
           <div ref={shared.listRef} id="sidebar-recent-chats-content" hidden={!showChats}>
-            {chatThreads.length > 0 && (
+            {!isCollapsed && chatThreads.length > 0 && (
               <Virtualizer
                 scrollRef={sharedScrollRef ?? scrollContainerRef}
                 startMargin={
@@ -298,7 +268,7 @@ export const ChatList = ({
                 ))}
               </Virtualizer>
             )}
-            {sharedScrollRef && preview.hasOverflow && (
+            {!isCollapsed && sharedScrollRef && preview.hasOverflow && (
               <SidebarMenu className="mt-1">
                 <SidebarMenuItem>
                   <SidebarListToggle

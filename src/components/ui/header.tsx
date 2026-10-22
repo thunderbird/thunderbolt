@@ -51,9 +51,7 @@ type HeaderAgentSelectorProps = {
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Rendered immediately left of the selector, inside its positioned wrapper on
-   *  mobile so it docks with the pill instead of being laid out against a header
-   *  column the pill has left. */
+  /** Mobile project control, shown beside the compact agent circle after docking. */
   leading?: ReactNode
 }
 
@@ -108,14 +106,25 @@ const HeaderAgentSelector = ({
     <div
       {...mobile.dragProps}
       className={cn(
-        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
         collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
       )}
     >
-      {/* Inside the wrapper, so the docked translate (which pins the group's
-          right edge to the content edge) accounts for it and the two circles
-          travel together. */}
-      {leading}
+      {/* The transparent agent pill keeps its full width. Anchor to its right
+          edge so the project sits beside the visible circle, above the hidden
+          pill's hit area. The fade waits for the 300ms docking transition. */}
+      {leading && (
+        <div
+          aria-hidden={!collapsed}
+          inert={!collapsed}
+          className={cn(
+            'absolute right-[calc(var(--touch-height-lg)+0.5rem)] z-20 transition-[opacity,visibility] duration-150 motion-reduce:transition-none',
+            collapsed ? 'visible opacity-100 delay-300' : 'invisible pointer-events-none opacity-0 delay-0',
+          )}
+        >
+          {leading}
+        </div>
+      )}
       {selector}
     </div>
   )
@@ -348,9 +357,8 @@ export const Header = () => {
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
-        {/* Beside the agent selector rather than centred: it groups with the other
-            "what this chat is" controls. Desktop only — the mobile header positions
-            the agent pill absolutely and has no room next to it. */}
+        {/* Desktop keeps the project name beside the selector; mobile puts an
+            icon-only control inside the selector's moving wrapper. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
       {privateSwitchDialog}

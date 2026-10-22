@@ -42,7 +42,6 @@ import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
 import { ChatList } from './chat-list'
 import { SidebarNavToggle } from './nav-toggle'
-import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
 import { SidebarHeaderActions } from './sidebar-header-actions'
 import type { ChatThread, SidebarSection } from './types'
@@ -254,11 +253,12 @@ export const ChatSidebarContent = ({
           >
             {!isMobile && (
               <SidebarGroup className={cn('flex-shrink-0', isCollapsed && 'pt-2 pb-0')}>
-                {/* Collapsed: pb-0 so SidebarContent's gap-2 alone spaces the divider
-              below; pt-2 gives the nav toggle the same 8px above as the rail's
-              p-2 leaves on its sides. */}
                 <SidebarGroupContent className="flex flex-col gap-2">
-                  {isCollapsed && sectionControl(true)}
+                  {isCollapsed && (
+                    <SidebarHeaderActions vertical onSearchClick={onSearchClick}>
+                      {sectionControl(true)}
+                    </SidebarHeaderActions>
+                  )}
                   <SidebarMenu>
                     <SidebarMenuItem>
                       <SidebarMenuButton
@@ -283,8 +283,6 @@ export const ChatSidebarContent = ({
                 </SidebarGroupContent>
               </SidebarGroup>
             )}
-            {isCollapsed && chatThreads.length > 0 && <RailDivider />}
-
             <ChatList
               sharedScrollRef={showProjects ? sharedScrollRef : undefined}
               chatThreads={showProjects ? chatThreads.filter((thread) => !thread.projectId) : chatThreads}

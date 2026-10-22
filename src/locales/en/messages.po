@@ -500,6 +500,7 @@ msgstr "Artifact name"
 msgid "Artifact unavailable"
 msgstr "Artifact unavailable"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
@@ -1287,6 +1288,7 @@ msgstr "Couldn't verify the secure AI connection. This is usually temporary — 
 msgid "Create"
 msgstr "Create"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "Create a project to organize your chats."
 msgstr "Create a project to organize your chats."
@@ -1448,14 +1450,18 @@ msgid "Delete chats"
 msgstr "Delete chats"
 
 #: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/search/commands/use-commands.ts
 msgid "Delete chats outside projects"
 msgstr "Delete chats outside projects"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete chats outside projects?"
-msgstr "Delete chats outside projects?"
+#~ msgid "Delete chats outside projects?"
+#~ msgstr "Delete chats outside projects?"
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete chats?"
+msgstr "Delete chats?"
 
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
@@ -2592,6 +2598,8 @@ msgstr "Network request failed (the browser blocked the request or the server is
 msgid "New Agent"
 msgstr "New Agent"
 
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
@@ -2624,6 +2632,7 @@ msgstr "New device waiting"
 msgid "New Model"
 msgstr "New Model"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "New project"
@@ -2650,6 +2659,7 @@ msgstr "No agents found"
 #~ msgstr "No artifacts yet."
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
 msgstr "No chats yet"
 
@@ -3140,6 +3150,7 @@ msgstr "Project settings"
 msgid "Project unavailable"
 msgstr "Project unavailable"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
@@ -3203,6 +3214,7 @@ msgstr "Received an error while testing the model."
 #~ msgstr "Recent Projects"
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 msgid "Recents"
 msgstr "Recents"
 
@@ -3469,8 +3481,6 @@ msgstr "Scroll to bottom"
 
 #: src/components/ui/page-search.tsx
 #: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
-#: src/layout/sidebar/settings-sidebar.tsx
 #: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
@@ -3743,10 +3753,14 @@ msgstr "Show fewer recent chats"
 msgid "Show inline"
 msgstr "Show inline"
 
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show less"
 msgstr "Show less"
 
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show more"
 msgstr "Show more"
@@ -4401,8 +4415,12 @@ msgid "This version of Thunderbolt is no longer supported. Update the app to kee
 msgstr "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
-msgstr "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
+msgstr "This will delete all chats outside projects. Chats in projects won't be deleted."
+
+#: src/components/delete-all-chats-dialog.tsx
+#~ msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+#~ msgstr "This will delete all chats that aren't in a project. Chats inside projects will be kept."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."

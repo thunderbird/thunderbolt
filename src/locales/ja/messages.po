@@ -488,6 +488,7 @@ msgstr ""
 msgid "Artifact unavailable"
 msgstr ""
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
@@ -1275,6 +1276,7 @@ msgstr "AI への安全な接続を検証できませんでした。通常は一
 msgid "Create"
 msgstr "作成"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "Create a project to organize your chats."
 msgstr ""
@@ -1436,13 +1438,17 @@ msgid "Delete chats"
 msgstr ""
 
 #: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/search/commands/use-commands.ts
 msgid "Delete chats outside projects"
 msgstr ""
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete chats outside projects?"
+#~ msgid "Delete chats outside projects?"
+#~ msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete chats?"
 msgstr ""
 
 #: src/components/logout-modal.tsx
@@ -2580,6 +2586,8 @@ msgstr "ネットワークリクエストに失敗しました（ブラウザー
 msgid "New Agent"
 msgstr "新しいエージェント"
 
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
@@ -2612,6 +2620,7 @@ msgstr "新しいデバイスが待機中"
 msgid "New Model"
 msgstr "新しいモデル"
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "新しいプロジェクト"
@@ -2638,6 +2647,7 @@ msgstr "エージェントが見つかりません"
 #~ msgstr "まだアーティファクトはありません。"
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
 msgstr "まだチャットはありません"
 
@@ -3128,6 +3138,7 @@ msgstr ""
 msgid "Project unavailable"
 msgstr ""
 
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
@@ -3191,6 +3202,7 @@ msgstr "モデルのテスト中にエラーが発生しました。"
 #~ msgstr "最近のプロジェクト"
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 msgid "Recents"
 msgstr ""
 
@@ -3457,8 +3469,6 @@ msgstr "最下部にスクロール"
 
 #: src/components/ui/page-search.tsx
 #: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
-#: src/layout/sidebar/settings-sidebar.tsx
 #: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
@@ -3731,10 +3741,14 @@ msgstr ""
 msgid "Show inline"
 msgstr "インラインで表示"
 
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show less"
 msgstr ""
 
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/sidebar-list-toggle.tsx
 msgid "Show more"
 msgstr ""
@@ -4389,8 +4403,12 @@ msgid "This version of Thunderbolt is no longer supported. Update the app to kee
 msgstr "このバージョンの Thunderbolt はサポートされていません。チャットと同期を続けるにはアプリを更新してください。"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
 msgstr ""
+
+#: src/components/delete-all-chats-dialog.tsx
+#~ msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+#~ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."

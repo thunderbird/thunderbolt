@@ -136,7 +136,7 @@ export const AgentSelector = ({
         <div
           data-testid="agent-selector-pill"
           className={cn(
-            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
+            'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 motion-reduce:transition-none md:px-3',
             mobileHeaderControlFillClass,
             collapsed ? 'opacity-0' : 'opacity-100',
             !dimmed && isOpen
@@ -174,7 +174,7 @@ export const AgentSelector = ({
           aria-hidden="true"
           data-testid="agent-selector-collapsed-circle"
           className={cn(
-            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
+            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 motion-reduce:transition-none max-md:group-active:bg-muted-foreground/20 md:hidden',
             mobileHeaderControlFillClass,
             collapsed ? 'opacity-100' : 'opacity-0',
           )}

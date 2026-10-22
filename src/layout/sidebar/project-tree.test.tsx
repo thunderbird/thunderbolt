@@ -5,7 +5,7 @@
 import '@/testing-library'
 import { DndContext } from '@dnd-kit/core'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, mock } from 'bun:test'
 import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -18,6 +18,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
 import { ProjectTree } from './project-tree'
+import type { ProjectTreeProps } from './project-tree-row'
 
 beforeAll(setupTestDatabase)
 beforeEach(resetTestDatabase)
@@ -27,7 +28,7 @@ afterEach(() => {
 })
 afterAll(teardownTestDatabase)
 
-const tree = (isDragging: boolean, isMobile = false) => (
+const tree = (isDragging: boolean, isMobile = false, overrides: Partial<ProjectTreeProps> = {}) => (
   <ProjectTree
     chatThreads={[]}
     isCollapsed={false}
@@ -40,6 +41,7 @@ const tree = (isDragging: boolean, isMobile = false) => (
     onChatClick={() => {}}
     onRename={() => {}}
     onMoveToProject={() => {}}
+    {...overrides}
   />
 )
 
@@ -146,6 +148,57 @@ it('preserves the visible project rows and open folders while dragging a recent 
   expect(projectRows()).toHaveLength(10)
   expect(firstProject).toBeVisible()
   expect(firstProject).toHaveAttribute('aria-expanded', 'true')
+})
+
+it('groups collapsed projects in a menu with incremental lists and working chat submenus', async () => {
+  for (const index of Array.from({ length: 12 }, (_, index) => index + 1)) {
+    await createProject(getDb(), { name: `Folder ${index}` })
+  }
+  const project = await createProject(getDb(), { name: 'Research', icon: '🔎' })
+  const onChatClick = mock(() => {})
+  render(
+    tree(false, false, {
+      isCollapsed: true,
+      onChatClick,
+      chatThreads: [
+        { id: 'research-chat', title: 'Interview notes', projectId: project.id, miniAppId: null, isEncrypted: 0 },
+      ],
+    }),
+    { wrapper: createWrapper() },
+  )
+
+  const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
+  expect(screen.queryByText('Research')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'New project' })).not.toBeInTheDocument()
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  await waitForElement(() => screen.queryByRole('menuitem', { name: 'Research' }))
+  const folders = () => screen.getAllByRole('menuitem').filter((item) => item.getAttribute('aria-haspopup') === 'menu')
+  expect(folders()).toHaveLength(5)
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' }))
+  expect(folders()).toHaveLength(10)
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+  fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Research' }), { key: 'ArrowRight' })
+  const chat = await waitForElement(() => screen.queryByRole('menuitem', { name: 'Interview notes' }))
+  expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeVisible()
+  expect(screen.getByRole('menuitem', { name: 'Artifacts' })).toBeVisible()
+  fireEvent.click(chat)
+  expect(onChatClick).toHaveBeenCalledWith('research-chat', null)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByText('Interview notes')).not.toBeInTheDocument()
+})
+
+it('opens project creation from the collapsed menu without losing dialog focus', async () => {
+  render(tree(false, false, { isCollapsed: true }), { wrapper: createWrapper() })
+  const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'New project' })))
+  const dialog = await waitForElement(() => screen.queryByRole('dialog', { name: 'Create project' }))
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
 })
 
 it.each(['context', 'overflow', 'mobile'])('offers the same working project actions from the %s menu', async (menu) => {

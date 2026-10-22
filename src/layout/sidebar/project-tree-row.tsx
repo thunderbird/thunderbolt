@@ -4,12 +4,12 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import { projectDropId } from '@/projects/chat-drop'
 import { ProjectActions } from '@/projects/project-actions'
+import { ProjectIcon } from '@/projects/project-icon'
 import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
 import type { Project } from '@/types'
 import { ChatListItem } from './chat-list-item'
@@ -99,9 +99,7 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
               }}
               className="min-w-0 cursor-pointer gap-2 md:pr-9 group-hover/project:bg-sidebar-accent group-hover/project:text-sidebar-accent-foreground group-data-[state=open]/project:bg-sidebar-accent group-data-[state=open]/project:text-sidebar-accent-foreground group-has-data-[state=open]/project:bg-sidebar-accent group-has-data-[state=open]/project:text-sidebar-accent-foreground"
             >
-              <ChevronRight
-                className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
-              />
+              <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0 [&>img]:size-full" />
               {!props.isCollapsed && <span className="truncate">{project.name}</span>}
             </SidebarMenuButton>
             {!props.isCollapsed && menu && (

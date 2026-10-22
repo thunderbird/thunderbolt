@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useReducer, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useParams, useSearchParams } from 'react-router'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useProjects } from '@/dal/projects'
 import { projectTreeReducer } from '@/projects/project-tree-state'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
@@ -12,7 +13,7 @@ import type { ChatThread } from './types'
 /** Keep project expansion, incremental disclosure, and creation navigation together. */
 export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThreadId?: string) => {
   const projects = useProjects()
-  const navigate = useNavigate()
+  const createNewChat = useCreateNewChat()
   const [params] = useSearchParams()
   const { projectId } = useParams()
   const activeId =
@@ -39,7 +40,7 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
     projectCreated: (id: string) => {
       setSectionExpanded(true)
       dispatch({ type: 'navigate', id })
-      navigate(`/chats/new?projectId=${id}`)
+      createNewChat(id)
     },
   }
 }

@@ -6,6 +6,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useNavigate } from 'react-router'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { cn } from '@/lib/utils'
 import { projectDropId } from '@/projects/chat-drop'
 import { ProjectActions } from '@/projects/project-actions'
@@ -50,6 +51,7 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
   const { t } = useLingui()
   const chatList = useSidebarPreviewState(chats, props.currentChatThreadId)
   const navigate = useNavigate()
+  const createNewChat = useCreateNewChat()
   const artifactsDialog = useProjectArtifactsDialog()
   const { setOpen, closeMobileSidebar } = useSidebar()
   const { setNodeRef, isOver } = useDroppable({
@@ -60,7 +62,7 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
     if (props.isMobile) {
       await closeMobileSidebar()
     }
-    navigate(`/chats/new?projectId=${project.id}`)
+    createNewChat(project.id)
   }
 
   return (

@@ -62,17 +62,15 @@ export const ProjectTree = (props: ProjectTreeProps) => {
               : undefined
           }
         />
-        {!props.isMobile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={mutedIconButtonClass}
-            aria-label={t`New project`}
-            onClick={openEditor}
-          >
-            <Plus className="size-4" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={mutedIconButtonClass}
+          aria-label={t`New project`}
+          onClick={openEditor}
+        >
+          <Plus className="size-4" />
+        </Button>
       </div>
       {/* Reserve space for the drop/focus rings without shifting the rows. */}
       <div id="sidebar-projects-section" hidden={!sectionExpanded} className="-m-1 p-1">

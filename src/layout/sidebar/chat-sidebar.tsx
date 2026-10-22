@@ -35,6 +35,7 @@ import {
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { useProjects } from '@/dal/projects'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
@@ -147,6 +148,8 @@ export const ChatSidebarContent = ({
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
   const showProjects = configLoaded && !minimalMode
+  const projects = useProjects()
+  const projectIds = new Set(projects.map((project) => project.id))
   const sharedScrollRef = useRef<HTMLDivElement>(null)
   // The chat whose project is being picked from a row's action menu. One dialog
   // for the whole list — a per-row instance would mount hundreds of them, and the
@@ -285,7 +288,11 @@ export const ChatSidebarContent = ({
             )}
             <ChatList
               sharedScrollRef={showProjects ? sharedScrollRef : undefined}
-              chatThreads={showProjects ? chatThreads.filter((thread) => !thread.projectId) : chatThreads}
+              chatThreads={
+                showProjects
+                  ? chatThreads.filter((thread) => !thread.projectId || !projectIds.has(thread.projectId))
+                  : chatThreads
+              }
               currentChatThreadId={currentChatThreadId}
               isCollapsed={isCollapsed}
               isMobile={isMobile}

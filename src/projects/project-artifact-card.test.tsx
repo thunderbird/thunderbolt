@@ -19,6 +19,7 @@ afterAll(teardownTestDatabase)
 it('previews offline without scripts or focus, and keeps pinning separate from navigation', async () => {
   const restore = mockIntersectionObserver()
   const onTogglePin = mock(() => {})
+  const html = '<h1>Chart</h1><script>throw new Error()</script>'
   const { container, getByRole, queryByRole } = render(
     <DatabaseProvider db={getDb()}>
       <MemoryRouter>
@@ -32,7 +33,7 @@ it('previews offline without scripts or focus, and keeps pinning separate from n
               chatThreadId: 'c1',
               chatTitle: 'Demo',
               title: 'Chart',
-              html: '<h1>Chart</h1><script>throw new Error()</script>',
+              html,
               createdAt: new Date(),
             }}
             pinned={false}

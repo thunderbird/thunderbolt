@@ -39,7 +39,7 @@ const parseParts = (parts: unknown): UIMessage['parts'] => {
   return parts.filter((part) => part && typeof part === 'object' && typeof part.type === 'string')
 }
 
-/** Collect verified outputs, retaining the tool index so links survive streaming and failed retries. */
+/** Collect verified outputs, using tool-call identity so saved presentation survives insertion and reordering. */
 export const collectProjectArtifacts = (
   rows: readonly ArtifactMessageRow[],
   labels: { untitledChat: string; untitledArtifact: string },
@@ -52,14 +52,14 @@ export const collectProjectArtifacts = (
       const chatThreadId = row.chatThreadId
       return parseParts(row.parts)
         .filter(isRenderHtmlPart)
-        .flatMap((part, index) => {
+        .flatMap((part) => {
           const input = renderHtmlInput(part)
           if (part.state !== 'output-available' || !renderHtmlOutput(part)?.ok || !input.html?.trim()) {
             return []
           }
           return [
             {
-              id: `${row.id}-${index}`,
+              id: `${row.id}-${part.toolCallId}`,
               messageId: row.id,
               toolCallId: part.toolCallId,
               chatThreadId,
@@ -73,8 +73,8 @@ export const collectProjectArtifacts = (
     })
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
-/** Read the synced pin list, ignoring removed artifacts and duplicate/stale references. */
-export const readArtifactPins = (value: string | null, artifacts: readonly Pick<ProjectArtifact, 'id'>[]): string[] => {
+/** Read every saved pin, including sources that have not arrived through sync yet. */
+export const readSavedArtifactPins = (value: string | null): string[] => {
   if (!value) {
     return []
   }
@@ -83,10 +83,15 @@ export const readArtifactPins = (value: string | null, artifacts: readonly Pick<
     if (!Array.isArray(parsed)) {
       throw new Error('Saved artifact pins must be an array')
     }
-    const liveIds = new Set(artifacts.map((artifact) => artifact.id))
-    return [...new Set(parsed.filter((id): id is string => typeof id === 'string' && liveIds.has(id)))]
+    return [...new Set(parsed.filter((id): id is string => typeof id === 'string'))]
   } catch (error) {
     console.error('[projects] Could not read saved artifact pins', error)
     return []
   }
+}
+
+/** Only display shortcuts whose source is currently available. */
+export const readArtifactPins = (value: string | null, artifacts: readonly Pick<ProjectArtifact, 'id'>[]): string[] => {
+  const liveIds = new Set(artifacts.map((artifact) => artifact.id))
+  return readSavedArtifactPins(value).filter((id) => liveIds.has(id))
 }

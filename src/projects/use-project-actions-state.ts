@@ -3,41 +3,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useRef, useState, useTransition } from 'react'
-import { useLingui } from '@lingui/react/macro'
 import { useDatabase } from '@/contexts'
-import { softDeleteProject } from '@/dal/projects'
+import { setProjectPinned } from '@/dal/projects'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { loadProjectArtifactsDialog } from './load-project-artifacts-dialog'
 
 type ProjectActionsStateProps = {
   projectId: string
+  pinned: boolean
   onNewChat: () => void
   onOpenArtifacts: () => void
-  onDeleted: () => void
 }
 
 /** Coordinate project actions, focus restoration, and mobile long-press behavior. */
-export const useProjectActionsState = ({
-  projectId,
-  onNewChat,
-  onOpenArtifacts,
-  onDeleted,
-}: ProjectActionsStateProps) => {
-  const { t } = useLingui()
+export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArtifacts }: ProjectActionsStateProps) => {
   const db = useDatabase()
   const { isMobile } = useIsMobile()
-  const [{ dialog, error }, setDialogState] = useState<{ dialog: 'edit' | 'delete' | null; error: string | null }>({
-    dialog: null,
-    error: null,
-  })
-  const [isPending, startTransition] = useTransition()
+  const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
+  const [, startTransition] = useTransition()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const openingDialog = useRef(false)
   const longPressFired = useRef(false)
   const openDialog = (next: 'edit' | 'delete') => {
     openingDialog.current = !isMobile
-    setDialogState({ dialog: next, error: null })
+    setDialog(next)
   }
   const handleCloseAutoFocus = (event: Event) => {
     if (openingDialog.current) {
@@ -75,14 +65,17 @@ export const useProjectActionsState = ({
       openingDialog.current = !isMobile
       onOpenArtifacts()
     },
+    onTogglePin: () => {
+      startTransition(async () => {
+        await setProjectPinned(db, projectId, pinned ? null : -Date.now())
+      })
+    },
     onEdit: () => openDialog('edit'),
     onDelete: () => openDialog('delete'),
   }
   return {
     isMobile,
     dialog,
-    error,
-    isPending,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
@@ -90,22 +83,6 @@ export const useProjectActionsState = ({
     handleOpenChange,
     handleCloseAutoFocus,
     handleMobileOpenChange,
-    closeDialog: () => {
-      if (!isPending) {
-        setDialogState({ dialog: null, error: null })
-      }
-    },
-    deleteProject: () => {
-      startTransition(async () => {
-        try {
-          await softDeleteProject(db, projectId)
-          setDialogState({ dialog: null, error: null })
-          onDeleted()
-        } catch (cause) {
-          console.error('[projects] Could not delete project', cause)
-          setDialogState({ dialog: 'delete', error: t`Could not delete the project. Please try again.` })
-        }
-      })
-    },
+    closeDialog: () => setDialog(null),
   }
 }

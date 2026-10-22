@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { ContentViewProvider } from '@/content-view/context'
-import { createProject } from '@/dal/projects'
+import { createProject, getProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
@@ -169,7 +169,7 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
 
   const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
   expect(screen.queryByText('Research')).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'New project' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'New project' })).toBeNull()
   fireEvent.keyDown(trigger, { key: 'Enter' })
   await waitForElement(() => screen.queryByRole('menuitem', { name: 'Research' }))
   const folders = () => screen.getAllByRole('menuitem').filter((item) => item.getAttribute('aria-haspopup') === 'menu')
@@ -186,6 +186,32 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
   expect(onChatClick).toHaveBeenCalledWith('research-chat', null)
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByText('Interview notes')).not.toBeInTheDocument()
+})
+
+it('keeps management actions and dialog focus in the collapsed project submenu', async () => {
+  const project = await createProject(getDb(), { name: 'Manage me' })
+  render(tree(false, false, { isCollapsed: true }), { wrapper: createWrapper() })
+  const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
+  const openMenu = async () => {
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.keyDown(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Manage me' })), {
+      key: 'ArrowRight',
+    })
+    await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' }))
+  }
+  await openMenu()
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin project' }))
+  })
+  expect((await getProject(getDb(), project.id))?.pinnedOrder).not.toBeNull()
+  await openMenu()
+  expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeVisible()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }))
+  const dialog = await waitForElement(() => screen.queryByRole('dialog', { name: 'Project settings' }))
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
 })
 
 it('opens project creation from the collapsed menu without losing dialog focus', async () => {
@@ -207,7 +233,7 @@ it('opens project creation by long-pressing the mobile Projects heading without 
   const section = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.queryByRole('button', { name: 'New project' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'New project' })).toBeVisible()
 
   fireEvent.touchStart(section, { touches: [{ clientX: 20, clientY: 20 }] })
   act(() => getClock().tick(500))
@@ -252,7 +278,7 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   }
 
   await openMenu()
-  for (const name of ['New chat', 'Artifacts', 'Edit', 'Delete']) {
+  for (const name of ['New chat', 'Artifacts', 'Pin project', 'Edit', 'Delete']) {
     expect(screen.getByRole(actionRole, { name })).toBeVisible()
   }
   if (isMobile) {
@@ -262,6 +288,7 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'New chat',
       'Artifacts',
+      'Pin project',
       'Edit',
       'Delete',
     ])

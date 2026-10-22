@@ -4,11 +4,11 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { Slot } from '@radix-ui/react-slot'
-import { LayoutGrid, MessageCirclePlus, SquarePen, Trash2 } from 'lucide-react'
+import { LayoutGrid, MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 import { useProjectActionsState } from './use-project-actions-state'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
-import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { ProjectDeleteDialog } from './project-delete-dialog'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
 import type { Project } from '@/types'
@@ -37,8 +37,6 @@ export const ProjectActions = ({
   const {
     isMobile,
     dialog,
-    error,
-    isPending,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
@@ -47,8 +45,13 @@ export const ProjectActions = ({
     handleCloseAutoFocus,
     handleMobileOpenChange,
     closeDialog,
-    deleteProject,
-  } = useProjectActionsState({ projectId: project.id, onNewChat, onOpenArtifacts, onDeleted })
+  } = useProjectActionsState({
+    projectId: project.id,
+    pinned: project.pinnedOrder !== null,
+    onNewChat,
+    onOpenArtifacts,
+  })
+  const pinned = project.pinnedOrder !== null
   const menu = (
     <DetailActionsMenu
       side="right"
@@ -57,7 +60,7 @@ export const ProjectActions = ({
       onOpenChange={handleOpenChange}
       onCloseAutoFocus={handleCloseAutoFocus}
     >
-      <ProjectActionMenuItems {...actions} />
+      <ProjectActionMenuItems pinned={pinned} {...actions} />
     </DetailActionsMenu>
   )
 
@@ -88,6 +91,11 @@ export const ProjectActions = ({
           actions={[
             { label: t`New chat`, icon: <MessageCirclePlus className="size-4" />, onSelect: actions.onNewChat },
             { label: t`Artifacts`, icon: <LayoutGrid className="size-4" />, onSelect: actions.onOpenArtifacts },
+            {
+              label: pinned ? t`Unpin project` : t`Pin project`,
+              icon: pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />,
+              onSelect: actions.onTogglePin,
+            },
             { label: t`Edit`, icon: <SquarePen className="size-4" />, onSelect: actions.onEdit },
             { label: t`Delete`, icon: <Trash2 className="size-4" />, onSelect: actions.onDelete },
           ]}
@@ -96,23 +104,13 @@ export const ProjectActions = ({
         <ContextMenu onOpenChange={handleOpenChange}>
           <ContextMenuTrigger asChild>{children(menu)}</ContextMenuTrigger>
           <ContextMenuContent className="min-w-56" onCloseAutoFocus={handleCloseAutoFocus}>
-            <ProjectActionMenuItems context {...actions} />
+            <ProjectActionMenuItems context pinned={pinned} {...actions} />
           </ContextMenuContent>
         </ContextMenu>
       )}
       {dialog === 'edit' && <ProjectEditorDialog project={project} onClose={closeDialog} />}
       {dialog === 'delete' && (
-        <ConfirmActionDialog
-          open
-          title={t`Delete this project?`}
-          description={
-            error ?? t`Its instructions are removed. Chats in the project are kept and become ordinary chats.`
-          }
-          confirmLabel={t`Delete project`}
-          isPending={isPending}
-          onCancel={closeDialog}
-          onConfirm={deleteProject}
-        />
+        <ProjectDeleteDialog projectId={project.id} onClose={closeDialog} onDeleted={onDeleted} />
       )}
     </>
   )

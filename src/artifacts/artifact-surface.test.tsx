@@ -88,6 +88,27 @@ describe('ArtifactSurface', () => {
     first.unmount()
   })
 
+  it('returns context ownership to a visible surface while an inline frame is hidden', () => {
+    render(<ArtifactSurface artifact={artifact} onAsk={ask} />)
+    const expandedOwner = getActiveArtifactSession()!.owner
+    const inlineArtifact = { ...artifact, id: 'inline' }
+    const inline = render(<ArtifactSurface artifact={inlineArtifact} onAsk={ask} autoHeight />)
+    const frame = inline.container.querySelector('iframe')!
+    fireEvent.pointerDown(inline.container.querySelector('button')!)
+    const inlineOwner = getActiveArtifactSession()!.owner
+    const context = { title: 'Revenue', summary: 'The selected quarter is Q3.' }
+    act(() => useArtifactContextStore.getState().setContext(context, inlineOwner))
+    inline.rerender(<ArtifactSurface artifact={inlineArtifact} onAsk={ask} autoHeight visible={false} />)
+    expect(getActiveArtifactSession()?.owner).toBe(expandedOwner)
+    fireEvent.pointerDown(inline.container.querySelector('button')!)
+    expect(getActiveArtifactSession()?.owner).toBe(expandedOwner)
+    inline.rerender(<ArtifactSurface artifact={inlineArtifact} onAsk={ask} autoHeight />)
+    expect(inline.container.querySelector('iframe')).toBe(frame)
+    fireEvent.pointerDown(inline.container.querySelector('button')!)
+    expect(getActiveArtifactSession()?.owner).toBe(inlineOwner)
+    expect(getArtifactContextSnapshot(inlineOwner)).toEqual({ title: 'Chart', context })
+  })
+
   it('tracks focus moving directly between iframe documents without a second parent blur', async () => {
     const first = render(<ArtifactSurface artifact={artifact} onAsk={ask} />)
     const firstOwner = getActiveArtifactSession()?.owner

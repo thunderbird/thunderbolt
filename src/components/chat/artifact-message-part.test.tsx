@@ -12,6 +12,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { ContentViewProvider, useContentView } from '@/content-view/context'
 import { artifactId, artifactPath } from '@/artifacts/artifact'
+import { getActiveArtifactSession } from '@/artifacts/artifact-session-store'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import type { ReactNode } from 'react'
 import { resetAppSettledForTests } from '@/hooks/use-app-settled'
@@ -172,14 +173,26 @@ describe('ArtifactMessagePart', () => {
     expect(container.querySelector('iframe')).not.toBeNull()
   })
 
-  it('collapses to just the header when the header is clicked (open by default)', () => {
+  it('releases context when collapsed while preserving the running inline frame', async () => {
     const { container } = renderPart(toolPart({ toolCallId: 'a5', state: 'output-available', output: { ok: true } }))
+    await act(async () => {
+      await getClock().tickAsync(1000)
+    })
+    const frame = container.querySelector('iframe')!
+    const owner = getActiveArtifactSession()!.owner
     const header = container.querySelector('[aria-expanded]')
     expect(header?.getAttribute('aria-expanded')).toBe('true')
     act(() => {
       fireEvent.click(header as Element)
     })
     expect(header?.getAttribute('aria-expanded')).toBe('false')
+    expect(getActiveArtifactSession()).toBeNull()
+    expect(container.querySelector('iframe')).toBe(frame)
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    fireEvent.click(header as Element)
+    expect(header?.getAttribute('aria-expanded')).toBe('true')
+    expect(getActiveArtifactSession()?.owner).toBe(owner)
+    expect(container.querySelector('iframe')).toBe(frame)
   })
 
   it('leaves the header inert while generating (no collapse affordance)', () => {

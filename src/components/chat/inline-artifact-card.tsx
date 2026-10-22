@@ -130,7 +130,7 @@ export const InlineArtifactCard = ({ html, title, streaming = false, artifact }:
         <div className="min-h-0 overflow-hidden">
           {showContent &&
             (artifact && !streaming ? (
-              <ArtifactSurface artifact={artifact} autoHeight allowScripts={active} onAsk={askAbout} />
+              <ArtifactSurface artifact={artifact} autoHeight allowScripts={active} visible={open} onAsk={askAbout} />
             ) : (
               <SandboxedHtmlFrame html={html} title={title} autoHeight allowScripts={false} />
             ))}

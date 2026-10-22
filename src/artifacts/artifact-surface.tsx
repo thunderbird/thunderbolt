@@ -20,6 +20,7 @@ export type ArtifactSurfaceProps = {
   onChatOpen?: (prompt?: string) => void
   autoHeight?: boolean
   allowScripts?: boolean
+  visible?: boolean
 }
 
 type HtmlSurfaceProps = {
@@ -85,15 +86,16 @@ const MountedArtifactSurface = ({
   onChatOpen,
   autoHeight = false,
   allowScripts = true,
+  visible = true,
 }: ArtifactSurfaceProps) => {
   const [owner] = useState(() => crypto.randomUUID())
   const containerRef = useRef<HTMLDivElement>(null)
   const { id, source } = artifact
   const kind = source.kind
 
-  // One agent-visible owner per mounted surface. Preview-only HTML never registers.
+  // Hidden frames retain their document state but release assistant-context ownership.
   useEffect(() => {
-    if (!allowScripts) {
+    if (!allowScripts || !visible) {
       return
     }
     useArtifactSessionStore.getState().register({ owner, artifactId: id, kind, inline: autoHeight })
@@ -106,7 +108,7 @@ const MountedArtifactSurface = ({
       unsubscribe()
       useArtifactSessionStore.getState().unregister(owner)
     }
-  }, [owner, id, kind, autoHeight, allowScripts])
+  }, [owner, id, kind, autoHeight, allowScripts, visible])
 
   const activate = useCallback(() => useArtifactSessionStore.getState().activate(owner), [owner])
   const ask = useCallback(

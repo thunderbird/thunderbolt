@@ -164,6 +164,7 @@ describe('Sidebar reactivity', () => {
         tables: ['chat_threads', 'projects'],
         wrapper: SidebarTestWrapper,
       })
+      expect(screen.queryByText('Waiting for project')).toBeNull()
       await waitForElement(() => screen.queryByText('Waiting for project'))
       expect(screen.queryByText('Waiting for project')).not.toBeNull()
       await getDb().insert(projectsTable).values({ id: projectId, name: 'Synced project' })

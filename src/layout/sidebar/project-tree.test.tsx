@@ -203,7 +203,7 @@ it('keeps management actions and dialog focus in the collapsed project submenu',
   await act(async () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pin project' }))
   })
-  expect((await getProject(getDb(), project.id))?.pinnedOrder).not.toBeNull()
+  expect((await getProject(getDb(), project.id))?.pinnedOrder).toBe(0)
   await openMenu()
   expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeVisible()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }))

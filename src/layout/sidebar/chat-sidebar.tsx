@@ -36,7 +36,7 @@ import {
 import { MessageCircle } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { ArtifactSection } from './artifact-section'
-import { useProjects } from '@/dal/projects'
+import { useProjectsState } from '@/dal/projects'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
@@ -120,7 +120,7 @@ export const ChatSidebarContent = ({
   const configLoaded = useConfigStore(selectConfigSettled)
   // Projects wait for `/config` like the section toggle, so they never paint and vanish.
   const showProjects = configLoaded && !minimalMode
-  const projects = useProjects()
+  const { projects, isLoading: projectsLoading } = useProjectsState()
   const projectIds = new Set(projects.map((project) => project.id))
   const sharedScrollRef = useRef<HTMLDivElement>(null)
   // The chat whose project is being picked from a row's action menu. One dialog
@@ -266,7 +266,9 @@ export const ChatSidebarContent = ({
               sharedScrollRef={showProjects ? sharedScrollRef : undefined}
               chatThreads={
                 showProjects
-                  ? chatThreads.filter((thread) => !thread.projectId || !projectIds.has(thread.projectId))
+                  ? chatThreads.filter(
+                      (thread) => !thread.projectId || (!projectsLoading && !projectIds.has(thread.projectId)),
+                    )
                   : chatThreads
               }
               currentChatThreadId={currentChatThreadId}

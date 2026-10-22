@@ -86,7 +86,14 @@ test.describe('PowerSync E2EE persistence and destructive flows', () => {
     await codeDialog.getByRole('button', { name: 'Delete account' }).click()
 
     await waitForAccountDeletion(userId)
-    await expect(page.getByPlaceholder('Email')).toBeVisible({ timeout: 30_000 })
+    // The local deletion reload and PowerSync's account-revoked redirect race.
+    const deleted = page.getByRole('heading', { name: 'Account Deleted' })
+    const emailInput = page.getByPlaceholder('Email')
+    await expect(deleted.or(emailInput)).toBeVisible({ timeout: 30_000 })
     await expect.poll(() => getEncryptionKeyNames(page)).toEqual([])
+    if (await deleted.isVisible()) {
+      await page.getByRole('button', { name: 'Back to App' }).click()
+    }
+    await expect(emailInput).toBeVisible({ timeout: 30_000 })
   })
 })

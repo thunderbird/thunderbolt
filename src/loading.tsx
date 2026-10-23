@@ -13,7 +13,7 @@ type LoadingProps = {
 export const Loading: FC<LoadingProps> = ({ className, size = 24 }) => {
   return (
     <div className="flex items-center justify-center w-full h-[100vh]">
-      <Loader2 className={`animate-spin text-gray-500 ${className || ''}`} size={size} />
+      <Loader2 className={`animate-spin text-muted-foreground ${className || ''}`} size={size} />
     </div>
   )
 }

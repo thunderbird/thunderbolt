@@ -49,10 +49,10 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
-      <div className="text-red-500 text-center mb-4">
+      <div className="text-destructive text-center mb-4">
         <Trans>Failed to initialize app</Trans>
       </div>
-      <div className="text-sm text-gray-500 text-center mb-6">{error.message}</div>
+      <div className="text-sm text-muted-foreground text-center mb-6">{error.message}</div>
 
       <div className="flex flex-col gap-3">
         {isDatabaseError && (

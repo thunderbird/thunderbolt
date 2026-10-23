@@ -70,7 +70,7 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
       {needsApiKey(model) && (
         <>
           <DetailDivider />
-          <div className="flex items-center gap-2 text-sm text-amber-600">
+          <div className="flex items-center gap-2 text-sm text-warning">
             <AlertTriangle className="size-4 shrink-0" />
             <Trans>API key not configured</Trans>
           </div>

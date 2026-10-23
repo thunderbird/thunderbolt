@@ -30,7 +30,7 @@ const inputVariants = cva(
       state: {
         default: '',
         error: 'aria-invalid:border-destructive',
-        success: 'border-green-500 focus-visible:border-green-600',
+        success: 'border-success/80 focus-visible:border-success',
       },
     },
     defaultVariants: {

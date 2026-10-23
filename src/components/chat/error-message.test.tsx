@@ -102,8 +102,8 @@ describe('ErrorMessage', () => {
         for (const element of [title, body]) {
           expect(element).toHaveClass('text-foreground')
           expect(element).not.toHaveClass('text-warning-foreground')
-          expect(element).not.toHaveClass('text-amber-500/90')
-          expect(element).not.toHaveClass('text-amber-500/80')
+          expect(element).not.toHaveClass('text-warning/90')
+          expect(element).not.toHaveClass('text-warning/80')
         }
         expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
         expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()

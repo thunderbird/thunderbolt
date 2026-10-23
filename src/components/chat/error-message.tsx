@@ -68,7 +68,7 @@ export const ErrorMessage = memo(
     // Show rate limit message immediately — don't auto-retry since the server told us to slow down
     if (rateLimited) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-warning/10 mr-auto w-full mt-2">
           {inferenceQuotaWindow ? (
             <div className="space-y-1">
               <p className="font-medium text-foreground text-[length:var(--font-size-body)]">
@@ -79,7 +79,7 @@ export const ErrorMessage = memo(
               </p>
             </div>
           ) : (
-            <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
+            <p className="text-warning/80 text-[length:var(--font-size-body)]">
               <Trans>Too many requests. Please try again in a moment.</Trans>
             </p>
           )}
@@ -91,8 +91,8 @@ export const ErrorMessage = memo(
     // request rather than show a generic error.
     if (isContextOverflowError(error)) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
-          <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
+        <div className="px-4 py-3 rounded-2xl bg-warning/10 mr-auto w-full mt-2">
+          <p className="text-warning/80 text-[length:var(--font-size-body)]">
             <Trans>
               This conversation is too large for the model&apos;s context window. Start a new chat, remove some
               attachments, or switch to a model with a larger context window.
@@ -107,10 +107,10 @@ export const ErrorMessage = memo(
     // before onFinish has scheduled a retry — in both cases show the Retry button.
     if (retryCount > 0 && !retriesExhausted) {
       return (
-        <div className="px-4 py-3 rounded-2xl bg-amber-500/10 mr-auto w-full mt-2">
+        <div className="px-4 py-3 rounded-2xl bg-warning/10 mr-auto w-full mt-2">
           <div className="flex items-center gap-2">
-            <Loader2 className="size-[var(--icon-size-sm)] text-amber-500 animate-spin" />
-            <p className="text-amber-500/80 text-[length:var(--font-size-body)]">
+            <Loader2 className="size-[var(--icon-size-sm)] text-warning animate-spin" />
+            <p className="text-warning/80 text-[length:var(--font-size-body)]">
               {runInProgress ? (
                 <Trans>
                   The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…

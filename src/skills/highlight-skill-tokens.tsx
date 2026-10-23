@@ -160,7 +160,7 @@ const colorClassFor = (committed: boolean, status: SkillTokenStatus): string => 
     return 'skill-token text-muted-foreground'
   }
   if (status === 'disabled') {
-    return 'skill-token text-amber-700 dark:text-amber-400'
+    return 'skill-token text-warning'
   }
-  return 'skill-token text-red-600 dark:text-red-400'
+  return 'skill-token text-destructive'
 }

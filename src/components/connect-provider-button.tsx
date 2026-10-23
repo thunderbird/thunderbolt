@@ -104,7 +104,7 @@ export const ConnectProviderButton = ({
           </>
         ) : (
           <>
-            <Check className="w-4 h-4 mr-2 text-green-600" />
+            <Check className="w-4 h-4 mr-2 text-success" />
             {connectedLabel}
           </>
         )

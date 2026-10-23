@@ -71,16 +71,16 @@ export const SignInEmailStep = ({
         <div className="flex flex-1 items-center">
           <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
             <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
-                <SiGithub className="size-6 text-emerald-600 dark:text-[#DCE875]" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/15 dark:bg-transparent">
+                <SiGithub className="size-6 text-brand" />
               </div>
               <p className="text-base text-muted-foreground">
                 <Trans>Thunderbolt is open-source</Trans>
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
-                <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-2/15 dark:bg-transparent">
+                <EyeOff className="size-6 text-brand-2" />
               </div>
               <p className="text-base text-muted-foreground">
                 <Trans>No logs or training on your data</Trans>

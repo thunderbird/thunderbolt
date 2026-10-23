@@ -26,6 +26,10 @@ export type AppConfig = {
   brandLogoUrl?: string
   brandLogoDarkUrl?: string
   brandLogoAlt?: string
+  /** Operator branding (`PublicBranding`), exactly as received. Read it only
+   *  through `selectBranding` (`src/lib/branding-selectors.ts`), which validates
+   *  it before it becomes CSS, hrefs or request paths. */
+  branding?: unknown
   debugTranscriptsEnabled?: boolean
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
@@ -75,6 +79,7 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     // Persist only `config` — the transient upgrade flag must not survive a
     // reload (the reload itself is the upgrade path once the build is updated).
+    // index.html's pre-paint script reads this key (src/prepaint.test.ts).
     { name: 'thunderbolt-config', partialize: (state) => ({ config: state.config }) },
   ),
 )

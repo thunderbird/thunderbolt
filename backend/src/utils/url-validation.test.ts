@@ -7,7 +7,15 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createSafeFetch, isPrivateAddress, validateAndPin, validateSafeUrl, type DnsLookup } from './url-validation'
+import {
+  BlockedUrlError,
+  createSafeFetch,
+  isPrivateAddress,
+  TooManyRedirectsError,
+  validateAndPin,
+  validateSafeUrl,
+  type DnsLookup,
+} from './url-validation'
 
 describe('isPrivateAddress', () => {
   // --- Blocked IPv4 ranges ---
@@ -340,6 +348,43 @@ const stubFetch = (responses: Response[]) => {
 }
 
 describe('createSafeFetch', () => {
+  it('refuses an http redirect hop when https only', async () => {
+    const { fn, calls } = stubFetch([
+      new Response(null, { status: 302, headers: { location: 'http://public.test/logo.png' } }),
+      new Response('PNG', { status: 200 }),
+    ])
+    const safeFetch = createSafeFetch(fn, testLookup, { httpsOnly: true })
+    await expect(safeFetch('https://public.test/logo.png')).rejects.toBeInstanceOf(BlockedUrlError)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('refuses an http first URL when https only, naming only its host', async () => {
+    const { fn, calls } = stubFetch([new Response('PNG', { status: 200 })])
+    const request = createSafeFetch(fn, testLookup, { httpsOnly: true })('http://public.test/logo.png?token=secret')
+    await expect(request).rejects.toBeInstanceOf(BlockedUrlError)
+    await expect(request).rejects.toThrow('Blocked: public.test is not served over https')
+    expect(calls).toHaveLength(0)
+  })
+
+  it('reports a redirect loop as TooManyRedirectsError, cancelling each redirect body', async () => {
+    const state = { cancelled: 0 }
+    const redirect = () =>
+      new Response(new ReadableStream({ cancel: () => void (state.cancelled += 1) }), {
+        status: 302,
+        headers: { location: 'http://public.test/loop' },
+      })
+    const { fn } = stubFetch(Array.from({ length: 6 }, redirect))
+    await expect(createSafeFetch(fn, testLookup)('http://public.test/loop')).rejects.toBeInstanceOf(
+      TooManyRedirectsError,
+    )
+    expect(state.cancelled).toBe(6)
+  })
+
+  it('reports a private address as a BlockedUrlError', async () => {
+    const { fn } = stubFetch([new Response('LEAK', { status: 200 })])
+    await expect(createSafeFetch(fn, testLookup)('http://127.0.0.1/')).rejects.toBeInstanceOf(BlockedUrlError)
+  })
+
   it('blocks a redirect hop that points at a loopback address', async () => {
     const { fn, calls } = stubFetch([
       new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/admin' } }),

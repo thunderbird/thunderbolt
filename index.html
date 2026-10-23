@@ -21,22 +21,49 @@
   <body>
     <script>
       // Apply theme before first paint to prevent flash of white on dark mode.
-      // Must stay in sync with the storageKey and logic in src/stores/local-settings-store.ts.
+      // Must stay in sync with the storage keys and logic in
+      // src/stores/local-settings-store.ts (theme, and its version-1 migration)
+      // and src/api/config-store.ts (the cached /config).
       // The colors mirror --color-background in src/index.css — this is the one
       // unavoidable duplicate of those values (this script runs before the
-      // stylesheet loads; theme-provider.tsx reads them from CSS at runtime).
+      // stylesheet loads; src/lib/document-background.ts reads them from CSS at runtime).
+      // Operator branding from the cached /config supplies the default theme,
+      // background and title, checked against the same patterns and length limit
+      // as shared/branding.ts (prePaintRules); the theme fallback order must match
+      // ThemeProvider: the user's choice, then branding.defaultThemeMode, then the OS.
       ;(function () {
-        var theme = null
-        try {
-          var raw = localStorage.getItem('thunderbolt-local-settings')
-          if (raw) {
-            theme = JSON.parse(raw).state.theme
+        var readState = function (key) {
+          try {
+            return JSON.parse(localStorage.getItem(key) || 'null')
+          } catch (e) {
+            return null
           }
-        } catch (e) {}
+        }
+        var settings = readState('thunderbolt-local-settings')
+        var config = readState('thunderbolt-config')
+        var storedTheme = settings?.state?.theme
+        // Before version 1, 'system' was the default rather than a choice (migrateLocalSettings).
+        var chosenTheme = storedTheme === 'system' && !(settings.version >= 1) ? null : storedTheme
+        var branding = config?.state?.config?.branding || {}
+        var themeModes = ['light', 'dark', 'system']
+        var defaultTheme = themeModes.indexOf(branding.defaultThemeMode) >= 0 ? branding.defaultThemeMode : null
+        var theme = chosenTheme || defaultTheme
         var isDark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        var modeTokens = (branding.cssVars && branding.cssVars[isDark ? 'dark' : 'light']) || {}
+        // Same patterns, theme modes and name limit as shared/branding.ts (prePaintRules);
+        // src/prepaint.test.ts keeps them identical.
+        var candidate = typeof modeTokens.background === 'string' ? modeTokens.background.trim() : ''
+        var isColor =
+          /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(candidate) ||
+          /^(?:rgba?|hsla?|oklch|oklab)\((?:[\d.\s%,/+-]|deg|none)+\)$/i.test(candidate)
+        var background = isColor ? candidate : isDark ? '#1b1e1f' : '#f5f2ee'
         document.documentElement.classList.add(isDark ? 'dark' : 'light')
-        document.documentElement.style.backgroundColor = isDark ? '#1b1e1f' : '#f5f2ee'
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#1b1e1f' : '#f5f2ee')
+        document.documentElement.style.backgroundColor = background
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background)
+        var appName = typeof branding.appName === 'string' ? branding.appName.trim() : ''
+        if (appName && appName.length <= 60) {
+          document.title = appName
+        }
       })()
     </script>
     <div id="root"></div>

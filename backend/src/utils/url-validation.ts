@@ -64,6 +64,12 @@ export const validateSafeUrl = (url: string): { valid: boolean; error?: string }
 
 const maxRedirects = 5
 
+/** A URL the SSRF guard refuses: a private or internal address, or a scheme the caller disallowed. */
+export class BlockedUrlError extends Error {}
+
+/** A URL whose redirects run past the hop limit: a loop, which no retry escapes. */
+export class TooManyRedirectsError extends Error {}
+
 /** Permit one exact local proxy fixture only while the backend runs tests. */
 export const isAllowedTestProxyTarget = (url: URL): boolean =>
   process.env.NODE_ENV === 'test' &&
@@ -105,7 +111,7 @@ export const validateAndPin = async (
 
   if (literalAddress) {
     if (isPrivateOrInternalAddress(literalAddress)) {
-      throw new Error(`Blocked: ${hostname} is a private/internal address`)
+      throw new BlockedUrlError(`Blocked: ${hostname} is a private/internal address`)
     }
     return [parsed.toString(), new Headers(extraHeaders), undefined]
   }
@@ -118,10 +124,10 @@ export const validateAndPin = async (
   for (const { address } of addresses) {
     const resolvedAddress = parseIpAddress(address)
     if (!resolvedAddress) {
-      throw new Error(`Blocked: ${hostname} resolves to invalid IP address ${address}`)
+      throw new BlockedUrlError(`Blocked: ${hostname} resolves to invalid IP address ${address}`)
     }
     if (isPrivateOrInternalAddress(resolvedAddress)) {
-      throw new Error(`Blocked: ${hostname} resolves to private/internal address ${address}`)
+      throw new BlockedUrlError(`Blocked: ${hostname} resolves to private/internal address ${address}`)
     }
   }
 
@@ -142,11 +148,24 @@ export const validateAndPin = async (
  * Uses IP pinning: resolves the hostname, validates IPs, then connects directly
  * to the resolved IP with the original hostname in the Host header (virtual hosting)
  * and in `tls.serverName` (SNI and certificate verification).
+ *
+ * With `httpsOnly`, every hop must be https: a redirect to plain http is refused
+ * rather than followed, so an https-only URL stays https end to end.
  */
-export const createSafeFetch = (fetchFn: typeof fetch, dnsLookup: DnsLookup = defaultDnsLookup) => {
+export const createSafeFetch = (
+  fetchFn: typeof fetch,
+  dnsLookup: DnsLookup = defaultDnsLookup,
+  options: { httpsOnly?: boolean } = {},
+) => {
+  const validateHop = (url: string, extraHeaders: HeadersInit | undefined) => {
+    if (options.httpsOnly && new URL(url).protocol !== 'https:') {
+      throw new BlockedUrlError(`Blocked: ${new URL(url).host} is not served over https`)
+    }
+    return validateAndPin(url, extraHeaders, dnsLookup)
+  }
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-    const [pinnedUrl, headers, tls] = await validateAndPin(url, init?.headers, dnsLookup)
+    const [pinnedUrl, headers, tls] = await validateHop(url, init?.headers)
 
     // Always intercept redirects so we can validate each hop's destination
     const callerWantsManual = init?.redirect === 'manual'
@@ -165,10 +184,12 @@ export const createSafeFetch = (fetchFn: typeof fetch, dnsLookup: DnsLookup = de
       if (!location) {
         return currentResponse
       }
+      // Only the headers matter; release the connection before the next hop, which may be refused.
+      await currentResponse.body?.cancel()
 
       const redirectUrl = new URL(location, currentUrl).toString()
       currentUrl = redirectUrl
-      const [pinnedRedirect, redirectHeaders, redirectTls] = await validateAndPin(redirectUrl, init?.headers, dnsLookup)
+      const [pinnedRedirect, redirectHeaders, redirectTls] = await validateHop(redirectUrl, init?.headers)
 
       // 303 always becomes GET; 301/302 become GET for non-GET/HEAD (per spec)
       const methodOverride =
@@ -189,6 +210,7 @@ export const createSafeFetch = (fetchFn: typeof fetch, dnsLookup: DnsLookup = de
       }
     }
 
-    throw new Error(`Too many redirects (max ${maxRedirects})`)
+    await currentResponse.body?.cancel()
+    throw new TooManyRedirectsError(`Too many redirects (max ${maxRedirects})`)
   }
 }

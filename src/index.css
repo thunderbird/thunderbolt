@@ -135,33 +135,27 @@
   --color-sidebar-border: #eee9e1;
   --color-sidebar-ring: #393530;
 
-  /* Softer elevation — same geometry as Tailwind's defaults, but the color
-     is routed through --elevation-faint / --elevation-medium /
-     --elevation-strong (defined in :root and .dark below) instead of a
-     literal. Tailwind v4 inlines these token values into the shadow-*
-     utilities at build time, so a var() indirection is the only way dark
-     mode can swap the color; a .dark { --shadow-lg: ... } override would
-     never be read. Applies uniformly to every shadow-* utility. */
-  --shadow-2xs: 0 1px var(--elevation-faint);
-  --shadow-xs: 0 1px 2px 0 var(--elevation-faint);
-  --shadow-sm: 0 1px 3px 0 var(--elevation-medium), 0 1px 2px -1px var(--elevation-medium);
-  --shadow-md: 0 4px 6px -1px var(--elevation-medium), 0 2px 4px -2px var(--elevation-medium);
-  --shadow-lg: 0 10px 15px -3px var(--elevation-medium), 0 4px 6px -4px var(--elevation-medium);
-  --shadow-xl: 0 20px 25px -5px var(--elevation-medium), 0 8px 10px -6px var(--elevation-medium);
-  --shadow-2xl: 0 25px 50px -12px var(--elevation-strong);
-
-  /* Warm soft glow used to lift key light-mode surfaces (chat composer, the
-     skills slide-in panel, pinned-skill chips) off the page. Same color at
-     two blur radii; call sites that shouldn't glow in dark mode pair these
-     with dark:shadow-none. */
-  --shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
-  --shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
-  /* Stronger variant for the slide-in detail panel, which needs more lift to
-     separate from the page content it slides over. */
-  --shadow-glow-strong: 0 0 32px rgb(38 33 32 / 0.09);
+  /* Shadows. Tailwind v4 inlines these token values into the shadow-*
+     utilities at build time, so each one is a var() indirection to a
+     --theme-shadow-* value defined in :root below: that is what lets dark
+     mode swap the color and operator branding (src/lib/branding.ts) swap the
+     whole geometry at runtime. A .dark { --shadow-lg: ... } override would
+     never be read. The indirection costs shadow-<color> tinting, which no
+     longer reaches these utilities. */
+  --shadow-2xs: var(--theme-shadow-2xs);
+  --shadow-xs: var(--theme-shadow-xs);
+  --shadow-sm: var(--theme-shadow-sm);
+  --shadow-md: var(--theme-shadow-md);
+  --shadow-lg: var(--theme-shadow-lg);
+  --shadow-xl: var(--theme-shadow-xl);
+  --shadow-2xl: var(--theme-shadow-2xl);
+  --shadow-glow: var(--theme-shadow-glow);
+  --shadow-glow-sm: var(--theme-shadow-glow-sm);
+  --shadow-glow-strong: var(--theme-shadow-glow-strong);
 }
 
-/* Shadow colors for the three elevation intensities above. Light mode runs
+/* Shadow colors for the three elevation intensities, used by the
+   --theme-shadow-* values below. Light mode runs
    at roughly two-thirds of Tailwind's default opacity so surfaces read as
    gently lifted rather than floating; dark mode raises opacity because a 6%
    black shadow is invisible on #1b1e1f. */
@@ -169,6 +163,27 @@
   --elevation-faint: rgb(0 0 0 / 0.03);
   --elevation-medium: rgb(0 0 0 / 0.06);
   --elevation-strong: rgb(0 0 0 / 0.15);
+
+  /* Softer elevation — same geometry as Tailwind's defaults, but the color
+     is routed through the --elevation-* intensities above, which .dark
+     raises. Applies uniformly to every shadow-* utility. */
+  --theme-shadow-2xs: 0 1px var(--elevation-faint);
+  --theme-shadow-xs: 0 1px 2px 0 var(--elevation-faint);
+  --theme-shadow-sm: 0 1px 3px 0 var(--elevation-medium), 0 1px 2px -1px var(--elevation-medium);
+  --theme-shadow-md: 0 4px 6px -1px var(--elevation-medium), 0 2px 4px -2px var(--elevation-medium);
+  --theme-shadow-lg: 0 10px 15px -3px var(--elevation-medium), 0 4px 6px -4px var(--elevation-medium);
+  --theme-shadow-xl: 0 20px 25px -5px var(--elevation-medium), 0 8px 10px -6px var(--elevation-medium);
+  --theme-shadow-2xl: 0 25px 50px -12px var(--elevation-strong);
+
+  /* Warm soft glow used to lift key light-mode surfaces (chat composer, the
+     skills slide-in panel, pinned-skill chips) off the page. Same color at
+     two blur radii; call sites that shouldn't glow in dark mode pair these
+     with dark:shadow-none. */
+  --theme-shadow-glow: 0 0 32px rgb(38 33 32 / 0.06);
+  --theme-shadow-glow-sm: 0 0 16px rgb(38 33 32 / 0.06);
+  /* Stronger variant for the slide-in detail panel, which needs more lift to
+     separate from the page content it slides over. */
+  --theme-shadow-glow-strong: 0 0 32px rgb(38 33 32 / 0.09);
 
   /* Directional sheet/edge elevation — one recipe (8px offset toward the
      layer below, 32px blur, -12px spread, 20% black) cast three ways. Single
@@ -282,13 +297,18 @@
    *
    * Corners step DOWN as you nest (outer radius − padding ≈ inner radius), so a
    * xl panel with p-1 holds md/lg items. Never hardcode px (`rounded-[12px]`) —
-   * it defeats the responsive mobile→desktop step-down below. */
-  --radius-sm: 0.125rem; /* 2px desktop */
-  --radius-md: 0.375rem; /* 6px desktop */
-  --radius-lg: 0.5rem; /* 8px desktop */
-  --radius-xl: 0.75rem; /* 12px desktop */
-  --radius-2xl: 1rem; /* 16px desktop */
-  --radius-3xl: 1.25rem; /* 20px desktop */
+   * it defeats the responsive mobile→desktop step-down below.
+   *
+   * --radius-scale multiplies every tier, so operator branding (src/lib/branding.ts)
+   * can square or soften the whole app without breaking the nesting or the
+   * mobile step-down. At 1 the values below are exact. */
+  --radius-scale: 1;
+  --radius-sm: calc(0.125rem * var(--radius-scale)); /* 2px desktop */
+  --radius-md: calc(0.375rem * var(--radius-scale)); /* 6px desktop */
+  --radius-lg: calc(0.5rem * var(--radius-scale)); /* 8px desktop */
+  --radius-xl: calc(0.75rem * var(--radius-scale)); /* 12px desktop */
+  --radius-2xl: calc(1rem * var(--radius-scale)); /* 16px desktop */
+  --radius-3xl: calc(1.25rem * var(--radius-scale)); /* 20px desktop */
 
   /* Composer footer controls (+ / mode / model / submit): halfway between the
      lg and xl tiers — lg read too square against the composer's 3xl shell, xl
@@ -379,12 +399,12 @@
     --font-size-xs: 0.75rem; /* 12px mobile */
 
     /* Border radius - overrides Tailwind's default --radius-* theme values */
-    --radius-sm: 0.25rem; /* 4px mobile */
-    --radius-md: 0.5rem; /* 8px mobile */
-    --radius-lg: 0.75rem; /* 12px mobile */
-    --radius-xl: 1rem; /* 16px mobile */
-    --radius-2xl: 1.25rem; /* 20px mobile */
-    --radius-3xl: 1.5rem; /* 24px mobile */
+    --radius-sm: calc(0.25rem * var(--radius-scale)); /* 4px mobile */
+    --radius-md: calc(0.5rem * var(--radius-scale)); /* 8px mobile */
+    --radius-lg: calc(0.75rem * var(--radius-scale)); /* 12px mobile */
+    --radius-xl: calc(1rem * var(--radius-scale)); /* 16px mobile */
+    --radius-2xl: calc(1.25rem * var(--radius-scale)); /* 20px mobile */
+    --radius-3xl: calc(1.5rem * var(--radius-scale)); /* 24px mobile */
 
     /* Minimum sizes */
     --min-touch-height: 2.5rem; /* 40px mobile */

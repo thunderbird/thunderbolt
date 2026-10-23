@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { maxAgentSteps } from '@/hosted-agent/limits'
-import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
+import type { PublicMiniApp } from '@shared/mini-app-registry'
+import { parseBranding, resolveAppName, type Branding } from '@shared/branding'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
-import { loopbackOrigin } from '@shared/url'
+import { httpUrlMessage, isHttpUrl, loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
@@ -54,6 +55,45 @@ const brandLogoUrlField = (envName: string) =>
     .trim()
     .default('')
     .refine(isBrandLogoUrl, { message: `${envName} must be empty, an https: URL or a data:image/ URL` })
+
+const parseJson = (text: string): { ok: true; value: unknown } | { ok: false } => {
+  try {
+    return { ok: true, value: JSON.parse(text) }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * `BRANDING`: empty means no branding; anything else must be valid JSON that
+ * `parseBranding` (shared with the client) accepts. Every problem is reported
+ * at once, so a pasted theme is fixed in one pass.
+ */
+const brandingField = z
+  .string()
+  .trim()
+  .transform((value, ctx): Branding | undefined => {
+    if (!value) {
+      return undefined
+    }
+    const json = parseJson(value)
+    if (!json.ok) {
+      // The usual cause: unquoted in a .env file, where the first hex color's '#' starts a comment.
+      ctx.addIssue({
+        code: 'custom',
+        message: "BRANDING must be valid JSON (in a .env file, wrap the value in single quotes: BRANDING='{...}')",
+      })
+      return z.NEVER
+    }
+    const result = parseBranding(json.value)
+    if (!result.ok) {
+      ctx.addIssue({ code: 'custom', message: `BRANDING is invalid:\n  ${result.errors.join('\n  ')}` })
+      return z.NEVER
+    }
+    return result.branding
+  })
+  // Keeps the key optional on `Settings`, so hand-built settings objects needn't list it.
+  .optional()
 
 const settingsSchema = z
   .object({
@@ -206,7 +246,8 @@ const settingsSchema = z
     // — including by changing APP_URL — orphans every registered credential.
     passkeyEnabled: z.boolean().default(false),
     passkeyRpId: z.string().trim().default(''),
-    passkeyRpName: z.string().trim().default('Thunderbolt'),
+    // Empty = the branding app name (see getPasskeyRpName).
+    passkeyRpName: z.string().trim().default(''),
     // Comma-separated `android:apk-key-hash:<base64url sha256 of the signing cert>`
     // origins: Android puts that, not a web origin, in the passkey's clientDataJSON.
     passkeyAndroidOrigins: z.string().default(''),
@@ -302,6 +343,9 @@ const settingsSchema = z
     brandLogoUrl: brandLogoUrlField('BRAND_LOGO_URL'),
     brandLogoDarkUrl: brandLogoUrlField('BRAND_LOGO_DARK_URL'),
     brandLogoAlt: z.string().trim().default(''),
+    // Operator branding (app name, theme tokens, fonts, logo, links, transcript recipient). Surfaced
+    // to the UI via GET /config as `branding`; see docs/self-hosting/configuration.md#branding.
+    branding: brandingField,
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
@@ -606,7 +650,7 @@ const parseSettings = (): Settings => {
     // Derived only when passkeys are on, so an APP_URL that isn't a full URL can
     // never break a deployment that doesn't use them.
     passkeyRpId: process.env.PASSKEY_RP_ID || (process.env.PASSKEY_ENABLED === 'true' ? rpIdFromAppUrl(appUrl) : ''),
-    passkeyRpName: process.env.PASSKEY_RP_NAME || 'Thunderbolt',
+    passkeyRpName: process.env.PASSKEY_RP_NAME || '',
     passkeyAndroidOrigins: process.env.PASSKEY_ANDROID_ORIGINS || '',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
@@ -636,6 +680,7 @@ const parseSettings = (): Settings => {
     brandLogoUrl: process.env.BRAND_LOGO_URL,
     brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
     brandLogoAlt: process.env.BRAND_LOGO_ALT,
+    branding: process.env.BRANDING || '',
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
@@ -683,6 +728,13 @@ export const clearSettingsCache = (): void => {
  */
 export const isPasskeyEnabled = (settings: Pick<Settings, 'passkeyEnabled' | 'authMode'>): boolean =>
   settings.passkeyEnabled && settings.authMode === 'consumer'
+
+/**
+ * The passkey Relying Party name the OS shows when saving a passkey:
+ * `PASSKEY_RP_NAME`, else the branding app name, else Thunderbolt.
+ */
+export const getPasskeyRpName = (settings: Pick<Settings, 'passkeyRpName' | 'branding'>): string =>
+  settings.passkeyRpName || resolveAppName(settings.branding)
 
 /** Parse comma-separated CORS origins into a list. */
 export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): string[] => {

@@ -270,4 +270,4 @@ The check fails closed: a client that sends no version is treated as too old. If
 - Open an issue at [github.com/thunderbird/thunderbolt](https://github.com/thunderbird/thunderbolt/issues) with your deployment target, the app version from **Settings → Preferences**, and the relevant server log lines.
 - Sending a debug transcript is an option only if your deployment is configured for it. See the [configuration reference](./self-hosting/configuration.md).
 
-> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by the Thunderbolt team.
+> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by whoever runs the intake (the Thunderbolt team unless you forward to your own, named in the share dialog by `debugTranscriptRecipient` in [`BRANDING`](./self-hosting/configuration.md#branding)).

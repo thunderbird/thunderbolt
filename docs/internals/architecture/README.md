@@ -196,6 +196,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Voice Mode](voice.md): the spoken loop, barge-in, and the engine contract.
 - [Projects](projects.md): inherited instructions, cross-chat search, assistant notes.
 - [Settings and Preferences](settings-and-preferences.md): synced `settings` row vs per-device Zustand store.
+- [Operator Branding](branding.md): shadcn-format theme tokens, shadows, radius, fonts, logo, links, default theme, app name and debug-transcript recipient from `/config`; follow-ups.
 - [Client Auth and Session](client-auth-and-session.md): credential storage; reload, offline boot, second tab.
 - [Sign-in and the Waitlist](sign-in-and-waitlist.md): one endpoint signs a user up, in, or onto the queue.
 - [Widgets](../widgets.md): assistant output as interactive components.

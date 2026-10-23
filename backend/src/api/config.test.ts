@@ -6,10 +6,12 @@ import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
 import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { noBrandingFonts } from '@/branding/fonts'
+import { noBrandingLogo } from '@/branding/logo'
 import { createConfigRoutes } from './config'
 
 const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) => {
-  const app = new Elysia().use(createConfigRoutes(settings))
+  const app = new Elysia().use(createConfigRoutes(settings, { fonts: noBrandingFonts, logo: noBrandingLogo }))
   const response = await app.handle(new Request('http://localhost/config'))
   return { status: response.status, body: await response.json() }
 }
@@ -69,6 +71,82 @@ describe('Config Routes', () => {
     it('exposes minAppVersion when set', async () => {
       const { body } = await fetchConfig(createTestSettings({ minAppVersion: '0.2.0' }))
       expect(body.minAppVersion).toBe('0.2.0')
+    })
+
+    it('names the debug-transcript recipient', async () => {
+      const defaulted = await fetchConfig(createTestSettings())
+      expect(defaulted.body.debugTranscriptRecipientName).toBe('Thunderbolt')
+
+      const named = await fetchConfig(createTestSettings({ debugTranscriptRecipientName: 'Acme' }))
+      expect(named.body.debugTranscriptRecipientName).toBe('Acme')
+    })
+
+    it('omits branding when BRANDING_JSON is unset', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body).not.toHaveProperty('branding')
+    })
+
+    it('exposes branding when set', async () => {
+      const branding = { appName: 'Acme AI', cssVars: { theme: { radius: '1rem' }, light: { brand: '#2563eb' } } }
+      const { body } = await fetchConfig(createTestSettings({ branding }))
+      expect(body.branding).toEqual(branding)
+    })
+
+    it('lists resolved branding fonts and serves their files', async () => {
+      const face = {
+        family: 'DM Sans',
+        style: 'normal' as const,
+        weight: '100 900',
+        unicodeRange: 'U+0000-00FF',
+        file: '0123456789abcdef.woff2',
+      }
+      const fonts = {
+        faces: () => [face],
+        file: (name: string) => (name === face.file ? new Uint8Array([1, 2, 3]) : undefined),
+      }
+      const app = new Elysia().use(createConfigRoutes(createTestSettings(), { fonts, logo: noBrandingLogo }))
+
+      const config = await (await app.handle(new Request('http://localhost/config'))).json()
+      expect(config.brandingFonts).toEqual([face])
+
+      const file = await app.handle(new Request(`http://localhost/config/fonts/${face.file}`))
+      expect(file.status).toBe(200)
+      expect(file.headers.get('content-type')).toBe('font/woff2')
+      expect(file.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+
+      const missing = await app.handle(new Request('http://localhost/config/fonts/ffffffffffffffff.woff2'))
+      expect(missing.status).toBe(404)
+    })
+
+    it('lists the downloaded logo and serves it with its type', async () => {
+      const light = { file: '0123456789abcdef.svg', type: 'image/svg+xml' as const }
+      const logo = {
+        manifest: () => ({ light }),
+        file: (name: string) =>
+          name === light.file ? { bytes: new TextEncoder().encode('<svg/>'), type: light.type } : undefined,
+      }
+      const app = new Elysia().use(createConfigRoutes(createTestSettings(), { fonts: noBrandingFonts, logo }))
+
+      const config = await (await app.handle(new Request('http://localhost/config'))).json()
+      expect(config.brandingLogo).toEqual({ light })
+
+      const file = await app.handle(new Request(`http://localhost/config/logo/${light.file}`))
+      expect(file.headers.get('content-type')).toBe('image/svg+xml')
+      expect(file.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+      expect(await file.text()).toBe('<svg/>')
+
+      expect((await app.handle(new Request('http://localhost/config/logo/ffffffffffffffff.png'))).status).toBe(404)
+    })
+
+    it('omits brandingLogo when none downloaded', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body).not.toHaveProperty('brandingLogo')
+    })
+
+    it('omits brandingFonts when none resolved', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body).not.toHaveProperty('brandingFonts')
     })
 
     it('reports passkeys off by default', async () => {

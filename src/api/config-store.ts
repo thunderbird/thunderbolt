@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { Branding, BrandingFontFace, BrandingLogoManifest } from '@shared/branding'
 import type { SharedModel } from '@shared/defaults/models'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -22,7 +23,18 @@ export type AppConfig = {
   allowCustomAgents?: boolean
   /** Chat-only shell for public deployments; see `selectMinimalMode`. */
   minimalMode?: boolean
+  /** Operator branding, unvalidated as received. Read it through `selectBranding`
+   *  (`src/lib/branding.ts`), which validates it before it becomes CSS. */
+  branding?: Branding
+  /** Branding font faces the backend serves at `config/fonts/<file>`. Unvalidated
+   *  as received; `syncBrandingFonts` (`src/lib/branding-fonts.ts`) checks each. */
+  brandingFonts?: BrandingFontFace[]
+  /** Branding logo files the backend serves at `config/logo/<file>`. Unvalidated as
+   *  received; `useBrandingLogo` (`src/lib/branding-logo.ts`) checks it. */
+  brandingLogo?: BrandingLogoManifest
   debugTranscriptsEnabled?: boolean
+  /** Who receives shared transcripts, named in the share dialog as "the {name} team". */
+  debugTranscriptRecipientName?: string
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
   passkeyEnabled?: boolean
@@ -102,6 +114,11 @@ export const selectAllowCustomAgents = (config: AppConfig): boolean => config.al
 /** Whether the server explicitly accepts debug transcript uploads. Absent
  * config is disabled because standalone mode has no backend recipient. */
 export const selectDebugTranscriptsEnabled = (config: AppConfig): boolean => config.debugTranscriptsEnabled === true
+
+/** The share dialog's transcript recipient. Absent (an older backend) = Thunderbolt, the only
+ *  recipient there was before deployments could name their own. */
+export const selectDebugTranscriptRecipientName = (config: AppConfig): string =>
+  config.debugTranscriptRecipientName ?? 'Thunderbolt'
 
 /** Whether the deployment offers passkeys (sign-in and sync unlock). Absent config (offline/
  * standalone) is disabled — passkeys need the backend plugin to be registered. */

@@ -4,6 +4,8 @@
 
 import { cn } from '@/lib/utils'
 import logoSrc from '@/assets/logo.svg'
+import { useBrandingLogo } from '@/lib/branding-logo'
+import { useAppName } from '@/lib/branding-selectors'
 import type { ComponentPropsWithoutRef } from 'react'
 
 type AppLogoProps = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'width' | 'height'> & {
@@ -11,14 +13,29 @@ type AppLogoProps = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'width' | 'hei
 }
 
 export const AppLogo = ({ size = 16, className, ...props }: AppLogoProps) => {
+  const appName = useAppName()
+  const logo = useBrandingLogo()
+
+  // A configured logo still downloading holds its space blank, so the default mark never flashes in first.
+  if (logo.kind === 'loading') {
+    return (
+      <span
+        aria-hidden="true"
+        style={{ width: size, height: size }}
+        className={cn('inline-block shrink-0', className)}
+      />
+    )
+  }
+
   return (
     <img
-      src={logoSrc}
+      src={logo.kind === 'branded' ? logo.src : logoSrc}
       width={size}
       height={size}
-      alt="Thunderbolt"
+      alt={appName}
       draggable={false}
-      className={cn('shrink-0', className)}
+      // object-contain fits a non-square operator logo inside the square slot.
+      className={cn('shrink-0 object-contain', className)}
       {...props}
     />
   )

@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
+import { useConfigStore } from '@/api/config-store'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { ThemeToggleGroup } from './theme-toggle-group'
@@ -47,6 +48,33 @@ describe('ThemeToggleGroup', () => {
     expect(useLocalSettingsStore.getState().theme).toBe('dark')
     expect(screen.getByRole('radio', { name: 'Dark mode' })).toHaveAttribute('data-state', 'on')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
+  describe('operator default theme', () => {
+    afterEach(() => {
+      useConfigStore.setState({ config: {} })
+    })
+
+    it('follows branding.defaultThemeMode until the user picks a theme', () => {
+      useLocalSettingsStore.getState().setLocalSetting('theme', null)
+      useConfigStore.setState({ config: { branding: { defaultThemeMode: 'dark' } } })
+      renderGroup()
+
+      expect(screen.getByRole('radio', { name: 'Dark mode' })).toHaveAttribute('data-state', 'on')
+      expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Light mode' }))
+
+      expect(useLocalSettingsStore.getState().theme).toBe('light')
+      expect(document.documentElement.classList.contains('light')).toBe(true)
+    })
+
+    it('falls back to system with no choice and no operator default', () => {
+      useLocalSettingsStore.getState().setLocalSetting('theme', null)
+      renderGroup()
+
+      expect(screen.getByRole('radio', { name: 'System theme' })).toHaveAttribute('data-state', 'on')
+    })
   })
 
   it('re-clicking the selected option keeps it selected (no deselect to empty)', () => {

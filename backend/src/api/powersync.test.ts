@@ -70,6 +70,7 @@ const powersyncSettings: Settings = {
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',
   debugTranscriptsEnabled: false,
+  debugTranscriptRecipientName: 'Thunderbolt',
   cliDeviceRegistrationEnabled: false,
   confidentialApiKeysEnabled: false,
   rateLimitEnabled: false,

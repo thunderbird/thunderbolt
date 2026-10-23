@@ -20,7 +20,7 @@ import { cliRegistrationPendingDeviceId, isCliGrantSession } from '@/dal/session
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
-import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled } from '@/config/settings'
+import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled, getPasskeyRpName } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
@@ -623,7 +623,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         ? [
             passkey({
               rpID: settings.passkeyRpId,
-              rpName: settings.passkeyRpName,
+              rpName: getPasskeyRpName(settings),
               origin: [...trustedOrigins, ...getPasskeyAndroidOriginsList(settings)],
             }),
           ]

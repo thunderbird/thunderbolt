@@ -44,6 +44,8 @@ import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createHostedAgentRoutes } from '@/hosted-agent/routes'
 import { createConfigRoutes } from '@/api/config'
+import { createBrandingFonts, noBrandingFonts } from '@/branding/fonts'
+import { createBrandingLogo, noBrandingLogo } from '@/branding/logo'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -202,7 +204,12 @@ export const createApp = async (deps?: AppDeps) => {
           rateLimit: inferenceRateLimit,
         }),
       )
-      .use(createConfigRoutes(settings))
+      .use(
+        createConfigRoutes(settings, {
+          fonts: deps?.brandingFonts ?? noBrandingFonts,
+          logo: deps?.brandingLogo ?? noBrandingLogo,
+        }),
+      )
       .use(
         createDebugTranscriptsRoutes({
           auth,
@@ -262,7 +269,15 @@ const startServer = async () => {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
 
-    const app = await createApp()
+    // Downloads the operator's branding fonts in the background; /config lists
+    // them once they arrive, and a client that booted earlier uses system fonts.
+    // Started here rather than in createApp, so apps built by tests never fetch.
+    const brandingFonts = createBrandingFonts(settings.branding, { logger: log })
+    void brandingFonts.load()
+    const brandingLogo = createBrandingLogo(settings.branding, { logger: log })
+    void brandingLogo.load()
+
+    const app = await createApp({ brandingFonts, brandingLogo })
 
     // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
     // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup

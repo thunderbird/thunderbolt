@@ -14,6 +14,7 @@ import {
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
+  getPasskeyRpName,
 } from './settings'
 
 describe('Config Settings', () => {
@@ -863,6 +864,113 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('branding settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.BRANDING_JSON
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.BRANDING_JSON = savedEnv
+      } else {
+        delete process.env.BRANDING_JSON
+      }
+      clearSettingsCache()
+    })
+
+    it('is undefined when BRANDING_JSON is unset or blank', () => {
+      delete process.env.BRANDING_JSON
+      expect(getSettings().branding).toBeUndefined()
+
+      clearSettingsCache()
+      process.env.BRANDING_JSON = '   '
+      expect(getSettings().branding).toBeUndefined()
+    })
+
+    it('parses a valid config and trims the app name', () => {
+      process.env.BRANDING_JSON = JSON.stringify({
+        appName: '  Acme AI ',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-secondary': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+      expect(getSettings().branding).toEqual({
+        appName: 'Acme AI',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-secondary': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+    })
+
+    it('rejects malformed JSON at startup', () => {
+      process.env.BRANDING_JSON = '{appName:'
+      expect(() => getSettings()).toThrow(/BRANDING_JSON must be valid JSON/)
+    })
+
+    it('rejects unsafe colors at startup', () => {
+      process.env.BRANDING_JSON = JSON.stringify({ cssVars: { light: { brand: 'red;}body{' } } })
+      expect(() => getSettings()).toThrow(
+        /cssVars\.light\.brand: must be a hex, rgb\(\), hsl\(\), oklch\(\) or oklab\(\) color/,
+      )
+    })
+
+    it('reports every problem at once', () => {
+      process.env.BRANDING_JSON = JSON.stringify({ favicon: 'x', cssVars: { light: { cards: '#fff' } } })
+      expect(() => getSettings()).toThrow(/favicon: unknown key[\s\S]*cssVars\.light\.cards: unknown token/)
+    })
+  })
+
+  describe('debugTranscriptRecipientName', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME = savedEnv
+      } else {
+        delete process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to Thunderbolt and trims an operator value', () => {
+      delete process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME
+      expect(getSettings().debugTranscriptRecipientName).toBe('Thunderbolt')
+
+      clearSettingsCache()
+      process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME = '  Acme Support '
+      expect(getSettings().debugTranscriptRecipientName).toBe('Acme Support')
+    })
+
+    it('rejects a name longer than 60 characters', () => {
+      process.env.DEBUG_TRANSCRIPT_RECIPIENT_NAME = 'x'.repeat(61)
+      expect(() => getSettings()).toThrow()
+    })
+  })
+
+  describe('getPasskeyRpName', () => {
+    it('prefers PASSKEY_RP_NAME, then the branding app name, then Thunderbolt', () => {
+      expect(getPasskeyRpName({ passkeyRpName: 'Acme Passkeys', branding: { appName: 'Acme AI' } })).toBe(
+        'Acme Passkeys',
+      )
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: { appName: 'Acme AI' } })).toBe('Acme AI')
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: undefined })).toBe('Thunderbolt')
     })
   })
 

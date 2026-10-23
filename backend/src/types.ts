@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { BrandingFonts } from '@/branding/fonts'
+import type { BrandingLogoService } from '@/branding/logo'
 import type { SearchExaClient } from '@/api/search'
 import type { Auth } from '@/auth/auth'
 import type { db } from '@/db/client'
@@ -36,4 +38,9 @@ export type AppDeps = {
    *  avoid `mock.module('exa-js')`, which leaks across files. Default:
    *  resolved from EXA_API_KEY at request time. */
   searchExaClient?: SearchExaClient | null
+  /** Branding fonts served under `/config`. `startServer` passes the instance it
+   *  started downloading; without one, `createApp` serves none. */
+  brandingFonts?: Pick<BrandingFonts, 'faces' | 'file'>
+  /** The branding logo, on the same terms as `brandingFonts`. */
+  brandingLogo?: Pick<BrandingLogoService, 'manifest' | 'file'>
 }

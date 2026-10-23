@@ -25,18 +25,36 @@
       // The colors mirror --color-background in src/index.css — this is the one
       // unavoidable duplicate of those values (this script runs before the
       // stylesheet loads; theme-provider.tsx reads them from CSS at runtime).
+      // Operator branding cached from /config (src/lib/branding.ts) supplies the
+      // default theme, background and title; the theme fallback order must match
+      // ThemeProvider: the user's choice, then branding.defaultThemeMode, then the OS.
       ;(function () {
         var theme = null
+        var branding = {}
         try {
-          var raw = localStorage.getItem('thunderbolt-local-settings')
-          if (raw) {
-            theme = JSON.parse(raw).state.theme
+          var rawSettings = localStorage.getItem('thunderbolt-local-settings')
+          if (rawSettings) {
+            theme = JSON.parse(rawSettings).state.theme
+          }
+          var rawConfig = localStorage.getItem('thunderbolt-config')
+          if (rawConfig) {
+            branding = JSON.parse(rawConfig).state.config.branding || {}
           }
         } catch (e) {}
+        theme = theme || branding.defaultThemeMode
         var isDark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        var modeTokens = (branding.cssVars && branding.cssVars[isDark ? 'dark' : 'light']) || {}
+        // Same rule as isCssColor in shared/branding.ts.
+        var isColor =
+          /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(modeTokens.background || '') ||
+          /^(?:rgba?|hsla?|oklch|oklab)\((?:[\d.\s%,/+-]|deg|none)+\)$/i.test(modeTokens.background || '')
+        var background = isColor ? modeTokens.background : isDark ? '#1b1e1f' : '#f5f2ee'
         document.documentElement.classList.add(isDark ? 'dark' : 'light')
-        document.documentElement.style.backgroundColor = isDark ? '#1b1e1f' : '#f5f2ee'
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#1b1e1f' : '#f5f2ee')
+        document.documentElement.style.backgroundColor = background
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background)
+        if (typeof branding.appName === 'string' && branding.appName.trim()) {
+          document.title = branding.appName.trim()
+        }
       })()
     </script>
     <div id="root"></div>

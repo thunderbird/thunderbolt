@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { invoke } from '@tauri-apps/api/core'
 import { useSyncExternalStore, createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { selectBranding } from './branding-selectors'
+import { syncDocumentBackground } from './document-background'
 import { isMacDesktop, isTauri } from './platform'
 import { setAndroidBarColor } from './set-android-bar-color'
 
@@ -40,15 +43,6 @@ const syncMacWindowTheme = async (theme: Theme) => {
 }
 
 /**
- * Read the theme's `--color-background` from CSS after the theme class has
- * been applied, so index.css stays the single runtime source of truth for the
- * page background (the pre-paint boot script in index.html is the one
- * unavoidable duplicate — it runs before the stylesheet loads).
- */
-const readThemeBackgroundColor = (root: HTMLElement): string =>
-  getComputedStyle(root).getPropertyValue('--color-background').trim()
-
-/**
  * Pick the macOS vibrancy material per resolved theme. Dark uses HudWindow — a
  * neutral blur that passes the backdrop through distinctly. Light can't: a
  * neutral blur inherits the backdrop's luminance, so dark windows behind the
@@ -76,10 +70,7 @@ const applyResolvedTheme = (resolvedTheme: 'dark' | 'light') => {
   const root = window.document.documentElement
   root.classList.remove('light', 'dark')
   root.classList.add(resolvedTheme)
-
-  const bgColor = readThemeBackgroundColor(root)
-  root.style.backgroundColor = bgColor
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgColor)
+  syncDocumentBackground()
 
   void setAndroidBarColor(resolvedTheme === 'dark' ? 'light' : 'dark')
   syncNativeInterfaceStyle(resolvedTheme)
@@ -117,7 +108,10 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const theme = useLocalSettingsStore((s) => s.theme)
+  // A user who never picked a theme follows the operator's default, then the OS.
+  const chosenTheme = useLocalSettingsStore((s) => s.theme)
+  const defaultTheme = useConfigStore((s) => selectBranding(s.config)?.defaultThemeMode)
+  const theme = chosenTheme ?? defaultTheme ?? 'system'
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
 
   const setTheme = useCallback((newTheme: Theme) => setLocalSetting('theme', newTheme), [setLocalSetting])

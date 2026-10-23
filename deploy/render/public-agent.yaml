@@ -161,6 +161,12 @@ services:
         sync: false
       - key: AGENT_TIMEZONE
         sync: false # the venue's IANA zone, so the agent knows the local date and hour
+      # Operator branding, also set per deployment. BRANDING_JSON is the JSON
+      # object from docs/self-hosting/configuration.md#branding, pasted as is.
+      - key: BRANDING_JSON
+        sync: false
+      - key: DEBUG_TRANSCRIPT_RECIPIENT_NAME
+        sync: false # "Send to the <name> team"; empty means Thunderbolt
       - key: INFERENCE_QUOTA_ANONYMOUS_5H_CENTS
         sync: false
       - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS

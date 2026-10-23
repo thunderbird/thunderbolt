@@ -48,6 +48,10 @@ export type PerPrStackArgs = {
   cliDeviceRegistrationEnabled: boolean
   /** Lets a personal access token reach the confidential (Tinfoil) routes. */
   confidentialApiKeysEnabled: boolean
+  /** Operator branding JSON (env: BRANDING_JSON). Empty ships the default look. */
+  brandingJson: string
+  /** Team named in the debug-transcript share copy. Empty keeps the backend default. */
+  debugTranscriptRecipientName: string
 }
 
 export type PerPrStackOutputs = {
@@ -455,6 +459,11 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'DEBUG_TRANSCRIPT_UPSTREAM_URL', value: apiUrl },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
+          // Omitted when empty so the backend applies its own defaults.
+          ...(args.brandingJson ? [{ name: 'BRANDING_JSON', value: args.brandingJson }] : []),
+          ...(args.debugTranscriptRecipientName
+            ? [{ name: 'DEBUG_TRANSCRIPT_RECIPIENT_NAME', value: args.debugTranscriptRecipientName }]
+            : []),
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },
         ],
         secrets: [

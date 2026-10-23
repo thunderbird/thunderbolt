@@ -1,0 +1,63 @@
+suite: Operator branding
+templates:
+  - templates/backend.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: passes branding JSON through verbatim
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.brandingJson: '{"appName":"Acme AI","cssVars":{"light":{"primary":"#4f46e5"},"dark":{"primary":"#818cf8"}}}'
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BRANDING_JSON
+            value: '{"appName":"Acme AI","cssVars":{"light":{"primary":"#4f46e5"},"dark":{"primary":"#818cf8"}}}'
+
+  - it: omits BRANDING_JSON by default
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BRANDING_JSON }
+          any: true
+
+  # `helm upgrade --reuse-values` from a release that predates the value leaves
+  # it absent. Helm deletes a key set to null, which reproduces that here.
+  - it: omits BRANDING_JSON when an upgrade predates the value
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.brandingJson: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BRANDING_JSON }
+          any: true
+
+  - it: passes the debug-transcript recipient name through
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.debugTranscriptRecipientName: Acme IT
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DEBUG_TRANSCRIPT_RECIPIENT_NAME, value: Acme IT }
+
+  - it: omits DEBUG_TRANSCRIPT_RECIPIENT_NAME by default
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DEBUG_TRANSCRIPT_RECIPIENT_NAME }
+          any: true
+
+  - it: omits DEBUG_TRANSCRIPT_RECIPIENT_NAME when an upgrade predates the value
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.debugTranscriptRecipientName: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DEBUG_TRANSCRIPT_RECIPIENT_NAME }
+          any: true

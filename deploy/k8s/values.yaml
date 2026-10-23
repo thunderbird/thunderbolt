@@ -104,6 +104,11 @@ backend:
     cliDeviceRegistrationEnabled: "false"
     # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
     thunderboltInferenceUrl: ""
+    # -- Operator branding as a JSON string; empty ships the default look.
+    # Shape: docs/self-hosting/configuration.md#branding. Pass it with
+    # `--set-file backend.env.branding=branding.json`; `--set` splits on
+    # commas and mangles braces.
+    branding: ""
     # -- Browser-facing PowerSync URL. Empty follows the configured ingress
     # mode: `ingress.hostnames.powersync` when that is set, otherwise
     # `<appUrl>/powersync` (the chart's own path-based route). The scheme is

@@ -23,6 +23,7 @@ const version = config.require('version')
 const minAppVersion = config.get('minAppVersion') ?? ''
 const cliDeviceRegistrationEnabled = config.getBoolean('cliDeviceRegistrationEnabled') ?? false
 const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled') ?? false
+const branding = config.get('branding') ?? ''
 
 // --- Shared-stack architecture (Phase 1 scaffolding) ---
 //
@@ -135,6 +136,7 @@ if (isSharedStack) {
     minAppVersion,
     cliDeviceRegistrationEnabled,
     confidentialApiKeysEnabled,
+    branding,
   })
 
   module.exports = {
@@ -267,6 +269,7 @@ if (isSharedStack) {
       privateSubnetIds: privateSubnets.map((s) => s.id),
       ghcrToken: config.getSecret('ghcrToken'),
       betterAuthSecretBase64: secrets.betterAuthSecret.apply((s) => Buffer.from(s).toString('base64')),
+      branding,
     })
 
     module.exports = {
@@ -338,6 +341,7 @@ if (isSharedStack) {
       minAppVersion,
       cliDeviceRegistrationEnabled,
       confidentialApiKeysEnabled,
+      branding,
       behindCloudflareProxy: hasSubdomainRouting,
       albListener: listener,
       targetGroups: {

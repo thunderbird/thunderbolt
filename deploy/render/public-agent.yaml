@@ -167,6 +167,10 @@ services:
         sync: false
       - key: AGENT_TIMEZONE
         sync: false # the venue's IANA zone, so the agent knows the local date and hour
+      # Operator branding, also set per deployment. BRANDING is the JSON object
+      # from docs/self-hosting/configuration.md#branding, pasted as is.
+      - key: BRANDING
+        sync: false
       - key: INFERENCE_QUOTA_ANONYMOUS_5H_CENTS
         sync: false
       - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS

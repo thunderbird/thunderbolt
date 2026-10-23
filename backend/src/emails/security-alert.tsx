@@ -23,9 +23,9 @@ type SecurityAlertEmailProps = {
  */
 export const SecurityAlertEmail = ({ i18n, preview, body, guidance }: SecurityAlertEmailProps) => (
   <EmailLayout i18n={i18n} preview={preview}>
-    <Section className="bg-white border border-solid border-tb-border rounded-2xl px-8 py-8">
-      <Text className="text-sm text-tb-text m-0 mb-4">{body}</Text>
-      <Text className="text-sm text-tb-text m-0">{guidance}</Text>
+    <Section className="bg-tb-card border border-solid border-tb-border rounded-2xl px-8 py-8">
+      <Text className="text-sm text-tb-card-text m-0 mb-4">{body}</Text>
+      <Text className="text-sm text-tb-card-text m-0">{guidance}</Text>
     </Section>
   </EmailLayout>
 )

@@ -45,7 +45,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+                        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         <p>

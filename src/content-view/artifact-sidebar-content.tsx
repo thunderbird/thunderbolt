@@ -99,6 +99,7 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
         actions={<ArtifactActions html={data.html} title={data.title} />}
       />
       {runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
+      {/* Artifacts are authored against a white page, whatever the app theme. */}
       <div className="min-h-0 flex-1 bg-white">
         <SelectableArtifact
           html={data.html}

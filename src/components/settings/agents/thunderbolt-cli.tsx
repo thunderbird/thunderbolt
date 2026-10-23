@@ -161,7 +161,7 @@ export const ThunderboltCliDetail = ({
             {state.status === 'success' && (
               <div className="flex flex-col gap-3">
                 <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
-                  <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
+                  <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
                   <Trans>
                     Installed to <code className="font-mono">{installedPath}</code>
                   </Trans>

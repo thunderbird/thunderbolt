@@ -36,7 +36,7 @@ export const ContextOverflowModal = ({ isOpen, onClose, onNewChat, maxTokens }: 
       <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-center gap-2">
-            <AlertTriangle className="size-5 text-amber-600" />
+            <AlertTriangle className="size-5 text-warning" />
             <AlertDialogTitle>
               <Trans>Context Window Exceeded</Trans>
             </AlertDialogTitle>

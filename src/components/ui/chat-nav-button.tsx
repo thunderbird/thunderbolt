@@ -40,7 +40,7 @@ export const ChatNavButton = ({ chatTitle, threadId, className, asChild = false,
     <Comp className={cn('relative w-full group/chat', className)} {...props}>
       <div className="w-full h-full flex space-x-2 items-center">
         <div className="h-9 relative">
-          <div className="w-1 h-[100%] bg-gray-200 group-hover/chat:opacity-100 opacity-0 rounded-r-sm" />
+          <div className="w-1 h-[100%] bg-border group-hover/chat:opacity-100 opacity-0 rounded-r-sm" />
         </div>
         <div className="flex items-center w-full">
           <Button

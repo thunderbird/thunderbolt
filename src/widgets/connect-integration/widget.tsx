@@ -334,7 +334,7 @@ export const ConnectIntegrationWidget = memo(
 
               <div className="w-full">
                 <Button variant="ghost" className="w-full" disabled>
-                  <Check className="w-4 h-4 mr-2 text-green-600" />
+                  <Check className="w-4 h-4 mr-2 text-success" />
                   <Trans>Connected</Trans>
                 </Button>
               </div>
@@ -387,8 +387,8 @@ export const ConnectIntegrationWidget = memo(
             </div>
 
             {error && (
-              <div className="w-full p-3 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+              <div className="w-full p-3 rounded-md bg-destructive/10 border border-destructive/30">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
 

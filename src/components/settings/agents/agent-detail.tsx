@@ -447,11 +447,11 @@ const TestStatus = ({ result }: { result: TestState }) => {
     <span
       className={cn(
         'inline-flex items-center gap-1.5 text-sm font-medium',
-        result.isReachable ? 'text-green-600 dark:text-green-500' : 'text-destructive',
+        result.isReachable ? 'text-success' : 'text-destructive',
       )}
     >
       <span
-        className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-green-500' : 'bg-destructive')}
+        className={cn('inline-block size-2 rounded-full', result.isReachable ? 'bg-success' : 'bg-destructive')}
         aria-hidden="true"
       />
       {result.isReachable ? <Trans>Reachable {relative}</Trans> : <Trans>Unreachable {relative}</Trans>}

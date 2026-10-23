@@ -127,8 +127,8 @@ export const MagicLinkVerify = () => {
         {state.status === 'verifying' && (
           <>
             <DialogHeader>
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-                <Loader2 className="h-6 w-6 animate-spin text-white" />
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand [background-image:var(--gradient-brand)]">
+                <Loader2 className="h-6 w-6 animate-spin text-brand-foreground" />
               </div>
               <DialogTitle className="text-center text-xl">
                 <Trans>Signing you in…</Trans>
@@ -162,8 +162,8 @@ export const MagicLinkVerify = () => {
         {state.status === 'error' && (
           <>
             <DialogHeader>
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-                <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                <AlertCircle className="h-6 w-6 text-destructive" />
               </div>
               <DialogTitle className="text-center text-xl">
                 <Trans>Verification Failed</Trans>

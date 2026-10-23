@@ -73,7 +73,7 @@ export const Expandable = ({
               <span className="text-sm font-medium text-muted-foreground overflow-hidden">{title}</span>
             </div>
             <ChevronRight
-              className={cn('h-4 w-4 text-gray-500 transition-transform duration-200', isOpen && 'rotate-90')}
+              className={cn('h-4 w-4 text-muted-foreground transition-transform duration-200', isOpen && 'rotate-90')}
             />
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>

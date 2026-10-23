@@ -46,15 +46,15 @@ describe('renderHighlightedSkillTokens', () => {
     const { container } = renderTokens('please /task-triage me')
     const span = container.querySelector('.skill-token')
     expect(span?.textContent).toBe('/task-triage')
-    expect(span?.className).toContain('text-amber-700')
-    expect(container.querySelector('.text-red-600')).toBeNull()
+    expect(span?.className).toContain('text-warning')
+    expect(container.querySelector('.text-destructive')).toBeNull()
   })
 
   it('paints a committed unknown token as a red badge', () => {
     const { container } = renderTokens('hi /no-such-skill there')
     const span = container.querySelector('.skill-token')
     expect(span?.textContent).toBe('/no-such-skill')
-    expect(span?.className).toContain('text-red-600')
+    expect(span?.className).toContain('text-destructive')
   })
 
   it('leaves an in-progress (end-of-input, no trailing space) token unbadged even when the slug resolves', () => {
@@ -77,8 +77,8 @@ describe('renderHighlightedSkillTokens', () => {
     expect(badges).toHaveLength(3)
     const classes = [...badges].map((b) => b.className)
     expect(classes.some((c) => c.includes('text-muted-foreground'))).toBe(true)
-    expect(classes.some((c) => c.includes('text-amber-700'))).toBe(true)
-    expect(classes.some((c) => c.includes('text-red-600'))).toBe(true)
+    expect(classes.some((c) => c.includes('text-warning'))).toBe(true)
+    expect(classes.some((c) => c.includes('text-destructive'))).toBe(true)
   })
 
   it('wraps a committed unknown token in a popover trigger so the user gets a tooltip', () => {

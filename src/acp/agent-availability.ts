@@ -24,6 +24,9 @@ export type IsAgentAvailableDeps = {
 }
 
 export const isAgentAvailable = (agent: Agent, deps: IsAgentAvailableDeps = {}): boolean => {
+  if (agent.enabled !== 1 || agent.deletedAt) {
+    return false
+  }
   const isTauri = deps.isTauri ?? defaultIsTauri
 
   // `in-process` transport on a non-`built-in` agent implies a desktop-only

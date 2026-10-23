@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
@@ -23,6 +24,7 @@ import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { nowIso } from '@/lib/utils'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -37,13 +39,13 @@ afterAll(async () => {
  */
 const createTestModel = async () => {
   const db = getDb()
-  const modelId = uuidv7()
+  const modelId = defaultModelOpus55.id
 
   await db.insert(modelsTable).values({
     id: modelId,
     provider: 'thunderbolt',
     name: 'Test Model',
-    model: 'gpt-oss-120b',
+    model: defaultModelOpus55.model,
     isSystem: 0,
     enabled: 1,
     isConfidential: 0,
@@ -159,7 +161,7 @@ describe('Chat Threads DAL', () => {
       expect(stored?.agentId).toBe('haystack-rag')
     })
 
-    it('should default agentId to null when not provided', async () => {
+    it('binds an implicit hosted Opus thread to Zeus', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
       const model = await getModel(getDb(), modelId)
@@ -174,7 +176,31 @@ describe('Chat Threads DAL', () => {
       )
 
       const stored = await getChatThread(getDb(), threadId)
-      expect(stored?.agentId).toBeNull()
+      expect(stored?.agentId).toBe(zeusAgent.id)
+    })
+
+    it('derives privacy from the agent regardless of the model confidentiality flag', async () => {
+      const modelId = await createTestModel()
+      const model = (await getModel(getDb(), modelId))!
+      for (const [agentId, isEncrypted] of [
+        [builtInAgent.id, 1],
+        [zeusAgent.id, 0],
+        ['external', 0],
+      ] as const) {
+        await createChatThread(
+          getDb(),
+          {
+            id: agentId,
+            agentId,
+            title: 'x',
+            contextSize: null,
+            triggeredBy: null,
+            wasTriggeredByAutomation: 0,
+          },
+          { ...model, isConfidential: isEncrypted === 1 ? 0 : 1 },
+        )
+        expect((await getChatThread(getDb(), agentId))?.isEncrypted).toBe(isEncrypted)
+      }
     })
 
     it('should throw when creating thread with same ID twice', async () => {
@@ -378,12 +404,12 @@ describe('Chat Threads DAL', () => {
       expect(stored?.agentId).toBe('haystack-rag')
     })
 
-    it('should default agentId to null on new threads when not provided', async () => {
+    it('binds new implicit threads to a built-in agent', async () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
       const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
-      expect(thread?.agentId).toBeNull()
+      expect(thread?.agentId).toBe(zeusAgent.id)
     })
 
     it('should NOT mutate existing thread agentId when called with a different one', async () => {

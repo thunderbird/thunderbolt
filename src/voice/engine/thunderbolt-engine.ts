@@ -17,24 +17,11 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import type { AgentVoiceConfig } from '@/types/acp'
 import type { SecureClient } from 'tinfoil'
 import { type AudioTransport, createAudioEngine } from './audio-engine'
 import type { VoiceEngine } from './types'
 
-const sttModel = 'whisper-large-v3-turbo' // batch transcription; voxtral-realtime (streaming) is a follow-up
-
-type TtsProfile = { model: string; voice: string }
-// TTS model + its preset voice. voxtral-tts + casual_male is the verified-working
-// combo; qwen3-tts is steadier/less improvisational. qwen3 voices on this enclave
-// (from /audio/speech error bodies): aiden, dylan, eric, ono_anna, ryan, serena,
-// sohee, uncle_fu, vivian. Flip ttsProfile to A/B; user-selectable engines land in
-// the voice settings (THU-718) via createOpenAiCompatibleEngine.
-const ttsProfiles = {
-  voxtral: { model: 'voxtral-tts', voice: 'casual_male' },
-  // `ryan` chosen after an A/B listen across the qwen3 voices above (THU-683).
-  qwen3: { model: 'qwen3-tts', voice: 'ryan' },
-} satisfies Record<string, TtsProfile>
-const ttsProfile: TtsProfile = ttsProfiles.qwen3
 // Expressive models improvise emphasis/pacing/laughter; steer delivery via the
 // `instructions` style control (honored by qwen3-tts / voxtral-tts).
 const ttsInstructions =
@@ -117,16 +104,17 @@ const tinfoilTransport = createTinfoilTransport({
   getAuthToken,
 })
 
-export const createThunderboltEngine = (): VoiceEngine =>
+/** Build the attested voice transport with the models selected by the agent. */
+export const createThunderboltEngine = (config: Extract<AgentVoiceConfig, { provider: 'tinfoil' }>): VoiceEngine =>
   createAudioEngine({
     id: 'thunderbolt',
     transport: tinfoilTransport,
     warm: async () => {
       await getSystemTinfoilClient() // prime attestation
     },
-    sttModel,
-    ttsModel: ttsProfile.model,
-    ttsVoice: ttsProfile.voice,
+    sttModel: config.sttModel,
+    ttsModel: config.ttsModel,
+    ttsVoice: config.ttsVoice,
     ttsInstructions,
     ttsSpeed: 1,
   })

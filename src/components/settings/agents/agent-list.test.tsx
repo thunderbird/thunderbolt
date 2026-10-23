@@ -5,7 +5,7 @@
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, zeusAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { AgentList } from './agent-list'
 import { agentProvenanceLine } from './agent-provenance'
@@ -66,19 +66,17 @@ describe('agentProvenanceLine', () => {
 })
 
 describe('AgentList', () => {
-  it('renders every agent as a row with its provenance line', () => {
-    render(<AgentList agents={[builtInAgent, systemAgent, customAgent]} onOpenAgent={noop} />)
+  it('uses the selector descriptions for built-in and described agents', () => {
+    render(<AgentList agents={[builtInAgent, zeusAgent, systemAgent, customAgent]} onOpenAgent={noop} />)
 
     expect(screen.getByTestId(`agent-row-${builtInAgent.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`agent-row-${systemAgent.id}`)).toBeInTheDocument()
     expect(screen.getByTestId(`agent-row-${customAgent.id}`)).toBeInTheDocument()
 
-    expect(screen.getByTestId(`agent-provenance-${builtInAgent.id}`)).toHaveTextContent(
-      'Your agent · built into the app',
-    )
-    expect(screen.getByTestId(`agent-provenance-${systemAgent.id}`)).toHaveTextContent(
-      'System agent · always available',
-    )
+    expect(screen.getByTestId(`agent-provenance-${builtInAgent.id}`)).toHaveTextContent('Confidential AI')
+    expect(screen.getByTestId(`agent-provenance-${zeusAgent.id}`)).toHaveTextContent('Powerful frontier AI')
+    expect(screen.queryByText('Your agent · built into the app')).not.toBeInTheDocument()
+    expect(screen.getByTestId(`agent-provenance-${systemAgent.id}`)).toHaveTextContent(systemAgent.description!)
     expect(screen.getByTestId(`agent-provenance-${customAgent.id}`)).toHaveTextContent(
       'Connected agent · my.example.com',
     )

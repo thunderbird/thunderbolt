@@ -13,7 +13,7 @@ import { collectPageErrors, loginViaOidc } from './helpers'
  * `GET {cloudUrl}/agents` once there is a session, anonymous or not. We
  * intercept that call with a synthetic Haystack entry and verify that:
  *
- * 1. The row materialises in `/settings/agents` with the system provenance line.
+ * 1. The row materialises in `/settings/agents` with its shared description.
  * 2. Its detail panel is read-only — no management (⋯) menu, since system
  *    agents are managed by the backend, not the user.
  *
@@ -61,7 +61,7 @@ test.describe('ACP system agent discovery', () => {
 
     const systemRow = page.getByTestId('agent-row-haystack-rag')
     await expect(systemRow).toBeVisible({ timeout: 10_000 })
-    await expect(systemRow.getByTestId('agent-provenance-haystack-rag')).toHaveText('System agent · always available')
+    await expect(systemRow.getByTestId('agent-provenance-haystack-rag')).toHaveText('Retrieval-augmented chat')
 
     // The detail panel for a system agent is read-only: no ⋯ management menu
     // (which is where Remove lives for custom agents).

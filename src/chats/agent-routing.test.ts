@@ -18,6 +18,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { useChatStore, type ChatSession } from '@/chats/chat-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -51,13 +52,13 @@ const otherRemoteAgent: Agent = {
 }
 
 const mockModel: Model = {
-  id: 'model-1',
-  provider: 'openai',
+  id: defaultModelDeepSeekV41Flash.id,
+  provider: 'tinfoil',
   name: 'Test Model',
-  model: 'gpt-4',
-  isSystem: 0,
+  model: defaultModelDeepSeekV41Flash.model,
+  isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
+  isConfidential: 1,
 } as Model
 
 const mockChatInstance = {
@@ -266,7 +267,7 @@ describe('createAgentRoutingFetch', () => {
     expect(adapterFetch).toHaveBeenCalledTimes(3)
   })
 
-  it('routes to the new agent WITHOUT disconnecting the previous one when selectedAgent changes mid-session', async () => {
+  it('rejects a different agent after the first routing call', async () => {
     resetStore()
     const first = buildFakeAdapter(remoteAgent)
     const second = buildFakeAdapter(otherRemoteAgent)
@@ -290,10 +291,10 @@ describe('createAgentRoutingFetch', () => {
     // via the DAL, which routing doesn't depend on).
     hydrateSessionWith('t-switch', otherRemoteAgent)
 
-    await customFetch('/chat', { method: 'POST', body: '{}' })
+    await expect(customFetch('/chat', { method: 'POST', body: '{}' })).rejects.toThrow('Cannot change the agent')
     expect(first.disconnect).not.toHaveBeenCalled()
-    expect(connectToAgent).toHaveBeenCalledTimes(2)
-    expect(second.fetch).toHaveBeenCalledTimes(1)
+    expect(connectToAgent).toHaveBeenCalledTimes(1)
+    expect(second.fetch).not.toHaveBeenCalled()
   })
 
   it('persists ACP sessionId via updateChatThread when onAcpSessionId is invoked by the adapter', async () => {

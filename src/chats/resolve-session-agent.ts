@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, builtInAgents, zeusAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 
 /**
@@ -16,22 +16,38 @@ export type AgentPreference = {
   hasModelPick?: boolean
 }
 
+/** The agent identity for persisted chats, including the legacy single-agent split. */
+export const persistedThreadAgentId = (thread: { agentId?: string | null; isEncrypted: number }): string => {
+  if (!thread.agentId || thread.agentId === builtInAgent.id) {
+    return thread.isEncrypted === 1 ? builtInAgent.id : zeusAgent.id
+  }
+  return thread.agentId
+}
+
+/** Keeps an unavailable saved agent visible without routing its history elsewhere. */
+const unavailableAgent = (id: string): Agent => {
+  const builtIn = builtInAgents.find((agent) => agent.id === id)
+  if (builtIn) {
+    return { ...builtIn, enabled: 0 }
+  }
+  return {
+    id,
+    name: id,
+    type: 'remote-acp',
+    transport: 'websocket',
+    url: null,
+    description: null,
+    icon: null,
+    isSystem: 0,
+    enabled: 0,
+    deletedAt: null,
+    userId: null,
+  }
+}
+
 /**
- * Pick the agent a chat session opens on. A persisted thread keeps its own
- * agent. When that no longer resolves (a new chat, a deleted custom, an
- * unsynced system agent, or a built-in the deployment disabled), prefer the
- * user's last-used agent, then the built-in when the user picked a model, so a
- * deliberate choice survives, then the agent the backend's discovery names as
- * default, so a first-time visitor lands on it, then the first available agent,
- * silently, so enterprise users who never had the built-in just continue with
- * their own agent. `builtInAgent` is the last-resort safety net for the
- * degenerate zero-agent deployment.
- *
- * Callers pass `discoveredDefaultAgent` for a brand-new chat only: a persisted
- * thread with no agent of its own (automation runs, threads from before
- * `agent_id` existed) stays on the fallback chain. It is taken only when it is
- * one of `allAgents`, so a stale default from another account or server falls
- * through.
+ * Persisted chats retain their agent even when it is unavailable. New chats use
+ * the last deliberate choice, discovery's default, then the first available agent.
  */
 export const resolveSessionAgent = (
   allAgents: Agent[],
@@ -39,12 +55,14 @@ export const resolveSessionAgent = (
 ): Agent => {
   const findAgent = (agentId: string | null | undefined) =>
     agentId ? allAgents.find((a) => a.id === agentId) : undefined
+  if (candidates.threadAgentId) {
+    return findAgent(candidates.threadAgentId) ?? unavailableAgent(candidates.threadAgentId)
+  }
   return (
-    findAgent(candidates.threadAgentId) ??
     findAgent(candidates.lastUsedAgentId) ??
     (candidates.hasModelPick ? findAgent(builtInAgent.id) : undefined) ??
     findAgent(candidates.discoveredDefaultAgent?.id) ??
-    allAgents[0] ??
-    builtInAgent
+    allAgents.find((agent) => agent.enabled === 1 && !agent.deletedAt) ??
+    unavailableAgent(builtInAgent.id)
   )
 }

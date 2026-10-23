@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import {
   createMockChatInstance,
@@ -57,6 +58,8 @@ const createMockUseContextTracking =
 
 const remoteAcpAgent: Agent = {
   ...builtInAgent,
+  isPrivate: false,
+  voice: undefined,
   id: 'remote-agent',
   type: 'remote-acp',
   transport: 'websocket',
@@ -67,6 +70,8 @@ const remoteAcpAgent: Agent = {
 
 const hostedAgent: Agent = {
   ...builtInAgent,
+  isPrivate: false,
+  voice: undefined,
   id: 'hosted-agent',
   type: 'managed-http',
   transport: 'http',
@@ -386,9 +391,9 @@ describe('ChatPromptInput', () => {
       })
 
       expect(trackEvent).toHaveBeenCalledWith('chat_send_prompt_overflow', {
-        model_id: 'model-1',
-        model_name: 'gpt-4',
-        provider: 'openai',
+        model_id: defaultModelDeepSeekV41Flash.id,
+        model_name: 'deepseek-v4-1-flash',
+        provider: 'tinfoil',
         length: 8,
         prompt_number: 1,
       })
@@ -545,10 +550,23 @@ describe('ChatPromptInput', () => {
       expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
     })
+    it('explains a missing or disabled saved agent without claiming a platform limitation', () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', {
+        selectedAgent: { ...builtInAgent, enabled: 0 },
+      })
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, { wrapper: TestWrapper })
+
+      expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
+      expect(screen.getByRole('status')).toHaveTextContent(
+        "This chat's agent is unavailable. Start a new chat to use another agent.",
+      )
+      expect(screen.getByRole('status')).not.toHaveTextContent('platform')
+    })
   })
 
-  describe('no model fits the thread', () => {
-    /** Built-in agent on a non-private thread whose session holds `selectedModel`. */
+  describe('no model fits the agent', () => {
+    /** Built-in agent whose session holds `selectedModel`. */
     const renderWithModel = (selectedModel: Model) => {
       const { mockUseChat, mockChatInstance } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedModel })
@@ -565,21 +583,34 @@ describe('ChatPromptInput', () => {
     }
 
     it('says why and holds the send instead of throwing on it', async () => {
-      const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 1 }))
+      const { sendMessage, submit } = renderWithModel(createMockModel({ id: 'unsupported', provider: 'openai' }))
 
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'None of your models can be used in this chat. Choose another agent to send.',
+        `No models are configured for ${builtInAgent.name}. Enable a supported model in Settings.`,
       )
       await submit()
       expect(sendMessage).not.toHaveBeenCalled()
     })
 
+    it.each([{ enabled: 0 }, { deletedAt: '2026-10-21T00:00:00.000Z' }, { isSystem: 0, apiKey: null }] as const)(
+      'holds the send when a supported model is unavailable: %j',
+      async (overrides) => {
+        const { sendMessage, submit } = renderWithModel(createMockModel(overrides))
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          `No models are configured for ${builtInAgent.name}. Enable a supported model in Settings.`,
+        )
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      },
+    )
+
     it('clears the notice and selects a model once one that fits is added', async () => {
-      const confidentialModel = createMockModel({ isConfidential: 1 })
+      const confidentialModel = createMockModel({ id: 'unsupported', provider: 'openai' })
       renderWithModel(confidentialModel)
       expect(screen.getByRole('alert')).toBeInTheDocument()
 
-      const added = createMockModel({ id: 'added', provider: 'thunderbolt', isConfidential: 0 })
+      const added = createMockModel()
       act(() => {
         useChatStore.getState().setModels([confidentialModel, added])
       })
@@ -588,7 +619,7 @@ describe('ChatPromptInput', () => {
       expect(useChatStore.getState().sessions.get('thread-1')?.selectedModel.id).toBe(added.id)
     })
 
-    it('sends when the model matches the thread', async () => {
+    it('sends when the model belongs to the agent', async () => {
       const { sendMessage, submit } = renderWithModel(createMockModel({ isConfidential: 0 }))
 
       expect(screen.queryByRole('alert')).toBeNull()
@@ -598,7 +629,7 @@ describe('ChatPromptInput', () => {
   })
 
   describe('private chat held back from a non-built-in agent', () => {
-    const notice = "This private chat won't run on Assistant. Switch to Thunderbolt to run it."
+    const notice = "This private chat won't run on Assistant."
 
     /** An automation thread: private, ending on its unanswered prompt, resolved to `agent`. */
     const renderAutomationThread = ({ isEncrypted = 1 }: { isEncrypted?: 0 | 1 } = {}) => {
@@ -650,7 +681,7 @@ describe('ChatPromptInput', () => {
       expect(screen.queryByText(notice)).toBeNull()
     })
 
-    it('drops the switch advice where the deployment has no built-in agent', () => {
+    it('keeps the privacy hold where the deployment has no built-in agent', () => {
       useConfigStore.setState({ config: { builtInAgentEnabled: false } })
       renderAutomationThread()
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useRef } from 'react'
+import { isAgentAvailable } from '@/acp/agent-availability'
 
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
 import { useHttpClient } from '@/contexts'
@@ -57,7 +58,7 @@ export const useWarmAcpCommands = (
   const warmedKey = useRef<string | null>(null)
 
   useEffect(() => {
-    if (selectedAgent.type === 'built-in') {
+    if (selectedAgent.type === 'built-in' || !isAgentAvailable(selectedAgent)) {
       return
     }
     const key = `${selectedAgent.id}:${id}`

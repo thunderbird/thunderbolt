@@ -97,9 +97,9 @@ export const reducer = (state: DeleteAccountState, action: DeleteAccountAction):
 }
 
 /** Wipe this device and restart, so no deleted-account state survives in memory. */
-const reloadAfterDeletion = async () => {
+const resetAfterDeletion = async () => {
   await clearLocalData()
-  window.location.reload()
+  window.location.replace('/account-deleted')
 }
 
 /** Translate at the display boundary — an `HttpError` message is English. */
@@ -119,7 +119,7 @@ const requestFailure = (err: unknown, isResend: boolean): { message: string; thr
 export const useDeleteAccount = (
   performDelete: (httpClient: HttpClient, opts: { stepUpOtp: string }) => Promise<void> = deleteAccount,
   requestCode: (httpClient: HttpClient) => Promise<void> = postAccountDeletionCode,
-  onDeleted: () => Promise<void> = reloadAfterDeletion,
+  onDeleted: () => Promise<void> = resetAfterDeletion,
 ) => {
   const httpClient = useHttpClient()
   const [state, dispatch] = useReducer(reducer, initialState)

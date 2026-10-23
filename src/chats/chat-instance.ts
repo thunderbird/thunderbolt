@@ -20,7 +20,7 @@ import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-b
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { assertSessionCanSend } from './session-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -353,6 +353,11 @@ export const createAgentRoutingFetch = (
         throw new Error('No session found')
       }
 
+      assertSessionCanSend(session)
+      if (routedAgentId && routedAgentId !== session.selectedAgent.id) {
+        throw new Error('Cannot change the agent after a chat has started')
+      }
+      useChatStore.getState().updateSession(id, { agentLocked: true })
       const { chatThread, selectedAgent, selectedModel } = session
       const telemetry = isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
       telemetry?.setDimensions({
@@ -1103,19 +1108,9 @@ export const createChatInstance = (
       throw new Error('No session found')
     }
 
-    const { chatThread, selectedAgent, selectedModel } = session
-
-    if (!selectedModel) {
-      throw new Error('No selected model')
-    }
-
-    // The hosted agent doesn't use the selected model, and its threads are never
-    // private, so the model/thread confidentiality lock doesn't apply to it.
-    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
-      throw new Error(
-        `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
-      )
-    }
+    assertSessionCanSend(session)
+    useChatStore.getState().updateSession(id, { agentLocked: true })
+    const { selectedModel } = session
 
     const telemetry = getOrCreateTurnTelemetry()
     getOrCreateDebugTranscriptTraceId()

@@ -7,16 +7,10 @@
  *
  * Everything else in the voice loop — mic capture, VAD, turn detection,
  * playback, barge-in — is shared webview code that talks only to this
- * interface. Two implementations exist, both HTTP-based and both built on the
- * shared `createAudioEngine` orchestration ({@link ./audio-engine}); they
- * differ only in transport. The default is the Thunderbolt engine
- * ({@link ./thunderbolt-engine}), which reaches Tinfoil's enclave-private
- * OpenAI-compatible `/v1/audio/*` endpoints through the attested `/tinfoil`
- * HPKE proxy. The alternative points at a user-supplied OpenAI-compatible
- * endpoint over a plain authenticated fetch
- * ({@link ./openai-compatible-engine}) and is only reachable when the
- * `experimental_feature_voice` flag is on — see {@link ./router} for the
- * selection rule. Swapping the engine never touches the realtime loop: an
+ * interface. The agent chooses its voice models through {@link ./router}.
+ * Thunderbolt uses the attested `/tinfoil` HPKE proxy; Zeus's Fireworks
+ * models remain unconfigured until selected. Engines share the HTTP/audio
+ * orchestration in {@link ./audio-engine}. Swapping the engine never touches the realtime loop: an
  * engine only has to forward the per-turn `AbortSignal` to its transport, so
  * barge-in cancels an in-flight request identically on either.
  */

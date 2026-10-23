@@ -11,7 +11,13 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModels, hashModel } from '@shared/defaults/models'
 import { reconcileDefaultsForTable } from '../lib/reconcile-defaults'
 import { nowIso } from '@/lib/utils'
-import { createAutomation, getAllPrompts, getTriggerPromptForThread, resetAutomationToDefault } from './prompts'
+import {
+  createAutomation,
+  getAllPrompts,
+  getTriggerPromptForThread,
+  resetAutomationToDefault,
+  runAutomation,
+} from './prompts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { type Prompt } from '@/types'
 
@@ -27,6 +33,14 @@ describe('Prompts DAL', () => {
   beforeEach(async () => {
     // Reset database before each test to prevent pollution from randomized test order
     await resetTestDatabase()
+  })
+
+  it('rejects custom-model automations instead of silently rerouting them through a built-in agent', async () => {
+    const db = getDb()
+    await db.insert(modelsTable).values({ id: 'custom', provider: 'custom', model: 'local-model', name: 'Custom' })
+    await createAutomation(db, { id: 'automation', prompt: 'Run', modelId: 'custom' })
+    await expect(runAutomation(db, 'automation')).rejects.toThrow('No built-in agent supports this model')
+    expect(await db.select().from(chatThreadsTable)).toHaveLength(0)
   })
 
   describe('getAllPrompts', () => {

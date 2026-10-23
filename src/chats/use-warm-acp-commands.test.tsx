@@ -110,6 +110,12 @@ describe('useWarmAcpCommands', () => {
     expect(getOrConnectAdapter).not.toHaveBeenCalled()
   })
 
+  it('does not connect an unavailable saved agent', async () => {
+    renderWarm({ id: 'thread-1', selectedAgent: { ...remote, enabled: 0, url: null }, chatThread: thread })
+    await flush()
+    expect(getOrConnectAdapter).not.toHaveBeenCalled()
+  })
+
   it('connects and warms a session when a remote agent is selected', async () => {
     getOrConnectAdapter.mockResolvedValue(makeAdapter(remote))
     renderWarm({ id: 'thread-1', selectedAgent: remote, chatThread: thread })

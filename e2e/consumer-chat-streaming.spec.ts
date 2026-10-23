@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from './test'
-import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
 
@@ -14,8 +13,8 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   const errors = collectPageErrors(page)
   await loginViaEmailCode(page)
 
-  await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
+  await page.getByTestId('agent-selector-trigger').click()
+  await page.getByText('Zeus', { exact: true }).click()
   const composer = page.locator('textarea')
   await composer.fill('Please greet me briefly.')
   await page.evaluate(() => {

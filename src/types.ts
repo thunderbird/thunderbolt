@@ -12,6 +12,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { CompactionCheckpoint } from '@shared/agent-core'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
@@ -167,6 +168,10 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Pi context checkpoint; the visible transcript remains intact. */
+  contextCompaction?: CompactionCheckpoint
+  /** Current model context, separate from billable generation usage. */
+  contextTokens?: number
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1

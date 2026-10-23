@@ -409,6 +409,36 @@ describe('Chat Messages DAL', () => {
       const thread = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get()
       expect(thread?.contextSize).toBe(300)
     })
+
+    it('persists a compaction checkpoint and context size without changing billing usage or transcript content', async () => {
+      const db = getDb()
+      const threadId = uuidv7()
+      await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+      const checkpoint = {
+        version: 1 as const,
+        summary: 'Decisions',
+        tokensBefore: 9_000,
+        contextTokens: 123,
+        retainedTail: [],
+      }
+      const message: ThunderboltUIMessage = {
+        id: uuidv7(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Visible answer' }],
+        metadata: {
+          contextCompaction: checkpoint,
+          contextTokens: 123,
+          usage: { inputTokens: 8900, outputTokens: 100, totalTokens: 9000 },
+        },
+      }
+      await saveMessagesWithContextUpdate(db, threadId, [message])
+      const saved = await getChatMessages(db, threadId)
+      expect(saved[0].content).toBe('Visible answer')
+      expect(saved[0].metadata).toEqual(message.metadata!)
+      expect(
+        (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+      ).toBe(123)
+    })
   })
 
   describe('saveStreamingAssistantMessage', () => {

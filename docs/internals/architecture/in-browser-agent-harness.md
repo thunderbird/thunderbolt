@@ -173,6 +173,71 @@ onto stubs in [`shared/agent-core/browser-stubs/`](../../../shared/agent-core/br
 are several megabytes and must not sit on the chat entry chunk. The `install-process` shim is confined there too,
 and the browser check fails unless the build emits exactly one `agent-core-*.js`.
 
+## Context compaction
+
+The context circle opens a menu with manual compaction and optional summary instructions.
+The built-in Pi adapter also checks usage before each provider request, including requests
+between tool steps, and compacts at 80% of the selected model's context window. Manual
+compaction waits for an idle conversation; Stop cancels the summary request. Manual
+checkpoints end at the latest assistant message, leaving unanswered user turns
+outside the summary so Retry replays them once, verbatim. Compaction
+uses the selected model and its existing authenticated, proxied or confidential transport.
+A tool-style row in the transcript shows compaction progress. Saved checkpoints render
+as completed rows after their boundary messages, remaining visible across later turns
+and reloads. Cancellation and failure clear progress without reporting success. Manual
+completion waits for persistence.
+Automatic compaction leaves a fresh request intact when there is no earlier history to
+summarize; input that still exceeds the model window fails with context-overflow guidance.
+
+`shared/agent-core/compaction.ts` uses Pi's exported `prepareCompaction` and `compact`.
+Pi owns the cut point, paired tool history and summary prompts. The app supplies threshold,
+retention and cancellation: Pi 0.82.1's `AgentHarness.compact()` hardcodes its budgets and
+does not forward cancellation to the summary request. That version also omits custom
+instructions from split-turn prefix summaries and can drop a previous summary when only
+a turn prefix is summarized. When either must be preserved, compaction summarizes the
+same cut as one history. Recheck these adaptations when upgrading Pi.
+
+Compaction preserves the visible transcript. A versioned checkpoint lives in the boundary
+message's existing encrypted `metadata` column, so it syncs without a schema migration.
+It stores the summary and retained Pi messages, including tool pairs. Structured image
+parts become text markers and raw tool-result `details` are omitted from the durable copy:
+image binaries and original attachments
+stay local, matching ordinary transcript replay. Live Pi messages are not rewritten by
+checkpoint serialization. On reload or model
+change the adapter restores it, then seeds only visible turns after that boundary.
+Regeneration removes the regenerated response from the request, so its checkpoint is
+excluded too. Automatic checkpoints are emitted only when compaction actually runs,
+avoiding a copy of the growing context on every subsequent message.
+
+After compaction, the cached harness is marked for rebuilding on the next operation.
+Cache reuse also requires its last user turn to match the supplied transcript, so
+turns from another agent or a newly loaded transcript are included before compaction.
+That rebuild reads the caller's saved checkpoint, so a failed manual save or a Stop
+that closes the stream before automatic checkpoint publication cannot leave an unsaved
+summary active on subsequent requests. Workspace ownership remains with the cache.
+The same context transformation applies to summary inputs and normal requests, keeping
+superseded Mini App reads out of durable summaries.
+
+The context menu's **View summary** opens the latest saved checkpoint; each completed
+transcript row opens its own checkpoint in the shared inspection sidebar. It renders the summary as
+Markdown and exposes retained messages and tool results in an expandable section.
+Opening the viewer takes a stable snapshot; it does not trigger compaction or change
+the transcript. The menu entry remains available after reloads and agent changes.
+
+The restored tail becomes real Pi message entries after the summary entry, allowing the
+next compaction to summarize it again. Retained assistant usage is cleared in this context
+copy: its old provider counts describe the full pre-compaction prompt. Original transcript
+usage remains intact. `contextTokens` supplies the indicator's reduced estimate separately
+from generation usage; the next provider response supplies measured usage again. Provider
+usage already includes system/tool overhead, which is added only to character estimates.
+Confidential summary requests settle their own signed usage receipts because they emit no
+harness `message_end` event.
+
+Summary failures and cancellation leave the old context intact. Manual compaction locks
+sending/regeneration through the final persistence write, and publishes its checkpoint to
+the live chat only after saving succeeds. An oversized retained context fails visibly
+instead of looping over repeated summaries.
+
 ## Tests
 
 `shared/agent-core` is a **test island**: unit tests are colocated but sit outside frontend test discovery, so
@@ -186,7 +251,8 @@ bun run test:agent-core:browser # production chunk in real browsers
 
 The browser check ([`scripts/agent-core-browser-check.ts`](../../../scripts/agent-core-browser-check.ts)) runs a
 **production Vite build**, serves it, imports the emitted chunk in Chromium and WebKit, drives two conversation turns
-through the OpenRouter, Thunderbolt, and confidential paths with injected SSE responses, then checks that OPFS data
+through the OpenRouter, Thunderbolt, and confidential paths with injected SSE responses, compacts with custom
+instructions and restores the serialized checkpoint into another harness, then checks that OPFS data
 survives a reload.
 
 - Each case runs twice, the second with the native iterator helpers deleted from the prototype before import,
@@ -216,6 +282,7 @@ On a bump, check what compiles either way:
   [`coding-tools/index.ts`](../../../shared/agent-core/coding-tools/index.ts), replicated verbatim from Pi because the
   model's priors depend on the exact wording;
 - the model-catalog aliases in `confidential-model.ts`, which paper over ids Pi's catalog does not yet carry;
+- the compaction adapters described above, including repeated restoration, split-turn guidance, cancellation and receipts;
 - `browser-stubs/node-fs.cjs`, which exists only for a specific `require("node:fs")` inside `pi-ai`.
 
 Then run the browser check: a dependency cascade regression (a newly imported Node builtin, a lost browser condition)

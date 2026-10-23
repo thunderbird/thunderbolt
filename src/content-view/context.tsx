@@ -12,6 +12,7 @@ import type { UIMessageMetadata } from '@/types'
 import { getToolName, type DynamicToolUIPart, type ReasoningUIPart, type ToolUIPart } from 'ai'
 import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import type { SidebarWebviewConfig } from './use-sidebar-webview'
+import type { CompactionCheckpoint } from '@shared/agent-core'
 
 /** A tool call (built-in or MCP dynamic-tool) or a reasoning part shown in the object view. */
 export type ObjectViewContent = ToolUIPart | DynamicToolUIPart | ReasoningUIPart
@@ -51,6 +52,7 @@ type ContentViewState =
   | { type: 'preview'; data: SidebarWebviewConfig }
   | { type: 'sideview'; data: SideviewData }
   | { type: 'artifact'; data: ArtifactViewData }
+  | { type: 'compaction-summary'; data: CompactionCheckpoint }
 
 type ContentViewContextType = {
   state: ContentViewState
@@ -60,6 +62,8 @@ type ContentViewContextType = {
   showSideview: (sideviewType: string | null, sideviewId: string | null) => void
   /** Open a verified HTML artifact in the side panel. */
   showArtifact: (data: ArtifactViewData) => void
+  /** Inspect a saved compaction checkpoint without changing the conversation. */
+  showCompactionSummary: (checkpoint: CompactionCheckpoint) => void
   close: () => void
   isOpen: boolean
   previewHidden: boolean
@@ -157,6 +161,14 @@ export const ContentViewProvider = ({
     setState({ type: null, data: null })
   }, [state.type, trackEvent])
 
+  const showCompactionSummary = useCallback(
+    (checkpoint: CompactionCheckpoint) => {
+      trackEvent('content_view_open', { view_type: 'compaction-summary' })
+      setState({ type: 'compaction-summary', data: checkpoint })
+    },
+    [trackEvent],
+  )
+
   return (
     <ContentViewContext.Provider
       value={{
@@ -165,6 +177,7 @@ export const ContentViewProvider = ({
         showPreview,
         showSideview,
         showArtifact,
+        showCompactionSummary,
         close,
         isOpen: state.type !== null,
         previewHidden,

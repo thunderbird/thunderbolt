@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { X } from 'lucide-react'
+import { Trans } from '@lingui/react/macro'
 import { type ComponentProps } from 'react'
 import { Button } from './button'
 
@@ -15,5 +16,8 @@ export const SidebarCloseButton = ({ onClick, ...props }: ComponentProps<typeof 
     {...props}
   >
     <X className="size-[var(--icon-size-default)]" />
+    <span className="sr-only">
+      <Trans>Close</Trans>
+    </span>
   </Button>
 )

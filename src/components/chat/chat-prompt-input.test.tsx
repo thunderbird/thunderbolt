@@ -13,13 +13,15 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
 import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
+import { ContentViewProvider } from '@/content-view/context'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { getClock } from '@/testing-library'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
@@ -87,7 +89,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
   return createElement(
     BrowserRouter,
     null,
-    createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+    createElement(
+      ContentViewProvider,
+      null,
+      createElement(CreateItemProvider, null, createElement(queryWrapper, null, children)),
+      createElement(ActiveContentView),
+    ),
   )
 }
 
@@ -164,6 +171,35 @@ describe('ChatPromptInput', () => {
       })
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('preserves an editable draft while compaction blocks sending and allows stopping', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacting' })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const input = screen.getByPlaceholderText('Ask me anything…')
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(input).toBeEnabled()
+      fireEvent.change(input, { target: { value: 'My next question' } })
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+      fireEvent.submit(input.closest('form')!)
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(input).toHaveValue('My next question')
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+
+      fireEvent.click(screen.getByLabelText('Stop generating'))
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'compacted' }))
+      expect(screen.queryByText('Compacting…')).toBeNull()
+      expect(screen.queryByText('Compacted')).toBeNull()
+      expect(input).toHaveValue('My next question')
+      expect(screen.getByLabelText('Send message')).toBeEnabled()
+      act(() => useChatStore.getState().updateSession('thread-1', { compactionStatus: 'idle' }))
+      expect(screen.queryByText('Compacted')).toBeNull()
     })
 
     // Empty assistant turn sitting with status `ready` and retryCount 0 while the
@@ -248,6 +284,59 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('saved compaction summary', () => {
+    it('opens from the saved context menu without sending or compacting', async () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'saved',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Original reply' }],
+          metadata: {
+            contextCompaction: {
+              version: 1,
+              summary: '## Saved decisions\n\nPreserve the keyboard shortcuts.',
+              tokensBefore: 8_000,
+              contextTokens: 2_000,
+              retainedTail: [],
+            },
+          },
+        },
+      ]
+      const { mockUseChat, mockChatInstance } = setupStore('ready', messages)
+      // Reading a stored summary remains available even after switching agents.
+      useChatStore
+        .getState()
+        .updateSession('thread-1', { selectedAgent: remoteAcpAgent, compactionStatus: 'compacted' })
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(false, false, null, null)}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      const contextTrigger = screen.getByRole('button', { name: 'Context usage' })
+      fireEvent.click(contextTrigger)
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'View summary' }))
+      expect(screen.getByRole('region', { name: 'Compaction summary' })).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Saved decisions' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      await act(async () => {
+        await getClock().tickAsync(1)
+      })
+      expect(contextTrigger).toHaveFocus()
+      expect(contextTrigger).toHaveAttribute('aria-expanded', 'false')
+
+      expect(screen.queryByRole('button', { name: 'View summary' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Compaction summary' })).toBeNull()
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      expect(messages[0].parts).toEqual([{ type: 'text', text: 'Original reply' }])
+    })
+  })
+
   describe('mobile layout', () => {
     it('should apply mobile class names', () => {
       const { mockUseChat } = setupStore()
@@ -275,7 +364,7 @@ describe('ChatPromptInput', () => {
       expect(form?.className).toContain('p-2')
     })
 
-    it('should hide context usage indicator on mobile', () => {
+    it('keeps context controls available on mobile', () => {
       const { mockUseChat } = setupStore()
 
       render(
@@ -287,7 +376,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByText('50%')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Context usage' })).toBeInTheDocument()
     })
 
     it('should show context usage indicator on desktop', () => {
@@ -347,6 +436,31 @@ describe('ChatPromptInput', () => {
   })
 
   describe('submitOnEnter', () => {
+    it('keeps overflow protection and hides compaction for an Anthropic model outside Pi’s catalog', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', {
+        selectedModel: createMockModel({ provider: 'anthropic', model: 'unlisted-model', toolUsage: 1 }),
+      })
+      const trackEvent = mock(() => {})
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useContextTracking={createMockUseContextTracking(true)}
+          trackEvent={trackEvent}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'too long' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(trackEvent).toHaveBeenCalledWith(
+        'chat_send_prompt_overflow',
+        expect.objectContaining({ model_name: 'unlisted-model' }),
+      )
+      expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+    })
+
     it('should disable submit on enter when mobile viewport', () => {
       const { mockUseChat } = setupStore()
 

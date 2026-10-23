@@ -8,6 +8,7 @@ import { useContentView } from './context'
 import { ObjectSidebarContent } from './object-sidebar-content'
 import { SidebarWebview } from './sidebar-webview'
 import { Sideview } from './sideview'
+import { CompactionSummaryContent } from '@/components/context-usage'
 
 /*
  * Lazy, and the only content view that is.
@@ -40,6 +41,7 @@ export const ActiveContentView = () => {
       {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
+      {state.type === 'compaction-summary' && <CompactionSummaryContent checkpoint={state.data} onClose={close} />}
       {state.type === 'artifact' && (
         <Suspense fallback={<PageFallback />}>
           <ArtifactSidebarContent data={state.data} onClose={close} />

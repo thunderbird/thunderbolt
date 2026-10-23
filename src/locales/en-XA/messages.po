@@ -148,6 +148,10 @@ msgid_plural "Imported # rows. The app may take a moment to reflect new chats."
 msgstr[0] ""
 msgstr[1] ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
 msgstr ""
@@ -297,6 +301,10 @@ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Add summary instructions (optional)"
 msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
@@ -492,6 +500,10 @@ msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
+msgstr ""
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Assistant"
 msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
@@ -825,6 +837,7 @@ msgstr ""
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr ""
@@ -867,6 +880,34 @@ msgstr ""
 
 #: src/components/ui/command.tsx
 msgid "Command Palette"
+msgstr ""
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Command result"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compact now"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacted"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compacting context…"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compacting…"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Compaction instructions (optional)"
+msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Compaction summary"
 msgstr ""
 
 #: src/tasks/index.tsx
@@ -1002,6 +1043,18 @@ msgstr ""
 msgid "Contact Support"
 msgstr ""
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Context"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context compaction is available with supported built-in models."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage"
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr ""
@@ -1066,6 +1119,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Could not compact context. Your chat history is safe. Please try again."
 msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -2088,6 +2145,10 @@ msgstr ""
 msgid "If you received a code to log in, enter it here:"
 msgstr ""
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Image retained"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 msgid "Imperial"
 msgstr ""
@@ -2700,6 +2761,10 @@ msgstr ""
 #~ msgid "Nothing to ask about there. Try covering some content."
 #~ msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Nothing to compact yet."
+msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -3207,6 +3272,10 @@ msgstr ""
 msgid "Restart to update"
 msgstr ""
 
+#: src/components/context-usage/compaction-summary-content.tsx
+msgid "Retained messages and tool results"
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
 msgstr ""
@@ -3299,6 +3368,10 @@ msgstr ""
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr ""
+
+#: src/components/context-usage/compaction-summary-content.tsx
+#~ msgid "Saved summary of earlier context. Your full chat history is preserved."
+#~ msgstr ""
 
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -3819,6 +3892,10 @@ msgstr ""
 
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
+msgstr ""
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Summary"
 msgstr ""
 
 #: src/components/ui/header.tsx
@@ -4347,6 +4424,10 @@ msgstr ""
 msgid "Tool input"
 msgstr ""
 
+#: src/components/context-usage/retained-context-message.tsx
+msgid "Tool result"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
 msgid "Transcript sent — thank you."
 msgstr ""
@@ -4549,9 +4630,9 @@ msgstr ""
 msgid "User Experience"
 msgstr ""
 
-#: src/components/context-usage-indicator.tsx
-msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr ""
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"
@@ -4590,8 +4671,17 @@ msgstr ""
 msgid "View install guide"
 msgstr ""
 
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "View latest summary"
+#~ msgstr ""
+
 #: src/components/chat/quote-chip.tsx
 msgid "View quote"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "View summary"
 msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
@@ -4614,6 +4704,10 @@ msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Voice mode: {status}"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Wait for the current response to finish before compacting."
 msgstr ""
 
 #: src/components/pending-device-modal.tsx
@@ -4774,6 +4868,10 @@ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "wss://example.com/ws or paste an iroh ticket"
+msgstr ""
+
+#: src/components/context-usage/retained-context-message.tsx
+msgid "You"
 msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx

@@ -20,6 +20,7 @@ import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 import type { AgentTransport, AgentType } from '@shared/acp-types'
+import type { CompactionCheckpoint, CompactionStatus } from '@shared/agent-core'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
@@ -89,6 +90,7 @@ export type AgentAdapterContext = {
    *  persistent harnesses use it to rebuild from the edited transcript without
    *  rebuilding during ordinary transcript growth. */
   regenerationRevision?: number
+  onCompactionStatus?: (status: CompactionStatus) => void
   /** Resolved instruction bodies for any user skills (`/slug`) referenced in
    *  the prompt. The built-in pipeline injects these as system messages
    *  (`ai/fetch.ts`); ACP agents only receive prompt text, so the adapter folds
@@ -135,6 +137,7 @@ export type AgentAdapter = {
    *  built-in adapter, which has no transport lifecycle. */
   closed?: Promise<void>
   fetch: (init: RequestInit, context: AgentAdapterContext) => Promise<Response>
+  compact?: (init: RequestInit, context: AgentAdapterContext, instructions?: string) => Promise<CompactionCheckpoint>
   /** Eagerly resolve the thread's ACP session (no prompt), so the agent emits
    *  its advertised commands before the first send. No-op for the built-in
    *  adapter. Idempotent per thread — reuses the cached session. */

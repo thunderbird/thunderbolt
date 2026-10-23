@@ -49,10 +49,11 @@ import {
   isRateLimitError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
+import { hasAssistantContent } from '@/lib/message-utils'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import type { Agent } from '@/types/acp'
+import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
@@ -335,157 +336,178 @@ export const createAgentRoutingFetch = (
     return buildProjectPromptSection(projectContext.prompt, { hasSearchableChats: false }) ?? undefined
   }
 
-  return Object.assign(
-    async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
-      if (!init) {
-        throw new Error('Missing init')
-      }
+  const resolve = async (init: RequestInit | undefined, operation: 'prompt' | 'compact') => {
+    if (!init) {
+      throw new Error('Missing init')
+    }
 
-      const { getMcpClients, reconnectClient, sessions } = useChatStore.getState()
+    const { getMcpClients, reconnectClient, sessions } = useChatStore.getState()
 
-      // Read clients fresh per send (not a hydrate-time snapshot) so a server
-      // reconnected since the last send is seen with its current client.
-      const mcpClients = getMcpClients()
+    // Read clients fresh per send (not a hydrate-time snapshot) so a server
+    // reconnected since the last send is seen with its current client.
+    const mcpClients = getMcpClients()
 
-      const session = sessions.get(id)
+    const session = sessions.get(id)
 
-      if (!session) {
-        throw new Error('No session found')
-      }
+    if (!session) {
+      throw new Error('No session found')
+    }
 
-      const { chatThread, selectedAgent, selectedModel } = session
-      const telemetry = isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
-      telemetry?.setDimensions({
-        modelId: selectedModel.id,
-        modelName: selectedModel.model,
-        provider: selectedModel.provider,
+    const { chatThread, selectedAgent, selectedModel } = session
+    const telemetry =
+      operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
+    telemetry?.setDimensions({
+      modelId: selectedModel.id,
+      modelName: selectedModel.model,
+      provider: selectedModel.provider,
+    })
+
+    // Save the user message before invoking the adapter. This:
+    //   1. Creates the `chat_threads` row on the first message (so the
+    //      thread is persisted regardless of agent type).
+    //   2. Lets `updateThreadTitle` see the first user message and replace
+    //      the placeholder "New Chat" title — ACP agents only emit assistant
+    //      messages from `onFinish`, so without this save the title would
+    //      never be generated.
+    //   3. Keeps message ordering consistent: the user turn is durable
+    //      before the assistant stream starts.
+    const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
+    const requestMessages = requestBody.messages ?? []
+    const debugTranscriptTraceId = operation === 'prompt' ? routingState.getDebugTranscriptTraceId?.() : undefined
+    if (debugTranscriptTraceId) {
+      const lastUserMessage = requestMessages.findLast((message) => message.role === 'user')
+      beginDebugTranscriptTurn({
+        threadId: id,
+        traceId: debugTranscriptTraceId,
+        engine: debugTranscriptEngineFor(selectedAgent, telemetry),
+        model: {
+          id: selectedModel.id,
+          name: selectedModel.model,
+          provider: selectedModel.provider,
+        },
+        agentId: selectedAgent.id,
+        userMessageId: lastUserMessage?.id,
       })
-
-      // Save the user message before invoking the adapter. This:
-      //   1. Creates the `chat_threads` row on the first message (so the
-      //      thread is persisted regardless of agent type).
-      //   2. Lets `updateThreadTitle` see the first user message and replace
-      //      the placeholder "New Chat" title — ACP agents only emit assistant
-      //      messages from `onFinish`, so without this save the title would
-      //      never be generated.
-      //   3. Keeps message ordering consistent: the user turn is durable
-      //      before the assistant stream starts.
-      const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
-      const requestMessages = requestBody.messages ?? []
-      const debugTranscriptTraceId = routingState.getDebugTranscriptTraceId?.()
-      if (debugTranscriptTraceId) {
-        const lastUserMessage = requestMessages.findLast((message) => message.role === 'user')
-        beginDebugTranscriptTurn({
-          threadId: id,
-          traceId: debugTranscriptTraceId,
-          engine: debugTranscriptEngineFor(selectedAgent, telemetry),
-          model: {
-            id: selectedModel.id,
-            name: selectedModel.model,
-            provider: selectedModel.provider,
-          },
-          agentId: selectedAgent.id,
-          userMessageId: lastUserMessage?.id,
-        })
-      }
+    }
+    if (operation === 'prompt') {
       telemetry?.startPhase('persist_user_message')
       await saveMessages({ id, messages: requestMessages })
       telemetry?.endPhase('persist_user_message')
+    }
 
-      // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
-      // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
-      // it yet), but `saveMessages` above just created the `chat_threads` row —
-      // so keying off `chatThread` would silently drop the fresh ACP id and
-      // break resume/load on the next reconnect. `id` is that same row's id.
-      const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
-        await updateChatThread(getDb(), id, { acpSessionId: newSessionId })
-      }
+    // Persist by `id`, not `chatThread.id`: on a brand-new chat the session's
+    // `chatThread` snapshot is still `null` here (PowerSync hasn't re-hydrated
+    // it yet), but `saveMessages` above just created the `chat_threads` row —
+    // so keying off `chatThread` would silently drop the fresh ACP id and
+    // break resume/load on the next reconnect. `id` is that same row's id.
+    const persistAcpSessionId = async (newSessionId: string): Promise<void> => {
+      await updateChatThread(getDb(), id, { acpSessionId: newSessionId })
+    }
 
-      // Surface `connecting` only when routing to a different agent than this
-      // thread last used — a warm cache resolves instantly, but the per-thread
-      // UI still needs the transition for the cold-connect spinner.
-      const isNewAgent = selectedAgent.id !== routedAgentId
-      if (isNewAgent) {
-        useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
-      }
+    // Surface `connecting` only when routing to a different agent than this
+    // thread last used — a warm cache resolves instantly, but the per-thread
+    // UI still needs the transition for the cold-connect spinner.
+    const isNewAgent = selectedAgent.id !== routedAgentId
+    if (isNewAgent) {
+      useChatStore.getState().updateSession(id, { connectionStatus: 'connecting', connectionError: null })
+    }
 
-      telemetry?.startPhase('adapter_connect')
-      const adapter = await getOrConnectAdapter(
-        selectedAgent,
-        { httpClient, getProxyFetch, onAvailableCommands: makeCommandSink(selectedAgent.id) },
-        { connectToAgent: deps.connectToAgent },
-      ).catch((err) => {
-        const error = err instanceof Error ? err : new Error(String(err))
-        useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
-        throw error
+    telemetry?.startPhase('adapter_connect')
+    const adapter = await getOrConnectAdapter(
+      selectedAgent,
+      { httpClient, getProxyFetch, onAvailableCommands: makeCommandSink(selectedAgent.id) },
+      { connectToAgent: deps.connectToAgent },
+    ).catch((err) => {
+      const error = err instanceof Error ? err : new Error(String(err))
+      useChatStore.getState().updateSession(id, { connectionStatus: 'error', connectionError: error })
+      throw error
+    })
+    telemetry?.endPhase('adapter_connect')
+
+    routedAgentId = selectedAgent.id
+    if (isNewAgent) {
+      useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+    }
+
+    // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
+    // agents we resolve here and fold them into the prompt via the adapter.
+    const skillInstructions = isBuiltInAgent(selectedAgent)
+      ? undefined
+      : await resolveAcpSkillInstructions(requestMessages)
+    // Same split for project context: built-in builds it in `ai/fetch.ts`, so
+    // without this a chat in a project silently lost its instructions and
+    // knowledge the moment it was answered by a remote or managed agent.
+    // Gated on the session's own `projectId` so a chat outside a project — the
+    // common case — never pays for the lookup.
+    const projectSection =
+      isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
+    // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
+    const requestPermission = isBuiltInAgent(selectedAgent)
+      ? undefined
+      : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+
+    const turnBudget = getTurnBudget().consumer
+    if (operation === 'prompt' && !turnBudget.tryConsumeRequest()) {
+      telemetry?.recordRetry({
+        layer: 'turn_budget',
+        reason: 'request_budget_exhausted',
+        attempt: routingState.getAttempt?.() ?? 1,
       })
-      telemetry?.endPhase('adapter_connect')
-
-      routedAgentId = selectedAgent.id
-      if (isNewAgent) {
-        useChatStore.getState().updateSession(id, { connectionStatus: 'ready', connectionError: null })
+      if (debugTranscriptTraceId) {
+        recordDebugTranscriptRetry(
+          id,
+          debugTranscriptTraceId,
+          'request_budget_exhausted',
+          routingState.getAttempt?.() ?? 1,
+        )
       }
+      throw createTurnBudgetExhaustedError()
+    }
 
-      // Built-in re-resolves skill instructions itself (ai/fetch.ts); for ACP
-      // agents we resolve here and fold them into the prompt via the adapter.
-      const skillInstructions = isBuiltInAgent(selectedAgent)
-        ? undefined
-        : await resolveAcpSkillInstructions(requestMessages)
-      // Same split for project context: built-in builds it in `ai/fetch.ts`, so
-      // without this a chat in a project silently lost its instructions and
-      // knowledge the moment it was answered by a remote or managed agent.
-      // Gated on the session's own `projectId` so a chat outside a project — the
-      // common case — never pays for the lookup.
-      const projectSection =
-        isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
-      // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
-      const requestPermission = isBuiltInAgent(selectedAgent)
-        ? undefined
-        : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+    const context: AgentAdapterContext = {
+      threadId: id,
+      chatThread,
+      acpSessionId: chatThread?.acpSessionId ?? null,
+      saveMessages,
+      selectedModel,
+      mcpClients,
+      reconnectClient,
+      httpClient,
+      getProxyFetch,
+      turnBudget,
+      telemetry,
+      debugTranscriptTraceId,
+      webToolBudget: getWebToolBudget(requestMessages),
+      regenerationRevision: routingState.regenerationRevision ?? 0,
+      skillInstructions,
+      projectSection,
+      onAcpSessionId: persistAcpSessionId,
+      requestPermission,
+      onSessionSideEffect: applySessionSideEffect,
+      // Manual compaction reports success only after the checkpoint is saved below.
+      onCompactionStatus:
+        operation === 'prompt'
+          ? (compactionStatus) => useChatStore.getState().updateSession(id, { compactionStatus })
+          : undefined,
+    }
+    return { adapter, context, init }
+  }
 
-      const turnBudget = getTurnBudget().consumer
-      if (!turnBudget.tryConsumeRequest()) {
-        telemetry?.recordRetry({
-          layer: 'turn_budget',
-          reason: 'request_budget_exhausted',
-          attempt: routingState.getAttempt?.() ?? 1,
-        })
-        if (debugTranscriptTraceId) {
-          recordDebugTranscriptRetry(
-            id,
-            debugTranscriptTraceId,
-            'request_budget_exhausted',
-            routingState.getAttempt?.() ?? 1,
-          )
-        }
-        throw createTurnBudgetExhaustedError()
-      }
-
-      const response = await adapter.fetch(init, {
-        threadId: id,
-        chatThread,
-        acpSessionId: chatThread?.acpSessionId ?? null,
-        saveMessages,
-        selectedModel,
-        mcpClients,
-        reconnectClient,
-        httpClient,
-        getProxyFetch,
-        turnBudget,
-        telemetry,
-        debugTranscriptTraceId,
-        webToolBudget: getWebToolBudget(requestMessages),
-        regenerationRevision: routingState.regenerationRevision ?? 0,
-        skillInstructions,
-        projectSection,
-        onAcpSessionId: persistAcpSessionId,
-        requestPermission,
-        onSessionSideEffect: applySessionSideEffect,
-      })
-      return wrapResponseForFirstContent(response, telemetry)
+  return Object.assign(
+    async (_requestInfo: RequestInfo | URL, init?: RequestInit) => {
+      const route = await resolve(init, 'prompt')
+      const response = await route.adapter.fetch(route.init, route.context)
+      return wrapResponseForFirstContent(response, route.context.telemetry)
     },
     {
       preconnect: () => Promise.resolve(false),
+      compact: async (messages: ThunderboltUIMessage[], instructions: string | undefined, signal: AbortSignal) => {
+        const route = await resolve({ body: JSON.stringify({ messages }), signal }, 'compact')
+        if (!route.adapter.compact) {
+          throw new Error('This agent does not support context compaction')
+        }
+        return route.adapter.compact(route.init, route.context, instructions)
+      },
     },
   )
 }
@@ -823,7 +845,7 @@ export const createChatInstance = (
     // the flags there would re-open the auto-sends they exist to block (the
     // SDK's `sendAutomaticallyWhen` and `useChatAutomation`'s auto-run).
     stopRequested = false
-    useChatStore.getState().updateSession(id, { stopping: false })
+    useChatStore.getState().updateSession(id, { stopping: false, compactionStatus: 'idle' })
     initializeTurnForCurrentSession(currentTurn)
   }
 
@@ -1079,6 +1101,7 @@ export const createChatInstance = (
 
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
+    assertNotCompacting()
     startNewTurn()
     getOrCreateTurnTelemetry()
     const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
@@ -1088,10 +1111,63 @@ export const createChatInstance = (
     return regenerateResponse()
   }
 
+  const compaction = { controller: null as AbortController | null }
+  const assertNotCompacting = () => {
+    if (compaction.controller) {
+      throw new Error('Wait for context compaction to finish')
+    }
+  }
+
+  const compactContext = async (instructions?: string): Promise<void> => {
+    assertNotCompacting()
+    if (instance.status === 'streaming' || instance.status === 'submitted' || retryTimeout) {
+      throw new Error('Wait for the current response to finish before compacting')
+    }
+    const sourceMessages = instance.messages
+    // Keep unanswered user turns outside the checkpoint so Retry can replay them
+    // verbatim without discarding the summary or sending them twice.
+    const boundaryIndex = sourceMessages.findLastIndex(hasAssistantContent)
+    const messagesToCompact = sourceMessages.slice(0, boundaryIndex + 1)
+    const lastMessage = messagesToCompact.at(-1)
+    if (!lastMessage) {
+      throw new Error('Nothing to compact')
+    }
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session || !isBuiltInAgent(session.selectedAgent)) {
+      throw new Error('This agent does not support context compaction')
+    }
+    if (session.chatThread && !matchesThreadConfidentiality(session.selectedModel, session.chatThread)) {
+      throw new Error('The selected model does not match the conversation confidentiality')
+    }
+    const controller = new AbortController()
+    compaction.controller = controller
+    useChatStore.getState().updateSession(id, { compactionStatus: 'compacting' })
+    try {
+      const checkpoint = await customFetch.compact(messagesToCompact, instructions, controller.signal)
+      controller.signal.throwIfAborted()
+      if (instance.messages !== sourceMessages) {
+        throw new Error('The conversation changed during compaction. Please try again.')
+      }
+      const updated = {
+        ...lastMessage,
+        metadata: { ...lastMessage.metadata, contextCompaction: checkpoint, contextTokens: checkpoint.contextTokens },
+      }
+      await saveMessages({ id, messages: [updated] })
+      instance.messages = instance.messages.map((message) => (message.id === updated.id ? updated : message))
+      useChatStore.getState().updateSession(id, { compactionStatus: 'compacted' })
+    } catch (error) {
+      useChatStore.getState().updateSession(id, { compactionStatus: 'idle' })
+      throw error
+    } finally {
+      compaction.controller = null
+    }
+  }
+
   const originalSendMessage = instance.sendMessage.bind(instance)
 
   // Override the sendMessage method to check if the model is available for the chat thread
   instance.sendMessage = async function (message, options) {
+    assertNotCompacting()
     // Cancel any pending auto-retry and reset error state for the new message
     startNewTurn()
 
@@ -1160,6 +1236,7 @@ export const createChatInstance = (
    * leaves the user message trailing, exactly the shape that hook auto-runs.
    */
   instance.stop = async function () {
+    compaction.controller?.abort()
     stopRequested = true
     // Mirrored into the store for the two reactive consumers: the composer's
     // stopping spinner (masked with a live request in `getTurnActivity`, so
@@ -1188,5 +1265,5 @@ export const createChatInstance = (
     resetRetryStateForNewTurn()
   }
 
-  return instance
+  return Object.assign(instance, { compactContext })
 }

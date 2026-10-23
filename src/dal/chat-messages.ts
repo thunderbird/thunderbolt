@@ -121,8 +121,9 @@ export const saveMessagesWithContextUpdate = async (
     const latestMessage = messages[messages.length - 1]
     const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
-    if (metadata?.usage?.totalTokens) {
-      await updateChatThread(tx, threadId, { contextSize: metadata.usage.totalTokens })
+    const contextSize = metadata?.contextTokens ?? metadata?.usage?.totalTokens
+    if (contextSize !== undefined) {
+      await updateChatThread(tx, threadId, { contextSize })
     }
   })
 

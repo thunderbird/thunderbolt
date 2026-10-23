@@ -5,7 +5,7 @@
 import { AppLogo } from '@/components/app-logo'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
-import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
 import { Database, EyeOff, ServerOff } from 'lucide-react'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
@@ -22,6 +22,8 @@ type OnboardingPrivacyStepProps = {
 }
 
 export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepProps) => {
+  const links = useBrandingLinks()
+  const appName = useAppName()
   const handleAgreementChange = (checked: boolean) => {
     actions.setPrivacyAgreed(checked)
   }
@@ -31,7 +33,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
       <div className="flex flex-col">
         <OnboardingStepHeader
           icon={<AppLogo size={72} />}
-          title={<Trans>Welcome to Thunderbolt!</Trans>}
+          title={<Trans>Welcome to {appName}!</Trans>}
           description={<Trans>Your private AI assistant</Trans>}
         />
 
@@ -70,7 +72,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
             <Trans>
               I agree to the{' '}
               <a
-                href={privacyPolicyUrl}
+                href={links.privacyPolicy}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline hover:no-underline font-medium"
@@ -79,7 +81,7 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
               </a>{' '}
               and{' '}
               <a
-                href={termsOfServiceUrl}
+                href={links.termsOfService}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary underline hover:no-underline font-medium"

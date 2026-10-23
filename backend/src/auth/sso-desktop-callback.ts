@@ -4,6 +4,7 @@
 
 import { randomBytes } from 'crypto'
 import type { Settings } from '@/config/settings'
+import { resolveAppName } from '@shared/branding'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { configuredSsoProviderId } from './paths'
@@ -25,8 +26,9 @@ const parseCookieValue = (cookieHeader: string, name: string): string | undefine
   return undefined
 }
 
-const errorHtml = (message: string) =>
-  `<html><head><title>Thunderbolt</title></head>` +
+// The charset is declared because the app name may be any script and the responses send a bare text/html.
+const errorHtml = (message: string, appName: string) =>
+  `<html><head><meta charset="utf-8"><title>${Bun.escapeHTML(appName)}</title></head>` +
   `<body style="font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5">` +
   `<div style="text-align:center;padding:2rem">` +
   `<h2>Authentication Error</h2>` +
@@ -57,6 +59,8 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
     return new Elysia({ prefix: '/api/auth/sso' })
   }
 
+  const errorPage = (message: string) => errorHtml(message, resolveAppName(settings.branding))
+
   return (
     new Elysia({ prefix: '/api/auth/sso' })
       .onError(safeErrorHandler)
@@ -67,7 +71,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
         async ({ query, request }) => {
           const port = Number(query.loopback_port)
           if (!allowedLoopbackPorts.has(port)) {
-            return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
+            return new Response(errorPage('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
             })
@@ -89,7 +93,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
           if (!ssoResponse.ok) {
             const text = await ssoResponse.text().catch(() => 'unknown error')
             console.error('SSO initiate failed:', ssoResponse.status, text)
-            return new Response(errorHtml('Failed to initiate SSO. Please try again.'), {
+            return new Response(errorPage('Failed to initiate SSO. Please try again.'), {
               status: 502,
               headers: { 'content-type': 'text/html' },
             })
@@ -130,7 +134,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
         ({ request, query }) => {
           const port = Number(query.loopback_port)
           if (!allowedLoopbackPorts.has(port)) {
-            return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
+            return new Response(errorPage('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
             })
@@ -145,7 +149,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
           // validation would require a session store for negligible security gain.
           const nonce = parseCookieValue(cookieHeader, nonceCookieName)
           if (!nonce) {
-            return new Response(errorHtml('Invalid request. Please start the sign-in flow from the app.'), {
+            return new Response(errorPage('Invalid request. Please start the sign-in flow from the app.'), {
               status: 403,
               headers: { 'content-type': 'text/html' },
             })
@@ -168,7 +172,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
 
           const encodedToken = parseCookieValue(cookieHeader, sessionCookieName)
           if (!encodedToken) {
-            return new Response(errorHtml('Session not found. Please try signing in again from the app.'), {
+            return new Response(errorPage('Session not found. Please try signing in again from the app.'), {
               status: 401,
               headers: { 'content-type': 'text/html' },
             })

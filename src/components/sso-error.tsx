@@ -4,7 +4,8 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Link, useSearchParams } from 'react-router'
-import { AppLogo } from '@/components/app-logo'
+import { AppWordmark } from '@/components/app-wordmark'
+import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { getSsoErrorMessage } from '@/lib/sso-error-messages'
 
@@ -14,21 +15,19 @@ import { getSsoErrorMessage } from '@/lib/sso-error-messages'
  */
 const SsoError = () => {
   const [searchParams] = useSearchParams()
+  const appName = useAppName()
   const { i18n } = useLingui()
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-dvh px-6">
       <div className="flex flex-col items-center gap-8 text-center">
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <AppLogo size={16} />
-          <span>Thunderbolt</span>
-        </div>
+        <AppWordmark />
 
         <div className="flex flex-col items-center gap-2">
           <h1 className="text-4xl font-semibold tracking-tight">
             <Trans>Sign-in failed</Trans>
           </h1>
-          <p className="text-muted-foreground">{i18n._(getSsoErrorMessage(searchParams.get('error')))}</p>
+          <p className="text-muted-foreground">{i18n._(getSsoErrorMessage(searchParams.get('error'), appName))}</p>
         </div>
 
         <Button asChild>

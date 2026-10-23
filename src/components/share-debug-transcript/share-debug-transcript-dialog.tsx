@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useDebugTranscriptRecipient } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { FormFooter } from '@/components/ui/form-footer'
@@ -44,6 +45,7 @@ export const ShareDebugTranscriptDialog = ({
   onSubmit,
 }: ShareDebugTranscriptDialogProps) => {
   const { t } = useLingui()
+  const recipient = useDebugTranscriptRecipient()
   const userNoteId = useId()
   const consentId = useId()
 
@@ -60,7 +62,7 @@ export const ShareDebugTranscriptDialog = ({
           <div className="flex flex-col gap-4">
             <p>
               <Trans>
-                This will share the current chat with the Thunderbolt team so that they can debug the problem.
+                This will share the current chat with the {recipient} team so that they can debug the problem.
               </Trans>
             </p>
 
@@ -71,7 +73,7 @@ export const ShareDebugTranscriptDialog = ({
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
                   <Trans>
-                    The Thunderbolt team, for debugging. It&apos;s tied to your account — it isn&apos;t anonymous.
+                    The {recipient} team, for debugging. It&apos;s tied to your account — it isn&apos;t anonymous.
                   </Trans>
                 </dd>
               </div>
@@ -91,7 +93,7 @@ export const ShareDebugTranscriptDialog = ({
                   <Trans>Where is it kept?</Trans>
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  <Trans>The chat will be retained by the Thunderbolt team.</Trans>
+                  <Trans>The chat will be retained by the {recipient} team.</Trans>
                 </dd>
               </div>
             </dl>
@@ -120,7 +122,7 @@ export const ShareDebugTranscriptDialog = ({
             onCheckedChange={(checked) => onConsentAcceptedChange(checked === true)}
           />
           <Label htmlFor={consentId} className="cursor-pointer text-[length:var(--font-size-sm)] leading-normal">
-            <Trans>I agree to share this chat session with the Thunderbolt team.</Trans>
+            <Trans>I agree to share this chat session with the {recipient} team.</Trans>
           </Label>
         </div>
 
@@ -145,7 +147,7 @@ export const ShareDebugTranscriptDialog = ({
           disabled={!consentAccepted}
           onClick={onSubmit}
         >
-          {errorMessage ? <Trans>Retry</Trans> : <Trans>Send to the Thunderbolt team</Trans>}
+          {errorMessage ? <Trans>Retry</Trans> : <Trans>Send to the {recipient} team</Trans>}
         </Button>
       </FormFooter>
     </ResponsiveModal>

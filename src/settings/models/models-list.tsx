@@ -13,6 +13,7 @@ import { PrivateBadge } from '@/components/ui/private-badge'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Model } from '@/types'
+import { useAppName } from '@/lib/branding-selectors'
 import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
 type ModelsListProps = {
@@ -26,6 +27,7 @@ type ModelsListProps = {
 /** Presentational list of configured models with enable toggles and the add affordance. */
 export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }: ModelsListProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
 
   return (
     <SettingsListBody className={settingsListBodyRowsClass}>
@@ -59,7 +61,7 @@ export const ModelsList = ({ models, activeModelId, onSelect, onToggle, onAdd }:
                 {!!model.isConfidential && <PrivateBadge />}
               </span>
             }
-            subtitle={getProviderDisplay(i18n, model)}
+            subtitle={getProviderDisplay(i18n, model, appName)}
             trailing={
               <Switch
                 checked={isEnabled}

@@ -67,7 +67,8 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { preloadChatMessageList } from './chat-messages-loader'
-import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
+import { isBuiltInAgent } from '@/defaults/agents'
+import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
@@ -348,7 +349,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       stopping,
       lastRole: messages.at(-1)?.role,
     })
-    const builtInAgentName = builtInAgent.name
+    const builtInAgentName = useAppName()
     const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
     const sendBlocked =
       imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked

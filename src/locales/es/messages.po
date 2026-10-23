@@ -64,6 +64,34 @@ msgstr ""
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} no admite archivos adjuntos. Quita los archivos adjuntos para enviar."
 
+#: src/settings/voice.tsx
+msgid "{appName} (hosted, private)"
+msgstr "{appName} (alojado, privado)"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+msgstr "{appName} es el agente integrado en la app: siempre está aquí y no necesita configuración. Se apoya en todo lo que tengas activado en tu biblioteca (habilidades, integraciones y servidores MCP) para ayudarte con lo que estés haciendo."
+
+#: src/components/storage-unavailable-screen.tsx
+msgid "{appName} needs browser storage (IndexedDB) to work, but it's currently disabled."
+msgstr "{appName} necesita el almacenamiento del navegador (IndexedDB) para funcionar, pero ahora está desactivado."
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Calendar"
+msgstr "{appName} quiere conectarse a {providerName} Calendario"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Email"
+msgstr "{appName} quiere conectarse a {providerName} Correo"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Email and Calendar"
+msgstr "{appName} quiere conectarse a {providerName} Correo y Calendario"
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "{appName} will use it across the app. You can change it later in Preferences."
+msgstr "{appName} lo usará en toda la aplicación. Puedes cambiarlo más tarde en Preferencias."
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
@@ -890,8 +918,8 @@ msgid "Complete new task"
 msgstr "Completar la tarea nueva"
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Complete the setup process to get started with Thunderbolt"
-msgstr "Completa la configuración para empezar con Thunderbolt"
+msgid "Complete the setup process to get started with {appName}"
+msgstr "Completa la configuración para empezar con {appName}"
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
@@ -2052,8 +2080,8 @@ msgid "Heavy snow showers"
 msgstr "Chubascos de nieve intensos"
 
 #: src/settings/preferences.tsx
-msgid "Help Thunderbolt Improve"
-msgstr "Ayuda a mejorar Thunderbolt"
+msgid "Help {appName} Improve"
+msgstr "Ayuda a mejorar {appName}"
 
 #: src/settings/preferences.tsx
 msgid "Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read more about our <0>privacy policy</0>."
@@ -2073,11 +2101,11 @@ msgid "Hide QR code for {deviceName}"
 msgstr "Ocultar el código QR de {deviceName}"
 
 #: src/settings/preferences.tsx
-msgid "How Thunderbolt salutes you"
-msgstr "Cómo te saluda Thunderbolt"
+msgid "How {appName} salutes you"
+msgstr "Cómo te saluda {appName}"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "I agree to share this chat session with the Thunderbolt team."
+msgid "I agree to share this chat session with the {recipient} team."
 msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
@@ -2089,8 +2117,8 @@ msgid "I have saved my recovery phrase"
 msgstr "He guardado mi frase de recuperación"
 
 #: src/components/storage-unavailable-screen.tsx
-msgid "If you are using iOS Lockdown Mode, exclude Thunderbolt from the \"Configure Web Browsing\" setting, then reopen the app."
-msgstr "Si usas el modo de aislamiento de iOS, excluye Thunderbolt del ajuste «Configurar navegación web» y vuelve a abrir la app."
+msgid "If you are using iOS Lockdown Mode, exclude {appName} from the \"Configure Web Browsing\" setting, then reopen the app."
+msgstr "Si usas el modo de aislamiento de iOS, excluye {appName} del ajuste «Configurar navegación web» y vuelve a abrir la app."
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "If you have access, we've sent an 8-digit code to <0>{email}</0>"
@@ -2749,8 +2777,12 @@ msgid "Objects"
 msgstr "Objetos"
 
 #: src/settings/preferences.tsx
-msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
+
+#: src/settings/preferences.tsx
+#~ msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+#~ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
@@ -2776,6 +2808,10 @@ msgstr "Acceso a OneDrive"
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Only available in private chats."
 msgstr "Solo disponible en chats privados."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
+msgstr "Abre {appName} en uno de tus dispositivos de confianza y ve a Ajustes → Dispositivos para aprobar este dispositivo."
 
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
@@ -2841,10 +2877,6 @@ msgstr "Abre la tienda para buscar actualizaciones."
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Open Thunderbolt CLI"
 msgstr "Abrir la CLI de Thunderbolt"
-
-#: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
-msgstr "Abre Thunderbolt en uno de tus dispositivos de confianza y ve a Ajustes → Dispositivos para aprobar este dispositivo."
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
@@ -3484,7 +3516,7 @@ msgid "Send this private chat to {agentName}?"
 msgstr "¿Enviar este chat privado a {agentName}?"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "Send to the Thunderbolt team"
+msgid "Send to the {recipient} team"
 msgstr ""
 
 #: src/components/sync-setup/confirm-identity-step.tsx
@@ -3628,13 +3660,13 @@ msgstr "Iniciar sesión"
 msgid "Sign in faster next time"
 msgstr "Inicia sesión más rápido la próxima vez"
 
+#: src/components/sign-in-modal.tsx
+msgid "Sign in to {appName}"
+msgstr "Inicia sesión en {appName}"
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
-
-#: src/components/device-approval.tsx
-msgid "Sign in to a Thunderbolt account to approve this CLI request."
-msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in to continue"
@@ -3648,14 +3680,14 @@ msgstr "Inicia sesión para activar el proxy en la nube."
 msgid "Sign in to the CLI"
 msgstr "Iniciar sesión en la CLI"
 
-#: src/components/sign-in-modal.tsx
-msgid "Sign in to Thunderbolt"
-msgstr "Inicia sesión en Thunderbolt"
-
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
 msgid "Sign in with passkey"
 msgstr "Iniciar sesión con llave de acceso"
+
+#: src/components/device-approval.tsx
+msgid "Sign in with your {appName} account to approve this CLI request."
+msgstr ""
 
 #: src/settings/passkeys.tsx
 #~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
@@ -3780,8 +3812,8 @@ msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enc
 msgstr "La transcripción y la síntesis de voz se ejecutan en el enclave confidencial de Thunderbolt."
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Start Using Thunderbolt"
-msgstr "Empezar a usar Thunderbolt"
+msgid "Start Using {appName}"
+msgstr "Empezar a usar {appName}"
 
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
@@ -3953,6 +3985,10 @@ msgstr ""
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "Ese código no es válido o ya se ha usado. Revisa tu terminal e inténtalo de nuevo."
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
 msgstr "Se perdió la conexión con el agente durante el turno anterior. Al reintentar se podrían repetir acciones que el agente ya realizó."
@@ -3974,6 +4010,10 @@ msgid "The AI provider took too long to respond. Try again."
 msgstr "El proveedor de IA tardó demasiado en responder. Inténtalo de nuevo."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the {recipient} team."
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
 #~ msgstr ""
 
@@ -3981,12 +4021,8 @@ msgstr "El proveedor de IA tardó demasiado en responder. Inténtalo de nuevo."
 #~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
 #~ msgstr ""
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The chat will be retained by the Thunderbolt team."
-msgstr ""
-
 #: src/components/revoke-device-dialog.tsx
-msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
 msgstr ""
 
 #: src/services/revoke-failure.ts
@@ -4040,10 +4076,6 @@ msgstr "El servidor rechazó la credencial. Revisa tu token Bearer o tu clave de
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "El servicio de inicio de sesión no está disponible ahora mismo. Revisa tu conexión e inténtalo de nuevo."
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."
-msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
@@ -4120,8 +4152,8 @@ msgid "This device was signed out remotely and its local data has been cleared."
 msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "This file doesn't look like a Thunderbolt export."
-msgstr "Este archivo no parece ser una exportación de Thunderbolt."
+msgid "This file doesn't look like a {appName} export."
+msgstr "Este archivo no parece ser una exportación de {appName}."
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
@@ -4182,8 +4214,8 @@ msgid "this project"
 msgstr "este proyecto"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
-msgstr "Esto elimina la conexión solo de Thunderbolt. No se cambia nada en el servidor remoto."
+msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
+msgstr "Esto elimina la conexión solo de {appName}. No se cambia nada en el servidor remoto."
 
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
@@ -4206,7 +4238,7 @@ msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "Este servidor usa OAuth. Añádelo y autorízalo para conectarte."
 
 #: src/lib/sso-error-messages.ts
-msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 msgstr ""
 
 #: src/lib/device-grant.ts
@@ -4218,8 +4250,8 @@ msgid "This transcript is too large to upload."
 msgstr ""
 
 #: src/components/upgrade-required.tsx
-msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
-msgstr "Esta versión de Thunderbolt ya no es compatible. Actualiza la app para seguir chateando y sincronizando."
+msgid "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
+msgstr "Esta versión de {appName} ya no es compatible. Actualiza la app para seguir chateando y sincronizando."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
@@ -4250,7 +4282,7 @@ msgstr "Esto eliminará de forma permanente tu cuenta y todos tus datos en nuest
 #~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This will share the current chat with the Thunderbolt team so that they can debug the problem."
+msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
 msgstr ""
 
 #: src/components/approve-device-dialog.tsx
@@ -4261,10 +4293,6 @@ msgstr "Esto compartirá tu clave de cifrado con el dispositivo, lo que le permi
 msgid "Thought for {duration}"
 msgstr "Pensó durante {duration}"
 
-#: src/settings/voice.tsx
-msgid "Thunderbolt (hosted, private)"
-msgstr "Thunderbolt (alojado, privado)"
-
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
 msgstr "CLI de Thunderbolt"
@@ -4273,33 +4301,9 @@ msgstr "CLI de Thunderbolt"
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt es de código abierto"
 
-#: src/components/settings/agents/agent-detail.tsx
-msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-msgstr "Thunderbolt es el agente integrado en la app: siempre está aquí y no necesita configuración. Se apoya en todo lo que tengas activado en tu biblioteca (habilidades, integraciones y servidores MCP) para ayudarte con lo que estés haciendo."
-
-#: src/components/storage-unavailable-screen.tsx
-msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
-msgstr "Thunderbolt necesita el almacenamiento del navegador (IndexedDB) para funcionar, pero ahora está desactivado."
-
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro todavía no está disponible. ¡Muy pronto!"
-
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Calendar"
-msgstr "Thunderbolt quiere conectarse a {providerName} Calendario"
-
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Email"
-msgstr "Thunderbolt quiere conectarse a {providerName} Correo"
-
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
-msgstr "Thunderbolt quiere conectarse a {providerName} Correo y Calendario"
-
-#: src/components/onboarding/onboarding-language-step.tsx
-msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
-msgstr "Thunderbolt lo usará en toda la aplicación. Puedes cambiarlo más tarde en Preferencias."
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -4691,8 +4695,8 @@ msgid "Welcome"
 msgstr "Bienvenido"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
-msgid "Welcome to Thunderbolt!"
-msgstr "¡Bienvenido a Thunderbolt!"
+msgid "Welcome to {appName}!"
+msgstr "¡Bienvenido a {appName}!"
 
 #: src/components/magic-link-verify.tsx
 msgid "Welcome, {displayName}"

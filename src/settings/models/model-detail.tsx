@@ -14,6 +14,7 @@ import { needsApiKey } from './model-policy'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
+import { useAppName } from '@/lib/branding-selectors'
 import { getProviderDisplay, ModelProviderIconTile } from './model-presentation'
 
 /** Copy shown in the actions menu for built-in models. Exported for unit tests. */
@@ -30,12 +31,13 @@ type ModelDetailProps = {
 /** Read-only detail panel for one model: provider identity, config fields, and the ⋯ actions menu. */
 export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: ModelDetailProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
 
   return (
     <DetailPanel
       icon={<ModelProviderIconTile model={model} />}
       title={model.name}
-      subtitle={getProviderDisplay(i18n, model)}
+      subtitle={getProviderDisplay(i18n, model, appName)}
       actions={
         <DetailActionsMenu>
           {model.isSystem === 1 ? (

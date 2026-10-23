@@ -15,6 +15,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useBrandingLinks } from '@/lib/branding-selectors'
+import { supportHref } from '@/lib/support-href'
 import type { HandleError } from '@/types/handle-errors'
 
 /**
@@ -45,6 +47,7 @@ type AppErrorScreenProps = {
 
 export const AppErrorScreen = ({ error, onClearDatabase }: AppErrorScreenProps) => {
   const isDatabaseError = error.code === 'MIGRATION_FAILED' || error.code === 'DATABASE_INIT_FAILED'
+  const links = useBrandingLinks()
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
@@ -88,10 +91,9 @@ export const AppErrorScreen = ({ error, onClearDatabase }: AppErrorScreenProps) 
 
         <Button
           variant="outline"
-          onClick={() => {
-            const { subject, body } = generateSupportEmail(error)
-            window.open(`mailto:support@thunderbird.net?subject=${subject}&body=${body}`)
-          }}
+          onClick={() =>
+            window.open(supportHref(links.support, generateSupportEmail(error)), '_blank', 'noopener,noreferrer')
+          }
         >
           <Trans>Contact Support</Trans>
         </Button>

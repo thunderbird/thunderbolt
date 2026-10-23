@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
@@ -13,7 +14,6 @@ import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { privacyPolicyUrl } from '@/lib/constants'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
@@ -172,6 +172,8 @@ const timeFormatOptions = ['12h', '24h'] as const
 
 const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: () => boolean }) => {
   const { t } = useLingui()
+  const links = useBrandingLinks()
+  const appName = useAppName()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
@@ -431,7 +433,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
       const payload = await readJsonFile(file)
       const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
       if (!summary) {
-        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a Thunderbolt export.` })
+        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a ${appName} export.` })
         return
       }
       dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
@@ -702,7 +704,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
               }}
             />
             <p className="text-sm text-muted-foreground">
-              <Trans>How Thunderbolt salutes you</Trans>
+              <Trans>How {appName} salutes you</Trans>
             </p>
           </div>
         </div>
@@ -914,7 +916,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
 
       <div className="h-6" />
 
-      <SectionCard title={t`Help Thunderbolt Improve`}>
+      <SectionCard title={t`Help ${appName} Improve`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <label className="text-sm font-medium">
@@ -979,8 +981,9 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
                     Read more about our{' '}
                     <a
                       className="text-primary underline-offset-4 hover:underline"
-                      href={privacyPolicyUrl}
+                      href={links.privacyPolicy}
                       target="_blank"
+                      rel="noopener noreferrer"
                     >
                       privacy policy
                     </a>
@@ -1013,7 +1016,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
             </label>
             <p className="text-sm text-muted-foreground">
               <Trans>
-                Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's
+                Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s
                 backend. Local (loopback) models always connect directly.
               </Trans>
             </p>

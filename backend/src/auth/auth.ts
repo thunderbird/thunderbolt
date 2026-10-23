@@ -38,7 +38,7 @@ import {
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
 import { createCaptchaProvider } from './captcha'
-import { anonymousSignInPath, authBasePath, configuredSsoProviderId } from './paths'
+import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -297,7 +297,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       window: 60,
       max: 10,
       customRules: {
-        '/get-session': { window: 1, max: 30 },
+        [getSessionPath]: { window: 1, max: 30 },
         // Anonymous sign-in is limited only by our DB-backed limiter (createAuthPluginIpRateLimit):
         // a true fixed window, shared across instances and keyed on the TRUSTED_PROXY-resolved IP.
         // Better Auth's limiter resets only after a full idle window and falls back to

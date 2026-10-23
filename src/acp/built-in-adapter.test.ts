@@ -84,13 +84,14 @@ const openaiCompat = (
 describe('isPiModelCandidate', () => {
   it('matches the production provider and tool-usage routing boundary', () => {
     expect(
-      ['anthropic', 'openai', 'custom', 'openrouter', 'thunderbolt'].map((provider) =>
+      ['anthropic', 'openai', 'custom', 'openrouter', 'otari', 'thunderbolt'].map((provider) =>
         isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
       ),
-    ).toEqual([true, true, true, true, true])
+    ).toEqual([true, true, true, true, true, true])
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
+    expect(isPiModelCandidate({ provider: 'otari', toolUsage: 0 })).toBe(false)
   })
 })
 
@@ -264,6 +265,58 @@ describe('resolvePiModel — image capability', () => {
     const resolved = await resolvePiModel(agentCore, contextFor(openaiModel), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
   })
+})
+
+describe('resolvePiModel — Otari', () => {
+  it.each([{ reply: 'hello from Otari' }, { reply: [{ name: 'lookup', args: { query: 'Mozilla' } }] }])(
+    'streams text and tool calls through the real Pi OpenAI-compatible transport ($reply)',
+    async ({ reply }) => {
+      const requests: Request[] = []
+      const transport = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requests.push(new Request(input, init))
+          return providerResponse(reply, 0)
+        },
+        { preconnect: async () => false },
+      )
+      const selectedModel = {
+        id: 'otari-test',
+        provider: 'otari',
+        model: 'anthropic:claude-sonnet-4-6',
+        apiKey: 'tk-user',
+        toolUsage: 1,
+      } as Model
+      const context = { selectedModel, getProxyFetch: () => transport } as AgentAdapterContext
+      const resolved = await resolvePiModel(realAgentCore, context, null)
+      expect(resolved?.descriptor).toMatchObject({
+        kind: 'openai-compat',
+        providerId: 'otari',
+        modelId: selectedModel.model,
+        baseURL: 'https://api.otari.ai/api/v1',
+        fetch: transport,
+      })
+      if (resolved?.descriptor.kind !== 'openai-compat') {
+        throw new Error('Expected an Otari OpenAI-compatible descriptor')
+      }
+      const { models, model } = realAgentCore.buildOpenAiCompatModel(resolved.descriptor)
+      const stream = models.getProvider('otari')!.streamSimple(model, {
+        messages: [{ role: 'user', content: 'hello', timestamp: 0 }],
+        tools: [{ name: 'lookup', description: 'Look up a query', parameters: { type: 'object', properties: {} } }],
+      })
+      const response = await stream.result()
+
+      expect(response.stopReason).toBe(typeof reply === 'string' ? 'stop' : 'toolUse')
+      expect(response.content).toContainEqual(
+        typeof reply === 'string'
+          ? expect.objectContaining({ type: 'text', text: reply })
+          : expect.objectContaining({ type: 'toolCall', name: 'lookup', arguments: { query: 'Mozilla' } }),
+      )
+      expect(requests).toHaveLength(1)
+      expect(requests[0].url).toBe('https://api.otari.ai/api/v1/chat/completions')
+      expect(requests[0].headers.get('authorization')).toBe('Bearer tk-user')
+      expect(await requests[0].json()).toMatchObject({ model: selectedModel.model, stream: true })
+    },
+  )
 })
 
 describe('resolvePiModel — managed Anthropic', () => {
@@ -1114,7 +1167,7 @@ type ProviderRequest = {
 }
 
 /** Simulate provider SSE at the HTTP boundary, keeping Pi serialization and execution real. */
-const providerResponse = (reply: ProviderToolCall[] | string, requestId: number): Response => {
+const providerResponse = (reply: readonly ProviderToolCall[] | string, requestId: number): Response => {
   const delta =
     typeof reply === 'string'
       ? { role: 'assistant', content: reply }

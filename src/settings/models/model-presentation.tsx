@@ -4,7 +4,7 @@
 
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
-import { SiAnthropic } from '@icons-pack/react-simple-icons'
+import { SiAnthropic, SiMozilla } from '@icons-pack/react-simple-icons'
 import { Server } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
@@ -14,18 +14,17 @@ import { AppLogo } from '@/components/app-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
-/** Canonical display names for model providers — the single source for labels.
- *  Key order is the provider-picker menu order (the add form derives its options
- *  from these keys, so a new provider can't silently drop out of the picker). */
+/** Canonical display names; picker membership and order live in `addableProviders`. */
 // Brand names, deliberately not translated. The one exception is `custom`,
 // which is real copy — callers substitute a translated label for it (see
 // `customProviderLabel`).
 export const providerLabels: Record<Model['provider'], string> = {
   thunderbolt: 'Thunderbolt',
   tinfoil: 'Tinfoil',
+  anthropic: 'Anthropic',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
-  anthropic: 'Anthropic',
+  otari: 'Otari',
   custom: 'Custom',
 }
 
@@ -44,6 +43,8 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
       return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
+    case 'otari':
+      return <SiMozilla size={20} aria-hidden="true" />
     case 'tinfoil':
       return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
     case 'custom':

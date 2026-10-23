@@ -9,6 +9,7 @@ import {
   hasModelConnectionChanges,
   modelApiKeyForConnection,
   providerAutoFetchesCatalog,
+  providerRequiresApiKey,
   shouldDisableAddModel,
 } from './model-policy'
 
@@ -63,6 +64,8 @@ describe('catalog policy', () => {
     expect(catalogRequiresApiKey('openai')).toBe(true)
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
     expect(catalogRequiresApiKey('anthropic')).toBe(true)
+    expect(catalogRequiresApiKey('otari')).toBe(true)
+    expect(providerRequiresApiKey('otari')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)
     expect(catalogRequiresApiKey('thunderbolt')).toBe(false)
     expect(catalogRequiresApiKey('custom')).toBe(false)
@@ -73,6 +76,7 @@ describe('catalog policy', () => {
     expect(providerAutoFetchesCatalog('tinfoil')).toBe(true)
     expect(providerAutoFetchesCatalog('anthropic')).toBe(false)
     expect(providerAutoFetchesCatalog('openai')).toBe(false)
+    expect(providerAutoFetchesCatalog('otari')).toBe(false)
     expect(providerAutoFetchesCatalog('custom')).toBe(false)
   })
 })
@@ -83,6 +87,9 @@ describe('shouldDisableAddModel', () => {
     expect(shouldDisableAddModel({ ...base, provider: 'thunderbolt', connectionStatus: 'idle' })).toBe(false)
     expect(shouldDisableAddModel({ ...base, provider: 'openai', connectionStatus: 'success' })).toBe(false)
     expect(shouldDisableAddModel({ ...base, provider: 'openai', connectionStatus: 'idle' })).toBe(true)
+    expect(shouldDisableAddModel({ ...base, provider: 'otari', connectionStatus: 'idle' })).toBe(true)
+    expect(shouldDisableAddModel({ ...base, provider: 'otari', connectionStatus: 'error' })).toBe(true)
+    expect(shouldDisableAddModel({ ...base, provider: 'otari', connectionStatus: 'success' })).toBe(false)
     expect(
       shouldDisableAddModel({ ...base, isFormValid: false, provider: 'thunderbolt', connectionStatus: 'idle' }),
     ).toBe(true)

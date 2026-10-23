@@ -112,6 +112,28 @@ describe('add model form', () => {
     expect(within(panel).queryByRole('button', { name: 'Refresh model catalog' })).not.toBeInTheDocument()
   })
 
+  it('offers Otari in the provider picker with a required token and no URL field', async () => {
+    renderModelsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'New Model' }))
+    await waitForElement(() => screen.queryByRole('heading', { name: 'Add Model' }))
+    const panel = screen.getByRole('complementary')
+
+    await act(async () => {
+      fireEvent.keyDown(within(panel).getByRole('combobox', { name: 'Provider' }), { key: 'ArrowDown' })
+      await getClock().runAllAsync()
+    })
+    expect(screen.queryByRole('option', { name: 'Thunderbolt' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: 'Otari' }))
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(within(panel).getByRole('combobox', { name: 'Provider' })).toHaveTextContent('Otari')
+    expect(within(panel).getByLabelText('API Key')).toHaveAttribute('type', 'password')
+    expect(within(panel).queryByLabelText('URL')).not.toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Add Model' })).toBeDisabled()
+  })
+
   it('clears the picked model without validating untouched fields when the provider changes', async () => {
     // Drives the state hook directly — the regression (a stale 'custom'
     // selection surviving a provider switch and keeping the custom-ID field
@@ -176,7 +198,7 @@ describe('add model form', () => {
 
     fireEvent.click(screen.getByText('select model'))
     expect(screen.getByTestId('panel-kind')).toHaveTextContent('detail')
-    expect(screen.getByTestId('provider')).toHaveTextContent('thunderbolt')
+    expect(screen.getByTestId('provider')).toHaveTextContent('anthropic')
     expect(screen.getByTestId('api-key')).toBeEmptyDOMElement()
 
     fireEvent.click(screen.getByText('open add'))

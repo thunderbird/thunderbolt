@@ -15,15 +15,10 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
-import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
-import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
+import { addableProviders, providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
 import { customProviderLabel, providerLabels } from './model-presentation'
 import type { AddModelFormValues } from './use-add-model-form'
-
-/** Provider picker options, derived from the exhaustive labels Record so a new
- *  provider added to `Model['provider']` shows up here by construction. */
-const providerOptions = Object.keys(providerLabels) as Model['provider'][]
 
 type AddModelFormProps = {
   form: UseFormReturn<AddModelFormValues>
@@ -39,7 +34,7 @@ type AddModelFormProps = {
   submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
-  onProviderChange: (provider: Model['provider']) => void
+  onProviderChange: (provider: AddModelFormValues['provider']) => void
   onCatalogInvalidated: () => void
   onSelectModel: (id: string) => void
   onTestConnection: () => void
@@ -92,16 +87,16 @@ export const AddModelForm = ({
               </FormLabel>
               <FormControl>
                 <Select
-                  onValueChange={(value: Model['provider']) => {
+                  onValueChange={(value: AddModelFormValues['provider']) => {
                     onProviderChange(value)
                   }}
                   value={field.value}
                 >
-                  <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
+                  <SelectTrigger ref={providerTriggerRef} aria-label={t`Provider`} className="w-full rounded-lg">
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerOptions.map((provider) => (
+                    {addableProviders.map((provider) => (
                       <SelectItem key={provider} value={provider}>
                         {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
                       </SelectItem>
@@ -144,35 +139,33 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {provider !== 'thunderbolt' && (
-          <FormField
-            control={form.control}
-            name="apiKey"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {provider === 'custom' ? <Trans>API Key (Optional)</Trans> : <Trans>API Key</Trans>}
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    {...field}
-                    placeholder="sk-..."
-                    className="rounded-lg"
-                    onChange={(event) => {
-                      field.onChange(event)
-                      onCatalogInvalidated()
-                    }}
-                  />
-                </FormControl>
-                {catalogError && provider !== 'custom' && (
-                  <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
-                )}
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        <FormField
+          control={form.control}
+          name="apiKey"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {provider === 'custom' ? <Trans>API Key (Optional)</Trans> : <Trans>API Key</Trans>}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  {...field}
+                  placeholder={provider === 'otari' ? 'tk-...' : 'sk-...'}
+                  className="rounded-lg"
+                  onChange={(event) => {
+                    field.onChange(event)
+                    onCatalogInvalidated()
+                  }}
+                />
+              </FormControl>
+              {catalogError && provider !== 'custom' && (
+                <p className="mt-1 whitespace-pre-line text-sm text-destructive">{catalogError}</p>
+              )}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         {showModelSelection && (
           <FormField
             control={form.control}

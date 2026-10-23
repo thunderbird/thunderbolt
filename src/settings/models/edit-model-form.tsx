@@ -112,7 +112,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
                     type="password"
                     {...field}
                     onChange={(event) => state.changeApiKey(event.target.value)}
-                    placeholder={model.apiKey ? '••••••••••••••••' : 'sk-...'}
+                    placeholder={model.apiKey ? '••••••••••••••••' : model.provider === 'otari' ? 'tk-...' : 'sk-...'}
                     className="rounded-lg"
                   />
                 </FormControl>

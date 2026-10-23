@@ -6,13 +6,18 @@ import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
+import { i18n } from '@/i18n'
+import { getModel } from '@/dal/models'
+import { modelsTable } from '@/db/tables'
+import { mockProxyFetch } from '@/test-utils/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
-import { generateModelName, useAddModelForm } from './use-add-model-form'
+import { addableProviders } from './model-policy'
+import { createAddModelFormSchema, generateModelName, useAddModelForm } from './use-add-model-form'
 
 describe('generateModelName', () => {
   it('title-cases hyphenated ids and keeps version numbers intact', () => {
@@ -32,6 +37,36 @@ describe('generateModelName', () => {
   it('preserves decimal versions', () => {
     expect(generateModelName('glm-5.2')).toBe('Glm 5.2')
   })
+
+  it('removes Otari provider prefixes without treating them as Ollama tags', () => {
+    expect(generateModelName('openai:gpt-4o', 'otari')).toBe('Gpt 4 O')
+    expect(generateModelName('anthropic:claude-sonnet-4-6', 'otari')).toBe('Claude Sonnet 4 6')
+    expect(generateModelName('openrouter:meta-llama/llama-3.3-70b', 'otari')).toBe('Llama 3.3 70 B')
+    expect(generateModelName('my-model', 'otari')).toBe('My Model')
+  })
+})
+
+describe('Otari form validation', () => {
+  it('accepts every addable provider and excludes the managed provider', () => {
+    const schema = createAddModelFormSchema(i18n)
+    for (const provider of addableProviders) {
+      expect(
+        schema.safeParse({ provider, name: 'Model', model: 'model', apiKey: 'key', url: 'https://example.com/v1' })
+          .success,
+      ).toBe(true)
+    }
+    expect(addableProviders).not.toContain('thunderbolt')
+  })
+
+  it('requires a token and model, and uses the fixed hosted URL', () => {
+    const schema = createAddModelFormSchema(i18n)
+    const values = { provider: 'otari', name: 'GPT', model: 'openai:gpt-4o', apiKey: 'tk-user' }
+    expect(schema.safeParse(values).success).toBe(true)
+    expect(schema.safeParse({ ...values, apiKey: '' }).success).toBe(false)
+    expect(schema.safeParse({ ...values, apiKey: undefined }).success).toBe(false)
+    expect(schema.safeParse({ ...values, model: '' }).success).toBe(false)
+    expect(schema.safeParse({ ...values, provider: 'thunderbolt' }).success).toBe(false)
+  })
 })
 
 describe('useAddModelForm', () => {
@@ -49,6 +84,57 @@ describe('useAddModelForm', () => {
     await resetTestDatabase()
   })
 
+  it('discovers and saves an Otari model with its token confined to device-local storage', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({ data: [{ id: 'anthropic:claude-sonnet-4-6', supports_tools: true }] }),
+    )
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: () => {} }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      await act(async () => {
+        result.current.onProviderChange('otari')
+        await getClock().runAllAsync()
+      })
+      expect(getSpy).not.toHaveBeenCalled()
+      expect(result.current.form.getValues('url')).toBe('')
+
+      act(() => result.current.form.setValue('apiKey', 'tk-user'))
+      await act(async () => {
+        await getClock().tickAsync(499)
+      })
+      expect(getSpy).not.toHaveBeenCalled()
+      await act(async () => {
+        await getClock().tickAsync(1)
+      })
+      expect(getSpy).toHaveBeenCalledWith('https://api.otari.ai/api/v1/models', {
+        headers: { Authorization: 'Bearer tk-user' },
+        fetch: mockProxyFetch,
+      })
+
+      act(() => result.current.onSelectModel('anthropic:claude-sonnet-4-6'))
+      expect(result.current.form.getValues('name')).toBe('Claude Sonnet 4 6')
+      expect(result.current.supportsTools).toBe(true)
+      await act(async () => {
+        result.current.onSubmit(result.current.form.getValues())
+        await getClock().runAllAsync()
+      })
+
+      const created = useChatStore.getState().models.find((candidate) => candidate.provider === 'otari')!
+      expect(await getModel(getDb(), created.id)).toMatchObject({
+        provider: 'otari',
+        model: 'anthropic:claude-sonnet-4-6',
+        apiKey: 'tk-user',
+        url: null,
+      })
+      const syncedRows = await getDb().select().from(modelsTable)
+      expect(JSON.stringify(syncedRows)).not.toContain('tk-user')
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
   it('refreshes the chat model list before closing after creation', async () => {
     const onClose = mock(() => {})
     const onMutationStart = mock(() => {})
@@ -58,12 +144,12 @@ describe('useAddModelForm', () => {
 
     await act(async () => {
       result.current.onSubmit({
-        provider: 'thunderbolt',
+        provider: 'anthropic',
         name: 'New Chat Model',
         model: 'new-chat-model',
         customModel: '',
         url: '',
-        apiKey: '',
+        apiKey: 'sk-test',
       })
       await getClock().runAllAsync()
     })
@@ -87,12 +173,12 @@ describe('useAddModelForm', () => {
     try {
       await act(async () => {
         result.current.onSubmit({
-          provider: 'thunderbolt',
+          provider: 'anthropic',
           name: 'Broken Model',
           model: 'broken-model',
           customModel: '',
           url: '',
-          apiKey: '',
+          apiKey: 'sk-test',
         })
         await getClock().runAllAsync()
       })
@@ -118,12 +204,12 @@ describe('useAddModelForm', () => {
 
     await act(async () => {
       result.current.onSubmit({
-        provider: 'thunderbolt',
+        provider: 'anthropic',
         name: 'My Custom Model',
         model: 'ignored-model',
         customModel: 'gpt-4-turbo-preview',
         url: '',
-        apiKey: '',
+        apiKey: 'sk-test',
       })
       await getClock().runAllAsync()
     })

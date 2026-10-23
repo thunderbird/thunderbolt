@@ -19,6 +19,7 @@ import { createModel, getAvailableModels } from '@/dal'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
+import { addableProviders } from './model-policy'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
@@ -31,7 +32,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+      provider: z.enum(addableProviders),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -42,13 +43,10 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       message: i18n._(urlRequiredForCustom),
       path: ['url'],
     })
-    .refine(
-      (data) =>
-        data.provider === 'thunderbolt' ||
-        data.provider === 'custom' ||
-        (data.apiKey !== undefined && data.apiKey.length > 0),
-      { message: i18n._(apiKeyRequired), path: ['apiKey'] },
-    )
+    .refine((data) => data.provider === 'custom' || (data.apiKey !== undefined && data.apiKey.length > 0), {
+      message: i18n._(apiKeyRequired),
+      path: ['apiKey'],
+    })
 
 export type AddModelFormValues = z.infer<ReturnType<typeof createAddModelFormSchema>>
 
@@ -85,8 +83,9 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
 }
 
 /** Generates a readable display name from a provider model identifier. */
-export const generateModelName = (modelId: string): string => {
-  const segment = modelId.split('/').pop() ?? modelId
+export const generateModelName = (modelId: string, provider?: Model['provider']): string => {
+  const unprefixedId = provider === 'otari' ? modelId.slice(modelId.indexOf(':') + 1) : modelId
+  const segment = unprefixedId.split('/').pop() ?? unprefixedId
   const beforeColon = segment.split(':')[0]
   const parts = beforeColon.split(/[-_]+/).flatMap((part) => {
     if (/^[A-Za-z]\d$/.test(part)) {
@@ -116,7 +115,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
     defaultValues: {
-      provider: 'thunderbolt',
+      provider: 'anthropic',
       name: '',
       model: '',
       customModel: '',
@@ -203,7 +202,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
-    form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    form.setValue('name', selected?.name || generateModelName(modelId, provider), { shouldValidate: true })
   }
 
   // Recomputes formState.isValid for the freshly blanked fields (the submit
@@ -213,7 +212,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.clearErrors()
   }
 
-  const changeProvider = (nextProvider: Model['provider']) => {
+  const changeProvider = (nextProvider: AddModelFormValues['provider']) => {
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
@@ -233,7 +232,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   // locale after a language switch. See the Localization section in AGENTS.md.
   const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
-    return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
+    return [...items, customModelItem(i18n)]
   }
   const modelItems = buildModelItems()
   const supportsTools =

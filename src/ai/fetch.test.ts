@@ -641,6 +641,25 @@ describe('createModel', () => {
   })
 })
 
+describe('resolveOpenAiCompatConnection (Otari)', () => {
+  it('uses the hosted API and proxy with the user token', () => {
+    const model = { provider: 'otari', apiKey: 'tk-user', url: 'https://ignored.example' } as Model
+    expect(resolveOpenAiCompatConnection(model, () => stubProxyFetch)).toEqual({
+      baseURL: 'https://api.otari.ai/api/v1',
+      apiKey: 'tk-user',
+      fetch: stubProxyFetch,
+    })
+  })
+
+  it.each([null, ''])('rejects a missing token (%s) before resolving a transport', async (apiKey) => {
+    const getProxyFetch = mock(() => stubProxyFetch)
+    const model = { provider: 'otari', apiKey } as Model
+    expect(resolveOpenAiCompatConnection(model, getProxyFetch)).toBeNull()
+    await expect(createModel(model, getProxyFetch)).rejects.toThrow('No API key provided')
+    expect(getProxyFetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('resolveManagedAnthropicConnection', () => {
   it.each(['anthropic-sdk', 'ai-sdk'] as const)(
     'targets the native backend route for %s and replaces the SDK key with app authentication',

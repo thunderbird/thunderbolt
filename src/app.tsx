@@ -70,6 +70,7 @@ import { markAppMounted } from '@/lib/init-timing'
 import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
+import { ProjectRedirect } from '@/projects/project-redirect'
 
 // Loaded after first paint so framer-motion feature code lives in an
 // async chunk instead of the entry bundle.
@@ -85,8 +86,6 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
-  // Secondary feature, off the chat/landing critical path — lazy per CLAUDE.md.
-  projects: () => import('@/projects'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
@@ -101,7 +100,6 @@ const routeChunkLoaders = {
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
-const ProjectsPage = lazy(routeChunkLoaders.projects)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
@@ -230,12 +228,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route index element={<Navigate to="/chats/new" replace />} />
               <Route path="chats/:chatThreadId" element={<ChatDetailPage />} />
               {experimentalFeatureTasks.value && <Route path="tasks" element={<TasksPage />} />}
-              {/* One component for both: `:projectId` is the list with that
-                  project's slide-out open, so a deep link, a sidebar row, a search
-                  hit, and the chat badge all land on the same surface — and there
-                  is one place a project is edited. */}
-              <Route path="projects" element={<ProjectsPage />} />
-              <Route path="projects/:projectId" element={<ProjectsPage />} />
+              {/* Preserve existing project links after moving projects into the sidebar. */}
+              <Route path="projects" element={<ProjectRedirect />} />
+              <Route path="projects/:projectId" element={<ProjectRedirect />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>

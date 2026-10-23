@@ -111,6 +111,7 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        className="sm:max-w-sm"
         showCloseButton={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault()

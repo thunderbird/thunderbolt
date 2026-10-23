@@ -15,48 +15,8 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
-msgstr "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Confirm your recovery phrase change"
-msgstr "Confirm your recovery phrase change"
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
-msgstr "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
-msgstr "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Confirm your account deletion"
-msgstr "Confirm your account deletion"
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
-msgstr "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
-msgstr "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Your recovery phrase was changed"
-msgstr "Your recovery phrase was changed"
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
-msgstr "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
+msgid "A bridge device was connected to your account"
+msgstr "A bridge device was connected to your account"
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
@@ -65,33 +25,8 @@ msgstr "A new device was added to your account"
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "Device “{deviceName}” was approved from device “{approverName}” and now has access to your encrypted data."
-msgstr "Device “{deviceName}” was approved from device “{approverName}” and now has access to your encrypted data."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "If this wasn’t you, revoke it from Settings → Devices."
-msgstr "If this wasn’t you, revoke it from Settings → Devices."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Your recovery phrase was used"
-msgstr "Your recovery phrase was used"
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "Device “{deviceName}” was connected to your account using your recovery phrase."
-msgstr "Device “{deviceName}” was connected to your account using your recovery phrase."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "If this wasn’t you, your recovery phrase is compromised — revoke that device from Settings → Devices and change your phrase immediately."
-msgstr "If this wasn’t you, your recovery phrase is compromised — revoke that device from Settings → Devices and change your phrase immediately."
-
-#. js-lingui-explicit-id
-#: src/lib/security-notifications.tsx
-msgid "A bridge device was connected to your account"
-msgstr "A bridge device was connected to your account"
+msgid "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
+msgstr "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
@@ -100,8 +35,28 @@ msgstr "Bridge device “{deviceName}” was connected to your account and now h
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "Your account encryption was upgraded"
-msgstr "Your account encryption was upgraded"
+msgid "Confirm your account deletion"
+msgstr "Confirm your account deletion"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Confirm your recovery phrase change"
+msgstr "Confirm your recovery phrase change"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
+msgstr "Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Device “{deviceName}” was approved from device “{approverName}” and now has access to your encrypted data."
+msgstr "Device “{deviceName}” was approved from device “{approverName}” and now has access to your encrypted data."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Device “{deviceName}” was connected to your account using your recovery phrase."
+msgstr "Device “{deviceName}” was connected to your account using your recovery phrase."
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
@@ -110,13 +65,33 @@ msgstr "End-to-end encryption was set up"
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "Your account was upgraded to the new encryption scheme from device “{deviceName}”, and a new recovery phrase was created."
-msgstr "Your account was upgraded to the new encryption scheme from device “{deviceName}”, and a new recovery phrase was created."
+msgid "End-to-end encryption was set up for your account from device “{deviceName}”, and a recovery phrase was created."
+msgstr "End-to-end encryption was set up for your account from device “{deviceName}”, and a recovery phrase was created."
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-reminder.tsx
+msgid "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+msgstr "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
-msgid "End-to-end encryption was set up for your account from device “{deviceName}”, and a recovery phrase was created."
-msgstr "End-to-end encryption was set up for your account from device “{deviceName}”, and a recovery phrase was created."
+msgid "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
+msgstr "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
+msgstr "If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, revoke it from Settings → Devices."
+msgstr "If this wasn’t you, revoke it from Settings → Devices."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
+msgstr "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
 
 #. js-lingui-explicit-id
 #: src/lib/security-notifications.tsx
@@ -124,29 +99,19 @@ msgid "If this wasn’t you, secure your account now: revoke unknown devices fro
 msgstr "If this wasn’t you, secure your account now: revoke unknown devices from Settings → Devices."
 
 #. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, your recovery phrase is compromised — revoke that device from Settings → Devices and change your phrase immediately."
+msgstr "If this wasn’t you, your recovery phrase is compromised — revoke that device from Settings → Devices and change your phrase immediately."
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-not-ready.tsx
+msgid "Not quite ready yet!"
+msgstr "Not quite ready yet!"
+
+#. js-lingui-explicit-id
 #: src/emails/email-layout.tsx
 msgid "Questions?"
 msgstr "Questions?"
-
-#. js-lingui-explicit-id
-#: src/emails/email-layout.tsx
-msgid "You can reply to this email"
-msgstr "You can reply to this email"
-
-#. js-lingui-explicit-id
-#: src/emails/magic-link.tsx
-msgid "Your Thunderbolt verification code"
-msgstr "Your Thunderbolt verification code"
-
-#. js-lingui-explicit-id
-#: src/emails/magic-link.tsx
-msgid "Sign in to Thunderbolt"
-msgstr "Sign in to Thunderbolt"
-
-#. js-lingui-explicit-id
-#: src/emails/magic-link.tsx
-msgid "Use the code below to sign in, or click the button."
-msgstr "Use the code below to sign in, or click the button."
 
 #. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
@@ -154,20 +119,14 @@ msgid "Sign In"
 msgstr "Sign In"
 
 #. js-lingui-explicit-id
-#: src/emails/waitlist-joined.tsx
-#: src/emails/waitlist-not-ready.tsx
-msgid "You're on the Thunderbolt waitlist!"
-msgstr "You're on the Thunderbolt waitlist!"
+#: src/emails/magic-link.tsx
+msgid "Sign in to Thunderbolt"
+msgstr "Sign in to Thunderbolt"
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
 msgid "Thanks for signing up!"
 msgstr "Thanks for signing up!"
-
-#. js-lingui-explicit-id
-#: src/emails/waitlist-joined.tsx
-msgid "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
-msgstr "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-joined.tsx
@@ -177,9 +136,9 @@ msgid "The Thunderbolt Team"
 msgstr "The Thunderbolt Team"
 
 #. js-lingui-explicit-id
-#: src/emails/waitlist-not-ready.tsx
-msgid "Not quite ready yet!"
-msgstr "Not quite ready yet!"
+#: src/emails/magic-link.tsx
+msgid "Use the code below to sign in, or click the button."
+msgstr "Use the code below to sign in, or click the button."
 
 #. js-lingui-explicit-id
 #: src/emails/waitlist-not-ready.tsx
@@ -187,11 +146,52 @@ msgid "We noticed you tried to sign in to Thunderbolt. You're on our waitlist, b
 msgstr "We noticed you tried to sign in to Thunderbolt. You're on our waitlist, but we're not quite ready for you yet. Don't worry — we're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
 
 #. js-lingui-explicit-id
+#: src/emails/email-layout.tsx
+msgid "You can reply to this email"
+msgstr "You can reply to this email"
+
+#. js-lingui-explicit-id
 #: src/emails/waitlist-reminder.tsx
 msgid "You're already on the waitlist!"
 msgstr "You're already on the waitlist!"
 
 #. js-lingui-explicit-id
-#: src/emails/waitlist-reminder.tsx
-msgid "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
-msgstr "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+#: src/emails/waitlist-joined.tsx
+#: src/emails/waitlist-not-ready.tsx
+msgid "You're on the Thunderbolt waitlist!"
+msgstr "You're on the Thunderbolt waitlist!"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-joined.tsx
+msgid "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
+msgstr "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your account encryption was upgraded"
+msgstr "Your account encryption was upgraded"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your account was upgraded to the new encryption scheme from device “{deviceName}”, and a new recovery phrase was created."
+msgstr "Your account was upgraded to the new encryption scheme from device “{deviceName}”, and a new recovery phrase was created."
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your recovery phrase was changed"
+msgstr "Your recovery phrase was changed"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your recovery phrase was used"
+msgstr "Your recovery phrase was used"
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
+msgstr "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
+
+#. js-lingui-explicit-id
+#: src/emails/magic-link.tsx
+msgid "Your Thunderbolt verification code"
+msgstr "Your Thunderbolt verification code"

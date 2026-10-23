@@ -15,7 +15,7 @@ export type MiniAppChat = ChatWithLastActivity
 /**
  * Live chats started from one Mini App, newest activity first.
  *
- * The query itself is shared with `useProjectChats` — see
+ * The activity ordering matches the sidebar — see
  * {@link useChatsWithLastActivity}. What stays here is the column, and the
  * lifecycle note that made this a separate module in the first place: a project
  * is a row this app owns and cleans up after, while a Mini App is deployment

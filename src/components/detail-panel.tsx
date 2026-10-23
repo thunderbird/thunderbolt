@@ -46,6 +46,8 @@ type DetailPanelProps = {
   /** Extra header actions (e.g. a ⋯ menu), rendered left of the Close button. */
   actions?: ReactNode
   onClose: () => void
+  /** Hide when the containing modal supplies its own close control. */
+  showCloseButton?: boolean
   children: ReactNode
 }
 
@@ -55,7 +57,15 @@ type DetailPanelProps = {
  * surface card, on mobile inside the full-screen overlay — so content lies
  * flat on the surface with hairline dividers instead of nested cards.
  */
-export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children }: DetailPanelProps) => {
+export const DetailPanel = ({
+  icon,
+  title,
+  subtitle,
+  actions,
+  onClose,
+  showCloseButton = true,
+  children,
+}: DetailPanelProps) => {
   const { t } = useLingui()
   const { isMobile } = useResponsiveModalContext()
 
@@ -89,15 +99,17 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
               mobile shell instead splits them across the top corners. */}
           <div className="absolute -right-4 -top-0.5 flex shrink-0 items-center gap-0.5">
             {actions}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label={t`Close details`}
-              className={mutedIconButtonClass}
-            >
-              <X />
-            </Button>
+            {showCloseButton && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label={t`Close details`}
+                className={mutedIconButtonClass}
+              >
+                <X />
+              </Button>
+            )}
           </div>
         </header>
       )}

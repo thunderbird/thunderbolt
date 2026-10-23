@@ -5,7 +5,7 @@
 import { useConfigStore } from '@/api/config-store'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { getDb } from '@/db/database'
-import { chatThreadsTable } from '@/db/tables'
+import { chatThreadsTable, projectsTable } from '@/db/tables'
 import { deleteChatThread } from '@/dal'
 import { createProject } from '@/dal/projects'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -120,7 +120,7 @@ describe('Sidebar reactivity', () => {
 
     const scrollArea = document.querySelector<HTMLElement>('[data-slot="chat-list-scroll"]')
     const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
-    const recentChatsLabel = screen.getByText('Recent Chats')
+    const recentChatsLabel = screen.getByText('Recents')
     const sidebarFooter = document.querySelector<HTMLElement>('[data-sidebar="footer"]')
 
     expect(scrollArea).toContainElement(recentChatsLabel)
@@ -154,6 +154,28 @@ describe('Sidebar reactivity', () => {
       useConfigStore.setState({ config: {}, configLoaded: false })
     })
 
+    it('keeps chats visible until their live projects arrive through sync', async () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      const projectId = uuidv7()
+      await getDb()
+        .insert(chatThreadsTable)
+        .values({ id: uuidv7(), title: 'Waiting for project', projectId, isEncrypted: 0 })
+      const { triggerChange } = renderWithReactivity(<Sidebar />, {
+        tables: ['chat_threads', 'projects'],
+        wrapper: SidebarTestWrapper,
+      })
+      expect(screen.queryByText('Waiting for project')).toBeNull()
+      await waitForElement(() => screen.queryByText('Waiting for project'))
+      expect(screen.queryByText('Waiting for project')).not.toBeNull()
+      await getDb().insert(projectsTable).values({ id: projectId, name: 'Synced project' })
+      await act(async () => {
+        triggerChange(['projects'])
+        await getClock().runAllAsync()
+      })
+      await waitForElement(() => screen.queryByText('Synced project'))
+      expect(screen.queryByText('Waiting for project')).toBeNull()
+    })
+
     it('offers the Settings section by default', () => {
       useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
@@ -161,10 +183,10 @@ describe('Sidebar reactivity', () => {
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
     })
 
-    it('offers Projects outside minimal mode and hides it in minimal mode', () => {
+    it('offers Projects outside minimal mode and hides it in minimal mode', async () => {
       useConfigStore.setState({ config: {}, configLoaded: true })
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
-      expect(screen.getByText('Projects')).toBeInTheDocument()
+      expect(await waitForElement(() => screen.queryByText('Projects'))).toBeInTheDocument()
 
       cleanup()
       useConfigStore.setState(minimalConfig)
@@ -182,7 +204,7 @@ describe('Sidebar reactivity', () => {
       it('lists the project drop targets outside minimal mode', async () => {
         await renderWithProject({ config: {}, configLoaded: true })
 
-        expect(await waitForElement(() => screen.queryByText('Recent Projects'))).toBeInTheDocument()
+        expect(await waitForElement(() => screen.queryByText('Projects'))).toBeInTheDocument()
       })
 
       it('hides the project drop targets in minimal mode', async () => {
@@ -191,7 +213,7 @@ describe('Sidebar reactivity', () => {
           await getClock().runAllAsync()
         })
 
-        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
+        expect(screen.queryByText('Projects')).not.toBeInTheDocument()
         expect(screen.queryByText('Alpha')).not.toBeInTheDocument()
       })
 
@@ -202,17 +224,22 @@ describe('Sidebar reactivity', () => {
         })
 
         expect(screen.queryByText('Projects')).not.toBeInTheDocument()
-        expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument()
       })
     })
 
-    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
-      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
-      renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
+    it.each([false, true])(
+      'renders from a persisted config before the fetch answers (minimal mode %s)',
+      async (minimal) => {
+        useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+        renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
-      expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
-      expect(screen.queryByText('Projects') !== null).toBe(!minimal)
-    })
+        expect(screen.queryByLabelText('Settings') !== null).toBe(!minimal)
+        if (!minimal) {
+          await waitForElement(() => screen.queryByText('Projects'))
+        }
+        expect(screen.queryByText('Projects') !== null).toBe(!minimal)
+      },
+    )
 
     it('shows the toggle once the first-ever fetch answers', () => {
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })

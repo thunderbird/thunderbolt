@@ -37,7 +37,7 @@ type ResponsiveActionMenuProps = {
   /** Positioning/sizing for the desktop dropdown panel. */
   desktopMenu?: Pick<
     ComponentProps<typeof DropdownMenuContent>,
-    'side' | 'align' | 'sideOffset' | 'collisionPadding' | 'className'
+    'side' | 'align' | 'sideOffset' | 'collisionPadding' | 'className' | 'onCloseAutoFocus'
   >
 }
 

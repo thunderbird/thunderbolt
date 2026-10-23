@@ -51,10 +51,8 @@ type HeaderAgentSelectorProps = {
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Rendered immediately left of the selector, inside its positioned wrapper on
-   *  mobile so it docks with the pill instead of being laid out against a header
-   *  column the pill has left. */
-  leading?: ReactNode
+  /** Mobile project control that moves left as the agent picker docks beside it. */
+  projectControl?: ReactNode
 }
 
 const HeaderAgentSelector = ({
@@ -64,7 +62,7 @@ const HeaderAgentSelector = ({
   onSelect,
   onAddAgent,
   mobile,
-  leading,
+  projectControl,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
   const isReplying = status === 'streaming' || status === 'submitted'
@@ -105,19 +103,30 @@ const HeaderAgentSelector = ({
     // The trigger width stays fixed throughout. Its labeled pill and logo-only
     // circle crossfade internally (see AgentSelector), so this wrapper only
     // animates translate and both directions remain compositor-driven.
-    <div
-      {...mobile.dragProps}
-      className={cn(
-        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-        collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
+    <>
+      {projectControl && (
+        <div
+          {...mobile.dragProps}
+          className={cn(
+            'absolute top-2 right-2 z-10 transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? '-translate-x-[calc(var(--touch-height-lg)+0.5rem)]' : 'translate-x-0',
+          )}
+        >
+          {projectControl}
+        </div>
       )}
-    >
-      {/* Inside the wrapper, so the docked translate (which pins the group's
-          right edge to the content edge) accounts for it and the two circles
-          travel together. */}
-      {leading}
-      {selector}
-    </div>
+      {/* Cross above the project while docking. Only the visible agent trigger
+          accepts taps, leaving the project accessible under the empty pill. */}
+      <div
+        {...mobile.dragProps}
+        className={cn(
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
+        )}
+      >
+        {selector}
+      </div>
+    </>
   )
 }
 
@@ -274,7 +283,7 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
-      leading={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
+      projectControl={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
@@ -348,9 +357,8 @@ export const Header = () => {
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
-        {/* Beside the agent selector rather than centred: it groups with the other
-            "what this chat is" controls. Desktop only — the mobile header positions
-            the agent pill absolutely and has no room next to it. */}
+        {/* Desktop keeps the project name beside the selector; mobile has an
+            independently positioned icon-only control. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
       {privateSwitchDialog}

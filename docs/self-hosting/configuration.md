@@ -118,12 +118,12 @@ Users create personal access tokens in the app so a script or the command-line c
 
 Lets users sign in with a passkey, and unlock sync on a new device with it instead of approving it from another device. Consumer sign-in only; ignored under OIDC and SAML.
 
-| Variable                  | Default              | What it does                                                                                                                                            |
-| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PASSKEY_ENABLED`         | `false`              | Turns passkeys on.                                                                                                                                      |
-| `PASSKEY_RP_ID`           | `APP_URL`'s hostname | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
-| `PASSKEY_RP_NAME`         | `Thunderbolt`        | Name shown in the browser's passkey prompt.                                                                                                             |
-| `PASSKEY_ANDROID_ORIGINS` | empty                | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
+| Variable                  | Default               | What it does                                                                                                                                            |
+| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSKEY_ENABLED`         | `false`               | Turns passkeys on.                                                                                                                                      |
+| `PASSKEY_RP_ID`           | `APP_URL`'s hostname  | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
+| `PASSKEY_RP_NAME`         | the branding app name | Name shown in the browser's passkey prompt. Unset, it uses `appName` from [`BRANDING_JSON`](#branding), then `Thunderbolt`.                             |
+| `PASSKEY_ANDROID_ORIGINS` | empty                 | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
 
 > [!WARNING]
 > The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
@@ -283,6 +283,58 @@ HAYSTACK_PIPELINES='[{"id":"rag-chat","name":"RAG Chat","pipelineName":"rag-chat
 
 A pipeline that should accept file attachments needs `"supportedContent": {"text": true, "files": true}`. Without it attachments never reach the pipeline, and it is run as a chat pipeline rather than a generative one.
 
+## Branding
+
+| Variable        | Default | What it does                                                                     |
+| --------------- | ------- | -------------------------------------------------------------------------------- |
+| `BRANDING_JSON` | empty   | JSON object that renames the app and restyles it with shadcn-style theme tokens. |
+
+Every key is optional; anything you leave out keeps the default look. The API refuses to start when the value is not valid JSON or breaks the rules below, and lists every problem at once. In a `.env` file, wrap the value in single quotes (`BRANDING_JSON='{…}'`): unquoted, the `#` of the first hex color starts a comment and cuts the JSON short.
+
+```json
+{
+  "appName": "Acme AI",
+  "defaultThemeMode": "dark",
+  "cssVars": {
+    "theme": { "radius": "0.75rem" },
+    "light": { "background": "#f8fafc", "foreground": "#0f172a", "primary": "#4f46e5" },
+    "dark": { "background": "#0f172a", "foreground": "#e2e8f0", "primary": "#6366f1" }
+  }
+}
+```
+
+- `appName` (up to 60 characters) replaces Thunderbolt wherever the text means the app: the browser tab, sign-in, onboarding, settings and the standalone screens, the built-in agent's name, transactional emails, the passkey prompt (unless `PASSKEY_RP_NAME` is set), the consent screen of MCP servers users connect to, and the host name Mini Apps see. Text about the Thunderbolt product itself keeps the name: the command-line client, Thunderbolt Pro, the desktop app downloads and the open-source note. The desktop and mobile apps' own name and icon are set when they are built, so they stay Thunderbolt.
+- `defaultThemeMode` is `light`, `dark` or `system`, and applies to users who have never chosen a theme on that device.
+- `cssVars` uses the [shadcn theme](https://ui.shadcn.com/docs/theming) format, so a theme exported from an editor such as [tweakcn](https://tweakcn.com) can be pasted in as its `cssVars` object. `light` and `dark` are set independently; a mode you omit keeps the default palette.
+
+**Colors** are hex, `rgb()`, `hsl()`, `oklch()` or `oklab()` with plain numbers. Each mode accepts shadcn's tokens — `background`, `foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive` (each with a `-foreground` partner), `border`, `input`, `ring`, `chart-1` to `chart-5`, and the `sidebar-*` set — plus four of Thunderbolt's own:
+
+- `brand` fills primary buttons, checkboxes, switches and highlights. On its own it is a solid color; add `brand-secondary` to make it a left-to-right gradient that starts from `brand-secondary`. Without `brand`, the theme's `primary` is used, which is how shadcn themes color their buttons. `brand-foreground` sets the text on it.
+- `border-strong` is the firmer border on focused inputs.
+- `success` and `warning`, each with a `-foreground` partner.
+
+Setting `background` or `foreground` in a mode also derives the surfaces you don't set from them — cards, menus, the sidebar, hover fills, borders and secondary text — so a three-color theme stays coherent. Any token you set explicitly wins. Text on `brand` and `primary` switches between light and dark automatically for contrast unless you set its `-foreground`.
+
+**Shadows** come from six parameters per mode, as in tweakcn: `shadow-color`, `shadow-opacity` (0 to 1), `shadow-blur`, `shadow-spread`, `shadow-offset-x` and `shadow-offset-y`. Thunderbolt generates every shadow size from them; a hard offset shadow with no blur gives a neo-brutalist look, and an opacity of `0` a flat one.
+
+**Shape**: `radius` (a `px` or `rem` length; the default is `0.625rem`, `0px` is square) scales every corner in the app together, and `letter-spacing` sets the text tracking. Both apply to both modes; put them in `theme`.
+
+**Links**: `links` points the legal and support links at your own pages: `privacyPolicy` and `termsOfService` (http or https URLs), shown on the sign-up, onboarding and Preferences screens, and `support` (an http or https URL, or a `mailto:` address), used by the Contact Support button on the startup error screen. A link you leave out keeps Thunderbolt's.
+
+```json
+"links": { "privacyPolicy": "https://acme.com/privacy", "termsOfService": "https://acme.com/terms", "support": "mailto:help@acme.com" }
+```
+
+**Logo**: `logo` takes `light` and an optional `dark` image URL (https only; SVG, PNG, WebP or JPEG up to 512 KB). The API downloads them at startup and serves them itself; the app shows them in place of the Thunderbolt mark, and on the web as the browser tab icon. A square mark works best, since every placement is square. Emails use the light logo when it is a PNG or JPEG, which email clients can display, linking it at its own URL; an SVG logo leaves the emails with the Thunderbolt mark. The desktop and mobile app icons are set when the apps are built and do not change. A download failure is logged and the default mark stays.
+
+**Fonts**: `font-sans` (all body text), `font-heading` (display headings), `font-mono` (code) and `font-serif` each take a font list such as `"DM Sans", sans-serif`; put them in `theme`. A slot you leave out keeps the default: the system font for body text and code, Mozilla Headline for headings. At startup the API downloads each list's first named font from Google Fonts (Latin and Latin Extended characters) and serves the files itself, so users' browsers never contact Google; the API needs outbound access to `fonts.googleapis.com` and `fonts.gstatic.com`. A name Google does not host, such as Georgia, is left to the fonts installed on each device. Every list is followed by the system and Japanese fallback fonts, so other scripts keep rendering. A download failure is logged and the app uses system fonts until the next restart; a returning user sees the system font for a moment on launch before the brand font swaps in.
+
+Keys that theme exports carry but Thunderbolt does not apply are accepted and ignored: `spacing`, the `tracking-*` set and the precomputed `shadow-*` sizes. Any other unknown key is an error, which catches typos.
+
+Transactional emails take the light-mode `background`, `foreground`, `border`, `primary` and `brand` colors, converted to hex for email clients.
+
+Changes reach users on their next app load; a returning user sees the previous branding for a moment until the new configuration arrives.
+
 ## Mini Apps
 
 A Mini App is a web app you host at its own URL, shown as a page in Thunderbolt with the chat beside it. Web and desktop only.
@@ -438,13 +490,14 @@ If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wr
 
 ## Debug transcripts
 
-Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
+Users can send a conversation transcript to whoever runs your intake (the Thunderbolt team, unless you run your own) for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
 
-| Variable                          | Default | What it does                                                                                |
-| --------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
-| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty   | Where transcripts are forwarded. Set together with the key.                                 |
-| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
-| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
+| Variable                          | Default       | What it does                                                                                                             |
+| --------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty         | Where transcripts are forwarded. Set together with the key.                                                              |
+| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty         | Your deployment's key, issued by the Thunderbolt team. Server-side only.                                                 |
+| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false`       | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this.                              |
+| `DEBUG_TRANSCRIPT_RECIPIENT_NAME` | `Thunderbolt` | Who the share dialog says receives the transcript, as "the {name} team". Set it when your upstream is not Thunderbolt's. |
 
 Contact the team with a deployment name to get a key.
 

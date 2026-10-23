@@ -4,6 +4,7 @@
 
 import type { I18n } from '@lingui/core'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
+import { emailAppName } from '@/emails/email-layout'
 import { getEmailI18n } from '@/emails/i18n'
 import { SecurityAlertEmail } from '@/emails/security-alert'
 import { SecurityCodeEmail } from '@/emails/security-code'
@@ -126,8 +127,8 @@ export const securityNotifications: SecurityNotifications = {
       i18n,
       i18n._({ id: 'Your recovery phrase was changed' }),
       i18n._({
-        id: 'Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works.',
-        values: { deviceName },
+        id: 'Your {appName} recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works.',
+        values: { appName: emailAppName(), deviceName },
       }),
       revokeGuidance(i18n),
     )

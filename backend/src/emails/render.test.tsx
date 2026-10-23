@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import type { ReactElement } from 'react'
 import { render } from 'react-email'
 import type { AppLocale } from '@shared/i18n/locales'
+import { clearSettingsCache } from '@/config/settings'
 import { stepUpCopy } from '@/lib/security-notifications'
 import type { StepUpAction } from '@/lib/step-up-otp'
 import { getEmailI18n } from './i18n'
@@ -29,6 +30,24 @@ const magicLink = (locale: AppLocale) => (
  * is what proves a lookup actually reaches the compiled catalog, and `de` is
  * what proves the locale reaches the markup.
  */
+// The emails read the app name from settings, so pin BRANDING_JSON rather than
+// inheriting whatever the developer's .env sets.
+const savedBranding = process.env.BRANDING_JSON
+
+beforeAll(() => {
+  delete process.env.BRANDING_JSON
+  clearSettingsCache()
+})
+
+afterAll(() => {
+  if (savedBranding === undefined) {
+    delete process.env.BRANDING_JSON
+  } else {
+    process.env.BRANDING_JSON = savedBranding
+  }
+  clearSettingsCache()
+})
+
 describe('email rendering', () => {
   it('renders the English source copy', async () => {
     const html = await renderCopy(magicLink('en'))
@@ -115,5 +134,59 @@ describe('email rendering', () => {
     ['waitlist reminder', waitlistReminderSubject],
   ])('localizes the %s subject', (_name, subject) => {
     expect(subject(getEmailI18n('en-XA'))).not.toBe(subject(getEmailI18n('en')))
+  })
+})
+
+describe('branded email rendering', () => {
+  beforeEach(() => {
+    process.env.BRANDING_JSON = JSON.stringify({ appName: 'Acme AI' })
+    clearSettingsCache()
+  })
+
+  afterEach(() => {
+    delete process.env.BRANDING_JSON
+    clearSettingsCache()
+  })
+
+  it('names the deployment in the subject, preview, header and sign-off', async () => {
+    const i18n = getEmailI18n('en')
+    expect(magicLinkSubject(i18n)).toBe('Your Acme AI verification code')
+    expect(waitlistJoinedSubject(i18n)).toBe("You're on the Acme AI waitlist!")
+
+    const magic = await renderCopy(magicLink('en'))
+    expect(magic).toContain('Sign in to Acme AI')
+    expect(magic).toContain('alt="Acme AI"')
+    expect(magic).not.toContain('Thunderbolt')
+
+    const waitlist = await renderCopy(<WaitlistJoinedEmail i18n={i18n} />)
+    expect(waitlist).toContain("You've been added to the Acme AI waitlist.")
+    expect(waitlist).toContain('The Acme AI Team')
+  })
+
+  it('uses the branded light colors as hex and a PNG logo URL', async () => {
+    process.env.BRANDING_JSON = JSON.stringify({
+      appName: 'Acme AI',
+      logo: { light: 'https://acme.test/mark.png' },
+      cssVars: { light: { primary: 'oklch(0.5 0.2 260)', brand: '#d1006b' } },
+    })
+    clearSettingsCache()
+    const html = await renderCopy(magicLink('en'))
+    expect(html).toContain('src="https://acme.test/mark.png"')
+    // React Email writes Tailwind colors as rgb(): the brand link is #d1006b.
+    expect(html).toContain('color:rgb(209,0,107)')
+    expect(html).not.toContain('oklch')
+  })
+
+  it('keeps the bundled email logo when the operator logo is SVG', async () => {
+    process.env.BRANDING_JSON = JSON.stringify({ logo: { light: 'https://acme.test/mark.svg' } })
+    clearSettingsCache()
+    const html = await renderCopy(magicLink('en'))
+    expect(html).toContain('/email-logo.png')
+    expect(html).not.toContain('mark.svg')
+  })
+
+  it('keeps the name in translated copy', async () => {
+    const html = await renderCopy(<WaitlistJoinedEmail i18n={getEmailI18n('en-XA')} />)
+    expect(html).toContain('Acme AI')
   })
 })

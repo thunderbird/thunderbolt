@@ -4,7 +4,7 @@
 
 import type { I18n } from '@lingui/core'
 import { Section, Text } from 'react-email'
-import { EmailLayout } from './email-layout'
+import { EmailLayout, emailAppName } from './email-layout'
 import { getEmailI18n } from './i18n'
 
 type WaitlistReminderEmailProps = {
@@ -21,10 +21,13 @@ export const WaitlistReminderEmail = ({ i18n }: WaitlistReminderEmailProps) => (
       </Text>
       <Text className="text-sm text-tb-text m-0 mb-6">
         {i18n._({
-          id: "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join.",
+          id: "Good news — you're already on the {appName} waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join.",
+          values: { appName: emailAppName() },
         })}
       </Text>
-      <Text className="text-sm text-tb-text m-0">{i18n._({ id: 'The Thunderbolt Team' })}</Text>
+      <Text className="text-sm text-tb-text m-0">
+        {i18n._({ id: 'The {appName} Team', values: { appName: emailAppName() } })}
+      </Text>
     </Section>
   </EmailLayout>
 )

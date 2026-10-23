@@ -7,7 +7,11 @@ import { Virtualizer, type CustomContainerComponentProps, type CustomItemCompone
 import { ProjectArtifactActionsProvider } from './project-artifact-actions-provider'
 import { ProjectArtifactCard } from './project-artifact-card'
 import type { ProjectArtifact } from './project-artifacts-data'
-import { artifactGridGap, useProjectArtifactGridState } from './use-project-artifact-grid-state'
+import {
+  artifactGridGap,
+  artifactGridVisibleRows,
+  useProjectArtifactGridState,
+} from './use-project-artifact-grid-state'
 
 type ProjectArtifactGridProps = {
   projectId: string
@@ -43,6 +47,7 @@ export const ProjectArtifactGrid = ({
   onTogglePin,
 }: ProjectArtifactGridProps) => {
   const grid = useProjectArtifactGridState(artifacts)
+  const initialRowCount = Math.min(artifactGridVisibleRows, grid.rows.length)
 
   return (
     <ProjectArtifactActionsProvider>
@@ -53,11 +58,13 @@ export const ProjectArtifactGrid = ({
         style={{ height: grid.height }}
       >
         <Virtualizer
-          key={grid.columns}
+          key={`${grid.columns}-${initialRowCount}`}
           scrollRef={grid.scrollRef}
           as={ArtifactList}
           item={ArtifactRow}
           data={grid.rows}
+          // Virtua retains its initial range until scrolling; reset it when a small collection shrinks.
+          ssrCount={initialRowCount}
           itemSize={grid.rowHeight}
           bufferSize={grid.rowHeight}
           keepMounted={grid.keepMounted}

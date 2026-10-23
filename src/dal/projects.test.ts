@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { Model } from '@/types'
 import { getOrCreateChatThread } from './chat-threads'
 import { setupTestDatabase, teardownTestDatabase } from './test-utils'
@@ -22,6 +22,7 @@ import {
   setChatThreadProject,
   setProjectPinned,
   softDeleteProject,
+  softDeleteAllProjects,
   updateProject,
 } from './projects'
 
@@ -156,6 +157,59 @@ describe('chat membership', () => {
     expect(thread.id).toBe(threadId)
     expect(thread.projectId).toBeNull()
     expect(thread.deletedAt).toBeNull()
+  })
+})
+
+describe('bulk project deletion', () => {
+  it('soft-deletes every live project, preserving chats, messages, and existing deletion dates', async () => {
+    const db = getDb()
+    const projects = await Promise.all([
+      createProject(db, { name: 'A' }),
+      createProject(db, { name: 'B' }),
+      createProject(db, { name: 'Already deleted' }),
+    ])
+    const deletedAt = '2026-01-01T00:00:00Z'
+    await db.update(projectsTable).set({ deletedAt }).where(eq(projectsTable.id, projects[2].id))
+    const ids = [await seedThread(projects[0].id), await seedThread(projects[1].id), await seedThread(null)]
+    const deletedChat = await seedThread(projects[0].id)
+    await db.update(chatThreadsTable).set({ deletedAt }).where(eq(chatThreadsTable.id, deletedChat))
+    const messageId = uuidv7()
+    await db.insert(chatMessagesTable).values({ id: messageId, chatThreadId: ids[0], role: 'user', content: 'Keep me' })
+
+    await softDeleteAllProjects(db)
+
+    expect(await getAllProjects(db)).toEqual([])
+    const rows = await db.select().from(projectsTable)
+    expect(rows).toHaveLength(3)
+    expect(rows.every((row) => row.deletedAt !== null)).toBe(true)
+    expect(rows.find((row) => row.id === projects[2].id)?.deletedAt).toBe(deletedAt)
+    const threads = await db.select().from(chatThreadsTable)
+    for (const id of ids) {
+      expect(threads.find((thread) => thread.id === id)).toMatchObject({ projectId: null, deletedAt: null, title: 'T' })
+    }
+    expect(threads.find((thread) => thread.id === deletedChat)).toMatchObject({ projectId: projects[0].id, deletedAt })
+    const [message] = await db.select().from(chatMessagesTable).where(eq(chatMessagesTable.id, messageId))
+    expect(message).toMatchObject({ content: 'Keep me', deletedAt: null })
+
+    await softDeleteAllProjects(db)
+    expect(await db.select().from(projectsTable)).toEqual(rows)
+  })
+
+  it('rolls back chat membership if deleting the projects fails', async () => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'Keep together' })
+    const chatId = await seedThread(project.id)
+    await db.run(
+      sql`CREATE TEMP TRIGGER fail_project_delete BEFORE UPDATE ON projects BEGIN SELECT RAISE(ABORT, 'test failure'); END`,
+    )
+    try {
+      await expect(softDeleteAllProjects(db)).rejects.toThrow()
+      expect(await getProject(db, project.id)).not.toBeNull()
+      const [chat] = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, chatId))
+      expect(chat.projectId).toBe(project.id)
+    } finally {
+      await db.run(sql`DROP TRIGGER fail_project_delete`)
+    }
   })
 })
 

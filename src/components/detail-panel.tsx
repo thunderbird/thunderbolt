@@ -46,6 +46,8 @@ type DetailPanelProps = {
   /** Extra header actions (e.g. a ⋯ menu), rendered left of the Close button. */
   actions?: ReactNode
   onClose: () => void
+  /** Hide when the containing modal supplies its own close control. */
+  showCloseButton?: boolean
   /** Let embedded interactive content own its scrolling and footer. */
   bodyClassName?: string
   /** Embedded chat composers reserve their own keyboard space. */
@@ -65,6 +67,7 @@ export const DetailPanel = ({
   subtitle,
   actions,
   onClose,
+  showCloseButton = true,
   bodyClassName,
   handlesKeyboardInset = false,
   children,
@@ -102,15 +105,17 @@ export const DetailPanel = ({
               mobile shell instead splits them across the top corners. */}
           <div className="absolute -right-4 -top-0.5 flex shrink-0 items-center gap-0.5">
             {actions}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label={t`Close details`}
-              className={mutedIconButtonClass}
-            >
-              <X />
-            </Button>
+            {showCloseButton && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label={t`Close details`}
+                className={mutedIconButtonClass}
+              >
+                <X />
+              </Button>
+            )}
           </div>
         </header>
       )}

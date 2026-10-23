@@ -101,7 +101,7 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
               }}
               className="min-w-0 cursor-pointer gap-2 md:pr-9 group-hover/project:bg-sidebar-accent group-hover/project:text-sidebar-accent-foreground group-data-[state=open]/project:bg-sidebar-accent group-data-[state=open]/project:text-sidebar-accent-foreground group-has-data-[state=open]/project:bg-sidebar-accent group-has-data-[state=open]/project:text-sidebar-accent-foreground"
             >
-              <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0 [&>img]:size-full" />
+              <ProjectIcon icon={project.icon} className="size-[var(--icon-size-default)] shrink-0" />
               {!props.isCollapsed && <span className="truncate">{project.name}</span>}
             </SidebarMenuButton>
             {!props.isCollapsed && menu && (
@@ -135,7 +135,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
             {chatList.hasOverflow && (
               <SidebarMenuItem>
                 <SidebarListToggle
-                  iconPosition="end"
                   onToggle={chatList.toggle}
                   showAll={chatList.showAll}
                   controls={`project-chats-${project.id}`}

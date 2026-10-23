@@ -10,6 +10,7 @@ import { wrapArtifactPreviewHtml } from '@/artifacts/harness'
 import { useFormatters } from '@/i18n/use-formatters'
 import type { ProjectArtifact } from './project-artifacts-data'
 import { ProjectArtifactContextMenu } from './project-artifact-context-menu'
+import { projectArtifactPath } from './project-artifact-path'
 import { useProjectArtifactPreviewState } from './use-project-artifact-preview-state'
 
 type ProjectArtifactCardProps = {
@@ -60,7 +61,7 @@ export const ProjectArtifactCard = ({
         onTogglePin={onTogglePin}
       >
         <Link
-          to={`/projects/${projectId}/artifacts/${artifact.id}`}
+          to={projectArtifactPath(projectId, artifact.id)}
           aria-label={t`Open ${artifact.title}`}
           className="flow-root rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
@@ -74,7 +75,6 @@ export const ProjectArtifactCard = ({
                 title={t`Preview of ${artifact.title}`}
                 srcDoc={srcDoc}
                 sandbox=""
-                loading="lazy"
                 tabIndex={-1}
                 aria-hidden
                 className="absolute left-0 top-0 h-[300%] w-[300%] origin-top-left scale-[0.333333] border-0 bg-white"

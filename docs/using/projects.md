@@ -8,7 +8,7 @@ A project's instructions are always on for every chat inside it. Guidance you wa
 
 ## Create a project
 
-Click **+** beside **Projects** in the sidebar. Four fields, one of them required.
+Open **⋮ → New project** beside **Projects** in the sidebar, or long-press the **Projects** heading on mobile. Choose a name and an optional emoji. Description and shared instructions can be added later through the project’s **Edit** action.
 
 | Field        | Required | Limit             | What it does                                               |
 | ------------ | -------- | ----------------- | ---------------------------------------------------------- |
@@ -49,7 +49,7 @@ A project has no document library. Attachments belong to the chat you add them t
 
 Deleting a project removes its instructions and the grouping. **Its chats are kept** and become ordinary chats.
 
-The burn icon in **Recents** deletes only chats outside projects. Its confirmation explicitly says that chats inside projects are kept. After deleting a project, its former chats are standalone and are included in this action.
+The **Recents → Delete chats** action deletes only chats outside projects. Open the heading’s **⋮** menu on desktop, or long-press the heading on mobile. Its confirmation explicitly says that chats inside projects are kept. After deleting a project, its former chats are standalone and are included in this action.
 
 ## Privacy and sync
 

@@ -14,7 +14,6 @@
 import { FolderOpen } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { EmojiGlyph } from './emoji-glyph'
 
 type ProjectIconProps = {
   icon: string | null | undefined
@@ -33,7 +32,7 @@ export const ProjectIcon = ({ icon, className }: ProjectIconProps) => {
       aria-hidden="true"
       className={cn('flex items-center justify-center leading-none', className ?? 'text-[1.1rem]')}
     >
-      <EmojiGlyph emoji={icon} />
+      {icon}
     </span>
   )
 }

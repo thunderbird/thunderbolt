@@ -49,6 +49,8 @@ it('previews offline without scripts or focus, and keeps pinning separate from n
   const frame = container.querySelector('iframe')!
   expect(frame.getAttribute('sandbox')).toBe('')
   expect(frame.getAttribute('tabindex')).toBe('-1')
+  // Visibility and the entrance animation already gate preview creation.
+  expect(frame.getAttribute('loading')).not.toBe('lazy')
   expect(frame.getAttribute('srcdoc')).toContain('Content-Security-Policy')
   expect(getByRole('link', { name: 'Open Chart' }).getAttribute('href')).toBe('/projects/p1/artifacts/m1-0')
   expect(container.querySelector('button')).toBeNull()

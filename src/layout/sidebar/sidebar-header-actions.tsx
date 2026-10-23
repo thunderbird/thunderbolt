@@ -6,6 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 
 /** Keep global search with the section tabs in both sidebar views. */
@@ -19,6 +20,7 @@ export const SidebarHeaderActions = ({
   vertical?: boolean
 }) => {
   const { t } = useLingui()
+  const { isMobile } = useIsMobile()
   if (vertical) {
     return (
       <div className="mb-2 flex flex-col gap-4">
@@ -38,7 +40,8 @@ export const SidebarHeaderActions = ({
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1 max-md:w-full max-md:justify-between">
+      {isMobile && children}
       {onSearchClick && (
         <Button
           variant="ghost"
@@ -50,7 +53,7 @@ export const SidebarHeaderActions = ({
           <Search />
         </Button>
       )}
-      {children}
+      {!isMobile && children}
     </div>
   )
 }

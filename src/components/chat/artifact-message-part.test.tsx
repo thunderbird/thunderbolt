@@ -33,7 +33,7 @@ const toolPart = (overrides: PartOverrides): ToolOrDynamicToolUIPart =>
 const renderPart = (part: ToolOrDynamicToolUIPart) =>
   render(
     <ContentViewProvider>
-      <ArtifactMessagePart part={part} />
+      <ArtifactMessagePart messageId="message" part={part} />
     </ContentViewProvider>,
   )
 
@@ -42,8 +42,11 @@ describe('ArtifactMessagePart', () => {
     const actions: string[] = []
     const { container, getByText } = render(
       <ContentViewProvider>
-        <ArtifactCanvasContext value={{ toolCallId: 'canvas', reveal: () => actions.push('reveal') }}>
+        <ArtifactCanvasContext
+          value={{ messageId: 'message', toolCallId: 'canvas', reveal: () => actions.push('reveal') }}
+        >
           <ArtifactMessagePart
+            messageId="message"
             part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
           />
         </ArtifactCanvasContext>
@@ -52,6 +55,20 @@ describe('ArtifactMessagePart', () => {
     expect(container.querySelector('iframe')).toBeNull()
     fireEvent.click(getByText('Show artifact'))
     expect(actions).toEqual(['reveal'])
+  })
+  it('keeps a different message visible when a provider reuses a tool-call ID', () => {
+    const { container, queryByText } = render(
+      <ContentViewProvider>
+        <ArtifactCanvasContext value={{ messageId: 'other-message', toolCallId: 'canvas', reveal: () => {} }}>
+          <ArtifactMessagePart
+            messageId="message"
+            part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
+          />
+        </ArtifactCanvasContext>
+      </ContentViewProvider>,
+    )
+    expect(container.querySelector('iframe')).not.toBeNull()
+    expect(queryByText('Show artifact')).toBeNull()
   })
   let restoreIntersectionObserver: () => void
   beforeEach(() => {

@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
-import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from 'react'
 
 import {
   Dialog,
@@ -28,8 +28,9 @@ import { cn } from '@/lib/utils'
 // Context for sharing the active surface with nested modal-aware components
 // =============================================================================
 
-const ResponsiveModalContext = createContext<{ isMobile: boolean }>({
+const ResponsiveModalContext = createContext<{ isMobile: boolean; portalContainer: HTMLDivElement | null }>({
   isMobile: false,
+  portalContainer: null,
 })
 
 /** Reports whether a descendant is rendering inside the shared mobile modal shell. */
@@ -99,12 +100,14 @@ const ResponsiveModalDialogContent = ({
   ...props
 }: ResponsiveModalDialogContentProps) => {
   const { isMobile } = useIsMobile()
+  const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null)
 
   return (
-    <ResponsiveModalContext value={{ isMobile }}>
+    <ResponsiveModalContext value={{ isMobile, portalContainer }}>
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Content
+          ref={setPortalContainer}
           data-slot="responsive-modal-content"
           className={cn(
             `${modalAnimationClass} data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed z-50 flex flex-col bg-background duration-200`,

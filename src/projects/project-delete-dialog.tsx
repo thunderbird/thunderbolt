@@ -6,7 +6,7 @@ import { useState, useTransition } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { useDatabase } from '@/contexts'
-import { softDeleteProject } from '@/dal/projects'
+import { softDeleteAllProjects, softDeleteProject } from '@/dal/projects'
 
 /** Keep deletion pending/error state alive after any project menu closes. */
 export const ProjectDeleteDialog = ({
@@ -14,9 +14,10 @@ export const ProjectDeleteDialog = ({
   onClose,
   onDeleted,
 }: {
-  projectId: string
+  /** Null explicitly selects all live projects. Chats are always kept. */
+  projectId: string | null
   onClose: () => void
-  onDeleted: () => void
+  onDeleted: () => void | Promise<void>
 }) => {
   const { t } = useLingui()
   const db = useDatabase()
@@ -25,9 +26,14 @@ export const ProjectDeleteDialog = ({
   return (
     <ConfirmActionDialog
       open
-      title={t`Delete this project?`}
-      description={error ?? t`Its instructions are removed. Chats in the project are kept and become ordinary chats.`}
-      confirmLabel={t`Delete project`}
+      title={projectId === null ? t`Delete all projects?` : t`Delete this project?`}
+      description={
+        error ??
+        (projectId === null
+          ? t`This will delete all projects and their instructions. Their chats will be kept and moved to Recents.`
+          : t`Its instructions are removed. Chats in the project are kept and become ordinary chats.`)
+      }
+      confirmLabel={projectId === null ? t`Delete all projects` : t`Delete project`}
       isPending={isPending}
       onCancel={() => {
         if (!isPending) {
@@ -37,12 +43,20 @@ export const ProjectDeleteDialog = ({
       onConfirm={() =>
         startTransition(async () => {
           try {
-            await softDeleteProject(db, projectId)
+            if (projectId === null) {
+              await softDeleteAllProjects(db)
+            } else {
+              await softDeleteProject(db, projectId)
+            }
             onClose()
-            onDeleted()
+            await onDeleted()
           } catch (cause) {
             console.error('[projects] Could not delete project', cause)
-            setError(t`Could not delete the project. Please try again.`)
+            setError(
+              projectId === null
+                ? t`Could not delete the projects. Please try again.`
+                : t`Could not delete the project. Please try again.`,
+            )
           }
         })
       }

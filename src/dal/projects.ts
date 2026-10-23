@@ -8,7 +8,7 @@
  *
  */
 
-import { and, asc, desc, eq, getTableColumns, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useLingui } from '@lingui/react/macro'
@@ -140,14 +140,28 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  * take a user's conversations with it; removing the chats too is a separate,
  * explicit action.
  */
-export const softDeleteProject = async (db: AnyDrizzleDatabase, id: string): Promise<void> => {
+const softDeleteProjects = async (db: AnyDrizzleDatabase, id: string | null): Promise<void> => {
   const deletedAt = nowIso()
-  await db.update(projectsTable).set({ deletedAt }).where(eq(projectsTable.id, id))
-  await db
-    .update(chatThreadsTable)
-    .set({ projectId: null })
-    .where(and(eq(chatThreadsTable.projectId, id), isNull(chatThreadsTable.deletedAt)))
+  const target = and(isNull(projectsTable.deletedAt), id === null ? undefined : eq(projectsTable.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(chatThreadsTable)
+      .set({ projectId: null })
+      .where(
+        and(
+          isNull(chatThreadsTable.deletedAt),
+          inArray(chatThreadsTable.projectId, tx.select({ id: projectsTable.id }).from(projectsTable).where(target)),
+        ),
+      )
+    await tx.update(projectsTable).set({ deletedAt }).where(target)
+  })
 }
+
+/** Remove one project while keeping its chats as ordinary chats. */
+export const softDeleteProject = (db: AnyDrizzleDatabase, id: string): Promise<void> => softDeleteProjects(db, id)
+
+/** Remove every live project atomically, keeping all chats and their messages. */
+export const softDeleteAllProjects = (db: AnyDrizzleDatabase): Promise<void> => softDeleteProjects(db, null)
 
 /** Pin (or unpin, with `null`) a project to the top of the list. */
 export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {

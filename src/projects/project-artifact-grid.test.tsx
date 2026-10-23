@@ -17,6 +17,19 @@ import { artifactGridColumns, artifactGridHeight } from './use-project-artifact-
 beforeAll(setupTestDatabase)
 afterAll(teardownTestDatabase)
 
+/** Generate enough rows to exercise both initial rendering and virtualization. */
+const createArtifacts = (count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `m${index}-0`,
+    messageId: `m${index}`,
+    toolCallId: `t${index}`,
+    chatThreadId: 'c1',
+    chatTitle: 'Demo',
+    title: `Artifact ${index + 1}`,
+    html: '<h1>Preview</h1>',
+    createdAt: new Date(),
+  }))
+
 it('caps the viewport at three complete rows and adapts columns to available width', () => {
   expect(artifactGridHeight(0, 258)).toBe(0)
   expect(artifactGridHeight(1, 258)).toBe(258)
@@ -29,6 +42,36 @@ it('caps the viewport at three complete rows and adapts columns to available wid
   expect(artifactGridColumns(992)).toBe(3)
 })
 
+it.each([300, 992])('renders three complete rows before observers report measurements at width %ipx', (width) => {
+  const originalWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')!
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width })
+  // Happy DOM's observers do not notify, matching the browser's first paint
+  // before the asynchronous size and visibility callbacks arrive.
+  try {
+    const { container, getByRole, queryByRole, unmount } = render(
+      <DatabaseProvider db={getDb()}>
+        <MemoryRouter>
+          <ProjectArtifactGrid
+            projectId="p1"
+            artifacts={createArtifacts(301)}
+            pinnedIds={[]}
+            isSaving={false}
+            onTogglePin={() => {}}
+          />
+        </MemoryRouter>
+      </DatabaseProvider>,
+    )
+    const lastVisible = artifactGridColumns(width) * 3
+    expect(getByRole('link', { name: `Open Artifact ${lastVisible}` })).toBeVisible()
+    expect(queryByRole('link', { name: `Open Artifact ${lastVisible + 1}` })).toBeNull()
+    expect(container.querySelector<HTMLElement>('[data-slot="artifact-grid-scroll"]')!.style.height).toBe('806px')
+    expect(container.querySelector('iframe')).toBeNull()
+    unmount()
+  } finally {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalWidth)
+  }
+})
+
 it('keeps a large collection bounded while scrolling to the last partial row', async () => {
   const restoreSize = mockVirtuaMeasurement({
     measure: (target) => ({
@@ -37,16 +80,7 @@ it('keeps a large collection bounded while scrolling to the last partial row', a
     }),
   })
   const restoreVisibility = mockIntersectionObserver()
-  const artifacts = Array.from({ length: 301 }, (_, index) => ({
-    id: `m${index}-0`,
-    messageId: `m${index}`,
-    toolCallId: `t${index}`,
-    chatThreadId: 'c1',
-    chatTitle: 'Demo',
-    title: `Artifact ${index + 1}`,
-    html: '<h1>Preview</h1>',
-    createdAt: new Date(),
-  }))
+  const artifacts = createArtifacts(301)
   try {
     const { container, getByRole, queryByRole, unmount } = render(
       <DatabaseProvider db={getDb()}>
@@ -82,4 +116,27 @@ it('keeps a large collection bounded while scrolling to the last partial row', a
     restoreVisibility()
     restoreSize()
   }
+})
+
+it.each([0, 1, 2, 3])('renders %i initial rows and safely shrinks before scrolling', (count) => {
+  const grid = (size: number) => (
+    <DatabaseProvider db={getDb()}>
+      <MemoryRouter>
+        <ProjectArtifactGrid
+          projectId="p1"
+          artifacts={createArtifacts(size)}
+          pinnedIds={[]}
+          isSaving={false}
+          onTogglePin={() => {}}
+        />
+      </MemoryRouter>
+    </DatabaseProvider>
+  )
+  const view = render(grid(count))
+  expect(view.queryAllByRole('link')).toHaveLength(count)
+  for (const size of [2, 1, 0].filter((size) => size < count)) {
+    view.rerender(grid(size))
+    expect(view.queryAllByRole('link')).toHaveLength(size)
+  }
+  view.unmount()
 })

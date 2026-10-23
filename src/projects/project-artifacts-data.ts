@@ -54,7 +54,13 @@ export const collectProjectArtifacts = (
         .filter(isRenderHtmlPart)
         .flatMap((part) => {
           const input = renderHtmlInput(part)
-          if (part.state !== 'output-available' || !renderHtmlOutput(part)?.ok || !input.html?.trim()) {
+          if (
+            typeof part.toolCallId !== 'string' ||
+            !part.toolCallId ||
+            part.state !== 'output-available' ||
+            !renderHtmlOutput(part)?.ok ||
+            !input.html?.trim()
+          ) {
             return []
           }
           return [

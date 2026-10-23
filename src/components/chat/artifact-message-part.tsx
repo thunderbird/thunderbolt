@@ -18,6 +18,7 @@ import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
 const artifactPreviewThrottleMs = 120
 
 type ArtifactMessagePartProps = {
+  messageId: string
   part: ToolOrDynamicToolUIPart
 }
 
@@ -29,7 +30,7 @@ type ArtifactMessagePartProps = {
  * the panel the transcript shows a slim placeholder instead. A finished-but-failed
  * call renders nothing here (it stays an ordinary tool call in the group).
  */
-export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
+export const ArtifactMessagePart = ({ messageId, part }: ArtifactMessagePartProps) => {
   const { t } = useLingui()
   const canvas = useContext(ArtifactCanvasContext)
   const artifactId = part.toolCallId
@@ -54,7 +55,7 @@ export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   if (!verified) {
     return null
   }
-  if (canvas?.toolCallId === artifactId) {
+  if (canvas?.messageId === messageId && canvas.toolCallId === artifactId) {
     return (
       <div className="my-2 flex items-center gap-2 rounded-xl border border-border bg-card/50 px-3 py-2">
         <PanelRight className="size-4 shrink-0 text-muted-foreground" />

@@ -7,7 +7,7 @@ import type { ProjectArtifact } from './project-artifacts-data'
 
 export const artifactGridGap = 16
 const artifactCardMinWidth = 260
-const maxVisibleRows = 3
+export const artifactGridVisibleRows = 3
 
 /** Match the gallery's minimum card width, including the space between columns. */
 export const artifactGridColumns = (width: number) =>
@@ -15,7 +15,7 @@ export const artifactGridColumns = (width: number) =>
 
 /** Cap only the viewport; the virtual list retains every row beyond it. */
 export const artifactGridHeight = (rows: number, cardHeight: number) => {
-  const visibleRows = Math.min(rows, maxVisibleRows)
+  const visibleRows = Math.min(rows, artifactGridVisibleRows)
   return visibleRows * cardHeight + Math.max(0, visibleRows - 1) * artifactGridGap
 }
 
@@ -28,7 +28,8 @@ export const useProjectArtifactGridState = (artifacts: ProjectArtifact[]) => {
   useLayoutEffect(() => {
     const element = scrollRef.current!
     // Measure before paint so opening does not mount a one-column grid first.
-    setMetrics((current) => ({ ...current, columns: artifactGridColumns(element.clientWidth) }))
+    const columns = artifactGridColumns(element.clientWidth)
+    setMetrics((current) => (current.columns === columns ? current : { ...current, columns }))
     const observer = new ResizeObserver(([entry]) => {
       const columns = artifactGridColumns(entry.contentRect.width)
       setMetrics((current) => (current.columns === columns ? current : { ...current, columns }))

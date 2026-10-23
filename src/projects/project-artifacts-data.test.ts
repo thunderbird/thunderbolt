@@ -56,6 +56,11 @@ describe('project artifacts', () => {
       expect(collect(parts)).toEqual([])
     }
   })
+  it('skips artifacts without a stable tool-call identity', () => {
+    expect(
+      collect([part(''), part('missing', { toolCallId: undefined }), part('invalid', { toolCallId: 42 })]),
+    ).toEqual([])
+  })
   it('uses localized fallbacks and excludes artifacts without source chats', () => {
     const parts = [part('a', { input: { title: ' ', html: '<p>Hello</p>' } })]
     const result = collectProjectArtifacts([{ id: messageId, chatThreadId: 'chat', chatTitle: null, parts }], labels)

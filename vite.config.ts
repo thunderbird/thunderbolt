@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url'
 import path from 'path'
 import { type Connect, defineConfig } from 'vite'
 import { analyzer } from 'vite-bundle-analyzer'
-import { viteStaticCopy } from 'vite-plugin-static-copy'
 import pkg from './package.json' with { type: 'json' }
 import { copyPowerSyncAssets } from './scripts/copy-powersync-assets'
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url))
@@ -111,17 +110,6 @@ export default defineConfig({
     // on a malformed catalog, so the build stays green and ships the broken
     // locale — which is what CI's `localization` job claims to prevent.
     lingui({ failOnCompileError: true }),
-    // Serve emoji as local images without a font dependency or a JS asset manifest.
-    viteStaticCopy({
-      targets: [
-        {
-          src: 'node_modules/@twemoji/svg/*.svg',
-          dest: 'emoji',
-          // Presentation selectors do not change the artwork; normalize both asset and glyph paths.
-          rename: (name, extension) => ({ stripBase: true, name: `${name.replaceAll('-fe0f', '')}.${extension}` }),
-        },
-      ],
-    }),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

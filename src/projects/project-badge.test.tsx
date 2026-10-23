@@ -91,7 +91,8 @@ describe('ProjectBadge iconOnly (mobile)', async () => {
   it('shows the project’s emoji', async () => {
     await renderBadge({ iconOnly: true })
     const button = screen.getByRole('button', { name: 'In project: Q3 Planning' })
-    expect(button.querySelector('img')).toHaveAttribute('src', '/emoji/1f4ca.svg')
+    expect(button).toHaveTextContent('📊')
+    expect(button.querySelector('img')).toBeNull()
   })
 
   it('is a circle sized like the agent control beside it', async () => {

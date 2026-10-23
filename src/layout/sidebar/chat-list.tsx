@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Flame } from 'lucide-react'
+import { Flame, Plus } from 'lucide-react'
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
 import { MobileSidebarScrim } from '@/components/ui/scrim'
-import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
+import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
+import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { cn } from '@/lib/utils'
 import { useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
@@ -98,10 +100,13 @@ export const ChatList = ({
   sharedScrollRef,
 }: ChatListProps & { sharedScrollRef?: RefObject<HTMLDivElement | null> }) => {
   const { t } = useLingui()
+  const createNewChat = useCreateNewChat()
+  const { closeMobileSidebar } = useSidebar()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shared = useSharedChatListMetrics(isCollapsed ? undefined : sharedScrollRef)
   const preview = useSidebarPreviewState(chatThreads, currentChatThreadId)
-  const [sectionExpanded, setSectionExpanded] = useState(true)
+  const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.recents.expanded', 'true')
+  const sectionExpanded = storedExpanded !== 'false'
   const showChats = !sharedScrollRef || isCollapsed || sectionExpanded
   const visibleChats = sharedScrollRef ? preview.items : chatThreads
   const {
@@ -113,19 +118,25 @@ export const ChatList = ({
   const sectionToggle = (
     <SidebarSectionToggle
       expanded={sectionExpanded}
-      onToggle={() => setSectionExpanded((expanded) => !expanded)}
+      onToggle={() => setSectionExpanded(sectionExpanded ? 'false' : 'true')}
       controls="sidebar-recent-chats-content"
       label={t`Recents`}
-      mobileAction={
-        isMobile
-          ? {
-              label: t`Delete chats`,
-              icon: <Flame className="size-4" />,
-              disabled: deleteAllChatsMutation.isPending,
-              onSelect: () => deleteAllChatsDialogRef.current?.open(),
-            }
-          : undefined
-      }
+      actions={[
+        {
+          label: t`New chat`,
+          icon: <Plus className="size-4" />,
+          onSelect: async () => {
+            await closeMobileSidebar()
+            createNewChat()
+          },
+        },
+        {
+          label: t`Delete chats`,
+          icon: <Flame className="size-4" />,
+          disabled: deleteAllChatsMutation.isPending,
+          onSelect: () => deleteAllChatsDialogRef.current?.open(),
+        },
+      ]}
     />
   )
 
@@ -133,7 +144,7 @@ export const ChatList = ({
     <ChatActions
       showSearch={!sharedScrollRef}
       isCollapsed={isCollapsed}
-      showClearAll={hasListContent}
+      showClearAll={!sharedScrollRef && hasListContent && !isMobile}
       deleteAllChatsMutation={deleteAllChatsMutation}
       deleteAllChatsDialogRef={deleteAllChatsDialogRef}
       onSearchClick={onSearchClick}
@@ -215,7 +226,7 @@ export const ChatList = ({
           data-slot={sharedScrollRef ? 'chat-list' : 'chat-list-scroll'}
           className={cn(
             'mt-0 group-data-[collapsible=icon]:mt-0',
-            showChats && 'md:mt-2',
+            !sharedScrollRef && showChats && 'md:mt-2',
             !sharedScrollRef &&
               '-mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y [overflow-anchor:none]',
             // Bottom padding = footer control height + the footer's 0.5rem
@@ -282,12 +293,10 @@ export const ChatList = ({
               <SidebarMenu className="mt-1">
                 <SidebarMenuItem>
                   <SidebarListToggle
-                    iconPosition="end"
                     showAll={preview.showAll}
                     onToggle={preview.toggle}
                     controls="sidebar-recent-chats"
                     label={preview.showAll ? t`Show fewer recent chats` : t`Show more recent chats`}
-                    isCollapsed={isCollapsed}
                   />
                 </SidebarMenuItem>
               </SidebarMenu>

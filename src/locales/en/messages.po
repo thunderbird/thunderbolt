@@ -103,6 +103,10 @@ msgstr "{fileName} will be saved to your Downloads folder."
 #~ msgid "{label} — already in this project"
 #~ msgstr "{label} — already in this project"
 
+#: src/layout/sidebar/sidebar-section-toggle.tsx
+msgid "{label} options"
+msgstr "{label} options"
+
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
 msgstr "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -448,8 +452,8 @@ msgid "App Version"
 msgstr "App Version"
 
 #: src/projects/project-form.tsx
-msgid "Applied to every chat in this project."
-msgstr "Applied to every chat in this project."
+#~ msgid "Applied to every chat in this project."
+#~ msgstr "Applied to every chat in this project."
 
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
@@ -641,6 +645,7 @@ msgstr "Calendar"
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/projects/project-create-form.tsx
 #: src/projects/rename-artifact-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -1112,7 +1117,7 @@ msgstr "Could not connect to the MCP server. Please check the URL and try again.
 msgid "Could not connect to this server. Check the URL and that the server is reachable."
 msgstr "Could not connect to this server. Check the URL and that the server is reachable."
 
-#: src/projects/project-form.tsx
+#: src/projects/use-project-create-state.ts
 msgid "Could not create the project."
 msgstr "Could not create the project."
 
@@ -1123,6 +1128,10 @@ msgstr "Could not delete the artifact. Please try again."
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the project. Please try again."
 msgstr "Could not delete the project. Please try again."
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the projects. Please try again."
+msgstr "Could not delete the projects. Please try again."
 
 #: src/projects/use-project-artifact-actions-state.ts
 msgid "Could not download the artifact. Please try again."
@@ -1281,7 +1290,7 @@ msgstr "Couldn't update. Please try again."
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 
-#: src/projects/project-form.tsx
+#: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
 #: src/skills/skill-form.tsx
 msgid "Create"
@@ -1289,8 +1298,8 @@ msgstr "Create"
 
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
-msgid "Create a project to organize your chats."
-msgstr "Create a project to organize your chats."
+#~ msgid "Create a project to organize your chats."
+#~ msgstr "Create a project to organize your chats."
 
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
@@ -1305,7 +1314,7 @@ msgstr "Create Model"
 msgid "Create passkey"
 msgstr "Create passkey"
 
-#: src/projects/project-editor-dialog.tsx
+#: src/projects/project-create-dialog.tsx
 msgid "Create project"
 msgstr "Create project"
 
@@ -1324,7 +1333,7 @@ msgid "Create your first skill"
 msgstr "Create your first skill"
 
 #: src/lib/tool-metadata.ts
-#: src/projects/project-form.tsx
+#: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
 msgstr "Creating…"
@@ -1435,6 +1444,16 @@ msgstr "Delete agent"
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
 msgstr "Delete All Local Data"
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects"
+msgstr "Delete all projects"
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects?"
+msgstr "Delete all projects?"
 
 #: src/projects/project-artifact-actions-provider.tsx
 msgid "Delete artifact?"
@@ -1558,11 +1577,14 @@ msgstr "Depositing rime fog"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
-#: src/projects/project-form.tsx
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
 msgid "Description"
 msgstr "Description"
+
+#: src/projects/project-form.tsx
+msgid "Description (optional)"
+msgstr "Description (optional)"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2569,6 +2591,7 @@ msgstr "My Agent"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -2598,6 +2621,7 @@ msgstr "Network request failed (the browser blocked the request or the server is
 msgid "New Agent"
 msgstr "New Agent"
 
+#: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
@@ -2973,8 +2997,8 @@ msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr "Optional — leave blank for local servers that don’t require auth."
 
 #: src/projects/project-form.tsx
-msgid "Optional — what this project is for"
-msgstr "Optional — what this project is for"
+#~ msgid "Optional — what this project is for"
+#~ msgstr "Optional — what this project is for"
 
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-page.tsx
@@ -2988,6 +3012,11 @@ msgstr "Or click the magic link in your email"
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "Or enter the 8-digit code"
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+msgid "Organize chats with projects."
+msgstr "Organize chats with projects."
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
@@ -3144,6 +3173,10 @@ msgstr "Private"
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Processing…"
+
+#: src/projects/project-create-form.tsx
+msgid "Project name"
+msgstr "Project name"
 
 #: src/projects/project-editor-dialog.tsx
 msgid "Project settings"
@@ -3315,8 +3348,8 @@ msgid "Reply"
 msgstr "Reply"
 
 #: src/projects/project-form.tsx
-msgid "Reply in British English. Prefer bullet points over prose."
-msgstr "Reply in British English. Prefer bullet points over prose."
+#~ msgid "Reply in British English. Prefer bullet points over prose."
+#~ msgstr "Reply in British English. Prefer bullet points over prose."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
@@ -3731,6 +3764,10 @@ msgstr "Settings"
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
 msgstr "Share debug transcript"
+
+#: src/projects/project-form.tsx
+msgid "Shared instructions for projects chats"
+msgstr "Shared instructions for projects chats"
 
 #: src/lib/tray.tsx
 msgid "Show"
@@ -4374,6 +4411,7 @@ msgstr "This private chat won't run on {agentName}."
 msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 msgstr "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 msgid "this project"
 msgstr "this project"
@@ -4425,6 +4463,10 @@ msgstr "This will delete all chats outside projects. Chats in projects won't be 
 #: src/components/delete-all-chats-dialog.tsx
 #~ msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
 #~ msgstr "This will delete all chats that aren't in a project. Chats inside projects will be kept."
+
+#: src/projects/project-delete-dialog.tsx
+msgid "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
+msgstr "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
@@ -4935,6 +4977,10 @@ msgstr "What agents use"
 #: src/skills/skill-form.tsx
 msgid "What is this for?"
 msgstr "What is this for?"
+
+#: src/projects/project-form.tsx
+msgid "What is this project for?"
+msgstr "What is this project for?"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"

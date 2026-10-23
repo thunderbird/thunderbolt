@@ -8,6 +8,7 @@ import { SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/
 import { useContentView } from '@/content-view/context'
 import { useProjectArtifacts } from '@/dal/projects'
 import { useProjectArtifactPins } from '@/projects/use-project-artifact-pins'
+import { projectArtifactPath } from '@/projects/project-artifact-path'
 
 /** Query only expanded projects and expose their pinned artifact shortcuts. */
 export const ProjectArtifactLinks = ({ projectId, isMobile }: { projectId: string; isMobile: boolean }) => {
@@ -22,7 +23,7 @@ export const ProjectArtifactLinks = ({ projectId, isMobile }: { projectId: strin
     if (isMobile) {
       await closeMobileSidebar()
     }
-    navigate(`/projects/${projectId}/artifacts/${artifactId}`)
+    navigate(projectArtifactPath(projectId, artifactId))
   }
   return (
     <>

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useEmbeddedChatPanelState } from '@/chats/use-embedded-chat-panel-state'
+import { useSearchParams } from 'react-router'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useContentView } from '@/content-view/context'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -20,21 +20,36 @@ export const useProjectArtifactWorkspaceState = (
 ) => {
   const artifactsDialog = useProjectArtifactsDialog()
   const { isMobile } = useIsMobile()
-  const chat = useEmbeddedChatPanelState()
+  const [params, setParams] = useSearchParams()
   const contentView = useContentView()
   const canvas = useProjectArtifactCanvasState(artifact.html, artifact.title, !contentView.isOpen)
   const pins = useProjectArtifactPins(project.id, artifacts)
   const pinned = pins.pinnedIds.includes(artifact.id)
-  const showChat = chat.openChatId === artifact.chatThreadId
+  const showChat = params.get('chat') === artifact.chatThreadId
   const showAside = !isMobile && contentView.isOpen
   const showPanel = showChat || showAside
+  const setSourceChatOpen = (open: boolean) => {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (open) {
+          next.set('chat', artifact.chatThreadId)
+        } else {
+          next.delete('chat')
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const closeSourceChat = () => setSourceChatOpen(false)
   const openSourceChat = () => {
     contentView.close()
-    chat.openExistingChat(artifact.chatThreadId)
+    setSourceChatOpen(true)
   }
   const reveal = () => {
     contentView.close()
-    chat.closeChat()
+    closeSourceChat()
   }
   const askAbout = (passages: string[]) => {
     for (const text of passages) {
@@ -44,7 +59,6 @@ export const useProjectArtifactWorkspaceState = (
   }
   return {
     artifactsDialog,
-    chat,
     contentView,
     canvas,
     pins,
@@ -53,6 +67,7 @@ export const useProjectArtifactWorkspaceState = (
     showAside,
     showPanel,
     openSourceChat,
+    closeSourceChat,
     reveal,
     askAbout,
   }

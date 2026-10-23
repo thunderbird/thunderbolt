@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect, it, mock } from 'bun:test'
 import { useRef } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -24,6 +24,7 @@ beforeAll(async () => {
 })
 afterEach(() => {
   cleanup()
+  localStorage.removeItem('sidebar.recents.expanded')
   restoreViewport()
 })
 afterAll(async () => {
@@ -41,7 +42,11 @@ const chats = Array.from({ length: 12 }, (_, index) => ({
 
 const LocationProbe = () => {
   const location = useLocation()
-  return <output aria-label="Location">{location.pathname + location.search}</output>
+  return (
+    <output aria-label="Location" data-focus-composer={location.state?.focusComposer}>
+      {location.pathname + location.search}
+    </output>
+  )
 }
 
 const Fixture = ({
@@ -98,11 +103,9 @@ it.each([false, true])('collapses Recents and restores its expanded preview (mob
   expect(section).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryAllByRole('button', { name: 'Recent chat 1' })).toHaveLength(0)
   expect(screen.queryByRole('button', { name: 'Show more recent chats' })).not.toBeInTheDocument()
-  if (isMobile) {
-    expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
-  } else {
-    expect(screen.getByRole('button', { name: 'Delete chats outside projects' })).toBeVisible()
-  }
+  expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Delete chats outside projects' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Recents options' })).toBeInTheDocument()
 
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'true')
@@ -134,6 +137,62 @@ it('opens the protected burn confirmation by long-pressing Recents without toggl
   expect(section).toHaveAttribute('aria-expanded', 'false')
 })
 
+it.each([false, true])(
+  'opens Delete chats from the section options without collapsing Recents (mobile: %s)',
+  async (isMobile) => {
+    if (isMobile) {
+      forceMobileViewport()
+    }
+    render(<Fixture isMobile={isMobile} />, { wrapper: createTestProvider() })
+    const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+    const options = screen.getByRole('button', { name: 'Recents options' })
+    if (isMobile) {
+      fireEvent.contextMenu(screen.getByRole('button', { name: 'Recents' }))
+    } else {
+      fireEvent.keyDown(options, { key: 'Enter' })
+    }
+    expect(section).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(
+      await waitForElement(() => screen.queryByRole(isMobile ? 'button' : 'menuitem', { name: 'Delete chats' })),
+    )
+    const dialog = await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete chats?' }))
+    expect(dialog).toHaveTextContent("Chats in projects won't be deleted.")
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  },
+)
+
+it.each(['overflow', 'context', 'mobile'])('starts a standalone chat from the Recents %s menu', async (menu) => {
+  const isMobile = menu === 'mobile'
+  if (isMobile) {
+    forceMobileViewport()
+  }
+  render(<Fixture isMobile={isMobile} />, { wrapper: createTestProvider() })
+  const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  if (menu === 'context') {
+    fireEvent.contextMenu(section)
+  } else {
+    const options = screen.getByRole('button', { name: 'Recents options' })
+    if (isMobile) {
+      fireEvent.contextMenu(screen.getByRole('button', { name: 'Recents' }))
+    } else {
+      fireEvent.keyDown(options, { key: 'Enter' })
+    }
+  }
+  const surface = await waitForElement(() => screen.queryByRole(isMobile ? 'dialog' : 'menu'))
+  const actions = within(surface).getAllByRole(isMobile ? 'button' : 'menuitem')
+  expect(actions.map((action) => action.textContent)).toEqual(['New chat', 'Delete chats'])
+  await act(async () => {
+    fireEvent.click(actions[0])
+  })
+  expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent(/^\/chats\/new$/)
+  expect(screen.getByRole('status', { name: 'Location' })).toHaveAttribute('data-focus-composer', 'true')
+  expect(section).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.queryByRole(isMobile ? 'dialog' : 'menu')).toBeNull()
+})
+
 it('does not open the Recents menu when a touch becomes a scroll', async () => {
   forceMobileViewport()
   render(<Fixture isMobile />, { wrapper: createTestProvider() })
@@ -143,6 +202,19 @@ it('does not open the Recents menu when a touch becomes a scroll', async () => {
   act(() => getClock().tick(500))
   fireEvent.touchEnd(section)
   expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
+  expect(section).toHaveAttribute('aria-expanded', 'true')
+})
+
+it('opens the Recents confirmation by right-clicking the desktop heading', async () => {
+  render(<Fixture isMobile={false} />, { wrapper: createTestProvider() })
+  const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  fireEvent.contextMenu(section)
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Delete chats' })))
+  const dialog = await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete chats?' }))
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  expect(dialog).toContainElement(document.activeElement as HTMLElement)
   expect(section).toHaveAttribute('aria-expanded', 'true')
 })
 
@@ -181,4 +253,19 @@ it('opens the protected burn confirmation from the Recents menu and keeps focus 
   })
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
+})
+
+it('restores Recents expansion after remounting and persists both toggle directions', async () => {
+  const first = render(<Fixture isMobile={false} />, { wrapper: createTestProvider() })
+  const heading = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  expect(heading).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(heading)
+  expect(localStorage.getItem('sidebar.recents.expanded')).toBe('false')
+  first.unmount()
+  render(<Fixture isMobile={false} />, { wrapper: createTestProvider() })
+  const restored = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
+  expect(restored).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(restored)
+  expect(restored).toHaveAttribute('aria-expanded', 'true')
+  expect(localStorage.getItem('sidebar.recents.expanded')).toBeNull()
 })

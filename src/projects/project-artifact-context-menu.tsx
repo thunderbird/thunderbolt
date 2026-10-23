@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/context-menu'
 import type { ProjectArtifact } from './project-artifacts-data'
 import { useProjectArtifactActions } from './project-artifact-actions-provider'
+import { projectArtifactPath } from './project-artifact-path'
 
 type ProjectArtifactContextMenuProps = {
   artifact: ProjectArtifact
@@ -54,7 +55,7 @@ export const ProjectArtifactContextMenu = ({
             }
           }}
         >
-          <ContextMenuItem onSelect={() => navigate(`/projects/${projectId}/artifacts/${artifact.id}`)}>
+          <ContextMenuItem onSelect={() => navigate(projectArtifactPath(projectId, artifact.id))}>
             <ArrowUpRight />
             <Trans>Open artifact</Trans>
           </ContextMenuItem>

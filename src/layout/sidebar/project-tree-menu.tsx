@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Folder, Plus } from 'lucide-react'
+import { Folder, Plus, Trash2 } from 'lucide-react'
 import { useRef, useState, useTransition } from 'react'
 import { useNavigate } from 'react-router'
 import {
@@ -40,10 +40,12 @@ export const ProjectTreeMenu = ({
   currentChatThreadId,
   onChatClick,
   onNewProject,
+  onDeleteAllProjects,
 }: Pick<ChatListProps, 'chatThreads' | 'currentChatThreadId' | 'onChatClick'> & {
   projects: Project[]
   activeId: string | null
   onNewProject: () => void
+  onDeleteAllProjects: () => void
 }) => {
   const { t } = useLingui()
   const navigate = useNavigate()
@@ -87,7 +89,7 @@ export const ProjectTreeMenu = ({
               {preview.items.map((project) => (
                 <DropdownMenuSub key={project.id}>
                   <DropdownMenuSubTrigger className="gap-2">
-                    <ProjectIcon icon={project.icon} className="size-4 shrink-0 [&>img]:size-full" />
+                    <ProjectIcon icon={project.icon} className="size-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
@@ -116,7 +118,7 @@ export const ProjectTreeMenu = ({
               ))}
               {projects.length === 0 && (
                 <p className="px-2 py-3 text-sm text-muted-foreground">
-                  <Trans>Create a project to organize your chats.</Trans>
+                  <Trans>Organize chats with projects.</Trans>
                 </p>
               )}
               {preview.hasOverflow && (
@@ -139,6 +141,16 @@ export const ProjectTreeMenu = ({
               >
                 <Plus />
                 <Trans>New project</Trans>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={projects.length === 0}
+                onSelect={() => {
+                  openingEditor.current = true
+                  onDeleteAllProjects()
+                }}
+              >
+                <Trash2 />
+                <Trans>Delete all projects</Trans>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

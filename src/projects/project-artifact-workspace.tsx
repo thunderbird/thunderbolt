@@ -30,7 +30,6 @@ export const ProjectArtifactWorkspace = ({
   const { t } = useLingui()
   const {
     artifactsDialog,
-    chat,
     contentView,
     canvas,
     pins,
@@ -39,12 +38,13 @@ export const ProjectArtifactWorkspace = ({
     showAside,
     showPanel,
     openSourceChat,
+    closeSourceChat,
     reveal,
     askAbout,
   } = useProjectArtifactWorkspaceState(project, artifact, artifacts)
 
   return (
-    <ArtifactCanvasContext value={{ toolCallId: artifact.toolCallId, reveal }}>
+    <ArtifactCanvasContext value={{ messageId: artifact.messageId, toolCallId: artifact.toolCallId, reveal }}>
       <div className="@container/project-artifact relative h-full min-h-0 pt-[var(--header-inset)]">
         <div className="relative flex h-full [--project-chat-width:100cqw] @min-[960px]/project-artifact:[--project-chat-width:clamp(360px,38cqw,480px)]">
           <div
@@ -81,7 +81,7 @@ export const ProjectArtifactWorkspace = ({
                 variant={showChat ? 'secondary' : 'outline'}
                 size="sm"
                 aria-pressed={showChat}
-                onClick={showChat ? chat.closeChat : openSourceChat}
+                onClick={showChat ? closeSourceChat : openSourceChat}
               >
                 <MessageCircle />
                 <Trans>Source chat</Trans>
@@ -101,7 +101,7 @@ export const ProjectArtifactWorkspace = ({
           </div>
           <DetailPanelSurface
             open={showPanel}
-            onClose={showAside ? contentView.close : chat.closeChat}
+            onClose={showAside ? contentView.close : closeSourceChat}
             desktopWidth="var(--project-chat-width)"
           >
             <div className="relative h-full min-h-0">
@@ -111,7 +111,7 @@ export const ProjectArtifactWorkspace = ({
                     handlesKeyboardInset
                     title={artifact.chatTitle}
                     subtitle={t`Source chat`}
-                    onClose={chat.closeChat}
+                    onClose={closeSourceChat}
                     bodyClassName="-mx-4 gap-0 overflow-hidden md:-mx-6 md:pt-0 max-md:pb-0 max-md:after:hidden"
                   >
                     <div className="min-h-0 flex-1">

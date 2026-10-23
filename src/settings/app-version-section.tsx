@@ -8,7 +8,12 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
-import { useDesktopUpdate, type UpdateErrorPhase, type UpdateStatus } from '@/hooks/use-desktop-update'
+import {
+  isDesktopUpdateEnabled,
+  useDesktopUpdate,
+  type UpdateErrorPhase,
+  type UpdateStatus,
+} from '@/hooks/use-desktop-update'
 import { downloadLinks } from '@/lib/download-links'
 import { getPlatform, isDesktop, isMobile, isTauri } from '@/lib/platform'
 
@@ -62,7 +67,7 @@ export const AppVersionSection = () => {
   const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
   const desktop = isDesktop()
   const mobile = isMobile()
-  const showCheckButton = isTauri() && (desktop || mobile)
+  const showCheckButton = isTauri() && (isDesktopUpdateEnabled() || mobile)
 
   const { status, update, error, errorPhase, downloadProgress, checkForUpdates } = useDesktopUpdate()
   const checkDisabled = desktop && (status === 'checking' || status === 'downloading' || status === 'ready')

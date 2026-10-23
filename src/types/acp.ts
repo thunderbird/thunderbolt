@@ -11,6 +11,7 @@
  */
 
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
+import type { AgentExecution } from '@/agent-execution/store'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
@@ -108,11 +109,13 @@ export type AgentAdapterContext = {
    *  The chat layer persists it on `chatThreads.acpSessionId` so future loads
    *  can call `session/load` when the agent supports it. */
   onAcpSessionId: (sessionId: string) => Promise<void>
+  /** Device-local runtime and permission policy for the built-in agent. */
+  execution?: AgentExecution
   /** Invoked when the agent requests permission for a tool call on THIS
    *  thread's ACP session. The chat layer surfaces a dialog and resolves the
    *  response. Optional; a shared ACP connection routes each thread's prompts
    *  to its own handler so dialogs never cross threads. */
-  requestPermission?: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>
+  requestPermission?: (request: RequestPermissionRequest, signal?: AbortSignal) => Promise<RequestPermissionResponse>
   /** Invoked when the agent emits a `current_mode_update` or
    *  `config_option_update` on this thread's session. Optional; default no-op. */
   onSessionSideEffect?: SessionSideEffectSink

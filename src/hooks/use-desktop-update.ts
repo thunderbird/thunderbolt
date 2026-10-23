@@ -112,9 +112,12 @@ export type DesktopUpdateState = UpdateState & {
 
 let didAutoCheck = false
 
+/** Dev builds use the local source tree and deliberately have no updater endpoints. */
+export const isDesktopUpdateEnabled = (): boolean => !import.meta.env.DEV && isDesktop()
+
 /**
  * Hook to manage desktop application updates using Tauri's updater plugin.
- * Only active on desktop platforms (macOS, Windows, Linux).
+ * Only active in production desktop builds (macOS, Windows, Linux).
  * State lives in a shared zustand store so multiple call sites (toast,
  * Settings page) stay in sync.
  */
@@ -126,7 +129,7 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   const downloadProgress = useUpdateStore((s) => s.downloadProgress)
 
   const checkForUpdates = useCallback(async () => {
-    if (!isDesktop()) {
+    if (!isDesktopUpdateEnabled()) {
       return
     }
 
@@ -141,7 +144,7 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
 
     try {
       // Import the desktop-only updater plugin lazily so it stays out of the web
-      // entry bundle (this path is guarded by isDesktop above).
+      // entry bundle (this path is guarded by isDesktopUpdateEnabled above).
       const { check } = await import('@tauri-apps/plugin-updater')
       const availableUpdate = await check()
       dispatch({ type: 'CHECK_SUCCESS', update: availableUpdate })
@@ -156,6 +159,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   }, [])
 
   const downloadAndInstall = useCallback(async () => {
+    if (!isDesktopUpdateEnabled()) {
+      return
+    }
     const current = useUpdateStore.getState().update
     if (!current) {
       return
@@ -195,6 +201,9 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
   }, [])
 
   const restartApp = useCallback(async () => {
+    if (!isDesktopUpdateEnabled()) {
+      return
+    }
     try {
       // Best-effort disconnect — don't block the relaunch if PowerSync fails
       try {
@@ -231,12 +240,12 @@ export const useDesktopUpdate = (): DesktopUpdateState => {
     }
   }, [checkForUpdates, downloadAndInstall, restartApp])
 
-  // Auto-check once per session on desktop. Guarded so mounting the hook in
+  // Auto-check once per session in production desktop builds. Guarded so mounting the hook in
   // multiple places (toast + Settings) doesn't fire repeat checks. The guard
   // is set inside the timeout so an early unmount re-arms the check on the
   // next mount instead of silently swallowing it for the session.
   useEffect(() => {
-    if (!isDesktop() || didAutoCheck) {
+    if (!isDesktopUpdateEnabled() || didAutoCheck) {
       return
     }
 

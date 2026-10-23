@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { withToolApproval, type AuthorizeTool } from '@/agent-execution/approval'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
@@ -129,6 +130,7 @@ export const ollama = createOpenAI({
 })
 
 type AiFetchStreamingResponseOptions = {
+  authorizeTool?: AuthorizeTool
   init: RequestInit
   modelId: string
   mcpClients?: NamedMCPClient[]
@@ -479,6 +481,8 @@ export type PreparedAiRequestConfig = {
 }
 
 export type PrepareAiRequestConfigOptions = {
+  /** The caller gates every tool through the chat's access policy. */
+  readonly toolApprovalHandled?: boolean
   readonly modelId: string
   readonly mcpClients?: NamedMCPClient[]
   readonly reconnectClient?: ReconnectClient
@@ -523,6 +527,7 @@ export const prepareAiRequestConfig = async ({
   webToolBudget,
   chatThreadId,
   telemetry,
+  toolApprovalHandled = false,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   telemetry?.startPhase('request_config')
   const db = getDb()
@@ -619,7 +624,9 @@ export const prepareAiRequestConfig = async ({
           app: miniApp,
           tools: miniAppSnapshot.tools,
           invoke: invokeTool,
-          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
+          requestApproval: toolApprovalHandled
+            ? async () => 'approved'
+            : (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
         })
       : {}
   // Tracked, not just counted: a tool skipped for a name conflict is not
@@ -665,6 +672,7 @@ export const prepareAiRequestConfig = async ({
           buildMiniAppPromptSection(miniApp, surface),
           buildMiniAppToolsPromptSection(
             miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
+            !toolApprovalHandled,
           ),
         ]
           .filter((section) => section !== null)
@@ -769,6 +777,7 @@ export const aiFetchStreamingResponse = async ({
   webToolBudget,
   telemetry,
   debugTranscript,
+  authorizeTool,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body) as { messages: ThunderboltUIMessage[]; id: string }
@@ -786,7 +795,7 @@ export const aiFetchStreamingResponse = async ({
     profile,
     supportsTools,
     sourceCollector,
-    toolset,
+    toolset: rawToolset,
     skills,
     mcpToolsMetadata,
     stableSystemPrompt,
@@ -801,8 +810,10 @@ export const aiFetchStreamingResponse = async ({
     // The chat id rides the request body (see the destructure above), which is
     // how this path knows which thread — and so which project — it is serving.
     chatThreadId: body.id,
+    toolApprovalHandled: authorizeTool !== undefined,
     telemetry,
   })
+  const toolset = authorizeTool ? withToolApproval(rawToolset, authorizeTool, mcpToolsMetadata) : rawToolset
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }

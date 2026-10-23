@@ -5,11 +5,46 @@
 import { maxRetries } from '@/chats/chat-instance'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { i18n } from '@lingui/core'
 import { ErrorMessage } from './error-message'
 
 afterEach(cleanup)
 
 describe('ErrorMessage', () => {
+  describe('execution configuration errors', () => {
+    const messages = [
+      'Cloud execution is not available yet',
+      'Computer execution requires the desktop app',
+      'Choose a working folder before using this computer',
+      'Choose a tool-capable model to use this computer',
+      'This model cannot run on this computer. Choose a tool-capable supported model.',
+    ]
+
+    it.each(messages)('shows actionable guidance for %s', (message) => {
+      render(<ErrorMessage retryCount={0} retriesExhausted={true} error={new Error(message)} />)
+
+      expect(screen.getByText(message)).toBeTruthy()
+      expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
+    })
+
+    it('translates an existing English error at the display boundary', () => {
+      const error = new Error('Cloud execution is not available yet')
+      const previousLocale = i18n.locale
+      i18n.loadAndActivate({
+        locale: 'execution-error-test',
+        messages: { [error.message]: 'Cloud-Ausführung ist noch nicht verfügbar' },
+      })
+      try {
+        render(<ErrorMessage retryCount={0} retriesExhausted={true} error={error} />)
+
+        expect(screen.getByText('Cloud-Ausführung ist noch nicht verfügbar')).toBeTruthy()
+        expect(error.message).toBe('Cloud execution is not available yet')
+      } finally {
+        i18n.activate(previousLocale)
+      }
+    })
+  })
+
   describe('cause-specific errors', () => {
     const cases = [
       {

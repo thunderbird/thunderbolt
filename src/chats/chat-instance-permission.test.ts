@@ -79,6 +79,22 @@ const getRemoteRequestPermission = async (): Promise<NonNullable<AgentAdapterCon
 }
 
 describe('requestPermission bridge', () => {
+  it('clears a pending approval when the tool aborts', async () => {
+    const requestPermission = await getRemoteRequestPermission()
+    const controller = new AbortController()
+    const response = requestPermission(
+      {
+        sessionId,
+        toolCall: { toolCallId: 'abort-test', kind: 'execute', title: 'sleep' },
+        options: [{ optionId: 'allow', kind: 'allow_once', name: 'Allow' }],
+      },
+      controller.signal,
+    )
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).not.toBeNull()
+    controller.abort()
+    await expect(response).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).toBeNull()
+  })
   beforeEach(() => {
     resetStore()
     resetPermissionAllowances()
@@ -90,7 +106,7 @@ describe('requestPermission bridge', () => {
     resetPermissionAllowances()
   })
 
-  it('omits requestPermission for the built-in agent', async () => {
+  it('provides an approval bridge for the built-in agent', async () => {
     const contexts: AgentAdapterContext[] = []
 
     const adapter: AgentAdapter = {
@@ -112,7 +128,8 @@ describe('requestPermission bridge', () => {
 
     await fetch('https://x', { body: '{}' } as RequestInit)
 
-    expect(contexts[0].requestPermission).toBeUndefined()
+    expect(contexts[0].requestPermission).toBeFunction()
+    expect(contexts[0].execution).toEqual({ location: 'sandbox', access: 'ask' })
   })
 
   it('routes an ACP requestPermission into the store and resolves on dialog response', async () => {

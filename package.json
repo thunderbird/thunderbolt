@@ -51,7 +51,9 @@
     "e2e:check-collected": "bun scripts/check-e2e-specs-collected.ts",
     "e2e:preview": "bunx playwright test --config playwright.preview.config.ts",
     "e2e:headed": "bunx playwright test --headed",
-    "docker:nuke": "bash scripts/docker-nuke.sh"
+    "docker:nuke": "bash scripts/docker-nuke.sh",
+    "dev:agent-execution": "VITE_DEV_PORT=1432 VITE_HMR_PORT=1433 vite",
+    "tauri:dev:agent-execution": "tauri dev --config src-tauri/tauri.dev.conf.json --config src-tauri/tauri.agent-execution.conf.json"
   },
   "size-limit": [
     {

@@ -12,8 +12,8 @@ import { ShieldAlert } from 'lucide-react'
 import { useState } from 'react'
 
 type PermissionDialogProps = {
-  onAlwaysAllowAgent: () => void
-  onAlwaysAllowTool: () => void
+  onAlwaysAllowAgent?: () => void
+  onAlwaysAllowTool?: () => void
   onRespond: (response: RequestPermissionResponse) => void
   request: RequestPermissionRequest
 }
@@ -157,7 +157,7 @@ export const PermissionDialog = ({
         ))}
       </div>
 
-      {allowOption && (
+      {allowOption && onAlwaysAllowTool && onAlwaysAllowAgent && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
             {i18n._(alwaysAllowKindLabel(kind))}

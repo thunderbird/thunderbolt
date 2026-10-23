@@ -1,0 +1,8 @@
+{
+  "productName": "Thunderbolt Agent Prototype",
+  "identifier": "net.thunderbird.thunderbolt.agent-execution",
+  "build": {
+    "beforeDevCommand": "bun run dev:agent-execution",
+    "devUrl": "http://localhost:1432"
+  }
+}

@@ -4,8 +4,7 @@
 
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
-import { useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
-import { isDesktop } from '@/lib/platform'
+import { isDesktopUpdateEnabled, useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -38,7 +37,7 @@ const UpgradeAction = () => {
   const { status, primaryAction } = useDesktopUpdate()
   const { i18n } = useLingui()
 
-  if (!isDesktop()) {
+  if (!isDesktopUpdateEnabled()) {
     return (
       <Button variant="secondary" onClick={() => window.location.reload()}>
         <Trans>Reload</Trans>

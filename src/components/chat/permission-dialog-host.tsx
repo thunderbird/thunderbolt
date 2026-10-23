@@ -4,6 +4,7 @@
 
 import { deriveToolKey, findAllowOption, useChatStore, useCurrentChatSession } from '@/chats/chat-store'
 import { PermissionDialog } from './permission-dialog'
+import { builtInAgent } from '@/defaults/agents'
 
 /**
  * Renders the inline {@link PermissionDialog} for the current chat session's
@@ -35,10 +36,11 @@ export const PermissionDialogHost = () => {
 
   return (
     <PermissionDialog
+      key={pendingPermission.requestId}
       request={pendingPermission.request}
       onRespond={(response) => resolvePendingPermission(id, response)}
-      onAlwaysAllowTool={handleAlwaysAllowTool}
-      onAlwaysAllowAgent={handleAlwaysAllowAgent}
+      onAlwaysAllowTool={pendingPermission.agentId === builtInAgent.id ? undefined : handleAlwaysAllowTool}
+      onAlwaysAllowAgent={pendingPermission.agentId === builtInAgent.id ? undefined : handleAlwaysAllowAgent}
     />
   )
 }

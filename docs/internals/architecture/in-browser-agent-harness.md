@@ -68,6 +68,16 @@ v5 UI message stream, the in-browser analogue of
 `createUIMessageStreamResponse` (one `data: <json>\n\n` line per chunk), so the adapter returns it as a plain
 `Response` body.
 
+## Desktop execution and approvals
+
+The execution-location prototype is documented in
+[agent-execution-prototype.md](../development/agent-execution-prototype.md).
+`buildAppHarness` accepts an optional `{ env, cwd }` execution binding. Its coding
+tools use the shared `CodingEnvironment` contract for every operation. Omission
+preserves the browser sandbox; desktop bindings use `NativeExecutionEnv` over
+Tauri IPC. Native runs never initialize OPFS and teardown never removes host files.
+Both Pi and legacy tools pass through the selected approval policy before execution.
+
 ## The execution environment
 
 [`BrowserExecutionEnv`](../../../shared/agent-core/browser-env/browser-execution-env.ts) implements Pi's `ExecutionEnv`
@@ -119,8 +129,7 @@ Three details keep the lexical check sound:
    (bash's "full output" file) and are torn down with it.
 
 **What the jail is not.** Not a network boundary: the harness also runs app, integration, and MCP tools, none of
-them sandboxed. Not the reason built-in tools auto-run either; that is a product decision restoring legacy behavior,
-recorded in the `built-in-adapter.ts` header.
+them sandboxed. Tool access is controlled separately by the per-chat approval policy.
 
 ### Harness lifecycle
 

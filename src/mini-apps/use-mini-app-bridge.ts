@@ -12,6 +12,8 @@
  * a broken demo.
  */
 
+import { useConfigStore } from '@/api/config-store'
+import { selectAppName } from '@/lib/branding-selectors'
 import {
   contextGetResultSchema,
   elementAtResultSchema,
@@ -516,7 +518,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
 
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
-          hostName: 'Thunderbolt',
+          hostName: selectAppName(useConfigStore.getState().config),
           capabilities: {
             context: true,
             chat: true,

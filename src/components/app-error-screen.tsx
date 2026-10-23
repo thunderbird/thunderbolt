@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useBrandingLinks } from '@/lib/branding-selectors'
 import type { HandleError } from '@/types/handle-errors'
 
 /**
@@ -38,6 +39,15 @@ const generateSupportEmail = (error: HandleError) => {
   }
 }
 
+/** A mailto: support address gets the error details prefilled; a support page opens as-is. */
+const supportHref = (support: string, error: HandleError): string => {
+  if (!support.startsWith('mailto:')) {
+    return support
+  }
+  const { subject, body } = generateSupportEmail(error)
+  return `${support}${support.includes('?') ? '&' : '?'}subject=${subject}&body=${body}`
+}
+
 type AppErrorScreenProps = {
   error: HandleError
   isClearingDatabase: boolean
@@ -46,6 +56,7 @@ type AppErrorScreenProps = {
 
 export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: AppErrorScreenProps) => {
   const isDatabaseError = error.code === 'MIGRATION_FAILED' || error.code === 'DATABASE_INIT_FAILED'
+  const links = useBrandingLinks()
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-[100vh] p-4">
@@ -87,13 +98,7 @@ export const AppErrorScreen = ({ error, isClearingDatabase, onClearDatabase }: A
           </AlertDialog>
         )}
 
-        <Button
-          variant="outline"
-          onClick={() => {
-            const { subject, body } = generateSupportEmail(error)
-            window.open(`mailto:support@thunderbird.net?subject=${subject}&body=${body}`)
-          }}
-        >
+        <Button variant="outline" onClick={() => window.open(supportHref(links.support, error))}>
           <Trans>Contact Support</Trans>
         </Button>
       </div>

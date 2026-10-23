@@ -187,3 +187,17 @@ describe('SSO desktop-initiate', () => {
     })
   })
 })
+
+describe('SSO desktop error page', () => {
+  it('titles the page with the branding app name, HTML-escaped', async () => {
+    const app = createApp({ ...ssoSettings, branding: { appName: 'Acme <AI> & Co' } } as Settings)
+    const res = await app.handle(new Request('http://localhost/v1/api/auth/sso/desktop-callback?loopback_port=1'))
+    const html = await res.text()
+    expect(html).toContain('<title>Acme &lt;AI&gt; &amp; Co</title>')
+  })
+
+  it('falls back to Thunderbolt without branding', async () => {
+    const res = await callbackUrl(1)
+    expect(await res.text()).toContain('<title>Thunderbolt</title>')
+  })
+})

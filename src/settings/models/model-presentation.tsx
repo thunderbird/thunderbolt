@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
+import { selectAppName } from '@/lib/branding-selectors'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
@@ -19,9 +21,11 @@ import type { Model } from '@/types'
  *  from these keys, so a new provider can't silently drop out of the picker). */
 // Brand names, deliberately not translated. The one exception is `custom`,
 // which is real copy — callers substitute a translated label for it (see
-// `customProviderLabel`).
+// `customProviderLabel`). Managed models carry the deployment's app name.
 export const providerLabels: Record<Model['provider'], string> = {
-  thunderbolt: 'Thunderbolt',
+  get thunderbolt() {
+    return selectAppName(useConfigStore.getState().config)
+  },
   tinfoil: 'Tinfoil',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
@@ -65,10 +69,10 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
 /** The one provider label that is copy rather than a brand name. */
 export const customProviderLabel = msg`Custom`
 
-/** Provider label for display — system-managed Tinfoil models brand as Thunderbolt. */
+/** Provider label for display — managed models, system Tinfoil included, carry the app name. */
 export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>): string => {
   if (isThunderboltManagedModel(model)) {
-    return 'Thunderbolt'
+    return providerLabels.thunderbolt
   }
   return model.provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[model.provider]
 }

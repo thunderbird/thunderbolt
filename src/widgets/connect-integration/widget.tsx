@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -83,6 +84,7 @@ const isProviderConnected = (
 export const ConnectIntegrationWidget = memo(
   ({ provider, service, reason, messageId, override }: ConnectIntegrationWidgetProps) => {
     const { i18n, t } = useLingui()
+    const appName = useAppName()
     const location = useLocation()
     const navigate = useNavigate()
     const { integrationsDoNotAskAgain } = useSettings({ integrations_do_not_ask_again: false })
@@ -377,11 +379,17 @@ export const ConnectIntegrationWidget = memo(
             <div className="text-center space-y-2">
               <h3 className="text-lg font-semibold">
                 {service === 'email' ? (
-                  <Trans>Thunderbolt wants to connect to {providerName} Email</Trans>
+                  <Trans>
+                    {appName} wants to connect to {providerName} Email
+                  </Trans>
                 ) : service === 'calendar' ? (
-                  <Trans>Thunderbolt wants to connect to {providerName} Calendar</Trans>
+                  <Trans>
+                    {appName} wants to connect to {providerName} Calendar
+                  </Trans>
                 ) : (
-                  <Trans>Thunderbolt wants to connect to {providerName} Email and Calendar</Trans>
+                  <Trans>
+                    {appName} wants to connect to {providerName} Email and Calendar
+                  </Trans>
                 )}
               </h3>
             </div>

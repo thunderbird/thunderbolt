@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
+import { selectAppName } from '@/lib/branding-selectors'
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
 import type {
   OAuthClientInformation,
@@ -127,7 +129,8 @@ class McpOAuthClientProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     return {
-      client_name: 'Thunderbolt',
+      // Shown on the server's consent screen; only new registrations pick up a changed name.
+      client_name: selectAppName(useConfigStore.getState().config),
       redirect_uris: [this.redirectUrl],
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],

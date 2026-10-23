@@ -3,14 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AppLogo } from '@/components/app-logo'
+import { useAppName } from '@/lib/branding-selectors'
 
 /**
  * Shared branding header for waitlist pages.
- * Displays the Thunderbolt logo and wordmark.
+ * Displays the logo and the deployment's app name.
  */
-export const WaitlistHeader = () => (
-  <div className="flex w-full items-center justify-center gap-1">
-    <AppLogo size={16} />
-    <span className="font-brand text-xl font-medium leading-7 tracking-[-0.4px] text-foreground">Thunderbolt</span>
-  </div>
-)
+export const WaitlistHeader = () => {
+  const appName = useAppName()
+
+  return (
+    <div className="flex w-full items-center justify-center gap-1">
+      <AppLogo size={16} />
+      <span className="font-brand text-xl font-medium leading-7 tracking-[-0.4px] text-foreground">{appName}</span>
+    </div>
+  )
+}

@@ -4,28 +4,33 @@
 
 import { Trans } from '@lingui/react/macro'
 import { AppLogo } from '@/components/app-logo'
+import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 
-export const AccountDeleted = () => (
-  <div className="flex flex-col items-center justify-center w-full h-dvh">
-    <div className="flex flex-col items-center gap-8 text-center">
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <AppLogo size={16} />
-        <span>Thunderbolt</span>
-      </div>
+export const AccountDeleted = () => {
+  const appName = useAppName()
 
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">
-          <Trans>Account Deleted</Trans>
-        </h1>
-        <p className="text-muted-foreground">
-          <Trans>Your account has been deleted and local data has been cleared.</Trans>
-        </p>
-      </div>
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-dvh">
+      <div className="flex flex-col items-center gap-8 text-center">
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <AppLogo size={16} />
+          <span>{appName}</span>
+        </div>
 
-      <Button variant="secondary" onClick={() => window.location.replace('/')}>
-        <Trans>Back to App</Trans>
-      </Button>
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight">
+            <Trans>Account Deleted</Trans>
+          </h1>
+          <p className="text-muted-foreground">
+            <Trans>Your account has been deleted and local data has been cleared.</Trans>
+          </p>
+        </div>
+
+        <Button variant="secondary" onClick={() => window.location.replace('/')}>
+          <Trans>Back to App</Trans>
+        </Button>
+      </div>
     </div>
-  </div>
-)
+  )
+}

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
 import { AlertCircle, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
@@ -308,6 +309,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
  * a redirect loop through the authenticated home route. Lazy-loaded (off the landing path).
  */
 export const DeviceApproval = () => {
+  const appName = useAppName()
   const authClient = useAuth()
   const { openSignInModal } = useSignInModal()
   const { data: session, isPending } = authClient.useSession()
@@ -354,7 +356,7 @@ export const DeviceApproval = () => {
             <Trans>Sign in to continue</Trans>
           </DialogTitle>
           <DialogDescription className="text-center">
-            <Trans>Sign in to a Thunderbolt account to approve this CLI request.</Trans>
+            <Trans>Sign in to a {appName} account to approve this CLI request.</Trans>
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">

@@ -4,17 +4,19 @@
 
 import { Trans } from '@lingui/react/macro'
 import { AppLogo } from '@/components/app-logo'
+import { useAppName } from '@/lib/branding-selectors'
 import { Button } from '@/components/ui/button'
 import { isIosPlatform } from '@/lib/platform'
 
 export const StorageUnavailableScreen = () => {
+  const appName = useAppName()
   const lockdownHint = isIosPlatform()
   return (
     <div className="flex flex-col items-center justify-center w-full h-dvh p-4">
       <div className="flex flex-col items-center gap-8 text-center max-w-md">
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <AppLogo size={16} />
-          <span>Thunderbolt</span>
+          <span>{appName}</span>
         </div>
 
         <div className="flex flex-col items-center gap-2">
@@ -22,10 +24,10 @@ export const StorageUnavailableScreen = () => {
             <Trans>Storage is disabled</Trans>
           </h1>
           <p className="text-muted-foreground">
-            <Trans>Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled.</Trans>{' '}
+            <Trans>{appName} needs browser storage (IndexedDB) to work, but it's currently disabled.</Trans>{' '}
             {lockdownHint ? (
               <Trans>
-                If you are using iOS Lockdown Mode, exclude Thunderbolt from the "Configure Web Browsing" setting, then
+                If you are using iOS Lockdown Mode, exclude {appName} from the "Configure Web Browsing" setting, then
                 reopen the app.
               </Trans>
             ) : (

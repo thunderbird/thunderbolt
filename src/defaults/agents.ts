@@ -2,18 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
+import { selectAppName } from '@/lib/branding-selectors'
 import type { Agent } from '@/types/acp'
 
 /**
- * The built-in Thunderbolt agent. Lives in code only — never a DB row.
+ * The built-in agent. Lives in code only — never a DB row.
  *
  * The chat layer treats this special case as a thin adapter over the existing
  * `aiFetchStreamingResponse` pipeline; the ACP protocol is not involved.
  * Always present, always first in the agent list, never removable.
+ *
+ * It carries the deployment's app name, read on access so every list, picker
+ * and fallback that holds this object shows the current branding. Only its id
+ * is ever persisted, so the name is free to change.
  */
 export const builtInAgent: Agent = {
   id: 'thunderbolt-built-in',
-  name: 'Thunderbolt',
+  get name() {
+    return selectAppName(useConfigStore.getState().config)
+  },
   type: 'built-in',
   transport: 'in-process',
   url: null,

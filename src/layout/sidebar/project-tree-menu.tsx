@@ -26,7 +26,6 @@ import { ProjectActionMenuItems } from '@/projects/project-action-menu-items'
 import { ProjectEditorDialog } from '@/projects/project-editor-dialog'
 import { ProjectDeleteDialog } from '@/projects/project-delete-dialog'
 import { ProjectIcon } from '@/projects/project-icon'
-import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
 import type { Project } from '@/types'
 import { ChatMenuItems } from './chat-menu-items'
 import type { ChatListProps } from './types'
@@ -50,7 +49,6 @@ export const ProjectTreeMenu = ({
   const { t } = useLingui()
   const navigate = useNavigate()
   const createNewChat = useCreateNewChat()
-  const artifacts = useProjectArtifactsDialog()
   const preview = useSidebarPreviewState(projects, activeId)
   const openingEditor = useRef(false)
   const db = useDatabase()
@@ -103,7 +101,6 @@ export const ProjectTreeMenu = ({
                       <ProjectActionMenuItems
                         pinned={project.pinnedOrder !== null}
                         onNewChat={() => createNewChat(project.id)}
-                        onOpenArtifacts={() => artifacts.open(project.id)}
                         onTogglePin={() =>
                           startTransition(async () => {
                             await setProjectPinned(db, project.id, project.pinnedOrder === null ? 0 : null)

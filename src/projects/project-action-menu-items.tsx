@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { LayoutGrid, MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
+import { MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
@@ -11,7 +11,6 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdow
 export const ProjectActionMenuItems = ({
   context = false,
   onNewChat,
-  onOpenArtifacts,
   onEdit,
   onTogglePin,
   pinned,
@@ -19,7 +18,6 @@ export const ProjectActionMenuItems = ({
 }: {
   context?: boolean
   onNewChat: () => void
-  onOpenArtifacts: () => void
   onEdit: () => void
   onTogglePin: () => void
   pinned: boolean
@@ -32,10 +30,6 @@ export const ProjectActionMenuItems = ({
       <Item onSelect={onNewChat} className="cursor-pointer">
         <MessageCirclePlus />
         <Trans>New chat</Trans>
-      </Item>
-      <Item onSelect={onOpenArtifacts} className="cursor-pointer">
-        <LayoutGrid />
-        <Trans>Artifacts</Trans>
       </Item>
       <Item onSelect={onTogglePin} className="cursor-pointer">
         {pinned ? <PinOff /> : <Pin />}

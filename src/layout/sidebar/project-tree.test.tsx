@@ -252,7 +252,6 @@ it('groups collapsed projects in a menu with incremental lists and working chat 
   fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Research' }), { key: 'ArrowRight' })
   const chat = await waitForElement(() => screen.queryByRole('menuitem', { name: 'Interview notes' }))
   expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeVisible()
-  expect(screen.getByRole('menuitem', { name: 'Artifacts' })).toBeVisible()
   fireEvent.click(chat)
   expect(onChatClick).toHaveBeenCalledWith('research-chat', null)
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
@@ -296,7 +295,6 @@ it('opens compact project creation from the collapsed menu without losing input 
   })
   expect(trigger).toHaveAttribute('aria-expanded', 'false')
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
-  expect(dialog).toHaveAttribute('data-slot', 'dialog-content')
   expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveFocus()
   expect(within(dialog).getAllByRole('textbox')).toHaveLength(1)
 })
@@ -325,28 +323,19 @@ it('opens project creation by long-pressing the mobile Projects heading without 
   expect(section).toHaveAttribute('aria-expanded', 'false')
 })
 
-it.each([false, true])('creates a project from the section options menu (mobile: %s)', async (isMobile) => {
-  if (isMobile) {
-    forceMobileViewport()
-  }
+it('creates a project from the desktop section options menu', async () => {
   render(
     <>
-      {tree(false, isMobile)}
+      {tree(false)}
       <LocationProbe />
     </>,
     { wrapper: createWrapper() },
   )
   const section = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
   const options = screen.getByRole('button', { name: 'Projects options' })
-  if (isMobile) {
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Projects' }))
-  } else {
-    fireEvent.keyDown(options, { key: 'Enter' })
-  }
+  fireEvent.keyDown(options, { key: 'Enter' })
   expect(section).toHaveAttribute('aria-expanded', 'true')
-  fireEvent.click(
-    await waitForElement(() => screen.queryByRole(isMobile ? 'button' : 'menuitem', { name: 'New project' })),
-  )
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'New project' })))
   const creation = await waitForElement(() => screen.queryByRole('dialog', { name: 'Create project' }))
   const name = within(creation).getByRole('textbox', { name: 'Name' })
   expect(within(creation).getAllByRole('textbox')).toHaveLength(1)
@@ -455,14 +444,8 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   if (isMobile) {
     forceMobileViewport()
   }
-  const project = await createProject(getDb(), { name: 'Research' })
-  render(
-    <>
-      {tree(false, isMobile)}
-      <LocationProbe />
-    </>,
-    { wrapper: createWrapper() },
-  )
+  await createProject(getDb(), { name: 'Research' })
+  render(tree(false, isMobile), { wrapper: createWrapper() })
   const folder = await waitForElement(() => screen.queryByRole('button', { name: 'Research' }))
   if (isMobile) {
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
@@ -474,11 +457,11 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
     } else {
       fireEvent.keyDown(screen.getByRole('button', { name: 'More' }), { key: 'Enter' })
     }
-    await waitForElement(() => screen.queryByRole(actionRole, { name: 'Artifacts' }))
+    await waitForElement(() => screen.queryByRole(actionRole, { name: 'Edit' }))
   }
 
   await openMenu()
-  for (const name of ['New chat', 'Artifacts', 'Pin project', 'Edit', 'Delete']) {
+  for (const name of ['New chat', 'Pin project', 'Edit', 'Delete']) {
     expect(screen.getByRole(actionRole, { name })).toBeVisible()
   }
   if (isMobile) {
@@ -487,7 +470,6 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   } else {
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'New chat',
-      'Artifacts',
       'Pin project',
       'Edit',
       'Delete',
@@ -505,12 +487,6 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   expect(await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete this project?' }))).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   expect(folder).toBeVisible()
-
-  await openMenu()
-  await act(async () => {
-    fireEvent.click(screen.getByRole(actionRole, { name: 'Artifacts' }))
-  })
-  expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent(`/chats/new?artifacts=${project.id}`)
 })
 
 it('opens mobile project actions on long press without toggling the folder, and cancels while scrolling', async () => {

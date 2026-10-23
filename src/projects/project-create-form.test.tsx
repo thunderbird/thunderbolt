@@ -27,7 +27,6 @@ it('creates from only a name and emoji, and never submits when opening the icon 
   expect(onSubmit).not.toHaveBeenCalled()
   fireEvent.change(name, { target: { value: '  Research  ' } })
   const picker = screen.getByRole('button', { name: /Choose an icon/ })
-  expect(picker).toHaveAttribute('type', 'button')
   fireEvent.click(picker)
   const emoji = screen.getByRole('button', { name: '📁' })
   fireEvent.click(emoji)

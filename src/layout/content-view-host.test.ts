@@ -12,16 +12,8 @@ describe('routeHostsContentView', () => {
   })
 
   it('leaves every other route to main-layout', () => {
-    expect(routeHostsContentView('/projects')).toBeFalse()
-    expect(routeHostsContentView('/projects/research')).toBeFalse()
     expect(routeHostsContentView('/chats/abc')).toBeFalse()
     expect(routeHostsContentView('/settings/preferences')).toBeFalse()
     expect(routeHostsContentView('/')).toBeFalse()
-  })
-
-  it('hosts content beside an artifact canvas, while the gallery uses the main layout', () => {
-    expect(routeHostsContentView('/projects/research/artifacts/chart?chat=thread')).toBeTrue()
-    expect(routeHostsContentView('/projects/research/artifacts')).toBeFalse()
-    expect(routeHostsContentView('/projects/research/artifacts/')).toBeFalse()
   })
 })

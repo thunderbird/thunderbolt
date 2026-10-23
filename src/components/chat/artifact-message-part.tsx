@@ -11,14 +11,11 @@ import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { PanelRight } from 'lucide-react'
 import { InlineArtifactCard } from './inline-artifact-card'
-import { useContext } from 'react'
-import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
 
 /** How often the live streaming preview refreshes, so rapid token updates don't thrash the iframe. */
 const artifactPreviewThrottleMs = 120
 
 type ArtifactMessagePartProps = {
-  messageId: string
   part: ToolOrDynamicToolUIPart
 }
 
@@ -30,9 +27,8 @@ type ArtifactMessagePartProps = {
  * the panel the transcript shows a slim placeholder instead. A finished-but-failed
  * call renders nothing here (it stays an ordinary tool call in the group).
  */
-export const ArtifactMessagePart = ({ messageId, part }: ArtifactMessagePartProps) => {
+export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
   const { t } = useLingui()
-  const canvas = useContext(ArtifactCanvasContext)
   const artifactId = part.toolCallId
   const input = renderHtmlInput(part as RenderHtmlPart)
   const title = input.title?.trim() || t`Artifact`
@@ -54,17 +50,6 @@ export const ArtifactMessagePart = ({ messageId, part }: ArtifactMessagePartProp
   // Finished but not verified — it stays an ordinary tool call in the group.
   if (!verified) {
     return null
-  }
-  if (canvas?.messageId === messageId && canvas.toolCallId === artifactId) {
-    return (
-      <div className="my-2 flex items-center gap-2 rounded-xl border border-border bg-card/50 px-3 py-2">
-        <PanelRight className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm">{title}</span>
-        <Button variant="ghost" size="sm" onClick={canvas.reveal}>
-          <Trans>Show artifact</Trans>
-        </Button>
-      </div>
-    )
   }
   // Verified: exactly one of inline or the side panel — never both.
   if (shownInPanel) {

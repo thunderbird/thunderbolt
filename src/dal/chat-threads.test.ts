@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getDb } from '@/db/database'
-import { chatMessagesTable, chatThreadsTable, modelsTable, settingsTable } from '@/db/tables'
+import { chatMessagesTable, chatThreadsTable, modelsTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
@@ -23,8 +23,6 @@ import { getModel } from './models'
 import { getChatMessages } from './chat-messages'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { nowIso } from '@/lib/utils'
-import { renameProjectArtifact } from './project-artifact-presentation'
-import { artifactPresentationKeys } from '@/projects/artifact-presentation'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -744,8 +742,6 @@ describe('Chat Threads DAL', () => {
         },
         { id: standaloneMessage, chatThreadId: standaloneChat, role: 'user', content: 'Remove me' },
       ])
-      await renameProjectArtifact(db, `${projectMessage}-0`, 'Saved title')
-      await renameProjectArtifact(db, `${standaloneMessage}-0`, 'Private title to delete')
       const projectBefore = await getChatThread(db, projectChat)
       const messagesBefore = await getChatMessages(db, projectChat)
       await deleteNonProjectChatThreads(db)
@@ -766,27 +762,6 @@ describe('Chat Threads DAL', () => {
       expect(deletedThread?.title).toBeNull()
       expect(deletedMessage?.deletedAt).toBeTruthy()
       expect(deletedMessage?.content).toBeNull()
-      const saved = await db
-        .select()
-        .from(settingsTable)
-        .where(eq(settingsTable.key, artifactPresentationKeys(`${projectMessage}-0`).title))
-        .get()
-      const removed = await db
-        .select()
-        .from(settingsTable)
-        .where(eq(settingsTable.key, artifactPresentationKeys(`${standaloneMessage}-0`).title))
-        .get()
-      expect(saved?.value).toBe('Saved title')
-      expect(removed?.value).toBeNull()
-      expect(removed?.updatedAt).toBeTruthy()
-      await deleteChatThread(db, projectChat)
-      const singleDeleted = await db
-        .select()
-        .from(settingsTable)
-        .where(eq(settingsTable.key, artifactPresentationKeys(`${projectMessage}-0`).title))
-        .get()
-      expect(singleDeleted?.value).toBeNull()
-      expect(singleDeleted?.updatedAt).toBeTruthy()
     })
 
     it('should not throw when soft deleting from empty table', async () => {

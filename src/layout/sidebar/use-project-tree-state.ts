@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useReducer, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSidebar } from '@/components/ui/sidebar'
@@ -19,9 +19,7 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
   const navigate = useNavigate()
   const { closeMobileSidebar } = useSidebar()
   const [params] = useSearchParams()
-  const { projectId } = useParams()
-  const activeId =
-    projectId ?? chatThreads.find((thread) => thread.id === currentChatThreadId)?.projectId ?? params.get('projectId')
+  const activeId = chatThreads.find((thread) => thread.id === currentChatThreadId)?.projectId ?? params.get('projectId')
   const [state, dispatch] = useReducer(projectTreeReducer, { activeId, expanded: new Set(activeId ? [activeId] : []) })
   const [dialog, setDialog] = useState<'create' | 'deleteAll' | null>(null)
   const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.projects.expanded', 'true')

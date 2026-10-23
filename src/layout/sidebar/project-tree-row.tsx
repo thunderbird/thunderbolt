@@ -11,10 +11,8 @@ import { cn } from '@/lib/utils'
 import { projectDropId } from '@/projects/chat-drop'
 import { ProjectActions } from '@/projects/project-actions'
 import { ProjectIcon } from '@/projects/project-icon'
-import { useProjectArtifactsDialog } from '@/projects/use-project-artifacts-dialog'
 import type { Project } from '@/types'
 import { ChatListItem } from './chat-list-item'
-import { ProjectArtifactLinks } from './project-artifact-links'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import type { ChatListProps, ChatThread } from './types'
@@ -52,7 +50,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
   const chatList = useSidebarPreviewState(chats, props.currentChatThreadId)
   const navigate = useNavigate()
   const createNewChat = useCreateNewChat()
-  const artifactsDialog = useProjectArtifactsDialog()
   const { setOpen, closeMobileSidebar } = useSidebar()
   const { setNodeRef, isOver } = useDroppable({
     id: projectDropId(project.id),
@@ -71,12 +68,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
         project={project}
         onNewChat={startChat}
         triggerClassName={projectRowActionClass}
-        onOpenArtifacts={async () => {
-          if (props.isMobile) {
-            await closeMobileSidebar()
-          }
-          artifactsDialog.open(project.id)
-        }}
         onDeleted={() => {
           if (active) {
             navigate('/chats/new')
@@ -115,7 +106,6 @@ export const ProjectTreeRow = ({ project, chats, expanded, active, onToggle, ...
       {expanded && !props.isCollapsed && (
         <div id={`project-chats-${project.id}`} className="ml-4 mt-1 border-l border-border/70 pl-2">
           <SidebarMenu>
-            <ProjectArtifactLinks projectId={project.id} isMobile={props.isMobile} />
             {chatList.items.map((thread) => (
               <SidebarMenuItem key={thread.id}>
                 <ChatListItem

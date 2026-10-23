@@ -85,7 +85,6 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
-  projectArtifacts: () => import('@/projects/project-artifacts-page'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
@@ -100,7 +99,6 @@ const routeChunkLoaders = {
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
-const ProjectArtifactsPage = lazy(routeChunkLoaders.projectArtifacts)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
@@ -224,8 +222,6 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               {/* Preserve existing project links after moving projects into the sidebar. */}
               <Route path="projects" element={<ProjectRedirect />} />
               <Route path="projects/:projectId" element={<ProjectRedirect />} />
-              <Route path="projects/:projectId/artifacts" element={<ProjectArtifactsPage />} />
-              <Route path="projects/:projectId/artifacts/:artifactId" element={<ProjectArtifactsPage />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>

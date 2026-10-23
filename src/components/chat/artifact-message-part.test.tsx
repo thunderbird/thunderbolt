@@ -11,7 +11,6 @@ import { mockIntersectionObserver } from '@/test-utils/mock-intersection-observe
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { ArtifactMessagePart } from './artifact-message-part'
-import { ArtifactCanvasContext } from '@/artifacts/artifact-canvas-context'
 
 type PartOverrides = {
   toolCallId: string
@@ -33,43 +32,11 @@ const toolPart = (overrides: PartOverrides): ToolOrDynamicToolUIPart =>
 const renderPart = (part: ToolOrDynamicToolUIPart) =>
   render(
     <ContentViewProvider>
-      <ArtifactMessagePart messageId="message" part={part} />
+      <ArtifactMessagePart part={part} />
     </ContentViewProvider>,
   )
 
 describe('ArtifactMessagePart', () => {
-  it('keeps an artifact in its project canvas when the source chat opens', () => {
-    const actions: string[] = []
-    const { container, getByText } = render(
-      <ContentViewProvider>
-        <ArtifactCanvasContext
-          value={{ messageId: 'message', toolCallId: 'canvas', reveal: () => actions.push('reveal') }}
-        >
-          <ArtifactMessagePart
-            messageId="message"
-            part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
-          />
-        </ArtifactCanvasContext>
-      </ContentViewProvider>,
-    )
-    expect(container.querySelector('iframe')).toBeNull()
-    fireEvent.click(getByText('Show artifact'))
-    expect(actions).toEqual(['reveal'])
-  })
-  it('keeps a different message visible when a provider reuses a tool-call ID', () => {
-    const { container, queryByText } = render(
-      <ContentViewProvider>
-        <ArtifactCanvasContext value={{ messageId: 'other-message', toolCallId: 'canvas', reveal: () => {} }}>
-          <ArtifactMessagePart
-            messageId="message"
-            part={toolPart({ toolCallId: 'canvas', state: 'output-available', output: { ok: true } })}
-          />
-        </ArtifactCanvasContext>
-      </ContentViewProvider>,
-    )
-    expect(container.querySelector('iframe')).not.toBeNull()
-    expect(queryByText('Show artifact')).toBeNull()
-  })
   let restoreIntersectionObserver: () => void
   beforeEach(() => {
     restoreIntersectionObserver = mockIntersectionObserver(true)

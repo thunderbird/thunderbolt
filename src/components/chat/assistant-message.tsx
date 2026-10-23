@@ -107,7 +107,7 @@ export const mountMessageParts = (
         break
       case 'tool':
         // groupMessageParts only lifts render_html tool parts out of the group.
-        partElements.push(<ArtifactMessagePart messageId={messageId} part={part as ToolOrDynamicToolUIPart} />)
+        partElements.push(<ArtifactMessagePart part={part as ToolOrDynamicToolUIPart} />)
         break
     }
   })

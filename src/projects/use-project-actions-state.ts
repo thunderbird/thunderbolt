@@ -7,17 +7,15 @@ import { useDatabase } from '@/contexts'
 import { setProjectPinned } from '@/dal/projects'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { loadProjectArtifactsDialog } from './load-project-artifacts-dialog'
 
 type ProjectActionsStateProps = {
   projectId: string
   pinned: boolean
   onNewChat: () => void
-  onOpenArtifacts: () => void
 }
 
 /** Coordinate project actions, focus restoration, and mobile long-press behavior. */
-export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArtifacts }: ProjectActionsStateProps) => {
+export const useProjectActionsState = ({ projectId, pinned, onNewChat }: ProjectActionsStateProps) => {
   const db = useDatabase()
   const { isMobile } = useIsMobile()
   const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
@@ -35,22 +33,11 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
       openingDialog.current = false
     }
   }
-  const handleOpenChange = async (open: boolean) => {
-    if (!open) {
-      return
-    }
-    try {
-      await loadProjectArtifactsDialog()
-    } catch (cause) {
-      console.error('[projects] Could not preload artifact gallery', cause)
-    }
-  }
   const handleMobileOpenChange = (open: boolean) => {
     if (!open) {
       longPressFired.current = false
     }
     setMobileMenuOpen(open)
-    void handleOpenChange(open)
   }
   const longPressHandlers = useLongPress(() => {
     longPressFired.current = true
@@ -60,10 +47,6 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
     onNewChat: () => {
       openingDialog.current = !isMobile
       onNewChat()
-    },
-    onOpenArtifacts: () => {
-      openingDialog.current = !isMobile
-      onOpenArtifacts()
     },
     onTogglePin: () => {
       startTransition(async () => {
@@ -80,7 +63,6 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat, onOpenArt
     longPressFired,
     longPressHandlers,
     actions,
-    handleOpenChange,
     handleCloseAutoFocus,
     handleMobileOpenChange,
     closeDialog: () => setDialog(null),

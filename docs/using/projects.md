@@ -10,12 +10,12 @@ A project's instructions are always on for every chat inside it. Guidance you wa
 
 Open **⋮ → New project** beside **Projects** in the sidebar, or long-press the **Projects** heading on mobile. Choose a name and an optional emoji. Description and shared instructions can be added later through the project’s **Edit** action.
 
-| Field        | Required | Limit             | What it does                                               |
-| ------------ | -------- | ----------------- | ---------------------------------------------------------- |
-| Icon         | No       | Any emoji         | Marks the project in chat headers and artifact collections |
-| Name         | Yes      | 100 characters    | How the project is labelled everywhere                     |
-| Description  | No       | Any length        | A note for you. It is not sent to the model                |
-| Instructions | No       | 20,000 characters | Applied to every chat in the project                       |
+| Field        | Required | Limit             | What it does                                      |
+| ------------ | -------- | ----------------- | ------------------------------------------------- |
+| Icon         | No       | Any emoji         | Marks the project in the sidebar and chat headers |
+| Name         | Yes      | 100 characters    | How the project is labelled everywhere            |
+| Description  | No       | Any length        | A note for you. It is not sent to the model       |
+| Instructions | No       | 20,000 characters | Applied to every chat in the project              |
 
 Instructions are plain prose, for example: `Reply in British English. Prefer bullet points over prose.` Edits take effect on the next message, including in chats already open.
 
@@ -31,7 +31,7 @@ Expand a project folder to see its chats. **⋯ → New chat** creates a chat in
 
 ## Artifacts
 
-Open a project's **⋯ → Artifacts** menu (long-press the project on mobile) to browse its artifacts in a searchable modal. It shows up to three rows at a time; scroll for more. Selecting a card opens the artifact canvas, with a **Source chat** button to open its conversation alongside it. Right-click or long-press a card to rename, delete, download, or pin it to the project's sidebar folder. Deleting an artifact from this collection keeps the original output in its source chat. See [Chat](./chat.md#artifacts).
+Artifacts remain in the chats that produced them. See [Chat](./chat.md#artifacts).
 
 ## Searching across a project's chats
 

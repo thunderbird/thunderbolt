@@ -13,11 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#. placeholder {0}: actions.dialog.artifact.title
-#: src/projects/project-artifact-actions-provider.tsx
-msgid "“{0}” will be removed from project artifacts and pinned shortcuts. The original output will remain in its source chat."
-msgstr ""
-
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "„{filename}“ ist zu groß (max. {maxMegabytes} MB)."
@@ -176,10 +171,6 @@ msgstr ""
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Ein Gerät möchte sich als Thunderbolt CLI in Ihrem Konto anmelden. Genehmigen Sie dies nur, wenn Sie es gerade selbst in Ihrem Terminal gestartet haben."
-
-#: src/projects/project-artifact-gallery.tsx
-msgid "A home for what you create"
-msgstr ""
 
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
@@ -492,26 +483,14 @@ msgstr "Sind Sie sicher? Alle von Ihnen vorgenommenen Änderungen gehen verloren
 msgid "Artifact"
 msgstr "Artefakt"
 
-#: src/projects/project-artifact-actions-provider.tsx
-msgid "Artifact downloaded"
-msgstr ""
-
-#: src/projects/rename-artifact-dialog.tsx
-msgid "Artifact name"
-msgstr ""
-
-#: src/projects/project-artifacts-page.tsx
-msgid "Artifact unavailable"
-msgstr ""
-
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 #: src/projects/project-artifact-gallery.tsx
 #: src/projects/project-artifact-grid.tsx
 #: src/projects/project-artifact-workspace.tsx
 #: src/projects/project-artifacts-dialog.tsx
-msgid "Artifacts"
-msgstr "Artefakte"
+#~ msgid "Artifacts"
+#~ msgstr "Artefakte"
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -646,7 +625,6 @@ msgstr "Kalender"
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/projects/project-create-form.tsx
-#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -685,10 +663,6 @@ msgstr ""
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Die Änderungen wurden gespeichert, aber die Verbindung konnte nicht neu aufgebaut werden. Bitte versuchen Sie es erneut."
-
-#: src/projects/project-artifact-gallery.tsx
-msgid "Charts, prototypes, and other artifacts from this project's chats appear here. Pin your favorites to keep them in the sidebar."
-msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Chat"
@@ -862,7 +836,6 @@ msgstr "Zwischenablage nicht verfügbar. Bitte markieren Sie die Phrase oben und
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
 #: src/components/window-controls.tsx
-#: src/content-view/header.tsx
 msgid "Close"
 msgstr "Schließen"
 
@@ -1121,20 +1094,12 @@ msgstr "Verbindung zu diesem Server nicht möglich. Prüfen Sie die URL und ob d
 msgid "Could not create the project."
 msgstr "Das Projekt konnte nicht erstellt werden."
 
-#: src/projects/use-project-artifact-actions-state.ts
-msgid "Could not delete the artifact. Please try again."
-msgstr ""
-
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the project. Please try again."
 msgstr ""
 
 #: src/projects/project-delete-dialog.tsx
 msgid "Could not delete the projects. Please try again."
-msgstr ""
-
-#: src/projects/use-project-artifact-actions-state.ts
-msgid "Could not download the artifact. Please try again."
 msgstr ""
 
 #: src/hooks/use-external-link-dialog.ts
@@ -1149,17 +1114,9 @@ msgstr "Der QR-Code konnte nicht gelesen werden"
 msgid "Could not read the import file."
 msgstr "Die Importdatei konnte nicht gelesen werden."
 
-#: src/projects/use-project-artifact-actions-state.ts
-msgid "Could not rename the artifact. Please try again."
-msgstr ""
-
 #: src/components/device-qr-code.tsx
 msgid "Could not render pairing code."
 msgstr "Der Kopplungscode konnte nicht angezeigt werden."
-
-#: src/projects/use-project-artifact-pins.ts
-msgid "Could not save the pin. Please try again."
-msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
@@ -1296,11 +1253,6 @@ msgstr "Die sichere KI-Verbindung konnte nicht verifiziert werden. Das ist meist
 msgid "Create"
 msgstr "Erstellen"
 
-#: src/layout/sidebar/project-tree-menu.tsx
-#: src/layout/sidebar/project-tree.tsx
-#~ msgid "Create a project to organize your chats."
-#~ msgstr ""
-
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
 msgstr "Agent erstellen"
@@ -1405,8 +1357,6 @@ msgstr "Standardeinstellung"
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-#: src/projects/project-artifact-actions-provider.tsx
-#: src/projects/project-artifact-context-menu.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 #: src/skills/library-row.tsx
@@ -1455,10 +1405,6 @@ msgstr ""
 msgid "Delete all projects?"
 msgstr ""
 
-#: src/projects/project-artifact-actions-provider.tsx
-msgid "Delete artifact?"
-msgstr ""
-
 #: src/components/delete-chat-dialog.tsx
 msgid "Delete Chat"
 msgstr "Chat löschen"
@@ -1473,10 +1419,6 @@ msgstr ""
 #: src/search/commands/use-commands.ts
 msgid "Delete chats outside projects"
 msgstr ""
-
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "Delete chats outside projects?"
-#~ msgstr ""
 
 #: src/components/delete-all-chats-dialog.tsx
 msgid "Delete chats?"
@@ -1710,7 +1652,6 @@ msgid "Download App"
 msgstr "App herunterladen"
 
 #: src/components/artifact/artifact-actions.tsx
-#: src/projects/project-artifact-context-menu.tsx
 msgid "Download HTML"
 msgstr "HTML herunterladen"
 
@@ -2097,7 +2038,6 @@ msgstr "Gmail & Kalender"
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx
-#: src/projects/project-artifacts-page.tsx
 msgid "Go back"
 msgstr "Zurück"
 
@@ -2173,10 +2113,6 @@ msgstr "QR-Code für {deviceName} ausblenden"
 #: src/settings/preferences.tsx
 msgid "How Thunderbolt salutes you"
 msgstr "Wie Thunderbolt Sie anspricht"
-
-#: src/projects/project-artifact-card.tsx
-msgid "HTML"
-msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "I agree to share this chat session with the Thunderbolt team."
@@ -2309,10 +2245,6 @@ msgstr "iOS erfordert eine sichere URL (wss://)"
 #: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Die Anweisungen werden entfernt. Chats im Projekt bleiben erhalten und werden zu normalen Chats."
-
-#: src/projects/project-artifacts-page.tsx
-msgid "Its source chat may have been moved or deleted."
-msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Just synced"
@@ -2626,7 +2558,6 @@ msgstr "Neuer Agent"
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-#: src/projects/project-artifact-gallery.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "Neuer Chat"
@@ -2721,10 +2652,6 @@ msgstr "Akzeptiert keine Geräteverbindungen mehr"
 #: src/projects/emoji-picker.tsx
 msgid "No matches"
 msgstr "Keine Treffer"
-
-#: src/projects/project-artifact-gallery.tsx
-msgid "No matching artifacts"
-msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
@@ -2901,11 +2828,6 @@ msgstr "OneDrive-Zugriff"
 msgid "Only available in private chats."
 msgstr "Nur in privaten Chats verfügbar."
 
-#. placeholder {0}: artifact.title
-#: src/projects/project-artifact-card.tsx
-msgid "Open {0}"
-msgstr ""
-
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
 msgstr "{modelName} öffnen"
@@ -2920,10 +2842,6 @@ msgstr "{title} öffnen"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
-msgstr ""
-
-#: src/projects/project-artifact-context-menu.tsx
-msgid "Open artifact"
 msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
@@ -2966,10 +2884,6 @@ msgstr ""
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
 msgstr "Link öffnen"
-
-#: src/projects/project-artifact-context-menu.tsx
-msgid "Open source chat"
-msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
@@ -3098,11 +3012,6 @@ msgstr "Pin-Limit erreicht ({maxPinnedSkills}). Lösen Sie zuerst einen."
 msgid "Pin project"
 msgstr ""
 
-#: src/projects/project-artifact-context-menu.tsx
-#: src/projects/project-artifact-workspace.tsx
-msgid "Pin to project"
-msgstr ""
-
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
 msgstr "Angepinnter Skill {label}"
@@ -3153,11 +3062,6 @@ msgstr "Vorschaufunktionen werden deaktiviert"
 msgid "Preview not available for this file type. Use the download button to view it."
 msgstr "Für diesen Dateityp ist keine Vorschau verfügbar. Nutzen Sie die Schaltfläche zum Herunterladen, um sie anzuzeigen."
 
-#. placeholder {0}: artifact.title
-#: src/projects/project-artifact-card.tsx
-msgid "Preview of {0}"
-msgstr ""
-
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview webview is only available in the desktop app"
 msgstr "Die Vorschau-Webview ist nur in der Desktop-App verfügbar"
@@ -3180,11 +3084,6 @@ msgstr ""
 
 #: src/projects/project-editor-dialog.tsx
 msgid "Project settings"
-msgstr ""
-
-#: src/projects/project-artifacts-dialog-content.tsx
-#: src/projects/project-artifacts-page.tsx
-msgid "Project unavailable"
 msgstr ""
 
 #: src/layout/sidebar/project-tree-menu.tsx
@@ -3322,13 +3221,8 @@ msgid "Removing…"
 msgstr "Wird entfernt…"
 
 #: src/layout/sidebar/chat-list-item.tsx
-#: src/projects/project-artifact-context-menu.tsx
 msgid "Rename"
 msgstr "Umbenennen"
-
-#: src/projects/rename-artifact-dialog.tsx
-msgid "Rename artifact"
-msgstr ""
 
 #: src/layout/sidebar/rename-chat-dialog.tsx
 msgid "Rename chat"
@@ -3465,7 +3359,6 @@ msgstr "Führen Sie dies auf dem Rechner aus, der die Bridge hostet, und fügen 
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/mini-apps/mini-app-download-prompt.tsx
-#: src/projects/rename-artifact-dialog.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
@@ -3534,10 +3427,6 @@ msgstr "Agenten suchen"
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
 msgstr "Ihre OneDrive-Dateien und -Dokumente durchsuchen und bearbeiten."
-
-#: src/projects/project-artifact-gallery.tsx
-msgid "Search artifacts"
-msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Search chats, models, skills, agents…"
@@ -3773,10 +3662,6 @@ msgstr ""
 msgid "Show"
 msgstr "Anzeigen"
 
-#: src/components/chat/artifact-message-part.tsx
-msgid "Show artifact"
-msgstr ""
-
 #. placeholder {0}: project.name
 #: src/layout/sidebar/project-tree-row.tsx
 msgid "Show fewer chats in {0}"
@@ -4000,10 +3885,6 @@ msgstr "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
 #: src/components/chat/error-message.tsx
 msgid "Something went wrong. Retrying ({retryCount}/{maxRetries})…"
 msgstr "Etwas ist schiefgelaufen. Neuer Versuch ({retryCount}/{maxRetries})…"
-
-#: src/projects/project-artifact-workspace.tsx
-msgid "Source chat"
-msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Speaking"
@@ -4460,10 +4341,6 @@ msgstr "Diese Version von Thunderbolt wird nicht mehr unterstützt. Aktualisiere
 msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
 msgstr ""
 
-#: src/components/delete-all-chats-dialog.tsx
-#~ msgid "This will delete all chats that aren't in a project. Chats inside projects will be kept."
-#~ msgstr ""
-
 #: src/projects/project-delete-dialog.tsx
 msgid "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
 msgstr ""
@@ -4703,11 +4580,6 @@ msgstr "Mit Passkey entsperren"
 msgid "Unpin"
 msgstr "Losbinden"
 
-#: src/projects/project-artifact-context-menu.tsx
-#: src/projects/project-artifact-workspace.tsx
-msgid "Unpin from project"
-msgstr ""
-
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
 msgid "Unpin project"
@@ -4717,11 +4589,6 @@ msgstr ""
 msgid "Unreachable {relative}"
 msgstr "Nicht erreichbar {relative}"
 
-#: src/dal/projects.ts
-msgid "Untitled artifact"
-msgstr ""
-
-#: src/dal/projects.ts
 #: src/lib/title-generator.ts
 #: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"

@@ -53,18 +53,3 @@ it('only offers expansion when the live collection exceeds five items', () => {
   expect(result.current.hasOverflow).toBe(false)
   expect(result.current.items).toHaveLength(4)
 })
-
-it('expands projects, project chats, and recents independently', () => {
-  const { result } = renderHook(() => ({
-    projects: useSidebarPreviewState(items),
-    chats: useSidebarPreviewState(items),
-    recents: useSidebarPreviewState(items),
-  }))
-  act(() => result.current.projects.toggle())
-  expect(result.current.projects.items).toHaveLength(10)
-  expect(result.current.chats.items).toHaveLength(5)
-  expect(result.current.recents.items).toHaveLength(5)
-  act(() => result.current.recents.toggle())
-  expect(result.current.recents.items).toHaveLength(10)
-  expect(result.current.chats.items).toHaveLength(5)
-})

@@ -14,14 +14,12 @@ import { cn } from '@/lib/utils'
 /** The detail panels' shared ⋯ header menu; children are its menu items. */
 export const DetailActionsMenu = ({
   children,
-  onOpenChange,
   onCloseAutoFocus,
   triggerClassName,
   side,
   align = 'end',
 }: {
   children: ReactNode
-  onOpenChange?: (open: boolean) => void
   onCloseAutoFocus?: ComponentProps<typeof DropdownMenuContent>['onCloseAutoFocus']
   triggerClassName?: string
   side?: ComponentProps<typeof DropdownMenuContent>['side']
@@ -30,7 +28,7 @@ export const DetailActionsMenu = ({
   const { t } = useLingui()
 
   return (
-    <DropdownMenu onOpenChange={onOpenChange}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"

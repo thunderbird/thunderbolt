@@ -21,7 +21,6 @@ import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
-import { ProjectArtifactsDialog } from '@/projects/project-artifacts-dialog'
 import { routeHostsContentView } from './content-view-host'
 import { sharedHeaderHasControls } from './shared-header'
 
@@ -194,7 +193,6 @@ export default function Page() {
           </ResponsiveModalContentComposable>
         </Dialog>
       )}
-      <ProjectArtifactsDialog />
     </SidebarInset>
   )
 }

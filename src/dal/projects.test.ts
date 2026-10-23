@@ -16,7 +16,6 @@ import {
   getAllProjects,
   getProject,
   getProjectChatThreads,
-  getProjectArtifactMessagesQuery,
   maxProjectInstructionsLength,
   maxProjectNameLength,
   setChatThreadProject,
@@ -46,37 +45,6 @@ const seedThread = async (projectId: string | null) => {
   await getDb().insert(chatThreadsTable).values({ id, title: 'T', projectId })
   return id
 }
-
-describe('project artifact sources', () => {
-  it('follows live project membership and excludes deleted messages and user content', async () => {
-    const db = getDb()
-    const project = await createProject(db, { name: 'Artifacts' })
-    const chatId = await seedThread(project.id)
-    const otherChat = await seedThread(null)
-    const parts = [
-      {
-        type: 'tool-render_html' as const,
-        toolCallId: 'tool',
-        state: 'output-available' as const,
-        input: { html: '<h1>Demo</h1>', title: 'Demo' },
-        output: { ok: true },
-      },
-    ]
-    const liveMessage = uuidv7()
-    await db.insert(chatMessagesTable).values([
-      { id: liveMessage, chatThreadId: chatId, role: 'assistant', parts },
-      { id: uuidv7(), chatThreadId: chatId, role: 'user', parts },
-      { id: uuidv7(), chatThreadId: chatId, role: 'assistant', parts, deletedAt: '2026-10-21T00:00:00Z' },
-      { id: uuidv7(), chatThreadId: otherChat, role: 'assistant', parts },
-    ])
-    expect((await getProjectArtifactMessagesQuery(db, project.id)).map((row) => row.id)).toEqual([liveMessage])
-    await setChatThreadProject(db, chatId, null)
-    expect(await getProjectArtifactMessagesQuery(db, project.id)).toEqual([])
-    await setChatThreadProject(db, chatId, project.id)
-    await db.update(chatThreadsTable).set({ deletedAt: '2026-10-21T00:00:00Z' }).where(eq(chatThreadsTable.id, chatId))
-    expect(await getProjectArtifactMessagesQuery(db, project.id)).toEqual([])
-  })
-})
 
 describe('projects CRUD', () => {
   it('creates and reads back a project', async () => {

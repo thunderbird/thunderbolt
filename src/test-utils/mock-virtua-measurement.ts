@@ -16,15 +16,7 @@
  * // ...render + assertions...
  * restore()
  */
-export const mockVirtuaMeasurement = ({
-  viewportHeight = 800,
-  itemHeight = 40,
-  measure,
-}: {
-  viewportHeight?: number
-  itemHeight?: number
-  measure?: (target: Element) => { width: number; height: number }
-} = {}): (() => void) => {
+export const mockVirtuaMeasurement = ({ viewportHeight = 800, itemHeight = 40 } = {}): (() => void) => {
   const originalResizeObserver = globalThis.ResizeObserver
   const originalOffsetParent = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent')
 
@@ -35,10 +27,10 @@ export const mockVirtuaMeasurement = ({
     },
   })
 
-  const makeEntry = (target: Element, height: number, width: number): ResizeObserverEntry =>
+  const makeEntry = (target: Element, height: number): ResizeObserverEntry =>
     ({
       target,
-      contentRect: { top: 0, bottom: 0, left: 0, right: 0, x: 0, y: 0, width, height, toJSON: () => ({}) },
+      contentRect: { top: 0, bottom: 0, left: 0, right: 0, x: 0, y: 0, width: 300, height, toJSON: () => ({}) },
       borderBoxSize: [],
       contentBoxSize: [],
       devicePixelContentBoxSize: [],
@@ -57,8 +49,7 @@ export const mockVirtuaMeasurement = ({
     observe(target: Element) {
       const height = this.isFirstObserve ? viewportHeight : itemHeight
       this.isFirstObserve = false
-      const size = measure?.(target) ?? { width: 300, height }
-      this.callback([makeEntry(target, size.height, size.width)], this as unknown as ResizeObserver)
+      this.callback([makeEntry(target, height)], this as unknown as ResizeObserver)
     }
 
     unobserve() {}

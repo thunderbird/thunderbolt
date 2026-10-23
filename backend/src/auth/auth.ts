@@ -290,6 +290,8 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     // horizontally-scaled deployments. Provides single-instance defence only. The DB-backed
     // `auth` IP tier holds across instances, and CAPTCHA_PROVIDER=altcha (with an app built with
     // VITE_CAPTCHA_PROVIDER=altcha) is the distributed bot control on anonymous sign-in.
+    // `/get-session` is exempt from the `auth` tier (see createAuthPluginIpRateLimit), so the
+    // custom rule below is its only limit.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,

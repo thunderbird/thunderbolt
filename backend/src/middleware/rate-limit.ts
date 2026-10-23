@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { anonymousSignInPath, authBasePath } from '@/auth/paths'
+import { anonymousSignInPath, authBasePath, getSessionPath } from '@/auth/paths'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { extractClientIp } from '@/utils/request'
@@ -148,19 +148,25 @@ export const createUserTierRateLimit = (
  * (`server.requestIP()` always returns the peer address); it would only arise on
  * a non-TCP transport (e.g. a Unix-domain socket), where collectively capping
  * unattributable traffic is the safe default.
+ *
+ * `limiterFor` returns null for a request that is exempt from this middleware.
  */
 const createIpRateLimitMiddleware = (
-  limiterFor: (request: Request) => RateLimiterDrizzle,
+  limiterFor: (request: Request) => RateLimiterDrizzle | null,
   trustedProxy: IpRateLimitSettings['trustedProxy'],
 ) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
+      const limiter = limiterFor(ctx.request)
+      if (!limiter) {
+        return
+      }
       // `|| 'unknown'` (not `??`): a degenerate empty-string address folds into the
       // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
       const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
       const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
-      return consumeOrReject(limiterFor(ctx.request), `ip:${clientIp}`, set)
+      return consumeOrReject(limiter, `ip:${clientIp}`, set)
     })
     .as('scoped')
 
@@ -190,16 +196,23 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
   createIpTierRateLimit(database, settings, 'auth')
 
 const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
+const getSessionMountPath = `${authBasePath}${getSessionPath}`
 
 /** Exact match, as Better Auth routes it: a trailing slash or lookalike prefix is a 404 there. */
 const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname === anonymousSignInMountPath
 
+/** GET with an exact path match, like `isAnonymousSignIn`; the app only ever GETs it. */
+const isGetSession = (request: Request) =>
+  request.method === 'GET' && new URL(request.url).pathname === getSessionMountPath
+
 /**
  * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own
  * operator-configured 'anonymous-sign-in' bucket so raising it never loosens any other
- * auth route; everything else draws from the fixed 'auth' tier. The deployment-wide
- * 'anonymous-sign-in-global' budget is charged later, in the auth before-hook, once the
- * captcha has passed.
+ * auth route. GET get-session is exempt: the app calls it on every boot, reconnect and
+ * cross-tab session change, so visitors sharing one IP would exhaust 'auth' between them,
+ * and Better Auth's own '/get-session' rule still limits it. Everything else draws from the fixed 'auth' tier.
+ * The deployment-wide 'anonymous-sign-in-global' budget is charged later, in the auth
+ * before-hook, once the captcha has passed.
  */
 export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
   if (!settings.enabled) {
@@ -207,10 +220,12 @@ export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: A
   }
   const authLimiter = createLimiter(database, 'auth', tierConfigs.auth)
   const anonymousSignInLimiter = createLimiter(database, 'anonymous-sign-in', settings.anonymousSignIn)
-  return createIpRateLimitMiddleware(
-    (request) => (isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter),
-    settings.trustedProxy,
-  )
+  return createIpRateLimitMiddleware((request) => {
+    if (isGetSession(request)) {
+      return null
+    }
+    return isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter
+  }, settings.trustedProxy)
 }
 
 export type RateLimitSet = Parameters<typeof consumeOrReject>[2]

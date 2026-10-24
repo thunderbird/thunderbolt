@@ -422,16 +422,24 @@ const generateCert = (hostname: string) => {
 // (Bun 1.4.1 already stopped deriving SNI from the Host header).
 describe('createSafeFetch TLS handshake', () => {
   const hostname = 'pinned.test'
-  const { key, cert } = generateCert(hostname)
   const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
+  let cert: string
   let server: ReturnType<typeof Bun.serve>
 
+  // Generated here rather than at collection time, so a missing or old openssl fails only this block.
   beforeAll(() => {
-    server = Bun.serve({ hostname: '127.0.0.1', port: 0, tls: { key, cert }, fetch: () => new Response('ok') })
+    const generated = generateCert(hostname)
+    cert = generated.cert
+    server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      tls: { key: generated.key, cert },
+      fetch: () => new Response('ok'),
+    })
   })
 
   afterAll(() => {
-    server.stop(true)
+    server?.stop(true)
   })
 
   it('verifies the certificate against the original hostname when connecting to the pinned IP', async () => {

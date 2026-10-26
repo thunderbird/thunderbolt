@@ -9,6 +9,7 @@ import { afterAll, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { stackURLs } from '../ports'
 
 const stack = join(import.meta.dir, 'stack.sh')
 const work = mkdtempSync(join(tmpdir(), 'qa-stack-test-'))
@@ -88,4 +89,22 @@ test('stop stops only the stack of its backend port', () => {
 
 test('an empty variable means the default', () => {
   expect(stopWith({ QA_BACKEND_PORT: '' })).toEqual({ code: 0, defaultAlive: false, otherAlive: true })
+})
+
+test('stack URLs fall back to the defaults', () => {
+  expect(stackURLs({})).toEqual({ frontend: 'http://localhost:1424', onboarding: 'http://localhost:1425' })
+  expect(stackURLs({ QA_FRONTEND_PORT: '' }).frontend).toBe('http://localhost:1424')
+  expect(stackURLs({ QA_FRONTEND_PORT: '2424', QA_ONBOARDING_PORT: '2425' })).toEqual({
+    frontend: 'http://localhost:2424',
+    onboarding: 'http://localhost:2425',
+  })
+})
+
+test('the replay config takes its base URL from QA_FRONTEND_PORT', () => {
+  const repoRoot = join(import.meta.dir, '../../..')
+  const { stdout } = Bun.spawnSync(
+    ['bun', '-e', "import c from './.github/qa/playwright.config.ts'; console.log(c.use?.baseURL)"],
+    { cwd: repoRoot, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', QA_FRONTEND_PORT: '2424' } },
+  )
+  expect(stdout.toString()).toBe('http://localhost:2424\n')
 })

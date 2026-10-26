@@ -214,9 +214,15 @@ export const sessionProblem = ({ charterDir, finding }: FindingFile): string | u
 
 /**
  * Import specifiers a repro spec may use. Assumes specs are replayed where the explorer wrote them,
- * `qa-out/<charter>/repro/<n>.spec.ts`, so the repo's `e2e/helpers` and `.github/qa/layout` are three directories up.
+ * `qa-out/<charter>/repro/<n>.spec.ts`, so the repo's `e2e/helpers`, `.github/qa/layout` and `.github/qa/ports` (the
+ * onboarding URL, for a c1 spec) are three directories up.
  */
-const allowedImports = new Set(['@playwright/test', '../../../e2e/helpers', '../../../.github/qa/layout'])
+const allowedImports = new Set([
+  '@playwright/test',
+  '../../../e2e/helpers',
+  '../../../.github/qa/layout',
+  '../../../.github/qa/ports',
+])
 
 /** Rejected wherever they appear, as a variable, a property, or a literal key, so shadowing cannot hide them. */
 const forbiddenNames = new Set([

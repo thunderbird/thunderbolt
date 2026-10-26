@@ -246,7 +246,7 @@ const screenshotProblem = async (outDir: string, file: FindingFile) => {
  * The specs are untrusted, so Playwright gets only what it needs to run and never the caller's secrets:
  * a dev shell with provider keys exported stays safe too.
  */
-export const replayEnv = (outDir: string) => ({
+export const replayEnv = (outDir: string, env: Record<string, string | undefined> = Bun.env) => ({
   PATH: Bun.env.PATH,
   HOME: Bun.env.HOME,
   CI: Bun.env.CI,
@@ -254,6 +254,9 @@ export const replayEnv = (outDir: string) => ({
   // A failed replay would otherwise write the page's aria snapshot (it can hold typed field values) into error-context.md.
   PLAYWRIGHT_NO_COPY_PROMPT: '1',
   QA_OUT: outDir,
+  // The ports of the stack the replay runs against.
+  QA_FRONTEND_PORT: env.QA_FRONTEND_PORT,
+  QA_ONBOARDING_PORT: env.QA_ONBOARDING_PORT,
 })
 
 const runPlaywright: RunReplay = async (specs, outDir, { list = false } = {}) => {

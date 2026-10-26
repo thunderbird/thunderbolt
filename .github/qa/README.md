@@ -423,8 +423,8 @@ export QA_FRONTEND_PORT=2024 QA_ONBOARDING_PORT=2025 QA_BACKEND_PORT=2005 \
 bunx playwright test --config .github/qa/playwright.config.ts --project control   # in another shell, same exports
 ```
 
-Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers` and
-`../../../.github/qa/layout`.
+Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers`,
+`../../../.github/qa/layout` and `../../../.github/qa/ports`.
 
 The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa`. The layout probe
 (`layout-probe.js`) has its own tests on static pages in `fixtures/layout/`:
@@ -770,11 +770,12 @@ The fix agent's draft PR already does this. By hand:
 1. Take `qa-out/<charter>/repro/<n>.spec.ts` from the run's `qa-replay-weekly` artifact.
 2. Save it as `e2e/consumer-qa-<fp>.spec.ts` (`e2e/sync-qa-<fp>.spec.ts` for c7).
 3. Change `'../../../e2e/helpers'` to `'./helpers'`, `'../../../.github/qa/layout'` to `'../.github/qa/layout'`,
-   and `@playwright/test` to `./test` when it imports only `test`, `expect`, `Page`, `Request` or `Route`.
+   `'../../../.github/qa/ports'` to `'../.github/qa/ports'`, and `@playwright/test` to `./test` when it imports only
+   `test`, `expect`, `Page`, `Request` or `Route`.
 4. `bun run e2e:check-collected`, then check that the spec fails before the fix and passes after it.
 
-A c1 spec runs against the onboarding build on port 1425 by default, which the root `playwright.config.ts` does not
-start. It needs its own project before it can live in `e2e/`.
+A c1 spec runs against the onboarding build (`QA_ONBOARDING_PORT`, 1425 by default), which the root
+`playwright.config.ts` does not start. It needs its own project before it can live in `e2e/`.
 
 ## Owners
 

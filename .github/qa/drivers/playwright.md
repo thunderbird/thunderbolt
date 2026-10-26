@@ -24,8 +24,8 @@
 2. Except for a `visual` finding, `<output directory>/repro/<n>.spec.ts`: a Playwright test that FAILS while the
    bug exists and PASSES once it is fixed, because it asserts the expected behaviour. A spec that breaks any rule
    below is thrown away:
-   - Import only from `@playwright/test`, from exactly `'../../../e2e/helpers'` and, for a `layout` finding,
-     from exactly `'../../../.github/qa/layout'`.
+   - Import only from `@playwright/test`, from exactly `'../../../e2e/helpers'`, for a `layout` finding
+     from exactly `'../../../.github/qa/layout'`, and for a c1 spec from exactly `'../../../.github/qa/ports'`.
    - Helpers: `loginViaEmailCode(page)` signs in a fresh user and waits for the chat composer (it returns the email);
      `sendChatPrompt(page, text)` sends a chat message; `collectPageErrors(page)` returns an array that fills with
      uncaught errors; `openSidebarOnMobile(page)` opens the sidebar on a phone. The base URL is set, so use relative

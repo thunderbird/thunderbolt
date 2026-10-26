@@ -9,6 +9,7 @@
 // NODE_ENV=test (fixed sign-in code) and WAITLIST_AUTO_APPROVE_DOMAINS=thunderbolt.test.
 import { resolve } from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
+import { frontendURL } from './ports'
 
 // Playwright resolves relative paths against this file's directory; the out dir sits under the repo root (the cwd).
 const outDir = resolve(process.env.QA_OUT ?? 'qa-out')
@@ -23,9 +24,9 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     ...devices['Desktop Chrome'],
-    // The consumer pair in the root playwright.config.ts. c1 specs switch to the onboarding build on 1425 with
-    // test.use().
-    baseURL: 'http://localhost:1424',
+    // The consumer pair in the root playwright.config.ts, on QA_FRONTEND_PORT. c1 specs switch to the onboarding
+    // build with test.use({ baseURL: onboardingURL }).
+    baseURL: frontendURL,
     video: 'on',
     trace: 'on',
   },

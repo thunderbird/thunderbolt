@@ -304,6 +304,17 @@ describe('layout oracle', () => {
     expect(withHelper).toContain('.github/qa/layout')
     expect(lintReproSpec(withHelper)).toEqual([])
   })
+
+  test('a c1 spec may take the onboarding URL from the ports helper', () => {
+    const body = `
+  await page.goto('/')`
+    const withPorts = spec(body).replace(
+      '\n\ntest(',
+      "\nimport { onboardingURL } from '../../../.github/qa/ports'\n\ntest.use({ baseURL: onboardingURL })\n\ntest(",
+    )
+    expect(withPorts).toContain('.github/qa/ports')
+    expect(lintReproSpec(withPorts)).toEqual([])
+  })
 })
 
 describe('visual oracle', () => {

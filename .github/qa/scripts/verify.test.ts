@@ -547,14 +547,18 @@ describe('replay', () => {
   })
 
   test('Playwright gets only the allowlisted variables, never the caller environment', () => {
-    expect(Object.keys(replayEnv('qa-out')).sort()).toEqual([
+    const env = replayEnv('qa-out', { QA_FRONTEND_PORT: '2424', QA_ONBOARDING_PORT: '2425', ANTHROPIC_API_KEY: 'k' })
+    expect(Object.keys(env).sort()).toEqual([
       'CI',
       'HOME',
       'PATH',
       'PLAYWRIGHT_BROWSERS_PATH',
       'PLAYWRIGHT_NO_COPY_PROMPT',
+      'QA_FRONTEND_PORT',
+      'QA_ONBOARDING_PORT',
       'QA_OUT',
     ])
+    expect([env.QA_FRONTEND_PORT, env.QA_ONBOARDING_PORT]).toEqual(['2424', '2425'])
   })
 
   test('the control spec passes the repro spec lint', async () => {

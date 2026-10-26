@@ -16,8 +16,8 @@ Start state: this build shows onboarding. The app runs at **http://localhost:142
 5. Delete the account from the settings, then try to sign in with the same address again.
    Function: `delete-account`.
 
-Specs for this charter: start with `test.use({ baseURL: 'http://localhost:1425' })` and sign in by hand
-(`page.goto('/')`, fill the "Email" field, press Continue, fill `input[autocomplete="one-time-code"]` with
-`12345678`), because `loginViaEmailCode` expects onboarding to be off.
+Specs for this charter: import `onboardingURL` from exactly `'../../../.github/qa/ports'`, start with
+`test.use({ baseURL: onboardingURL })` and sign in by hand (`page.goto('/')`, fill the "Email" field, press Continue,
+fill `input[autocomplete="one-time-code"]` with `12345678`), because `loginViaEmailCode` expects onboarding to be off.
 
 Out of bounds: settings beyond what these steps need.

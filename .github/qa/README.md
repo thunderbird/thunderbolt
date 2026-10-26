@@ -167,7 +167,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `unnamed-control`, a control a screen reader cannot name, quoted with an empty name),
    all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
    An `unnamed-control` finding takes its screen's area severity, as `covered` does, and an onboarding flow that
-   stops on it gets no privacy step from replay, since there is no name to wait for. The MCP does not put console text in a tool
+   stops on it gets no privacy step from replay, since there is no name to wait for. The line names only the role,
+   so it cannot tell two controls apart: a page load (an app launch on native) reports one unnamed control per role,
+   and every finding for that role in one area shares a fingerprint, so one ticket. On native, a line logged during
+   the harness's sign-in or consent step (the onboarding Back arrow is an unnamed button) can confirm a finding about
+   another control of that role. The judge checks that the finding names a control its screenshot or snapshot shows
+   and that the repro ends on that control's screen. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link

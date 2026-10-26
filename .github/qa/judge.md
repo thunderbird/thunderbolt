@@ -21,7 +21,10 @@ A `layout` finding, on the web or on a device, quotes a `[qa-layout]` line from 
 measured it, and the replay saw the same line again in the runs it counts, so that line is the proof. A screenshot or
 a description that seems to disagree is context, not a reason to drop: a screenshot and the screen's element tree can
 miss what the probe measures. An `unnamed-control` line is an accessibility defect: a screen reader user cannot tell
-what the control does. That is a user-visible failure for them, even when a label shows beside it on screen. Drop a
+what the control does. That is a user-visible failure for them, even when a label shows beside it on screen. The line
+names only the role, never which control, and on a device the harness's own sign-in can log it for another control
+of the same role (the onboarding Back arrow is an unnamed button). So check that the finding's `actual` names a
+control the screenshot or snapshot shows, and that the repro ends on that control's screen; drop it if not. Drop a
 `layout` finding only when the repro or the evidence is malformed (the evidence
 is not a `[qa-layout] <kind> <role> "<name>"` line, the replay failure does not show that line, or the repro does not
 reach the screen the finding is about), or when it matches the known issues below.

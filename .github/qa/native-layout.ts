@@ -221,6 +221,8 @@ const behindKeyboard = (root: NativeNode, platform: 'ios' | 'android', keyboard:
 const unnamedControls = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
   const nodes = platform === 'android' ? allNodes(appWindow(root) ?? root) : allNodes(root)
   const keys = platform === 'ios' ? keyboard : undefined
+  // shortcut: the line quotes only the role and "", so a launch reports one unnamed control per role and one ticket
+  // holds them all per area; quote a stable id or the nearest text instead once a finding needs to name which one.
   return [
     ...new Set(
       nodes

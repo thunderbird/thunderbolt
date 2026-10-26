@@ -302,6 +302,8 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
+    // shortcut: the line quotes only the role and "", so a load reports one unnamed control per role and one ticket
+    // holds them all per area; quote a stable id or the nearest text instead once a finding needs to name which one.
     const unnamed = [...document.querySelectorAll(controls)]
       .filter((el) => !accessibleName(el) && isCandidate(el))
       .map((el) => ({ kind: 'unnamed-control', target: describe(el) }))

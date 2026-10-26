@@ -50,12 +50,15 @@ journey() {
 }
 
 # The prompt text on stdin with each default stack port in a localhost or 127.0.0.1 URL swapped for the configured one
-# (an empty or unset QA_*_PORT keeps the default). One pass, so a port that moves onto another default is not moved
-# twice. Other ports, like the unreachable localhost:9, stay. Reads ports.json as data: in CI the checkout is untrusted.
+# (an empty, unset or malformed QA_*_PORT keeps the default). One pass, so a port that moves onto another default is not
+# moved twice. Other ports, like the unreachable localhost:9, stay. ports.json is data from a checkout CI does not
+# trust, so only a QA_<NAME>_PORT variable holding a port number ever reaches the prompt: no other variable, no text.
 stack_urls() {
   # shellcheck disable=SC2016 # jq variables
   jq --raw-input --slurp --join-output --slurpfile ports .github/qa/ports.json \
-    '($ports[0] | with_entries({key: (.value | tostring), value: ((($ENV[.key] // "") | select(. != "")) // (.value | tostring))})) as $map
+    '($ports[0] | with_entries(. as $e | {key: ($e.value | tostring), value: (
+        ((if ($e.key | test("\\AQA_[A-Z]+_PORT\\z")) then $ENV[$e.key] else null end) // "" | select(test("\\A[1-9][0-9]{0,4}\\z")))
+        // ($e.value | tostring))})) as $map
       | gsub("(?<host>localhost|127\\.0\\.0\\.1):(?<port>[0-9]+)"; .host + ":" + ($map[.port] // .port))'
 }
 

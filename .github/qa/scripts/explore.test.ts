@@ -3,7 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, expect, test } from 'bun:test'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -166,6 +176,29 @@ test("on the default ports the prompt keeps today's URLs", () => {
 test('a port that is not one of the six stays as the charter wrote it', () => {
   const prompt = promptFor('c3-models-providers-desktop', { QA_BACKEND_PORT: '8105' })
   expect(prompt).toContain('`http://localhost:9`')
+})
+
+test('a malformed port variable falls back to the default instead of reaching the prompt', () => {
+  for (const bad of ['abc', '8105\n', '8105 ', '123456']) {
+    const prompt = promptFor('c1-first-run-desktop', { QA_BACKEND_PORT: bad })
+    expect(prompt).toContain('its backend is http://localhost:8005')
+    expect(prompt).not.toContain('abc')
+    expect(prompt).not.toContain('8105')
+  }
+})
+
+test('a ports.json key that is not a QA port variable never reads the environment', () => {
+  // A checkout copy whose ports.json names another variable, with the default of c3's unreachable port. Its value is
+  // a valid port number, so only the name check can keep it out of the prompt.
+  const repo = mkdtempSync(join(work, 'repo-'))
+  const qa = join(repo, '.github/qa')
+  mkdirSync(qa, { recursive: true })
+  for (const name of readdirSync(join(repoRoot, '.github/qa')))
+    if (name !== 'ports.json') symlinkSync(join(repoRoot, '.github/qa', name), join(qa, name))
+  writeFileSync(join(qa, 'ports.json'), JSON.stringify({ QA_BACKEND_PORT: 8005, ANTHROPIC_API_KEY: 9 }))
+  const prompt = promptFor('c3-models-providers-desktop', { QA_REPO: repo, ANTHROPIC_API_KEY: '7777' })
+  expect(prompt).toContain('`http://localhost:9`')
+  expect(prompt).not.toContain('7777')
 })
 
 /** A stand-in `claude` that logs the given gate lines, may write the outside file, and prints a tool result. */

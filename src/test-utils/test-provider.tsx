@@ -4,6 +4,7 @@
 
 import { AuthProvider, DatabaseProvider, HttpClientProvider, type AuthClient, type HttpClient } from '@/contexts'
 import { getDb } from '@/db/database'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
@@ -16,6 +17,8 @@ type TestProviderOptions = {
   mockResponse?: unknown
   authClient?: AuthClient
   httpClient?: HttpClient
+  /** Universal proxy fetch; defaults to a no-op that answers every call with an empty response. */
+  proxyFetch?: FetchFn
   queryOptions?: {
     defaultOptions?: {
       queries?: {
@@ -73,7 +76,7 @@ export const createTestProvider = (options?: TestProviderOptions) => {
           <QueryClientProvider client={queryClient}>
             <HttpClientProvider httpClient={mockHttpClient}>
               <AuthProvider authClient={mockAuthClient}>
-                <ProxyFetchProvider proxyFetch={mockProxyFetch}>{children}</ProxyFetchProvider>
+                <ProxyFetchProvider proxyFetch={options?.proxyFetch ?? mockProxyFetch}>{children}</ProxyFetchProvider>
               </AuthProvider>
             </HttpClientProvider>
           </QueryClientProvider>

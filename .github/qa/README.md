@@ -80,8 +80,8 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 
 On the macOS runner any process of the job's user can read the Anthropic key in the initial environment of
 `claude`, even with the scrub and Seatbelt, as measured on the runner. Zone D therefore rests on a different
-guarantee: the model cannot start any process. Five conditions hold it up. `explore.sh run` sets (a), (b), (c) and (e) for an `ios`
-or `android` session, and the workflow holds (d). It refuses `c7-two-devices-ios`: its second browser could write
+guarantee: the model cannot start any process. Five conditions hold it up. `explore.sh run` sets (a), (b), (c) and
+(e) for an `ios` or `android` session, and the workflow holds (d). It refuses `c7-two-devices-ios`: its second browser could write
 anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
 
 - (a) The Maestro gate (`scripts/maestro-gate.ts`, `mcp-maestro.json`) is the only path to the device. It sends

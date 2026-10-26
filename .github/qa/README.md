@@ -172,11 +172,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    one, it quotes the lucide icon the control draws and the nearest text a screen reader reads before it
    (`[qa-layout] unnamed-control button "arrow-left icon after Connect Google"`), or `at the start`, leaving out
    hidden text and what a field holds. The quote is part of the fingerprint, so each control gets its own ticket,
-   and replay matches the whole line, so a line about another control of the same role never confirms the finding.
-   Two controls with the same icon and no text between them still share one line, and a quote taken from text that
-   changes between runs (an email the run typed) cannot replay. An `unnamed-control` finding takes its screen's area
-   severity, as `covered` does, and an onboarding flow that stops on it gets no privacy step from replay, since its
-   quote is not text the screen shows. The MCP does not put console text in a tool
+   unless two quotes differ only in digits (`normalize` drops them, so `#step-1` and `#step-2` share one). Replay
+   matches the whole line, so a line about another control of the same role never confirms the finding. Two
+   controls with the same icon and no text between them still share one line, and a quote taken from text that
+   changes between runs (an email the run typed, the end of an AI reply) cannot replay. An `unnamed-control`
+   finding takes its screen's area severity, as `covered` does, and an onboarding flow that stops on it gets no
+   privacy step from replay, since its quote is not text the screen shows. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
@@ -920,14 +921,16 @@ Also:
   visible label on iOS (`I agree to the Privacy Policy and Terms of Service .`), so it is not reported.
 - The tree's quote is the control's page `id` as `#<id>`, which Android's WebView passes on as the resource id
   (generated ids left out, as in the probe), or else the nearest text before it in the tree: the last leaf with
-  text, taking a control's name and never a field's value or a checkbox's state. The tree has no icons, no
-  `data-testid` and no `name`, and iOS gives no page ids, so a control without an `id` can quote differently there
-  than in the probe, and a web finding about it and a tree finding about it get different fingerprints. Two unnamed
-  controls with no text between them share one line on the tree. So that one control never makes two findings on
-  one platform, the gate and the replay drop the probe's own `unnamed-control` lines for what the tree reports
-  (`keepsProbeLine` in `native-layout.ts`): every one on Android, and on iOS the checkbox, radio and switch lines.
-  An iOS button, link or field keeps the probe's line, the same one the web gives. The Android tree gives a link no
-  role, so an unnamed link goes unreported there; the web and iOS legs still report it.
+  text, taking a control's name and never a checkbox's state. On Android that also leaves out a field's value; the
+  iOS tree cannot tell a field from text, so an unnamed checkbox right after a filled field quotes what was typed
+  there. The tree has no icons, no `data-testid` and no `name`, and iOS gives no page ids, so a control without an
+  `id` can quote differently there than in the probe, and a web finding about it and a tree finding about it get
+  different fingerprints. Two unnamed controls with no text between them share one line on the tree. So that one
+  control never makes two findings on one platform, the gate and the replay drop the probe's own `unnamed-control`
+  lines for what the tree reports (`keepsProbeLine` in `native-layout.ts`): on Android the roles the tree maps
+  (button, checkbox, radio, switch, textbox, combobox, and searchbox, which the WebView shows as a text field), and
+  on iOS the checkbox, radio and switch lines. Any other role keeps the probe's line, the same one the web gives: a
+  link on both platforms, and a button or field on iOS.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
   `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
   Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`

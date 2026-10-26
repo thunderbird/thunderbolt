@@ -232,7 +232,7 @@ const measured = async (ctx: GateContext, restarted = false) => {
   if (probe.includes(probeReady)) probeSeen.add(ctx.webviewLog)
   const sent = treeSent.get(ctx.webviewLog) ?? new Set<string>()
   treeSent.set(ctx.webviewLog, sent)
-  const tree = measure.problems.filter((line) => !sent.has(line))
+  const tree = measure.problems.map(clean).filter((line) => !sent.has(line))
   for (const line of tree) sent.add(line)
   const head = probeSeen.has(ctx.webviewLog) ? readyLine(measure) : '[qa-gate] layout probe not seen since launch'
   return { screen, lines: [...notes, head, ...tree, ...probe.filter((line) => line !== probeReady)] }

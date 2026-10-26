@@ -394,10 +394,12 @@ test('inspect_screen gives the gate the same unnamed control as the hierarchy', 
 test('on a device the probe line for a control the tree reports is left out, so one control is one finding', () => {
   const button = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
   const checkbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
+  const search = '[qa-layout] unnamed-control searchbox "after Locations"'
+  const link = '[qa-layout] unnamed-control link "after Terms"'
   const covered = '[qa-layout] covered button "Continue"'
   const kept = (platform: 'ios' | 'android') =>
-    [button, checkbox, covered].filter((line) => keepsProbeLine(line, platform))
-  // Android's tree names every control's role; iOS's only shows the checkable ones.
-  expect(kept('android')).toEqual([covered])
-  expect(kept('ios')).toEqual([button, covered])
+    [button, checkbox, search, link, covered].filter((line) => keepsProbeLine(line, platform))
+  // Android's tree gives a role to buttons, checkables and fields but not to links; iOS's only to checkables.
+  expect(kept('android')).toEqual([link, covered])
+  expect(kept('ios')).toEqual([button, search, link, covered])
 })

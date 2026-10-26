@@ -250,13 +250,21 @@ const unnamedControls = (root: NativeNode, platform: 'ios' | 'android', keyboard
   ]
 }
 
+// The probe's roles for the controls the tree reports. Chrome's WebView shows a searchbox as a text field.
+const treeRoles = {
+  android: new Set([...androidRoles.values(), 'searchbox']),
+  ios: new Set(['checkbox', 'radio', 'switch']),
+}
+
 /**
  * Whether the gate and the replay keep a line the probe logged on a device. The tree reports `unnamed-control` for
- * every control it can see, all of them on Android and the checkable ones on iOS, and quotes them from the tree, so
- * the probe's line for the same control would be a second finding with another fingerprint.
+ * the controls it can see and quotes them from the tree, so the probe's line for one of them would be a second
+ * finding with another fingerprint. A role the tree never reports, like a link, keeps the probe's line.
  */
-export const keepsProbeLine = (line: string, platform: 'ios' | 'android') =>
-  !(platform === 'android' ? /\] unnamed-control / : /\] unnamed-control (checkbox|radio|switch) /).test(line)
+export const keepsProbeLine = (line: string, platform: 'ios' | 'android') => {
+  const role = /\] unnamed-control (\S+) /.exec(line)?.[1]
+  return role === undefined || !treeRoles[platform].has(role)
+}
 
 /**
  * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible

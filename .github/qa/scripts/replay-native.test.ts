@@ -83,11 +83,14 @@ exit 0
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })
 
-test('an iOS run adds the tree line of the screen it ends on, read once after the flow', () => {
+/**
+ * One iOS replay run with fake `xcrun` and `maestro`, ending on the recorded privacy step without the checkbox's
+ * label. `failure` makes the sign-in fail, or the flow's driver time out.
+ */
+const iosRun = (failure: '' | 'sign-in' | 'driver') => {
   const dir = mkdtempSync(join(work, 'ios-'))
   const bin = join(dir, 'bin')
   const calls = join(dir, 'calls.log')
-  // The recorded privacy step with the checkbox's label taken away.
   const hierarchy = join(dir, 'hierarchy.json')
   const consent = readFileSync(join(import.meta.dir, '../fixtures/native/hier-consent.json'), 'utf8')
   const label = '"accessibilityText" : "I agree to the Privacy Policy and Terms of Service ."'
@@ -96,7 +99,13 @@ test('an iOS run adds the tree line of the screen it ends on, read once after th
   writeFileSync(join(bin, 'xcrun'), `#!/bin/bash\necho "xcrun $*" >> '${calls}'\nexit 0\n`)
   writeFileSync(
     join(bin, 'maestro'),
-    `#!/bin/bash\necho "maestro $3" >> '${calls}'\n[ "$3" = hierarchy ] && cat '${hierarchy}'\nexit 0\n`,
+    `#!/bin/bash
+echo "maestro $3" >> '${calls}'
+[ "$3" = hierarchy ] && { cat '${hierarchy}'; exit 0; }
+if grep -q 'Check your email' "$6"; then [ '${failure}' = sign-in ] && exit 1; exit 0; fi
+[ '${failure}' = driver ] && { echo 'iOS driver not ready in time'; exit 1; }
+exit 0
+`,
   )
   for (const tool of ['xcrun', 'maestro']) chmodSync(join(bin, tool), 0o755)
   const logs = [join(dir, 'webview.log'), join(dir, 'backend.log')]
@@ -118,15 +127,25 @@ test('an iOS run adds the tree line of the screen it ends on, read once after th
     cwd: dir,
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
   })
-
   expect(proc.stderr.toString()).toBe('')
-  expect(JSON.parse(proc.stdout.toString())).toEqual(['[qa-layout] unnamed-control checkbox ""'])
-  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line.
   const maestro = readFileSync(calls, 'utf8')
     .split('\n')
     .filter((line) => line.startsWith('maestro'))
-  expect(maestro).toEqual(['maestro test', 'maestro test', 'maestro hierarchy'])
-})
+  return { layout: JSON.parse(proc.stdout.toString()), maestro }
+}
+
+test('an iOS run adds the tree line of the screen it ends on, read once after the flow', () =>
+  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line.
+  expect(iosRun('')).toEqual({
+    layout: ['[qa-layout] unnamed-control checkbox ""'],
+    maestro: ['maestro test', 'maestro test', 'maestro hierarchy'],
+  }))
+
+test('an iOS run whose sign-in failed skips the tree, since it never counts', () =>
+  expect(iosRun('sign-in')).toEqual({ layout: [], maestro: ['maestro test'] }))
+
+test('an iOS run whose driver never started skips the tree, since it never counts', () =>
+  expect(iosRun('driver')).toEqual({ layout: [], maestro: ['maestro test', 'maestro test'] }))
 
 test("the harness's sign-in runs first in the same install, and when it fails the flow never runs", () => {
   const dir = mkdtempSync(join(work, 'sign-in-'))

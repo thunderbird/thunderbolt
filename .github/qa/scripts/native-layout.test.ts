@@ -5,7 +5,14 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { controlVerdict, measureNative, parseHierarchy, parseInspectScreen, readyLine } from '../native-layout'
+import {
+  controlVerdict,
+  measureNative,
+  type NativeNode,
+  parseHierarchy,
+  parseInspectScreen,
+  readyLine,
+} from '../native-layout'
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, '../fixtures/native', name), 'utf8')
 
@@ -245,14 +252,49 @@ test('an Android control without a description, text or hint is an unnamed contr
     '[qa-layout] unnamed-control textbox ""',
     '[qa-layout] unnamed-control button ""',
   ])
-  const twoFields = edited('hier-android-control.json', (attributes) => attributes.class === 'android.widget.Spinner', {
-    class: 'android.widget.EditText',
-    text: '',
+  const fields = (attributes: Record<string, string>) =>
+    attributes.class === 'android.widget.EditText' || attributes.class === 'android.widget.Spinner'
+  const twoFields = parseHierarchy(
+    edited('hier-android-control.json', fields, { class: 'android.widget.EditText', text: '', hintText: '' }),
+  )
+  const nodes = (node: NativeNode): NativeNode[] => [node, ...node.children.flatMap(nodes)]
+  expect(nodes(twoFields).filter((node) => node.role === 'textbox' && !node.name)).toHaveLength(2)
+  expect(measureNative(twoFields, 'android').problems).toEqual(['[qa-layout] unnamed-control textbox ""'])
+})
+
+test("an Android field's own text is its value, never its name", () => {
+  const typed = edited('hier-android-control.json', (attributes) => attributes.hintText === 'Email', {
     hintText: '',
-  }).replace('"hintText":"Email"', '"hintText":""')
-  expect(measureNative(parseHierarchy(twoFields), 'android').problems).toEqual([
-    '[qa-layout] unnamed-control textbox ""',
-  ])
+    text: 'qa@thunderbolt.test',
+  })
+  expect(measureNative(parseHierarchy(typed), 'android').problems).toEqual(['[qa-layout] unnamed-control textbox ""'])
+  // The language picker shows the selected language as its text.
+  const picked = edited('hier-android-control.json', (attributes) => attributes.hintText === 'Language', {
+    hintText: '',
+  })
+  expect(measureNative(parseHierarchy(picked), 'android').problems).toEqual(['[qa-layout] unnamed-control combobox ""'])
+})
+
+test('an iOS heading, whose value is its level, is no checkbox even at level 1 with no label', () => {
+  const welcome = (attributes: Record<string, string>) =>
+    attributes.accessibilityText === 'Welcome to Thunderbolt!' && attributes.value === '2'
+  const heading = edited('hier-consent.json', welcome, { accessibilityText: '', value: '1', text: '1' })
+  expect(measureNative(parseHierarchy(heading), 'ios').problems).toEqual([])
+})
+
+test('on Android a window over the app, like a browser tab, is not the app', () => {
+  const tree: Dumped = JSON.parse(androidControl)
+  const windows = tree.children?.[0]?.children
+  if (!windows) throw new Error('the fixture lost its windows')
+  windows.push({
+    attributes: {
+      bounds: '[0,136][1080,2400]',
+      class: 'android.widget.FrameLayout',
+      'resource-id': 'com.android.chrome:id/tab',
+    },
+    children: [{ attributes: { bounds: '[40,300][200,400]', class: 'android.widget.Button' } }],
+  })
+  expect(measureNative(parseHierarchy(JSON.stringify(tree)), 'android').problems).toEqual([])
 })
 
 test('the Android Connect Google step reports its icon-only Back button, the one button there without a name', () =>

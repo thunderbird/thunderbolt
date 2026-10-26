@@ -116,7 +116,8 @@ status, or the text on screen):
   checkbox, switch, radio, text field or combobox a screen reader cannot name, so its quoted name is empty, even when
   a label shows beside it). For an `unnamed-control` line, say in `actual` which control it is: what it looks like,
   where it sits and the text next to it, taken from the snapshot (where the control shows with a ref and no name),
-  the device's `inspect_screen` tree (an element with no `a11y` and no `hint`) or the screenshot. It reports a problem
+  the device's `inspect_screen` tree (an element with no `a11y` and no `hint`, and on Android no `txt` either, except
+  a text field or combobox, whose `txt` is its value) or the screenshot. It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A
   `[qa-layout]` line other than `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a
   `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` is

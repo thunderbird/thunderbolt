@@ -106,8 +106,11 @@ export const createRunFlow = (opts: {
     const signedIn = signIn === undefined ? undefined : await maestro('sign-in.yaml', signIn)
     const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
     const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
+    const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
+    const driverFailed = result.exitCode !== 0 && output.includes(driverTimeout)
     await Bun.sleep(probeWaitMs)
-    const tree = await treeLines(deviceId, platform)
+    // A run that never counts skips the dump, which would only eat into the leg's time.
+    const tree = signInFailed || driverFailed ? [] : await treeLines(deviceId, platform)
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()
     await recorder.exited
@@ -117,12 +120,11 @@ export const createRunFlow = (opts: {
     }
     await rm(dir, { recursive: true, force: true })
     const webview = await linesFrom(webviewLog, webviewStart)
-    const output = stripVTControlCharacters(`${result.stdout}${result.stderr}`).trim()
     return {
       signInFailed,
       passed: result.exitCode === 0,
       // The whole output, not its tail: a long trace after the driver error must not hide it from the retry.
-      error: result.exitCode === 0 ? undefined : output.includes(driverTimeout) ? driverTimeout : output.slice(-1_500),
+      error: result.exitCode === 0 ? undefined : driverFailed ? driverTimeout : output.slice(-1_500),
       video,
       layout: [
         ...webview

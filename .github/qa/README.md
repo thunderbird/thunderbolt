@@ -901,11 +901,13 @@ Also:
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
 - The tree also reports `unnamed-control` on both platforms, in the probe's form, one line per role:
   `[qa-layout] unnamed-control checkbox ""`. A screen reader reads the name from the platform's tree, not from the
-  page. A control has no name when its label, its placeholder and, on Android, its text are all empty; the
-  keyboard's keys are left out. Android gives the role from the class Chrome's WebView sets (button, checkbox,
-  radio, switch, text field, combobox). Maestro's iOS tree carries no element type, so there only a checkbox, switch
-  or radio shows, by its value of 0 or 1, and always as `checkbox`; an unnamed button, link or field on iOS is left
-  to the probe. The onboarding privacy checkbox reads its visible label on iOS
+  page. A control has no name when its label and its placeholder are empty and, on Android, so is its text; a text
+  field's or combobox's text is its value, never its name. The keyboard's keys are left out, and on Android so is
+  every window but the app's, like a browser tab over it. Android gives the role from the class Chrome's WebView
+  sets (button, checkbox, radio, switch, text field, combobox). Maestro's iOS tree carries no element type, so
+  there only a checkbox, switch or radio shows, as a leaf whose value is 0 or 1, and always as `checkbox`; an
+  unnamed button, link or field on iOS is left to the probe. Replay skips the tree on a run that cannot count (a
+  failed sign-in, an iOS driver that never started). The onboarding privacy checkbox reads its visible label on iOS
   (`I agree to the Privacy Policy and Terms of Service .`), so it is not reported.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
   `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and

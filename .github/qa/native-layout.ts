@@ -64,17 +64,26 @@ const androidRoles = new Map([
   ['android.widget.Spinner', 'combobox'],
 ])
 
-// shortcut: on iOS only a checkable control shows (its value is its state, 0 or 1), always as `checkbox`; an unnamed
-// button, link or field looks like any empty box there. Read the element type once Maestro's iOS tree carries one.
+// A field's text is its value, never its name, as in the web probe.
+const fieldRoles = new Set(['textbox', 'combobox'])
+
+/** An Android node's role, and its name from the content description, the hint or, but for a field, the text. */
+const androidControl = (node: { cls: string; a11y: string; txt: string; hint: string }) => {
+  const role = androidRoles.get(node.cls) ?? ''
+  return { role, name: node.a11y || node.hint || (fieldRoles.has(role) ? '' : node.txt) }
+}
+
+// shortcut: on iOS only a checkable control shows (a leaf whose value is its state, 0 or 1), always as `checkbox`; an
+// unnamed button, link or field looks like any empty box there. Read the element type once Maestro's iOS tree has one.
 /**
- * A node's control role and accessible name. Android nodes carry a class and put the name in the content description,
- * the text or the hint. iOS nodes carry no element type, and their text is the value, so the name is the label or
- * the placeholder.
+ * A node's control role and accessible name. Android nodes carry a class. iOS nodes carry no element type, and their
+ * text is the value, so the name is the label or the placeholder. A heading container also carries a value, its
+ * level, which is why an iOS control must be a leaf.
  */
-const controlOf = (node: { cls?: string; a11y: string; txt: string; hint: string; val: string }) =>
+const controlOf = (node: { cls?: string; a11y: string; txt: string; hint: string; val: string; leaf: boolean }) =>
   node.cls === undefined
-    ? { role: /^[01]$/.test(node.val) ? 'checkbox' : '', name: node.a11y || node.hint }
-    : { role: androidRoles.get(node.cls) ?? '', name: node.a11y || node.txt || node.hint }
+    ? { role: node.leaf && /^[01]$/.test(node.val) ? 'checkbox' : '', name: node.a11y || node.hint }
+    : androidControl({ ...node, cls: node.cls })
 
 const hasArea = ({ left, top, right, bottom }: Rect) => right > left && bottom > top
 
@@ -116,6 +125,7 @@ const fromHierarchy = ({ attributes, children = [] }: HierarchyNode): NativeNode
       txt: attributes.text ?? '',
       hint: attributes.hintText ?? '',
       val: attributes.value ?? '',
+      leaf: children.length === 0,
     }),
     children: children.flatMap(fromHierarchy),
   })
@@ -143,6 +153,7 @@ export const parseInspectScreen = (json: string): NativeNode => {
         txt: full.txt ?? '',
         hint: full.hint ?? '',
         val: full.val ?? '',
+        leaf: (full.c ?? []).length === 0,
       }),
       children: (full.c ?? []).flatMap(fromInspect),
     })
@@ -203,16 +214,21 @@ const behindKeyboard = (root: NativeNode, platform: 'ios' | 'android', keyboard:
 }
 
 /**
- * One `unnamed-control` line per role with a control the screen reader cannot name, as the probe writes it. The
- * keyboard's own keys are left out.
+ * One `unnamed-control` line per role with a control the screen reader cannot name, as the probe writes it. On
+ * Android only the app's window counts, which leaves out the keyboard and a browser tab over the app; on iOS the keys
+ * sit in the app's own tree, so the nodes inside the keyboard's frame are left out.
  */
-const unnamedControls = (root: NativeNode, keyboard: Rect | undefined) => [
-  ...new Set(
-    allNodes(root)
-      .filter((node) => node.role && !node.name.trim() && !(keyboard && inside(node.bounds, keyboard)))
-      .map((node) => `[qa-layout] unnamed-control ${node.role} ""`),
-  ),
-]
+const unnamedControls = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
+  const nodes = platform === 'android' ? allNodes(appWindow(root) ?? root) : allNodes(root)
+  const keys = platform === 'ios' ? keyboard : undefined
+  return [
+    ...new Set(
+      nodes
+        .filter((node) => node.role && !node.name.trim() && !(keys && inside(node.bounds, keys)))
+        .map((node) => `[qa-layout] unnamed-control ${node.role} ""`),
+    ),
+  ]
+}
 
 /**
  * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible
@@ -222,7 +238,10 @@ const unnamedControls = (root: NativeNode, keyboard: Rect | undefined) => [
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
   const keyboard = allNodes(root).find(keyboardNode[platform])?.bounds
-  return { keyboard, problems: [...behindKeyboard(root, platform, keyboard), ...unnamedControls(root, keyboard)] }
+  return {
+    keyboard,
+    problems: [...behindKeyboard(root, platform, keyboard), ...unnamedControls(root, platform, keyboard)],
+  }
 }
 
 const rect = ({ left, top, right, bottom }: Rect) => `[${left},${top}][${right},${bottom}]`

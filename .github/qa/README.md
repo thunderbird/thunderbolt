@@ -259,9 +259,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
    `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow
    three times on it with no key; a layout or log oracle also
-   needs the probe's ready line in every run. A run that never reached the bug, by replay's rules, shows neither the
-   bug nor the fix: it is run again (at most 3 extra runs) and counts on neither side, so a patch that keeps breaking
-   the way there ends with fewer than 3 counted runs and does not pass. With `unpatched` (a visual check, or an
+   needs the probe's ready line in every run. A patched run that fails anywhere, before the bug's assertion too,
+   fails the patch: a fix must leave the whole way to the bug working. Only a failed harness sign-in is run again.
+   Without the patch, a run that never reached the bug, by replay's rules, is run again and never counts as showing
+   it. With `unpatched` (a visual check, or an
    Android real-AI task, which the keyless run can only check on the fake AI) the flow also runs on the build without
    the patch and must fail there every time. A native fix PR adds no regression spec. `publish` needs
    `passed: true` from every platform in `verifyNative` for the fingerprint, web tasks included, and from

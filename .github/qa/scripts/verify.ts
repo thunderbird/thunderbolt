@@ -440,13 +440,15 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
  * the sign-in screen among them, runs as written. A c1 flow that expects onboarding past the privacy step has the
  * harness's way through it added to the sign-in step (`consentSplit`), so a failure there never proves a bug either.
  * When the oracle makes a failed flow the bug, the flow's own steps up to its last command that is not a settle join
- * that first step too, so only a failure of that command, the bug's assertion, can prove the bug.
+ * that first step too, so only a failure of that command, the bug's assertion, can prove the bug. `apart: false`
+ * keeps them in the flow, for a patched run, where a failure anywhere in the flow fails the patch.
  */
 const withSignIn = async (
   yaml: string,
   session: string,
   appId: string,
   oracle: Oracle | undefined,
+  apart = true,
 ): Promise<NativeFlow> => {
   const commands = commandsOf(yaml)
   const from = landingIndex(commands, session)
@@ -457,7 +459,7 @@ const withSignIn = async (
   const split = await consentSplit(flow, session, oracle)
   const rest = split?.flow ?? flow
   // Where a failure is the bug, only the last command that is not a settle asserts it; everything before only reaches it.
-  const failureIsBug = oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
+  const failureIsBug = apart && oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
   const assertAt = failureIsBug ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
   const before = [...signIn, ...(split?.signIn ?? []), ...rest.slice(0, Math.max(assertAt, 0))]
   if (before.length === 0) return { yaml }
@@ -683,12 +685,12 @@ type Oracle = FindingFile['finding']['oracle']
  * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug: the
  * finding's `oracle` by the replay's rule, or for the fix agent's visual check (no oracle) its own assertions. A run
  * whose driver never started counts as failed, and so does a run without the probe's ready line when the oracle reads
- * the WebView log (a dead stream or a silenced probe shows no bug either). A run that never reached the bug, by the
- * replay's rules (its sign-in or the steps before the bug's assertion failed, or a layout or log-oracle flow failed
- * without the line), is replaced as in replay and counts on neither side: it shows neither the bug nor the fix.
- * `passed` needs three counted runs, every one clean.
+ * the WebView log (a dead stream or a silenced probe shows no bug either). A failure anywhere in the flow fails the
+ * patched run, before the bug's assertion too: a fix must leave the whole way there working. Only a run whose
+ * harness sign-in failed is replaced, as in replay. `passed` needs three counted runs, every one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
- * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. A visual check needs it, and
+ * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. There a run that never
+ * reached the bug, by the replay's rules, is replaced and never counts as showing it. A visual check needs it, and
  * so does a real-AI session: verified here on the fake AI, its flow must fail there without the patch to prove
  * anything.
  */
@@ -711,19 +713,23 @@ export const verifyNativeFix = async (
     oracle && webviewOracles.has(oracle.type) && !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
       ? 'the layout probe never reported ready'
       : undefined
-  const notReached = oracle && unreached(oracle)
   const patched = await threeRuns(
     { runFlow: opts.patched, outDir, next },
-    flow,
+    await withSignIn(check.yaml, session, appId, oracle, false),
     session,
     (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
-    notReached,
   )
   const { failed, runs, error, reason } = patched.replay
-  // A run that never reached the bug does not count, so a patch that breaks the way there cannot pass on no runs.
+  // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
   const result = { fp, platform, runs, failed, passed: failed === 0 && runs === 3, error: error ?? reason }
   if (!original) return result
-  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug, notReached)
+  const unpatched = await threeRuns(
+    { runFlow: original, outDir, next },
+    flow,
+    session,
+    bug,
+    oracle && unreached(oracle),
+  )
   const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
   return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
 }

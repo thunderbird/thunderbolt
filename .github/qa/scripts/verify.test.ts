@@ -1352,23 +1352,15 @@ describe('native fix verification', () => {
       passed: false,
       error: `the layout probe logged ${nameLine}`,
     })
-    const asserted = { type: 'assert-failed', evidence: 'Continue never shows' }
-    expect(await verifyNativeFix({ ...base, oracle: asserted, patched: device([failed]) })).toMatchObject({
+    // A layout flow that failed without the line never reached the screen, which still fails the patch.
+    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
       failed: 1,
       passed: false,
       error: failed.error,
     })
   })
 
-  test('a patched run that fails before the bug shows neither the bug nor the fix, so it is run again', async () => {
-    // A layout flow that failed without the line never reached the screen.
-    const once = await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })
-    expect(once).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
-    const always = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(6).fill(failed)) })
-    expect(always).toMatchObject({ runs: 0, failed: 0, passed: false, error: 'only 0 of 3 runs reached the screen' })
-  })
-
-  test('a failure before the last command of a failure-oracle flow counts on neither side of a fix check', async () => {
+  test('a failure-oracle flow failing before its last command fails the patch, but never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }
     /** A device whose run fails at the command holding `text`, in whichever part of the split that command ran. */
@@ -1382,8 +1374,16 @@ describe('native fix verification', () => {
       }
     }
 
-    const flaky = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
-    expect(flaky).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+    // A fix must leave the whole way to the bug working: one early failure blocks it, and is not run again.
+    const broken = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
+    expect(broken).toEqual({
+      fp: 'ab12cd34',
+      platform: 'ios',
+      runs: 3,
+      failed: 1,
+      passed: false,
+      error: 'Element not found: Continue',
+    })
     const early = await verifyNativeFix({
       ...steps,
       oracle: asserted,
@@ -1398,17 +1398,18 @@ describe('native fix verification', () => {
       original: failsAt('What should we call you?'),
     })
     expect(shown).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
+    // Without the patch a layout run that never reached the screen is run again rather than counted as clean.
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    const layoutOriginal = device([failed, seen, seen, seen])
+    const reran = await verifyNativeFix({ ...base, oracle: layout, patched: device([]), original: layoutOriginal })
+    expect(reran).toMatchObject({ failsWithout: true, passed: true })
   })
 
   test('a driver that never starts fails the run after its one retry, so a dead device never passes a patch', async () => {
     const runs: number[] = []
-    const asserted = { type: 'assert-failed', evidence: 'Continue never shows' }
-    const result = await verifyNativeFix({ ...base, oracle: asserted, patched: device([timeout, timeout], runs) })
+    const result = await verifyNativeFix({ ...base, oracle: layout, patched: device([timeout, timeout], runs) })
     expect(result).toMatchObject({ runs: 3, failed: 1, passed: false })
     expect(runs).toEqual([1, 2, 3, 4])
-    // For a layout oracle such a run never reached the screen; a device that never starts still passes nothing.
-    const dead = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(12).fill(timeout)) })
-    expect(dead).toMatchObject({ runs: 0, passed: false })
   })
 
   test('a layout verdict needs the probe ready in every patched run: a silent probe proves nothing', async () => {

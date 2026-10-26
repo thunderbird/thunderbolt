@@ -217,6 +217,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and
    every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as
    written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
+   A fresh install of the c1 build opens onboarding on the privacy step, which the explorer's own app may have had
+   behind it. So a c1 flow that stops at `Welcome to Thunderbolt!`, or next waits for another screen (right after
+   the code when it has no such wait), gets `control/consent.yaml` there: while the privacy checkbox is on screen it
+   ticks it, skips Connect Google and waits for the name step. A flow whose next command acts on the welcome screen
+   gets through it itself and runs as written.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
@@ -457,7 +462,8 @@ udid=$(.github/qa/scripts/native.sh device ios)
 export QA_DEVICE_ID=$udid QA_WEBVIEW_LOG=/tmp/webview.log QA_BACKEND_LOG=/tmp/qa-stack.log
 .github/qa/scripts/explore.sh canary c2-chat-power-user-ios qa-out && .github/qa/scripts/explore.sh run c2-chat-power-user-ios qa-out 4
 
-# Replay the native findings: no keys in this shell, the same two logs, both builds.
+# Replay the native findings: no keys in this shell, the same two logs, both builds. QA_LEG_START (the epoch
+# second the job started, which CI sets) caps the replay to its job's timeout; unset, it counts from this command.
 bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udid" \
   --app "/tmp/qa-ios/Thunderbolt Dev.app" --app-onboarding "/tmp/qa-ios-onboarding/Thunderbolt Dev.app"
 

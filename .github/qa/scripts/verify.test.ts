@@ -13,6 +13,7 @@ import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
 import {
   judge,
+  legStartOf,
   nativeReplayCap,
   oracleOf,
   replay,
@@ -915,8 +916,8 @@ describe('replay of native flows', () => {
     list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/sign-in.yaml')).text()))
   const landing = (visible: string) => ({ extendedWaitUntil: { visible, timeout: 120000 } })
 
-  test('the control flow and the harness sign-in pass the allow list, and the control is that sign-in', async () => {
-    for (const file of ['stack.yaml', 'sign-in.yaml']) {
+  test('the control flow and the harness steps pass the allow list, and the control is the sign-in', async () => {
+    for (const file of ['stack.yaml', 'sign-in.yaml', 'consent.yaml']) {
       const source = await Bun.file(join(import.meta.dir, '../control', file)).text()
       for (const appId of ['net.thunderbird.thunderbolt.dev', 'net.thunderbird.thunderbolt']) {
         expect(checkMaestroFlow(source, { appId, vars: ['EMAIL'] })).toMatchObject({ ok: true })
@@ -963,6 +964,41 @@ describe('replay of native flows', () => {
       { flow: asWritten(typed) },
       { signIn: [...signIn, landing('Welcome to Thunderbolt!')], flow: asWritten(partial).slice(4) },
       { signIn: [...signIn, landing('Ask me anything…')], flow: asWritten(chat).slice(1) },
+    ])
+  })
+
+  test('a c1 flow that expects onboarding past the privacy step gets the harness through it, and no other', async () => {
+    // A fresh install opens onboarding on the privacy step; the explorer's own app had it behind it.
+    const c1 = 'c1-first-run-ios'
+    const consent = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/consent.yaml')).text()))
+    const code = "- launchApp\n- inputText: '12345678'\n"
+    const welcome = '- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
+    const flows = {
+      // Stops on the welcome screen, to have the layout probe measure the name step that follows it.
+      a: `${code}${welcome}- waitForAnimationToEnd\n`,
+      // Waits for the name step right after the code.
+      b: `${code}- extendedWaitUntil:\n    visible: Enter your name\n- inputText: Ada\n`,
+      // Ticks the checkbox itself.
+      c: `${code}${welcome}- tapOn: I agree to the Privacy Policy.*\n`,
+      // Signed in by the harness, then stops on the welcome screen.
+      d: `- launchApp\n${welcome}`,
+    }
+    for (const [title, flow] of Object.entries(flows)) await writeNative(makeNative(title, layout), flow, c1)
+    const ran: { flow: unknown[]; signIn?: unknown[] }[] = []
+    const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
+      ran.push(signIn === undefined ? { flow: commands(yaml) } : { signIn: commands(signIn), flow: commands(yaml) })
+      return { passed: true, layout: [], logs: [] }
+    }
+
+    await replay(outDir, fakeRunner({}, []), qaDir, record)
+
+    const [a, b, c, d] = Object.values(flows).map(asWritten)
+    const signIn = [...(await readSignIn()), landing('Welcome to Thunderbolt!')]
+    expect(ran.filter((_, run) => run % 3 === 0).slice(1)).toEqual([
+      { flow: [...a.slice(0, 3), ...consent, ...a.slice(3)] },
+      { flow: [...b.slice(0, 2), ...consent, ...b.slice(2)] },
+      { flow: c },
+      { signIn, flow: [...d.slice(1), ...consent] },
     ])
   })
 
@@ -1026,7 +1062,15 @@ describe('replay of native flows', () => {
     ])
   })
 
-  test('the native replay command refuses to start without the leg start, which its clock needs', async () => {
+  test('the leg starts when the command does unless the job recorded its start, and a bad start is refused', () => {
+    expect(legStartOf(undefined, 5_000)).toBe(5_000)
+    expect(legStartOf('', 5_000)).toBe(5_000)
+    expect(legStartOf('1792479250', 5_000)).toBe(1_792_479_250_000)
+    expect(() => legStartOf('soon', 5_000)).toThrow('QA_LEG_START must be the epoch second the job started')
+    expect(() => legStartOf('0', 5_000)).toThrow('QA_LEG_START')
+  })
+
+  test('the native replay command runs by hand without the leg start and refuses a malformed one', async () => {
     const env = { ...process.env, QA_WEBVIEW_LOG: join(outDir, 'w.log'), QA_BACKEND_LOG: join(outDir, 'b.log') }
     const args = ['replay', '--out', outDir, '--native', 'ios', '--device', 'd', '--app', 'a', '--app-onboarding', 'b']
     const cli = (legStart: string) =>
@@ -1035,10 +1079,11 @@ describe('replay of native flows', () => {
         env: { ...env, QA_LEG_START: legStart },
       })
 
-    const missing = cli('')
-    expect(missing.exitCode).toBe(1)
-    expect(missing.stderr.toString()).toContain('replay --native needs QA_LEG_START')
+    const malformed = cli('soon')
+    expect(malformed.exitCode).toBe(1)
+    expect(malformed.stderr.toString()).toContain('QA_LEG_START must be the epoch second the job started')
     // No findings, so no device: the command only writes the empty candidates.
+    expect(cli('').exitCode).toBe(0)
     expect(cli('1792479250').exitCode).toBe(0)
   })
 })
@@ -1167,8 +1212,12 @@ describe('native fix verification', () => {
 
     expect(runs).toHaveLength(3)
     expect(runs[0].signIn).toContain('inputText: "12345678"')
-    // The flow's partial sign-in is gone: it starts at its own wait.
-    expect(runs[0].flow).not.toContain('tapOn')
+    // The flow's partial sign-in is gone: it starts at its own wait, and the harness takes it past the privacy step.
+    const consent = await Bun.file(join(import.meta.dir, '../control/consent.yaml')).text()
+    expect(Bun.YAML.parse(runs[0].flow.split('\n---\n')[1])).toEqual([
+      { extendedWaitUntil: { visible: 'Welcome to Thunderbolt!' } },
+      ...z.array(z.unknown()).parse(Bun.YAML.parse(consent)),
+    ])
   })
 
   test('a fix never passes, and its original never fails, on runs whose harness sign-in failed', async () => {

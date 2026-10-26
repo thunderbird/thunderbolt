@@ -358,21 +358,51 @@ const serialize = (commands: unknown[], appId: string) => {
   return check.yaml
 }
 
+const consentFile = join(import.meta.dir, '../control/consent.yaml')
+const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAnimationToEnd: z.unknown() })])
+
+/** Where a flow waits for the first screen after sign-in, three dots matching the chat's ellipsis; -1 if it never does. */
+const landingIndex = (commands: unknown[], session: string) =>
+  commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landingOf(session))
+
+/**
+ * A c1 flow's commands with `control/consent.yaml` after its wait for the welcome screen, or after the code when it
+ * has no such wait, when the flow stops there or next waits for another screen: it expects onboarding past the
+ * privacy step, as the explorer saw it when its app had that step behind it, while a fresh install opens on it. A flow
+ * whose next command acts on the welcome screen gets through it itself and is left as it is, and so is every other
+ * flow.
+ */
+const throughConsent = async (commands: unknown[], session: string) => {
+  if (!session.startsWith('c1-first-run-')) return commands
+  const landed = landingIndex(commands, session)
+  const at = landed >= 0 ? landed : commands.findIndex((command) => typesSignInCode.test(JSON.stringify(command)))
+  if (at < 0) return commands
+  const next = commands.slice(at + 1).find((command) => !settle.safeParse(command).success)
+  if (next !== undefined && !awaitedText.safeParse(next).success) return commands
+  const consent = commandList.parse(Bun.YAML.parse(await Bun.file(consentFile).text()))
+  return [...commands.slice(0, at + 1), ...consent, ...commands.slice(at + 1)]
+}
+
 /**
  * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
  * typing the code, as every iOS flow of run 39391108579 did. `signIn` is then `control/sign-in.yaml` and a wait for
  * that screen, and the flow goes on from its own wait, its partial sign-in before it left out. The two run one after
  * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
- * the sign-in screen among them, runs as written. Three dots match the chat's ellipsis, as run 39391108579 wrote it.
+ * the sign-in screen among them, runs as written. Either way a c1 flow gets the harness's way through the privacy
+ * step when it expects it behind it (`throughConsent`).
  */
 const withSignIn = async (yaml: string, session: string, appId: string): Promise<NativeFlow> => {
   const commands = commandsOf(yaml)
-  const landing = landingOf(session)
-  const from = commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landing)
-  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) return { yaml }
+  const from = landingIndex(commands, session)
+  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) {
+    return { yaml: serialize(await throughConsent(commands, session), appId) }
+  }
   const signIn = commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text()))
-  const wait = { extendedWaitUntil: { visible: landing, timeout: 120000 } }
-  return { signIn: serialize([...signIn, wait], appId), yaml: serialize(commands.slice(from), appId) }
+  const wait = { extendedWaitUntil: { visible: landingOf(session), timeout: 120000 } }
+  return {
+    signIn: serialize([...signIn, wait], appId),
+    yaml: serialize(await throughConsent(commands.slice(from), session), appId),
+  }
 }
 
 /**
@@ -446,6 +476,18 @@ const legClock = (now: () => number, legStart: number) => {
   }
 }
 type LegClock = ReturnType<typeof legClock>
+
+/**
+ * A native leg's start in epoch ms from `QA_LEG_START` (epoch seconds), which the job's first step writes so the
+ * clock counts the setup the job already spent. Unset, as in a run by hand, the leg starts now; a value that is not a
+ * positive number throws.
+ */
+export const legStartOf = (seconds: string | undefined, now = Date.now()) => {
+  if (!seconds) return now
+  const ms = Number(seconds) * 1000
+  if (!(ms > 0)) throw new Error(`QA_LEG_START must be the epoch second the job started, not ${seconds}`)
+  return ms
+}
 
 /**
  * A device to run flows on, the number of its next run, so no run's video overwrites another's, and the leg's clock,
@@ -960,18 +1002,12 @@ if (import.meta.main) {
     console.log(JSON.stringify(verdict))
     process.exit()
   }
-  // The job's first step writes it, so the leg's clock counts the setup the job already spent.
-  const legStart = () => {
-    const ms = Number(Bun.env.QA_LEG_START) * 1000
-    if (!(ms > 0)) throw new Error('replay --native needs QA_LEG_START, the epoch second the job started')
-    return ms
-  }
   const result =
     step === 'judge'
       ? await judge(values.out)
       : values.native === undefined
         ? await replay(values.out)
-        : await replay(values.out, undefined, undefined, nativeFlows(), Date.now, legStart())
+        : await replay(values.out, undefined, undefined, nativeFlows(), Date.now, legStartOf(Bun.env.QA_LEG_START))
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
       `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +

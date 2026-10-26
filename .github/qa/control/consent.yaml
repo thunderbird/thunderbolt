@@ -1,0 +1,24 @@
+# The harness's way through the first onboarding steps of a fresh install, which `verify.ts` adds to a c1 repro flow
+# that stops at the welcome screen or waits for a later screen right after it, as the explorer's flows do when its
+# own app had those steps behind it. It ticks the privacy checkbox, skips Connect Google and waits for the name step,
+# whose field takes focus by itself. Each step runs only while the checkbox is on screen, so an app that opens
+# onboarding at a later step goes on untouched. The checkbox is reached by the accessible name its label gives it;
+# where a tree lacks that name, the block does nothing.
+- extendedWaitUntil:
+    visible: Onboarding Wizard
+    timeout: 120000
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: I agree to the Privacy Policy.*
+    commands:
+      - tapOn: I agree to the Privacy Policy.*
+      - tapOn: Continue
+      - extendedWaitUntil:
+          visible: Connect Google
+          timeout: 30000
+      - tapOn: Skip
+      - extendedWaitUntil:
+          visible: What should we call you?
+          timeout: 30000
+      - waitForAnimationToEnd

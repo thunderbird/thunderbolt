@@ -100,6 +100,9 @@ missing.
   - a `c1-first-run` session (onboarding on): `- extendedWaitUntil: {visible: Welcome to Thunderbolt!, timeout: 120000}`
   - any other session: `- extendedWaitUntil: {visible: Ask me anything…, timeout: 120000}`
 
+  On a fresh install the c1 build opens onboarding on the privacy step. When your flow ends there or next waits for
+  a later screen, the replay ticks the privacy checkbox and skips Connect Google for it.
+
 - In a `layout` finding the flow only reaches the screen and stops, with no assertion (replay drops one that ends
   on `assertVisible` or `assertNotVisible`): the harness measures the
   screen after the flow ends. So the flow ends on the broken screen: for a field behind the keyboard, with that field

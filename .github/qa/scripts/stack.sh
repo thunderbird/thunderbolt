@@ -4,15 +4,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# The QA agent's app stack, in CI and locally: the consumer pair of the root playwright.config.ts (backend on 8005
-# with the fixed sign-in code, frontend on 1424) plus the fake LLM provider (9878), the fake MCP server (9879) and the
-# fake Google (9880, also with real providers), with a production build served by `vite preview` instead of the dev
-# server.
+# The QA agent's app stack, in CI and locally: the consumer pair of the root playwright.config.ts (backend with the
+# fixed sign-in code, frontend) plus the fake LLM provider, the fake MCP server and the fake Google (also with real
+# providers), with a production build served by `vite preview` instead of the dev server.
+#
+# The ports below are defaults. QA_FRONTEND_PORT (1424), QA_ONBOARDING_PORT (1425), QA_BACKEND_PORT (8005),
+# QA_PROVIDER_PORT (9878), QA_MCP_PORT (9879) and QA_GOOGLE_PORT (9880) override them; .github/qa/ports.json holds the
+# defaults and ports.sh reads both. `serve` refuses a port that is already in use. A stack on another backend port
+# keeps its pid files in qa-stack-<backend port>.* instead of qa-stack.*, so two stacks can run side by side.
 #
 #   .github/qa/scripts/stack.sh build <out-dir> [onboarding]  build the frontend (onboarding off unless asked)
-#   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on 1424 (and one on 1425) until killed
-#   .github/qa/scripts/stack.sh serve dev                     Vite dev servers on the working tree (1424 onboarding
-#                                                             off, 1425 on), backend --watch
+#   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on the frontend port (and one on the
+#                                                             onboarding port) until killed
+#   .github/qa/scripts/stack.sh serve dev                     Vite dev servers on the working tree (frontend port
+#                                                             onboarding off, onboarding port on), backend --watch
 #   .github/qa/scripts/stack.sh serve native                  backend and fakes only, for the native apps (no Vite)
 #   .github/qa/scripts/stack.sh start <serve args> / stop     for CI steps: serve in the background, return once
 #                                                             ready; the pids go to $RUNNER_TEMP/qa-stack.pid and
@@ -33,9 +38,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 # Like `bun run`: puts package binaries such as vite on PATH.
 export PATH=$PWD/node_modules/.bin:$PATH
+# Before the build branch: a build bakes the configured URLs into the app.
+. .github/qa/scripts/ports.sh
 
-backend_url=http://localhost:8005
-fake_google_url=http://127.0.0.1:9880
+backend_url=http://localhost:$QA_BACKEND_PORT
+fake_google_url=http://127.0.0.1:$QA_GOOGLE_PORT
 frontend_env=(
   VITE_AUTH_MODE=thunderbolt
   VITE_AUTH_ENABLE_ANONYMOUS=false
@@ -52,6 +59,7 @@ if [ "$1" = build ]; then
 fi
 
 state=${RUNNER_TEMP:-/tmp}/qa-stack
+[ "$QA_BACKEND_PORT" = "$(jq .QA_BACKEND_PORT .github/qa/ports.json)" ] || state+="-$QA_BACKEND_PORT"
 backend_keys=/home/${QA_BACKEND_USER:-}/keys.env
 if [ "$1" = start ]; then
   if [ -n "${QA_BACKEND_USER:-}" ]; then
@@ -119,27 +127,39 @@ fi
 [ "$1" = serve ] || { echo "usage: $0 build <out-dir> [onboarding] | serve|start <dist> [<dist>] | serve|start dev|native | stop | lock" >&2; exit 2; }
 trap 'kill $(jobs -p) 2>/dev/null || true; wait' EXIT
 
+# Vite on macOS binds ::1 only, and Ubuntu's localhost is 127.0.0.1 only, so a port is free when neither answers.
+ports=(QA_BACKEND_PORT QA_PROVIDER_PORT QA_MCP_PORT QA_GOOGLE_PORT)
+[ "$2" = native ] || ports+=(QA_FRONTEND_PORT)
+if [ "$2" = dev ] || [ -n "${3:-}" ]; then ports+=(QA_ONBOARDING_PORT); fi
+for name in "${ports[@]}"; do
+  port=${!name}
+  if (: < "/dev/tcp/127.0.0.1/$port") 2>/dev/null || (: < "/dev/tcp/::1/$port") 2>/dev/null; then
+    echo "port $port is in use: stop what listens there or set $name to a free port" >&2
+    exit 1
+  fi
+done
+
 # The last two are the origins of the iOS and Android WebViews.
-origins=http://localhost:1424,http://localhost:1425,tauri://localhost,http://tauri.localhost
+origins=http://localhost:$QA_FRONTEND_PORT,http://localhost:$QA_ONBOARDING_PORT,tauri://localhost,http://tauri.localhost
 backend_env=(
-  PORT=8005
+  "PORT=$QA_BACKEND_PORT"
   AUTH_MODE=consumer
   NODE_ENV=test
   WAITLIST_AUTO_APPROVE_DOMAINS=thunderbolt.test
   "BETTER_AUTH_URL=$backend_url"
   BETTER_AUTH_SECRET=e2e-test-secret-at-least-32-characters-long
-  APP_URL=http://localhost:1424
+  "APP_URL=http://localhost:$QA_FRONTEND_PORT"
   "CORS_ORIGINS=$origins"
   "TRUSTED_ORIGINS=$origins"
   RATE_LIMIT_ENABLED=false
-  TEST_PROXY_ALLOWED_HOSTS=127.0.0.1:9879
+  "TEST_PROXY_ALLOWED_HOSTS=127.0.0.1:$QA_MCP_PORT"
   # Any non-empty client makes the app offer Google; these are the fake's own, not secrets.
   GOOGLE_CLIENT_ID=fake-google-client-id
   GOOGLE_CLIENT_SECRET=fake-google-client-secret
   "GOOGLE_BASE_URL=$fake_google_url"
 )
 if [ "${QA_REAL_PROVIDERS:-}" != true ]; then
-  backend_env+=(ANTHROPIC_API_KEY=e2e-fake-provider-key ANTHROPIC_BASE_URL=http://localhost:9878)
+  backend_env+=(ANTHROPIC_API_KEY=e2e-fake-provider-key "ANTHROPIC_BASE_URL=http://localhost:$QA_PROVIDER_PORT")
 fi
 if [ -n "${DATABASE_URL:-}" ]; then
   backend_env+=(
@@ -160,21 +180,21 @@ as_server() {
   exec "$@"
 }
 
-bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFakeProvider(9878)" &
-bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer(9879)" &
-bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; createFakeGoogle(9880)" &
+bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFakeProvider($QA_PROVIDER_PORT)" &
+bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer($QA_MCP_PORT)" &
+bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; createFakeGoogle($QA_GOOGLE_PORT)" &
 
 if [ "$2" = native ]; then
   (cd backend && as_server env "${backend_env[@]}" "${bun_run[@]}" src/index.ts) &
 elif [ "$2" = dev ]; then
   # The fix job's: these reload the agent's edits, so in CI they run as another user, away from the agent's environment.
   (cd backend && as_server env "${backend_env[@]}" bun run --watch src/index.ts) &
-  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort) &
-  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port 1425 --strictPort) &
+  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port "$QA_FRONTEND_PORT" --strictPort) &
+  (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port "$QA_ONBOARDING_PORT" --strictPort) &
 else
   (cd backend && as_server env "${backend_env[@]}" "${bun_run[@]}" src/index.ts) &
-  vite preview --outDir "$2" --port 1424 --strictPort &
-  if [ -n "${3:-}" ]; then vite preview --outDir "$3" --port 1425 --strictPort & fi
+  vite preview --outDir "$2" --port "$QA_FRONTEND_PORT" --strictPort &
+  if [ -n "${3:-}" ]; then vite preview --outDir "$3" --port "$QA_ONBOARDING_PORT" --strictPort & fi
 fi
 # Next to start's pid file, outside the checkout: CI kills these inline, without running this script again.
 jobs -p > "$state.pids"
@@ -188,8 +208,8 @@ wait_for() {
   exit 1
 }
 wait_for $backend_url/v1/health
-if [ "$2" != native ]; then wait_for http://localhost:1424; fi
-if [ "$2" = dev ] || [ -n "${3:-}" ]; then wait_for http://localhost:1425; fi
+if [ "$2" != native ]; then wait_for "http://localhost:$QA_FRONTEND_PORT"; fi
+if [ "$2" = dev ] || [ -n "${3:-}" ]; then wait_for "http://localhost:$QA_ONBOARDING_PORT"; fi
 echo "stack ready"
 # Not `wait -n`: bash 3.2, the macOS /bin/bash, lacks it, and there `serve` took the servers down after "ready".
 pids=$(jobs -p)

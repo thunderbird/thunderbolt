@@ -321,19 +321,53 @@ uses to judge the AI's answers) on every platform in `platforms.json`, with the 
 
 ## Run it locally
 
-Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005, 9878, 9879, 9880), so stop any
-`bun run e2e` first. Use a production build: the Vite dev server reloads pages while Playwright writes traces.
+Everything runs from the repo root, and `stack.sh` needs `jq` on the PATH. Use a production build: the Vite dev
+server reloads pages while Playwright writes traces.
+
+The stack takes its ports from these variables, and the defaults are the numbers CI uses:
+
+| Variable             | Default | Listener                 |
+| -------------------- | ------- | ------------------------ |
+| `QA_FRONTEND_PORT`   | `1424`  | frontend, onboarding off |
+| `QA_ONBOARDING_PORT` | `1425`  | frontend, onboarding on  |
+| `QA_BACKEND_PORT`    | `8005`  | backend                  |
+| `QA_PROVIDER_PORT`   | `9878`  | fake AI provider         |
+| `QA_MCP_PORT`        | `9879`  | fake MCP server          |
+| `QA_GOOGLE_PORT`     | `9880`  | fake Google              |
+
+An empty variable means the default. The defaults live in `ports.json`. A value that is not a whole number from 1 to
+65535 stops the script at once. `stack.sh serve` checks the ports its mode opens, on `127.0.0.1` and on `::1`, before
+it starts anything, and refuses one that is in use: `port 8005 is in use: stop what listens there or set
+QA_BACKEND_PORT to a free port`. So stop any `bun run e2e` first, or move the stack to other ports. PowerSync on
+`18081` is CI's Docker service for c7 and stays fixed.
 
 ```sh
 # Builds (about 3 s each)
 .github/qa/scripts/stack.sh build qa-dist
 .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding   # only for c1
 
-# The stack: fake AI, pglite, the normal build on 1424 and the onboarding build on 1425. Leave it running.
+# The stack: fake AI, pglite, the normal build on the frontend port and the onboarding build on the onboarding port.
+# Leave it running.
 .github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding
 
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
+```
+
+**Two stacks side by side.** Two agents can run two stacks on one machine when each uses its own six ports. A build
+bakes the backend and fake Google URLs into the app, so a second stack needs its own builds, made with its own
+variables, and the `control` project needs the same variables as the stack it checks.
+
+```sh
+export QA_FRONTEND_PORT=2024 QA_ONBOARDING_PORT=2025 QA_BACKEND_PORT=2005 \
+  QA_PROVIDER_PORT=2078 QA_MCP_PORT=2079 QA_GOOGLE_PORT=2080
+.github/qa/scripts/stack.sh build qa-dist-2
+.github/qa/scripts/stack.sh build qa-dist-2-onboarding onboarding   # only for c1
+.github/qa/scripts/stack.sh serve qa-dist-2 qa-dist-2-onboarding
+bunx playwright test --config .github/qa/playwright.config.ts --project control   # in another shell, same exports
+```
+
+```sh
 
 # One session, named <charter>-<platform>; the platform sets the viewport and the MCP config. The last argument is
 # the budget cap in USD (default 2).
@@ -386,8 +420,8 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 /tmp/qa-canaries.json`.
 
 **Fix agent:** run it in a separate checkout (it edits the working tree), with
-`.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on 1424 with onboarding skipped and on
-1425 with onboarding on, so a fix for an onboarding finding can be verified) and the flags of the `fix` job.
+`.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on the frontend port, 1424 by default,
+with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding finding can be verified) and the flags of the `fix` job.
 Collect the patch like the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
 commit and the PR it would open.
 
@@ -441,7 +475,8 @@ bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udi
 ```
 
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
-stack's two extra `connect-src` origins (`http://localhost:8005`, `http://127.0.0.1:9880`, read from `stack.sh`), and
+stack's two extra `connect-src` origins (`http://localhost:8005` and `http://127.0.0.1:9880` by default, read from
+`stack.sh`), and
 without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
 `beforeBuildCommand` puts `layout-probe.js` into `dist/index.html` as an inline script, so every native QA build
 logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. The Maestro tree
@@ -467,8 +502,10 @@ a log without the probe's ready line (a dead stream, a build without the probe) 
 
 On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (an iPhone 17 Pro Max simulator) picks the device; with it unset,
 `device ios` creates an iPhone 17 Pro Max on the newest iOS runtime. Two scripts share the machine: take
-`/tmp/qa-stack.lock` before the stack and `/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf`
-at the end), and shut the simulator down when you booted it.
+`/tmp/qa-stack.lock` before the default stack (any other takes `/tmp/qa-stack-<QA_BACKEND_PORT>.lock`) and
+`/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf` at the end). The state files follow the same
+rule: `qa-stack.*` for the default stack, `qa-stack-<QA_BACKEND_PORT>.*` for another. Shut the simulator down when
+you booted it.
 
 Traps, each of which has cost a run:
 
@@ -507,7 +544,7 @@ Android on `ubuntu-latest` with KVM.
   the app, because an artifact drops file modes.
 - **explore-native**, one job per native session: Maestro 2.11.0 from the official installer on both platforms,
   Claude Code 2.1.303, the app the session needs (the onboarding build for c1), the device, `stack.sh start native`
-  and the console stream. `c7-two-devices-android` also gets Postgres, PowerSync, the web build on 1424
+  and the console stream. `c7-two-devices-android` also gets Postgres, PowerSync, the web build on 1424 by default
   (`stack.sh start qa-dist`) and the second browser's Chromium. The app reaches PowerSync on `localhost:18081`:
   `native.sh device` reverses that port too, and a QA build's CSP allows it. Android's real-AI sessions run the
   backend as `qa-backend` and lock root, as the web real legs do. Then the harness (see "Native explore on macOS"),
@@ -539,7 +576,7 @@ Android on `ubuntu-latest` with KVM.
 
 ## Fake Google
 
-`scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880`: the account chooser, the token endpoint, userinfo,
+`scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880` by default: the account chooser, the token endpoint, userinfo,
 and exactly the Gmail and Calendar endpoints the app's tools call, with Google's JSON and error bodies. `stack.sh`
 always starts it, even with `QA_REAL_PROVIDERS=true`, and points the build (`VITE_GOOGLE_BASE_URL`) and the backend
 (`GOOGLE_BASE_URL`, plus a fake client id and secret) at it. The app honours either override only on a loopback host,
@@ -739,7 +776,7 @@ The fix agent's draft PR already does this. By hand:
    and `@playwright/test` to `./test` when it imports only `test`, `expect`, `Page`, `Request` or `Route`.
 4. `bun run e2e:check-collected`, then check that the spec fails before the fix and passes after it.
 
-A c1 spec runs against the onboarding build on port 1425, which the root `playwright.config.ts` does not start. It
+A c1 spec runs against the onboarding build on port 1425 by default, which the root `playwright.config.ts` does not start. It
 needs its own project before it can live in `e2e/`.
 
 ## Owners

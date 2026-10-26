@@ -34,7 +34,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
-# The stack's own URLs and VITE_* settings, read from stack.sh so the two cannot drift.
+# The stack's own URLs and VITE_* settings, read from stack.sh so the two cannot drift. They use its ports.
+. .github/qa/scripts/ports.sh
 eval "$(sed -n '/^backend_url=/p; /^fake_google_url=/p; /^frontend_env=(/,/^)/p' .github/qa/scripts/stack.sh)"
 
 fixtures=.github/qa/fixtures

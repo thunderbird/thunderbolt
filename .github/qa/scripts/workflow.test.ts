@@ -192,6 +192,14 @@ describe('fix job', () => {
     expect(stack).toContain('/etc/sudoers.d/zz-qa-lock"')
   })
 
+  test("the fix job's listener check names the default ports", () => {
+    // The one literal copy of the defaults: CI runs on them, and this fails when they change without the check.
+    const ports = JSON.parse(readFileSync(join(import.meta.dir, '../ports.json'), 'utf8')) as Record<string, number>
+    const check = step('fix', "Check that no dev server runs as the job's user").run ?? ''
+    for (const name of ['QA_BACKEND_PORT', 'QA_FRONTEND_PORT', 'QA_ONBOARDING_PORT'])
+      expect(check).toContain(`sport = :${ports[name]}`)
+  })
+
   test("the agent may not edit git, the pipeline, e2e or the tool configs", () => {
     const args = step('fix', 'Fix').with?.claude_args ?? ''
     for (const rule of ['.git/**', '.github/**', 'e2e/**', '**/vite.config.*', '**/tsconfig*.json', '**/.husky/**'])

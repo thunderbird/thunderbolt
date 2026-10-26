@@ -23,7 +23,18 @@
   let timer
   let pendingSince
 
+  const inputRoles = { checkbox: 'checkbox', radio: 'radio' }
+  const roleOf = (el) =>
+    el.getAttribute('role') ||
+    (el.tagName === 'INPUT' && inputRoles[el.type]) ||
+    implicitRoles[el.tagName] ||
+    el.tagName.toLowerCase()
+  // A field's text is its value, never its name.
+  const fieldRoles = ['textbox', 'searchbox', 'combobox']
+
   const clean = (text) => (text ?? '').replace(/\s+/g, ' ').trim()
+  // shortcut: counts aria-hidden text, skips descendants' aria-label and the value of input buttons; grow it when
+  // the app names a control only that way.
   const accessibleName = (el) =>
     clean(el.getAttribute('aria-label')) ||
     clean(
@@ -34,11 +45,11 @@
         .join(' '),
     ) ||
     clean(el.labels?.[0]?.textContent) ||
-    clean(el.textContent) ||
+    (!fieldRoles.includes(roleOf(el)) &&
+      (clean(el.textContent) || clean([...el.querySelectorAll('img[alt]')].map((img) => img.alt).join(' ')))) ||
     clean(el.getAttribute('placeholder')) ||
     clean(el.getAttribute('title'))
-  const describe = (el) =>
-    `${el.getAttribute('role') || implicitRoles[el.tagName] || el.tagName.toLowerCase()} "${accessibleName(el).slice(0, 50)}"`
+  const describe = (el) => `${roleOf(el)} "${accessibleName(el).slice(0, 50)}"`
 
   const isVisible = (el) => {
     const rect = el.getBoundingClientRect()
@@ -199,6 +210,10 @@
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
+  // The controls a screen reader must be able to name.
+  const controls = `button, a[href], select, ${textField}, input:is([type=checkbox], [type=radio]), [role=button],
+    [role=link], [role=checkbox], [role=switch], [role=radio], [role=textbox], [role=searchbox], [role=combobox]`
+
   // With the keyboard open, the focused field's box, the part of the screen its clipping ancestors leave it (the
   // keyboard's area included) and whether it can show in full above the keyboard. A field taller than that space,
   // like a growing textarea, cannot, so the keyboard rules leave it alone.
@@ -287,7 +302,10 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    return [...found, ...keyboard, ...focus, ...overflows()]
+    const unnamed = [...document.querySelectorAll(controls)]
+      .filter((el) => isCandidate(el) && !accessibleName(el))
+      .map((el) => ({ kind: 'unnamed-control', target: describe(el) }))
+    return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
   }
 
   const check = () => {

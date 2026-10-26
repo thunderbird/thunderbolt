@@ -18,6 +18,19 @@
       <a href="#terms">Terms</a>
       <button>Sign up</button>
     </form>
+    <!-- Controls named every way the probe knows, the onboarding consent checkbox first: a Radix checkbox button
+         named by a label pointing at its id. -->
+    <button type="button" role="checkbox" aria-checked="false" id="terms-agreement"></button>
+    <label for="terms-agreement">I agree to the Privacy Policy</label>
+    <label><input type="checkbox" /> Remember me</label>
+    <span id="news">Send me news</span>
+    <input type="radio" aria-labelledby="news" />
+    <a href="#home"><img src="data:," alt="Home" /></a>
+    <input placeholder="Search" />
+    <!-- Unnamed, but out of a screen reader's reach or out of sight. -->
+    <input type="checkbox" aria-hidden="true" />
+    <div inert><button></button></div>
+    <button style="display: none"></button>
     <!-- A short list on a page that does not scroll: its lower links are clipped, and the text under them is not on
          top of them. -->
     <div style="height: 60px; overflow: auto">

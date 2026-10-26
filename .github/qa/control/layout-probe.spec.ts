@@ -28,6 +28,20 @@ const consoleLines = (page: Page) => {
 
 test('a clean form has no problems', async ({ page }) => expect(await problemsOf(page, 'ok.html')).toEqual([]))
 
+test('a control without an accessible name is unnamed-control, once', async ({ page }) => {
+  const lines = consoleLines(page)
+  expect(await problemsOf(page, 'unnamed.html')).toEqual([
+    { kind: 'unnamed-control', target: 'checkbox ""' },
+    { kind: 'unnamed-control', target: 'switch ""' },
+    { kind: 'unnamed-control', target: 'textbox ""' },
+  ])
+  expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual([
+    '[qa-layout] unnamed-control checkbox ""',
+    '[qa-layout] unnamed-control switch ""',
+    '[qa-layout] unnamed-control textbox ""',
+  ])
+})
+
 test('a fixed footer over a button is covered', async ({ page }) =>
   expect(await problemsOf(page, 'covered.html')).toEqual([{ kind: 'covered', target: 'button "Continue"' }]))
 

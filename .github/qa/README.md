@@ -162,9 +162,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
    root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
    `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
-   `covered`, `behind-keyboard`, `focus-covered`, a fixed or sticky box over part of the focused text field, and
-   `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open),
-   all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding. The MCP does not put console text in a tool
+   `covered`, `behind-keyboard`, `focus-covered`, a fixed or sticky box over part of the focused text field,
+   `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open, and
+   `unnamed-control`, a control a screen reader cannot name, quoted with an empty name),
+   all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
+   An `unnamed-control` finding takes its screen's area severity, as `covered` does, and an onboarding flow that
+   stops on it gets no privacy step from replay, since there is no name to wait for. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link

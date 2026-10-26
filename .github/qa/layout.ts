@@ -15,6 +15,7 @@ export type LayoutProblem = {
     | 'behind-keyboard'
     | 'focus-covered'
     | 'focused-clipped'
+    | 'unnamed-control'
   target: string
 }
 

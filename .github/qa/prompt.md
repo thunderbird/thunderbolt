@@ -111,8 +111,10 @@ status, or the text on screen):
   (the page scrolls sideways), `overflow-text` (text wider than its box and not shortened with an ellipsis),
   `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center),
   `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog), `focus-covered`
-  (a fixed or sticky box hides part of the focused text field) or `focused-clipped` (with the keyboard open, a
-  scroll box or the screen edge cuts off part of the focused text field). It reports a problem
+  (a fixed or sticky box hides part of the focused text field), `focused-clipped` (with the keyboard open, a
+  scroll box or the screen edge cuts off part of the focused text field) or `unnamed-control` (a button, link,
+  checkbox, switch, radio, text field or combobox a screen reader cannot name, so its quoted name is empty, even when
+  a label shows beside it). It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A
   `[qa-layout]` line other than `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a
   `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` is

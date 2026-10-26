@@ -1254,7 +1254,8 @@ describe('replay of native flows', () => {
         flow: `${code}${welcome}`,
         oracle: { type: 'stuck', evidence: 'Continue stays off after "Enter your name"' },
       },
-      g: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button ""' } },
+      // An unnamed control quotes no name, so the flow stays on the screen it stopped on.
+      g: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] unnamed-control checkbox ""' } },
       // A quote the allow list would refuse in the `when`.
       h: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button "${HOME}"' } },
     }

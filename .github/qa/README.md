@@ -18,7 +18,7 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | Zone                     | Jobs                                                                       | Holds                                                                                                                                                       | Never holds                                                                                              |
 | ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold **no secret**: they run model-written specs and flows |
-| B: file                  | `file`                                                                     | the QA Linear key                                                                                                                                           | an LLM, a browser                                                                                        |
+| B: file                  | `file`                                                                     | the Linear key                                                                                                                                              | an LLM, a browser                                                                                        |
 | C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                              |
 | D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the canary, session and secret-scan steps                                                                       | any provider key, the Linear key, any write token, an agent that edits code                              |
 | E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                                  |
@@ -618,13 +618,15 @@ Used by `explore`, `explore-native`, the real-AI `replay` and `replay-native` le
 | `QA_ANTHROPIC_API_KEY`                         | explore(-native), judge, fix, real-AI stacks | one key from a dedicated Anthropic workspace with a monthly spend limit: the agent, the judge, the fix agent and the app's backend in real-AI sessions |
 | `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI stacks: explore, replay, verify-real | QA-only Tinfoil access for the GLM models                                                                                                              |
 | `QA_EXA_API_KEY`                               | real-AI stacks: explore, replay, verify-real | QA-only Exa key for search and link previews                                                                                                           |
-| `QA_LINEAR_API_KEY`                            | file, publish                                | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files                                                      |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                                      | the GitHub App below                                                                                                                                   |
 | `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
 
-These names differ from nightly's on purpose: if an environment secret were missing, a same-named repository
-secret would be used without warning. `notify` uses the existing repository secrets `RESEND_API_KEY` and
-`LINEAR_API_KEY`, like `nightly.yml`.
+The `QA_` names differ from nightly's on purpose. Each is a QA-only key, and if an environment secret were missing,
+a same-named repository secret would be used without warning.
+
+The Linear key is the exception. The QA files into the same Linear team as nightly, so `file` and `publish` use the
+existing repository secret `LINEAR_API_KEY`, like `nightly.yml`. It needs to read issues and labels, create issues and
+comments, and upload files. `notify` also uses the repository secrets `RESEND_API_KEY` and `LINEAR_API_KEY`.
 
 ### Linear labels
 

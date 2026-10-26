@@ -1027,7 +1027,7 @@ jobs:
       # With a Linear key it also writes scorecard.json, the triage precision the brake reads.
       - name: File the confirmed findings
         env:
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
       - name: Route fixable tickets
@@ -1608,7 +1608,7 @@ jobs:
       - name: Publish a draft PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
   report:

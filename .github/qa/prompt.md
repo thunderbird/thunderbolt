@@ -114,7 +114,9 @@ status, or the text on screen):
   (a fixed or sticky box hides part of the focused text field), `focused-clipped` (with the keyboard open, a
   scroll box or the screen edge cuts off part of the focused text field) or `unnamed-control` (a button, link,
   checkbox, switch, radio, text field or combobox a screen reader cannot name, so its quoted name is empty, even when
-  a label shows beside it). It reports a problem
+  a label shows beside it). For an `unnamed-control` line, say in `actual` which control it is: what it looks like,
+  where it sits and the text next to it, taken from the snapshot (where the control shows with a ref and no name) or
+  the screenshot. It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A
   `[qa-layout]` line other than `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a
   `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` is

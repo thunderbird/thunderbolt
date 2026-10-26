@@ -33,8 +33,8 @@
   const fieldRoles = ['textbox', 'searchbox', 'combobox']
 
   const clean = (text) => (text ?? '').replace(/\s+/g, ' ').trim()
-  // shortcut: counts aria-hidden text, skips descendants' aria-label and the value of input buttons; grow it when
-  // the app names a control only that way.
+  // shortcut: counts aria-hidden text and a role-less contenteditable's own text, skips descendants' aria-label and
+  // the value of input buttons; grow it when the app names a control only that way.
   const accessibleName = (el) =>
     clean(el.getAttribute('aria-label')) ||
     clean(
@@ -303,7 +303,7 @@
           ].filter(Boolean)
         : []
     const unnamed = [...document.querySelectorAll(controls)]
-      .filter((el) => isCandidate(el) && !accessibleName(el))
+      .filter((el) => !accessibleName(el) && isCandidate(el))
       .map((el) => ({ kind: 'unnamed-control', target: describe(el) }))
     return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
   }

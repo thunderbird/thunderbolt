@@ -6,14 +6,6 @@ import { isTauri } from './platform'
 
 const embedStorageKey = 'thunderbolt_embedded'
 
-const persistMarker = () => {
-  try {
-    localStorage.setItem(embedStorageKey, '1')
-  } catch {
-    // A cosmetic marker must never block boot (storage can be full or disabled).
-  }
-}
-
 /**
  * Whether this page load is embedded in a native app's WebView. True when the
  * URL carries `?embed=app` (now or on an earlier load): the marker is saved to
@@ -26,10 +18,16 @@ export const detectEmbedded = (): boolean => {
   if (isTauri()) {
     return false
   }
-  if (new URLSearchParams(window.location.search).get('embed') === 'app') {
-    persistMarker()
+  const marked = new URLSearchParams(window.location.search).get('embed') === 'app'
+  // A cosmetic marker must never block boot: storage can be full or disabled. The current query counts regardless.
+  try {
+    if (marked) {
+      localStorage.setItem(embedStorageKey, '1')
+    }
+    return marked || localStorage.getItem(embedStorageKey) === '1'
+  } catch {
+    return marked
   }
-  return localStorage.getItem(embedStorageKey) === '1'
 }
 
 const embedded = detectEmbedded()

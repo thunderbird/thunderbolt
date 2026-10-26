@@ -42,23 +42,28 @@ describe('detectEmbedded', () => {
     expect(detectEmbedded()).toBe(true)
   })
 
-  it('still boots when saving the marker throws, falling back to the stored value', () => {
-    setUrl('https://example.com/?embed=app')
+  describe('when localStorage throws', () => {
     const realStorage = window.localStorage
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: () => null,
-        setItem: () => {
-          throw new Error('QuotaExceededError')
-        },
-      },
-    })
-    try {
-      expect(detectEmbedded()).toBe(false)
-    } finally {
-      Object.defineProperty(window, 'localStorage', { configurable: true, value: realStorage })
+    const fail = () => {
+      throw new Error('SecurityError')
     }
+
+    beforeEach(() => {
+      Object.defineProperty(window, 'localStorage', { configurable: true, value: { getItem: fail, setItem: fail } })
+    })
+
+    afterEach(() => {
+      Object.defineProperty(window, 'localStorage', { configurable: true, value: realStorage })
+    })
+
+    it('counts the current ?embed=app query', () => {
+      setUrl('https://example.com/?embed=app')
+      expect(detectEmbedded()).toBe(true)
+    })
+
+    it('is false without the query', () => {
+      expect(detectEmbedded()).toBe(false)
+    })
   })
 
   it('is never true inside Tauri, even with the marker', () => {

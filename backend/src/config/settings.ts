@@ -43,6 +43,18 @@ const isTimeZone = (value: string): boolean => {
   }
 }
 
+// SVG data URLs are allowed: an SVG loaded in an image context cannot run script or fetch.
+const isBrandLogoUrl = (value: string) =>
+  value === '' || value.startsWith('data:image/') || (URL.canParse(value) && new URL(value).protocol === 'https:')
+
+/** Optional logo URL: empty, an `https:` URL, or a `data:image/` URL. */
+const brandLogoUrlField = (envName: string) =>
+  z
+    .string()
+    .trim()
+    .default('')
+    .refine(isBrandLogoUrl, { message: `${envName} must be empty, an https: URL or a data:image/ URL` })
+
 const settingsSchema = z
   .object({
     // API Keys
@@ -283,6 +295,13 @@ const settingsSchema = z
     // skill chips, account control or agent menu.
     // Surfaced to the UI via GET /config as `minimalMode`.
     minimalMode: z.boolean().default(false),
+    // Operator logo shown in the minimal-mode header for direct visitors (hidden under ?embed=app), for
+    // light and dark themes. Each is an `https:` URL or a `data:image/` URL; anything else fails
+    // boot so a typo cannot inject a script URL. `brandLogoAlt` is its accessible name.
+    // Surfaced to the UI via GET /config as `brandLogoUrl`, `brandLogoDarkUrl` and `brandLogoAlt`.
+    brandLogoUrl: brandLogoUrlField('BRAND_LOGO_URL'),
+    brandLogoDarkUrl: brandLogoUrlField('BRAND_LOGO_DARK_URL'),
+    brandLogoAlt: z.string().trim().default(''),
     // Haystack-specific config (consumed by the Haystack provider, defined here for centralized config).
     haystackBaseUrl: z.string().default(''),
     haystackApiKey: z.string().default(''),
@@ -614,6 +633,9 @@ const parseSettings = (): Settings => {
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',
     disableBuiltInAgent: process.env.DISABLE_BUILT_IN_AGENT === 'true',
     minimalMode: process.env.MINIMAL_MODE === 'true',
+    brandLogoUrl: process.env.BRAND_LOGO_URL,
+    brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+    brandLogoAlt: process.env.BRAND_LOGO_ALT,
     haystackBaseUrl: process.env.HAYSTACK_BASE_URL || '',
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',

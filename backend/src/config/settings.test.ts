@@ -866,6 +866,59 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('brand logo settings', () => {
+    const envKeys = ['BRAND_LOGO_URL', 'BRAND_LOGO_DARK_URL', 'BRAND_LOGO_ALT']
+    const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+
+    beforeEach(() => {
+      clearSettingsCache()
+      envKeys.forEach((key) => delete process.env[key])
+    })
+
+    afterEach(() => {
+      envKeys.forEach((key) =>
+        savedEnv[key] === undefined ? delete process.env[key] : (process.env[key] = savedEnv[key]),
+      )
+      clearSettingsCache()
+    })
+
+    it('defaults to empty', () => {
+      const { brandLogoUrl, brandLogoDarkUrl, brandLogoAlt } = getSettings()
+      expect([brandLogoUrl, brandLogoDarkUrl, brandLogoAlt]).toEqual(['', '', ''])
+    })
+
+    it('accepts an https URL and a data:image URL', () => {
+      process.env.BRAND_LOGO_URL = 'https://example.com/logo.svg'
+      process.env.BRAND_LOGO_DARK_URL = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='
+      expect(getSettings()).toMatchObject({
+        brandLogoUrl: process.env.BRAND_LOGO_URL,
+        brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+      })
+    })
+
+    it('trims whitespace, so a blank value is empty', () => {
+      process.env.BRAND_LOGO_URL = '   '
+      process.env.BRAND_LOGO_DARK_URL = '  https://example.com/logo.svg'
+      expect(getSettings()).toMatchObject({ brandLogoUrl: '', brandLogoDarkUrl: 'https://example.com/logo.svg' })
+    })
+
+    it('falls back to empty when the alt text is only whitespace', () => {
+      process.env.BRAND_LOGO_ALT = '   '
+      expect(getSettings().brandLogoAlt).toBe('')
+    })
+
+    it.each([
+      'javascript:alert(1)',
+      'http://example.com/logo.svg',
+      'data:text/html,<script>',
+      '//cdn.example/logo.svg',
+      'https://%',
+    ])('rejects %s', (value) => {
+      process.env.BRAND_LOGO_DARK_URL = value
+      expect(() => getSettings()).toThrow(/BRAND_LOGO_DARK_URL must be empty, an https: URL or a data:image\/ URL/)
+    })
+  })
+
   describe('org escrow settings', () => {
     const savedEnv: Record<string, string | undefined> = {}
     const envKeys = ['ORG_ESCROW_ENABLED']

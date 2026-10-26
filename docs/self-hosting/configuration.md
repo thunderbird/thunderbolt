@@ -213,9 +213,19 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 | `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
 
-`MINIMAL_MODE=true` hides the Settings section, the header's agent name, the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
+`MINIMAL_MODE=true` hides the Settings section, the header's agent name (replaced by your logo when one is set, see below), the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
 
 Minimal mode has no theme control: the app follows the visitor's stored theme, which is the system theme unless they chose otherwise before minimal mode was on.
+
+| Variable              | Default | What it does                                                                                                                                                             |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BRAND_LOGO_URL`      | empty   | In minimal mode, a logo shown in the header for visitors who open the site directly in a browser, not inside an app (see below). An `https:` URL or a `data:image/` URL. |
+| `BRAND_LOGO_DARK_URL` | empty   | The logo for dark theme. Falls back to `BRAND_LOGO_URL`. Same URL rules.                                                                                                 |
+| `BRAND_LOGO_ALT`      | empty   | The logo's accessible name. Falls back to the agent's name.                                                                                                              |
+
+The logo shows only to visitors who open the site directly in a browser. Inside a native app's WebView the app's own chrome already carries the branding, so the logo stays hidden. The app counts as embedded once a load carries `?embed=app`: any load carrying it sets the marker. The marker is saved in `localStorage` from then on, so it survives navigation and restarts, and the web UI never clears it. There is no user agent detection: link the app with `?embed=app`, and a visitor who opens the plain URL sees the logo.
+
+A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
 
 ### Hosted agent
 

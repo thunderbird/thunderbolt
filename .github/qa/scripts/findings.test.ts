@@ -22,6 +22,7 @@ import {
   sessionProblem,
   severity,
 } from './findings'
+import unnamedLines from '../fixtures/layout/unnamed.json'
 import cases from '../journeys.json'
 import platforms from '../platforms.json'
 import type { QaFunction } from './report'
@@ -238,6 +239,12 @@ describe('fingerprint', () => {
     expect(fingerprint(first)).toBe(fingerprint(second))
   })
 
+  test('gives each unnamed control the probe quotes on one page its own fingerprint, so each its own ticket', () => {
+    // The probe's lines for fixtures/layout/unnamed.html, which layout-probe.spec.ts checks.
+    const prints = unnamedLines.map((evidence) => fingerprint(variant({ oracle: { type: 'layout', evidence } })))
+    expect(new Set(prints).size).toBe(unnamedLines.length)
+  })
+
   test('differs for different bugs, areas and oracle types', () => {
     const other = variant({
       oracle: { type: 'page-error', evidence: "TypeError: Cannot read properties of undefined (reading 'model')" },
@@ -287,7 +294,7 @@ describe('layout oracle', () => {
     expect(severity(layoutFinding('onboarding', '[qa-layout] covered button "Continue"'))).toBe('High')
     expect(severity(layoutFinding('skills', '[qa-layout] offscreen button "Save"'))).toBe('Medium')
     // A screen reader user cannot tell what the control does, so the feature is broken for them.
-    expect(severity(layoutFinding('onboarding', '[qa-layout] unnamed-control checkbox ""'))).toBe('High')
+    expect(severity(layoutFinding('onboarding', '[qa-layout] unnamed-control checkbox "after Consent"'))).toBe('High')
   })
 
   test('overflow is no longer an oracle', () => {

@@ -7,12 +7,14 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   controlVerdict,
+  keepsProbeLine,
   measureNative,
   type NativeNode,
   parseHierarchy,
   parseInspectScreen,
   readyLine,
 } from '../native-layout'
+import { fingerprint } from './findings'
 
 const fixture = (name: string) => readFileSync(join(import.meta.dir, '../fixtures/native', name), 'utf8')
 
@@ -229,7 +231,9 @@ test('the iOS privacy checkbox reads its label, so the tree reports no unnamed c
 
 test('an iOS checkbox without a label is an unnamed control, even with its state as text', () => {
   const unnamed = edited('hier-consent.json', consentCheckbox, { accessibilityText: '' })
-  expect(measureNative(parseHierarchy(unnamed), 'ios').problems).toEqual(['[qa-layout] unnamed-control checkbox ""'])
+  expect(measureNative(parseHierarchy(unnamed), 'ios').problems).toEqual([
+    '[qa-layout] unnamed-control checkbox "after Data is stored securely on your device."',
+  ])
   // A placeholder names it, as on the web.
   const hinted = edited('hier-consent.json', consentCheckbox, { accessibilityText: '', hintText: 'Agree' })
   expect(measureNative(parseHierarchy(hinted), 'ios').problems).toEqual([])
@@ -241,17 +245,20 @@ test('a key of the iOS keyboard is never an unnamed control', () => {
   const bare = { accessibilityText: '', value: '1', text: '1' }
   expect(measureNative(parseHierarchy(edited('hier-name-kb.json', shift, bare)), 'ios').problems).toEqual([])
   const moved = edited('hier-name-kb.json', shift, { ...bare, bounds: '[4,300][60,356]' })
-  expect(measureNative(parseHierarchy(moved), 'ios').problems).toEqual(['[qa-layout] unnamed-control checkbox ""'])
+  expect(measureNative(parseHierarchy(moved), 'ios').problems).toEqual([
+    '[qa-layout] unnamed-control checkbox "#shift"',
+  ])
 })
 
-test('an Android control without a description, text or hint is an unnamed control, one line per role', () => {
+test('an Android control with no description, text or hint is unnamed, quoted by the text before it', () => {
   const noHint = (attributes: Record<string, string>) =>
     attributes.class === 'android.widget.EditText' || attributes.class === 'android.widget.Button'
   const unnamed = edited('hier-android-control.json', noHint, { hintText: '', text: '' })
   expect(measureNative(parseHierarchy(unnamed), 'android').problems).toEqual([
-    '[qa-layout] unnamed-control textbox ""',
-    '[qa-layout] unnamed-control button ""',
+    '[qa-layout] unnamed-control textbox "after Thunderbolt"',
+    '[qa-layout] unnamed-control button "after Language"',
   ])
+  // Two fields with no text between them quote the same place, so they are one line.
   const fields = (attributes: Record<string, string>) =>
     attributes.class === 'android.widget.EditText' || attributes.class === 'android.widget.Spinner'
   const twoFields = parseHierarchy(
@@ -259,7 +266,9 @@ test('an Android control without a description, text or hint is an unnamed contr
   )
   const nodes = (node: NativeNode): NativeNode[] => [node, ...node.children.flatMap(nodes)]
   expect(nodes(twoFields).filter((node) => node.role === 'textbox' && !node.name)).toHaveLength(2)
-  expect(measureNative(twoFields, 'android').problems).toEqual(['[qa-layout] unnamed-control textbox ""'])
+  expect(measureNative(twoFields, 'android').problems).toEqual([
+    '[qa-layout] unnamed-control textbox "after Thunderbolt"',
+  ])
 })
 
 test("an Android field's own text is its value, never its name", () => {
@@ -267,12 +276,16 @@ test("an Android field's own text is its value, never its name", () => {
     hintText: '',
     text: 'qa@thunderbolt.test',
   })
-  expect(measureNative(parseHierarchy(typed), 'android').problems).toEqual(['[qa-layout] unnamed-control textbox ""'])
+  expect(measureNative(parseHierarchy(typed), 'android').problems).toEqual([
+    '[qa-layout] unnamed-control textbox "after Thunderbolt"',
+  ])
   // The language picker shows the selected language as its text.
   const picked = edited('hier-android-control.json', (attributes) => attributes.hintText === 'Language', {
     hintText: '',
   })
-  expect(measureNative(parseHierarchy(picked), 'android').problems).toEqual(['[qa-layout] unnamed-control combobox ""'])
+  expect(measureNative(parseHierarchy(picked), 'android').problems).toEqual([
+    '[qa-layout] unnamed-control combobox "after Email"',
+  ])
 })
 
 test('an iOS heading, whose value is its level, is no checkbox even at level 1 with no label', () => {
@@ -297,10 +310,61 @@ test('on Android a window over the app, like a browser tab, is not the app', () 
   expect(measureNative(parseHierarchy(JSON.stringify(tree)), 'android').problems).toEqual([])
 })
 
+type Inspected = { b?: string; txt?: string; rid?: string; cls?: string; c?: Inspected[] }
+
+/** The tree's lines for the recorded Android Connect Google step, with `change` run on every element first. */
+const onboardingLines = (change: (element: Inspected) => void = () => {}) => {
+  const screen: { elements: Inspected[] } = JSON.parse(fixture('inspect-android-onboarding.json'))
+  const elements = (element: Inspected): Inspected[] => [element, ...(element.c ?? []).flatMap(elements)]
+  for (const element of screen.elements.flatMap(elements)) change(element)
+  return measureNative(parseInspectScreen(JSON.stringify(screen)), 'android').problems
+}
+
+const isBack = (element: Inspected) => element.cls === 'android.widget.Button' && element.txt === undefined
+
+/** The fingerprint filing gives an onboarding `layout` finding that quotes `line`. */
+const fingerprintOf = (line: string) =>
+  fingerprint({
+    title: 'An unnamed control',
+    area: 'onboarding',
+    charter: 'c1-first-run',
+    viewport: 'android',
+    oracle: { type: 'layout', evidence: line },
+    steps: ['Open the step'],
+    expected: 'A screen reader names the control',
+    actual: 'It has no name',
+    repro_flow: 'repro/1.yaml',
+  })
+
 test('the Android Connect Google step reports its icon-only Back button, the one button there without a name', () =>
-  expect(measureNative(parseInspectScreen(fixture('inspect-android-onboarding.json')), 'android').problems).toEqual([
-    '[qa-layout] unnamed-control button ""',
-  ]))
+  expect(onboardingLines()).toEqual(['[qa-layout] unnamed-control button "after Connect Google"']))
+
+test('two unnamed buttons on one screen are two lines with two fingerprints', () => {
+  const lines = onboardingLines((element) => {
+    if (element.txt === 'Continue') element.txt = ''
+  })
+  expect(lines).toEqual([
+    '[qa-layout] unnamed-control button "after Connect Google"',
+    '[qa-layout] unnamed-control button "after Skip"',
+  ])
+  expect(new Set(lines.map(fingerprintOf)).size).toBe(2)
+})
+
+test('the same control in another run, with new generated ids and other bounds, has the same fingerprint', () => {
+  const again = onboardingLines((element) => {
+    if (element.b) element.b = element.b.replace(/\d+/g, (n) => String(Number(n) + 7))
+    if (element.rid?.startsWith('radix-')) element.rid = 'radix-_r_1f_'
+    if (isBack(element)) element.rid = 'radix-_r_2_'
+  })
+  expect(again.map(fingerprintOf)).toEqual(onboardingLines().map(fingerprintOf))
+})
+
+test('a page id names the control, as the probe does', () =>
+  expect(
+    onboardingLines((element) => {
+      if (isBack(element)) element.rid = 'onboarding-back'
+    }),
+  ).toEqual(['[qa-layout] unnamed-control button "#onboarding-back"']))
 
 test("an unnamed button in Gboard's keys is not the app's", () => {
   const holder = (attributes: Record<string, string>) => attributes['resource-id']?.endsWith(':id/keyboard_holder')
@@ -322,7 +386,18 @@ test('inspect_screen gives the gate the same unnamed control as the hierarchy', 
     ui_schema: { defaults: { txt: '', hint: '', rid: '', a11y: '', cls: '' } },
     elements: [{ b: '[0,0][1080,2400]', c: [{ b: '[50,1500][110,1560]', cls: 'android.widget.CheckBox' }] }],
   }
-  const line = ['[qa-layout] unnamed-control checkbox ""']
+  const line = ['[qa-layout] unnamed-control checkbox "at the start"']
   expect(measureNative(parseInspectScreen(JSON.stringify(ios)), 'ios').problems).toEqual(line)
   expect(measureNative(parseInspectScreen(JSON.stringify(android)), 'android').problems).toEqual(line)
+})
+
+test('on a device the probe line for a control the tree reports is left out, so one control is one finding', () => {
+  const button = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
+  const checkbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
+  const covered = '[qa-layout] covered button "Continue"'
+  const kept = (platform: 'ios' | 'android') =>
+    [button, checkbox, covered].filter((line) => keepsProbeLine(line, platform))
+  // Android's tree names every control's role; iOS's only shows the checkable ones.
+  expect(kept('android')).toEqual([covered])
+  expect(kept('ios')).toEqual([button, covered])
 })

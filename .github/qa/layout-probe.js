@@ -4,7 +4,8 @@
 
 // The layout probe. The explore agent's browser runs it in every page (Playwright MCP `--init-script`) and repro
 // specs inject it through layout.ts. It logs `[qa-layout] ready` once per page load and each confirmed problem once
-// as `[qa-layout] <kind> <role> "<name>"`, all with console.error: the MCP passes on nothing quieter.
+// as `[qa-layout] <kind> <role> "<name>"`, all with console.error: the MCP passes on nothing quieter. An unnamed
+// control quotes where it is instead of its name.
 ;(() => {
   if (window.top !== window || window.__qaLayout) return
 
@@ -50,6 +51,41 @@
     clean(el.getAttribute('placeholder')) ||
     clean(el.getAttribute('title'))
   const describe = (el) => `${roleOf(el)} "${accessibleName(el).slice(0, 50)}"`
+
+  // React's and Radix's ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders. native-layout.ts skips the
+  // same ones.
+  const generatedId = /[:«»]|_r_|^radix-/
+  const ownSelector = (el) => {
+    if (el.id && !generatedId.test(el.id)) return `#${el.id}`
+    const testId = el.getAttribute('data-testid')
+    if (testId) return `[data-testid=${testId}]`
+    const name = el.getAttribute('name')
+    return name ? `[name=${name}]` : ''
+  }
+  // The last text a screen reader reads before el, leaving out what a field holds: that is its value.
+  const textBefore = (el) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    walker.currentNode = el
+    for (let node = walker.previousNode(); node; node = walker.previousNode()) {
+      const parent = node.parentElement
+      const text = clean(node.textContent)
+      const heard =
+        parent.checkVisibility({ visibilityProperty: true }) && !parent.closest('[aria-hidden=true], [inert]')
+      if (text && heard && !parent.closest('textarea, select, [contenteditable=true]')) return text
+    }
+    return ''
+  }
+  // Which unnamed control it is, the same in every run: its own id, test id or name attribute, else the lucide icon it
+  // draws and the nearest text before it.
+  const whereOf = (el) => {
+    const own = ownSelector(el)
+    if (own) return own
+    const icon = [...(el.querySelector('svg')?.classList ?? [])].find((name) => name.startsWith('lucide-'))
+    const text = textBefore(el).slice(0, 40)
+    return [icon && `${icon.slice('lucide-'.length)} icon`, text ? `after ${text}` : 'at the start']
+      .filter(Boolean)
+      .join(' ')
+  }
 
   const isVisible = (el) => {
     const rect = el.getBoundingClientRect()
@@ -302,11 +338,10 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    // shortcut: the line quotes only the role and "", so a load reports one unnamed control per role and one ticket
-    // holds them all per area; quote a stable id or the nearest text instead once a finding needs to name which one.
+    // With no name to quote, the line quotes which control it is.
     const unnamed = [...document.querySelectorAll(controls)]
       .filter((el) => !accessibleName(el) && isCandidate(el))
-      .map((el) => ({ kind: 'unnamed-control', target: describe(el) }))
+      .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
     return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
   }
 

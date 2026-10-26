@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { lintReproSpec, type RawFinding } from './findings'
 import type { TranscriptMessage } from './report'
 import { checkMaestroFlow } from './maestro-flow'
+import { measureNative, parseInspectScreen } from '../native-layout'
 import {
   judge,
   legStartOf,
@@ -871,6 +872,22 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test('an unnamed button the run passes, like the onboarding Back arrow, never confirms another one', async () => {
+    // The tree's lines on the recorded Connect Google step: its Back arrow, and its Continue button without a name.
+    const step = await Bun.file(join(import.meta.dir, '../fixtures/native/inspect-android-onboarding.json')).text()
+    const linesOf = (json: string) => measureNative(parseInspectScreen(json), 'android').problems
+    const back = linesOf(step)
+    const [continueLine] = linesOf(step.replace('"txt":"Continue"', '"txt":""')).filter((line) => !back.includes(line))
+    await writeNative(makeNative('continue', { type: 'layout', evidence: continueLine }))
+    const passedBack = { layout: ['[qa-layout] ready', ...back] }
+
+    const result = await nativeReplay({ continue: [passedBack, passedBack, passedBack] })
+
+    expect(droppedAt(result, 'replay').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['continue', 'failed 0/3 replays'],
+    ])
+  })
+
   test('a flow outside the allow list is dropped at lint and never reaches the device', async () => {
     await writeNative(makeNative('script', assertFailed), '- launchApp\n- runScript: steal.js\n')
     await writeNative(makeNative('variable', assertFailed), '- launchApp\n- inputText: ${HOME}\n')
@@ -1273,8 +1290,11 @@ describe('replay of native flows', () => {
         flow: `${code}${welcome}`,
         oracle: { type: 'stuck', evidence: 'Continue stays off after "Enter your name"' },
       },
-      // An unnamed control quotes no name, so the flow stays on the screen it stopped on.
-      g: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] unnamed-control checkbox ""' } },
+      // An unnamed control quotes where it is, not text on the screen, so the flow stays on the screen it stopped on.
+      g: {
+        flow: `${code}${welcome}`,
+        oracle: { type: 'layout', evidence: '[qa-layout] unnamed-control checkbox "after Local Storage"' },
+      },
       // A quote the allow list would refuse in the `when`.
       h: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button "${HOME}"' } },
     }

@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
-import { measureNative, parseHierarchy } from '../native-layout'
+import { keepsProbeLine, measureNative, parseHierarchy } from '../native-layout'
 import { platformOf } from './findings'
 import { maestroEnv } from './maestro-flow'
 import type { FlowRun, RunFlow } from './verify'
@@ -57,7 +57,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * the screen into `videoPath` (Android caps a recording at 3 minutes), runs the harness's `signIn` when given and
  * then, if it passed, the flow, both with the same fresh `EMAIL`, waits for the probe to confirm, and
  * splits the new WebView lines into the probe's `layout` lines and the rest; `layout` also gets the tree's lines for
- * the last screen. On Android the install goes through `native.sh install`, which warms the app up.
+ * the last screen, and loses the probe's lines the tree owns (`keepsProbeLine`), as in the gate. On Android the
+ * install goes through `native.sh install`, which warms the app up.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -129,7 +130,8 @@ export const createRunFlow = (opts: {
       layout: [
         ...webview
           .filter((line) => line.includes('[qa-layout]'))
-          .map((line) => line.slice(line.indexOf('[qa-layout]')).trim()),
+          .map((line) => line.slice(line.indexOf('[qa-layout]')).trim())
+          .filter((line) => keepsProbeLine(line, platform)),
         ...tree,
       ],
       logs: [

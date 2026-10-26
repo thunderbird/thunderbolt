@@ -83,9 +83,14 @@ exit 0
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })
 
+// What the probe logs on that step: the checkbox the tree also reports, and a button the iOS tree cannot see.
+const probeCheckbox = '[qa-layout] unnamed-control checkbox "#terms-agreement"'
+const probeButton = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
+
 /**
  * One iOS replay run with fake `xcrun` and `maestro`, ending on the recorded privacy step without the checkbox's
- * label. `failure` makes the sign-in fail, or the flow's driver time out.
+ * label, where the probe logs `probeCheckbox` and `probeButton`. `failure` makes the sign-in fail, or the flow's
+ * driver time out.
  */
 const iosRun = (failure: '' | 'sign-in' | 'driver') => {
   const dir = mkdtempSync(join(work, 'ios-'))
@@ -104,6 +109,8 @@ echo "maestro $3" >> '${calls}'
 [ "$3" = hierarchy ] && { cat '${hierarchy}'; exit 0; }
 if grep -q 'Check your email' "$6"; then [ '${failure}' = sign-in ] && exit 1; exit 0; fi
 [ '${failure}' = driver ] && { echo 'iOS driver not ready in time'; exit 1; }
+echo 'tauri://localhost:1:2: CONSOLE ERROR ${probeCheckbox}' >> '${join(dir, 'webview.log')}'
+echo 'tauri://localhost:1:2: CONSOLE ERROR ${probeButton}' >> '${join(dir, 'webview.log')}'
 exit 0
 `,
   )
@@ -135,9 +142,10 @@ exit 0
 }
 
 test('an iOS run adds the tree line of the screen it ends on, read once after the flow', () =>
-  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line.
+  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line. The
+  // tree's line stands for the checkbox, so the probe's own line for it is left out.
   expect(iosRun('')).toEqual({
-    layout: ['[qa-layout] unnamed-control checkbox ""'],
+    layout: [probeButton, '[qa-layout] unnamed-control checkbox "after Data is stored securely on your device."'],
     maestro: ['maestro test', 'maestro test', 'maestro hierarchy'],
   }))
 

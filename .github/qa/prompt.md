@@ -113,8 +113,10 @@ status, or the text on screen):
   `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog), `focus-covered`
   (a fixed or sticky box hides part of the focused text field), `focused-clipped` (with the keyboard open, a
   scroll box or the screen edge cuts off part of the focused text field) or `unnamed-control` (a button, link,
-  checkbox, switch, radio, text field or combobox a screen reader cannot name, so its quoted name is empty, even when
-  a label shows beside it). For an `unnamed-control` line, say in `actual` which control it is: what it looks like,
+  checkbox, switch, radio, text field or combobox a screen reader cannot name, even when a label shows beside it;
+  with no name, the quote says which control it is: its `#id`, `[data-testid=…]` or `[name=…]`, or its icon and the
+  text before it, as in `button "arrow-left icon after Connect Google"`). For an `unnamed-control` line, say in
+  `actual` which control it is: what it looks like,
   where it sits and the text next to it, taken from the snapshot (where the control shows with a ref and no name),
   the device's `inspect_screen` tree (an element with no `a11y` and no `hint`, and on Android no `txt` either, except
   a text field or combobox, whose `txt` is its value) or the screenshot. It reports a problem

@@ -286,11 +286,14 @@ const launcher = {
 }
 
 test('on Android the app is in front when a view carries its package in the resource id', async () => {
-  const { ctx, calls } = androidGate({ screen: 'inspect-android-onboarding' })
+  // The probe sees the step's icon-only Back button too, but on Android the tree's line stands for it.
+  const back = '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"'
+  const { ctx, calls } = androidGate({ screen: 'inspect-android-onboarding', probe: [['[qa-layout] ready', back]] })
   const result = await handleCall('run', { yaml: '- tapOn: Skip' }, ctx)
   expect(calls.filter((call) => call.name === 'run')).toHaveLength(1)
-  // The tree's line for the step's icon-only Back button follows the ready line.
-  expect(text(result)).toEndWith('[qa-layout] ready keyboard=none\n[qa-layout] unnamed-control button ""')
+  expect(text(result)).toEndWith(
+    '[qa-layout] ready keyboard=none\n[qa-layout] unnamed-control button "after Connect Google"',
+  )
 })
 
 test('on Android the home screen is not ours, though an icon there bears the app name', async () => {

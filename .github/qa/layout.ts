@@ -5,7 +5,10 @@
 import { resolve } from 'node:path'
 import type { Page } from '@playwright/test'
 
-/** One problem the layout probe confirmed; `target` is `<role> "<accessible name>"`. */
+/**
+ * One problem the layout probe confirmed; `target` is `<role> "<accessible name>"`, or for an `unnamed-control`
+ * `<role> "<which control>"`.
+ */
 export type LayoutProblem = {
   kind:
     | 'overflow-page'

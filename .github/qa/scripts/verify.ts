@@ -429,13 +429,14 @@ const gated = z.object({ runFlow: z.looseObject({ when: z.looseObject({}) }) })
 
 /**
  * The text a flow relies on after command `at`: what its next command waits for or asserts, or, when it stops there,
- * the element a layout finding quotes. Undefined when the next command acts instead, or there is no usable text.
+ * the element a layout finding quotes. Undefined when the next command acts instead, or there is no usable text. An
+ * unnamed control's quote says which control it is, which is not text on the screen.
  */
 const reliedOnText = (commands: unknown[], at: number, oracle: Oracle | undefined) => {
   const next = commands.slice(at + 1).find((command) => !settle.safeParse(command).success)
   const text =
     next === undefined
-      ? oracle?.type === 'layout'
+      ? oracle?.type === 'layout' && !/\] unnamed-control /.test(oracle.evidence)
         ? /"(.+)"\s*$/.exec(oracle.evidence.trim())?.[1]
         : undefined
       : awaitedText.safeParse(next).data

@@ -24,7 +24,7 @@ import {
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { measureNative, parseInspectScreen, readyLine } from '../native-layout'
+import { keepsProbeLine, measureNative, parseInspectScreen, readyLine } from '../native-layout'
 import { platformOf } from './findings'
 import { checkMaestroFlow, maestroEnv } from './maestro-flow'
 import { cleanLogLine } from './sanitize'
@@ -204,8 +204,9 @@ const measureScreen = (screen: ToolResult, ctx: GateContext) => {
 /**
  * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
  * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own new lines
- * (unnamed-control, and Android's behind-keyboard, once per launch like the probe's). The ready line needs the probe's own ready line since the app last started, so a build without
- * the probe never looks clean. A foreign screen is never measured.
+ * (unnamed-control, and Android's behind-keyboard, once per launch like the probe's). The probe's own unnamed-control
+ * lines for what the tree reports are left out (`keepsProbeLine`). The ready line needs the probe's own ready line
+ * since the app last started, so a build without the probe never looks clean. A foreign screen is never measured.
  */
 const measured = async (ctx: GateContext, restarted = false) => {
   if (restarted) {
@@ -227,6 +228,7 @@ const measured = async (ctx: GateContext, restarted = false) => {
   const probe = newLines(ctx.webviewLog, 'layout')
     .filter((line) => line.includes('[qa-layout]'))
     .map((line) => clean(line.slice(line.indexOf('[qa-layout]'))))
+    .filter((line) => keepsProbeLine(line, ctx.platform))
   if (probe.includes(probeReady)) probeSeen.add(ctx.webviewLog)
   const sent = treeSent.get(ctx.webviewLog) ?? new Set<string>()
   treeSent.set(ctx.webviewLog, sent)

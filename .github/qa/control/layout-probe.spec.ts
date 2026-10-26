@@ -4,6 +4,7 @@
 
 // Pins the layout probe's rules on static pages. The probe loads as an init script, as the explore agent's browser
 // loads it, so it sees each page from its first paint.
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
@@ -28,18 +29,28 @@ const consoleLines = (page: Page) => {
 
 test('a clean form has no problems', async ({ page }) => expect(await problemsOf(page, 'ok.html')).toEqual([]))
 
-test('a control without an accessible name is unnamed-control, once', async ({ page }) => {
+// findings.test.ts checks that these lines give one fingerprint each.
+const unnamedLines: string[] = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, '../fixtures/layout/unnamed.json'), 'utf8'),
+)
+
+test('each control without an accessible name is its own unnamed-control, logged once', async ({ page }) => {
   const lines = consoleLines(page)
-  expect(await problemsOf(page, 'unnamed.html')).toEqual([
-    { kind: 'unnamed-control', target: 'checkbox ""' },
-    { kind: 'unnamed-control', target: 'switch ""' },
-    { kind: 'unnamed-control', target: 'textbox ""' },
-  ])
-  expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual([
-    '[qa-layout] unnamed-control checkbox ""',
-    '[qa-layout] unnamed-control switch ""',
-    '[qa-layout] unnamed-control textbox ""',
-  ])
+  expect(await problemsOf(page, 'unnamed.html')).toEqual(
+    unnamedLines.map((line) => ({ kind: 'unnamed-control', target: line.replace('[qa-layout] unnamed-control ', '') })),
+  )
+  expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual(unnamedLines)
+})
+
+test('a new load, with new generated ids, quotes the same unnamed controls', async ({ page }) => {
+  const lines = consoleLines(page)
+  await problemsOf(page, 'unnamed.html')
+  const generated = await page.locator('button[id^=radix-]').getAttribute('id')
+  lines.length = 0
+  await page.reload()
+  await layoutProblems(page)
+  expect(await page.locator('button[id^=radix-]').getAttribute('id')).not.toBe(generated)
+  expect(lines.filter((line) => line.includes('unnamed-control'))).toEqual(unnamedLines)
 })
 
 test('a fixed footer over a button is covered', async ({ page }) =>

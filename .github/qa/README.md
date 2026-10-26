@@ -164,15 +164,19 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `[qa-layout] <kind> <target>` line per layout problem (kinds `overflow-page`, `overflow-text`, `offscreen`,
    `covered`, `behind-keyboard`, `focus-covered`, a fixed or sticky box over part of the focused text field,
    `focused-clipped`, a scroll box or the screen edge cutting off the focused field while the keyboard is open, and
-   `unnamed-control`, a control a screen reader cannot name, quoted with an empty name),
+   `unnamed-control`, a control a screen reader cannot name),
    all with `console.error`, so they pass the MCP's `--console-level error`. A problem line is a `layout` finding.
-   An `unnamed-control` finding takes its screen's area severity, as `covered` does, and an onboarding flow that
-   stops on it gets no privacy step from replay, since there is no name to wait for. The line names only the role,
-   so it cannot tell two controls apart: a page load (an app launch on native) reports one unnamed control per role,
-   and every finding for that role in one area shares a fingerprint, so one ticket. On native, a line logged during
-   the harness's sign-in or consent step (the onboarding Back arrow is an unnamed button) can confirm a finding about
-   another control of that role. The judge checks that the finding names a control its screenshot or snapshot shows
-   and that the repro ends on that control's screen. The MCP does not put console text in a tool
+   An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
+   `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and
+   Radix's generated ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders and do not count. Without
+   one, it quotes the lucide icon the control draws and the nearest text a screen reader reads before it
+   (`[qa-layout] unnamed-control button "arrow-left icon after Connect Google"`), or `at the start`, leaving out
+   hidden text and what a field holds. The quote is part of the fingerprint, so each control gets its own ticket,
+   and replay matches the whole line, so a line about another control of the same role never confirms the finding.
+   Two controls with the same icon and no text between them still share one line, and a quote taken from text that
+   changes between runs (an email the run typed) cannot replay. An `unnamed-control` finding takes its screen's area
+   severity, as `covered` does, and an onboarding flow that stops on it gets no privacy step from replay, since its
+   quote is not text the screen shows. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
@@ -904,16 +908,26 @@ Also:
   `keyboard_holder` overlaps the focused field of the app's window by at least 4 units on both axes. Like the probe,
   the gate shows each such line once per app launch. The keyboard is drawn over
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
-- The tree also reports `unnamed-control` on both platforms, in the probe's form, one line per role:
-  `[qa-layout] unnamed-control checkbox ""`. A screen reader reads the name from the platform's tree, not from the
-  page. A control has no name when its label and its placeholder are empty and, on Android, so is its text; a text
-  field's or combobox's text is its value, never its name. The keyboard's keys are left out, and on Android so is
-  every window but the app's, like a browser tab over it. Android gives the role from the class Chrome's WebView
-  sets (button, checkbox, radio, switch, text field, combobox). Maestro's iOS tree carries no element type, so
-  there only a checkbox, switch or radio shows, as a leaf whose value is 0 or 1, and always as `checkbox`; an
-  unnamed button, link or field on iOS is left to the probe. Replay skips the tree on a run that cannot count (a
-  failed sign-in, an iOS driver that never started). The onboarding privacy checkbox reads its visible label on iOS
-  (`I agree to the Privacy Policy and Terms of Service .`), so it is not reported.
+- The tree also reports `unnamed-control` on both platforms, one line per control, in the probe's form:
+  `[qa-layout] unnamed-control button "after Connect Google"`. A screen reader reads the name from the platform's
+  tree, not from the page. A control has no name when its label and its placeholder are empty and, on Android, so
+  is its text; a text field's or combobox's text is its value, never its name. The keyboard's keys are left out, and
+  on Android so is every window but the app's, like a browser tab over it. Android gives the role from the class
+  Chrome's WebView sets (button, checkbox, radio, switch, text field, combobox). Maestro's iOS tree carries no
+  element type, so there only a checkbox, switch or radio shows, as a leaf whose value is 0 or 1, and always as
+  `checkbox`; an unnamed button, link or field on iOS is left to the probe. Replay skips the tree on a run that
+  cannot count (a failed sign-in, an iOS driver that never started). The onboarding privacy checkbox reads its
+  visible label on iOS (`I agree to the Privacy Policy and Terms of Service .`), so it is not reported.
+- The tree's quote is the control's page `id` as `#<id>`, which Android's WebView passes on as the resource id
+  (generated ids left out, as in the probe), or else the nearest text before it in the tree: the last leaf with
+  text, taking a control's name and never a field's value or a checkbox's state. The tree has no icons, no
+  `data-testid` and no `name`, and iOS gives no page ids, so a control without an `id` can quote differently there
+  than in the probe, and a web finding about it and a tree finding about it get different fingerprints. Two unnamed
+  controls with no text between them share one line on the tree. So that one control never makes two findings on
+  one platform, the gate and the replay drop the probe's own `unnamed-control` lines for what the tree reports
+  (`keepsProbeLine` in `native-layout.ts`): every one on Android, and on iOS the checkbox, radio and switch lines.
+  An iOS button, link or field keeps the probe's line, the same one the web gives. The Android tree gives a link no
+  role, so an unnamed link goes unreported there; the web and iOS legs still report it.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
   `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
   Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`

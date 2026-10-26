@@ -213,24 +213,50 @@ const behindKeyboard = (root: NativeNode, platform: 'ios' | 'android', keyboard:
   return [`[qa-layout] behind-keyboard textbox "${name}"`]
 }
 
+// React's and Radix's ids (`:r3:`, `«r3»`, `_r_3_`, `radix-…`) change between renders, as in the probe. It also
+// leaves out Android's own view ids (`<package>:id/…`).
+const generatedId = /[:«»]|_r_|^radix-/
+
+/** A leaf's text for `whereOf`: a control's name, never its value or state, and nothing for a container. */
+const textOf = (node: NativeNode) =>
+  node.children.length > 0 ? '' : (node.role ? node.name : node.label).replace(/\s+/g, ' ').trim()
+
 /**
- * One `unnamed-control` line per role with a control the screen reader cannot name, as the probe writes it. On
- * Android only the app's window counts, which leaves out the keyboard and a browser tab over the app; on iOS the keys
- * sit in the app's own tree, so the nodes inside the keyboard's frame are left out.
+ * Which unnamed control `node` is, in the probe's form where the tree allows it: the page's `id`, which Android's
+ * WebView passes on as the resource id, else the nearest text before it in `nodes`, read from leaves only since a
+ * container repeats its children's text.
+ */
+const whereOf = (node: NativeNode, nodes: NativeNode[]) => {
+  if (node.id && !generatedId.test(node.id)) return `#${node.id}`
+  const before = nodes.slice(0, nodes.indexOf(node)).findLast((earlier) => textOf(earlier) !== '')
+  return before ? `after ${textOf(before).slice(0, 40)}` : 'at the start'
+}
+
+/**
+ * One `unnamed-control` line per control the screen reader cannot name, quoting which control it is (`whereOf`); two
+ * with the same quote are one line. On Android only the app's window counts, which leaves out the keyboard and a
+ * browser tab over the app; on iOS the keys sit in the app's own tree, so the nodes inside the keyboard's frame are
+ * left out.
  */
 const unnamedControls = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
   const nodes = platform === 'android' ? allNodes(appWindow(root) ?? root) : allNodes(root)
   const keys = platform === 'ios' ? keyboard : undefined
-  // shortcut: the line quotes only the role and "", so a launch reports one unnamed control per role and one ticket
-  // holds them all per area; quote a stable id or the nearest text instead once a finding needs to name which one.
   return [
     ...new Set(
       nodes
         .filter((node) => node.role && !node.name.trim() && !(keys && inside(node.bounds, keys)))
-        .map((node) => `[qa-layout] unnamed-control ${node.role} ""`),
+        .map((node) => `[qa-layout] unnamed-control ${node.role} "${whereOf(node, nodes).slice(0, 80)}"`),
     ),
   ]
 }
+
+/**
+ * Whether the gate and the replay keep a line the probe logged on a device. The tree reports `unnamed-control` for
+ * every control it can see, all of them on Android and the checkable ones on iOS, and quotes them from the tree, so
+ * the probe's line for the same control would be a second finding with another fingerprint.
+ */
+export const keepsProbeLine = (line: string, platform: 'ios' | 'android') =>
+  !(platform === 'android' ? /\] unnamed-control / : /\] unnamed-control (checkbox|radio|switch) /).test(line)
 
 /**
  * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible

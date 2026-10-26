@@ -78,8 +78,7 @@ export const createRunFlow = (opts: {
       await $`xcrun simctl uninstall ${deviceId} ${appId}`.quiet().nothrow()
       await $`xcrun simctl install ${deviceId} ${app}`.quiet()
     } else {
-      await $`adb -s ${deviceId} uninstall ${appId}`.quiet().nothrow()
-      // The session's install, with its warm-up open.
+      // The session's install: it removes the app first, then opens it to warm it up.
       await $`${nativeSh} install android ${deviceId} ${app}`.quiet()
     }
     const dir = await mkdtemp(join(tmpdir(), 'qa-flow-'))

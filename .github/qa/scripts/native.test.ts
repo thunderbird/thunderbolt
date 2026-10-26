@@ -152,7 +152,11 @@ test('install android relaunches the app until a launch gets past the storage ch
   const { proc, log } = warmUp(2)
   expect(proc.stderr.toString()).toBe('')
   expect(proc.exitCode).toBe(0)
-  expect(log[0]).toBe('-s emulator-5554 install -r /apps/app-debug.apk')
+  // A fresh install, so the session sees the first-run screens a replay run sees.
+  expect(log.slice(0, 2)).toEqual([
+    '-s emulator-5554 uninstall net.thunderbird.thunderbolt',
+    '-s emulator-5554 install -r /apps/app-debug.apk',
+  ])
   const launches = log.flatMap((line, at) =>
     line.includes(' shell monkey -p net.thunderbird.thunderbolt ') ? [at] : [],
   )
@@ -161,6 +165,22 @@ test('install android relaunches the app until a launch gets past the storage ch
   expect(log.slice(launches[0], launches[1])).toContain(forceStop)
   expect(log.slice(launches[1])).toContain('-s emulator-5554 logcat -d --pid=4002 -s Tauri/Console:*')
   expect(log.at(-1)).toBe(forceStop)
+})
+
+test('install ios removes the app first, so the session starts on the first-run screens a replay run sees', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const calls = join(bin, 'calls.log')
+  // simctl fails to uninstall an app that is not there, which must not stop the install.
+  writeFileSync(join(bin, 'xcrun'), `#!/bin/bash\necho "$*" >> '${calls}'\n[ "$2" != uninstall ]\n`)
+  chmodSync(join(bin, 'xcrun'), 0o755)
+  const proc = Bun.spawnSync(['bash', native, 'install', 'ios', 'SIM-1', '/apps/Thunderbolt Dev.app'], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  expect(proc.exitCode).toBe(0)
+  expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual([
+    'simctl uninstall SIM-1 net.thunderbird.thunderbolt.dev',
+    'simctl install SIM-1 /apps/Thunderbolt Dev.app',
+  ])
 })
 
 test('install android fails with the last storage check line when 4 launches never get past it', () => {

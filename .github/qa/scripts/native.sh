@@ -201,14 +201,17 @@ logs() {
 
 install_app() {
   local platform=$1 device=$2 app=$3 app_id pid lines='' deadline last
+  app_id=$(jq -r --arg platform "$platform" '.[] | select(.id == $platform) | .appId' .github/qa/platforms.json)
+  # A session starts on a fresh install, as every replay run does, so the explorer sees the first-run screens too.
   if [ "$platform" = ios ]; then
+    xcrun simctl uninstall "$device" "$app_id" || true
     xcrun simctl install "$device" "$app"
     return
   fi
+  adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
   # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
   # 39380764343, several in a row), so the app is opened until a launch gets past it.
-  app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
   for _ in 1 2 3 4; do
     adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
     deadline=$((SECONDS + ${QA_WARM_SECONDS:-30}))

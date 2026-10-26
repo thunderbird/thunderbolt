@@ -980,6 +980,10 @@ msgstr "Mit {connectedProviderName} E-Mail und Kalender verbunden"
 msgid "Connected to {integrationName}"
 msgstr "Mit {integrationName} verbunden"
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Connected without tools"
+msgstr ""
+
 #: src/components/connect-provider-button.tsx
 msgid "Connected!"
 msgstr "Verbunden!"
@@ -2285,6 +2289,10 @@ msgstr "Verlassen, ohne zu erstellen?"
 msgid "Leave without saving?"
 msgstr "Verlassen, ohne zu speichern?"
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
 msgstr "Hell"
@@ -2437,8 +2445,8 @@ msgid "Model"
 msgstr "Modell"
 
 #: src/settings/models/add-model-form.tsx
-msgid "Model may not be compatible"
-msgstr "Modell ist möglicherweise nicht kompatibel"
+#~ msgid "Model may not be compatible"
+#~ msgstr "Modell ist möglicherweise nicht kompatibel"
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -3857,6 +3865,10 @@ msgstr "Antwort vom Modell erfolgreich erhalten."
 msgid "Suggested"
 msgstr "Vorschläge"
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Supports tools"
+msgstr ""
+
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
 msgstr "Agent wechseln"
@@ -4168,8 +4180,12 @@ msgid "This model couldn't read the attached file. Try a different model."
 msgstr "Dieses Modell konnte die angehängte Datei nicht lesen. Versuchen Sie ein anderes Modell."
 
 #: src/settings/models/add-model-form.tsx
-msgid "This model does not seem to support tool usage."
-msgstr "Dieses Modell scheint die Nutzung von Tools nicht zu unterstützen."
+#~ msgid "This model does not seem to support tool usage."
+#~ msgstr "Dieses Modell scheint die Nutzung von Tools nicht zu unterstützen."
+
+#: src/settings/models/connection-test-section.tsx
+msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
+msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."

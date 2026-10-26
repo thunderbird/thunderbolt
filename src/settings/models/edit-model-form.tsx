@@ -14,6 +14,7 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
+import { SupportsToolsSwitch } from './supports-tools-switch'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
 
 export type { EditModelSubmission } from './use-edit-model-form-state'
@@ -138,7 +139,15 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           onTest={state.testConnection}
           status={state.connection.status}
           error={state.connection.error}
+          toolSupport={state.connection.toolSupport}
         />
+        {model.provider !== 'thunderbolt' && (
+          <SupportsToolsSwitch
+            checked={state.form.watch('supportsTools')}
+            onCheckedChange={state.changeSupportsTools}
+            disabled={state.connection.isTesting}
+          />
+        )}
         {submitError && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}

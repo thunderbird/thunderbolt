@@ -980,6 +980,10 @@ msgstr ""
 msgid "Connected to {integrationName}"
 msgstr ""
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Connected without tools"
+msgstr ""
+
 #: src/components/connect-provider-button.tsx
 msgid "Connected!"
 msgstr ""
@@ -2285,6 +2289,10 @@ msgstr ""
 msgid "Leave without saving?"
 msgstr ""
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
 msgstr ""
@@ -2437,8 +2445,8 @@ msgid "Model"
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
-msgid "Model may not be compatible"
-msgstr ""
+#~ msgid "Model may not be compatible"
+#~ msgstr ""
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -3857,6 +3865,10 @@ msgstr ""
 msgid "Suggested"
 msgstr ""
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Supports tools"
+msgstr ""
+
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
 msgstr ""
@@ -4168,7 +4180,11 @@ msgid "This model couldn't read the attached file. Try a different model."
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
-msgid "This model does not seem to support tool usage."
+#~ msgid "This model does not seem to support tool usage."
+#~ msgstr ""
+
+#: src/settings/models/connection-test-section.tsx
+msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx

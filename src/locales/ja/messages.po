@@ -968,6 +968,10 @@ msgstr "{connectedProviderName} メールとカレンダーに接続済み"
 msgid "Connected to {integrationName}"
 msgstr "{integrationName} に接続済み"
 
+#: src/settings/models/connection-test-section.tsx
+msgid "Connected without tools"
+msgstr ""
+
 #: src/components/connect-provider-button.tsx
 msgid "Connected!"
 msgstr "接続しました"
@@ -2273,6 +2277,10 @@ msgstr "作成せずに移動しますか？"
 msgid "Leave without saving?"
 msgstr "保存せずに移動しますか？"
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
 msgstr "ライト"
@@ -2425,8 +2433,8 @@ msgid "Model"
 msgstr "モデル"
 
 #: src/settings/models/add-model-form.tsx
-msgid "Model may not be compatible"
-msgstr "このモデルは対応していない可能性があります"
+#~ msgid "Model may not be compatible"
+#~ msgstr "このモデルは対応していない可能性があります"
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -3845,6 +3853,10 @@ msgstr "モデルから応答を取得できました。"
 msgid "Suggested"
 msgstr "おすすめ"
 
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Supports tools"
+msgstr ""
+
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
 msgstr "エージェントを切り替える"
@@ -4156,8 +4168,12 @@ msgid "This model couldn't read the attached file. Try a different model."
 msgstr "このモデルは添付ファイルを読み取れませんでした。別のモデルをお試しください。"
 
 #: src/settings/models/add-model-form.tsx
-msgid "This model does not seem to support tool usage."
-msgstr "このモデルはツールの利用に対応していないようです。"
+#~ msgid "This model does not seem to support tool usage."
+#~ msgstr "このモデルはツールの利用に対応していないようです。"
+
+#: src/settings/models/connection-test-section.tsx
+msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
+msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."

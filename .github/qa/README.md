@@ -621,8 +621,9 @@ Used by `explore`, `explore-native`, the real-AI `replay` and `replay-native` le
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish, the app check                       | the GitHub App below                                                                                                                                   |
 | `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
 
-The `QA_` names differ from nightly's on purpose. Each is a QA-only secret, and if an environment secret were missing,
-a same-named repository secret would be used without warning.
+The `QA_` names differ from nightly's on purpose. Each is a QA-only secret except the GitHub App's two, which belong to
+an app shared with other automation. If an environment secret were missing, a same-named repository secret would be
+used without warning.
 
 The Linear key is the exception. The QA files into the same Linear team as nightly, so `file` and `publish` use the
 existing repository secret `LINEAR_API_KEY`, like `nightly.yml`. It needs to read issues and labels, create issues and
@@ -642,11 +643,12 @@ Team Thunderbolt needs these labels, or the filer stops and lists the missing on
 
 ### GitHub App (auto-fix only)
 
-`publish` uses the existing GitHub App `thunderbolt-automation-agent`. Its credentials are the two `qa-agent` secrets
-`QA_APP_CLIENT_ID` and `QA_APP_PRIVATE_KEY`. The job mints a token narrowed to this repository with **Contents:
-write** and **Pull requests: write** and nothing else, then pushes `qa-fix/<fp>` and opens a draft PR. PRs opened with
-the default `GITHUB_TOKEN` would not start CI until someone approves the run. Enable "Automatically delete head
-branches": `route` skips a fingerprint while its `qa-fix/<fp>` branch exists.
+`publish` uses the existing GitHub App `thunderbolt-automation-agent`, shared with the repository's other automation
+(the factory bot), which is why the token is narrowed and why the bypass risk below matters. Its credentials are the
+two `qa-agent` secrets `QA_APP_CLIENT_ID` and `QA_APP_PRIVATE_KEY`. The job mints a token narrowed to this repository
+with **Contents: write** and **Pull requests: write** and nothing else, then pushes `qa-fix/<fp>` and opens a draft PR.
+PRs opened with the default `GITHUB_TOKEN` would not start CI until someone approves the run. Enable "Automatically
+delete head branches": `route` skips a fingerprint while its `qa-fix/<fp>` branch exists.
 
 The app must be installed on this repository with at least those two permissions. If it lacks one, the token request
 fails and `publish` stops before it pushes anything.
@@ -671,8 +673,8 @@ and `pull-requests: write`, and GitHub refuses it if the installation holds less
 
 Narrowing limits the token's permissions on this repository, not which branches it can push to. If the app is in the
 `main` ruleset's bypass list, a token it mints could push to `main`. `publish` only ever pushes `qa-fix/<fp>`
-branches, and a person reviews every PR. Nobody could confirm the bypass list when this was written, so check it in
-Settings → Rules.
+branches, and a person reviews every PR. Check whether the app is in the `main` ruleset's bypass list (Settings →
+Rules).
 
 Residual risk: test code that the fix agent writes runs in the same job as the QA Anthropic key. The Anthropic
 workspace's spend limit bounds what a leaked key can cost, and auto-fix stays off unless `QA_AUTOFIX_ENABLED` is

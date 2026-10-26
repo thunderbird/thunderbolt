@@ -341,9 +341,10 @@ describe('native jobs', () => {
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
-  // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
-  for (const [name, job] of Object.entries(jobs).filter(([name, job]) => !job.uses && name !== 'app-check')) {
+  for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
+    // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
+    if (name === 'app-check') continue
     expect({ name, permissions: job.permissions }).toEqual({ name, permissions: { contents: 'read' } })
   }
 })

@@ -2,7 +2,7 @@
 
 Goal: onboarding, the first chat and leaving the app work for someone who has never used Thunderbolt.
 
-Start state: this build shows onboarding. The app runs at **http://localhost:1425** (not 1424).
+Start state: this is the onboarding build, so it shows onboarding. The app runs at **http://localhost:1425**.
 
 1. Sign in with a fresh address. Go through every onboarding step, then the welcome dialog.
    Edge cases: back and forward between steps, a reload in the middle, skipping optional steps, an empty and a

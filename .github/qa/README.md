@@ -472,6 +472,11 @@ bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udi
 .github/qa/scripts/native.sh stop-logs /tmp/webview.log
 ```
 
+A native app bakes the backend and fake Google URLs and its CSP in when it is built, so it talks only to a stack with
+the same `QA_BACKEND_PORT` and `QA_GOOGLE_PORT`. Build with the `QA_*_PORT` variables of the stack it will use (see
+"Run it locally"). On Android, `adb reverse` maps the stack's backend, fake AI, fake MCP and fake Google ports, and
+PowerSync's 18081, to the emulator.
+
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
 stack's two extra `connect-src` origins (`http://localhost:8005` and `http://127.0.0.1:9880` by default, read from
 `stack.sh`), and without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its

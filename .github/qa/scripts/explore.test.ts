@@ -118,6 +118,56 @@ test('a native session refuses a backend log inside its session dir before the l
   expect(stderr).toContain('must be outside')
 })
 
+const noPorts = {
+  QA_FRONTEND_PORT: '',
+  QA_ONBOARDING_PORT: '',
+  QA_BACKEND_PORT: '',
+  QA_PROVIDER_PORT: '',
+  QA_MCP_PORT: '',
+  QA_GOOGLE_PORT: '',
+}
+
+/** The prompt of a session with the stack's ports as given, and the rest of them unset whatever the caller's shell has. */
+const promptFor = (session: string, ports: Record<string, string> = {}) => {
+  const { code, stdout, stderr } = sh(['prompt', session, out], { ...noPorts, ...ports })
+  if (code !== 0) throw new Error(stderr)
+  return stdout
+}
+
+test('the prompt names the configured ports in one pass', () => {
+  // The frontend moves onto the onboarding default and the onboarding build moves on: no URL may be rewritten twice.
+  const prompt = promptFor('c1-first-run-desktop', {
+    QA_FRONTEND_PORT: '1425',
+    QA_ONBOARDING_PORT: '1426',
+    QA_BACKEND_PORT: '8105',
+  })
+  expect(prompt).toContain('The app runs at http://localhost:1425 unless')
+  expect(prompt).toContain('its backend is http://localhost:8105')
+  expect(prompt).toContain('http://localhost:1426**')
+  expect(prompt).not.toContain('http://localhost:1424')
+  expect(prompt).not.toContain('http://localhost:8005')
+})
+
+test('the MCP and fake Google URLs follow their ports', () => {
+  const prompt = promptFor('c5-widgets-connections-desktop', { QA_MCP_PORT: '2879', QA_GOOGLE_PORT: '2880' })
+  expect(prompt).toContain('http://127.0.0.1:2879/mcp')
+  expect(prompt).toContain('http://127.0.0.1:2880')
+  expect(prompt).not.toContain(':9879')
+  expect(prompt).not.toContain(':9880')
+})
+
+test("on the default ports the prompt keeps today's URLs", () => {
+  const prompt = promptFor('c1-first-run-desktop')
+  expect(prompt).toContain('http://localhost:1424')
+  expect(prompt).toContain('http://localhost:1425**')
+  expect(prompt).toContain('its backend is http://localhost:8005')
+})
+
+test('a port that is not one of the six stays as the charter wrote it', () => {
+  const prompt = promptFor('c3-models-providers-desktop', { QA_BACKEND_PORT: '8105' })
+  expect(prompt).toContain('`http://localhost:9`')
+})
+
 /** A stand-in `claude` that logs the given gate lines, may write the outside file, and prints a tool result. */
 const fakeClaude = (gateLines: string[], writeOutside = false) => {
   const bin = mkdtempSync(join(work, 'bin-'))

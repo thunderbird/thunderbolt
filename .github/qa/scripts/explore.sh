@@ -49,8 +49,20 @@ journey() {
     { echo "unknown case: $1" >&2; exit 1; }
 }
 
+# The prompt text on stdin with each default stack port in a localhost or 127.0.0.1 URL swapped for the configured one
+# (an empty or unset QA_*_PORT keeps the default). One pass, so a port that moves onto another default is not moved
+# twice. Other ports, like the unreachable localhost:9, stay. Reads ports.json as data: in CI the checkout is untrusted.
+stack_urls() {
+  # shellcheck disable=SC2016 # jq variables
+  jq --raw-input --slurp --join-output --slurpfile ports .github/qa/ports.json \
+    '($ports[0] | with_entries({key: (.value | tostring), value: ((($ENV[.key] // "") | select(. != "")) // (.value | tostring))})) as $map
+      | gsub("(?<host>localhost|127\\.0\\.0\\.1):(?<port>[0-9]+)"; .host + ":" + ($map[.port] // .port))'
+}
+
+prompt() { prompt_text "$@" | stack_urls; }
+
 # The shared prefix comes first and is identical for every session, so sessions can reuse its prompt cache.
-prompt() {
+prompt_text() {
   # Platform ids have no hyphen, so the last part of a session id names the platform and the rest the charter.
   local viewport driver base=${1%-*} id=${1##*-}
   viewport=$(platform "$id" viewport)

@@ -11,6 +11,16 @@ const native = join(import.meta.dir, 'native.sh')
 const work = mkdtempSync(join(tmpdir(), 'qa-native-'))
 afterAll(() => rmSync(work, { recursive: true, force: true }))
 
+// The stack's port variables unset, so a caller's shell cannot change what a test expects of the defaults.
+const noPorts = {
+  QA_FRONTEND_PORT: '',
+  QA_ONBOARDING_PORT: '',
+  QA_BACKEND_PORT: '',
+  QA_PROVIDER_PORT: '',
+  QA_MCP_PORT: '',
+  QA_GOOGLE_PORT: '',
+}
+
 /**
  * A stand-in `adb` for a booted emulator that logs every call: `/sdcard` resolves only from the second check on, as
  * after `sys.boot_completed` on the runner, and Android 16 refuses the push of sample.png.
@@ -76,7 +86,7 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
 
 test('device android waits for /sdcard, pushes each fixture alone and only warns when a push is refused', () => {
   const { env, calls } = fakeAdb()
-  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...env } })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
   const log = readFileSync(calls, 'utf8').trim().split('\n')
   const at = (pattern: RegExp) => log.findIndex((line) => pattern.test(line))
 
@@ -91,6 +101,18 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(at(/ push /)).toBeGreaterThan(at(/mkdir -p \/sdcard\/Download/))
   // c7's PowerSync too, so the app on the emulator can sync.
   expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
+})
+
+test('device android reverses the stack ports it is configured with', () => {
+  const { env, calls } = fakeAdb()
+  const ports = { QA_BACKEND_PORT: '8105', QA_PROVIDER_PORT: '9978', QA_MCP_PORT: '9979', QA_GOOGLE_PORT: '9980' }
+  Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env, ...ports } })
+  const reversed = readFileSync(calls, 'utf8')
+    .split('\n')
+    .filter((line) => line.includes(' reverse '))
+  expect(reversed).toEqual(
+    ['8105', '9978', '9979', '9980', '18081'].map((port) => `-s emulator-5554 reverse tcp:${port} tcp:${port}`),
+  )
 })
 
 /**
@@ -152,9 +174,19 @@ test('install android fails with the last storage check line when 4 launches nev
 
 test('a QA build may reach the stack and c7 PowerSync, over HTTP and WebSocket', async () => {
   const out = join(work, 'tauri.conf.json')
-  const proc = Bun.spawnSync(['bash', native, 'config', 'android', out])
+  const proc = Bun.spawnSync(['bash', native, 'config', 'android', out], { env: { ...process.env, ...noPorts } })
   expect(proc.exitCode).toBe(0)
   const sources = (await Bun.file(out).json()).app.security.csp['connect-src'].split(' ')
   for (const source of ['http://localhost:8005', 'http://localhost:18081', 'ws://localhost:18081'])
     expect(sources).toContain(source)
+})
+
+test('a QA build reaches the backend and fake Google on the ports it is configured with', async () => {
+  const out = join(work, 'tauri-ports.conf.json')
+  const env = { ...process.env, ...noPorts, QA_BACKEND_PORT: '8105', QA_GOOGLE_PORT: '9980' }
+  expect(Bun.spawnSync(['bash', native, 'config', 'android', out], { env }).exitCode).toBe(0)
+  const sources = (await Bun.file(out).json()).app.security.csp['connect-src'].split(' ')
+  expect(sources).toContain('http://localhost:8105')
+  expect(sources).toContain('http://127.0.0.1:9980')
+  expect(sources).not.toContain('http://localhost:8005')
 })

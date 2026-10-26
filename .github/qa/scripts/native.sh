@@ -41,7 +41,7 @@ eval "$(sed -n '/^backend_url=/p; /^fake_google_url=/p; /^frontend_env=(/,/^)/p'
 fixtures=.github/qa/fixtures
 # The CI PowerSync service of c7, reached by the app through POWERSYNC_URL, which the backend hands out.
 powersync=localhost:18081
-stack_ports="8005 9878 9879 9880 ${powersync#*:}"
+stack_ports="$QA_BACKEND_PORT $QA_PROVIDER_PORT $QA_MCP_PORT $QA_GOOGLE_PORT ${powersync#*:}"
 
 die() {
   echo "$*" >&2

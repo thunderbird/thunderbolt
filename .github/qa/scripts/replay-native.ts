@@ -52,8 +52,9 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
 
 /**
  * The real `RunFlow`. Each run uninstalls and reinstalls the app, so no session or draft from an earlier run is left.
- * It installs the onboarding build for a c1 session and the plain one otherwise, the control included. It records the screen into `videoPath` (Android caps a recording at 3 minutes), runs the harness's `signIn` when
- * given and then, if it passed, the flow, both with the same fresh `EMAIL`, waits for the probe to confirm, and
+ * It installs the onboarding build for a c1 session and the plain one otherwise, the control included. It records
+ * the screen into `videoPath` (Android caps a recording at 3 minutes), runs the harness's `signIn` when given and
+ * then, if it passed, the flow, both with the same fresh `EMAIL`, waits for the probe to confirm, and
  * splits the new WebView lines into the probe's `layout` lines and the rest. On Android the install goes through
  * `native.sh install`, which warms the app up, and `layout` also gets the tree's lines.
  */

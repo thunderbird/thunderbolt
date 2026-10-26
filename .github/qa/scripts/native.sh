@@ -244,7 +244,7 @@ control() {
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
   logs "$platform" "$device" "$out/webview.log"
-  # The iOS driver sometimes is not ready in time on the macOS runner, so one more try.
+  # The iOS driver sometimes is not ready in time, so one more try.
   maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || { tail -20 "$out/maestro.log" >&2; die "the control flow failed"; }

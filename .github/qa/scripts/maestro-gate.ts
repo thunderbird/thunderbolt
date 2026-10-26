@@ -128,7 +128,7 @@ const withLines = (result: ToolResult, lines: string[]): ToolResult => ({
   content: [...result.content, { type: 'text', text: lines.join('\n') }],
 })
 
-/** One Maestro call, repeated once when its XCTest driver did not start in time, which happens on the macOS runner. */
+/** One Maestro call, repeated once when its XCTest driver did not start in time, which happens now and then. */
 const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) => {
   const result = await ctx.client.callTool(name, args)
   return textOf(result).includes(driverTimeout) ? ctx.client.callTool(name, args) : result

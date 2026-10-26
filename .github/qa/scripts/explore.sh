@@ -87,7 +87,8 @@ prompt() {
 native_claude() {
   local session=$1 dir=$2 stream=$3 config hook log parent
   shift 3
-  # The browser tools can write anywhere in the checkout, which on the Mac breaks the rule that the model writes only inside the session dir.
+  # The browser tools can write anywhere in the checkout, which on the Mac breaks the rule that the model writes
+  # only inside the session dir.
   if [ "$session" = c7-two-devices-ios ]; then
     echo "c7-two-devices-ios does not run: no second browser on the Mac" >&2
     exit 2

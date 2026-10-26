@@ -41,6 +41,10 @@ on:
         description: Also run the positive control of the native layout check on iOS and Android
         type: boolean
         default: false
+      app_check:
+        description: Only check the GitHub App credentials and permissions, run nothing else
+        type: boolean
+        default: false
 
 concurrency:
   group: qa-weekly
@@ -59,7 +63,7 @@ env:
 
 jobs:
   build:
-    if: vars.QA_AGENT_ENABLED == 'true'
+    if: vars.QA_AGENT_ENABLED == 'true' && !inputs.app_check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -1589,9 +1593,11 @@ jobs:
         id: app-token
         if: needs.build.outputs.live == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
+        # The app's other permissions, and every other repository it is installed on, stay out of the token.
+        with: &app-token
           client-id: ${{ secrets.QA_APP_CLIENT_ID }}
           private-key: ${{ secrets.QA_APP_PRIVATE_KEY }}
+          repositories: thunderbolt
           permission-contents: write
           permission-pull-requests: write
 
@@ -1610,6 +1616,31 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+
+  # By hand only, and meant to run before the QA is enabled, so it has no kill switch. It mints the token publish
+  # would get, which fails if the app lacks a requested permission, and writes nothing. It holds the two app secrets
+  # and nothing else.
+  app-check:
+    if: github.event_name == 'workflow_dispatch' && inputs.app_check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: qa-agent
+    permissions: {}
+    steps:
+      - name: Create the GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with: *app-token
+      - name: Check that the token reaches only this repository
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          echo "App: $APP_SLUG"
+          repos=$(gh api /installation/repositories --jq '[.repositories[].full_name]')
+          echo "Repositories the token reaches: $repos"
+          jq --exit-status --arg repo "$GITHUB_REPOSITORY" '. == [$repo]' <<< "$repos" > /dev/null
 
   report:
     needs:
@@ -1695,7 +1726,7 @@ jobs:
   # Email field. No model and no secret.
   native-control:
     name: native-control ${{ matrix.target.platform }}
-    if: vars.QA_AGENT_ENABLED == 'true' && inputs.native_control
+    if: vars.QA_AGENT_ENABLED == 'true' && inputs.native_control && !inputs.app_check
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 60
     permissions:

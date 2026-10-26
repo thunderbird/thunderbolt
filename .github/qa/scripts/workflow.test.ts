@@ -33,6 +33,8 @@ type Job = {
   steps?: Step[]
   uses?: string
   'timeout-minutes'?: number
+  if?: string
+  needs?: string | string[]
   permissions?: unknown
   environment?: string
   env?: Record<string, string>
@@ -339,8 +341,41 @@ describe('native jobs', () => {
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
-  for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
+  // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
+  for (const [name, job] of Object.entries(jobs).filter(([name, job]) => !job.uses && name !== 'app-check')) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
     expect({ name, permissions: job.permissions }).toEqual({ name, permissions: { contents: 'read' } })
   }
+})
+
+describe('the GitHub App token', () => {
+  test('publish and app-check mint the same narrowed token, and nothing else', () => {
+    const mint = (job: string) => step(job, 'Create the GitHub App token')
+    expect(mint('publish').with).toEqual({
+      'client-id': '${{ secrets.QA_APP_CLIENT_ID }}',
+      'private-key': '${{ secrets.QA_APP_PRIVATE_KEY }}',
+      repositories: 'thunderbolt',
+      'permission-contents': 'write',
+      'permission-pull-requests': 'write',
+    })
+    expect(mint('app-check')).toEqual({ ...mint('publish'), if: undefined })
+  })
+
+  test('app-check runs by hand only and holds the two app secrets and nothing else', () => {
+    expect(jobs['app-check'].if).toBe("github.event_name == 'workflow_dispatch' && inputs.app_check")
+    expect(jobs['app-check'].permissions).toEqual({})
+    expect(jobs['app-check'].environment).toBe('qa-agent')
+    expect(JSON.stringify(jobs['app-check']).match(/secrets\.\w+/g)).toEqual([
+      'secrets.QA_APP_CLIENT_ID',
+      'secrets.QA_APP_PRIVATE_KEY',
+    ])
+  })
+
+  test('a check run skips every other job: each one depends on build, or checks the input itself', () => {
+    const dependsOnBuild = (name: string): boolean =>
+      [jobs[name].needs ?? []].flat().some((need) => need === 'build' || dependsOnBuild(need))
+    const loose = Object.keys(jobs).filter((name) => name !== 'build' && !dependsOnBuild(name))
+    expect(loose.sort()).toEqual(['app-check', 'native-control'])
+    for (const name of ['build', 'native-control']) expect(jobs[name].if).toContain('!inputs.app_check')
+  })
 })

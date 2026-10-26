@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// stack.sh's port handling: where it reads its ports, what it refuses, and which stack `stop` stops. No test starts a
-// server: every case ends before the first one would.
+// stack.sh's port handling: where it reads its ports, what it refuses, and which stack `stop` stops, plus the TypeScript
+// side that reads the same ports (`ports.ts` and the replay config, which one test loads in a `bun -e` child). No test
+// starts a server: every case ends before the first one would.
 
 import { afterAll, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -102,9 +103,15 @@ test('stack URLs fall back to the defaults', () => {
 
 test('the replay config takes its base URL from QA_FRONTEND_PORT', () => {
   const repoRoot = join(import.meta.dir, '../../..')
-  const { stdout } = Bun.spawnSync(
+  const { stdout, stderr } = Bun.spawnSync(
     ['bun', '-e', "import c from './.github/qa/playwright.config.ts'; console.log(c.use?.baseURL)"],
-    { cwd: repoRoot, env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', QA_FRONTEND_PORT: '2424' } },
+    {
+      cwd: repoRoot,
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', QA_FRONTEND_PORT: '2424' },
+      timeout: 10_000,
+    },
   )
+  // A config that fails to load shows its error here instead of an empty stdout.
+  expect(stderr.toString()).toBe('')
   expect(stdout.toString()).toBe('http://localhost:2424\n')
 })

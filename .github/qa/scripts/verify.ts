@@ -254,7 +254,7 @@ export const replayEnv = (outDir: string, env: Record<string, string | undefined
   // A failed replay would otherwise write the page's aria snapshot (it can hold typed field values) into error-context.md.
   PLAYWRIGHT_NO_COPY_PROMPT: '1',
   QA_OUT: outDir,
-  // The ports of the stack the replay runs against.
+  // The Playwright config and the c1 specs read the stack's frontends from these.
   QA_FRONTEND_PORT: env.QA_FRONTEND_PORT,
   QA_ONBOARDING_PORT: env.QA_ONBOARDING_PORT,
 })

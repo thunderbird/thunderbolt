@@ -9,7 +9,7 @@
 
 while read -r name default; do
   port=${!name:-$default}
-  if ! [[ $port =~ ^[0-9]{1,5}$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+  if ! [[ $port =~ ^[1-9][0-9]{0,4}$ ]] || [ "$port" -gt 65535 ]; then
     echo "$name must be a port number from 1 to 65535, got '$port'" >&2
     exit 2
   fi

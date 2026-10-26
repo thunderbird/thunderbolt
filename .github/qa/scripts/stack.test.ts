@@ -51,6 +51,10 @@ test('refuses a value that is not a port', () => {
   const frontend = sh(['serve', 'native'], { QA_FRONTEND_PORT: '99999' })
   expect(frontend.code).toBe(2)
   expect(frontend.stderr).toContain("QA_FRONTEND_PORT must be a port number from 1 to 65535, got '99999'")
+  // A leading zero would make the default backend port read as another stack's and rename its state files.
+  const backend = sh(['serve', 'native'], { QA_BACKEND_PORT: '08005' })
+  expect(backend.code).toBe(2)
+  expect(backend.stderr).toContain("QA_BACKEND_PORT must be a port number from 1 to 65535, got '08005'")
 })
 
 /** A sleep that outlives this call and is nobody's child: `stop` waits on its pid with `kill -0`. */

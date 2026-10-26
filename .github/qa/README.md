@@ -352,22 +352,6 @@ QA_BACKEND_PORT to a free port`. So stop any `bun run e2e` first, or move the st
 
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
-```
-
-**Two stacks side by side.** Two agents can run two stacks on one machine when each uses its own six ports. A build
-bakes the backend and fake Google URLs into the app, so a second stack needs its own builds, made with its own
-variables, and the `control` project needs the same variables as the stack it checks.
-
-```sh
-export QA_FRONTEND_PORT=2024 QA_ONBOARDING_PORT=2025 QA_BACKEND_PORT=2005 \
-  QA_PROVIDER_PORT=2078 QA_MCP_PORT=2079 QA_GOOGLE_PORT=2080
-.github/qa/scripts/stack.sh build qa-dist-2
-.github/qa/scripts/stack.sh build qa-dist-2-onboarding onboarding   # only for c1
-.github/qa/scripts/stack.sh serve qa-dist-2 qa-dist-2-onboarding
-bunx playwright test --config .github/qa/playwright.config.ts --project control   # in another shell, same exports
-```
-
-```sh
 
 # One session, named <charter>-<platform>; the platform sets the viewport and the MCP config. The last argument is
 # the budget cap in USD (default 2).
@@ -421,9 +405,23 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 
 **Fix agent:** run it in a separate checkout (it edits the working tree), with
 `.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on the frontend port, 1424 by default,
-with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding finding can be verified) and the flags of the `fix` job.
-Collect the patch like the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
-commit and the PR it would open.
+with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding
+finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, then
+`bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
+open.
+
+**Two stacks side by side.** Two agents can run two stacks on one machine when each uses its own six ports. A build
+bakes the backend and fake Google URLs into the app, so a second stack needs its own builds, made with its own
+variables, and the `control` project needs the same variables as the stack it checks.
+
+```sh
+export QA_FRONTEND_PORT=2024 QA_ONBOARDING_PORT=2025 QA_BACKEND_PORT=2005 \
+  QA_PROVIDER_PORT=2078 QA_MCP_PORT=2079 QA_GOOGLE_PORT=2080
+.github/qa/scripts/stack.sh build qa-dist-2
+.github/qa/scripts/stack.sh build qa-dist-2-onboarding onboarding   # only for c1
+.github/qa/scripts/stack.sh serve qa-dist-2 qa-dist-2-onboarding
+bunx playwright test --config .github/qa/playwright.config.ts --project control   # in another shell, same exports
+```
 
 Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers` and
 `../../../.github/qa/layout`.
@@ -476,8 +474,7 @@ bun .github/qa/scripts/verify.ts replay --out qa-out --native ios --device "$udi
 
 `config <platform> <out-json> [control]` is the Tauri config `build` uses: `tauri.dev.conf.json` with the
 stack's two extra `connect-src` origins (`http://localhost:8005` and `http://127.0.0.1:9880` by default, read from
-`stack.sh`), and
-without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
+`stack.sh`), and without the dev `identifier` on Android, whose Gradle project has no `.dev` package directory. Its
 `beforeBuildCommand` puts `layout-probe.js` into `dist/index.html` as an inline script, so every native QA build
 logs the probe's `[qa-layout]` lines to the WebView console, where the Maestro gate reads them. The Maestro tree
 cannot measure layout itself: it has no stacking order and leaves out unlabelled boxes. `build` takes the
@@ -576,8 +573,8 @@ Android on `ubuntu-latest` with KVM.
 
 ## Fake Google
 
-`scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880` by default: the account chooser, the token endpoint, userinfo,
-and exactly the Gmail and Calendar endpoints the app's tools call, with Google's JSON and error bodies. `stack.sh`
+`scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880` by default: the account chooser, the token endpoint,
+userinfo, and exactly the Gmail and Calendar endpoints the app's tools call, with Google's JSON and error bodies. `stack.sh`
 always starts it, even with `QA_REAL_PROVIDERS=true`, and points the build (`VITE_GOOGLE_BASE_URL`) and the backend
 (`GOOGLE_BASE_URL`, plus a fake client id and secret) at it. The app honours either override only on a loopback host,
 so a build with a wrong value still talks to the real Google.
@@ -776,8 +773,8 @@ The fix agent's draft PR already does this. By hand:
    and `@playwright/test` to `./test` when it imports only `test`, `expect`, `Page`, `Request` or `Route`.
 4. `bun run e2e:check-collected`, then check that the spec fails before the fix and passes after it.
 
-A c1 spec runs against the onboarding build on port 1425 by default, which the root `playwright.config.ts` does not start. It
-needs its own project before it can live in `e2e/`.
+A c1 spec runs against the onboarding build on port 1425 by default, which the root `playwright.config.ts` does not
+start. It needs its own project before it can live in `e2e/`.
 
 ## Owners
 

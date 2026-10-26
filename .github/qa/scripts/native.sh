@@ -232,7 +232,7 @@ stop_logs() {
   rm -f "$1.pid"
 }
 
-# The positive control (spec 6.3): runs control/native-control.yaml on the calibration build already installed on the
+# The positive control: runs control/native-control.yaml on the calibration build already installed on the
 # device, with the WebView log on, and exits 0 only when the keyboard is open and the probe logged focus-covered for the
 # Email field. The flow, log and hierarchy stay in <out-dir>.
 control() {
@@ -244,7 +244,7 @@ control() {
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
   logs "$platform" "$device" "$out/webview.log"
-  # The iOS driver sometimes is not ready in time (spike, decision 1), so one more try.
+  # The iOS driver sometimes is not ready in time on the macOS runner, so one more try.
   maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || { tail -20 "$out/maestro.log" >&2; die "the control flow failed"; }
@@ -259,7 +259,7 @@ control() {
     "$platform" "$out/hierarchy.json" "$out/webview.log"
 }
 
-# The build half of a fix's native verification (spec 7.2): applies <patch> (`qa-out/fix/<fp>.patch`) in a temporary
+# The build half of a fix's native verification: applies <patch> (`qa-out/fix/<fp>.patch`) in a temporary
 # worktree and builds the app there into <out-dir>, with onboarding for a c1 session. The patched tree's code runs
 # here (the build, and through it anything the patch adds), so this only outputs the app: the verdict comes from
 # verify-run in a checkout this never ran in, in CI a later job on a fresh checkout.

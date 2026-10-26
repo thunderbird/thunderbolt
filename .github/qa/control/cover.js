@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The native positive control (spec 6.3): only the calibration build injects this, after layout-probe.js. While a text
+// The native positive control: only the calibration build injects this, after layout-probe.js. While a text
 // field has focus, a fixed button reading `qa-control-cover` sits over the lower half of it, so the layout check has to
 // report the field whatever the keyboard does. It has a role and visible text because the WebView's accessibility
 // bridge skips a bare div, and it takes pointer events because elementFromPoint, which the probe uses, skips the rest.

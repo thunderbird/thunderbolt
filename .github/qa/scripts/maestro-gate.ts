@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The native explorer's only way to the device (spec 6.7, Ruling 1): an MCP server of ours between Claude and
+// The native explorer's only way to the device: an MCP server of ours between Claude and
 // `maestro mcp`. It offers five tools, fixes the device, sends Maestro only flows that pass the allow list, brings
 // the app back when a command leaves it, and after every run appends the layout probe's new `[qa-layout]` lines from
 // the WebView log. The model never sees Maestro's cloud tools, its viewer or `list_devices`, because they are not
@@ -128,7 +128,7 @@ const withLines = (result: ToolResult, lines: string[]): ToolResult => ({
   content: [...result.content, { type: 'text', text: lines.join('\n') }],
 })
 
-/** One Maestro call, repeated once when its XCTest driver did not start in time (spike, decision 1). */
+/** One Maestro call, repeated once when its XCTest driver did not start in time, which happens on the macOS runner. */
 const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) => {
   const result = await ctx.client.callTool(name, args)
   return textOf(result).includes(driverTimeout) ? ctx.client.callTool(name, args) : result
@@ -149,7 +149,7 @@ const elementsOf = (element: ScreenElement): ScreenElement[] => [element, ...(el
 
 /**
  * Whose screen Maestro showed. On iOS the top element is the foreground app, named in `a11y`, and under the Control
- * Center it is blank (spike, decision 4). The Android top element has no name; there the app's own views carry its
+ * Center it is blank. The Android top element has no name; there the app's own views carry its
  * package in their resource ids (`<appId>:id/action_bar_root`, run 39373388149), which a launcher icon does not. A reply
  * that is not a screen (an error, a second driver timeout) is `unreadable`.
  */

@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The PreToolUse hook of a native explore session on macOS (spec 6.7). Any process of the job user can read the
+// The PreToolUse hook of a native explore session on macOS. Any process of the job user can read the
 // Anthropic key there, so the model may only call the gated Maestro tools, the second browser when the harness
 // allows it, and Write or Edit inside the session folder. Claude Code runs it as
 // `bun <abs>/.github/qa/scripts/native-hook.ts || exit 2`: the hook fails open when it cannot run, so a crash must

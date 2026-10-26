@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // What the native harness reads from the tree Maestro dumps: the screen and the on-screen keyboard. Layout problems
-// come from the web probe injected into every native QA build (plan Ruling 15): the tree has no z-order and leaves
+// come from the web probe injected into every native QA build: the tree has no z-order and leaves
 // out unlabelled boxes, so it missed the onboarding name bug and invented a cover on the city step. One rule stays on
 // the tree, Android's behind-keyboard, because the Android WebView never sees the keyboard.
 
@@ -171,7 +171,7 @@ export const readyLine = ({ keyboard }: Pick<NativeMeasure, 'keyboard'>) =>
 export const controlTarget = 'textbox "Email"'
 
 /**
- * The positive control's verdict (spec 6.3), from the hierarchy `maestro hierarchy` dumped and the WebView log of the
+ * The positive control's verdict, from the hierarchy `maestro hierarchy` dumped and the WebView log of the
  * run: the probe reported ready, the keyboard is open and the probe logged `focus-covered` for the Email field.
  * `lines` is what the control prints: the ready line, the probe's lines and a failure reason.
  */

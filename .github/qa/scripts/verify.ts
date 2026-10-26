@@ -330,7 +330,7 @@ const awaitedText = z.union([
   z.object({ assertVisible: shownText }).transform((c) => c.assertVisible),
 ])
 
-/** The first screen after sign-in: onboarding's welcome on the c1 build (Ruling 9), the chat on the plain one. */
+/** The first screen after sign-in: onboarding's welcome on the c1 build, the chat on the plain one. */
 const landingOf = (session: string) =>
   session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : 'Ask me anything…'
 
@@ -403,7 +403,7 @@ const fromConsoleMark = (text: string) => {
 
 /**
  * What in a flow run shows the finding's bug, or undefined when the run did not show it. `layout`: a probe line equal
- * to the quoted one, never the ready line, whether or not the flow passed (spec 6.4); replay sets aside a failed flow
+ * to the quoted one, never the ready line, whether or not the flow passed; replay sets aside a failed flow
  * without the line as inconclusive (`unreached`). The log oracles: a new log line
  * holding the normalized evidence. Both compare lines cleaned as the gate showed them, since the explorer quotes
  * those. The rest: the flow failed, unless only its driver failed to start.
@@ -547,7 +547,7 @@ const replayFlows = async (
   return { stackProblem: undefined, outcomes }
 }
 
-/** `native.sh verify-run`'s result for one patch on one platform (spec 7.2), as `qa-out/fix/<fp>.verify.json` reads. */
+/** `native.sh verify-run`'s result for one patch on one platform, as `qa-out/fix/<fp>.verify.json` reads. */
 export type NativeVerify = {
   fp: string
   platform: string
@@ -570,7 +570,7 @@ const webviewOracles = new Set(['layout', 'console-error', 'page-error'])
 type Oracle = FindingFile['finding']['oracle']
 
 /**
- * The native half of a fix's verification (spec 7.2), run with no key on the platform's runner. The flow passes the
+ * The native half of a fix's verification, run with no key on the platform's runner. The flow passes the
  * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug: the
  * finding's `oracle` by the replay's rule, or for the fix agent's visual check (no oracle) its own assertions. A run
  * whose driver never started counts as failed, and so does a run without the probe's ready line when the oracle reads

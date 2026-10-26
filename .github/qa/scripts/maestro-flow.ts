@@ -61,8 +61,7 @@ const back = z.union([
 ])
 
 /**
- * The allow list from the spike's decision 4 and its Q6 row
- * (docs/superpowers/specs/2026-10-19-qa-native-spike-results.md), as strict schemas: Maestro's GraalJS can make
+ * The allow list, as strict schemas: Maestro's GraalJS can make
  * HTTP calls and send any readable file, so every command, key and `${` not listed here is refused.
  */
 const flowSchemas = (appId: string, vars: string[]) => {

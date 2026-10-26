@@ -659,7 +659,7 @@ jobs:
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 shasum -a 256 > "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # No session runs unless the gate and the hook deny this one (spec 6.7).
+      # No session runs unless the gate and the hook deny this one.
       - name: Check that the gate denies a canary session
         id: canary
         env:
@@ -673,7 +673,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
         env:
-          # Condition (d) of spec 6.7: the key lives in this step's env and the canary's, never in run: text or
+          # The key lives in this step's env and the canary's, never in run: text or
           # $GITHUB_ENV. With QA_HARNESS set, explore.sh leaves the summary to the save step, which has no key.
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
         run: '"$QA_HARNESS/explore.sh" run "$QA_CHARTER" "$QA_OUT" "$QA_EXPLORE_MAX_BUDGET_USD"'
@@ -1691,7 +1691,7 @@ jobs:
           HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
 
-  # The positive control (spec 6.3), by hand only: the calibration build must make the layout check report the covered
+  # The positive control, by hand only: the calibration build must make the layout check report the covered
   # Email field. No model and no secret.
   native-control:
     name: native-control ${{ matrix.target.platform }}

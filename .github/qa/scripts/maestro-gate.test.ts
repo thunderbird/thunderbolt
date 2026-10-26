@@ -49,7 +49,7 @@ const controlCenter = {
   elements: [{ b: '[0,0][440,956]', c: [{ b: '[52,61][432,114]', a11y: 'Wi-Fi', focused: true }] }],
 }
 
-/** The `inspect_screen` text for a Task 4 fixture name, or `control-center`. */
+/** The `inspect_screen` text for a fixture name, or `control-center`. */
 const screenText = (name: string): string => {
   if (name === 'control-center') return JSON.stringify(controlCenter)
   const json = readFileSync(join(fixtureDir, `${name}.json`), 'utf8')
@@ -243,7 +243,7 @@ test('a run that leaves the app is followed by a relaunch and the layout of our 
   expect(text(result)).toEndWith('[qa-layout] ready keyboard=none')
 })
 
-// The iOS root names the app in a11y; the Android one in txt with an empty a11y (spike tree).
+// The iOS root names the app in a11y; the Android one in txt with an empty a11y.
 test.each([
   ['an iOS root with the name in a11y', { a11y: 'Thunderbolt' }, true],
   ['an Android root with the name in txt', { txt: 'Thunderbolt' }, true],

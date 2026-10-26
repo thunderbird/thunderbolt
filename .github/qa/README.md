@@ -79,7 +79,7 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 ### Native explore on macOS
 
 On the macOS runner any process of the job's user can read the Anthropic key in the initial environment of
-`claude`, even with the scrub and Seatbelt (spike, spec 6.7). Zone D therefore rests on a different guarantee: the
+`claude`, even with the scrub and Seatbelt, as measured on the runner. Zone D therefore rests on a different guarantee: the
 model cannot start any process. Five conditions hold it up. `explore.sh run` sets (a), (b), (c) and (e) for an `ios`
 or `android` session, and the workflow holds (d). It refuses `c7-two-devices-ios`: its second browser could write
 anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
@@ -109,7 +109,7 @@ Before any session, `explore.sh canary <session> <out>` runs a short `claude-hai
 settings (4 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
 passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too), the
 gate's `deny run`, the hook's `deny Write`, and the file does not exist. If it fails, no session runs. It prints the session's result line and never a tool result. The CLI stays pinned to
-`@anthropic-ai/claude-code@2.1.303`, where the spike measured the hook, the scrub and the Edit rule; a new version
+`@anthropic-ai/claude-code@2.1.303`, which is the version tested for the hook, the scrub and the Edit rule; a new version
 has to pass the canary and the Edit rule again. iOS sessions use the fake AI only (no provider key on the Mac), and no
 agent that edits code runs there.
 
@@ -450,7 +450,7 @@ cannot measure layout itself: it has no stacking order and leaves out unlabelled
 and `net.thunderbird.thunderbolt` (Android). `build` puts back the tracked files under `src-tauri/gen` that Tauri
 rewrites, so `git status` stays clean; never commit them.
 
-The positive control (spec 6.3) shows, per platform, that the layout check fires when the screen is broken. The
+The positive control shows, per platform, that the layout check fires when the screen is broken. The
 canaries of the web legs stay web only (they revert real fixes in `src/`); this plays their part on the native apps and
 does not depend on the iOS keyboard bug. `build <platform> <out-dir> control` adds `control/cover.js` after the probe:
 while a text field has focus, a fixed button reading `qa-control-cover` sits over the lower half of it, with a role and
@@ -465,12 +465,12 @@ a log without the probe's ready line (a dead stream, a build without the probe) 
 `repro_flow` is `native-control.yaml` and whose evidence is that line replays `confirmed` on the control build and
 `dropped` on the plain one.
 
-On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (the `qa-spike-17pm` simulator) picks the device; with it unset,
+On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (an iPhone 17 Pro Max simulator) picks the device; with it unset,
 `device ios` creates an iPhone 17 Pro Max on the newest iOS runtime. Two scripts share the machine: take
 `/tmp/qa-stack.lock` before the stack and `/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf`
 at the end), and shut the simulator down when you booted it.
 
-Traps, each of which cost a run in the spike:
+Traps, each of which has cost a run:
 
 - The second iOS build fails with `Directory not empty` while `src-tauri/gen/apple/build/arm64-sim` exists. `build`
   deletes it first.
@@ -795,7 +795,7 @@ Also:
 - c7 does not run on iOS: the macOS runner has no Docker for Postgres and PowerSync, and its second browser could
   write anywhere in the checkout.
 - iOS sessions of the real-AI charters (c3, c4, c5 and the free session) run on the fake AI, because the Mac cannot
-  keep provider keys from the job's user (spec 6.7). Their `ai-reported-failure` findings are noise for the judge.
+  keep provider keys from the job's user. Their `ai-reported-failure` findings are noise for the judge.
 - The layout check on iOS and Android is the web probe injected into the QA build. The Maestro tree has no stacking
   order and leaves out unlabelled boxes, so a defect the probe cannot see is left to the screenshot and the `visual`
   finding. One rule runs on the tree, on Android only: the WebView there keeps its full height with the keyboard up,
@@ -804,8 +804,8 @@ Also:
   the gate shows each such line once per app launch. The keyboard is drawn over
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
-  `file-findings.ts`). Spec section 10 asks for a clean probe sweep of correct screens on each platform before its
-  tickets, and Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`
+  `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
+  Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`
   for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
   lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest
   from the left edge were logged, the ones the sliding page uncovers last. The drawer's animation outlasting the

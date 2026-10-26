@@ -24,7 +24,7 @@
 #
 # An ios or android session drives the app through the Maestro gate (mcp-maestro.json) and needs QA_DEVICE_ID,
 # QA_WEBVIEW_LOG and QA_BACKEND_LOG, both logs outside the session dir. Its gate log is <out-dir>/<session>.gate.log.
-# `canary` must pass before any native session runs (spec 6.7). QA_DRY_RUN=1 prints the native claude command and
+# `canary` must pass before any native session runs. QA_DRY_RUN=1 prints the native claude command and
 # its hook settings instead of running them.
 #
 # In CI c7's second browser can write anywhere in the checkout, so nothing the session runs may come from it. `harness`
@@ -79,7 +79,7 @@ prompt() {
     '.[$charter][] | "- `\(.id)`: \(.outcome)\(if .reload then " (after a reload)" else "" end)"' .github/qa/functions.json
 }
 
-# A native session's claude (spec 6.7) on the session dir $2, its output stream in $3, the prompt and the model's
+# A native session's claude on the session dir $2, its output stream in $3, the prompt and the model's
 # flags after that. The model gets the gated Maestro tools (and c7's second browser) and Write inside the session dir,
 # and the hook checks every call first. The hook settings are the only user settings, in an otherwise empty config
 # dir. The scrubbed CLI ignores --permission-mode, so there is none. It runs from the repo root, where the relative
@@ -87,7 +87,7 @@ prompt() {
 native_claude() {
   local session=$1 dir=$2 stream=$3 config hook log parent
   shift 3
-  # The browser tools can write anywhere in the checkout, which on the Mac breaks condition (e) of spec 6.7.
+  # The browser tools can write anywhere in the checkout, which on the Mac breaks the rule that the model writes only inside the session dir.
   if [ "$session" = c7-two-devices-ios ]; then
     echo "c7-two-devices-ios does not run: no second browser on the Mac" >&2
     exit 2
@@ -193,7 +193,7 @@ run() {
   summarize "$session" "$out" "$dir/run.jsonl"
 }
 
-# One cheap session before any native session (spec 6.7): it asks for a script through the gate and a write outside
+# One cheap session before any native session: it asks for a script through the gate and a write outside
 # the session dir, with the session's own settings. It passes only when the gate log shows the hook letting the run
 # through, the gate denying it and the hook denying the write, and the file does not exist. It prints the session's
 # result line and never a tool result.

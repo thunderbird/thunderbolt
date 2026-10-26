@@ -967,38 +967,96 @@ describe('replay of native flows', () => {
     ])
   })
 
-  test('a c1 flow that expects onboarding past the privacy step gets the harness through it, and no other', async () => {
-    // A fresh install opens onboarding on the privacy step; the explorer's own app had it behind it.
-    const c1 = 'c1-first-run-ios'
-    const consent = list.parse(Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/consent.yaml')).text()))
-    const code = "- launchApp\n- inputText: '12345678'\n"
-    const welcome = '- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
-    const flows = {
-      // Stops on the welcome screen, to have the layout probe measure the name step that follows it.
-      a: `${code}${welcome}- waitForAnimationToEnd\n`,
-      // Waits for the name step right after the code.
-      b: `${code}- extendedWaitUntil:\n    visible: Enter your name\n- inputText: Ada\n`,
-      // Ticks the checkbox itself.
-      c: `${code}${welcome}- tapOn: I agree to the Privacy Policy.*\n`,
-      // Signed in by the harness, then stops on the welcome screen.
-      d: `- launchApp\n${welcome}`,
-    }
-    for (const [title, flow] of Object.entries(flows)) await writeNative(makeNative(title, layout), flow, c1)
+  // A fresh install opens onboarding on the privacy step; the explorer's own app may have had it behind it.
+  const c1 = 'c1-first-run-ios'
+  const code = "- launchApp\n- inputText: '12345678'\n"
+  const welcome = '- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n'
+  /** `control/consent.yaml` as the sign-in step ends with it: skipped while `text` shows. */
+  const consentUnless = async (text: string) => {
+    const [wizard, settle, block] = list.parse(
+      Bun.YAML.parse(await Bun.file(join(import.meta.dir, '../control/consent.yaml')).text()),
+    )
+    const { runFlow } = z.object({ runFlow: z.object({ when: z.object({}).loose() }).loose() }).parse(block)
+    return [wizard, settle, { runFlow: { ...runFlow, when: { ...runFlow.when, notVisible: text } } }]
+  }
+  /** Replays the c1 flows and returns each finding's first run, as the device got it. */
+  const firstRuns = async (flows: Record<string, { flow: string; oracle: RawFinding['oracle'] }>) => {
+    for (const [title, { flow, oracle }] of Object.entries(flows))
+      await writeNative(makeNative(title, oracle), flow, c1)
     const ran: { flow: unknown[]; signIn?: unknown[] }[] = []
     const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
       ran.push(signIn === undefined ? { flow: commands(yaml) } : { signIn: commands(signIn), flow: commands(yaml) })
       return { passed: true, layout: [], logs: [] }
     }
-
     await replay(outDir, fakeRunner({}, []), qaDir, record)
+    return ran.filter((_, run) => run % 3 === 0).slice(1)
+  }
 
-    const [a, b, c, d] = Object.values(flows).map(asWritten)
-    const signIn = [...(await readSignIn()), landing('Welcome to Thunderbolt!')]
-    expect(ran.filter((_, run) => run % 3 === 0).slice(1)).toEqual([
-      { flow: [...a.slice(0, 3), ...consent, ...a.slice(3)] },
-      { flow: [...b.slice(0, 2), ...consent, ...b.slice(2)] },
-      { flow: c },
-      { signIn, flow: [...d.slice(1), ...consent] },
+  test('a c1 flow relying on a later screen ends its sign-in step with the harness past the privacy step', async () => {
+    const privacy = '- assertVisible: Privacy Policy\n'
+    const flows = {
+      // Stops on the welcome screen, for the probe to measure the name field it quotes.
+      a: { flow: `${code}${welcome}- waitForAnimationToEnd\n`, oracle: layout },
+      // Waits for the name step right after the code.
+      b: {
+        flow: `${code}- extendedWaitUntil:\n    visible: Enter your name\n- inputText: Ada\n`,
+        oracle: assertFailed,
+      },
+      // Asserts a text of the privacy step itself, which the device skips the block for.
+      c: { flow: `${code}${welcome}${privacy}`, oracle: assertFailed },
+      // Signed in by the harness, then stops on the welcome screen.
+      d: { flow: `- launchApp\n${welcome}`, oracle: layout },
+    }
+
+    const ran = await firstRuns(flows)
+
+    const [a, b, c, d] = Object.values(flows).map(({ flow }) => asWritten(flow))
+    const name = await consentUnless('Enter your name')
+    expect(ran).toEqual([
+      { signIn: [...a.slice(0, 3), ...name], flow: a.slice(3) },
+      { signIn: [...b.slice(0, 2), ...name], flow: b.slice(2) },
+      { signIn: [...c.slice(0, 3), ...(await consentUnless('Privacy Policy'))], flow: c.slice(3) },
+      // A flow left with no command gets a harmless one, since Maestro refuses an empty flow.
+      {
+        signIn: [...(await readSignIn()), landing('Welcome to Thunderbolt!'), ...d.slice(1), ...name],
+        flow: ['waitForAnimationToEnd'],
+      },
+    ])
+  })
+
+  test('a c1 flow that acts on the welcome screen, or relies on no text after it, runs as written', async () => {
+    const flows = {
+      e: { flow: `${code}${welcome}- tapOn: I agree to the Privacy Policy.*\n`, oracle: layout },
+      // Only a layout finding's quote names what the flow is after.
+      f: {
+        flow: `${code}${welcome}`,
+        oracle: { type: 'assert-failed', evidence: 'Continue stays off after "Enter your name"' },
+      },
+      g: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button ""' } },
+      // A quote the allow list would refuse in the `when`.
+      h: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button "${HOME}"' } },
+    }
+
+    const ran = await firstRuns(flows)
+
+    expect(ran).toEqual(Object.values(flows).map(({ flow }) => ({ flow: asWritten(flow) })))
+  })
+
+  test('a run that fails in the harness way past the privacy step is inconclusive, never the bug', async () => {
+    const flow = `${code}- extendedWaitUntil:\n    visible: Enter your name\n- assertVisible: Ada\n`
+    await writeNative(makeNative('stuck', assertFailed), flow, c1)
+    // The control passes; the finding's runs fail in the block when it is in the sign-in step, in the flow otherwise.
+    const failsInConsent: RunFlow = async (_yaml, _outDir, _run, session, signIn) => {
+      if (session === 'control') return { passed: true, layout: [], logs: [] }
+      const signInFailed = signIn?.includes('Connect Google') === true
+      return { passed: false, signInFailed, layout: [], logs: [], error: 'Assertion is false: "Connect Google"' }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, failsInConsent)
+
+    expect(result.confirmed).toEqual([])
+    expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+      ['stuck', { failed: 0, runs: 0, inconclusive: 6, reason: 'only 0 of 3 runs reached the screen' }],
     ])
   })
 
@@ -1212,12 +1270,9 @@ describe('native fix verification', () => {
 
     expect(runs).toHaveLength(3)
     expect(runs[0].signIn).toContain('inputText: "12345678"')
-    // The flow's partial sign-in is gone: it starts at its own wait, and the harness takes it past the privacy step.
-    const consent = await Bun.file(join(import.meta.dir, '../control/consent.yaml')).text()
-    expect(Bun.YAML.parse(runs[0].flow.split('\n---\n')[1])).toEqual([
-      { extendedWaitUntil: { visible: 'Welcome to Thunderbolt!' } },
-      ...z.array(z.unknown()).parse(Bun.YAML.parse(consent)),
-    ])
+    // The flow's partial sign-in is gone, and the harness takes it past the privacy step in the sign-in step.
+    expect(runs[0].flow).not.toContain('tapOn')
+    expect(runs[0].signIn).toContain('Connect Google')
   })
 
   test('a fix never passes, and its original never fails, on runs whose harness sign-in failed', async () => {

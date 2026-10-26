@@ -217,11 +217,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and
    every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as
    written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
-   A fresh install of the c1 build opens onboarding on the privacy step, which the explorer's own app may have had
-   behind it. So a c1 flow that stops at `Welcome to Thunderbolt!`, or next waits for another screen (right after
-   the code when it has no such wait), gets `control/consent.yaml` there: while the privacy checkbox is on screen it
-   ticks it, skips Connect Google and waits for the name step. A flow whose next command acts on the welcome screen
-   gets through it itself and runs as written.
+   A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
+   sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
+   text (for a stopping layout flow, the quoted element) does not.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe

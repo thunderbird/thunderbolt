@@ -365,22 +365,41 @@ const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAn
 const landingIndex = (commands: unknown[], session: string) =>
   commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landingOf(session))
 
+const gated = z.object({ runFlow: z.looseObject({ when: z.looseObject({}) }) })
+
 /**
- * A c1 flow's commands with `control/consent.yaml` after its wait for the welcome screen, or after the code when it
- * has no such wait, when the flow stops there or next waits for another screen: it expects onboarding past the
- * privacy step, as the explorer saw it when its app had that step behind it, while a fresh install opens on it. A flow
- * whose next command acts on the welcome screen gets through it itself and is left as it is, and so is every other
- * flow.
+ * The text a flow relies on after command `at`: what its next command waits for or asserts, or, when it stops there,
+ * the element a layout finding quotes. Undefined when the next command acts instead, or there is no usable text.
  */
-const throughConsent = async (commands: unknown[], session: string) => {
-  if (!session.startsWith('c1-first-run-')) return commands
-  const landed = landingIndex(commands, session)
-  const at = landed >= 0 ? landed : commands.findIndex((command) => typesSignInCode.test(JSON.stringify(command)))
-  if (at < 0) return commands
+const reliedOnText = (commands: unknown[], at: number, oracle: Oracle | undefined) => {
   const next = commands.slice(at + 1).find((command) => !settle.safeParse(command).success)
-  if (next !== undefined && !awaitedText.safeParse(next).success) return commands
-  const consent = commandList.parse(Bun.YAML.parse(await Bun.file(consentFile).text()))
-  return [...commands.slice(0, at + 1), ...consent, ...commands.slice(at + 1)]
+  const text =
+    next === undefined
+      ? oracle?.type === 'layout'
+        ? /"(.+)"\s*$/.exec(oracle.evidence.trim())?.[1]
+        : undefined
+      : awaitedText.safeParse(next).data
+  return text?.includes('${') ? undefined : text
+}
+
+/**
+ * Splits a c1 flow after its wait for the welcome screen (or after the code) so the sign-in step ends with
+ * `control/consent.yaml`, which runs only while the privacy checkbox shows and the text the flow relies on next
+ * does not. Undefined when nothing needs splitting.
+ */
+const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | undefined) => {
+  if (!session.startsWith('c1-first-run-')) return undefined
+  const landed = landingIndex(flow, session)
+  const at = landed >= 0 ? landed : flow.findIndex((command) => typesSignInCode.test(JSON.stringify(command)))
+  const text = at < 0 ? undefined : reliedOnText(flow, at, oracle)
+  if (text === undefined) return undefined
+  const consent = commandList.parse(Bun.YAML.parse(await Bun.file(consentFile).text())).map((step) => {
+    const block = gated.safeParse(step).data?.runFlow
+    return block ? { runFlow: { ...block, when: { ...block.when, notVisible: text } } } : step
+  })
+  // Maestro refuses a flow without commands, and the flow may end at the split.
+  const rest = flow.slice(at + 1)
+  return { signIn: [...flow.slice(0, at + 1), ...consent], flow: rest.length > 0 ? rest : ['waitForAnimationToEnd'] }
 }
 
 /**
@@ -388,21 +407,25 @@ const throughConsent = async (commands: unknown[], session: string) => {
  * typing the code, as every iOS flow of run 39391108579 did. `signIn` is then `control/sign-in.yaml` and a wait for
  * that screen, and the flow goes on from its own wait, its partial sign-in before it left out. The two run one after
  * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
- * the sign-in screen among them, runs as written. Either way a c1 flow gets the harness's way through the privacy
- * step when it expects it behind it (`throughConsent`).
+ * the sign-in screen among them, runs as written. A c1 flow that expects onboarding past the privacy step has the
+ * harness's way through it added to the sign-in step (`consentSplit`), so a failure there never proves a bug either.
  */
-const withSignIn = async (yaml: string, session: string, appId: string): Promise<NativeFlow> => {
+const withSignIn = async (
+  yaml: string,
+  session: string,
+  appId: string,
+  oracle: Oracle | undefined,
+): Promise<NativeFlow> => {
   const commands = commandsOf(yaml)
   const from = landingIndex(commands, session)
-  if (from < 0 || typesSignInCode.test(JSON.stringify(commands))) {
-    return { yaml: serialize(await throughConsent(commands, session), appId) }
-  }
-  const signIn = commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text()))
+  const harness = from >= 0 && !typesSignInCode.test(JSON.stringify(commands))
   const wait = { extendedWaitUntil: { visible: landingOf(session), timeout: 120000 } }
-  return {
-    signIn: serialize([...signIn, wait], appId),
-    yaml: serialize(await throughConsent(commands.slice(from), session), appId),
-  }
+  const signIn = harness ? [...commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text())), wait] : []
+  const flow = harness ? commands.slice(from) : commands
+  const split = await consentSplit(flow, session, oracle)
+  const before = [...signIn, ...(split?.signIn ?? [])]
+  if (before.length === 0) return { yaml }
+  return { signIn: serialize(before, appId), yaml: serialize(split?.flow ?? flow, appId) }
 }
 
 /**
@@ -416,7 +439,7 @@ const ranFlow = async (outDir: string, file: FindingFile) => {
   })
   // Replay already dropped anything else, so this only fails on a flow changed after replay.
   if (!check.ok) throw new Error(`repro flow no longer passes the allow list: ${check.problems.join('; ')}`)
-  const { signIn, yaml } = await withSignIn(check.yaml, file.charterDir, appIdOf(file))
+  const { signIn, yaml } = await withSignIn(check.yaml, file.charterDir, appIdOf(file), file.finding.oracle)
   return signIn ? `# The harness's sign-in:\n${signIn}\n# Then, in the same launch:\n${yaml}` : yaml
 }
 const driverTimeout = 'iOS driver not ready in time'
@@ -638,7 +661,7 @@ export const verifyNativeFix = async (
   const appId = platformOf(platform).appId ?? ''
   const check = checkMaestroFlow(opts.flow, { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
-  const flow = await withSignIn(check.yaml, session, appId)
+  const flow = await withSignIn(check.yaml, session, appId, oracle)
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>
@@ -777,7 +800,7 @@ export const replay = async (
       else if (oracle.type === 'layout' && endsOnAssertion(check.yaml)) {
         result.dropped.push({ file, gate: 'lint', reason: 'a layout flow ends on the screen, with no assertion' })
       } else {
-        flows.set(file, await withSignIn(check.yaml, file.charterDir, appIdOf(file)))
+        flows.set(file, await withSignIn(check.yaml, file.charterDir, appIdOf(file), oracle))
         lintClean.push(file)
       }
       continue

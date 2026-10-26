@@ -289,7 +289,8 @@ test('on Android the app is in front when a view carries its package in the reso
   const { ctx, calls } = androidGate({ screen: 'inspect-android-onboarding' })
   const result = await handleCall('run', { yaml: '- tapOn: Skip' }, ctx)
   expect(calls.filter((call) => call.name === 'run')).toHaveLength(1)
-  expect(text(result)).toEndWith('[qa-layout] ready keyboard=none')
+  // The tree's line for the step's icon-only Back button follows the ready line.
+  expect(text(result)).toEndWith('[qa-layout] ready keyboard=none\n[qa-layout] unnamed-control button ""')
 })
 
 test('on Android the home screen is not ours, though an icon there bears the app name', async () => {

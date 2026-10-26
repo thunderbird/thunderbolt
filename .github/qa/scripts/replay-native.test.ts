@@ -83,6 +83,51 @@ exit 0
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })
 
+test('an iOS run adds the tree line of the screen it ends on, read once after the flow', () => {
+  const dir = mkdtempSync(join(work, 'ios-'))
+  const bin = join(dir, 'bin')
+  const calls = join(dir, 'calls.log')
+  // The recorded privacy step with the checkbox's label taken away.
+  const hierarchy = join(dir, 'hierarchy.json')
+  const consent = readFileSync(join(import.meta.dir, '../fixtures/native/hier-consent.json'), 'utf8')
+  const label = '"accessibilityText" : "I agree to the Privacy Policy and Terms of Service ."'
+  writeFileSync(hierarchy, consent.replace(label, '"accessibilityText" : ""'))
+  mkdirSync(bin)
+  writeFileSync(join(bin, 'xcrun'), `#!/bin/bash\necho "xcrun $*" >> '${calls}'\nexit 0\n`)
+  writeFileSync(
+    join(bin, 'maestro'),
+    `#!/bin/bash\necho "maestro $3" >> '${calls}'\n[ "$3" = hierarchy ] && cat '${hierarchy}'\nexit 0\n`,
+  )
+  for (const tool of ['xcrun', 'maestro']) chmodSync(join(bin, tool), 0o755)
+  const logs = [join(dir, 'webview.log'), join(dir, 'backend.log')]
+  for (const file of logs) writeFileSync(file, '')
+  const script = `
+    import { createRunFlow } from ${JSON.stringify(join(import.meta.dir, 'replay-native.ts'))}
+    const runFlow = createRunFlow({
+      platform: 'ios',
+      deviceId: 'SIM-1',
+      apps: { onboarding: 'on.app', plain: 'plain.app' },
+      webviewLog: ${JSON.stringify(logs[0])},
+      backendLog: ${JSON.stringify(logs[1])},
+    })
+    const run = await runFlow('- assertVisible: x\\n', ${JSON.stringify(join(dir, 'out'))}, 1, 'c1-first-run-ios',
+      '- extendedWaitUntil: Check your email\\n')
+    console.log(JSON.stringify(run.layout))
+  `
+  const proc = Bun.spawnSync([process.execPath, '-e', script], {
+    cwd: dir,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+
+  expect(proc.stderr.toString()).toBe('')
+  expect(JSON.parse(proc.stdout.toString())).toEqual(['[qa-layout] unnamed-control checkbox ""'])
+  // Only the last screen is read, so a screen the sign-in passed, the privacy step among them, adds no line.
+  const maestro = readFileSync(calls, 'utf8')
+    .split('\n')
+    .filter((line) => line.startsWith('maestro'))
+  expect(maestro).toEqual(['maestro test', 'maestro test', 'maestro hierarchy'])
+})
+
 test("the harness's sign-in runs first in the same install, and when it fails the flow never runs", () => {
   const dir = mkdtempSync(join(work, 'sign-in-'))
   const bin = join(dir, 'bin')

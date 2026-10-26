@@ -205,8 +205,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
    otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
    failure marks the stack unhealthy and no flow runs. On Android the install also warms the app up (as
-   `native.sh install` does) and each run ends with a `maestro hierarchy` for the tree's `behind-keyboard` line.
-   A `layout` run fails when the probe (or, on Android, that tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
+   `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
+   `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like
+   the privacy step the harness clicks through, adds no tree line.
+   A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
    hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
@@ -897,6 +899,14 @@ Also:
   `keyboard_holder` overlaps the focused field of the app's window by at least 4 units on both axes. Like the probe,
   the gate shows each such line once per app launch. The keyboard is drawn over
   everything, so that rule needs no stacking order. Another keyboard app would go unseen.
+- The tree also reports `unnamed-control` on both platforms, in the probe's form, one line per role:
+  `[qa-layout] unnamed-control checkbox ""`. A screen reader reads the name from the platform's tree, not from the
+  page. A control has no name when its label, its placeholder and, on Android, its text are all empty; the
+  keyboard's keys are left out. Android gives the role from the class Chrome's WebView sets (button, checkbox,
+  radio, switch, text field, combobox). Maestro's iOS tree carries no element type, so there only a checkbox, switch
+  or radio shows, by its value of 0 or 1, and always as `checkbox`; an unnamed button, link or field on iOS is left
+  to the probe. The onboarding privacy checkbox reads its visible label on iOS
+  (`I agree to the Privacy Policy and Terms of Service .`), so it is not reported.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
   `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
   Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`

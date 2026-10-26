@@ -4,8 +4,9 @@
 
 // What the native harness reads from the tree Maestro dumps: the screen and the on-screen keyboard. Layout problems
 // come from the web probe injected into every native QA build: the tree has no z-order and leaves
-// out unlabelled boxes, so it missed the onboarding name bug and invented a cover on the city step. One rule stays on
-// the tree, Android's behind-keyboard, because the Android WebView never sees the keyboard.
+// out unlabelled boxes, so it missed the onboarding name bug and invented a cover on the city step. Two rules stay on
+// the tree: Android's behind-keyboard, because the Android WebView never sees the keyboard, and unnamed-control,
+// because the name a screen reader reads comes from the platform's accessibility tree, not from the page.
 
 import platforms from './platforms.json'
 
@@ -17,6 +18,10 @@ export type NativeNode = {
   hint: string
   id: string
   focused: boolean
+  /** The control's role (`button`, `checkbox`, …), or empty when the node is no control the tree can tell. */
+  role: string
+  /** What a screen reader reads for the node. */
+  name: string
   children: NativeNode[]
 }
 
@@ -32,6 +37,7 @@ type InspectElement = {
   a11y?: string
   hint?: string
   val?: string
+  cls?: string
   focused?: boolean
   c?: InspectElement[]
 }
@@ -46,6 +52,29 @@ const parseBounds = (text: string | undefined): Rect => {
   const [left, top, right, bottom] = match.slice(1).map(Number)
   return { left, top, right, bottom }
 }
+
+// Chrome's WebView names a control's Android class after its role.
+const androidRoles = new Map([
+  ['android.widget.Button', 'button'],
+  ['android.widget.CheckBox', 'checkbox'],
+  ['android.widget.RadioButton', 'radio'],
+  ['android.widget.Switch', 'switch'],
+  ['android.widget.ToggleButton', 'switch'],
+  ['android.widget.EditText', 'textbox'],
+  ['android.widget.Spinner', 'combobox'],
+])
+
+// shortcut: on iOS only a checkable control shows (its value is its state, 0 or 1), always as `checkbox`; an unnamed
+// button, link or field looks like any empty box there. Read the element type once Maestro's iOS tree carries one.
+/**
+ * A node's control role and accessible name. Android nodes carry a class and put the name in the content description,
+ * the text or the hint. iOS nodes carry no element type, and their text is the value, so the name is the label or
+ * the placeholder.
+ */
+const controlOf = (node: { cls?: string; a11y: string; txt: string; hint: string; val: string }) =>
+  node.cls === undefined
+    ? { role: /^[01]$/.test(node.val) ? 'checkbox' : '', name: node.a11y || node.hint }
+    : { role: androidRoles.get(node.cls) ?? '', name: node.a11y || node.txt || node.hint }
 
 const hasArea = ({ left, top, right, bottom }: Rect) => right > left && bottom > top
 
@@ -68,6 +97,8 @@ const screenOf = (children: NativeNode[]): NativeNode => {
     hint: '',
     id: '',
     focused: false,
+    role: '',
+    name: '',
     children,
   }
 }
@@ -79,6 +110,13 @@ const fromHierarchy = ({ attributes, children = [] }: HierarchyNode): NativeNode
     hint: attributes.hintText ?? '',
     id: attributes['resource-id'] ?? '',
     focused: attributes.focused === 'true',
+    ...controlOf({
+      cls: attributes.class,
+      a11y: attributes.accessibilityText ?? '',
+      txt: attributes.text ?? '',
+      hint: attributes.hintText ?? '',
+      val: attributes.value ?? '',
+    }),
     children: children.flatMap(fromHierarchy),
   })
 
@@ -99,6 +137,13 @@ export const parseInspectScreen = (json: string): NativeNode => {
       hint: full.hint ?? '',
       id: full.rid ?? '',
       focused: full.focused ?? false,
+      ...controlOf({
+        cls: full.cls,
+        a11y: full.a11y ?? '',
+        txt: full.txt ?? '',
+        hint: full.hint ?? '',
+        val: full.val ?? '',
+      }),
       children: (full.c ?? []).flatMap(fromInspect),
     })
   }
@@ -146,19 +191,38 @@ const keyboardNode = {
   android: (node: NativeNode) => node.id.endsWith(':id/keyboard_holder'),
 }
 
+const inside = (a: Rect, b: Rect) => a.left >= b.left && a.top >= b.top && a.right <= b.right && a.bottom <= b.bottom
+
+/** On Android, a `behind-keyboard` line when the keyboard covers the app's focused field by 4 units on both axes. */
+const behindKeyboard = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
+  const window = platform === 'android' && keyboard ? appWindow(root) : undefined
+  const field = window && focusedField(window)
+  if (!keyboard || !field || !overlaps(field.bounds, keyboard)) return []
+  const name = (field.hint || field.label).replace(/\s+/g, ' ').trim().slice(0, 50)
+  return [`[qa-layout] behind-keyboard textbox "${name}"`]
+}
+
 /**
- * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), and on Android a `behind-keyboard`
- * line when the keyboard covers the app's focused field by at least 4 units on both axes. The Android WebView keeps its
- * full height with the keyboard up (run 39373388149), so the probe cannot see it there; on iOS the probe can. The
- * keyboard is drawn over everything, so the rule needs no stacking order.
+ * One `unnamed-control` line per role with a control the screen reader cannot name, as the probe writes it. The
+ * keyboard's own keys are left out.
+ */
+const unnamedControls = (root: NativeNode, keyboard: Rect | undefined) => [
+  ...new Set(
+    allNodes(root)
+      .filter((node) => node.role && !node.name.trim() && !(keyboard && inside(node.bounds, keyboard)))
+      .map((node) => `[qa-layout] unnamed-control ${node.role} ""`),
+  ),
+]
+
+/**
+ * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible
+ * name, and on Android a `behind-keyboard` line. The Android WebView keeps its full height with the keyboard up (run
+ * 39373388149), so the probe cannot see it there; on iOS the probe can. The keyboard is drawn over everything, so the
+ * rule needs no stacking order.
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
   const keyboard = allNodes(root).find(keyboardNode[platform])?.bounds
-  const window = platform === 'android' && keyboard ? appWindow(root) : undefined
-  const field = window && focusedField(window)
-  if (!keyboard || !field || !overlaps(field.bounds, keyboard)) return { keyboard, problems: [] }
-  const name = (field.hint || field.label).replace(/\s+/g, ' ').trim().slice(0, 50)
-  return { keyboard, problems: [`[qa-layout] behind-keyboard textbox "${name}"`] }
+  return { keyboard, problems: [...behindKeyboard(root, platform, keyboard), ...unnamedControls(root, keyboard)] }
 }
 
 const rect = ({ left, top, right, bottom }: Rect) => `[${left},${top}][${right},${bottom}]`

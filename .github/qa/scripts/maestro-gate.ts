@@ -203,8 +203,8 @@ const measureScreen = (screen: ToolResult, ctx: GateContext) => {
 
 /**
  * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
- * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own new line (Android's
- * behind-keyboard, once per launch like the probe's). The ready line needs the probe's own ready line since the app last started, so a build without
+ * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own new lines
+ * (unnamed-control, and Android's behind-keyboard, once per launch like the probe's). The ready line needs the probe's own ready line since the app last started, so a build without
  * the probe never looks clean. A foreign screen is never measured.
  */
 const measured = async (ctx: GateContext, restarted = false) => {

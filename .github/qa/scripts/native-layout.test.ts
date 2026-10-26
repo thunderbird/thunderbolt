@@ -197,3 +197,90 @@ test('the Android control run of run 39373388149 passes, with the keyboard from 
     '[qa-layout] focus-covered textbox "Email"',
   ])
 })
+
+type Dumped = { attributes: Record<string, string>; children?: Dumped[] }
+
+/** A recorded `maestro hierarchy` with `change` applied to every node `pick` matches. */
+const edited = (
+  name: string,
+  pick: (attributes: Record<string, string>) => boolean,
+  change: Record<string, string>,
+) => {
+  const tree: Dumped = JSON.parse(fixture(name))
+  const nodes = (node: Dumped): Dumped[] => [node, ...(node.children ?? []).flatMap(nodes)]
+  const picked = nodes(tree).filter((node) => pick(node.attributes))
+  if (picked.length === 0) throw new Error(`${name} has no node to change`)
+  for (const node of picked) Object.assign(node.attributes, change)
+  return JSON.stringify(tree)
+}
+
+// The iOS onboarding privacy step, recorded on the simulator: the checkbox is a leaf whose value is its state, 0.
+const consentCheckbox = (attributes: Record<string, string>) => attributes.bounds === '[25,712][51,738]'
+
+test('the iOS privacy checkbox reads its label, so the tree reports no unnamed control there', () =>
+  expect(measureNative(parseHierarchy(fixture('hier-consent.json')), 'ios').problems).toEqual([]))
+
+test('an iOS checkbox without a label is an unnamed control, even with its state as text', () => {
+  const unnamed = edited('hier-consent.json', consentCheckbox, { accessibilityText: '' })
+  expect(measureNative(parseHierarchy(unnamed), 'ios').problems).toEqual(['[qa-layout] unnamed-control checkbox ""'])
+  // A placeholder names it, as on the web.
+  const hinted = edited('hier-consent.json', consentCheckbox, { accessibilityText: '', hintText: 'Agree' })
+  expect(measureNative(parseHierarchy(hinted), 'ios').problems).toEqual([])
+})
+
+test('a key of the iOS keyboard is never an unnamed control', () => {
+  // The shift key with no label and the value of a pressed toggle, which anywhere else reads as a checkbox.
+  const shift = (attributes: Record<string, string>) => attributes['resource-id'] === 'shift'
+  const bare = { accessibilityText: '', value: '1', text: '1' }
+  expect(measureNative(parseHierarchy(edited('hier-name-kb.json', shift, bare)), 'ios').problems).toEqual([])
+  const moved = edited('hier-name-kb.json', shift, { ...bare, bounds: '[4,300][60,356]' })
+  expect(measureNative(parseHierarchy(moved), 'ios').problems).toEqual(['[qa-layout] unnamed-control checkbox ""'])
+})
+
+test('an Android control without a description, text or hint is an unnamed control, one line per role', () => {
+  const noHint = (attributes: Record<string, string>) =>
+    attributes.class === 'android.widget.EditText' || attributes.class === 'android.widget.Button'
+  const unnamed = edited('hier-android-control.json', noHint, { hintText: '', text: '' })
+  expect(measureNative(parseHierarchy(unnamed), 'android').problems).toEqual([
+    '[qa-layout] unnamed-control textbox ""',
+    '[qa-layout] unnamed-control button ""',
+  ])
+  const twoFields = edited('hier-android-control.json', (attributes) => attributes.class === 'android.widget.Spinner', {
+    class: 'android.widget.EditText',
+    text: '',
+    hintText: '',
+  }).replace('"hintText":"Email"', '"hintText":""')
+  expect(measureNative(parseHierarchy(twoFields), 'android').problems).toEqual([
+    '[qa-layout] unnamed-control textbox ""',
+  ])
+})
+
+test('the Android Connect Google step reports its icon-only Back button, the one button there without a name', () =>
+  expect(measureNative(parseInspectScreen(fixture('inspect-android-onboarding.json')), 'android').problems).toEqual([
+    '[qa-layout] unnamed-control button ""',
+  ]))
+
+test("an unnamed button in Gboard's keys is not the app's", () => {
+  const holder = (attributes: Record<string, string>) => attributes['resource-id']?.endsWith(':id/keyboard_holder')
+  const tree: Dumped = JSON.parse(androidControl)
+  const nodes = (node: Dumped): Dumped[] => [node, ...(node.children ?? []).flatMap(nodes)]
+  const keys = nodes(tree).find((node) => holder(node.attributes))
+  if (!keys) throw new Error('the fixture lost its keyboard')
+  keys.children = [{ attributes: { bounds: '[40,1600][200,1700]', class: 'android.widget.Button' } }]
+  expect(measureNative(parseHierarchy(JSON.stringify(tree)), 'android').problems).toEqual([])
+})
+
+test('inspect_screen gives the gate the same unnamed control as the hierarchy', () => {
+  // iOS omits the class from its schema; Android lists it with an empty default.
+  const ios = {
+    ui_schema: { defaults: { txt: '', hint: '', rid: '', val: '', a11y: '' } },
+    elements: [{ b: '[0,0][440,956]', a11y: 'Thunderbolt Dev', c: [{ b: '[25,712][51,738]', txt: '0', val: '0' }] }],
+  }
+  const android = {
+    ui_schema: { defaults: { txt: '', hint: '', rid: '', a11y: '', cls: '' } },
+    elements: [{ b: '[0,0][1080,2400]', c: [{ b: '[50,1500][110,1560]', cls: 'android.widget.CheckBox' }] }],
+  }
+  const line = ['[qa-layout] unnamed-control checkbox ""']
+  expect(measureNative(parseInspectScreen(JSON.stringify(ios)), 'ios').problems).toEqual(line)
+  expect(measureNative(parseInspectScreen(JSON.stringify(android)), 'android').problems).toEqual(line)
+})

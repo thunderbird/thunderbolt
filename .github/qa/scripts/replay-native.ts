@@ -32,15 +32,16 @@ const linesFrom = async (file: string, start: number) => {
 }
 
 /**
- * The tree's own `[qa-layout]` lines on Android after a run, as the gate adds them in a session: the WebView there
- * never sees the keyboard, so a field behind it shows only in `maestro hierarchy`. A failed dump adds nothing.
+ * The tree's own `[qa-layout]` lines for the screen a run ends on, as the gate adds them in a session: the Android
+ * WebView never sees the keyboard, so a field behind it shows only in `maestro hierarchy`, and a control's accessible
+ * name comes from the platform's tree. A failed dump adds nothing.
  */
-const treeLines = async (deviceId: string) => {
+const treeLines = async (deviceId: string, platform: 'ios' | 'android') => {
   const dump = await $`maestro --udid ${deviceId} hierarchy`
     .env({ ...getDefaultEnvironment(), ...maestroEnv() })
     .quiet()
     .nothrow()
-  return dump.exitCode === 0 ? measureNative(parseHierarchy(dump.stdout.toString()), 'android').problems : []
+  return dump.exitCode === 0 ? measureNative(parseHierarchy(dump.stdout.toString()), platform).problems : []
 }
 
 /**
@@ -55,8 +56,8 @@ export const videoPath = (outDir: string, leg: string | undefined, session: stri
  * It installs the onboarding build for a c1 session and the plain one otherwise, the control included. It records
  * the screen into `videoPath` (Android caps a recording at 3 minutes), runs the harness's `signIn` when given and
  * then, if it passed, the flow, both with the same fresh `EMAIL`, waits for the probe to confirm, and
- * splits the new WebView lines into the probe's `layout` lines and the rest. On Android the install goes through
- * `native.sh install`, which warms the app up, and `layout` also gets the tree's lines.
+ * splits the new WebView lines into the probe's `layout` lines and the rest; `layout` also gets the tree's lines for
+ * the last screen. On Android the install goes through `native.sh install`, which warms the app up.
  */
 export const createRunFlow = (opts: {
   platform: 'ios' | 'android'
@@ -106,7 +107,7 @@ export const createRunFlow = (opts: {
     const signInFailed = signedIn !== undefined && signedIn.exitCode !== 0
     const result = signedIn && signInFailed ? signedIn : await maestro('flow.yaml', flowYaml)
     await Bun.sleep(probeWaitMs)
-    const tree = ios ? [] : await treeLines(deviceId)
+    const tree = await treeLines(deviceId, platform)
     if (ios) recorder.kill('SIGINT')
     else await $`adb -s ${deviceId} shell pkill -INT screenrecord`.quiet().nothrow()
     await recorder.exited

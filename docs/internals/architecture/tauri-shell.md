@@ -210,7 +210,7 @@ says anything about the viewport.
 ### The database type
 
 `getDatabaseType()` unconditionally returns `'powersync'`
-([`src/lib/platform.ts:240`](../../../src/lib/platform.ts#L240)) and both callers
+([`src/lib/platform.ts:287`](../../../src/lib/platform.ts#L287)) and both callers
 ([`use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts),
 [`src/lib/fs.ts`](../../../src/lib/fs.ts)) feed it straight into `getDatabasePath`, so that function's
 `bun-sqlite` branch is dead. The `bun-sqlite` type survives for bun tests, which build a `Database`

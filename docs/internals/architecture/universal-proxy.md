@@ -59,7 +59,7 @@ Add it to `corsExposeHeaders`
 ([backend/src/config/settings.ts:11](../../../backend/src/config/settings.ts#L11)) as
 `X-Proxy-Passthrough-<Name>`, hence defaults like `X-Proxy-Passthrough-Mcp-Session-Id` and
 `X-Proxy-Passthrough-Anthropic-Version`. `unwrapHostedResponse`
-([src/lib/proxy-fetch.ts:119-140](../../../src/lib/proxy-fetch.ts#L119)) rebuilds the `Response` from
+([src/lib/proxy-fetch.ts:128-149](../../../src/lib/proxy-fetch.ts#L128)) rebuilds the `Response` from
 `response.headers`, which cross-origin holds only what `Access-Control-Expose-Headers` listed.
 Request headers need none, since the open-ended namespace forces `allowedHeaders: true`
 ([AGENTS.md](../../../AGENTS.md), "CORS and API headers").
@@ -109,7 +109,7 @@ SSRF decision. Hop 0 is the initial fetch; hops 1-5 are follows, each re-validat
   ([ws.ts:107-127](../../../backend/src/proxy/ws.ts#L107)).
 - **Local model servers bypass the proxy** (Ollama, LM Studio), since backend `localhost` is not
   the user's machine, so loopback endpoints use the plain fetch
-  ([src/ai/fetch.ts:295-312](../../../src/ai/fetch.ts#L295)). Loopback HTTP/SSE MCP servers and external
+  ([src/ai/fetch.ts:296-307](../../../src/ai/fetch.ts#L296)). Loopback HTTP/SSE MCP servers and external
   agents also stay direct on Tauri desktop and mobile. Other targets follow the platform and
   Cloud Proxy setting; web and Tauri with the toggle on use the hosted proxy, which blocks RFC-1918 LAN addresses and `host.docker.internal`.
 
@@ -161,7 +161,7 @@ Bun 1.3.10; add an integration test before bumping the Bun major.
 
 `/v1/proxy/ws` is fixed; as with HTTP the upstream URL is not in the path. Everything travels in
 `Sec-WebSocket-Protocol`, offered in order
-([src/lib/proxy-fetch.ts:254-279](../../../src/lib/proxy-fetch.ts#L254)):
+([src/lib/proxy-fetch.ts:248-273](../../../src/lib/proxy-fetch.ts#L248)):
 
 ```text
 thunderbolt.v1                      # carrier
@@ -245,7 +245,7 @@ Four entry points, not interchangeable:
 
 | Use it for                                       | Entry point                                                                                                                                                                                      |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| An authenticated call to our own backend         | `useHttpClient()` ([src/contexts/http-client-context.tsx](../../../src/contexts/http-client-context.tsx)), or `createAuthenticatedClient` ([src/lib/http.ts:185](../../../src/lib/http.ts#L185)) |
+| An authenticated call to our own backend         | `useHttpClient()` ([src/contexts/http-client-context.tsx](../../../src/contexts/http-client-context.tsx)), or `createAuthenticatedClient` ([src/lib/http.ts:186](../../../src/lib/http.ts#L186)) |
 | An external API with no app headers or auth      | `http` ([src/lib/http.ts:267](../../../src/lib/http.ts#L267))                                                                                                                                    |
 | Own-key model inference/catalogs or MCP HTTP/SSE | `useFetch()` / `useProxyFetchGetter()` (React), `createProxyFetch()` (non-React) ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx))                                   |
 | A loopback model that must stay device-direct    | `fetch` from [src/lib/fetch.ts](../../../src/lib/fetch.ts)                                                                                                                                       |
@@ -294,7 +294,7 @@ turn Cloud Proxy off or sign in.
 
 ### Outer-hop headers must not be promoted
 
-`skipHeaders` ([src/lib/proxy-fetch.ts:64-85](../../../src/lib/proxy-fetch.ts#L64)) never promotes:
+`skipHeaders` ([src/lib/proxy-fetch.ts:70-91](../../../src/lib/proxy-fetch.ts#L70)) never promotes:
 
 - Browser-injected noise (`origin`, `referer`, the `sec-*` family), which would leak browser
   context upstream.

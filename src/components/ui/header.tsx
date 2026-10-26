@@ -15,14 +15,22 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isEmbedded } from '@/lib/embed'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
 import { exposesPrivateThread } from '@/chats/private-thread'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import {
+  selectAllowCustomAgents,
+  selectBrandLogo,
+  selectConfigSettled,
+  selectMinimalMode,
+  useConfigStore,
+} from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
@@ -191,6 +199,11 @@ export const Header = () => {
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configSettled = useConfigStore(selectConfigSettled)
+  // Derived outside the store selector: it returns a fresh object, which zustand would see as a changed snapshot every render.
+  const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
+  const resolvedTheme = useResolvedTheme()
 
   const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
     useShallow((state) => {
@@ -227,7 +240,29 @@ export const Header = () => {
   }
 
   const isChatRoute = location.pathname.startsWith('/chats')
-  const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
+  // Wait for `/config` so a first visit never flashes the pill before minimal mode is known.
+  const showAgentSelector =
+    isChatRoute && chatInstance !== undefined && allAgents.length > 0 && configSettled && !minimalMode
+
+  // The operator's logo takes the selector's place for direct visitors. Inside a native app's WebView the app's own chrome carries the branding.
+  const showBrandLogo = minimalMode && brandLogo !== null && !isEmbedded()
+  // Centered against the header on both layouts, so it never competes with the left-hand controls
+  // (traffic lights, expand toggle, history arrows). Mobile rows sit at the top (`items-start` header).
+  const brandLogoImage = showBrandLogo && (
+    <div
+      className={cn(
+        'pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center',
+        isMobile ? 'top-2 h-[var(--touch-height-lg)]' : 'inset-y-0',
+      )}
+    >
+      <img
+        src={resolvedTheme === 'dark' ? brandLogo.dark : brandLogo.light}
+        alt={brandLogo.alt || effectiveAgent.name}
+        draggable={false}
+        className="h-6 w-auto max-w-full object-contain"
+      />
+    </div>
+  )
 
   const handleAddAgent = () => {
     openCreateItem({ kind: 'agent' })
@@ -307,6 +342,7 @@ export const Header = () => {
         </div>
 
         {agentSelector}
+        {brandLogoImage}
         {privateSwitchDialog}
 
         {/* Empty right column — keeps the header row a drag surface on the
@@ -349,6 +385,7 @@ export const Header = () => {
             the agent pill absolutely and has no room next to it. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
+      {brandLogoImage}
       {privateSwitchDialog}
     </header>
   )

@@ -362,3 +362,14 @@ Then run `helm unittest deploy/k8s`.
 - Assert a render-time guard with `failedTemplate: { errorPattern: ... }`.
 - **Simulate `helm upgrade --reuse-values`.** That flag replaces the chart's new defaults with the previous release's values, so a key added in a later chart version is missing on an existing install. Helm deletes a key set to `null`, so `set: { oidc: null }` reproduces it without a second values file. Every value added after a release needs such a test; see `tests/keycloak-toggle_test.yaml`.
 - Check the test can fail: revert your template change and confirm it goes red.
+
+## Frontend HTTP serving
+
+The `Frontend Serving` workflow runs the deployed nginx configuration in an isolated container. It checks missing-chunk recovery, immutable asset caching, app-shell revalidation, cross-origin isolation headers, and source-map blocking. Run it locally with Docker available:
+
+```sh
+docker pull nginxinc/nginx-unprivileged:alpine
+bun test --cwd=deploy/config nginx.test.ts --timeout 5000
+```
+
+Use this working directory so the frontend's Happy DOM preload does not replace the HTTP client. The test creates and removes its own container and temporary files; it does not need the backend or the real frontend build.

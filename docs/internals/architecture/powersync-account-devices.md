@@ -30,7 +30,7 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
 2. Backend schema: add only `index('idx_[table]_user_id').on(table.userId)` ([why](#indexes-and-foreign-keys)).
 3. Register in [src/db/powersync/schema.ts](../../../src/db/powersync/schema.ts) (`drizzleSchema`).
 4. Add the name and query keys to `powersyncTableNames` and `powersyncTableToQueryKeys` in [shared/powersync-tables.ts](../../../shared/powersync-tables.ts). The query-key entry only satisfies the map's type; reactivity comes from PowerSync.
-5. Update **all three** sync-rule configs so local, preview, prod, and enterprise-k8s stay in parity:
+5. Update **all three** sync configs so local, preview, prod, and enterprise-k8s stay in parity:
 
    | Config                                                                                | Used by                                                                 |
    | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -38,9 +38,9 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
    | [deploy/config/powersync-config.yaml](../../../deploy/config/powersync-config.yaml)   | baked into the `thunderbolt-powersync` image: preview (Pulumi) and prod |
    | [deploy/k8s/templates/configmaps.yaml](../../../deploy/k8s/templates/configmaps.yaml) | Helm-rendered config for enterprise k8s                                 |
 
-   In each, add a line under `sync_rules.content` in `bucket_definitions.user_essentials.data` (latency-sensitive, priority 1) or `bucket_definitions.user_data.data` (the rest, priority 2), e.g. `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
+   In each, add a line under `sync_config.content` to the `queries` of the `user_essentials` stream (latency-sensitive, priority 1) or the `user_data` stream (the rest, priority 2), copying the gate the other lines carry, e.g. `- SELECT * FROM powersync.my_table WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)`.
 
-   Never add a table to `device_self`. That bucket delivers one row — the requesting device's own — to a device whose other buckets revocation has removed, so anything else put there would keep syncing to revoked devices.
+   Never add a table to `device_self`. That stream delivers one row — the requesting device's own — to a device whose other streams revocation has removed, so anything else put there would keep syncing to revoked devices.
 
 6. Run `bun db generate` and confirm `backend/drizzle/meta/_journal.json` gained the entry. Drizzle finds migrations through the journal, so an SQL file without one never runs.
 
@@ -54,7 +54,7 @@ Two PRs, to avoid sync rule mismatches.
 
 ### Adding Columns to an Existing Synced Table
 
-Sync rules are all `SELECT *`, so no rule edit is needed, but the column replicates only after the migration runs against the database `powersync` replicates from. Frontend-first leaves it null across devices while local tests pass. One PR is fine (e.g. `devices.node_id`) if the feature tolerates null; still run the migration before relying on it cross-device.
+Every stream query is `SELECT *`, so no sync-config edit is needed, but the column replicates only after the migration runs against the database `powersync` replicates from. Frontend-first leaves it null across devices while local tests pass. One PR is fine (e.g. `devices.node_id`) if the feature tolerates null; still run the migration before relying on it cross-device.
 
 ### Removing a Synced Table
 

@@ -24,7 +24,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-const createAuthClientInstance = (cloudUrl: string) => {
+export const createAuthClientInstance = (cloudUrl: string) => {
   const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
@@ -33,10 +33,9 @@ const createAuthClientInstance = (cloudUrl: string) => {
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
     fetchOptions: buildFetchOptions(platform),
-    // Disable Better Auth's focus/online refetch — Thunderbolt's own cross-tab sync
-    // (`onAuthTokenChangedInOtherTab` in src/lib/auth-token.ts) plus the 401 safety net
-    // in HttpClient.afterResponse already cover the relevant scenarios without burning
-    // rate-limit budget on every tab focus / visibilitychange / online event.
+    // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
+    // The refresh manager skips offline checks, but still refetches on reconnect
+    // and cross-tab broadcasts so cached sessions recover when the network returns.
     sessionOptions: {
       refetchOnWindowFocus: false,
       refetchWhenOffline: false,
@@ -112,14 +111,7 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
-/**
- * The headers every Better Auth request must carry.
- *
- * Also spread into a per-call `fetchOptions.headers`: better-fetch REPLACES that
- * object rather than merging it, so a call site setting only its own header
- * would drop `X-App-Version` — and the version gate is fail-closed, so the
- * request comes back 426 on a build that is perfectly up to date.
- */
+/** The headers every Better Auth request must carry. `buildFetchOptions` sets them on each request. */
 export const authRequestHeaders = (
   extra: Record<string, string> = {},
   platform: string = getPlatform(),
@@ -142,14 +134,8 @@ const isSignInRequest = (url: URL | string | undefined): boolean =>
 
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  // Applied per request instead of through `headers`. better-fetch merges the
-  // client-level and per-call options with a shallow spread
-  // (`{...config, ...options}`), so any call passing its own
-  // `fetchOptions.headers` — OTP verify, magic-link verify, both of which send a
-  // challenge token — replaced a client-level `headers` object wholesale.
-  // `onRequest` survives that spread because no call site overrides it, and
-  // re-reading the locale per request keeps it from being frozen at client
-  // construction, before the synced setting has hydrated.
+  // Applied per request instead of through `headers` so the locale is re-read on
+  // every call, not frozen at client construction before the synced setting hydrates.
   onRequest: (ctx: { headers: Headers }) => {
     for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
       ctx.headers.set(key, value)
@@ -183,7 +169,7 @@ export const buildFetchOptions = (platform: string) => ({
     clearCachedSession()
     if (hadToken) {
       // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
-      // session validation (mount + tab focus), which detects expiry well before PowerSync's
+      // session validation (mount + reconnect), which detects expiry well before PowerSync's
       // credential refresh kicks in — cuts boot-time delay from seconds to milliseconds.
       window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
     }

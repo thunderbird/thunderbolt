@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -95,17 +94,16 @@ export const AgentSelector = ({
   // One agent and no way to add another leaves nothing to choose, so the
   // trigger renders as a plain label: no chevron, no menu, and no dimming
   // while a reply streams, since there is no switch to hold back. Minimal mode
-  // (see `selectMinimalMode`) takes the menu away whatever the agent count.
+  // never renders the selector at all (see `Header`).
   //
-  // Both only hold when the sole available agent is the selected one. An
+  // That only holds when the sole available agent is the selected one. An
   // existing chat can still hold the built-in fallback it was given before
   // hosted-agent discovery finished (discovery skips existing chats), so with
-  // the hosted agent as the only agent on offer the menu stays, in both modes,
-  // as the one way to switch. The chat's agent is deliberately not switched
+  // the hosted agent as the only agent on offer the menu stays as the one way
+  // to switch. The chat's agent is deliberately not switched
   // for the user: that is a persisted write.
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
   const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
-  const isLabel = !soleAgentIsOther && (minimalMode || (agents.length <= 1 && !onAddAgent))
+  const isLabel = !soleAgentIsOther && agents.length <= 1 && !onAddAgent
   const dimmed = disabled && !isLabel
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {

@@ -156,7 +156,7 @@ falsify, not a fact.
   is a wire-format change rather than a comment someone implements. (2) A2 never holds another
   account's AK in openable form: only wrappings to that account's own device public keys, plus the
   org-escrow envelope, which is C11's deliberate operator concession. (3) A `user_id` never changes
-  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:414`) deletes the anonymous user
+  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:641`) deletes the anonymous user
   outright, so no ciphertext survives an id change. Any change to (1) or (2) invalidates this claim
   and must revisit the AAD. **Adding the account id to the AAD was considered and rejected**
   (THU-891, cancelled): it closes nothing reachable, and against the one path that *is* reachable —

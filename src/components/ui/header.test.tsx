@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { createAgent } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -16,13 +17,16 @@ import type { Agent } from '@/types/acp'
 import type { ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { MemoryRouter } from 'react-router'
 import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
+import * as embed from '@/lib/embed'
+import { ThemeProvider } from '@/lib/theme-provider'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { Header } from './header'
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -129,6 +133,7 @@ describe('Header', () => {
 
   beforeEach(() => {
     forceMobileViewport()
+    useConfigStore.setState({ config: {}, configLoaded: true })
   })
 
   afterEach(async () => {
@@ -202,6 +207,36 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
   })
 
+  it('hides the agent selector in minimal mode', () => {
+    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.queryByTestId('agent-selector-trigger')).toBeNull()
+  })
+
+  it('shows the agent selector with the default config', () => {
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+
+    expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
+  it('waits for /config before showing the agent selector', () => {
+    useConfigStore.setState({ config: {}, configLoaded: false })
+    setupWithAgent(builtInAgent)
+
+    render(<Header />, { wrapper: TestWrapper })
+    expect(screen.queryByTestId('agent-selector-trigger')).toBeNull()
+
+    act(() => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+    })
+    expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
   it('opens agent creation over the current chat route', async () => {
     setupWithAgent(builtInAgent)
     render(<Header />, { wrapper: TestWrapper })
@@ -210,6 +245,72 @@ describe('Header', () => {
     fireEvent.click(await screen.findByText('Add Agent'))
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/chats/thread-1|agent')
+  })
+
+  describe('operator logo', () => {
+    const logoConfig = {
+      minimalMode: true,
+      brandLogoUrl: 'https://example.com/light.svg',
+      brandLogoDarkUrl: 'https://example.com/dark.svg',
+      brandLogoAlt: 'Mozilla',
+    }
+
+    const renderHeader = (config: object = logoConfig, configLoaded = true) => {
+      useConfigStore.setState({ config, configLoaded })
+      setupWithAgent(builtInAgent)
+      render(<Header />, { wrapper: TestWrapper })
+    }
+
+    afterEach(() => {
+      useLocalSettingsStore.setState({ theme: 'system' })
+    })
+
+    it('shows the logo in minimal mode on mobile and desktop', () => {
+      renderHeader()
+      expect(screen.getByAltText('Mozilla')).toHaveAttribute('src', 'https://example.com/light.svg')
+      expect(screen.getByAltText('Mozilla').parentElement).toHaveClass('absolute', 'left-1/2', 'top-2')
+      cleanup()
+      restoreViewport()
+      renderHeader()
+      // Centered against the header on desktop too, not in the left-aligned control group.
+      expect(screen.getByAltText('Mozilla').parentElement).toHaveClass('absolute', 'left-1/2', 'inset-y-0')
+    })
+
+    it('falls back to the agent name for the alt text', () => {
+      renderHeader({ ...logoConfig, brandLogoAlt: undefined })
+      expect(screen.getByAltText(builtInAgent.name)).toBeInTheDocument()
+    })
+
+    it('uses the dark logo in dark theme', () => {
+      useLocalSettingsStore.setState({ theme: 'dark' })
+      useConfigStore.setState({ config: logoConfig, configLoaded: true })
+      setupWithAgent(builtInAgent)
+      render(
+        <ThemeProvider>
+          <Header />
+        </ThemeProvider>,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.getByAltText('Mozilla')).toHaveAttribute('src', 'https://example.com/dark.svg')
+    })
+
+    it('hides the logo when embedded in an app', () => {
+      const spy = spyOn(embed, 'isEmbedded').mockReturnValue(true)
+      renderHeader()
+      expect(screen.queryByAltText('Mozilla')).toBeNull()
+      spy.mockRestore()
+    })
+
+    it('hides the logo when none is configured', () => {
+      renderHeader({ minimalMode: true })
+      expect(screen.queryByRole('img')).toBeNull()
+    })
+
+    it('hides the logo outside minimal mode and shows the agent selector instead', () => {
+      renderHeader({ ...logoConfig, minimalMode: false })
+      expect(screen.queryByAltText('Mozilla')).toBeNull()
+      expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+    })
   })
 
   describe('switching a private chat off the built-in agent', () => {

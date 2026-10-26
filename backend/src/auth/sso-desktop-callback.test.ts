@@ -13,12 +13,12 @@ const ssoSettings = {
   betterAuthSecret: 'test-secret',
 } as Settings
 
-const createApp = (settings = ssoSettings) =>
-  new Elysia({ prefix: '/v1' }).use(createSsoDesktopCallbackRoutes(settings))
+const createApp = (settings = ssoSettings, fetchFn?: typeof fetch) =>
+  new Elysia({ prefix: '/v1' }).use(createSsoDesktopCallbackRoutes(settings, fetchFn))
 
-const callbackUrl = (port: number | string, cookies?: string) => {
+const callbackUrl = (port: number | string, cookies?: string, extraQuery = '') => {
   const app = createApp()
-  const req = new Request(`http://localhost/v1/api/auth/sso/desktop-callback?loopback_port=${port}`, {
+  const req = new Request(`http://localhost/v1/api/auth/sso/desktop-callback?loopback_port=${port}${extraQuery}`, {
     headers: cookies ? { cookie: cookies } : {},
   })
   return app.handle(req)
@@ -120,13 +120,53 @@ describe('SSO desktop-callback', () => {
       expect(location).toStartWith('http://127.0.0.1:17423/')
     })
   })
+
+  describe('failed login', () => {
+    const callbackWithError = (error: string, cookies?: string) =>
+      callbackUrl(17421, cookies, `&error=${encodeURIComponent(error)}`)
+
+    it('hands a hostile error code to the app as one inert value', async () => {
+      const res = await callbackWithError('x&token=evil', 'thunderbolt_desktop_sso_nonce=abc')
+
+      expect(res.status).toBe(302)
+      const location = new URL(res.headers.get('location')!)
+      expect(location.origin).toBe('http://127.0.0.1:17421')
+      expect(location.searchParams.get('error')).toBe('x&token=evil')
+      expect(location.searchParams.has('token')).toBe(false)
+    })
+
+    it('still requires the nonce cookie', async () => {
+      const res = await callbackWithError('access_denied')
+
+      expect(res.status).toBe(403)
+      expect(res.headers.has('location')).toBe(false)
+    })
+  })
 })
 
 describe('SSO desktop-initiate', () => {
-  const initiateUrl = (port: number | string) => {
-    const app = createApp()
+  const initiateUrl = (port: number | string, fetchFn?: typeof fetch) => {
+    const app = createApp(ssoSettings, fetchFn)
     return app.handle(new Request(`http://localhost/v1/api/auth/sso/desktop-initiate?loopback_port=${port}`))
   }
+
+  it('asks Better Auth to send a failed login back to the desktop callback', async () => {
+    const requests: { url: string; body: unknown }[] = []
+    const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) })
+      return Response.json({ url: 'https://idp.example.test/authorize' })
+    }) as typeof fetch
+
+    await initiateUrl(17421, fakeFetch)
+
+    const callbackURL = 'http://localhost:8000/v1/api/auth/sso/desktop-callback?loopback_port=17421'
+    expect(requests).toEqual([
+      {
+        url: 'http://localhost:8000/v1/api/auth/sign-in/sso',
+        body: { providerId: 'sso', callbackURL, errorCallbackURL: callbackURL },
+      },
+    ])
+  })
 
   describe('port validation', () => {
     it('rejects disallowed port', async () => {

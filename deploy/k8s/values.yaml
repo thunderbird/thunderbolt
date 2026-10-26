@@ -172,7 +172,10 @@ postgres:
 powersync:
   image:
     repository: journeyapps/powersync-service
-    tag: latest
+    # Pinned: Sync Streams need 1.20+, and 1.26+ fixes GHSA-hfrf-pvrg-5c3h. Bump together
+    # with tests/powersync-config_test.yaml, deploy/docker/powersync.Dockerfile, both
+    # compose files and deploy/docker/README.md.
+    tag: 1.27.0
   replicas: 1
   service:
     port: 8080

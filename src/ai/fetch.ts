@@ -239,8 +239,9 @@ export const mergeMcpTools = async (
 /** Raw OpenAI-compatible connection for a model: the three knobs every
  *  OpenAI-wire provider construction needs ({@link createModel} for the legacy
  *  Vercel SDK, the in-browser Pi harness for the built-in agent). `fetch` is the
- *  provider-specific app fetch — the universal proxy fetch for
- *  `openai`/`custom`/`openrouter`, or the SSO-aware fetch for `thunderbolt`. */
+ *  provider-specific app fetch — the platform/toggle-aware fetch for
+ *  `openai`/`openrouter` and non-loopback `custom` URLs, device-direct fetch
+ *  for loopback Custom models, or the SSO-aware fetch for `thunderbolt`. */
 export type OpenAiCompatConnection = {
   baseURL: string
   apiKey: string
@@ -257,12 +258,12 @@ export type OpenAiCompatConnection = {
  * paths can't drift.
  *
  * @param modelConfig - the model whose connection to resolve
- * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @param getProxyFetch - lazily resolved platform/toggle-aware fetch
  * @param backendFetch - transport for authenticated backend requests
  * @returns the connection, or `null` when unsupported/unconfigured
  */
 export const resolveOpenAiCompatConnection = (
-  modelConfig: Model,
+  modelConfig: Pick<Model, 'provider' | 'apiKey' | 'url'>,
   getProxyFetch: () => FetchFn,
   backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection | null => {
@@ -296,16 +297,9 @@ export const resolveOpenAiCompatConnection = (
       if (!modelConfig.url) {
         return null
       }
-      // Canonicalise `/v1` and dispatch loopback vs proxy right here, so BOTH
-      // consumers of this connection (`createModel` legacy path and
-      // `resolvePiModel` built-in agent path) see the same `baseURL` + `fetch`
-      // and can't drift. Loopback Custom URLs (LM Studio at localhost:1234,
-      // Ollama, `127.x.x.x`, `[::1]`, `*.localhost`) skip the universal proxy
-      // so `localhost` means what the browser sees, not what the backend
-      // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
-      // mDNS `.local`, public endpoints — stays on the proxy path (browser
-      // blocks non-loopback http from https origins as mixed content, and
-      // public Custom endpoints rely on the proxy for CORS bypass).
+      // Loopback always stays device-direct through src/lib/fetch.ts. Other
+      // Custom URLs use native HTTP on Tauri with Use Cloud Proxy off, or the
+      // hosted proxy (and its SSRF checks) on web or with the toggle on.
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
       const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
@@ -358,10 +352,9 @@ export const resolveManagedAnthropicConnection = (
 }
 
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
-  // The thunderbolt provider goes through its own SSO-aware fetch below; all
-  // other providers route through the universal proxy. We resolve the proxy
-  // fetch lazily so a settings change between chat creation and this call
-  // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
+  // Resolve transports lazily so cloudUrl and proxy_enabled changes are picked
+  // up. Managed models use backend auth; own-key models use platform/toggle
+  // routing, except loopback Custom models, which always stay device-direct.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       if (modelConfig.vendor === 'anthropic') {
@@ -402,13 +395,12 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       return provider(modelConfig.model)
     }
     case 'anthropic': {
-      // Route Anthropic through the universal proxy. Hosted mode (web) sends
-      // the request to /v1/proxy with Authorization rewritten to
-      // X-Proxy-Passthrough-Authorization; Standalone mode (Tauri) hits
-      // Anthropic directly via the Rust HTTP plugin. Either way, the user's
-      // Anthropic key never goes through Thunderbolt's session auth path.
+      // Anthropic uses native HTTP on Tauri with Use Cloud Proxy off, otherwise
+      // the hosted proxy forwards x-api-key separately from backend session auth.
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
+        // Native HTTP always sends an Origin, so Anthropic requires this opt-in there too.
+        headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
         fetch: getProxyFetch(),
       })
       return anthropic(modelConfig.model)

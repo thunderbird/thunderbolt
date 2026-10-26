@@ -4,7 +4,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 
 ## Route inventory
 
-**Gate**: path sits under a prefix in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts:16-25`). `exempt` means reachable without `X-App-Version` under `MIN_APP_VERSION`. Auth modes: [below](#auth-modes).
+**Gate**: path sits under a prefix in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). `exempt` means reachable without `X-App-Version` under `MIN_APP_VERSION`. Auth modes: [below](#auth-modes).
 
 | Path                                                                          | Module                                  | Auth                                      | Rate limit                                        | Gate    |
 | ----------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------- | ------------------------------------------------- | ------- |
@@ -40,7 +40,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:72`). Route groups are pl
 | `WS /v1/haystack/ws`                                                          | `haystack/routes.ts`                    | subprotocol bearer                        | none                                              | gated   |
 | `GET /v1/swagger`, `/v1/swagger/json`                                         | `@elysiajs/swagger`, `SWAGGER_ENABLED`  | public                                    | none                                              | gated   |
 
-\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
+\* Exempt subtrees: `/v1/api/auth/sso` (browser redirects), `/v1/api/auth/error` (failed-SSO redirect) and `/v1/api/auth/device` (headless CLI device grant). The rest of `/v1/api/auth/*` is gated.
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
@@ -83,7 +83,7 @@ Plugin isolation hides in-plugin errors from the root `onError`, which covers on
 
 ### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:198`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:281`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 

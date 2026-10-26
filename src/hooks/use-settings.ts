@@ -9,10 +9,10 @@ import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
-import { useMutation } from '@tanstack/react-query'
-import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { useQuery } from '@powersync/tanstack-react-query'
-import { useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { usePowerSync } from '@powersync/react'
+import { useEffect, useMemo } from 'react'
+import { subscribeToSettingsChanges } from './settings-subscription'
 
 /**
  * Generic setting hook interface
@@ -35,7 +35,7 @@ type SettingHook<TValue, TInput = TValue> = {
   /** Whether an update or reset is in progress for this setting */
   isSaving: boolean
   /** The underlying query object for advanced use */
-  query: ReturnType<typeof useQuery<Setting>>
+  query: UseQueryResult<Setting[]>
 }
 
 /**
@@ -163,13 +163,22 @@ export function useSettings<T extends SettingSchema>(
   options: { camelCase?: boolean } = {},
 ): UseSettingsSchemaResult<T, boolean> {
   const db = useDatabase()
+  const powerSync = usePowerSync()
+  const queryClient = useQueryClient()
   const { camelCase = true } = options
+
+  useEffect(() => {
+    if (!powerSync) {
+      throw new Error('PowerSync is not available')
+    }
+    return subscribeToSettingsChanges(powerSync, queryClient)
+  }, [powerSync, queryClient])
 
   const keys = Object.keys(schema)
 
   const query = useQuery({
     queryKey: ['settings', ...keys],
-    query: toCompilableQuery(getSettingsRecords(db, keys)),
+    queryFn: async () => await getSettingsRecords(db, keys),
     placeholderData: (previousData) => previousData,
   })
 

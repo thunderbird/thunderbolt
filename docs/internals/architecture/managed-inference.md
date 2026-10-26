@@ -39,10 +39,12 @@ Bodies come from [`usage-responses.ts`](../../../backend/src/inference/usage-res
 ### Prices are data, not code
 
 - `inference_prices` ([`inference-usage-schema.ts:9`](../../../backend/src/db/inference-usage-schema.ts)) is keyed `(provider, model)`, nano-USD per token as `bigint` with non-negative checks. No fallback, no default: a model with no row is unbuyable.
-- Rows come from [`0028_seed-inference-prices.sql`](../../../backend/drizzle/0028_seed-inference-prices.sql) and [`0029_seed-glm-5-3-prices.sql`](../../../backend/drizzle/0029_seed-glm-5-3-prices.sql).
+- Rows come from [`0028_seed-inference-prices.sql`](../../../backend/drizzle/0028_seed-inference-prices.sql), [`0029_seed-glm-5-3-prices.sql`](../../../backend/drizzle/0029_seed-glm-5-3-prices.sql) and [`0033_seed-fireworks-prices.sql`](../../../backend/drizzle/0033_seed-fireworks-prices.sql).
 - **A new managed model needs a price migration** and its `backend/drizzle/meta/_journal.json` entry. Drizzle finds migrations through the journal; an unlisted SQL file never runs.
 - Catalog in TypeScript, prices in Postgres, so drift runs one way: the model ships, the price does not, every request 503s.
-- Prices are quota weighting, not billing. 0029 sets GLM 5.3 to `1500 / 5250`, glm-5-2's numbers rather than Tinfoil's list `1800 / 5750`, so a model swap does not change how fast users burn their allowance.
+- Not every row is a list price. 0029's Tinfoil row is a quota weight: it sets GLM 5.3 to `1500 / 5250`, glm-5-2's numbers rather than Tinfoil's list `1800 / 5750`, so a model swap does not change how fast users burn their allowance.
+- The Fireworks rows (0033, 0037) are Fireworks' Standard list prices. With `AGENT_FIREWORKS_SERVICE_TIER=priority`, the hosted agent records each reply at the stored price times the model's Priority surcharge (1.25x GLM 5.3, 1.5x MiniMax M3; [`pricing.ts`](../../../backend/src/hosted-agent/pricing.ts)), so the 5 h and 7 d caps bound real spend. All managed models draw on the same allowance.
+- The tier is a multiplier rather than its own row because `inference_prices` is keyed `(provider, model)` and the tier is a deployment setting, not a property of the model.
 - `calculateInferenceCost` (`usage-ledger.ts:101`) applies Anthropic's cache-write multipliers (5-minute ×1.25, 1-hour ×2) only when `provider === 'anthropic'`. Cache reads bill at the row's nullable `cache_read_nano_usd_per_token` when it is set, for any provider; a null rate falls back to ×0.1 of input for Anthropic and to the full input rate for everyone else. Migration `0037` sets it for the two Fireworks rows; the Anthropic rows leave it null. The confidential receipt contract has no cache fields ([`shared/inference-usage.ts:9`](../../../shared/inference-usage.ts)).
 - Cache tokens above the prompt-token total, or a cost above Postgres `bigint` max, throw (`InferenceTokenCountOutOfRangeError` / `InferenceCostOverflowError`).
 

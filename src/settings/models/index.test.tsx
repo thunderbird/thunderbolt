@@ -14,6 +14,7 @@ import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { v7 as uuidv7 } from 'uuid'
 import { MemoryRouter } from 'react-router'
+import { AddModelForm } from './add-model-form'
 import ModelsPage from './index'
 import { systemModelMenuMessage } from './model-detail'
 import { useModelsPageState } from './use-models-page-state'
@@ -231,6 +232,56 @@ describe('add model form', () => {
       expect(screen.getByTestId('catalog-models')).toHaveTextContent('GPT Test')
     } finally {
       getSpy.mockRestore()
+    }
+  })
+
+  it('lets the user type a model id through the Custom entry when the catalog fails', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const getSpy = spyOn(http, 'get').mockImplementation(() => {
+      throw new TypeError('Load failed')
+    })
+
+    const FailingCatalogHarness = () => {
+      const page = useModelsPageState()
+      return (
+        <div>
+          <span data-testid="model-value">{page.addForm.form.watch('model')}</span>
+          <button onClick={page.openAddPanel}>open</button>
+          <button onClick={() => page.addForm.onProviderChange('custom')}>use Custom provider</button>
+          <button
+            onClick={() => {
+              page.addForm.form.setValue('url', 'https://api.example.com/v1', { shouldValidate: false })
+              page.addForm.onCatalogInvalidated()
+            }}
+          >
+            enter URL
+          </button>
+          <AddModelForm {...page.addForm} />
+        </div>
+      )
+    }
+
+    try {
+      renderWithReactivity(<FailingCatalogHarness />, { tables: ['models'] })
+      fireEvent.click(screen.getByText('open'))
+      fireEvent.click(screen.getByText('use Custom provider'))
+      fireEvent.click(screen.getByText('enter URL'))
+
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(screen.getByText(/Network request failed/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Select model…'))
+      fireEvent.click(screen.getByRole('option', { name: 'Custom' }))
+      fireEvent.change(screen.getByPlaceholderText('e.g., gpt-4-turbo-preview'), {
+        target: { value: 'otari/some-model' },
+      })
+
+      expect(screen.getByTestId('model-value')).toHaveTextContent('otari/some-model')
+    } finally {
+      getSpy.mockRestore()
+      consoleError.mockRestore()
     }
   })
 })

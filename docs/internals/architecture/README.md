@@ -6,7 +6,7 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 
 - **Offline-first.** Local SQLite is the source of truth. The app works without network.
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
-- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls go through the universal proxy at `/v1/proxy`, which maps caller headers to `X-Proxy-Passthrough-*` and forwards the caller's credentials (`src/lib/proxy-fetch.ts`). Only a Tauri build compiled with the `native_fetch` Cargo feature can skip it (when `proxy_enabled` is off), but that feature defaults to off and no build in this repo passes it, so every shipped build proxies ([tauri-shell.md](tauri-shell.md#the-native_fetch-cargo-feature)). Managed models use `/v1/chat/*` instead.
+- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls through `createProxyFetch` go device-direct via native HTTP on Tauri desktop and mobile by default; `proxy_enabled` opts into the backend universal proxy at `/v1/proxy` for non-loopback targets. Loopback always stays direct on Tauri. Web always proxies. Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on. Tinfoil keeps its attested client ([tauri-shell.md](tauri-shell.md#native-http)). Managed models use `/v1/chat/*` instead.
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
 - **E2E encrypted.** Always on: content is encrypted before leaving the device and the server stores only ciphertext for it ([E2E Encryption](e2e-encryption.md)).
 
@@ -55,7 +55,8 @@ graph TB
 
   CRYPTO -- "sync (HTTPS)" --> PS
   STATE -- "REST / HTTPS" --> API
-  AI -- "own key (SSE)" --> PROXY
+  AI -- "own key: web or Cloud Proxy on (SSE)" --> PROXY
+  AI -- "own key: Tauri default (SSE)" --> LLM
   AI -- "managed models (SSE)" --> INFERENCE
   UI -- "OAuth redirect" --> AUTH
 
@@ -83,7 +84,7 @@ One React + Vite codebase targets three runtimes:
 
 Startup (open the database, decide whether to wait for sync, seed and reconcile defaults, run data migrations, build the HTTP client) is one function: [app-initialization.md](app-initialization.md). The send path is [chat-runtime.md](chat-runtime.md); the Rust side is [tauri-shell.md](tauri-shell.md).
 
-Local state is Zustand plus TanStack Query, with Drizzle over WA-SQLite. WA-SQLite runs everywhere, Tauri included, because there is no native SQLite adapter: the `safari-tauri` config in `src/db/powersync/database.ts` opens with `OPFSCoopSyncVFS` where OPFS exists and `IDBBatchAtomicVFS` where it does not (WebKitGTK on Tauri Linux).
+Local state is Zustand plus TanStack Query, with Drizzle over WA-SQLite. WA-SQLite runs everywhere, Tauri included, because there is no native SQLite adapter: both configs in `src/db/powersync/database.ts` open with `OPFSCoopSyncVFS` where OPFS exists and `IDBBatchAtomicVFS` where it does not ([details](powersync-sync-middleware.md#local-storage)).
 
 ### The WebView Sidebar
 
@@ -134,9 +135,9 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/posthog/*`                             | Analytics event relay                                                                                                                  |
 | `/v1/swagger`                               | OpenAPI spec (gated by `SWAGGER_ENABLED`)                                                                                              |
 
-There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and MCP rides the universal proxy like every other upstream (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists). The one MCP client on the server is the hosted agent's, which calls the operator's `AGENT_MCP_SERVERS` directly ([acp-agents.md](acp-agents.md#hosted-agent)).
+There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and HTTP/SSE MCP uses the universal proxy in the web app and for non-loopback targets with Use Cloud Proxy on in desktop/mobile; with it off (the default), desktop/mobile sends it directly from the device (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists). Loopback HTTP/SSE MCP servers always connect directly in desktop and mobile. The one MCP client on the server is the hosted agent's, which calls the operator's `AGENT_MCP_SERVERS` directly ([acp-agents.md](acp-agents.md#hosted-agent)).
 
-`createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`), today `/v1/config`, `/v1/health`, `/static`, `/v1/api/auth/sso`, `/v1/api/auth/device`, `/v1/posthog`, `/v1/proxy/ws`, `/v1/debug-transcripts/intake`. The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
+`createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
 
 ### Dev-Time Database
 
@@ -150,16 +151,16 @@ Downloads and uploads use different credentials: downloads the sync JWT plus the
 
 ### Two Sync Paths
 
-| Runtime                 | Path                                                                        | Why                                                                                                                                 |
-| ----------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Chrome · Edge · Firefox | Custom **SharedWorker** (`ThunderboltSharedSyncImplementation`)             | Shares one sync connection across tabs; runs E2E crypto in-worker                                                                   |
-| Safari · iOS · Tauri    | **Dedicated Worker** hosting the same `ThunderboltSharedSyncImplementation` | `OPFSCoopSyncVFS` and `tauri://` rule out a SharedWorker, so `enableMultiTabs: true` drives a dedicated Worker over Comlink instead |
+| Runtime                 | Path                                                                        | Why                                                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome · Edge · Firefox | Custom **SharedWorker** (`ThunderboltSharedSyncImplementation`)             | Shares one sync connection across tabs; runs E2E crypto in-worker                                                                        |
+| Safari · iOS · Tauri    | **Dedicated Worker** hosting the same `ThunderboltSharedSyncImplementation` | `tauri://` and iOS WKWebView rule out a SharedWorker, so `database.enableMultiTabs: true` drives a dedicated Worker over Comlink instead |
 
-Both run the transformer in a worker and end with decrypted data in local SQLite; only the worker _kind_ differs. Rationale and file map: [powersync-sync-middleware.md](powersync-sync-middleware.md).
+Both run the transformer in a worker and end with decrypted data in local SQLite; only the worker _kind_ differs. Where multi-tab is off (Android, and the IndexedDB fallback when OPFS is unavailable), sync runs in the tab instead, through the same transformers. Rationale and file map: [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
 ### The `powersync-web-internal` Alias
 
-`ThunderboltSharedSyncImplementation` extends `SharedSyncImplementation`, an `@internal` class in `@powersync/web`, reached through the `powersync-web-internal` alias in `vite.config.ts` (`node_modules/@powersync/web/lib/src`). When upgrading `@powersync/web`, verify the class still exists there: a breaking change produces no TypeScript error.
+`ThunderboltSharedSyncImplementation` extends `SharedSyncImplementation`, an `@internal` class in `@powersync/web`, reached through the `powersync-web-internal` alias in `vite.config.ts` (`node_modules/@powersync/web/lib`), as are `WorkerClient` and `SharedWorkerConnectionRequest`. When upgrading `@powersync/web`, follow the upgrade note in [powersync-sync-middleware.md](powersync-sync-middleware.md#accessing-powersync-internals): a breaking change produces no TypeScript error.
 
 ### Schema Split
 

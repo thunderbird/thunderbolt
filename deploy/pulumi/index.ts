@@ -68,7 +68,6 @@ if (isSharedStack) {
     imagePrefix,
     ghcrToken: config.getSecret('ghcrToken'),
     authHostname: config.require('authHostname'),
-    powersyncHostname: config.require('powersyncHostname'),
     cloudflareZoneId: config.get('cloudflareZoneId'),
     cloudflareApiToken: config.getSecret('cloudflareApiToken'),
     aiSecrets: {
@@ -125,6 +124,7 @@ if (isSharedStack) {
       marketing: config.require('marketingHostname'),
       app: config.require('appHostname'),
       api: config.require('apiHostname'),
+      powersync: config.require('powersyncHostname'),
     },
     cloudflareZoneId: cloudflareZoneIdInput,
     cloudflareApiToken: cloudflareApiTokenInput,

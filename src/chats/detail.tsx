@@ -199,14 +199,13 @@ export default function ChatDetailPage() {
   const projectId = isNew ? searchParams.get('projectId') : null
   const newChatId = useNewChatId(isNew, projectId)
 
-  // Warm the lazily-split message subtree for new chats as well as existing
-  // ones: the first send swaps the empty state for the message list mid-
-  // animation, and an unloaded chunk would leave the enter fade running over
-  // an empty Suspense shell with the messages popping in afterwards. Firing
-  // from an effect keeps the chunk out of the entry bundle either way.
+  // Overlap the renderer load with existing-chat hydration. Blank chats warm it
+  // from ChatContentReady after the composer renders (typing also preloads it).
   useEffect(() => {
-    void loadChatMessageList()
-  }, [])
+    if (!isNew) {
+      void loadChatMessageList()
+    }
+  }, [isNew])
 
   if (!chatThreadId) {
     return null

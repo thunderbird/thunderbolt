@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { http } from '@/lib/http'
 import { setAuthToken } from '@/lib/auth-token'
 import { isSafeUrl, normalizeBackendUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
-import { startSsoFlowLoopback } from '@/lib/sso-loopback'
+import { SsoCallbackError, startSsoFlowLoopback } from '@/lib/sso-loopback'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { useAuth } from '@/contexts'
@@ -24,67 +24,85 @@ import Loading from '@/loading'
 const SsoRedirect = () => {
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const authClient = useAuth()
+  const { data: session, isPending } = authClient.useSession()
   const analytics = useAnonymousPromotionAnalytics()
-  const [error, setError] = useState(false)
+  const [status, setStatus] = useState<'waiting-for-session' | 'redirecting' | 'error'>('waiting-for-session')
   const [retryKey, setRetryKey] = useState(0)
   const normalizedCloudUrl = normalizeBackendUrl(cloudUrl)
+  // A signed-out session becomes pending again on reconnect. Only wait for its
+  // first resolution; background refetches must not restart an active sign-in.
+  const isSessionReady = status !== 'waiting-for-session' || !isPending
+
+  const redirectToSso = useEffectEvent(async (signal: AbortSignal) => {
+    const baseUrl = normalizedCloudUrl.replace(/\/v1$/, '')
+    try {
+      // AuthGate already resolved this session on normal entry. Direct visits
+      // wait below, so analytics never adds another request before sign-in.
+      await analytics.captureAnonId(authClient, session)
+      if (signal.aborted) {
+        return
+      }
+
+      // Tauri desktop: use system browser + loopback server (RFC 8252)
+      if (isTauri()) {
+        analytics.persistForSso()
+        const token = await startSsoFlowLoopback(baseUrl)
+        if (token) {
+          setAuthToken(token)
+          window.location.replace('/')
+        } else {
+          setStatus('error') // timeout
+        }
+        return
+      }
+
+      // Web: redirect the browser to the IdP
+      const data = await http
+        .post(`${baseUrl}/v1/api/auth/sign-in/sso`, {
+          json: {
+            providerId: 'sso',
+            callbackURL: window.location.origin + '/',
+            errorCallbackURL: window.location.origin + '/sso-error',
+          },
+          credentials: 'include',
+          signal,
+        })
+        .json<{ url: string }>()
+
+      if (!isSafeUrl(data.url)) {
+        console.error('SSO redirect blocked: unsafe URL', data.url)
+        setStatus('error')
+        return
+      }
+
+      // Persist the anon id to sessionStorage BEFORE the browser navigates away.
+      analytics.persistForSso()
+      window.location.href = data.url
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return
+      }
+      if (err instanceof SsoCallbackError) {
+        window.location.replace(`/sso-error?error=${encodeURIComponent(err.code)}`)
+        return
+      }
+      console.error('SSO redirect failed:', err)
+      setStatus('error')
+    }
+  })
 
   useEffect(() => {
-    setError(false)
-    const abortController = new AbortController()
-    const baseUrl = normalizedCloudUrl.replace(/\/v1$/, '')
-
-    const redirectToSso = async () => {
-      try {
-        // Capture the anonymous id before any redirect so persistForSso() has it available.
-        await analytics.captureAnonId(authClient)
-
-        // Tauri desktop: use system browser + loopback server (RFC 8252)
-        if (isTauri()) {
-          analytics.persistForSso()
-          const token = await startSsoFlowLoopback(baseUrl)
-          if (token) {
-            setAuthToken(token)
-            window.location.replace('/')
-          } else {
-            setError(true) // timeout
-          }
-          return
-        }
-
-        // Web: redirect the browser to the IdP
-        const data = await http
-          .post(`${baseUrl}/v1/api/auth/sign-in/sso`, {
-            json: { providerId: 'sso', callbackURL: window.location.origin + '/' },
-            credentials: 'include',
-            signal: abortController.signal,
-          })
-          .json<{ url: string }>()
-
-        if (!isSafeUrl(data.url)) {
-          console.error('SSO redirect blocked: unsafe URL', data.url)
-          setError(true)
-          return
-        }
-
-        // Persist the anon id to sessionStorage BEFORE the browser navigates away.
-        analytics.persistForSso()
-        window.location.href = data.url
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return
-        }
-        console.error('SSO redirect failed:', err)
-        setError(true)
-      }
+    if (!isSessionReady) {
+      return
     }
-
-    redirectToSso()
+    setStatus('redirecting')
+    const abortController = new AbortController()
+    void redirectToSso(abortController.signal)
 
     return () => abortController.abort()
-  }, [normalizedCloudUrl, retryKey])
+  }, [normalizedCloudUrl, retryKey, isSessionReady])
 
-  if (error) {
+  if (status === 'error') {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[length:var(--font-size-body)] text-muted-foreground">

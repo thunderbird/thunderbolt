@@ -4,8 +4,7 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { useConfigStore } from '@/api/config-store'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
@@ -39,14 +38,9 @@ const customAgent: Agent = {
   userId: 'user-42',
 }
 
-beforeEach(() => {
-  useConfigStore.setState({ config: {}, configLoaded: false })
-})
-
 afterEach(() => {
   cleanup()
   restoreViewport()
-  useConfigStore.setState({ config: {}, configLoaded: false })
 })
 
 describe('buildAgentItems', () => {
@@ -197,26 +191,6 @@ describe('AgentSelector', () => {
     expect(screen.getAllByText('Thunderbolt')).toHaveLength(1)
   })
 
-  it('is a plain label in minimal mode even with several agents and an Add Agent action', () => {
-    useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
-    render(
-      <AgentSelector
-        selectedAgent={builtInAgent}
-        agents={[builtInAgent, customAgent]}
-        onSelect={() => {}}
-        onAddAgent={() => {}}
-      />,
-    )
-
-    const trigger = screen.getByTestId('agent-selector-trigger')
-    expect(trigger.closest('button')).toBeNull()
-
-    fireEvent.click(trigger)
-
-    expect(screen.queryByText('My Remote Agent')).not.toBeInTheDocument()
-    expect(screen.queryByText('Add Agent')).not.toBeInTheDocument()
-  })
-
   describe('when the only available agent is not the selected one', () => {
     // A chat created before hosted-agent discovery finished keeps the built-in
     // fallback, so the hosted agent is the one choice and must stay reachable.
@@ -227,15 +201,7 @@ describe('AgentSelector', () => {
       return onSelect
     }
 
-    it('keeps the menu outside minimal mode', () => {
-      const onSelect = openAndPick()
-
-      fireEvent.click(screen.getByText('RAG Chat'))
-      expect(onSelect).toHaveBeenCalledWith(systemAgent)
-    })
-
-    it('keeps the menu in minimal mode', () => {
-      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+    it('keeps the menu', () => {
       const onSelect = openAndPick()
 
       fireEvent.click(screen.getByText('RAG Chat'))

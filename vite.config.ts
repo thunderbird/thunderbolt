@@ -60,13 +60,15 @@ export default defineConfig({
       external: ['bun:sqlite'],
       treeshake: {
         moduleSideEffects: [
-          // @powersync/common doesn't declare "sideEffects" in its package.json, so every
-          // module re-exported by its lib/index.js barrel is treated as potentially
-          // side-effectful and eagerly retained in the entry chunk via @powersync/react's
-          // static import. The modules are pure declarations (classes/consts only), so
-          // mark them side-effect-free to let the unused sync-client machinery tree-shake
-          // out of the entry and live only in the lazy PowerSync chunk.
+          // @powersync/common and @powersync/shared-internals don't declare "sideEffects" in
+          // their package.json, so every module re-exported by their lib/index.js barrels is
+          // treated as potentially side-effectful and eagerly retained in the entry chunk via the
+          // static imports in @powersync/react (common) and @powersync/tanstack-react-query
+          // (shared-internals). The modules are pure declarations (classes/consts
+          // only), so mark them side-effect-free to let the unused sync-client machinery
+          // tree-shake out of the entry and live only in the lazy PowerSync chunk.
           { test: /@powersync[\\/]common[\\/]lib/, sideEffects: false },
+          { test: /@powersync[\\/]shared-internals[\\/]lib/, sideEffects: false },
         ],
       },
       output: {
@@ -84,7 +86,7 @@ export default defineConfig({
       // Vite lists public/ once, right after this hook; a copy in buildStart lands after that list.
       configResolved({ publicDir, cacheDir }) {
         copyPowerSyncAssets(
-          path.resolve(__dirname, 'node_modules/@powersync/web/dist'),
+          path.resolve(__dirname, 'node_modules/@powersync/web/dist/worker'),
           path.join(publicDir, '@powersync'),
           cacheDir,
         )
@@ -160,6 +162,7 @@ export default defineConfig({
     // module-scope layer bookkeeping.
     dedupe: [
       '@powersync/common',
+      '@powersync/shared-internals',
       '@powersync/react',
       'react',
       '@radix-ui/react-dismissable-layer',
@@ -168,18 +171,9 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@shared': path.resolve(__dirname, './shared'),
-      // Exposes PowerSync internal lib path so our custom SharedWorker can extend
-      // SharedSyncImplementation (not in public exports map).
-      'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib/src'),
-      // Resolve @powersync/common to its unbundled per-module build instead of the
-      // single-file dist/bundle.mjs. A single ES module can only live in one chunk,
-      // so the bundled build forces ALL of common retained anywhere in the app into
-      // the entry chunk (entry code imports parseQuery/WatchedQueryListenerEvent via
-      // @powersync/react + @powersync/tanstack-react-query). The per-module build
-      // lets rolldown keep only those helpers in the entry and move the sync client
-      // machinery into the lazy PowerSync chunk. Like powersync-web-internal above,
-      // lib/ is an internal path — verify it still exists when upgrading the package.
-      '@powersync/common': path.resolve(__dirname, 'node_modules/@powersync/common/lib/index.js'),
+      // Exposes PowerSync's internal lib/ so our sync worker can extend SharedSyncImplementation and
+      // import WorkerClient and SharedWorkerConnectionRequest (none is in the public exports map).
+      'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
       // ---- In-browser Pi harness (lazy `@shared/agent-core` chunk) Node shims ----
       // The harness runs `@earendil-works/pi-agent-core` + `pi-ai` + `just-bash` +
       // ZenFS in the browser. The four coding tools are now plain `AgentTool`s over

@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
+import { isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
-import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
 export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
@@ -121,6 +120,9 @@ export const isWebMobilePlatform = (): boolean => {
   return p === 'ios' || p === 'android'
 }
 
+/** Phones and tablets: the Tauri mobile apps and iOS/Android browsers, including iPadOS posing as macOS. */
+export const isTouchPlatform = (): boolean => isMobile() || isWebMobilePlatform()
+
 /** Returns true when the web browser is running on a desktop OS (macOS, Windows, Linux). */
 export const isWebDesktopPlatform = (): boolean => {
   const p = getWebOsPlatform()
@@ -194,6 +196,50 @@ export const isOpfsAvailable = async (): Promise<boolean> => {
 }
 
 /**
+ * Whether an IndexedDB database with this name exists. Browsers without `indexedDB.databases()`
+ * (Firefox before 126) count as yes, so they keep their data.
+ */
+export const hasIndexedDbDatabase = async (
+  name: string,
+  idb: Pick<IDBFactory, 'databases'> = indexedDB,
+): Promise<boolean> => {
+  if (typeof idb.databases !== 'function') {
+    return true
+  }
+  const databases = await idb.databases()
+  return databases.some((database) => database.name === name)
+}
+
+/** Whether the OPFS root holds a file with this name. */
+export const hasOpfsFile = async (
+  name: string,
+  root?: Pick<FileSystemDirectoryHandle, 'getFileHandle'>,
+): Promise<boolean> => {
+  const directory = root ?? (await navigator.storage.getDirectory())
+  try {
+    await directory.getFileHandle(name)
+    return true
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      return false
+    }
+    throw error
+  }
+}
+
+/**
+ * Deletes an IndexedDB database. Resolves early if another tab holds it open; the browser
+ * finishes the delete once that tab closes.
+ */
+export const deleteIndexedDbDatabase = (name: string, idb: Pick<IDBFactory, 'deleteDatabase'> = indexedDB) =>
+  new Promise<void>((resolve, reject) => {
+    const request = idb.deleteDatabase(name)
+    request.onsuccess = () => resolve()
+    request.onblocked = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+
+/**
  * Checks whether IndexedDB is available and openable.
  * iOS Lockdown Mode ("Configure Web Browsing") and some private/enterprise
  * configs leave the `indexedDB` global present but make open() throw or error,
@@ -237,60 +283,23 @@ export const isIndexedDbAvailable = async (idb?: IDBFactory | null): Promise<boo
   }
 }
 
-// -----------------------------------------------------------------------------
-// Capabilities
-// -----------------------------------------------------------------------------
-
-export type Capabilities = {
-  native_fetch: boolean
-}
-
-const defaultCapabilities: Capabilities = { native_fetch: false }
-
-// Fetch once, then memoize for the rest of the session.
-const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
-  if (!isTauri()) {
-    return defaultCapabilities
-  }
-
-  try {
-    return await invoke<Capabilities>('capabilities')
-  } catch (err) {
-    console.error('Failed to retrieve capabilities:', err)
-    return defaultCapabilities
-  }
-}, 'capabilities')
-
-export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
-
-/**
- * Determines the appropriate database type based on the platform and the
- * capabilities exposed by the backend.
- *
- * Note: this is asynchronous because we might need to query the backend once.
- */
+/** Return the app database implementation. */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
 }
 
-/**
- * Determines the appropriate database path based on platform and OPFS availability
- * @param databaseType - The type of database being used
- * @param appDataDirPath - The application data directory path
- * @returns The database path to use
- */
-export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
-  // For native databases (bun-sqlite), use file path directly
-  if (databaseType === 'bun-sqlite') {
-    return `${appDataDirPath}/thunderbolt.db`
-  }
+/** The PowerSync database's filename: the OPFS file, or the IndexedDB database name. */
+export const powerSyncDbFilename = 'thunderbolt-sync.db'
 
-  // For wa-sqlite and powersync, check OPFS availability
+/**
+ * Determines the PowerSync database path from OPFS availability
+ * @param appDataDirPath - The application data directory path
+ * @returns The database path to use, or `':memory:'` when OPFS is unavailable
+ */
+export const getDatabasePath = async (appDataDirPath: string): Promise<string> => {
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    // Use different filename for PowerSync to avoid conflicts during migration
-    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
-    return `${appDataDirPath}/${filename}`
+    return `${appDataDirPath}/${powerSyncDbFilename}`
   }
 
   console.warn('OPFS not available (likely private browsing), using in-memory database')

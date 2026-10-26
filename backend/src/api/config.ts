@@ -39,6 +39,9 @@ export const createConfigRoutes = (settings: Settings) =>
     builtInAgentEnabled: !settings.disableBuiltInAgent,
     allowCustomAgents: settings.allowCustomAgents,
     minimalMode: settings.minimalMode,
+    brandLogoUrl: settings.brandLogoUrl,
+    brandLogoDarkUrl: settings.brandLogoDarkUrl,
+    brandLogoAlt: settings.brandLogoAlt,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
     defaults: {

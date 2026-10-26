@@ -4,10 +4,10 @@
 
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
-import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
-import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { catalogRequiresApiKey } from './model-policy'
@@ -44,7 +44,7 @@ export const thunderboltModelCatalog: AvailableModel[] = defaultModels
 /** Anthropic's models endpoint is not OpenAI-compatible: auth is `x-api-key` (not a
  *  bearer), a version header is mandatory, and rows carry `display_name`. Listing
  *  requires the user's key, so the catalog is key-gated like OpenAI/OpenRouter. */
-const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> => {
+const fetchAnthropicModels = async (apiKey: string, getProxyFetch: () => FetchFn): Promise<AvailableModel[]> => {
   const response = await http
     .get('https://api.anthropic.com/v1/models', {
       // The default page size is 20; 1000 is the documented maximum.
@@ -55,7 +55,7 @@ const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> =
         // Anthropic rejects browser (CORS) requests without this opt-in header.
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      fetch,
+      fetch: getProxyFetch(),
     })
     .json<{ data: Array<{ id: string; display_name?: string }> }>()
   // The endpoint doesn't report tool support; every listed Claude model supports tools.
@@ -96,28 +96,16 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
 export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
   JSON.stringify([provider, apiKey ?? '', url ?? ''])
 
-/** The OpenAI-compatible models endpoint for a provider, or undefined when its
- *  prerequisite (API key, base URL) is missing so no request should be made. */
-const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): string | undefined => {
-  if (provider === 'openai') {
-    return apiKey ? 'https://api.openai.com/v1/models' : undefined
-  }
-  if (provider === 'openrouter') {
-    return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
-  }
-  if (provider === 'custom' && url) {
-    return `${normalizeOpenAiBaseUrl(url)}/models`
-  }
-  return undefined
-}
-
 /** Fetches a provider catalog only when explicitly requested by the caller. */
-export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogRequest): Promise<AvailableModel[]> => {
+export const fetchModelsForProvider = async (
+  { provider, apiKey, url }: CatalogRequest,
+  getProxyFetch: () => FetchFn,
+): Promise<AvailableModel[]> => {
   if (provider === 'thunderbolt') {
     return thunderboltModelCatalog
   }
   if (provider === 'anthropic') {
-    return apiKey ? fetchAnthropicModels(apiKey) : []
+    return apiKey ? fetchAnthropicModels(apiKey, getProxyFetch) : []
   }
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
@@ -130,13 +118,21 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  const endpoint = resolveCatalogEndpoint({ provider, apiKey, url })
-  if (!endpoint) {
+  // Reuse chat's transport: web needs the proxy for hosts that don't answer preflights;
+  // native follows the Cloud Proxy setting.
+  const connection = resolveOpenAiCompatConnection(
+    { provider, apiKey: apiKey ?? null, url: url ?? null },
+    getProxyFetch,
+  )
+  if (!connection) {
     return []
   }
 
   const response = await http
-    .get(endpoint, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fetch })
+    .get(`${connection.baseURL}/models`, {
+      headers: connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {},
+      fetch: connection.fetch,
+    })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data
     .map((model) => ({

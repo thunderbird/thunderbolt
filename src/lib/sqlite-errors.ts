@@ -33,17 +33,7 @@ export const isInsertConflictError = (error: unknown): boolean => {
     return true
   }
 
-  // Message-based (wa-sqlite worker, PowerSync, generic)
+  // Message-based (PowerSync, generic)
   const msg = err.message ?? (errToCheck instanceof Error ? errToCheck.message : String(errToCheck))
-  if (insertConflictMessages.some((m) => msg.includes(m))) {
-    return true
-  }
-
-  // wa-sqlite: "Unexpected step result: 2067" (code in message)
-  const match = msg.match(/Unexpected step result: (\d+)/)
-  if (match && insertConflictCodes.has(Number(match[1]))) {
-    return true
-  }
-
-  return false
+  return insertConflictMessages.some((m) => msg.includes(m))
 }

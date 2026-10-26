@@ -2,21 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Navigate, Outlet } from 'react-router'
+import { Navigate, Outlet, useLocation } from 'react-router'
 
 import Loading from '@/loading'
 import { BrowserCheck } from './browser-check'
-import { useAuthGate, type AuthRequirement, type RedirectTarget } from './use-auth-gate'
+import { useAuthGate, type AuthRequirement } from './use-auth-gate'
 
 type AuthGateProps = {
   /** What auth state is required to access child routes */
   require: AuthRequirement
-}
-
-const redirectPaths: Record<RedirectTarget, string> = {
-  sso: '/sso-redirect',
-  waitlist: '/waitlist',
-  home: '/',
 }
 
 /**
@@ -43,7 +37,7 @@ const redirectPaths: Record<RedirectTarget, string> = {
  * </Route>
  */
 export const AuthGate = ({ require }: AuthGateProps) => {
-  const state = useAuthGate(require)
+  const state = useAuthGate(require, useLocation().search)
 
   if (state.status === 'loading') {
     return <Loading />
@@ -55,7 +49,12 @@ export const AuthGate = ({ require }: AuthGateProps) => {
     return <BrowserCheck onRetry={state.retry} />
   }
   if (state.status === 'redirect') {
-    return <Navigate to={redirectPaths[state.target]} replace />
+    return (
+      <>
+        <Loading />
+        <Navigate to={state.to} replace />
+      </>
+    )
   }
 
   return <Outlet />

@@ -79,7 +79,7 @@ const persistentWebkit = base.extend({
       }
       page.on('worker', (worker) => {
         const path = new URL(worker.url()).pathname
-        if (!path.startsWith('/@powersync/worker/') || diagnostics.length >= 20) {
+        if (!path.startsWith('/@powersync/') || diagnostics.length >= 20) {
           return
         }
         diagnostics.push(`worker started ${path}`)
@@ -98,7 +98,7 @@ const persistentWebkit = base.extend({
           return
         }
         if (
-          !url.pathname.startsWith('/@powersync/worker/') &&
+          !url.pathname.startsWith('/@powersync/') &&
           (response.request().resourceType() !== 'script' || response.status() < 400)
         ) {
           return

@@ -81,12 +81,13 @@ Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 
 ### SAML
 
-| Variable           | Default | What it does                                                                      |
-| ------------------ | ------- | --------------------------------------------------------------------------------- |
-| `SAML_ENTRY_POINT` | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                    |
-| `SAML_ENTITY_ID`   | none    | Service provider entity ID. Must match the SAML client in your identity provider. |
-| `SAML_IDP_ISSUER`  | none    | Identity provider entity ID.                                                      |
-| `SAML_CERT`        | none    | Identity provider signing certificate, base64, without PEM headers.               |
+| Variable                   | Default | What it does                                                                                                                                                                                                            |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAML_ENTRY_POINT`         | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                                                                                                                                                          |
+| `SAML_ENTITY_ID`           | none    | Service provider entity ID. Must match the SAML client in your identity provider.                                                                                                                                       |
+| `SAML_IDP_ISSUER`          | none    | Identity provider entity ID.                                                                                                                                                                                            |
+| `SAML_CERT`                | none    | Identity provider signing certificate, base64, without PEM headers.                                                                                                                                                     |
+| `SAML_ALLOW_IDP_INITIATED` | `false` | `true` accepts SAML responses that answer no login request, which is a login started at the provider's dashboard. Read the risk in [Authentication](./authentication.md#logging-in-from-the-providers-dashboard) first. |
 
 Under OIDC, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. SAML has no discovery step, so it does not need the entry. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
@@ -128,7 +129,7 @@ Lets users sign in with a passkey, and unlock sync on a new device with it inste
 > The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
 
 > [!NOTE]
-> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
+> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. The Windows app follows the same rule. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
 
 ## Models and inference
 
@@ -212,7 +213,19 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 | `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
 
-`MINIMAL_MODE=true` hides the Settings section, the starter skill chips, Projects and the account control, and turns off slash-command skills, so `/` is ordinary text in the composer.
+`MINIMAL_MODE=true` hides the Settings section, the header's agent name (replaced by your logo when one is set, see below), the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
+
+Minimal mode has no theme control: the app follows the visitor's stored theme, which is the system theme unless they chose otherwise before minimal mode was on.
+
+| Variable              | Default | What it does                                                                                                                                                             |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BRAND_LOGO_URL`      | empty   | In minimal mode, a logo shown in the header for visitors who open the site directly in a browser, not inside an app (see below). An `https:` URL or a `data:image/` URL. |
+| `BRAND_LOGO_DARK_URL` | empty   | The logo for dark theme. Falls back to `BRAND_LOGO_URL`. Same URL rules.                                                                                                 |
+| `BRAND_LOGO_ALT`      | empty   | The logo's accessible name. Falls back to the agent's name.                                                                                                              |
+
+The logo shows only to visitors who open the site directly in a browser. Inside a native app's WebView the app's own chrome already carries the branding, so the logo stays hidden. The app counts as embedded once a load carries `?embed=app`: any load carrying it sets the marker. The marker is saved in `localStorage` from then on, so it survives navigation and restarts, and the web UI never clears it. There is no user agent detection: link the app with `?embed=app`, and a visitor who opens the plain URL sees the logo.
+
+A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
 
 ### Hosted agent
 
@@ -229,6 +242,7 @@ The agent replies in the language of the conversation. When the conversation doe
 | `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.                                                            |
 | `AGENT_MODEL`                     | empty       | Model the agent uses; its id picks the provider. Required when enabled.                                                    |
 | `AGENT_MAX_STEPS`                 | `8`         | Most model steps per reply, at most 21. A slow reply takes its last step early ([Cost](#hosted-agent-tools)).              |
+| `AGENT_FIREWORKS_SERVICE_TIER`    | `standard`  | `priority` uses Fireworks' Priority tier: less often load-shed, but dearer. Fireworks models only. Invalid stops startup.  |
 | `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                                                               |
 | `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers whose read-only tools the agent may call. See [Tools](#hosted-agent-tools).                      |
 | `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                                                                |
@@ -260,7 +274,7 @@ With `AGENT_ENABLED=true`, the API refuses to start on a malformed value, an unk
 - **Connections.** Each server is connected, and its tools listed, on the first reply that needs it, within 5 seconds, and that connection is reused after that by every visitor, so a server must keep no per-session state. A tool list is fixed for the connection's life; restart the API to pick up a server's new tools. A server that cannot be reached is left out of that reply: the model is told its tools are unavailable, the API logs `agent_mcp_server_unavailable`, and the next reply tries again, waiting up to 5 seconds before its model starts.
 - **Failed calls.** A call may take 15 seconds, a reconnect included. A slower one, or one whose server fails, goes back to the model as a short error it can answer, and the next call, from that reply or another, reconnects. A reply whose reconnect fails makes no more calls to that server. A reconnect lists the tools again, and a call to a tool the server no longer offers read-only is refused. An error the server returns for that call alone goes back as the server's message. The visitor sees a generic error in its place, and the API logs `agent_mcp_tool_call_failed`.
 - **Limits.** A reply makes at most 20 tool calls, and the model reads at most 20,000 characters of each result, text only. A server may send at most 1 MB in one response: a larger result goes back to the model as an error, and a larger tool list leaves the server out of the reply. Each server offers at most 32 tools, the first it lists, and a tool whose title, description and input schema come to more than 8,000 characters is left out; `agent_mcp_tools_skipped` names both.
-- **Cost.** N tool round trips take N + 1 model steps, at most `AGENT_MAX_STEPS`. The last step offers no tools, so the model answers. A reply takes it early once it has made its 20 tool calls, or has used all but 30 seconds of its 2 minutes, so slow calls still leave time for an answer. Every step resends the conversation, the tool definitions and the tool calls and results so far, and every step is billed, so tools multiply what a reply costs. The spending limit is checked once, before the reply, so one reply can go past it by up to its own cost; the next is refused.
+- **Cost.** N tool round trips take N + 1 model steps, at most `AGENT_MAX_STEPS`. The last step offers no tools, so the model answers. A reply takes it early once it has made its 20 tool calls, or has used all but 30 seconds of its 2 minutes, so slow calls still leave time for an answer. Every step resends the conversation, the tool definitions and the tool calls and results so far, and every step is billed, so tools multiply what a reply costs. The spending limit is checked once, before the reply, so one reply can go past it by up to its own cost; the next is refused. On `priority`, each reply is recorded at the model's Fireworks Priority rate (the stored Standard price times its surcharge: 1.25x for GLM 5.3, 1.5x for MiniMax M3), so recorded spend and the per-visitor spending limits track the real cost. Priority on a Fireworks model without a known surcharge stops startup.
 - **Across turns.** Tool results are not carried into the next turn: the browser's copy of the conversation drops them, so a follow-up question calls the tools again.
 - **Visibility.** Tool calls, their inputs and the text the model reads stream to the visitor's browser along with the reply. Visitors' questions reach your MCP servers as tool inputs, and those servers may log them.
 
@@ -335,6 +349,13 @@ Request headers need no configuration: the API echoes back whatever the browser 
 | `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                    |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
+
+With `TRUSTED_PROXY` empty, the API cannot read a client address from a header it trusts. Two limiters then put every client in one shared bucket instead of skipping the limit:
+
+- The API's own limit on authentication requests (10 per minute) counts the address of whatever connects to it. Behind a reverse proxy or CDN, that is the proxy.
+- The built-in authentication limiter reads `X-Forwarded-For`. It trusts that header only when it holds a single address. A request that crossed two or more hops carries several, and the limiter then ignores the header and puts the request in one bucket per route. So does a request that arrives without the header. Those buckets allow 10 requests per minute, 3 per 10 seconds for starting an SSO sign-in, 3 per minute for requesting or entering an emailed sign-in code, and 30 per second for session checks.
+
+The symptom is many users getting `429` at the same moment, most often when a team signs in at the start of the day. If Cloudflare or Akamai sits in front of the API, set `TRUSTED_PROXY` to `cloudflare` or `akamai`. Behind any other proxy there is no setting that fixes it, because the limits are fixed: all users behind that proxy share them.
 
 Apart from anonymous sign-in, the limits are not configurable:
 

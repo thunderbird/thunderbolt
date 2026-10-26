@@ -370,6 +370,10 @@ msgstr "このエージェントからのすべてを常に許可"
 msgid "Always ask"
 msgstr "常に確認する"
 
+#: src/lib/sso-error-messages.ts
+msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+msgstr ""
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "分析中…"
@@ -791,8 +795,8 @@ msgid "Clear sky"
 msgstr "晴れ"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database…"
-msgstr "データベースを消去しています…"
+#~ msgid "Clearing Database…"
+#~ msgstr "データベースを消去しています…"
 
 #: src/settings/devices.tsx
 msgid "CLI"
@@ -2720,6 +2724,10 @@ msgstr "OAuth の検証に失敗しました"
 msgid "Objects"
 msgstr "物"
 
+#: src/settings/preferences.tsx
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "オフラインです。オンラインに戻ると変更が同期されます。"
@@ -3326,6 +3334,10 @@ msgstr "OneDrive のファイルやドキュメントを検索して扱います
 msgid "Search chats, models, skills, agents…"
 msgstr "チャット、モデル、スキル、エージェントを検索…"
 
+#: src/search/palette/search-palette.tsx
+msgid "Search chats…"
+msgstr "チャットを検索…"
+
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "接続を検索"
@@ -3641,9 +3653,17 @@ msgstr "サインインを承認しました"
 msgid "Sign-in denied"
 msgstr "サインインを拒否しました"
 
+#: src/components/sso-error.tsx
+msgid "Sign-in failed"
+msgstr ""
+
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
 msgstr "サインインしました"
+
+#: src/lib/sso-error-messages.ts
+msgid "Sign-in was cancelled, or your identity provider did not grant access."
+msgstr ""
 
 #: src/components/signed-out.tsx
 msgid "Signed Out"
@@ -4161,6 +4181,10 @@ msgstr "このサーバーには認可が必要です。「認可」をクリッ
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "このサーバーは OAuth を使用します。追加して認可すると接続できます。"
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "このサインインリクエストは有効期限が切れています。ターミナルから新しく開始してください。"
@@ -4337,6 +4361,7 @@ msgstr "信頼済みのデバイス"
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -4600,6 +4625,10 @@ msgstr "早期アクセスをご希望ですか？"
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr ""
 
+#: src/lib/sso-error-messages.ts
+msgid "We could not sign you in. Please try again."
+msgstr ""
+
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
 msgstr "ブラウザを確認できませんでした。接続を確認して、もう一度お試しください。"
@@ -4684,8 +4713,8 @@ msgid "What's in it?"
 msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-msgstr "有効にすると、リクエストは Thunderbolt のクラウドプロキシ経由で送信されます。"
+#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgstr "有効にすると、リクエストは Thunderbolt のクラウドプロキシ経由で送信されます。"
 
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"

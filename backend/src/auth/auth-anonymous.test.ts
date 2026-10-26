@@ -19,6 +19,7 @@ import { createApp } from '@/index'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
+import { createSessionCookie } from '@/test-utils/session-cookie'
 import { eq } from 'drizzle-orm'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -219,34 +220,14 @@ describe('anonymous plugin — session-fixation guard', () => {
   })
 
   it('rejects /sign-in/anonymous with 400 when caller is already authenticated (non-anonymous)', async () => {
-    const realEmail = `fixation-guard@example.com`
-    await db.insert(waitlist).values({ id: crypto.randomUUID(), email: realEmail, status: 'approved' })
-
-    await auth.api.sendVerificationOTP({ body: { email: realEmail, type: 'sign-in' } })
-    const otp = (mockSendSignInEmail.mock.calls as unknown as Array<[{ otp: string }]>)[0]?.[0]?.otp
-    expect(otp).toBeDefined()
-
-    const challengeToken = await createTestChallenge(db, realEmail)
-
-    // Sign in via asResponse to capture the session cookie
-    const signInResponse = (await auth.api.signInEmailOTP({
-      body: { email: realEmail, otp: otp! },
-      headers: new Headers({ [challengeTokenHeader]: challengeToken }),
-      asResponse: true,
-    })) as Response
-
-    expect(signInResponse.status).toBe(200)
-
-    // Extract session cookie from the response
-    const setCookieHeader = signInResponse.headers.get('set-cookie')
-    expect(setCookieHeader).toBeTruthy()
+    const sessionCookie = await createSessionCookie(auth, db)
 
     // Attempt to acquire an anonymous session while holding a real session (via cookie).
     // Better Auth throws APIError directly when called via auth.api (not HTTP); catch it.
     let thrownError: unknown
     try {
       await auth.api.signInAnonymous({
-        headers: new Headers({ Cookie: setCookieHeader! }),
+        headers: new Headers({ Cookie: sessionCookie }),
       })
     } catch (err) {
       thrownError = err

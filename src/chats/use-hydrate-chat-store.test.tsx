@@ -16,7 +16,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
-import { getModel } from '@/dal/models'
+import { getModel, updateModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
@@ -356,6 +356,30 @@ describe('useHydrateChatStore', () => {
         await result.current.hydrateChatStore()
       })
     }
+
+    it('restores the selected model for a new chat without creating a thread', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+
+      await hydrateNewChat()
+
+      const session = getCurrentSession()
+      expect(session?.selectedModel.id).toBe(modelId)
+      expect(session?.chatThread).toBeNull()
+      expect(session?.chatInstance.messages).toEqual([])
+      expect(session?.triggerData).toBeNull()
+    })
+
+    it('falls back to a system model when the selected model is disabled', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+      await updateModel(getDb(), modelId, { enabled: 0 })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedModel.isSystem).toBe(1)
+      expect(getCurrentSession()?.selectedModel.id).not.toBe(modelId)
+    })
 
     it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
       await createAgent(getDb(), {

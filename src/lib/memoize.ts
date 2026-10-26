@@ -25,7 +25,7 @@ export const clearMemoizeCache = () => {
  *
  * The cached value lives for the lifetime of the process or, in the browser,
  * the page.  This is ideal for expensive operations that only need to run
- * once per session, such as querying Tauri capabilities.
+ * once per session, such as querying app metadata.
  *
  * Example
  * ```ts

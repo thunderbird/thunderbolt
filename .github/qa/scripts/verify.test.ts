@@ -494,26 +494,45 @@ describe('replay', () => {
 
   test('a real-AI finding still confirms on 2 failures in the bug check step beside 1 run that never reached it', async () => {
     const real = 'c5-widgets-connections-desktop'
-    for (const title of ['twice', 'once']) {
+    for (const title of ['twice', 'once', 'late']) {
       const finding = { ...makeFinding(title, pageError), charter: real }
       await Bun.write(join(outDir, real, 'findings', `${title}.json`), JSON.stringify(finding))
       await Bun.write(join(outDir, real, finding.repro_spec), validSpec(title))
     }
     const { signInTimeout, failedInStep, passed } = playwrightResults
+    const recorded = (result: ReplayResult, run: string): ReplayResult => ({
+      ...result,
+      attachments: [
+        { name: 'video', path: join(outDir, `${run}.webm`) },
+        { name: 'trace', path: join(outDir, `${run}.zip`) },
+      ],
+    })
 
     const result = await replay(
       outDir,
       resultsRunner({
         [`${real}/repro/twice.spec.ts`]: [failedInStep, signInTimeout, failedInStep],
         [`${real}/repro/once.spec.ts`]: [failedInStep, signInTimeout, passed],
+        // The judge gets the run that reached the bug, not the stuck sign-in that came first.
+        [`${real}/repro/late.spec.ts`]: [
+          recorded(signInTimeout, 'stuck'),
+          recorded(failedInStep, 'reached'),
+          recorded(failedInStep, 'again'),
+        ],
         [relative(outDir, controlSpec())]: [passed, passed, passed],
       }),
       qaDir,
     )
 
     expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.runs, replay.reason])).toEqual([
+      ['late', 2, 2, undefined],
       ['twice', 2, 2, undefined],
     ])
+    const late = result.confirmed.find(({ id }) => id === 'late')
+    expect(late?.replay.error).toBe('Error: expect(received).toBe')
+    expect([late?.artifacts.video, late?.artifacts.trace]).toEqual(
+      ['reached.webm', 'reached.zip'].map((file) => relative(process.cwd(), join(outDir, file))),
+    )
     expect(result.flaky.map(({ id, replay }) => [id, replay.reason])).toEqual([
       ['once', '1 of 3 runs failed before the bug check step'],
     ])

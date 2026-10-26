@@ -306,7 +306,8 @@ const failedInBugStep = (steps: ReplayStep[]): boolean =>
   )
 
 /**
- * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run.
+ * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run that
+ * reached the bug step, or of the first failed run when none did.
  * Every test in the file counts, so a file is confirmed only if all of its runs failed. A run that failed outside the
  * `bugStep` step never reached the bug: it is `inconclusive` and left out of `runs` (`withUnreachedReason` decides).
  */
@@ -323,6 +324,11 @@ const outcomesBySpec = (report: ReplayReport) => {
       else outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       if (!failed) continue
       if (reached) outcome.replay.failed++
+      // The judge reads a stuck sign-in as a bad locator, so a run that reached the bug replaces an unreached one's.
+      if (reached && outcome.replay.failed === 1) {
+        outcome.replay.error = undefined
+        outcome.artifacts = {}
+      }
       // All of the run's errors (a timeout names the pending step only in the second one), without ANSI colors
       // and capped: enough for the judge to tell a bad locator from the asserted bug.
       outcome.replay.error ??= stripVTControlCharacters(result.errors.map((e) => e.message).join('\n')).slice(0, 1_500)
@@ -389,6 +395,7 @@ const failureIsBug = (oracle: Oracle | undefined) =>
   oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
 
 const waitsFor = z.object({ extendedWaitUntil: z.unknown() })
+const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAnimationToEnd: z.unknown() })])
 /**
  * Whether a failure-oracle flow's last command after its settles is a plain `assertVisible` or `assertNotVisible`, or
  * for `stuck` an `extendedWaitUntil`. Replay splits there, so a block (`runFlow`, `retry`) would put the whole way to
@@ -413,7 +420,6 @@ const serialize = (commands: unknown[], appId: string) => {
 }
 
 const consentFile = join(import.meta.dir, '../control/consent.yaml')
-const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAnimationToEnd: z.unknown() })])
 
 /** Where a flow waits for the first screen after sign-in, three dots matching the chat's ellipsis; -1 if it never does. */
 const landingIndex = (commands: unknown[], session: string) =>

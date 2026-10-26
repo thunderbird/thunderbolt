@@ -26,15 +26,22 @@
    below is thrown away:
    - Import only from `@playwright/test`, from exactly `'../../../e2e/helpers'`, for a `layout` finding
      from exactly `'../../../.github/qa/layout'`, and for a c1 spec from exactly `'../../../.github/qa/ports'`.
+   - Put the assertion that fails while the bug exists in `await test.step('bug check', async () => { … })`, after
+     the steps that reach the screen, and keep those steps outside it. Replay counts a run as the bug only when it
+     failed inside that step: a run that failed on the way there (sign-in, a locator) proves nothing. A spec without
+     the step is thrown away.
    - Helpers: `loginViaEmailCode(page)` signs in a fresh user and waits for the chat composer (it returns the email);
-     `sendChatPrompt(page, text)` sends a chat message; `collectPageErrors(page)` returns an array that fills with
-     uncaught errors; `openSidebarOnMobile(page)` opens the sidebar on a phone. The base URL is set, so use relative
+     `enterEmailCode(page, email?)` only opens the entry page, requests a code and types it, so it also works with
+     onboarding on (it returns the email). Both take an earlier call's email to sign the same user in again, and
+     then wait out the backend's 15 s cooldown per address. `sendChatPrompt(page, text)` sends a chat message;
+     `collectPageErrors(page)` returns an array that fills with uncaught errors; `openSidebarOnMobile(page)` opens
+     the sidebar on a phone. The base URL is set, so use relative
      URLs such as `page.goto('/settings/skills')`.
    - Before its first chat message, a spec selects the model you used, just as you did:
      `await page.getByTestId('model-selector-trigger').click()`, then
      `await page.getByRole('button', { name: 'Opus 5.5', exact: true }).click()` (or the other model's name).
      Otherwise no reply ever comes.
-   - A `layout` spec reaches the screen, repeats the action and asserts
+   - A `layout` spec reaches the screen, repeats the action and asserts, in its `bug check` step,
      `expect(await layoutProblems(page)).toEqual([])`, where `layoutProblems` comes from
      `'../../../.github/qa/layout'`. It returns the problems the page shows by then, each `{ kind, target }`. Set a
      phone's viewport first, as below.

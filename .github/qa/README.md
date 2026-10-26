@@ -181,13 +181,18 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    a `visual` finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is
    `<session>/mcp` (`mcp-b` for c7's second browser), and the job uploads its screenshots and console logs with
    the session.
-3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
-   failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
-   (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,
-   the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and takes no place under
-   the replay cap. It is confirmed when its screenshot exists, a browser screenshot result in the session's
-   transcript names it, no Write or Edit call touched it, and it is a PNG or JPEG within the API's image limits
-   (10 MB base64-encoded, 8000 px per side). Otherwise it is dropped. A native finding has a Maestro flow
+3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. A spec
+   asserts the bug inside `test.step('bug check', …)` (`bugStep` in `findings.ts`), and the lint drops one without
+   it. A run counts as failed only when it failed inside that step, read from the JSON report: the step holds an
+   error, or the test timed out while it ran (duration -1). A run that failed before it, in its sign-in for example,
+   never reached the bug: it is inconclusive, and since Playwright runs no replacement the finding is flaky, with
+   `replay.reason` saying how many runs failed early. The control spec has no such step, so any failure of it counts.
+   Otherwise 3 of 3 failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`);
+   1 or 2 are flaky (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against
+   the real providers, the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and
+   takes no place under the replay cap. It is confirmed when its screenshot exists, a browser screenshot result in
+   the session's transcript names it, no Write or Edit call touched it, and it is a PNG or JPEG within the API's
+   image limits (10 MB base64-encoded, 8000 px per side). Otherwise it is dropped. A native finding has a Maestro flow
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
    session dir decides which, never the finding's own `charter` or `viewport`: a finding whose repro does not fit
    its session is dropped at the schema gate, and every other finding takes its session's platform as its
@@ -200,10 +205,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
    hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
-   bug. A `layout` run whose flow failed before the quoted line showed never reached the screen: it is inconclusive
-   and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of 3 conclusive
-   runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the extra runs. A run
-   whose flow passed without the line still counts as not shown. A `layout` flow whose last command is `assertVisible`
+   bug. A `layout` or log-oracle run whose flow failed before the quoted line showed never reached the screen: it is
+   inconclusive and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of
+   3 conclusive runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the
+   extra runs. A run whose flow passed without the line still counts as not shown. For the other oracles, where a
+   failed flow is the bug, the flow's last command that is not `waitForAnimationToEnd` is the bug's assertion:
+   everything before it runs first as its own `maestro test`, in the same launch, so a failure there is inconclusive
+   and run again in the same way. A `layout` flow whose last command is `assertVisible`
    or `assertNotVisible` is dropped at the lint gate: it would fail on every run without the line, so each of those
    runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
    time: a run starts only if it can end 2 minutes (for the sanitize and the upload) before replay-native's 90
@@ -234,10 +242,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    filed as usual.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
    one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
-   A `spec` task's original spec must pass 3 times on the patch. A `visual`
-   task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and `repro/` dir of
-   a repro spec, so its imports and the Playwright config work), a check that fails because of the defect; the
-   workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
+   A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
+   `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
+   A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and
+   `repro/` dir of a repro spec, so its imports and the Playwright config work), a check that fails because of the
+   defect; the workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
    with it, and both must be true. The fix job runs that check three times on the patched dev stack, then three
    times on the builds without the patch. A real-AI web task (`real`) is fixed on the fake AI, and `verify-real` runs
    its spec three times on the real providers against the patched frontend; all three must pass. Any check a task
@@ -250,13 +259,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
    `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow
    three times on it with no key; a layout or log oracle also
-   needs the probe's ready line in every run. With `unpatched` (a visual check, or an Android real-AI task, which
-   the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail
-   there every time. A native fix PR adds no regression spec. `publish` needs `passed: true` from every platform in
-   `verifyNative` for the fingerprint, web tasks included, and from `verify-real` for a real-AI web task. Only then
-   does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the diagnosis (for a native platform, "the flow still
-   fails on the native platform") and the ticket gets `Human Required`. `preview-deploy.yml` deploys no preview for
-   `qa-fix/*` PRs.
+   needs the probe's ready line in every run. A run that never reached the bug, by replay's rules, shows neither the
+   bug nor the fix: it is run again (at most 3 extra runs) and counts on neither side, so a patch that keeps breaking
+   the way there ends with fewer than 3 counted runs and does not pass. With `unpatched` (a visual check, or an
+   Android real-AI task, which the keyless run can only check on the fake AI) the flow also runs on the build without
+   the patch and must fail there every time. A native fix PR adds no regression spec. `publish` needs
+   `passed: true` from every platform in `verifyNative` for the fingerprint, web tasks included, and from
+   `verify-real` for a real-AI web task. Only then does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the
+   diagnosis (for a native platform, "the flow still fails on the native platform") and the ticket gets
+   `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.

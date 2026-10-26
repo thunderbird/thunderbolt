@@ -17,8 +17,11 @@ new user, record each attempt as you go, and prove every bug you find with quote
 ## Signing in
 
 Open the app, enter a fresh address, press Continue and type the code `12345678`. If a "Welcome" dialog appears,
-press Continue. Every new address is a brand-new user. Take fresh addresses only from the pattern under "Your run"
-below, with a new number each time: an address you make up yourself may belong to another session's user.
+press Continue. The backend sends at most one code per address every 15 s. A second request inside that time is
+refused and the code field never shows, which is not a bug. To sign in again with the same address, wait until 15 s
+have passed since you asked for its last code. Every new address is a brand-new user. Take fresh addresses only from
+the pattern under "Your run" below, with a new number each time: an address you make up yourself may belong to
+another session's user.
 
 ## The app's AI
 

@@ -432,6 +432,25 @@ export const lintReproSpec = (source: string): string[] => {
   return reasons
 }
 
+/**
+ * The title of the `test.step` in which a repro spec asserts the expected behaviour. Replay counts a failed run as the
+ * bug only when it failed inside this step; a failure on the way there (sign-in, navigation) proves nothing.
+ */
+export const bugStep = 'bug check'
+
+/** Why a repro spec has no `test.step(bugStep, …)` call; empty when it has one. */
+export const bugStepProblems = (source: string): string[] => {
+  const isBugStep = (node: ts.Node): boolean =>
+    (ts.isCallExpression(node) &&
+      node.expression.getText() === 'test.step' &&
+      node.arguments[0] !== undefined &&
+      ts.isStringLiteralLike(node.arguments[0]) &&
+      node.arguments[0].text === bugStep) ||
+    ts.forEachChild(node, isBugStep) === true
+  const sourceFile = ts.createSourceFile('repro.spec.ts', source, ts.ScriptTarget.Latest, true)
+  return isBugStep(sourceFile) ? [] : [`no test.step('${bugStep}', …) holds the assertion`]
+}
+
 /** Evidence or a log line with run-specific noise removed, so the same bug quoted in two runs compares equal. */
 export const normalize = (text: string) =>
   text

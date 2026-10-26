@@ -11,6 +11,8 @@ import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { z } from 'zod'
 import {
+  bugStep,
+  bugStepProblems,
   hasOracle,
   lintReproSpec,
   loadFindings,
@@ -62,11 +64,18 @@ export type Verified = {
 
 /** The part of Playwright's JSON report that replay reads. `errors` lists files that failed to load. */
 export type ReplayReport = { config: { rootDir: string }; suites: ReplaySuite[]; errors: { message: string }[] }
+/** A `test.step`. `duration` is -1 when the test ended (a timeout) while the step still ran. */
+type ReplayStep = { title: string; duration: number; error?: unknown; steps?: ReplayStep[] }
 type ReplaySuite = {
   specs: {
     file: string
     tests: {
-      results: { status?: string; errors: { message: string }[]; attachments: { name: string; path?: string }[] }[]
+      results: {
+        status?: string
+        errors: { message: string }[]
+        attachments: { name: string; path?: string }[]
+        steps?: ReplayStep[]
+      }[]
     }[]
   }[]
   suites?: ReplaySuite[]
@@ -77,7 +86,8 @@ export type RunReplay = (specs: string[], outDir: string, opts?: { list?: boolea
 /**
  * One run of a Maestro flow on a device. `layout`: the probe's `[qa-layout]` lines in the WebView log during the run,
  * each from `[qa-layout]` on. `logs`: every other new line of the WebView and backend logs, as `webview: <line>` or
- * `backend: <line>`. `video`: the run's recording. `signInFailed`: the harness's sign-in failed, so the flow never ran.
+ * `backend: <line>`. `video`: the run's recording. `signInFailed`: the steps run first (`NativeFlow`'s `signIn`)
+ * failed, so the flow never ran.
  */
 export type FlowRun = {
   passed: boolean
@@ -285,9 +295,18 @@ const readList = async (path: string) =>
 const allSpecs = (suites: ReplaySuite[]): ReplaySuite['specs'] =>
   suites.flatMap((suite) => [...suite.specs, ...allSpecs(suite.suites ?? [])])
 
+/** Whether the run failed inside the `bugStep` step: the step holds an error, or the test timed out while it ran. */
+const failedInBugStep = (steps: ReplayStep[]): boolean =>
+  steps.some(
+    (step) =>
+      (step.title === bugStep && (step.error !== undefined || step.duration === -1)) ||
+      failedInBugStep(step.steps ?? []),
+  )
+
 /**
  * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run.
- * Every test in the file counts, so a file is confirmed only if all of its runs failed.
+ * Every test in the file counts, so a file is confirmed only if all of its runs failed. A run that failed outside the
+ * `bugStep` step never reached the bug: it is `inconclusive`, left out of `runs`, and `reason` says so.
  */
 const outcomesBySpec = (report: ReplayReport) => {
   const outcomes = new Map<string, Pick<VerifiedFinding, 'replay' | 'artifacts'>>()
@@ -296,9 +315,12 @@ const outcomesBySpec = (report: ReplayReport) => {
     const outcome = outcomes.get(file) ?? { replay: { failed: 0, runs: 0 }, artifacts: {} }
     for (const result of spec.tests.flatMap((test) => test.results)) {
       if (result.status === 'skipped') continue
-      outcome.replay.runs++
-      if (result.status !== 'failed' && result.status !== 'timedOut') continue
-      outcome.replay.failed++
+      const failed = result.status === 'failed' || result.status === 'timedOut'
+      const reached = !failed || failedInBugStep(result.steps ?? [])
+      if (reached) outcome.replay.runs++
+      else outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
+      if (!failed) continue
+      if (reached) outcome.replay.failed++
       // All of the run's errors (a timeout names the pending step only in the second one), without ANSI colors
       // and capped: enough for the judge to tell a bad locator from the asserted bug.
       outcome.replay.error ??= stripVTControlCharacters(result.errors.map((e) => e.message).join('\n')).slice(0, 1_500)
@@ -310,6 +332,11 @@ const outcomesBySpec = (report: ReplayReport) => {
       outcome.artifacts.trace ??= artifact('trace')
     }
     outcomes.set(file, outcome)
+  }
+  for (const { replay } of outcomes.values()) {
+    if (replay.inconclusive) {
+      replay.reason = `${replay.inconclusive} of ${replay.inconclusive + replay.runs} runs failed before the ${bugStep} step`
+    }
   }
   return outcomes
 }
@@ -348,7 +375,10 @@ const assertion = z.union([z.object({ assertVisible: selector }), z.object({ ass
  */
 const endsOnAssertion = (yaml: string) => assertion.safeParse(commandsOf(yaml).at(-1)).success
 
-/** A native flow as a device runs it: `signIn`, when set, is the harness's sign-in, run first in the same launch. */
+/**
+ * A native flow as a device runs it. `signIn`, when set, runs first in the same launch: the harness's sign-in, and for
+ * an oracle whose bug is a failed flow, every step before the bug's assertion. A failure there is never the bug.
+ */
 type NativeFlow = { yaml: string; signIn?: string }
 
 /** Our own serialization of commands that passed the allow list once already, or of the harness's own file. */
@@ -409,6 +439,8 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
  * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
  * the sign-in screen among them, runs as written. A c1 flow that expects onboarding past the privacy step has the
  * harness's way through it added to the sign-in step (`consentSplit`), so a failure there never proves a bug either.
+ * When the oracle makes a failed flow the bug, the flow's own steps up to its last command that is not a settle join
+ * that first step too, so only a failure of that command, the bug's assertion, can prove the bug.
  */
 const withSignIn = async (
   yaml: string,
@@ -423,14 +455,18 @@ const withSignIn = async (
   const signIn = harness ? [...commandList.parse(Bun.YAML.parse(await Bun.file(signInFile).text())), wait] : []
   const flow = harness ? commands.slice(from) : commands
   const split = await consentSplit(flow, session, oracle)
-  const before = [...signIn, ...(split?.signIn ?? [])]
+  const rest = split?.flow ?? flow
+  // Where a failure is the bug, only the last command that is not a settle asserts it; everything before only reaches it.
+  const failureIsBug = oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
+  const assertAt = failureIsBug ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
+  const before = [...signIn, ...(split?.signIn ?? []), ...rest.slice(0, Math.max(assertAt, 0))]
   if (before.length === 0) return { yaml }
-  return { signIn: serialize(before, appId), yaml: serialize(split?.flow ?? flow, appId) }
+  return { signIn: serialize(before, appId), yaml: serialize(rest.slice(Math.max(assertAt, 0)), appId) }
 }
 
 /**
  * The flow replay ran for a native finding: the allow list's own serialization, never the model's text, after the
- * harness's sign-in when replay ran one.
+ * steps replay ran first when it split them off.
  */
 const ranFlow = async (outDir: string, file: FindingFile) => {
   const check = checkMaestroFlow(await Bun.file(flowPath(outDir, file)).text(), {
@@ -440,7 +476,9 @@ const ranFlow = async (outDir: string, file: FindingFile) => {
   // Replay already dropped anything else, so this only fails on a flow changed after replay.
   if (!check.ok) throw new Error(`repro flow no longer passes the allow list: ${check.problems.join('; ')}`)
   const { signIn, yaml } = await withSignIn(check.yaml, file.charterDir, appIdOf(file), file.finding.oracle)
-  return signIn ? `# The harness's sign-in:\n${signIn}\n# Then, in the same launch:\n${yaml}` : yaml
+  return signIn
+    ? `# Run first; a failure here never counts as the bug:\n${signIn}\n# Then, in the same launch:\n${yaml}`
+    : yaml
 }
 const driverTimeout = 'iOS driver not ready in time'
 const logOracles = new Set(['console-error', 'page-error', 'http-5xx'])
@@ -522,11 +560,14 @@ type Device = { runFlow: RunFlow; outDir: string; next: () => number; clock?: Le
 export const extraRuns = 3
 
 /**
- * A native `layout` run whose flow failed before the probe logged the quoted line: it never reached the screen, so it
- * says nothing about the bug (run 39380764343, where a point tap landed before the screen was ready).
+ * A native `layout` or log-oracle run whose flow failed without showing the quoted line: it never reached the screen,
+ * so it says nothing about the bug (run 39380764343, where a point tap landed before the screen was ready). For the
+ * other oracles `withSignIn` splits off the steps before the bug's assertion instead.
  */
 const unreached = (oracle: FindingFile['finding']['oracle']) =>
-  oracle.type === 'layout' ? (run: FlowRun) => !run.passed && flowFailure(oracle, run) === undefined : undefined
+  oracle.type === 'layout' || logOracles.has(oracle.type)
+    ? (run: FlowRun) => !run.passed && flowFailure(oracle, run) === undefined
+    : undefined
 
 /**
  * Runs a checked flow three times. A run whose driver did not start is run once more and only the second try counts.
@@ -642,8 +683,10 @@ type Oracle = FindingFile['finding']['oracle']
  * allow list, then runs three times on the patched app, where a run fails when the flow fails or shows the bug: the
  * finding's `oracle` by the replay's rule, or for the fix agent's visual check (no oracle) its own assertions. A run
  * whose driver never started counts as failed, and so does a run without the probe's ready line when the oracle reads
- * the WebView log (a dead stream or a silenced probe shows no bug either). A run whose harness sign-in failed is
- * replaced, as in replay, and counts on neither side. `passed` needs three counted runs, every one clean.
+ * the WebView log (a dead stream or a silenced probe shows no bug either). A run that never reached the bug, by the
+ * replay's rules (its sign-in or the steps before the bug's assertion failed, or a layout or log-oracle flow failed
+ * without the line), is replaced as in replay and counts on neither side: it shows neither the bug nor the fix.
+ * `passed` needs three counted runs, every one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. A visual check needs it, and
  * so does a real-AI session: verified here on the fake AI, its flow must fail there without the patch to prove
@@ -668,17 +711,19 @@ export const verifyNativeFix = async (
     oracle && webviewOracles.has(oracle.type) && !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
       ? 'the layout probe never reported ready'
       : undefined
+  const notReached = oracle && unreached(oracle)
   const patched = await threeRuns(
     { runFlow: opts.patched, outDir, next },
     flow,
     session,
     (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
+    notReached,
   )
   const { failed, runs, error, reason } = patched.replay
-  // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
+  // A run that never reached the bug does not count, so a patch that breaks the way there cannot pass on no runs.
   const result = { fp, platform, runs, failed, passed: failed === 0 && runs === 3, error: error ?? reason }
   if (!original) return result
-  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug)
+  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug, notReached)
   const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
   return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
 }
@@ -707,11 +752,14 @@ export const oracleOf = async (flow: string, session: string): Promise<Oracle | 
 const confirmingFailures = (file: FindingFile, runs: number) =>
   realAiCharters.has(file.charterDir) ? Math.ceil((runs * 2) / 3) : runs
 
-/** Why the control spec says the stack is broken, or undefined when it passed every run. */
-const stackProblem = (control: VerifiedFinding['replay'], report: ReplayReport) =>
-  control.runs > 0 && control.failed === 0
+/**
+ * Why the control spec says the stack is broken, or undefined when it passed every run. It has no `bugStep`, so its
+ * failures all count as inconclusive.
+ */
+const stackProblem = ({ failed, runs, inconclusive = 0, error }: VerifiedFinding['replay'], report: ReplayReport) =>
+  runs > 0 && failed + inconclusive === 0
     ? undefined
-    : `control spec failed ${control.failed}/${control.runs} runs: ${control.error ?? report.errors[0]?.message ?? 'it did not run'}`
+    : `control spec failed ${failed + inconclusive}/${runs + inconclusive} runs: ${error ?? report.errors[0]?.message ?? 'it did not run'}`
 
 /** The specs that fail to load, each with its first error line. Loaded one at a time: the error may name no file. */
 const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay) => {
@@ -728,7 +776,9 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * up to `replayCap` findings, `nativeReplayCap` on a native leg (the rest are `deferred`). A finding that does not
  * fit its session dir (`sessionProblem`: the dir, not the model's fields, picks spec or flow) is dropped at gate
  * `schema`; every other finding takes the dir's platform as its `viewport`.
- * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
+ * A spec asserts the expected behaviour in its `bugStep` step, which the lint requires, and a run counts as failed only
+ * when it failed inside that step. A run that failed before it is inconclusive, and since Playwright runs no
+ * replacement, the finding is then flaky. Otherwise failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
  * and `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped
@@ -737,8 +787,9 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * otherwise, whatever the stack's health. A native finding's `repro_flow` passes the Maestro allow list instead
  * (`checkMaestroFlow`, with `${EMAIL}` as its only variable), is signed in by the harness when it skips the code
  * (`withSignIn`), and runs three times through `runFlow`, after `control/stack.yaml` passed three times;
- * `flowFailure` says what counts as the bug in a run. A `layout` run whose flow failed before the line showed is
- * inconclusive and replaced, at most `extraRuns` times, and no run starts that might end after the leg's timeout,
+ * `flowFailure` says what counts as the bug in a run. A `layout` or log-oracle run whose flow failed before the line
+ * showed, and for the other oracles a run that failed before the flow's last command, is inconclusive and replaced, at
+ * most `extraRuns` times, and no run starts that might end after the leg's timeout,
  * read from `now` against `legStart` (epoch ms, `QA_LEG_START` in CI); with fewer than three conclusive runs the
  * finding is flaky, with the reason in `replay.reason`. A `layout` flow that ends on an assertion is dropped at gate
  * `lint`: it would fail on every run without the line, and each such run would be rerun as inconclusive.
@@ -806,7 +857,9 @@ export const replay = async (
       continue
     }
     const spec = Bun.file(join(outDir, specPath(file)))
-    const problems = (await spec.exists()) ? lintReproSpec(await spec.text()) : ['repro spec not found']
+    const source = (await spec.exists()) ? await spec.text() : undefined
+    const problems =
+      source === undefined ? ['repro spec not found'] : [...lintReproSpec(source), ...bugStepProblems(source)]
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
     else lintClean.push(file)
   }

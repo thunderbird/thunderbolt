@@ -7,15 +7,46 @@ import { expect, type Page } from '@playwright/test'
 // Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
 const e2eSignInCode = '12345678'
 
-const otpRequestTimes = new Map<string, number>()
-
-/** The backend refuses a second code for the same email within 15 s (`defaultCooldownMs` in waitlist/routes.ts). */
-const waitForOtpCooldown = async (email: string) => {
-  const lastRequest = otpRequestTimes.get(email)
-  const remaining = lastRequest ? 15_250 - (Date.now() - lastRequest) : 0
-  if (remaining > 0) {
-    await new Promise((resolve) => setTimeout(resolve, remaining))
+/**
+ * The backend refuses a second code for the same email within 15 s (`defaultCooldownMs` in waitlist/routes.ts). This
+ * remembers when this process last asked for a code per address, and `wait` sleeps until the address may ask again.
+ * Tests inject `now` and `sleep`.
+ */
+export const createOtpCooldown = (
+  now = Date.now,
+  sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+) => {
+  const requestTimes = new Map<string, number>()
+  return {
+    wait: async (email: string) => {
+      const lastRequest = requestTimes.get(email)
+      const remaining = lastRequest === undefined ? 0 : 15_250 - (now() - lastRequest)
+      if (remaining > 0) {
+        await sleep(remaining)
+      }
+    },
+    // Stamped after the response, so it is never earlier than the server's own cooldown timestamp.
+    requested: (email: string) => requestTimes.set(email, now()),
   }
+}
+
+const otpCooldown = createOtpCooldown()
+
+/**
+ * Sign in by hand up to the code: open the entry page, request a code for `email` (a fresh address by default) and
+ * type it. Nothing after the code is awaited, so it works with onboarding on as well. Signing in again with the same
+ * address first waits out the backend's per-address cooldown. Returns the address.
+ */
+export const enterEmailCode = async (page: Page, email = `e2e-${crypto.randomUUID()}@thunderbolt.test`) => {
+  await page.goto('/')
+  await otpCooldown.wait(email)
+  await page.getByPlaceholder('Email', { exact: true }).fill(email)
+  const codeRequested = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/waitlist/join')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await codeRequested
+  otpCooldown.requested(email)
+  await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
+  return email
 }
 
 /**
@@ -23,22 +54,14 @@ const waitForOtpCooldown = async (email: string) => {
  * wait for the authenticated chat UI (onboarding is disabled in the e2e config).
  * Pass the email a previous call returned to sign a second browser context into the same account.
  */
-export const loginViaEmailCode = async (page: Page, email = `e2e-${crypto.randomUUID()}@thunderbolt.test`) => {
+export const loginViaEmailCode = async (page: Page, email?: string) => {
   // Returning users can see this dialog after the chat has already rendered.
   await page.addLocatorHandler(page.getByRole('dialog', { name: 'Welcome', exact: true }), async (dialog) => {
     await dialog.getByRole('button', { name: 'Continue', exact: true }).click()
   })
-  await page.goto('/')
-  await waitForOtpCooldown(email)
-  await page.getByPlaceholder('Email', { exact: true }).fill(email)
-  const codeRequested = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/waitlist/join')
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await codeRequested
-  // Stamped after the response, so it is never earlier than the server's own cooldown timestamp.
-  otpRequestTimes.set(email, Date.now())
-  await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
+  const signedIn = await enterEmailCode(page, email)
   await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
-  return email
+  return signedIn
 }
 
 /**

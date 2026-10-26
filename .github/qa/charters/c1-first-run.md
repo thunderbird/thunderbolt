@@ -17,7 +17,9 @@ Start state: the onboarding build, at **http://localhost:1425**.
    Function: `delete-account`.
 
 Specs for this charter: import `onboardingURL` from exactly `'../../../.github/qa/ports'`, start with
-`test.use({ baseURL: onboardingURL })` and sign in by hand (`page.goto('/')`, fill the "Email" field, press Continue,
-fill `input[autocomplete="one-time-code"]` with `12345678`), because `loginViaEmailCode` expects onboarding to be off.
+`test.use({ baseURL: onboardingURL })` and sign in with `const email = await enterEmailCode(page)`, because
+`loginViaEmailCode` expects onboarding to be off. To sign back in with the same address, call
+`enterEmailCode(page, email)`: the backend refuses a second code for an address within 15 s, and the helper waits
+that out. Give such a spec `test.setTimeout(120_000)`.
 
 Out of bounds: settings beyond what these steps need.

@@ -35,7 +35,9 @@ import { loginViaEmailCode } from '../../../e2e/helpers'
 
 test('${title}', async ({ page }) => {
   await loginViaEmailCode(page)
-  await expect(page.getByText('${title}')).toBeVisible()
+  await test.step('bug check', async () => {
+    await expect(page.getByText('${title}')).toBeVisible()
+  })
 })
 `
 
@@ -135,9 +137,16 @@ const writeSession = async (steps: (readonly [string, string])[]) => {
 
 const controlSpec = () => join(qaDir, 'control/stack.spec.ts')
 
+/** The bug step of a run with that status: holding the error when the run failed or timed out. */
+const bugStepOf = (status: string) =>
+  status === 'failed' || status === 'timedOut'
+    ? [{ title: 'bug check', duration: 12, error: { message: 'Error: expect(locator).toBeVisible() failed' } }]
+    : [{ title: 'bug check', duration: 12 }]
+
 /**
  * A runner that reports the given result statuses per spec file (relative to `outDir`), one Playwright spec entry
- * per run, plus the control spec's statuses. Every run carries a long, colored error message.
+ * per run, plus the control spec's statuses. Every run carries a long, colored error message, and a failed one fails
+ * inside its bug step.
  */
 const fakeRunner =
   (statuses: Record<string, string[]>, calls: string[][], control = ['passed', 'passed', 'passed']): RunReplay =>
@@ -155,6 +164,7 @@ const fakeRunner =
               results: [
                 {
                   status,
+                  steps: bugStepOf(status),
                   errors: [
                     { message: 'Test timeout of 60000ms exceeded.' },
                     { message: `\u001b[31mError: run ${run} of ${file}\u001b[39m\n${'call log\n'.repeat(300)}` },
@@ -361,6 +371,149 @@ describe('replay', () => {
     )
     expect(result.stack_unhealthy).toBe('control spec failed 0/0 runs: it did not run')
     expect(result.confirmed).toEqual([])
+  })
+
+  type ReplayResult = ReplayReport['suites'][number]['specs'][number]['tests'][number]['results'][number]
+  const expectFailed = 'Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe'
+  /**
+   * Results as Playwright 1.60's JSON reporter wrote them, cut to what replay reads. The reporter leaves `steps` out
+   * when the run entered none.
+   */
+  const playwrightResults = {
+    // The local validation's c1 spec: a 429 on the code request, so the sign-in waited for the code input forever.
+    signInTimeout: {
+      status: 'timedOut',
+      errors: [
+        { message: '\u001b[31mTest timeout of 120000ms exceeded.\u001b[39m' },
+        {
+          message:
+            'Error: locator.fill: Test timeout of 120000ms exceeded.\nCall log:\n' +
+            `\u001b[2m  - waiting for locator('input[autocomplete="one-time-code"]')\u001b[22m\n`,
+        },
+      ],
+      attachments: [],
+    },
+    failedInOtherStep: {
+      status: 'failed',
+      steps: [{ title: 'sign in', duration: 3, error: { message: expectFailed } }],
+      errors: [{ message: expectFailed }],
+      attachments: [],
+    },
+    failedInStep: {
+      status: 'failed',
+      steps: [
+        { title: 'sign in', duration: 0 },
+        { title: 'bug check', duration: 2, error: { message: expectFailed } },
+      ],
+      errors: [{ message: expectFailed }],
+      attachments: [],
+    },
+    // A test timeout while the step still ran: no error on the step, and a duration of -1.
+    timedOutInStep: {
+      status: 'timedOut',
+      steps: [{ title: 'bug check', duration: -1 }],
+      errors: [{ message: '\u001b[31mTest timeout of 1000ms exceeded.\u001b[39m' }],
+      attachments: [],
+    },
+    timedOutAfterStep: {
+      status: 'timedOut',
+      steps: [{ title: 'bug check', duration: 0 }],
+      errors: [{ message: '\u001b[31mTest timeout of 1000ms exceeded.\u001b[39m' }],
+      attachments: [],
+    },
+    passed: { status: 'passed', steps: [{ title: 'bug check', duration: 0 }], errors: [], attachments: [] },
+  } satisfies Record<string, ReplayResult>
+
+  /** A runner reporting the given results per spec file (relative to `outDir`), one spec entry per result. */
+  const resultsRunner =
+    (results: Record<string, ReplayResult[]>): RunReplay =>
+    async () => ({
+      config: { rootDir: outDir },
+      errors: [],
+      suites: Object.entries(results).map(([file, runs]) => ({
+        specs: runs.map((result) => ({ file, tests: [{ results: [result] }] })),
+      })),
+    })
+
+  test('a run confirms the bug only when it failed inside the bug check step; one failing before it is unreached', async () => {
+    for (const title of ['inside', 'timeout', 'sign-in', 'mixed', 'after', 'fixed']) {
+      await writeFinding(makeFinding(title, pageError))
+    }
+    const { signInTimeout, failedInOtherStep, failedInStep, timedOutInStep, timedOutAfterStep, passed } =
+      playwrightResults
+    const spec = (title: string) => `c2-chat-desktop/repro/${title}.spec.ts`
+
+    const result = await replay(
+      outDir,
+      resultsRunner({
+        [spec('inside')]: [failedInStep, failedInStep, failedInStep],
+        [spec('timeout')]: [timedOutInStep, failedInStep, timedOutInStep],
+        [spec('sign-in')]: [signInTimeout, signInTimeout, signInTimeout],
+        [spec('mixed')]: [failedInStep, failedInOtherStep, failedInStep],
+        [spec('after')]: [failedInStep, timedOutAfterStep, failedInStep],
+        [spec('fixed')]: [passed, passed, passed],
+        [relative(outDir, controlSpec())]: [passed, passed, passed],
+      }),
+      qaDir,
+    )
+
+    expect(titles(result.confirmed)).toEqual(['inside', 'timeout'])
+    const counts = ({ id, replay: { failed, runs, inconclusive, reason } }: VerifiedFinding) => [
+      id,
+      failed,
+      runs,
+      inconclusive,
+      reason,
+    ]
+    expect(result.flaky.map(counts)).toEqual([
+      ['after', 2, 2, 1, '1 of 3 runs failed before the bug check step'],
+      ['mixed', 2, 2, 1, '1 of 3 runs failed before the bug check step'],
+      ['sign-in', 0, 0, 3, '3 of 3 runs failed before the bug check step'],
+    ])
+    expect(result.flaky.at(-1)?.replay.error).toContain('waiting for locator(\'input[autocomplete="one-time-code"]\')')
+    expect(droppedAt(result, 'replay').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['fixed', 'failed 0/3 replays'],
+    ])
+  })
+
+  test('the control spec has no bug check step, so any failed run of it marks the stack unhealthy', async () => {
+    await writeFinding(makeFinding('inside', pageError))
+    const { signInTimeout, failedInStep, passed } = playwrightResults
+
+    const result = await replay(
+      outDir,
+      resultsRunner({
+        'c2-chat-desktop/repro/inside.spec.ts': [failedInStep, failedInStep, failedInStep],
+        [relative(outDir, controlSpec())]: [passed, signInTimeout, passed],
+      }),
+      qaDir,
+    )
+
+    expect(result.stack_unhealthy).toStartWith('control spec failed 1/3 runs: Test timeout of 120000ms exceeded.')
+    expect(result.confirmed).toEqual([])
+  })
+
+  test('a spec without the bug check step is dropped at lint and never replays', async () => {
+    const loose = `import { expect, test } from '@playwright/test'
+
+test('loose', async ({ page }) => {
+  // bug check
+  await expect(page.getByText('loose')).toBeVisible()
+})
+`
+    await writeFinding(makeFinding('loose', pageError), loose)
+    const renamed = validSpec('renamed').replace("'bug check'", "'check the bug'")
+    await writeFinding(makeFinding('renamed', pageError), renamed)
+    const calls: string[][] = []
+
+    const result = await replay(outDir, fakeRunner({}, calls), qaDir)
+
+    expect(calls).toEqual([])
+    const reason = "no test.step('bug check', …) holds the assertion"
+    expect(droppedAt(result, 'lint').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['loose', reason],
+      ['renamed', reason],
+    ])
   })
 
   test('a spec that fails to load is dropped at lint, and the rest replay again with the control', async () => {
@@ -1014,7 +1167,8 @@ describe('replay of native flows', () => {
     const name = await consentUnless('Enter your name')
     expect(ran).toEqual([
       { signIn: [...a.slice(0, 3), ...name], flow: a.slice(3) },
-      { signIn: [...b.slice(0, 2), ...name], flow: b.slice(2) },
+      // Its last command asserts the bug, so the wait before it joins the first step too.
+      { signIn: [...b.slice(0, 2), ...name, b[2]], flow: b.slice(3) },
       { signIn: [...c.slice(0, 3), ...(await consentUnless('Privacy Policy'))], flow: c.slice(3) },
       // A flow left with no command gets a harmless one, since Maestro refuses an empty flow.
       {
@@ -1024,7 +1178,7 @@ describe('replay of native flows', () => {
     ])
   })
 
-  test('a c1 flow that acts on the welcome screen, or relies on no text after it, runs as written', async () => {
+  test('a c1 flow that acts on the welcome screen, or relies on no text after it, gets no privacy step', async () => {
     const flows = {
       e: { flow: `${code}${welcome}- tapOn: I agree to the Privacy Policy.*\n`, oracle: layout },
       // Only a layout finding's quote names what the flow is after.
@@ -1039,7 +1193,9 @@ describe('replay of native flows', () => {
 
     const ran = await firstRuns(flows)
 
-    expect(ran).toEqual(Object.values(flows).map(({ flow }) => ({ flow: asWritten(flow) })))
+    const [e, f, g, h] = Object.values(flows).map(({ flow }) => asWritten(flow))
+    // f's failure is the bug, so only its last command runs after the rest.
+    expect(ran).toEqual([{ flow: e }, { signIn: f.slice(0, 2), flow: f.slice(2) }, { flow: g }, { flow: h }])
   })
 
   test('a run that fails in the harness way past the privacy step is inconclusive, never the bug', async () => {
@@ -1082,6 +1238,29 @@ describe('replay of native flows', () => {
     ])
     expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
       ['stalled', { failed: 0, runs: 0, inconclusive: 6, reason: 'only 0 of 3 runs reached the screen' }],
+    ])
+  })
+
+  test('a native run proves the bug only by failing at its last command, or for a log oracle by the line', async () => {
+    // The local validation's iOS finding: the location search never found "Berlin", well before the assertion.
+    const flow = (broken: string, last: string) => `- launchApp\n- tapOn: ${broken}\n- assertNotVisible: ${last}\n`
+    await writeNative(makeNative('early', assertFailed), flow('Broken search', 'early'))
+    await writeNative(makeNative('late', assertFailed), flow('Search', 'Broken late'))
+    const quoted = 'CONSOLE ERROR Failed to load chat'
+    await writeNative(makeNative('logged', { type: 'console-error', evidence: quoted }), flow('Broken log', 'logged'))
+    /** Fails each run at the command holding "Broken", in whichever part of the split that command ran. */
+    const device: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
+      const at = signIn?.includes('Broken') ? 'first' : yaml.includes('Broken') ? 'flow' : undefined
+      if (at === undefined) return { passed: true, layout: [], logs: [] }
+      return { passed: false, signInFailed: at === 'first', error: 'Element not found: Broken', layout: [], logs: [] }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, device)
+
+    expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.runs])).toEqual([['late', 3, 3]])
+    expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+      ['early', { failed: 0, runs: 0, inconclusive: 6, reason: 'only 0 of 3 runs reached the screen' }],
+      ['logged', { failed: 0, runs: 0, inconclusive: 6, reason: 'only 0 of 3 runs reached the screen' }],
     ])
   })
 
@@ -1173,18 +1352,63 @@ describe('native fix verification', () => {
       passed: false,
       error: `the layout probe logged ${nameLine}`,
     })
-    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
+    const asserted = { type: 'assert-failed', evidence: 'Continue never shows' }
+    expect(await verifyNativeFix({ ...base, oracle: asserted, patched: device([failed]) })).toMatchObject({
       failed: 1,
       passed: false,
       error: failed.error,
     })
   })
 
+  test('a patched run that fails before the bug shows neither the bug nor the fix, so it is run again', async () => {
+    // A layout flow that failed without the line never reached the screen.
+    const once = await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })
+    expect(once).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+    const always = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(6).fill(failed)) })
+    expect(always).toMatchObject({ runs: 0, failed: 0, passed: false, error: 'only 0 of 3 runs reached the screen' })
+  })
+
+  test('a failure before the last command of a failure-oracle flow counts on neither side of a fix check', async () => {
+    const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
+    const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }
+    /** A device whose run fails at the command holding `text`, in whichever part of the split that command ran. */
+    const failsAt = (text: string, times = Infinity): RunFlow => {
+      const state = { failures: 0 }
+      return async (yaml, _outDir, _run, _session, signIn) => {
+        const at = signIn?.includes(text) ? 'first' : yaml.includes(text) ? 'flow' : undefined
+        if (at === undefined || state.failures++ >= times) return { passed: true, layout: [], logs: [] }
+        const error = `Element not found: ${text}`
+        return { passed: false, signInFailed: at === 'first', error, layout: [], logs: [] }
+      }
+    }
+
+    const flaky = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
+    expect(flaky).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+    const early = await verifyNativeFix({
+      ...steps,
+      oracle: asserted,
+      patched: failsAt('nothing'),
+      original: failsAt('Continue'),
+    })
+    expect(early).toMatchObject({ failsWithout: false, passed: false })
+    const shown = await verifyNativeFix({
+      ...steps,
+      oracle: asserted,
+      patched: failsAt('nothing'),
+      original: failsAt('What should we call you?'),
+    })
+    expect(shown).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
+  })
+
   test('a driver that never starts fails the run after its one retry, so a dead device never passes a patch', async () => {
     const runs: number[] = []
-    const result = await verifyNativeFix({ ...base, oracle: layout, patched: device([timeout, timeout], runs) })
+    const asserted = { type: 'assert-failed', evidence: 'Continue never shows' }
+    const result = await verifyNativeFix({ ...base, oracle: asserted, patched: device([timeout, timeout], runs) })
     expect(result).toMatchObject({ runs: 3, failed: 1, passed: false })
     expect(runs).toEqual([1, 2, 3, 4])
+    // For a layout oracle such a run never reached the screen; a device that never starts still passes nothing.
+    const dead = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(12).fill(timeout)) })
+    expect(dead).toMatchObject({ runs: 0, passed: false })
   })
 
   test('a layout verdict needs the probe ready in every patched run: a silent probe proves nothing', async () => {

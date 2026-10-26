@@ -581,6 +581,21 @@ restarting the stack disconnects Google.
    `dry_run` off. A dispatch from another branch is always a dry run.
 6. Later, and only after triage shows the findings are worth it: `QA_AUTOFIX_ENABLED=true`.
 
+### Prove a branch before merging
+
+A test workflow triggered by `push` cannot stand in for this one: `claude-code-action` refuses push events, and the
+`qa-agent` environment gives its secrets only to the branches it allows. Run the real workflow on the branch instead:
+
+1. A repository admin adds the branch to the `qa-agent` environment (Settings → Environments → `qa-agent` →
+   Deployment branches and tags → Add deployment branch or tag rule).
+2. `gh workflow run qa-weekly.yml --ref <branch> -f charters=<ids>`. The run takes the workflow file from the branch
+   (the Actions page calls the choice "Use workflow from"), so `qa-weekly.yml` must already exist on `main`. A
+   dispatch from a branch is always a dry run: nothing is filed or published.
+3. The admin removes the rule once the run is over.
+
+This proves every step up to filing. The fix agent and the native verification run only on `main` (the `autofix`
+output checks `github.ref`), so the first run after the merge proves them.
+
 ### Repository variables
 
 The `build` job has no environment, so these must be repository variables.

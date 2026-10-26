@@ -412,6 +412,45 @@ describe('createProxyFetch — native request boundaries', () => {
 })
 
 describe('createProxyFetch — proxy_enabled toggle', () => {
+  it.each([
+    ['string', 'http://localhost:3000/mcp'],
+    ['URL', 'http://localhost:3000/mcp'],
+    ['Request', 'http://localhost:3000/mcp'],
+    ['string', 'http://127.0.0.1:8080/x'],
+    ['URL', 'http://127.0.0.1:8080/x'],
+    ['Request', 'http://127.0.0.1:8080/x'],
+    ['string', 'http://[::1]:9000/'],
+    ['URL', 'http://[::1]:9000/'],
+    ['Request', 'http://[::1]:9000/'],
+  ] as const)('%s input: keeps %s direct on Tauri and proxied on web with the toggle on', async (kind, url) => {
+    const input = kind === 'Request' ? new Request(url) : kind === 'URL' ? new URL(url) : url
+    const native = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('direct'))
+    const hosted = mock(async (_input: RequestInfo | URL) => new Response('hosted'))
+    const options = {
+      cloudUrl: 'https://backend.example/v1',
+      tauriFetch: native,
+      fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+      getProxyEnabled: () => true,
+    }
+    const tauriFetch = createProxyFetch({ ...options, isStandalone: () => true })
+
+    const response = await tauriFetch(input)
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(native.mock.calls[0][0]).toBe(input)
+    expect(hosted).not.toHaveBeenCalled()
+    expect(await response.text()).toBe('direct')
+
+    const webFetch = createProxyFetch({ ...options, isStandalone: () => false })
+    await webFetch(input)
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(hosted).toHaveBeenCalledTimes(1)
+    const hostedRequest = new Request(hosted.mock.calls[0][0])
+    expect(hostedRequest.url).toBe('https://backend.example/v1/proxy')
+    expect(hostedRequest.headers.get('x-proxy-target-url')).toBe(url)
+  })
+
   it.each([null, 'false'])(
     'Tauri with stored %s defaults to native HTTP and switches to the backend when the proxy is enabled',
     async (stored) => {

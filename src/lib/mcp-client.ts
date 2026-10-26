@@ -12,8 +12,8 @@ import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mc
 import { createProxyFetch } from './proxy-fetch'
 
 /**
- * Resolve a server's bearer token, refreshing OAuth credentials through the
- * authenticated proxy when necessary. The refresh function is injectable for
+ * Resolve a server's bearer token, refreshing OAuth credentials with the same
+ * routing policy as the transport. The refresh function is injectable for
  * tests; production shares the existing token-refresh deduplication.
  */
 export const resolveMcpAccessToken = async (

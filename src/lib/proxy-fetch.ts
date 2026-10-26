@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Universal proxy client. Hosted mode (web, or Tauri with Use Cloud Proxy on) routes cross-origin requests
+ * Universal proxy client. Hosted mode routes cross-origin requests
  * through `${cloudUrl}/v1/proxy`, mapping caller headers to `X-Proxy-Passthrough-*`.
- * Standalone mode (Tauri with Use Cloud Proxy off) calls upstream via the native HTTP adapter.
+ * Web always uses Hosted mode. Tauri calls upstream via the native HTTP adapter with
+ * Use Cloud Proxy off, or for loopback targets; other targets use Hosted mode with it on.
  *
  * The helper hides the difference so call sites — AI SDKs, MCP transports,
  * favicon fetches — look like normal `fetch` calls.
@@ -188,13 +189,16 @@ export type ProxyFetchOptions = {
   getProxyEnabled?: () => boolean
 }
 
-/** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
+/** Build a fetch implementation that hides Hosted/Standalone mode from callers.
+ *  Tauri uses native HTTP with Use Cloud Proxy off or for loopback targets.
+ *  Web always uses the backend proxy. */
 export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
     const proxyEnabled = options.getProxyEnabled?.() ?? computeEffectiveProxyEnabled(options.isStandalone)
-    if (standalone && !proxyEnabled) {
+    const targetUrl = input instanceof Request ? input.url : input.toString()
+    if (standalone && (!proxyEnabled || isLoopbackHost(new URL(targetUrl).hostname))) {
       return nativeFetch(input, init, options.tauriFetch)
     }
 
@@ -234,8 +238,8 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
  *  default request logs (URL/Referer do). The server validates the bearer via
  *  the same signed-bearer path REST uses.
  *
- *  Tauri: connects directly with Use Cloud Proxy off (the default), and always
- *  for loopback targets. With it on, external targets follow the hosted path.
+ *  Tauri: follows the same routing as createProxyFetch — direct with Use Cloud Proxy
+ *  off (the default), or for loopback targets. With it on, other targets use the hosted path.
  *
  *  Returns a *sync* factory `(url, protocols?) => WebSocket` so callers keep
  *  the synchronous `(url) => WebSocketLike` contract used by the ACP transport.

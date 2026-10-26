@@ -185,14 +185,15 @@ use:
   rejected on import. Run such a server behind the Thunderbolt command-line bridge and connect to it
   peer-to-peer.
 - `https` is required for any public host. Plain `http` is accepted only for `localhost` and private
-  network addresses, which desktop and mobile can reach with Use Cloud Proxy off (the default).
+  network addresses. Desktop and mobile always connect directly to loopback servers;
+  private-network servers need Use Cloud Proxy off (the default).
 - Servers and their credentials are device-local. Adding a server on one machine does not add it
   anywhere else, though a data export carries them across on restore.
 - Deleting a server deletes its stored credential with it.
 
-> A `localhost` or private-network `http` URL can connect directly in desktop and mobile with
-> Use Cloud Proxy off. The web app and desktop/mobile with it on use the server, which refuses
-> those targets. A plain `http` URL on a public host is rejected at save instead.
+> A `localhost` HTTP/SSE MCP server always connects directly in desktop and mobile.
+> Private-network servers need Use Cloud Proxy off. The backend refuses both kinds of address,
+> so the web app cannot reach them. A plain `http` URL on a public host is rejected at save instead.
 
 ## Projects
 
@@ -236,8 +237,9 @@ interface only; the model replies in the language of the conversation.
 **Network.** The cloud proxy relays outbound traffic through the Thunderbolt backend. In a browser
 it is always on, because browser security rules leave no alternative. In desktop and mobile,
 **Use Cloud Proxy** is off by default: own-key model and HTTP/SSE MCP requests go directly from
-the device. Turning it on routes those requests through your Thunderbolt server. Custom loopback
-models always connect directly from the device.
+the device. Turning it on routes non-loopback requests through your Thunderbolt server.
+On desktop and mobile, loopback models, HTTP/SSE MCP servers and external agents always connect
+directly. Custom loopback models also connect directly on web.
 
 **Preview features** are opt-ins that sync to every device on the account, so switching one on in
 one place switches it on everywhere. Today they cover tasks and the custom voice provider.

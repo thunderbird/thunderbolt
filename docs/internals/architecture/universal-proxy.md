@@ -2,7 +2,8 @@
 
 One endpoint pair carries relayed requests to user-configured third parties: own-key model
 inference and catalogs, MCP sessions, and ACP agent sockets. Web uses the relay; Tauri HTTP and
-remote ACP WebSockets opt in with Use Cloud Proxy, except loopback ACP targets stay direct on Tauri.
+remote ACP WebSockets opt in with Use Cloud Proxy. Loopback models, HTTP/SSE MCP servers and
+external agents always connect directly on Tauri desktop and mobile.
 
 | Endpoint          | Implementation                                                      |
 | ----------------- | ------------------------------------------------------------------- |
@@ -108,7 +109,8 @@ SSRF decision. Hop 0 is the initial fetch; hops 1-5 are follows, each re-validat
   ([ws.ts:107-127](../../../backend/src/proxy/ws.ts#L107)).
 - **Local model servers bypass the proxy** (Ollama, LM Studio), since backend `localhost` is not
   the user's machine, so loopback endpoints use the plain fetch
-  ([src/ai/fetch.ts:295-312](../../../src/ai/fetch.ts#L295)). Everything else follows the platform and
+  ([src/ai/fetch.ts:295-312](../../../src/ai/fetch.ts#L295)). Loopback HTTP/SSE MCP servers and external
+  agents also stay direct on Tauri desktop and mobile. Other targets follow the platform and
   Cloud Proxy setting; web and Tauri with the toggle on use the hosted proxy, which blocks RFC-1918 LAN addresses and `host.docker.internal`.
 
 ## Caps, timeouts, and how they fail
@@ -265,11 +267,12 @@ Four entry points, not interchangeable:
 `createProxyFetch` selects the route per request ([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)):
 
 - **Hosted** wraps the request for `${cloudUrl}/proxy`. Web always uses it; Tauri desktop and
-  mobile opt in with **Use Cloud Proxy** (`proxy_enabled=true`). The hosted hop includes backend
-  session credentials (`credentials: 'include'`, including cookie-only SSO) and the app-version header.
+  mobile opt in for non-loopback targets with **Use Cloud Proxy** (`proxy_enabled=true`).
+  The hosted hop includes backend session credentials (`credentials: 'include'`, including cookie-only
+  SSO) and the app-version header.
 - **Standalone** sends directly from the device through Tauri's HTTP plugin when the setting is
-  OFF or absent. Native HTTP ships on every Tauri build, without a persisted cookie jar,
-  and trusts OS certificates alongside bundled public roots.
+  OFF or absent, or the target is loopback. Native HTTP ships on every Tauri build, without a
+  persisted cookie jar, and trusts OS certificates alongside bundled public roots.
   Native failures propagate without a backend retry. Public `http:` targets are upgraded to
   `https:`; local/private IPs, `host.docker.internal`, `.local` and `*.localhost` names keep HTTP.
   Arbitrary split-DNS private FQDNs are upgraded too; the hosted proxy also upgraded and SSRF-blocked them.
@@ -280,13 +283,14 @@ Four entry points, not interchangeable:
   `src/lib/native-fetch.ts`, which normalizes plugin request/body failures to `TypeError('Failed to fetch')`
   and relays cancellation through a per-request child signal. `init.signal` takes precedence over
   a `Request` signal, including explicit `null`; completion, failure and cancellation detach the relay.
-- **Custom loopback models always stay device-direct** through `src/lib/fetch.ts`, on web and Tauri.
-  Remote ACP WebSockets follow Use Cloud Proxy on Tauri, with loopback always direct; Tinfoil keeps its attested client.
+- **Loopback models and HTTP/SSE MCP servers always stay device-direct on Tauri desktop and mobile.**
+  Custom loopback models also bypass the proxy on web through `src/lib/fetch.ts`.
+  Remote ACP WebSockets follow the same loopback rule on Tauri; Tinfoil keeps its attested client.
 
 `computeEffectiveProxyEnabled` is the shared policy. The preferences switch shows the effective
 value, permits turning it off while signed out, and requires sign-in to enable it. Web shows it
-on and disabled. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off
-or sign in.
+on and disabled. A signed-out user proxying non-loopback traffic gets backend 401s until they
+turn Cloud Proxy off or sign in.
 
 ### Outer-hop headers must not be promoted
 

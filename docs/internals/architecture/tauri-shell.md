@@ -160,11 +160,13 @@ is disabled so it has no persisted cookie jar; HTTP/2, charset handling and macO
 uses both OS certificates and bundled public roots (Android can have an empty native store).
 
 `createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
-directly from the device; ON opts into the backend universal proxy. Native failures never retry
-through the backend. See [native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out
-user with Use Cloud Proxy on gets backend 401s until they turn it off or sign in. Remote ACP WebSockets
-follow the same toggle, except loopback always stays direct. With it on, external agents need public
-`wss://` addresses. LAN agents need a `wss://` address with Use Cloud Proxy off. Plain `ws://`
+directly from the device; ON opts into the backend universal proxy for non-loopback targets.
+Loopback models and HTTP/SSE MCP servers always connect directly on desktop and mobile.
+Native failures never retry through the backend. See
+[native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out user proxying
+non-loopback traffic gets backend 401s until they turn Use Cloud Proxy off or sign in.
+Remote ACP WebSockets follow the same rule. With the toggle on, non-loopback external agents need
+public `wss://` addresses. LAN agents need a `wss://` address with Use Cloud Proxy off. Plain `ws://`
 works only for a local bridge at its default port (`8839`) on the same computer as the desktop app.
 Tinfoil uses its attested client.
 

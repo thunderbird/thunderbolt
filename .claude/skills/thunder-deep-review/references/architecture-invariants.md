@@ -99,7 +99,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-63** Partial assistant messages persisted ≤ every 200ms while streaming.
 - **INV-64** `stepCountIs(maxSteps)` is the only stop condition; final-step nudge disables tools.
 - **INV-65** Backend `/v1/inference/*` only accepts `stream:true`; privileged roles after `messages[0]` downgraded to user.
-- **INV-66** HTTP/SSE MCP is device-direct on Tauri with Use Cloud Proxy off (the default); web and Tauri with it on use `/v1/proxy`, authenticated with the session bearer/cookie and the upstream credential in `X-Proxy-Passthrough-Authorization`.
+- **INV-66** HTTP/SSE MCP is device-direct on Tauri desktop and mobile with Use Cloud Proxy off (the default) or for loopback targets; web and Tauri with it on for non-loopback targets use `/v1/proxy`, authenticated with the session bearer/cookie and the upstream credential in `X-Proxy-Passthrough-Authorization`.
 - **INV-67** PostHog `privacy_mode===true` when configured; conversation content never in `$ai_input`/`$ai_output`.
 - **INV-68** MCP server config AND credentials are local-only (never synced/E2EE'd); `mcp_secrets` is bearer|oauth union.
 - **INV-69** Encryption mismatch fatal — `chatThread.isEncrypted !== selectedModel.isConfidential` throws synchronously.

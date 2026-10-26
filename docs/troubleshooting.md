@@ -210,7 +210,7 @@ This sends one tiny completion to each model in the catalog and reports `not-con
 
 ### Egress allowlists
 
-Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): web calls and native calls with **Use Cloud Proxy** on are relayed through your server. Desktop and mobile connect directly by default. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
+Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): web calls and non-loopback native calls with **Use Cloud Proxy** on are relayed through your server. Desktop and mobile connect directly by default. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
 
 For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy.
 

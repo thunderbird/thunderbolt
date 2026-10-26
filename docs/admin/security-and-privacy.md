@@ -10,11 +10,11 @@ operator of a deployment.
 Conversations live on each device first, and reach your server only once sync is on for that device.
 Synced content is encrypted on the device, so you cannot read a user's chats from your database
 unless you run organizational key escrow. Own-key model and HTTP/SSE MCP traffic passes through
-your Thunderbolt server in the web app and in desktop/mobile with **Use Cloud Proxy** on. With it
-off (the default) in desktop and mobile, those requests go directly from the device. Provider API
-keys are stored only on the device that entered them; a relayed request forwards the key without
-storing it. Uploaded files stay on the device too, and are sent only inside the request that
-answers that turn.
+your Thunderbolt server in the web app and in desktop/mobile with **Use Cloud Proxy** on for
+non-loopback targets. With it off (the default) in desktop and mobile, those requests go directly
+from the device. Provider API keys are stored only on the device that entered them; a relayed request
+forwards the key without storing it. Uploaded files stay on the device too, and are sent only inside
+the request that answers that turn.
 
 A prompt goes to whichever model provider answers it, and to a web search provider if the model
 searches. Nothing goes to the Thunderbolt team by default: analytics need a key you configure, and
@@ -108,10 +108,10 @@ request.
 | The update feed (desktop only)                 | App version, OS, architecture and IP, shortly after each launch                                                                                                                                                                                                         | Rebuild the app with `updater.endpoints` removed                                                                                                |
 
 Own-key model and HTTP/SSE MCP requests pass through your Thunderbolt server in the web app
-and in desktop/mobile with **Use Cloud Proxy** on. With it off (the default) in desktop and mobile,
-they go directly from the device. When relaying, your server forwards the bytes and the user's
-credential untouched and stores neither. Access logs record the upstream hostname, not the full URL,
-so a user's browsing is not written into your logs.
+and in desktop/mobile with **Use Cloud Proxy** on for non-loopback targets. With it off (the default)
+in desktop and mobile, they go directly from the device. When relaying, your server forwards the
+bytes and the user's credential untouched and stores neither. Access logs record the upstream
+hostname, not the full URL, so a user's browsing is not written into your logs.
 
 > Tracing is the exception. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, each request's headers are
 > recorded alongside the trace, and those headers carry the forwarded credential and the full
@@ -120,8 +120,9 @@ so a user's browsing is not written into your logs.
 A model server on the user's own machine, such as Ollama or LM Studio, is the exception: the app
 calls it directly, so the prompt and reply never cross your infrastructure. The rest of the turn
 still does, including synced rows, link previews, web-search calls and analytics. The bypass covers
-loopback models on every platform. Desktop and mobile can also reach models and HTTP/SSE MCP
-servers elsewhere on the LAN directly with Use Cloud Proxy off.
+custom loopback models on every platform. On desktop and mobile, loopback models, HTTP/SSE MCP
+servers and external agents always connect directly, even with Use Cloud Proxy on.
+Servers elsewhere on the LAN need Use Cloud Proxy off for direct connections.
 
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
@@ -204,8 +205,9 @@ user's conversations. What follows is about direct access to your own database a
 - Every field outside the encrypted list above, for every account with sync on.
 - Rows synced in plain text before a deployment upgraded to always-on encryption.
 - Plaintext prompts, replies and attachments in transit for requests relayed through your server:
-  own-key models in the web app or with Use Cloud Proxy on in desktop/mobile, and managed models
-  except confidential inference. Direct device requests bypass the relay. Encryption covers stored rows.
+  own-key models in the web app or non-loopback models with Use Cloud Proxy on in desktop/mobile,
+  and managed models except confidential inference. Direct device requests bypass the relay.
+  Encryption covers stored rows.
 
 **You cannot see**
 

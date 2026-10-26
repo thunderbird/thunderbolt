@@ -128,7 +128,7 @@ The key is stored on the device it was typed on and is never synced to other dev
 
 Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
 
-Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying them through your API service. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
+Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying non-loopback requests through your API service. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
 
 **Upgrade note:** Upgrading the desktop or mobile app enables direct routing for own-key model and HTTP/SSE MCP requests when **Settings → Preferences → Network → Use Cloud Proxy** is off or unset; earlier releases relayed these requests despite that setting. Providers then see the device's egress IP. Deployments that require backend egress should have users enable **Use Cloud Proxy**. An existing enabled setting stays enabled.
 

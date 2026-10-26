@@ -64,7 +64,7 @@ Switch the add form to **Advanced (JSON)** and paste an existing `mcpServers` bl
 
 ### Reachability
 
-Desktop and mobile connect to HTTP/SSE MCP servers directly by default. **Settings → Preferences → Network → Use Cloud Proxy** routes them through your deployment's backend when enabled. The browser always uses that backend, which refuses private, internal and loopback addresses. A server on `http://localhost:3000/mcp` is reachable from a native app with Cloud Proxy off, but not through the backend.
+Desktop and mobile connect to HTTP/SSE MCP servers directly by default. Servers on the same device (loopback), such as `http://localhost:3000/mcp`, always connect directly. **Settings → Preferences → Network → Use Cloud Proxy** routes other servers through your deployment's backend when enabled. The browser always uses that backend, which refuses private, internal and loopback addresses.
 
 The add form checks whether the device could reach the address: plain `http://` is allowed only for loopback and private addresses; public hosts require `https://`. Saving an address does not prove the backend can reach it.
 
@@ -175,9 +175,9 @@ Web search and page fetching need `EXA_API_KEY` on the server. Without it the sw
 
 MCP tool calls are not approved one by one. Once a server is connected and enabled, its tools run whenever the model calls them, and your control is at the server level: enable, disable, delete. External agents work the other way round. An ACP agent asks before it edits a file or runs a command, and each request prompts in the chat until you choose one of the always-allow buttons.
 
-Stored credentials never reach the model, and are never part of the conversation. For HTTP/SSE connections, your credential passes through your Thunderbolt server only in the web app or when Use Cloud Proxy is on in desktop and mobile. With Use Cloud Proxy off in desktop and mobile, it goes directly to the tool server.
+Stored credentials never reach the model, and are never part of the conversation. For HTTP/SSE connections, your credential passes through your Thunderbolt server in the web app or for non-loopback targets with Use Cloud Proxy on in desktop and mobile. With Use Cloud Proxy off or for loopback targets in desktop and mobile, it goes directly to the tool server.
 
-Desktop and mobile can connect directly to custom model servers and HTTP/SSE MCP servers on your local network with Use Cloud Proxy off. Agents on your local network also need a `wss://` address. With Use Cloud Proxy on, these connections use your Thunderbolt server, which blocks private and internal addresses. External agents then need a public `wss://` address. Custom models on the same device always connect directly, as do external agents on the same device in desktop and mobile. The web app uses your Thunderbolt server, except for custom models on the same device.
+Desktop and mobile can connect directly to custom model servers and HTTP/SSE MCP servers on your local network with Use Cloud Proxy off. Agents on your local network also need a `wss://` address. With Use Cloud Proxy on, these connections use your Thunderbolt server, which blocks private and internal addresses. External agents then need a public `wss://` address. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. The web app uses your Thunderbolt server, except for custom models on the same device.
 
 The agent the Thunderbolt command-line tool serves is confined to the directory the bridge was launched from and everything below it, ignores any working directory the app sends, has no shell tool, and refuses to fetch loopback or private addresses. A bridged third-party agent enforces its own scope, and whether it can run shell commands is up to that agent.
 

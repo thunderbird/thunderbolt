@@ -9,7 +9,7 @@ server-side client for the operator's `AGENT_MCP_SERVERS` ([acp-agents.md](acp-a
 
 | `type`  | SDK transport                   | Routing                                                                         |
 | ------- | ------------------------------- | ------------------------------------------------------------------------------- |
-| `http`  | `StreamableHTTPClientTransport` | Universal proxy on web; direct upstream on Tauri with the proxy off             |
+| `http`  | `StreamableHTTPClientTransport` | Proxy on web; native HTTP on Tauri with the proxy off or for loopback             |
 | `sse`   | `SSEClientTransport`            | Same as `http`                                                                  |
 | `iroh`  | `createMcpIrohTransport`        | Peer-to-peer over an iroh relay; no URL, proxy, or bearer applies               |
 | `stdio` | none                            | In the enum, never connected ([below](#stdio-is-in-the-enum-but-not-connected)) |
@@ -23,13 +23,14 @@ server-side client for the operator's `AGENT_MCP_SERVERS` ([acp-agents.md](acp-a
 ### The proxy hop (`http` / `sse`)
 
 Remote MCP traffic uses the same routing policy as a BYOK LLM call: native HTTP by default on
-Tauri, the backend when Cloud Proxy is on, and always the backend on web. There is no MCP-specific
+Tauri, the backend for non-loopback targets when Cloud Proxy is on, and always the backend on web.
+Loopback servers always use native HTTP on Tauri desktop and mobile. There is no MCP-specific
 backend route. [`e2e/proxy-mcp.spec.ts`](../../../e2e/proxy-mcp.spec.ts) pins the JSON-RPC POST to `/v1/proxy`
 with the server URL in `X-Proxy-Target-Url`, never a per-server `/mcp-proxy/…` path.
 
 - `createProxyFetch` ([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)) wraps the SDK
   transport's `fetch` and picks the branch per call via `computeEffectiveProxyEnabled`: web always
-  proxies (CORS), Tauri honours `proxy_enabled`.
+  proxies (CORS), Tauri honours `proxy_enabled` except loopback always stays direct.
 - Two credentials: the session bearer authenticates the request to `/v1/proxy` (401 without it), and
   the upstream MCP credential rides a **plain** `Authorization` header from `buildMcpHeaders` that
   `createProxyFetch` promotes to `X-Proxy-Passthrough-Authorization`. Setting the passthrough header
@@ -47,13 +48,13 @@ with the server URL in `X-Proxy-Target-Url`, never a per-server `/mcp-proxy/…`
 The client rule describes what the _device_ can reach (every IPv4 octet must parse numerically, so
 `127.0.0.1.evil.com` is not loopback); the proxy rules are an SSRF control.
 
-So a `http://localhost:…` server works on Tauri with Cloud Proxy off,
+So a `http://localhost:…` server works on Tauri regardless of Cloud Proxy,
 fails on web, and nothing warns at save time. Use an iroh bridge across machines; same trap as ACP
 ("The relay will not carry a loopback bridge" in [acp-agents.md](acp-agents.md)).
 
 Native GET/HEAD requests follow same-origin redirects up to 5 hops; POST and cross-origin redirects
 are returned as-is so provider credentials never cross origins. A signed-out
-user with Cloud Proxy on gets backend 401s until they turn it off or sign in.
+user proxying non-loopback traffic gets backend 401s until they turn Cloud Proxy off or sign in.
 
 ### iroh
 

@@ -14,12 +14,16 @@ import type { PostHog } from 'posthog-js'
 import { createContext, useContext, type ReactNode } from 'react'
 
 let posthogClient: PostHog | null = null
+// Only fixed startup events are buffered: no unbounded queue of user activity.
+const startupEvents = new Set<EventType>(['app_init_timing', 'app_chat_ready', 'app_content_ready'])
+const pendingStartupEvents = new Map<EventType, Record<string, unknown> | undefined>()
 
 /**
  * Reset the PostHog client - for testing only
  */
 export const resetPosthogClient = () => {
   posthogClient = null
+  pendingStartupEvents.clear()
 }
 
 /**
@@ -115,18 +119,10 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const cloudUrl = getLocalSetting('cloudUrl')
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
-    const { dataCollection } = await getSettings(db, {
-      data_collection: false,
-    })
-    const isCapturing = shouldCapture({
-      dataCollection,
-      syncEnabled: getLocalSetting('syncEnabled'),
-      hasSynced: getPowerSyncInstance()?.currentStatus.hasSynced ?? false,
-    })
 
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
     const { public_posthog_api_key: apiKey } = await client
-      .get('posthog/config')
+      .get('posthog/config', { timeout: 5_000 })
       .json<{ public_posthog_api_key?: string }>()
 
     if (!apiKey) {
@@ -137,8 +133,16 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     // Use the cloudUrl proxy for PostHog analytics
     const apiHost = `${cloudUrl}/posthog`
 
+    const { default: posthog } = await import('posthog-js')
+    // The app is already interactive: consent may have changed while config
+    // or the SDK was loading. Read it immediately before attaching analytics.
+    const { dataCollection } = await getSettings(db, { data_collection: false })
+    const isCapturing = shouldCapture({
+      dataCollection,
+      syncEnabled: getLocalSetting('syncEnabled'),
+      hasSynced: getPowerSyncInstance()?.currentStatus.hasSynced ?? false,
+    })
     if (!posthogClient) {
-      const { default: posthog } = await import('posthog-js')
       posthogClient = posthog.init(apiKey, {
         opt_out_capturing_by_default: !isCapturing,
         api_host: apiHost,
@@ -183,6 +187,12 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     // The start state; `useAnalyticsConsent` keeps it following the setting while the app runs.
     setCapturing(posthogClient, isCapturing)
 
+    if (isCapturing) {
+      for (const [event, properties] of pendingStartupEvents) {
+        posthogClient.capture(event, properties)
+      }
+    }
+    pendingStartupEvents.clear()
     return { success: true, data: posthogClient }
   } catch (error) {
     console.warn('Failed to initialize PostHog, continuing without analytics:', error)
@@ -314,11 +324,14 @@ export type EventType =
   // Startup performance
   | 'app_init_timing'
   | 'app_chat_ready'
+  | 'app_content_ready'
 
 export const trackEvent = (eventName: EventType, properties?: Record<string, unknown>) => {
   try {
     if (posthogClient) {
       posthogClient.capture(eventName, properties)
+    } else if (startupEvents.has(eventName)) {
+      pendingStartupEvents.set(eventName, properties)
     }
   } catch (error) {
     console.error('Failed to track event:', error)

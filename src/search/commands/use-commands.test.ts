@@ -15,6 +15,7 @@ const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps
   isAnonymous: false,
   showDownloadApp: false,
   isMac: true,
+  showShortcuts: true,
   onNewChat: () => {},
   onSetTheme: () => {},
   onToggleSidebar: () => {},
@@ -84,6 +85,35 @@ describe('buildCommands, minimal mode', () => {
     expect(ids).toEqual(
       expect.arrayContaining(['tasks', 'message-simulator', 'new-chat', 'clear-all-chats', 'toggle-sidebar']),
     )
+  })
+})
+
+describe('buildCommands, theme commands', () => {
+  const themeIds = (overrides: Partial<BuildCommandsDeps>) =>
+    buildCommands(makeDeps(overrides))
+      .map((command) => command.id)
+      .filter((id) => id.startsWith('theme-'))
+
+  it('offers Set Light, Set Dark and Use System outside minimal mode', () => {
+    expect(themeIds({ minimalMode: false })).toEqual(['theme-light', 'theme-dark', 'theme-system'])
+  })
+
+  it('drops them in minimal mode', () => {
+    expect(themeIds({ minimalMode: true })).toEqual([])
+  })
+})
+
+describe('buildCommands, shortcut hints', () => {
+  const sidebarShortcut = (overrides: Partial<BuildCommandsDeps>) =>
+    byId(buildCommands(makeDeps(overrides)), 'toggle-sidebar')?.shortcut
+
+  it('shows the platform shortcut when showShortcuts is on', () => {
+    expect(sidebarShortcut({ showShortcuts: true, isMac: true })).toBe('⌘B')
+    expect(sidebarShortcut({ showShortcuts: true, isMac: false })).toBe('Ctrl+B')
+  })
+
+  it('omits the shortcut when showShortcuts is off', () => {
+    expect(sidebarShortcut({ showShortcuts: false })).toBeUndefined()
   })
 })
 

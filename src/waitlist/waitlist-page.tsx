@@ -12,7 +12,6 @@ import { usePasskeyAvailable } from '@/lib/passkey'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Fingerprint } from 'lucide-react'
-import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -28,11 +27,7 @@ import { WaitlistLanguagePicker } from './waitlist-language-picker'
 export const WaitlistPage = () => {
   const { t } = useLingui()
   const authClient = useAuth()
-  const navigate = useNavigate()
-  const { state, isValidEmail, actions } = useWaitlistState({
-    authClient,
-    onVerified: () => navigate('/', { replace: true }),
-  })
+  const { state, isValidEmail, actions } = useWaitlistState({ authClient })
 
   const isVerifying = state.status === 'verifying'
   const email = state.email

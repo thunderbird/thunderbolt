@@ -38,7 +38,7 @@ import {
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
 import { createCaptchaProvider } from './captcha'
-import { anonymousSignInPath, authBasePath, configuredSsoProviderId } from './paths'
+import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -290,12 +290,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     // horizontally-scaled deployments. Provides single-instance defence only. The DB-backed
     // `auth` IP tier holds across instances, and CAPTCHA_PROVIDER=altcha (with an app built with
     // VITE_CAPTCHA_PROVIDER=altcha) is the distributed bot control on anonymous sign-in.
+    // `/get-session` is exempt from the `auth` tier (see createAuthPluginIpRateLimit), so the
+    // custom rule below is its only limit.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
       customRules: {
-        '/get-session': { window: 1, max: 30 },
+        [getSessionPath]: { window: 1, max: 30 },
         // Anonymous sign-in is limited only by our DB-backed limiter (createAuthPluginIpRateLimit):
         // a true fixed window, shared across instances and keyed on the TRUSTED_PROXY-resolved IP.
         // Better Auth's limiter resets only after a full idle window and falls back to
@@ -304,6 +306,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     },
     advanced: {
+      database: { joins: true },
       ipAddress: {
         ipAddressHeaders: getTrustedIpHeaders(settings.trustedProxy),
       },

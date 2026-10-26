@@ -53,6 +53,24 @@ describe('Config Routes', () => {
       expect(minimal.body.minimalMode).toBe(true)
     })
 
+    it('exposes the brand logo fields, empty by default', async () => {
+      const unset = await fetchConfig(createTestSettings())
+      expect(unset.body).toMatchObject({ brandLogoUrl: '', brandLogoDarkUrl: '', brandLogoAlt: '' })
+
+      const set = await fetchConfig(
+        createTestSettings({
+          brandLogoUrl: 'https://example.com/logo.svg',
+          brandLogoDarkUrl: 'data:image/svg+xml,dark',
+          brandLogoAlt: 'Example',
+        }),
+      )
+      expect(set.body).toMatchObject({
+        brandLogoUrl: 'https://example.com/logo.svg',
+        brandLogoDarkUrl: 'data:image/svg+xml,dark',
+        brandLogoAlt: 'Example',
+      })
+    })
+
     it('exposes allowCustomAgents', async () => {
       const allowed = await fetchConfig(createTestSettings({ allowCustomAgents: true }))
       expect(allowed.body.allowCustomAgents).toBe(true)

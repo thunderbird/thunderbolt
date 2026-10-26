@@ -53,17 +53,26 @@ const convertFireworksUsage: FireworksUsageConverter = (usage) => {
 
 type ManagedProviderConnection = ReturnType<typeof createManagedProviderConnection>
 
+type TransformRequestBody = NonNullable<OpenAICompatibleProviderSettings['transformRequestBody']>
+
+// Priority is less likely to be load-shed than Standard. Standard sends no `service_tier` field at all.
+const priorityTier: TransformRequestBody = (body) => ({ ...body, service_tier: 'priority' })
+
 const agentModelFactories = {
   anthropic: (connection, model) => createAnthropic(connection)(model),
   // includeUsage requests the usage chunk explicitly rather than relying on Fireworks sending it by default.
-  fireworks: (connection, model) =>
+  fireworks: (connection, model, { agentFireworksServiceTier }) =>
     createOpenAICompatible({
       name: 'fireworks',
       includeUsage: true,
       convertUsage: convertFireworksUsage,
+      ...(agentFireworksServiceTier === 'priority' && { transformRequestBody: priorityTier }),
       ...connection,
     })(model),
-} satisfies Record<ManagedDirectProvider, (connection: ManagedProviderConnection, model: string) => LanguageModel>
+} satisfies Record<
+  ManagedDirectProvider,
+  (connection: ManagedProviderConnection, model: string, settings: Settings) => LanguageModel
+>
 
 /**
  * The hosted agent's default model, on the managed key of its provider. Throws for an unset key, as
@@ -77,6 +86,7 @@ export const createAgentModel = (
   agentModelFactories[provider](
     createManagedProviderConnection(provider, settings, { ...options, source: 'agent' }),
     model,
+    settings,
   )
 
 const agentRequestHeaders = {

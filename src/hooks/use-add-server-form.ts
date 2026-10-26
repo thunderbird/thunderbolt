@@ -8,7 +8,7 @@ import {
   type TestConnectionResult,
 } from '@/lib/mcp-auth/auth-decision'
 import type { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
-import { isUnauthorizedError } from '@/lib/mcp-errors'
+import { isUnauthorizedError } from '@/lib/mcp-unauthorized-error'
 import type { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { isIrohTarget } from '@/lib/iroh-target'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from '@/lib/mcp-transport'

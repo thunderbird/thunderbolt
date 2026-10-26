@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { isUnauthorizedError } from './mcp-errors'
+import { isUnauthorizedError } from './mcp-unauthorized-error'
 
 /** Mirror the `MCPClientError` shape the SDK throws (name + message), verified
  *  by exercising the real `@ai-sdk/mcp` client: the instance `name` is

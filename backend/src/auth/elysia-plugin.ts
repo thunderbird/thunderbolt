@@ -7,7 +7,7 @@ import { getDeviceById } from '@/dal/devices'
 import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
-import { passkeyVerifyPaths } from './paths'
+import { authBasePath, getSessionPath, passkeyVerifyPaths } from './paths'
 
 /**
  * Resolve a session while translating credential rejection into an unauthenticated result.
@@ -150,7 +150,7 @@ export const restorePasskeyChallenge = (pathname: string, request: Request): Req
  */
 const isRevokedDeviceSessionCheck = async (database: typeof DbType, request: Request): Promise<boolean> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
-  if (!deviceId || !new URL(request.url).pathname.endsWith('/api/auth/get-session')) {
+  if (!deviceId || !new URL(request.url).pathname.endsWith(`${authBasePath}${getSessionPath}`)) {
     return false
   }
   const device = await getDeviceById(database, deviceId)

@@ -141,11 +141,19 @@ services:
         sync: false
       - key: MINIMAL_MODE
         sync: false # `true` for the chat-only shell
+      - key: BRAND_LOGO_URL
+        sync: false # `https:` or `data:image/` URL shown in the header
+      - key: BRAND_LOGO_DARK_URL
+        sync: false # dark-theme variant, optional
+      - key: BRAND_LOGO_ALT
+        sync: false # logo alt text
       - key: ENABLED_AGENTS
         sync: false # `hosted-agent` to offer only the hosted agent
       - key: AGENT_MODEL
         sync: false
       - key: AGENT_MAX_STEPS
+        sync: false
+      - key: AGENT_FIREWORKS_SERVICE_TIER
         sync: false
       - key: AGENT_SYSTEM_PROMPT
         sync: false

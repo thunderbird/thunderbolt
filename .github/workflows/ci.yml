@@ -596,6 +596,18 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
 
+      # The passkey plugin's Windows backend (src/win.rs) only compiles for Windows,
+      # so the build above never sees it. clippy doesn't link, so it runs here
+      # without the MSVC toolchain.
+      - name: Check the passkey plugin for Windows
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cd src-tauri
+          cargo clippy -p tauri-plugin-passkey --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+
       # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
       # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build
       # above never compiles it. Its wasm cdylib is the deployed artifact; the rlib

@@ -7,7 +7,7 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `inference`                | 60 / minute  | user                     | `/v1/chat/*` (managed inference)                                                         |
 | `pro`                      | 100 / minute | user                     | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
 | `receipt`                  | 100 / minute | user                     | `/v1/inference-usage/receipts`                                                           |
-| `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in), `/v1/waitlist/*`                            |
+| `auth`                     | 10 / minute  | client IP                | `/v1/api/auth/*` (except anonymous sign-in and GET get-session), `/v1/waitlist/*`        |
 | `anonymous-sign-in`        | 10 / minute  | client IP                | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `anonymous-sign-in-global` | 2000 / hour  | one key, deployment-wide | `POST /v1/api/auth/sign-in/anonymous`, while `AUTH_ALLOW_ANONYMOUS=true`                 |
 | `captcha-challenge`        | 10 / minute  | client IP                | `GET /v1/captcha/challenge`                                                              |
@@ -32,8 +32,8 @@ The tier name is the limiter's `keyPrefix` ([rate-limit.ts:63](../src/middleware
 | Factory                                                                          | Bucket key           | Use for                                                                                         |
 | -------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------- |
 | `createUserTierRateLimit` ([rate-limit.ts:126](../src/middleware/rate-limit.ts)) | `user:<id>`          | Authenticated routes. Reads the context the auth macro resolved, with no second `getSession()`. |
-| `createIpTierRateLimit` ([rate-limit.ts:180](../src/middleware/rate-limit.ts))   | `ip:<addr>`          | Routes with no session yet. `createAuthIpRateLimit` is the `auth`-tier shorthand.               |
-| `createRateLimitConsumer` ([rate-limit.ts:225](../src/middleware/rate-limit.ts)) | Whatever you compute | Keys that are neither session user nor IP. Returns a plain function, not a plugin.              |
+| `createIpTierRateLimit` ([rate-limit.ts:186](../src/middleware/rate-limit.ts))   | `ip:<addr>`          | Routes with no session yet. `createAuthIpRateLimit` is the `auth`-tier shorthand.               |
+| `createRateLimitConsumer` ([rate-limit.ts:240](../src/middleware/rate-limit.ts)) | Whatever you compute | Keys that are neither session user nor IP. Returns a plain function, not a plugin.              |
 
 Debug-transcript intake is the consumer case: the caller is another deployment with a client key, so the bucket is `client:<id>`, computable only after the handler resolves the key ([debug-transcripts-intake.ts:67](../src/api/debug-transcripts-intake.ts)). An IP-keyed limiter of the same tier wraps it too, so unknown callers burning 401s still hit a ceiling.
 
@@ -54,7 +54,7 @@ The skip branch is deliberate (such requests 401 anyway), but mounted is not enf
 ### IP resolution fails closed
 
 - `extractClientIp` ([utils/request.ts](../src/utils/request.ts)) trusts a proxy header only when `TRUSTED_PROXY` names the edge (`cloudflare` → `CF-Connecting-IP`, `akamai` → `True-Client-IP`). Without one, any client can forge `X-Forwarded-For` and mint a fresh bucket per request.
-- An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:161](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
+- An unresolvable address shares a single `ip:unknown` bucket rather than skipping the limit ([rate-limit.ts:167](../src/middleware/rate-limit.ts)); identifiable clients keep their own.
 - `getTrustedIpHeaders` feeds the same `TRUSTED_PROXY` value to Better Auth's `ipAddressHeaders`, so both limiters agree on the client. It returns `undefined`, not `[]`, when no proxy is configured. `undefined` lets Better Auth fall back to `x-forwarded-for`. With `[]` it finds no IP, so every client shares one bucket per path.
 
 ## Response contract
@@ -76,7 +76,7 @@ Counters live in `rate_limits` ([db/rate-limit-schema.ts](../src/db/rate-limit-s
 
 ## Better Auth has a second, weaker limiter
 
-Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:293](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is the cross-replica control on anonymous sign-in, with replay records shared in Postgres. It works end to end once the app is built with `VITE_CAPTCHA_PROVIDER=altcha`.
+Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:300](../src/auth/auth.ts)). That `/get-session` rule is the only limit on session checks: `createAuthPluginIpRateLimit` exempts them from the `auth` tier, because the app checks its session on every boot, reconnect and cross-tab session change, and visitors sharing one IP would otherwise exhaust 10 per minute between them. Only `GET` is exempt; any other method still draws from `auth`. It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas for every other auth route. Without `TRUSTED_PROXY`, get-session's only limit is this per-instance limiter, which reads the forgeable `X-Forwarded-For`. The API's ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is the cross-replica control on anonymous sign-in, with replay records shared in Postgres. It works end to end once the app is built with `VITE_CAPTCHA_PROVIDER=altcha`.
 
 ## Adding a limit to a new route
 

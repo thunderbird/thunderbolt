@@ -321,8 +321,19 @@ describe('isPasskeyCapable', () => {
     await withPasskeyRpId('passkeys.example.com', () => expect(isPasskeyCapable()).toBe(false))
   })
 
-  it('is false on the Tauri platforms without a native bridge', () => {
+  it('needs Windows 10 1903 for webauthn.dll', async () => {
     spyOn(platformModule, 'getPlatform').mockReturnValue('windows')
+    const version = spyOn(os, 'version').mockReturnValue('10.0.17763')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(false))
+    version.mockReturnValue('10.0.18362')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
+    version.mockReturnValue('10.0.26100')
+    await withPasskeyRpId('app.thunderbolt.io', () => expect(isPasskeyCapable()).toBe(true))
+    await withPasskeyRpId('passkeys.example.com', () => expect(isPasskeyCapable()).toBe(false))
+  })
+
+  it('is false on the Tauri platforms without a native bridge', () => {
+    spyOn(platformModule, 'getPlatform').mockReturnValue('linux')
     expect(isPasskeyCapable()).toBe(false)
   })
 })

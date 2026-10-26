@@ -22,7 +22,9 @@
 # stops the stack's PowerSync service, registers a one-off task definition
 # derived from the backend's, overrides the entryPoint to bypass the
 # migrate-on-boot logic, and drops PowerSync's replication slots and both
-# databases against `POSTGRES_ADMIN_URL`. A slot left behind would block the
+# databases against `POSTGRES_ADMIN_URL`. A stopped Fargate task rarely closes its
+# replication connection cleanly, so Postgres keeps the slot active until its WAL
+# sender times out; the drop ends that connection first. A slot left behind would block the
 # drop and pin WAL on the shared instance.
 #
 # Usage: drop-preview-db.sh <PR_NUMBER>
@@ -43,31 +45,36 @@ SHARED_CLUSTER_PREFIX="tb-previews-shared-cluster-"
 
 log() { echo "[drop-preview-db] $*"; }
 
-CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" \
-  --query "clusterArns[?contains(@, '${SHARED_CLUSTER_PREFIX}')] | [0]" --output text)
-if [ -z "$CLUSTER" ] || [ "$CLUSTER" = "None" ]; then
+# First ARN in field $1 of an AWS CLI JSON listing that contains $2, or nothing.
+# With `--output text` the CLI applies `--query` to each page separately, so
+# `--query '…[0]'` printed one line per page (`None` for pages without a match)
+# once a listing outgrew a page. `--output json` merges the pages first.
+first_arn() {
+  jq -r --arg field "$1" --arg match "$2" '[.[$field][] | select(contains($match))][0] // empty'
+}
+
+CLUSTER=$(aws ecs list-clusters --region "$AWS_REGION" --output json | first_arn clusterArns "$SHARED_CLUSTER_PREFIX")
+if [ -z "$CLUSTER" ]; then
   log "No shared cluster found — nothing to drop."
   exit 0
 fi
 
-SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" \
-  --query "serviceArns[?contains(@, '${BE_SVC_PREFIX}')] | [0]" --output text)
-if [ -z "$SVC" ] || [ "$SVC" = "None" ]; then
+SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --output json | first_arn serviceArns "$BE_SVC_PREFIX")
+if [ -z "$SVC" ]; then
   log "No backend service for ${STACK} — stack already torn down or never deployed. Skipping."
   exit 0
 fi
 
-TASKDEF=$(aws ecs list-task-definitions --family-prefix "$BACKEND_FAMILY" --status ACTIVE --region "$AWS_REGION" \
-  --query 'taskDefinitionArns | [-1]' --output text)
-if [ -z "$TASKDEF" ] || [ "$TASKDEF" = "None" ]; then
+TASKDEF=$(aws ecs list-task-definitions --family-prefix "$BACKEND_FAMILY" --status ACTIVE --sort DESC --region "$AWS_REGION" \
+  --output json | first_arn taskDefinitionArns "$BACKEND_FAMILY")
+if [ -z "$TASKDEF" ]; then
   log "No backend task definition for ${STACK} — skipping."
   exit 0
 fi
 
 # PowerSync holds its replication slot open; stop it so the slot can be dropped.
-PS_SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" \
-  --query "serviceArns[?contains(@, '${PS_SVC_PREFIX}')] | [0]" --output text)
-if [ -n "$PS_SVC" ] && [ "$PS_SVC" != "None" ]; then
+PS_SVC=$(aws ecs list-services --cluster "$CLUSTER" --region "$AWS_REGION" --output json | first_arn serviceArns "$PS_SVC_PREFIX")
+if [ -n "$PS_SVC" ]; then
   log "Stopping PowerSync service: $PS_SVC"
   aws ecs update-service --cluster "$CLUSTER" --service "$PS_SVC" --desired-count 0 --region "$AWS_REGION" >/dev/null
   aws ecs wait services-stable --cluster "$CLUSTER" --services "$PS_SVC" --region "$AWS_REGION"
@@ -82,7 +89,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 aws ecs describe-task-definition --task-definition "$TASKDEF" --region "$AWS_REGION" \
   --query 'taskDefinition' > "$WORKDIR/source.json"
 
-DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL); const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
+DROP_CMD='bun -e '\''import postgres from "postgres"; const target = new URL(process.env.DATABASE_URL); const dbName = target.pathname.replace(/^\//, ""); if (!/^[a-zA-Z0-9_]+$/.test(dbName)) { console.error("refusing drop on invalid name:", dbName); process.exit(1); } const admin = postgres(process.env.POSTGRES_ADMIN_URL); await admin`SELECT pg_terminate_backend(active_pid, 5000) FROM pg_replication_slots WHERE database = ${dbName} AND active_pid IS NOT NULL`; const slots = await admin`SELECT slot_name FROM pg_replication_slots WHERE database = ${dbName}`; for (const { slot_name } of slots) { console.log("dropping slot", slot_name); await admin`SELECT pg_drop_replication_slot(${slot_name})`; } for (const name of [dbName, dbName + "_ps_storage"]) { console.log("dropping", name); await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } await admin.end(); console.log("done")'\'
 
 jq --arg cmd "$DROP_CMD" --arg family "tb-${STACK}-db-drop" '
   {containerDefinitions, family: $family, taskRoleArn, executionRoleArn, networkMode, requiresCompatibilities, cpu, memory}

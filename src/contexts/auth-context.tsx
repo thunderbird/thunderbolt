@@ -24,7 +24,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-const createAuthClientInstance = (cloudUrl: string) => {
+export const createAuthClientInstance = (cloudUrl: string) => {
   const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
@@ -33,10 +33,9 @@ const createAuthClientInstance = (cloudUrl: string) => {
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
     fetchOptions: buildFetchOptions(platform),
-    // Disable Better Auth's focus/online refetch — Thunderbolt's own cross-tab sync
-    // (`onAuthTokenChangedInOtherTab` in src/lib/auth-token.ts) plus the 401 safety net
-    // in HttpClient.afterResponse already cover the relevant scenarios without burning
-    // rate-limit budget on every tab focus / visibilitychange / online event.
+    // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
+    // The refresh manager skips offline checks, but still refetches on reconnect
+    // and cross-tab broadcasts so cached sessions recover when the network returns.
     sessionOptions: {
       refetchOnWindowFocus: false,
       refetchWhenOffline: false,
@@ -170,7 +169,7 @@ export const buildFetchOptions = (platform: string) => ({
     clearCachedSession()
     if (hadToken) {
       // Event name + reason kept in sync with src/db/powersync/connector.ts. Fires on Better Auth's
-      // session validation (mount + tab focus), which detects expiry well before PowerSync's
+      // session validation (mount + reconnect), which detects expiry well before PowerSync's
       // credential refresh kicks in — cuts boot-time delay from seconds to milliseconds.
       window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
     }

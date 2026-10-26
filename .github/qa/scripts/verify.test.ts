@@ -422,6 +422,20 @@ describe('replay', () => {
       attachments: [],
     },
     passed: { status: 'passed', steps: [{ title: 'bug check', duration: 0 }], errors: [], attachments: [] },
+    // The bug check inside another step: the error shows on both.
+    failedInNestedStep: {
+      status: 'failed',
+      steps: [
+        {
+          title: 'welcome dialog',
+          duration: 4,
+          error: { message: expectFailed },
+          steps: [{ title: 'bug check', duration: 2, error: { message: expectFailed } }],
+        },
+      ],
+      errors: [{ message: expectFailed }],
+      attachments: [],
+    },
   } satisfies Record<string, ReplayResult>
 
   /** A runner reporting the given results per spec file (relative to `outDir`), one spec entry per result. */
@@ -436,17 +450,19 @@ describe('replay', () => {
     })
 
   test('a run confirms the bug only when it failed inside the bug check step; one failing before it is unreached', async () => {
-    for (const title of ['inside', 'timeout', 'sign-in', 'mixed', 'after', 'fixed']) {
+    for (const title of ['inside', 'nested', 'timeout', 'sign-in', 'mixed', 'after', 'fixed']) {
       await writeFinding(makeFinding(title, pageError))
     }
-    const { signInTimeout, failedInOtherStep, failedInStep, timedOutInStep, timedOutAfterStep, passed } =
+    const { signInTimeout, failedInOtherStep, failedInStep, failedInNestedStep, timedOutInStep, timedOutAfterStep } =
       playwrightResults
+    const { passed } = playwrightResults
     const spec = (title: string) => `c2-chat-desktop/repro/${title}.spec.ts`
 
     const result = await replay(
       outDir,
       resultsRunner({
         [spec('inside')]: [failedInStep, failedInStep, failedInStep],
+        [spec('nested')]: [failedInNestedStep, failedInNestedStep, failedInNestedStep],
         [spec('timeout')]: [timedOutInStep, failedInStep, timedOutInStep],
         [spec('sign-in')]: [signInTimeout, signInTimeout, signInTimeout],
         [spec('mixed')]: [failedInStep, failedInOtherStep, failedInStep],
@@ -457,7 +473,7 @@ describe('replay', () => {
       qaDir,
     )
 
-    expect(titles(result.confirmed)).toEqual(['inside', 'timeout'])
+    expect(titles(result.confirmed)).toEqual(['inside', 'nested', 'timeout'])
     const counts = ({ id, replay: { failed, runs, inconclusive, reason } }: VerifiedFinding) => [
       id,
       failed,
@@ -473,6 +489,33 @@ describe('replay', () => {
     expect(result.flaky.at(-1)?.replay.error).toContain('waiting for locator(\'input[autocomplete="one-time-code"]\')')
     expect(droppedAt(result, 'replay').map((entry) => [entry.file.id, entry.reason])).toEqual([
       ['fixed', 'failed 0/3 replays'],
+    ])
+  })
+
+  test('a real-AI finding still confirms on 2 failures in the bug check step beside 1 run that never reached it', async () => {
+    const real = 'c5-widgets-connections-desktop'
+    for (const title of ['twice', 'once']) {
+      const finding = { ...makeFinding(title, pageError), charter: real }
+      await Bun.write(join(outDir, real, 'findings', `${title}.json`), JSON.stringify(finding))
+      await Bun.write(join(outDir, real, finding.repro_spec), validSpec(title))
+    }
+    const { signInTimeout, failedInStep, passed } = playwrightResults
+
+    const result = await replay(
+      outDir,
+      resultsRunner({
+        [`${real}/repro/twice.spec.ts`]: [failedInStep, signInTimeout, failedInStep],
+        [`${real}/repro/once.spec.ts`]: [failedInStep, signInTimeout, passed],
+        [relative(outDir, controlSpec())]: [passed, passed, passed],
+      }),
+      qaDir,
+    )
+
+    expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.runs, replay.reason])).toEqual([
+      ['twice', 2, 2, undefined],
+    ])
+    expect(result.flaky.map(({ id, replay }) => [id, replay.reason])).toEqual([
+      ['once', '1 of 3 runs failed before the bug check step'],
     ])
   })
 
@@ -845,6 +888,31 @@ describe('replay of native flows', () => {
     expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', 'asserts', 'waits']))
   })
 
+  test('a failure-oracle flow must end on a plain assertion, so a block cannot pull its steps into the proof', async () => {
+    // Replay splits at the last command: a block there would carry the whole way to the bug into the confirming part.
+    const retry = '- launchApp\n- retry:\n    commands:\n      - tapOn: Search\n      - assertVisible: x\n'
+    await writeNative(makeNative('retry', assertFailed), retry)
+    const nested = '- launchApp\n- runFlow:\n    commands:\n      - assertVisible: x\n'
+    await writeNative(makeNative('nested', assertFailed), nested)
+    await writeNative(makeNative('tap', assertFailed), '- launchApp\n- tapOn: Continue\n')
+    const wait = '- launchApp\n- extendedWaitUntil:\n    visible: Reply\n    timeout: 60000\n'
+    await writeNative(makeNative('waits', assertFailed), wait)
+    // A stuck oracle's symptom is the wait that never ends, and a trailing settle is skipped.
+    await writeNative(makeNative('stuck', { type: 'stuck', evidence: 'The reply never comes' }), wait)
+    await writeNative(makeNative('settled', assertFailed))
+
+    const result = await nativeReplay({})
+
+    const reason = 'the flow does not end on a plain assertVisible or assertNotVisible (a wait, for stuck)'
+    expect(droppedAt(result, 'lint').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['nested', reason],
+      ['retry', reason],
+      ['tap', reason],
+      ['waits', reason],
+    ])
+    expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['settled', 'stuck'])
+  })
+
   test('a control flow that fails once marks the stack unhealthy, and no finding runs or is confirmed', async () => {
     await writeNative(makeNative('always', assertFailed))
     const calls: FlowCall[] = []
@@ -1152,7 +1220,7 @@ describe('replay of native flows', () => {
       a: { flow: `${code}${welcome}- waitForAnimationToEnd\n`, oracle: layout },
       // Waits for the name step right after the code.
       b: {
-        flow: `${code}- extendedWaitUntil:\n    visible: Enter your name\n- inputText: Ada\n`,
+        flow: `${code}- extendedWaitUntil:\n    visible: Enter your name\n- assertVisible: Ada\n`,
         oracle: assertFailed,
       },
       // Asserts a text of the privacy step itself, which the device skips the block for.
@@ -1184,7 +1252,7 @@ describe('replay of native flows', () => {
       // Only a layout finding's quote names what the flow is after.
       f: {
         flow: `${code}${welcome}`,
-        oracle: { type: 'assert-failed', evidence: 'Continue stays off after "Enter your name"' },
+        oracle: { type: 'stuck', evidence: 'Continue stays off after "Enter your name"' },
       },
       g: { flow: `${code}${welcome}`, oracle: { type: 'layout', evidence: '[qa-layout] offscreen button ""' } },
       // A quote the allow list would refuse in the `when`.

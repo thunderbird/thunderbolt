@@ -35,8 +35,10 @@ import type { TranscriptMessage } from './report'
 export type VerifiedFinding = FindingFile & {
   /**
    * `error`: the first failed run's error message, shown to the judge. A visual finding never replays: 0/0.
-   * `inconclusive`: native `layout` runs whose flow failed before the quoted line showed; `runs` leaves them out.
-   * `reason`: why fewer than three native runs counted, which makes the finding flaky.
+   * `inconclusive`: runs that never reached the bug, which `runs` leaves out: a web run that failed outside the spec's
+   * `bug check` step, or a native run whose first part (sign-in, and the steps before the bug's assertion) failed, or
+   * whose layout or log-oracle flow failed without the quoted line.
+   * `reason`: why too few runs counted to decide, which makes the finding flaky.
    */
   replay: { failed: number; runs: number; error?: string; inconclusive?: number; reason?: string }
   judge?: { keep: boolean; reason: string }
@@ -306,7 +308,7 @@ const failedInBugStep = (steps: ReplayStep[]): boolean =>
 /**
  * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run.
  * Every test in the file counts, so a file is confirmed only if all of its runs failed. A run that failed outside the
- * `bugStep` step never reached the bug: it is `inconclusive`, left out of `runs`, and `reason` says so.
+ * `bugStep` step never reached the bug: it is `inconclusive` and left out of `runs` (`withUnreachedReason` decides).
  */
 const outcomesBySpec = (report: ReplayReport) => {
   const outcomes = new Map<string, Pick<VerifiedFinding, 'replay' | 'artifacts'>>()
@@ -333,12 +335,19 @@ const outcomesBySpec = (report: ReplayReport) => {
     }
     outcomes.set(file, outcome)
   }
-  for (const { replay } of outcomes.values()) {
-    if (replay.inconclusive) {
-      replay.reason = `${replay.inconclusive} of ${replay.inconclusive + replay.runs} runs failed before the ${bugStep} step`
-    }
-  }
   return outcomes
+}
+
+/**
+ * A web finding's outcome with a `reason`, which makes it flaky, when runs that never reached the bug step leave too
+ * few failures to confirm it. Playwright runs no replacement, so the bar is the one for three runs: a real-AI
+ * finding with two failures in the step and one sign-in flake is still confirmed.
+ */
+const withUnreachedReason = (file: FindingFile, outcome: Outcome): Outcome => {
+  const { failed, runs, inconclusive } = outcome.replay
+  if (!inconclusive || failed >= confirmingFailures(file, runs + inconclusive)) return outcome
+  const reason = `${inconclusive} of ${inconclusive + runs} runs failed before the ${bugStep} step`
+  return { ...outcome, replay: { ...outcome.replay, reason } }
 }
 
 const specPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_spec}`
@@ -374,6 +383,21 @@ const assertion = z.union([z.object({ assertVisible: selector }), z.object({ ass
  * on the screen (drivers/maestro.md); a trailing wait for the screen's text is how it gets there, so it passes.
  */
 const endsOnAssertion = (yaml: string) => assertion.safeParse(commandsOf(yaml).at(-1)).success
+
+/** Whether a failed flow is the oracle's bug: every oracle but `layout` and the log oracles. */
+const failureIsBug = (oracle: Oracle | undefined) =>
+  oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
+
+const waitsFor = z.object({ extendedWaitUntil: z.unknown() })
+/**
+ * Whether a failure-oracle flow's last command after its settles is a plain `assertVisible` or `assertNotVisible`, or
+ * for `stuck` an `extendedWaitUntil`. Replay splits there, so a block (`runFlow`, `retry`) would put the whole way to
+ * the bug back in the part whose failure confirms it.
+ */
+const endsOnBugAssertion = (yaml: string, oracle: Oracle) => {
+  const last = commandsOf(yaml).findLast((command) => !settle.safeParse(command).success)
+  return assertion.safeParse(last).success || (oracle.type === 'stuck' && waitsFor.safeParse(last).success)
+}
 
 /**
  * A native flow as a device runs it. `signIn`, when set, runs first in the same launch: the harness's sign-in, and for
@@ -459,8 +483,8 @@ const withSignIn = async (
   const split = await consentSplit(flow, session, oracle)
   const rest = split?.flow ?? flow
   // Where a failure is the bug, only the last command that is not a settle asserts it; everything before only reaches it.
-  const failureIsBug = apart && oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
-  const assertAt = failureIsBug ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
+  const assertAt =
+    apart && failureIsBug(oracle) ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
   const before = [...signIn, ...(split?.signIn ?? []), ...rest.slice(0, Math.max(assertAt, 0))]
   if (before.length === 0) return { yaml }
   return { signIn: serialize(before, appId), yaml: serialize(rest.slice(Math.max(assertAt, 0)), appId) }
@@ -706,7 +730,6 @@ export const verifyNativeFix = async (
   const appId = platformOf(platform).appId ?? ''
   const check = checkMaestroFlow(opts.flow, { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
-  const flow = await withSignIn(check.yaml, session, appId, oracle)
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>
@@ -725,7 +748,7 @@ export const verifyNativeFix = async (
   if (!original) return result
   const unpatched = await threeRuns(
     { runFlow: original, outDir, next },
-    flow,
+    await withSignIn(check.yaml, session, appId, oracle),
     session,
     bug,
     oracle && unreached(oracle),
@@ -784,7 +807,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * `schema`; every other finding takes the dir's platform as its `viewport`.
  * A spec asserts the expected behaviour in its `bugStep` step, which the lint requires, and a run counts as failed only
  * when it failed inside that step. A run that failed before it is inconclusive, and since Playwright runs no
- * replacement, the finding is then flaky. Otherwise failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
+ * replacement, the finding is then flaky unless the other runs confirm it anyway (2 failures for a real-AI charter).
+ * Otherwise failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
  * and `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped
@@ -856,6 +880,9 @@ export const replay = async (
       if (!check.ok) result.dropped.push({ file, gate: 'lint', reason: check.problems.join('; ') })
       else if (oracle.type === 'layout' && endsOnAssertion(check.yaml)) {
         result.dropped.push({ file, gate: 'lint', reason: 'a layout flow ends on the screen, with no assertion' })
+      } else if (failureIsBug(oracle) && !endsOnBugAssertion(check.yaml, oracle)) {
+        const reason = 'the flow does not end on a plain assertVisible or assertNotVisible (a wait, for stuck)'
+        result.dropped.push({ file, gate: 'lint', reason })
       } else {
         flows.set(file, await withSignIn(check.yaml, file.charterDir, appIdOf(file), oracle))
         lintClean.push(file)
@@ -897,7 +924,7 @@ export const replay = async (
     for (const file of specFiles) {
       const loadError = broken.get(specOf(file))
       if (loadError) result.dropped.push({ file, gate: 'lint', reason: `failed to load: ${loadError}` })
-      else outcomes.set(file, bySpec.get(specOf(file)) ?? noRuns)
+      else outcomes.set(file, withUnreachedReason(file, bySpec.get(specOf(file)) ?? noRuns))
     }
   }
   if (replayedFlows.size > 0 && runFlow) {

@@ -69,7 +69,9 @@ missing.
   app, so it starts with `- launchApp`, signs in with `${EMAIL}` as the address and `12345678` as the code, reaches
   the screen and repeats the action. Then it asserts the expected behaviour with `assertVisible` or
   `assertNotVisible`, as its last command. Replay counts a run as the bug only when that last command failed: a run
-  that failed on an earlier command never reached the bug and proves nothing. `${EMAIL}` is the only variable, a
+  that failed on an earlier command never reached the bug and proves nothing. A flow whose last command is anything
+  else (a `retry` or `runFlow` block, a tap, a wait) is thrown away; only a `stuck` finding may end on the
+  `extendedWaitUntil` that never ends. `${EMAIL}` is the only variable, a
   fresh address for each replay; the rules for `run` hold for everything else.
 - A fresh app is slower than the one you explored, so before each step the flow waits for a text of the screen that
   step needs, then acts on it, and taps a label rather than a point wherever the element has a text.

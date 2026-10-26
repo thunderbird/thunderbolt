@@ -186,7 +186,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    it. A run counts as failed only when it failed inside that step, read from the JSON report: the step holds an
    error, or the test timed out while it ran (duration -1). A run that failed before it, in its sign-in for example,
    never reached the bug: it is inconclusive, and since Playwright runs no replacement the finding is flaky, with
-   `replay.reason` saying how many runs failed early. The control spec has no such step, so any failure of it counts.
+   `replay.reason` saying how many runs failed early, unless the runs that reached the step confirm it anyway (2
+   failures for a real-AI charter). A spec that puts its sign-in inside the step still passes this check; the judge
+   is the backstop there. The control spec has no such step, so any failure of it counts.
    Otherwise 3 of 3 failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`);
    1 or 2 are flaky (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against
    the real providers, the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and
@@ -211,7 +213,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    extra runs. A run whose flow passed without the line still counts as not shown. For the other oracles, where a
    failed flow is the bug, the flow's last command that is not `waitForAnimationToEnd` is the bug's assertion:
    everything before it runs first as its own `maestro test`, in the same launch, so a failure there is inconclusive
-   and run again in the same way. A `layout` flow whose last command is `assertVisible`
+   and run again in the same way. Such a flow must end on a plain `assertVisible` or `assertNotVisible` (or, for
+   `stuck`, an `extendedWaitUntil`), or the lint drops it: a `retry` or `runFlow` block there would carry its steps
+   into the part whose failure confirms the bug. A `layout` flow whose last command is `assertVisible`
    or `assertNotVisible` is dropped at the lint gate: it would fail on every run without the line, so each of those
    runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
    time: a run starts only if it can end 2 minutes (for the sanitize and the upload) before replay-native's 90

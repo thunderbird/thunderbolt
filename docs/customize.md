@@ -56,6 +56,11 @@ OpenRouter need a valid key before their catalog loads, and you can always type 
 by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
 before the model can be saved.
 
+The connection test also checks whether the model accepts tools. A model that rejects them, such as
+Ollama's `gemma3`, is saved with **Supports tools** turned off, and its chats run without web search,
+integrations or other tools. The switch is on the add and edit forms if the test gets it wrong, and
+running the test again on a saved model updates it.
+
 ### Models your deployment provides
 
 If the operator configured managed inference, some models arrive already working, with no key, no

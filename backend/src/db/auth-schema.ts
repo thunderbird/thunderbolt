@@ -100,9 +100,9 @@ export const ssoProvider = pgTable('sso_provider', {
 
 /**
  * Backs the Better Auth `deviceAuthorization` plugin (RFC 8628). One row per in-flight
- * device grant: created on /device/code, claimed + approved at /device/approve, consumed
- * on /device/token. Column JS keys must match the plugin's field names (`deviceCode`,
- * `userCode`, …); SQL names are snake_case. `userId` is null until the user approves.
+ * device grant: created on /device/code, claimed at GET /device, approved at /device/approve,
+ * consumed on /device/token. Column JS keys must match the plugin's field names (`deviceCode`,
+ * `userCode`, …); SQL names are snake_case. `userId` is null until the user claims the code.
  */
 export const deviceCode = pgTable(
   'device_code',
@@ -119,8 +119,8 @@ export const deviceCode = pgTable(
     scope: text('scope'),
   },
   (table) => [
-    index('device_code_deviceCode_idx').on(table.deviceCode),
-    index('device_code_userCode_idx').on(table.userCode),
+    uniqueIndex('device_code_deviceCode_uidx').on(table.deviceCode),
+    uniqueIndex('device_code_userCode_uidx').on(table.userCode),
   ],
 )
 

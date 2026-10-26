@@ -11,12 +11,10 @@ import { AltchaTransientError, solveAltchaChallenge } from './altcha'
 
 export type AuthRequirement = 'authenticated' | 'unauthenticated'
 
-export type RedirectTarget = 'sso' | 'waitlist' | 'home'
-
 export type AuthGateState =
   | { status: 'loading' }
   | { status: 'allowed' }
-  | { status: 'redirect'; target: RedirectTarget }
+  | { status: 'redirect'; to: string }
   | { status: 'verifying' }
   | { status: 'verification-failed'; retry: () => void }
 
@@ -28,7 +26,7 @@ type CaptchaStatus = 'idle' | 'verifying' | 'failed'
  *
  * For `require="authenticated"`:
  *  - has session (real or anonymous) → allowed
- *  - SSO mode + no session → redirect to /sso-redirect
+ *  - SSO mode + no session → redirect to /sso-redirect, or to /sso-error when `search` carries an SSO `error`
  *  - waitlist bypassed + anonymous overlay enabled + no session → fire `signIn.anonymous()` and show loading
  *    (with `VITE_CAPTCHA_PROVIDER=altcha`, solve a challenge first and show `verifying`, or
  *    `verification-failed` with a retry when the challenge fetch fails or the API refuses the solution)
@@ -41,8 +39,10 @@ type CaptchaStatus = 'idle' | 'verifying' | 'failed'
  * Anonymous users count as "authenticated" for routing — their session has a real
  * `user` record with `isAnonymous: true`. Capability gating per route lives in the
  * route itself, not here.
+ *
+ * @param search the current location's query string, such as `?error=access_denied`
  */
-export const useAuthGate = (require: AuthRequirement): AuthGateState => {
+export const useAuthGate = (require: AuthRequirement, search = ''): AuthGateState => {
   const authClient = useAuth()
   const httpClient = useHttpClient()
   const { data: session, isPending } = authClient.useSession()
@@ -164,7 +164,7 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   }
 
   if (require === 'unauthenticated') {
-    return isAuthenticated ? { status: 'redirect', target: 'home' } : { status: 'allowed' }
+    return isAuthenticated ? { status: 'redirect', to: '/' } : { status: 'allowed' }
   }
 
   if (isAuthenticated) {
@@ -179,8 +179,11 @@ export const useAuthGate = (require: AuthRequirement): AuthGateState => {
   }
 
   if (isSsoMode()) {
-    return { status: 'redirect', target: 'sso' }
+    // Better Auth sends some SSO failures (a SAML account that cannot be linked) to the callback URL, `/`, not to
+    // `errorCallbackURL`. Restarting the login from here would loop, as the IdP still holds a session.
+    const failedSsoLogin = new URLSearchParams(search).has('error')
+    return { status: 'redirect', to: failedSsoLogin ? `/sso-error${search}` : '/sso-redirect' }
   }
 
-  return { status: 'redirect', target: 'waitlist' }
+  return { status: 'redirect', to: '/waitlist' }
 }

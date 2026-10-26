@@ -6,9 +6,11 @@ import { useRef } from 'react'
 import { getPosthogClient, trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { AuthClient } from '@/contexts'
 
+type SessionSnapshot = { user: { id: string; isAnonymous?: boolean | null } } | null
+
 export type AnonymousPromotionAnalytics = {
-  /** Read the current session via `authClient.getSession()`; capture the user.id if isAnonymous === true. Idempotent. */
-  captureAnonId: (authClient: AuthClient) => Promise<void>
+  /** Capture an anonymous user from a resolved snapshot, or fetch the session when none is supplied. */
+  captureAnonId: (authClient: AuthClient, session?: SessionSnapshot) => Promise<void>
   /** Persist captured anon id to sessionStorage for cross-redirect retrieval (used by SSO flow). Call BEFORE any redirect. */
   persistForSso: () => void
   /** Fire posthog.alias(newUserId, capturedAnonId). Also fires the 'anonymous_user_promoted' event. Safe to call when no anon id was captured (no-op). */
@@ -38,8 +40,8 @@ export const createAnonymousPromotionAnalytics = (
   trackEvent: typeof defaultTrackEvent = defaultTrackEvent,
   alias: (newUserId: string, anonId: string) => void = defaultAlias,
 ): AnonymousPromotionAnalytics => ({
-  captureAnonId: async (authClient: AuthClient) => {
-    const { data } = await authClient.getSession()
+  captureAnonId: async (authClient, session) => {
+    const data = session === undefined ? (await authClient.getSession()).data : session
     if (data?.user?.isAnonymous === true) {
       capturedIdRef.current = data.user.id
     }

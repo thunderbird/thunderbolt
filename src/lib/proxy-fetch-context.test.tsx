@@ -8,7 +8,7 @@ import { renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { type ReactNode } from 'react'
 import { ProxyFetchProvider, useFetch, useProxyFetchGetter } from './proxy-fetch-context'
-import type { FetchFn } from './proxy-fetch'
+import { createProxyFetch, type FetchFn } from './proxy-fetch'
 
 describe('useFetch + ProxyFetchProvider', () => {
   beforeAll(async () => {
@@ -157,21 +157,32 @@ describe('useFetch + ProxyFetchProvider', () => {
       }
     })
 
-    it('Tauri + toggle off (default): rebuilds without proxying; new fetch goes direct', () => {
-      // proxy_enabled storage is empty → default 'false' → toggle off on Tauri.
+    it('a captured fetch follows the stored toggle OFF → ON → OFF without a rerender', async () => {
       localStorage.removeItem('proxy_enabled')
-
-      const TestProvider = createTestProvider()
-      // No override — we want the real factory so the toggle changes the output.
+      const native = mock(async () => new Response('direct'))
+      const hosted = mock(async () => new Response('hosted'))
+      const createFetch: typeof createProxyFetch = (options) =>
+        createProxyFetch({
+          ...options,
+          tauriFetch: native,
+          fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+        })
       const wrapper = ({ children }: { children: ReactNode }) => (
-        <TestProvider>
-          <ProxyFetchProvider isStandalone={() => true}>{children}</ProxyFetchProvider>
-        </TestProvider>
+        <ProxyFetchProvider isStandalone={() => true} createFetch={createFetch}>
+          {children}
+        </ProxyFetchProvider>
       )
+      const { result } = renderHook(() => useProxyFetchGetter(), { wrapper })
+      // Pi captures the returned fetch once when it creates the harness.
+      const captured = result.current()
 
-      const { result } = renderHook(() => useFetch(), { wrapper })
-      // The returned function must be a real fetch — assertion that the provider built one.
-      expect(typeof result.current).toBe('function')
+      expect(await (await captured('https://provider.example')).text()).toBe('direct')
+      localStorage.setItem('proxy_enabled', 'true')
+      expect(await (await captured('https://provider.example')).text()).toBe('hosted')
+      localStorage.setItem('proxy_enabled', 'false')
+      expect(await (await captured('https://provider.example')).text()).toBe('direct')
+      expect(native).toHaveBeenCalledTimes(2)
+      expect(hosted).toHaveBeenCalledTimes(1)
     })
 
     it('Tauri + toggle ON: the built fetch routes through the hosted proxy', async () => {

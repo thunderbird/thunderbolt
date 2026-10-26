@@ -41,11 +41,11 @@ export type ProjectChatHit = {
 /**
  * One raw result row, **positional**: `[parent_id, snippet]`.
  *
- * Both SQLite backends go through drizzle's `sqlite-proxy` driver (see
- * `src/db/wa-sqlite-database.ts` and `src/db/bun-sqlite-database.ts`), which
- * hands raw `db.all()` results back as arrays, not keyed objects — a raw query
- * carries no column metadata for drizzle to map. Reading `row.parent_id` here
- * yields `undefined` for every row and silently returns zero hits.
+ * The bun-sqlite backend goes through drizzle's `sqlite-proxy` driver (see
+ * `src/db/bun-sqlite-database.ts`), which hands raw `db.all()` results back as
+ * arrays, not keyed objects — a raw query carries no column metadata for
+ * drizzle to map. Reading `row.parent_id` here yields `undefined` for every
+ * row and silently returns zero hits.
  */
 type SearchRow = readonly [parentId: string | null, snippet: string | null]
 

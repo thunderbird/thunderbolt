@@ -22,6 +22,10 @@ export type AppConfig = {
   allowCustomAgents?: boolean
   /** Chat-only shell for public deployments; see `selectMinimalMode`. */
   minimalMode?: boolean
+  /** Operator logo for the minimal-mode header; see `selectBrandLogo`. */
+  brandLogoUrl?: string
+  brandLogoDarkUrl?: string
+  brandLogoAlt?: string
   debugTranscriptsEnabled?: boolean
   /** Whether the deployment offers passkeys (sign-in and sync unlock). False or
    *  absent (an older backend) = off; the frontend hides all passkey UI. */
@@ -90,11 +94,25 @@ export const selectBuiltInAgentEnabled = (config: AppConfig): boolean => config.
 
 /** Whether the deployment runs in minimal mode (`MINIMAL_MODE=true`): the
  *  chat-only shell for public deployments. It hides Settings and its routes, the
- *  starter skill chips, Projects, the account/cloud control, the agent menu and
+ *  starter skill chips, Projects, the account/cloud control, the header's agent pill and
  *  the Settings destinations in the palette and search. Slash commands are off too:
  *  `/` is plain text, and no skill is offered to any agent. Absent means off. Role-based visibility is
  *  expected to replace this predicate. */
 export const selectMinimalMode = (config: AppConfig): boolean => config.minimalMode === true
+
+/** The operator's header logo, or null when `BRAND_LOGO_URL` is unset. Dark
+ *  falls back to the light URL; `alt` is empty when unset, so the caller picks
+ *  its own fallback. */
+export const selectBrandLogo = (config: AppConfig): { light: string; dark: string; alt: string } | null => {
+  if (!config.brandLogoUrl) {
+    return null
+  }
+  return {
+    light: config.brandLogoUrl,
+    dark: config.brandLogoDarkUrl || config.brandLogoUrl,
+    alt: config.brandLogoAlt ?? '',
+  }
+}
 
 /** Whether the UI offers adding custom agents. Absent config defaults to allowed. */
 export const selectAllowCustomAgents = (config: AppConfig): boolean => config.allowCustomAgents !== false

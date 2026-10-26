@@ -72,7 +72,7 @@ const hasCompletedCheckpoint = (stream: SyncStream) => stream.lines.some((line) 
 const accountBuckets = (stream: SyncStream) =>
   (stream.lines.find((line) => line.checkpoint)?.checkpoint?.buckets ?? [])
     .map(({ bucket }) => bucket)
-    .filter((bucket) => !bucket.includes('device_self['))
+    .filter((bucket) => !bucket.includes('#device_self|'))
     .sort()
 
 const removedBuckets = (stream: SyncStream) =>
@@ -84,7 +84,7 @@ const carriesRow = (stream: SyncStream, rowId: string) =>
 const ownRowIsRevoked = (stream: SyncStream, deviceId: string) =>
   stream.lines.some(
     (line) =>
-      line.data?.bucket.includes('device_self[') &&
+      line.data?.bucket.includes('#device_self|') &&
       line.data.data.some(
         (op) => op.object_id === deviceId && op.data !== null && JSON.parse(op.data).revoked_at !== null,
       ),
@@ -113,7 +113,7 @@ test.describe('revoked device sync stream', () => {
       await expect.poll(() => hasCompletedCheckpoint(ownerStream), { timeout: 60_000 }).toBe(true)
       // Non-vacuity: before revocation the stream carries both account buckets.
       const buckets = accountBuckets(revokedStream)
-      expect(buckets).toEqual([expect.stringContaining('user_data['), expect.stringContaining('user_essentials[')])
+      expect(buckets).toEqual([expect.stringContaining('#user_data|'), expect.stringContaining('#user_essentials|')])
 
       await revokeTrustedDevice(page, device.label)
       await waitForConsumedChallenge(userId, 'revoke')

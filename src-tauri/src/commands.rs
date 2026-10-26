@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use anyhow::Result;
-use serde::Serialize;
 use tauri::command;
 
 #[command]
@@ -70,30 +69,6 @@ pub fn set_interface_style(style: String) -> Result<(), String> {
     Ok(())
 }
 
-// === Capabilities ============================================================================
-
-/// List of runtime capabilities that the renderer can query once and cache.
-/// Extend this struct whenever we add more feature flags.
-#[derive(Serialize)]
-pub struct Capabilities {
-    /// Whether the application was compiled with the `native_fetch` feature and therefore the
-    /// `tauri-plugin-http` plugin is available for native HTTP requests.
-    pub native_fetch: bool,
-}
-
-#[cfg(feature = "native_fetch")]
-const NATIVE_FETCH_ENABLED: bool = true;
-#[cfg(not(feature = "native_fetch"))]
-const NATIVE_FETCH_ENABLED: bool = false;
-
-/// Returns the set of capabilities supported by the current build.
-#[command]
-pub fn capabilities() -> Capabilities {
-    Capabilities {
-        native_fetch: NATIVE_FETCH_ENABLED,
-    }
-}
-
 // === OAuth loopback server ===================================================================
 
 /// Ports pre-registered as redirect URIs in the Google / Microsoft OAuth console.
@@ -120,4 +95,27 @@ pub async fn install_thunderbolt_cli(
 ) -> Result<crate::cli_installer::CliInstallResult, crate::cli_installer::CliInstallError> {
     let version = app.package_info().version.to_string();
     crate::cli_installer::install_cli(&version).await
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    #[test]
+    fn http_capability_is_scoped_to_main_webview_and_http_schemes() {
+        let capability: Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(capability["webviews"], json!(["main"]));
+        assert!(capability.get("windows").is_none());
+        let http = capability["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|permission| permission["identifier"] == "http:default")
+            .unwrap();
+        assert_eq!(
+            http["allow"],
+            json!([{ "url": "http://*:*/*" }, { "url": "https://*:*/*" }])
+        );
+    }
 }

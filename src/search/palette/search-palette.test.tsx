@@ -128,6 +128,22 @@ describe('SearchPalette commands', () => {
     })
   })
 
+  describe('input placeholder', () => {
+    it('lists every entity type by default', () => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      renderPalette()
+
+      expect(screen.getByPlaceholderText('Search chats, models, skills, agents…')).toBeInTheDocument()
+    })
+
+    it('only mentions chats in minimal mode', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderPalette()
+
+      expect(screen.getByPlaceholderText('Search chats…')).toBeInTheDocument()
+    })
+  })
+
   it('renders commands grouped by section', () => {
     buildCommands = () => [
       { id: 'nav-agents', title: 'All agents', icon: Bot, section: 'navigation', to: '/settings/agents' },

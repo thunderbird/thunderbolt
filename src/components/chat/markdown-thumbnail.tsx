@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useQuery } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { useAttachmentText } from './text-snippet'
 
 type MarkdownThumbnailProps = {
@@ -13,11 +13,23 @@ type MarkdownThumbnailProps = {
 /**
  * Renders a markdown attachment as *formatted* markdown, scaled down into a
  * mini-page thumbnail (rendered at 480px wide, then transform-scaled to the
- * 160px card). Returns null until the text resolves so the placeholder shows.
+ * 160px card). Keeps the placeholder until the text and GFM plugin resolve.
  */
 export const MarkdownThumbnail = ({ localFileId }: MarkdownThumbnailProps) => {
   const text = useAttachmentText(localFileId, 'text/markdown')
-  if (!text) {
+  const { data: remarkGfm } = useQuery({
+    queryKey: ['markdown-thumbnail-gfm'],
+    queryFn: async () => {
+      const gfm = await import('remark-gfm')
+      return gfm.default
+    },
+    enabled: !!text,
+    staleTime: Infinity,
+    // Native clients can load this bundled module while offline.
+    networkMode: 'always',
+    throwOnError: false,
+  })
+  if (!text || !remarkGfm) {
     return null
   }
   return (

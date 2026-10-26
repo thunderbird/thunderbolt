@@ -37,7 +37,7 @@ src/
   discovery.ts        # Cloud Map DNS (thunderbolt.local)
   dns.ts              # Cloudflare CNAMEs for the stack's hostnames
   # Preview stacks
-  shared.ts           # `previews-shared` stack — long-lived VPC/ALB/postgres/keycloak/powersync
+  shared.ts           # `previews-shared` stack — long-lived VPC/ALB/postgres/keycloak
   per-pr-stack.ts     # Slim `preview-pr-<n>` stack — app services only, shared infra via StackReference
   # EKS
   eks.ts              # EKS cluster, EBS CSI, Helm chart, nginx-ingress

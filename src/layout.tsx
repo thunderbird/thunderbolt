@@ -36,18 +36,15 @@ const LayoutContent = () => {
   )
 }
 
-const Layout = () => {
+const Layout = ({ initialSidebarOpen }: { initialSidebarOpen: boolean }) => {
   const { sidebarState } = useSettings({
     sidebar_state: true,
   })
 
-  const open = sidebarState.value
+  // Initialization already read this preference. Keep that snapshot until the
+  // live query answers, then follow local edits and sync updates as usual.
+  const open = sidebarState.isLoading ? initialSidebarOpen : sidebarState.value
   const setOpen = (value: boolean) => sidebarState.setValue(value)
-
-  // this avoids the sidebar from flashing after load sidebarState
-  if (sidebarState.isLoading) {
-    return null
-  }
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>

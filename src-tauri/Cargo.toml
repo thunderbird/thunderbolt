@@ -1,6 +1,6 @@
 [package]
 name = "thunderbolt"
-version = "0.1.144"
+version = "0.1.148"
 description = "Privacy-respecting AI assistant."
 authors = ["Chris Roth <chris@cjroth.com>"]
 license = "MPL-2.0"
@@ -14,10 +14,6 @@ default-run = "thunderbolt"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-[features]
-default = []
-native_fetch = []
 
 [workspace]
 members = ["plugins/tauri-plugin-passkey"]
@@ -51,14 +47,14 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 sha2 = "0.10"
 hex = "0.4"
 tauri-plugin-devtools = "2.0.1"
-tauri-plugin-http = "2.5.9"
+tauri-plugin-http = { version = "2.5.9", default-features = false, features = ["rustls-tls", "rustls-tls-native-roots", "http2", "charset", "macos-system-configuration"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-fs = "2.4.4"
 tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 tauri-plugin-store = "2.4.3"
-# Native WebAuthn passkey ceremonies (iOS + macOS); no-op stub elsewhere.
+# Native WebAuthn passkey ceremonies (iOS, macOS, Android, Windows); no-op stub on Linux.
 tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }
 
 # Used only in debug builds to install a rustls crypto provider before

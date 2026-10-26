@@ -38,7 +38,7 @@ import { burnStepUpCode, requireStepUpCode, sendStepUpCode } from './step-up'
 const stepUpAction = 'account-deletion' satisfies StepUpAction
 
 /**
- * Anonymous accounts carry a synthetic address (`temp@<id>.com`), so no code can
+ * Anonymous accounts carry a synthetic address (`<id>@anonymous.placeholder.invalid`), so no code can
  * reach their owner. Deletion is refused rather than left ungated; the UI only
  * offers it to real accounts, and an anonymous row is removed when its user
  * links a real account.

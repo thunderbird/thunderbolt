@@ -11,47 +11,55 @@ storage:
 
 port: 8080
 
-sync_rules:
+sync_config:
   content: |
-    bucket_definitions:
+    config:
+      edition: 3
+      # Edition 3 switches synced Postgres timestamps to ISO 8601 (`T` separator). The client
+      # writes its own timestamps as `datetime('now')` (space separator) and sorts on them as
+      # text, so keep the old format until both sides agree.
+      timestamps_iso8601: false
+
+    with:
+      # Matches only while the requesting device's row exists, belongs to the caller and is
+      # unrevoked, so revoking a device drops both account streams. A table query returns
+      # nothing until a brand-new device's row replicates (see `device_self`).
+      active_device_account: SELECT user_id FROM powersync.devices WHERE id = auth.parameter('device_id') AND user_id = auth.user_id() AND revoked_at IS NULL
+
+    streams:
       # This device's own row only, ungated by revocation, so a revoked device
-      # still receives `revoked_at` after its other buckets drop. Parameters read
-      # the claim directly: a table query returns nothing until the row
-      # replicates, which would empty priority 1 on a brand-new device.
+      # still receives `revoked_at` after its other streams drop. It reads the
+      # claim directly: a table query returns nothing until the row replicates,
+      # which would empty priority 1 on a brand-new device.
       device_self:
         priority: 1
-        parameters: SELECT request.jwt() ->> 'device_id' as device_id, request.user_id() as user_id
-        data:
-          # `user_id` is load-bearing, not belt-and-braces: it is what keeps the
-          # row scoped to its owner now that the bucket keys on device id.
-          - SELECT * FROM powersync.devices WHERE id = bucket.device_id AND user_id = bucket.user_id
+        auto_subscribe: true
+        # `user_id` is load-bearing, not belt-and-braces: it is what keeps the
+        # row scoped to its owner now that the stream keys on device id.
+        query: SELECT * FROM powersync.devices WHERE id = auth.parameter('device_id') AND user_id = auth.user_id()
       user_essentials:
         priority: 1
-        # Second branch is a rollout fallback for a backend that does not stamp
+        auto_subscribe: true
+        # The `OR` branch is a rollout fallback for a backend that does not stamp
         # `device_id` yet; without it a claimless token matches nothing and wipes
         # every client. Drop it once no deployment can still run that backend.
-        parameters:
-          - SELECT user_id FROM powersync.devices WHERE id = request.jwt() ->> 'device_id' AND user_id = request.user_id() AND revoked_at IS NULL
-          - SELECT request.user_id() as user_id WHERE request.jwt() ->> 'device_id' IS NULL
-        data:
-          - SELECT * FROM powersync.settings WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.model_profiles WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.devices WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
+        queries:
+          - SELECT * FROM powersync.settings WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.models WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.model_profiles WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.devices WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.chat_threads WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
       user_data:
         priority: 2
-        parameters:
-          - SELECT user_id FROM powersync.devices WHERE id = request.jwt() ->> 'device_id' AND user_id = request.user_id() AND revoked_at IS NULL
-          - SELECT request.user_id() as user_id WHERE request.jwt() ->> 'device_id' IS NULL
-        data:
-          - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.prompts WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.skills WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.triggers WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.agents WHERE user_id = bucket.user_id
-          - SELECT * FROM powersync.projects WHERE user_id = bucket.user_id
+        auto_subscribe: true
+        queries:
+          - SELECT * FROM powersync.chat_messages WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.tasks WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.prompts WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.skills WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.triggers WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.agents WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+          - SELECT * FROM powersync.projects WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
 
 client_auth:
   supabase: false

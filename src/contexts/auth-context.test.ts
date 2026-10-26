@@ -50,9 +50,6 @@ describe('authRequestHeaders', () => {
   })
 
   it('carries the app version alongside a per-call header', () => {
-    // better-fetch REPLACES a per-call `headers` object rather than merging it,
-    // so a call site that only sets its own header loses X-App-Version and the
-    // fail-closed gate answers 426 on a perfectly current build.
     env.VITE_APP_VERSION = '1.2.3'
 
     const headers = authRequestHeaders({ 'X-Challenge-Token': 'tok' })

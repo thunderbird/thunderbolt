@@ -219,10 +219,14 @@ a fork can change image contents but never the infrastructure code.
 
 ### Teardown: on close, hourly, and by hand
 
-`preview-destroy.yml` fires on PR close. `scripts/drop-preview-db.sh` runs before
-`pulumi destroy` because it needs the per-stack secrets and backend task definition the
-stack owns; destroy runs even if the drop fails, so a flaky drop cannot orphan an ALB and
-leak cost.
+`preview-destroy.yml` fires on PR close. Every preview destroy, on close, hourly or by
+hand, goes through `stack-deploy.yml`'s `destroy` job, which runs
+`scripts/drop-preview-db.sh` before `pulumi destroy` because it needs the per-stack
+secrets and backend task definition the stack owns; destroy runs even if the drop fails,
+so a flaky drop cannot orphan an ALB and leak cost. A failed drop then fails the job, and
+the databases and slot it left need dropping by hand. The hourly cleanup sends a failure
+notification; on PR close the failure shows only in that run and in the PR's preview
+comment, because `notify-on-failure.yml` alerts only for runs on `main`.
 
 Pulumi does not remove the logical database that `deploy/docker/backend-entrypoint.sh`
 creates per PR at backend startup on the shared Postgres instance (when
@@ -249,7 +253,7 @@ a teardown.
 | `scripts/check-glib-variantstriter.sh`    | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
 | `scripts/agent-core-browser-check.ts`     | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
 | `crates/thunderbolt-acp-client/build.sh`  | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
-| `scripts/drop-preview-db.sh`              | `preview-destroy.yml`                                | Drops the per-PR logical database before `pulumi destroy`; idempotent |
+| `scripts/drop-preview-db.sh`              | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
 | `.github/scripts/review-orchestrator.mjs` | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
 | `.github/scripts/post-pr-metrics.cjs`     | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
 | `.github/scripts/post-eval-results.ts`    | `evals.yml`                                          | Unit-tested by `bun run test`                                         |

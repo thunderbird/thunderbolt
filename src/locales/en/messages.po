@@ -382,6 +382,10 @@ msgstr "Always allow everything from this agent"
 msgid "Always ask"
 msgstr "Always ask"
 
+#: src/lib/sso-error-messages.ts
+msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+msgstr "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
+
 #: src/lib/tool-metadata.ts
 msgid "Analyzing…"
 msgstr "Analyzing…"
@@ -803,8 +807,8 @@ msgid "Clear sky"
 msgstr "Clear sky"
 
 #: src/components/app-error-screen.tsx
-msgid "Clearing Database…"
-msgstr "Clearing Database…"
+#~ msgid "Clearing Database…"
+#~ msgstr "Clearing Database…"
 
 #: src/settings/devices.tsx
 msgid "CLI"
@@ -2732,6 +2736,10 @@ msgstr "OAuth validation failed"
 msgid "Objects"
 msgstr "Objects"
 
+#: src/settings/preferences.tsx
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Changes will sync when back online."
@@ -3338,6 +3346,10 @@ msgstr "Search and work with your OneDrive files and documents."
 msgid "Search chats, models, skills, agents…"
 msgstr "Search chats, models, skills, agents…"
 
+#: src/search/palette/search-palette.tsx
+msgid "Search chats…"
+msgstr "Search chats…"
+
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Search connections"
@@ -3653,9 +3665,17 @@ msgstr "Sign-in approved"
 msgid "Sign-in denied"
 msgstr "Sign-in denied"
 
+#: src/components/sso-error.tsx
+msgid "Sign-in failed"
+msgstr "Sign-in failed"
+
 #: src/components/welcome-dialog.tsx
 msgid "Sign-in successful"
 msgstr "Sign-in successful"
+
+#: src/lib/sso-error-messages.ts
+msgid "Sign-in was cancelled, or your identity provider did not grant access."
+msgstr "Sign-in was cancelled, or your identity provider did not grant access."
 
 #: src/components/signed-out.tsx
 msgid "Signed Out"
@@ -4173,6 +4193,10 @@ msgstr "This server requires authorization. Click Authorize to connect."
 msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "This server uses OAuth. Add it and authorize to connect."
 
+#: src/lib/sso-error-messages.ts
+msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgstr "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "This sign-in request has expired. Start a new one from your terminal."
@@ -4349,6 +4373,7 @@ msgstr "Trusted devices"
 
 #: src/components/auth-gate/browser-check.tsx
 #: src/components/embedded/surface-status.tsx
+#: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -4612,6 +4637,10 @@ msgstr "Want early access?"
 msgid "We could not send the transcript. Please check your connection and try again."
 msgstr "We could not send the transcript. Please check your connection and try again."
 
+#: src/lib/sso-error-messages.ts
+msgid "We could not sign you in. Please try again."
+msgstr "We could not sign you in. Please try again."
+
 #: src/components/auth-gate/browser-check.tsx
 msgid "We couldn't verify your browser. Check your connection and try again."
 msgstr "We couldn't verify your browser. Check your connection and try again."
@@ -4696,8 +4725,8 @@ msgid "What's in it?"
 msgstr "What's in it?"
 
 #: src/settings/preferences.tsx
-msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
 
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"

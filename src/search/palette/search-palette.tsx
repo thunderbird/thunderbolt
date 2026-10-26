@@ -245,7 +245,7 @@ export const SearchPalette = ({
         shouldFilter={false}
       >
         <CommandInput
-          placeholder={t`Search chats, models, skills, agents…`}
+          placeholder={minimalMode ? t`Search chats…` : t`Search chats, models, skills, agents…`}
           value={query}
           onValueChange={handleQueryChange}
         />

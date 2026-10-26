@@ -8,7 +8,6 @@ import { msg } from '@lingui/core/macro'
 import type { ToolConfig } from '@/types'
 import { http } from './http'
 import { memoize } from './memoize'
-import { getAvailableTools } from './tools'
 import { Calendar, CloudSun, Globe, Inbox, Mail, MailSearch, Search } from 'lucide-react'
 
 export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communication' | 'weather' | 'unknown'
@@ -28,6 +27,8 @@ const metadataCache = new Map<string, ToolMetadata>()
  * Get all available tool configurations with caching
  */
 const getToolConfigs = memoize(async (): Promise<ToolConfig[]> => {
+  // Synchronous UI labels do not need integration schemas or tool executors.
+  const { getAvailableTools } = await import('./tools')
   return await getAvailableTools(http)
 }, 'tool-configs')
 

@@ -34,7 +34,7 @@ export const hashSetting = (setting: Setting): string => {
 
 export const defaultSettingDataCollection: Setting = {
   key: 'data_collection',
-  value: 'false',
+  value: 'true',
   updatedAt: null,
   defaultHash: null,
   userId: null,
@@ -269,7 +269,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 6
+export const defaultSettingsVersion = 7
 
 /**
  * Whether the bundle ships no value for a setting, leaving something else to

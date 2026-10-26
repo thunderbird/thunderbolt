@@ -1,8 +1,10 @@
-# PowerSync Sync Middleware & Custom SharedWorker
+# PowerSync Sync Middleware & Custom Sync Worker
 
 ## Overview
 
-PowerSync writes server data (PostgreSQL) into local SQLite as-is. The middleware intercepts sync data **before the write** to decode, normalize, or decrypt it. The only transformer today is AES-256-GCM decryption of encrypted columns ([e2e-encryption.md](e2e-encryption.md)).
+PowerSync writes server data (PostgreSQL) into local SQLite as-is. The middleware intercepts sync data **before the write** to decode, normalize, or decrypt it. The only transformer today is AES-256-GCM decryption of encrypted columns ([e2e-encryption.md](e2e-encryption.md)), which also quarantines server-supplied plaintext in encrypted columns.
+
+PowerSync has no supported hook for transforming downloaded data (see [powersync-js discussion #864](https://github.com/powersync-ja/powersync-js/discussions/864)). We wrap one method on the bucket-storage adapter PowerSync itself builds, and let upstream construct everything else.
 
 ---
 
@@ -10,105 +12,74 @@ PowerSync writes server data (PostgreSQL) into local SQLite as-is. The middlewar
 
 ### Key Files
 
-| File                                                                                                                                                          | Role                                                                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| [src/db/powersync/TransformableBucketStorage.ts](../../../src/db/powersync/TransformableBucketStorage.ts)                                                     | Extends `SqliteBucketStorage` to intercept sync data and run the transformer pipeline                                                       |
-| [src/db/powersync/ThunderboltPowerSyncDatabase.ts](../../../src/db/powersync/ThunderboltPowerSyncDatabase.ts)                                                 | Extends `PowerSyncDatabase` to inject `TransformableBucketStorage` as the storage adapter                                                   |
-| [src/db/powersync/middleware/EncryptionMiddleware.ts](../../../src/db/powersync/middleware/EncryptionMiddleware.ts)                                           | Decrypts every `__enc:`-prefixed string value in the sync stream using AES-256-GCM via the codec                                            |
-| [src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts](../../../src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts)                     | Extends `SharedSyncImplementation` to inject `TransformableBucketStorage` into the worker's sync pipeline; used by both worker paths        |
-| [src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts](../../../src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts)       | SharedWorker entry point; mirrors PowerSync's original but uses the custom implementation                                                   |
-| [src/db/powersync/worker/ThunderboltDedicatedSyncImplementation.worker.ts](../../../src/db/powersync/worker/ThunderboltDedicatedSyncImplementation.worker.ts) | Dedicated-Worker entry point for Safari/Tauri; hosts the same `ThunderboltSharedSyncImplementation` over a single Comlink endpoint (`self`) |
-| [src/db/powersync/database.ts](../../../src/db/powersync/database.ts)                                                                                         | Database config; picks the SharedWorker (Chrome/Edge/Firefox) or the dedicated Worker (Safari/Tauri)                                        |
+| File                                                                                                                                                          | Role                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [src/db/powersync/sync-transform.ts](../../../src/db/powersync/sync-transform.ts)                                                                             | `installSyncTransformers(adapter, transformers)` — wraps the adapter's `control()` to run the transformer pipeline      |
+| [src/db/powersync/middleware/index.ts](../../../src/db/powersync/middleware/index.ts)                                                                         | `syncTransformers` — the one list of transformers every sync path runs                                                  |
+| [src/db/powersync/middleware/EncryptionMiddleware.ts](../../../src/db/powersync/middleware/EncryptionMiddleware.ts)                                           | Decrypts every `__enc:`-prefixed string value in the sync stream using AES-256-GCM via the codec; quarantines plaintext |
+| [src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts](../../../src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts)                     | Extends `SharedSyncImplementation`; wraps the adapter of the streaming implementation upstream builds                   |
+| [src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts](../../../src/db/powersync/worker/ThunderboltSharedSyncImplementation.worker.ts)       | SharedWorker entry point (Chrome/Edge/Firefox); speaks PowerSync's `{ service, port }` handshake for the sync service   |
+| [src/db/powersync/worker/ThunderboltDedicatedSyncImplementation.worker.ts](../../../src/db/powersync/worker/ThunderboltDedicatedSyncImplementation.worker.ts) | Dedicated-Worker entry point (Safari/Tauri); hosts the same class with `self` as the one Comlink endpoint               |
+| [src/db/powersync/ThunderboltPowerSyncDatabase.ts](../../../src/db/powersync/ThunderboltPowerSyncDatabase.ts)                                                 | Extends `WebPowerSyncDatabase`; wraps the main-thread adapter, which carries sync when it runs in the tab               |
+| [src/db/powersync/database.ts](../../../src/db/powersync/database.ts)                                                                                         | Database config; picks the SharedWorker (Chrome/Edge/Firefox) or the dedicated Worker (Safari/Tauri)                    |
 
 ---
 
 ## Data Flow
 
-Both paths run the same `ThunderboltSharedSyncImplementation` off the main thread and end at decrypted data in SQLite. They differ only in worker hosting (SharedWorker vs dedicated Worker) and in the VFS backing SQLite.
-
-### Chrome / Edge / Firefox (SharedWorker Path)
+Both worker paths run the same `ThunderboltSharedSyncImplementation` off the main thread and end at decrypted data in SQLite. They differ only in worker hosting (SharedWorker vs dedicated Worker).
 
 ```mermaid
 flowchart TD
     Server["PowerSync service<br/>(encrypted data)"]
 
-    subgraph MainThread["Main Thread"]
-        TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  (not on the sync-stream path)"]
-        Drizzle["Drizzle / DAL<br/>(reads decrypted data)"]
+    subgraph SyncWorker["Sync worker: SharedWorker (Chrome/Edge/Firefox) or dedicated Worker (Safari/Tauri)"]
+        TSSI["ThunderboltSharedSyncImplementation<br/>generateStreamingImplementation()<br/>→ super() builds the stream + SqliteBucketStorage<br/>→ installSyncTransformers(adapter, syncTransformers)"]
+        CTRL["wrapped adapter.control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>parse → transform → re-encode"]
+        MW["encryptionMiddleware<br/>(AES-GCM decryption + plaintext quarantine)"]
+        CORE["original control()<br/>→ powersync_control (Rust core)"]
+    end
+
+    subgraph DbWorker["PowerSync's DB worker (/@powersync/worker.js on Safari/Tauri)"]
         SQLite[("SQLite<br/>(decrypted)")]
     end
 
-    subgraph SharedWorker["SharedWorker: ThunderboltSharedSyncImplementation.worker.ts"]
-        TSSI["ThunderboltSharedSyncImplementation<br/>extends SharedSyncImplementation<br/><br/>generateStreamingImplementation()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
-        MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
-        SBS["SqliteBucketStorage<br/>super.control()"]
-    end
+    Drizzle["Main thread: Drizzle / DAL<br/>(reads decrypted data)"]
 
-    Server -->|"sync stream<br/>(TEXT_LINE or BSON_LINE)"| TSSI
-    TSSI --> TBS
-    TBS -->|"SyncDataBucket"| MW
-    MW -->|"transformed bucket"| TBS
-    TBS --> SBS
-    SBS -->|"writes"| SQLite
+    Server -->|"sync stream (NDJSON or BSON lines)"| TSSI
+    TSSI --> CTRL
+    CTRL -->|"SyncDataBucket"| MW
+    MW -->|"transformed bucket"| CTRL
+    CTRL --> CORE
+    CORE -->|"writes"| SQLite
     SQLite --> Drizzle
 ```
 
-### Safari / Tauri (Dedicated Worker Path)
-
-```mermaid
-flowchart TD
-    Server["PowerSync service<br/>(encrypted data)"]
-
-    subgraph MainThread["Main Thread"]
-        TPS["ThunderboltPowerSyncDatabase<br/>extends PowerSyncDatabase<br/><br/>generateBucketStorageAdapter()<br/>→ creates TransformableBucketStorage<br/>  (not on the sync-stream path)"]
-        SWSSI["SharedWebStreamingSyncImplementation<br/>drives the sync worker over Comlink"]
-        Drizzle["Drizzle / DAL<br/>(reads decrypted data)"]
-    end
-
-    subgraph SyncWorker["Dedicated Worker: ThunderboltDedicatedSyncImplementation.worker.ts"]
-        TSSI["ThunderboltSharedSyncImplementation<br/>(the same class as the SharedWorker path)<br/><br/>generateStreamingImplementation()<br/>→ creates TransformableBucketStorage<br/>  + registers encryptionMiddleware"]
-        TBS["TransformableBucketStorage<br/>extends SqliteBucketStorage<br/><br/>control(PROCESS_TEXT_LINE | PROCESS_BSON_LINE)<br/>→ parse → transform → super.control()"]
-        MW["encryptionMiddleware<br/>(AES-GCM decryption via codec)"]
-        SBS["SqliteBucketStorage<br/>super.control()"]
-    end
-
-    subgraph DbWorker["Dedicated Worker: WASQLiteDB.umd.js"]
-        SQLite[("SQLite<br/>OPFSCoopSyncVFS<br/>(decrypted)")]
-    end
-
-    TPS --> SWSSI
-    SWSSI -->|"Comlink over MessagePort"| TSSI
-    Server -->|"sync stream<br/>(TEXT_LINE or BSON_LINE)"| TSSI
-    TSSI --> TBS
-    TBS -->|"SyncDataBucket"| MW
-    MW -->|"transformed bucket"| TBS
-    TBS --> SBS
-    SBS -->|"writes"| SQLite
-    SQLite --> Drizzle
-```
+When `enableMultiTabs` resolves to false (PowerSync's default on Android/iOS user agents for the `default` config, and the IndexedDB fallback of the `safari-tauri` config), sync runs **in the tab** instead and uses the main-thread adapter from `ThunderboltPowerSyncDatabase.generateBucketStorageAdapter()`, wrapped the same way.
 
 ---
 
-## How `TransformableBucketStorage` Works
+## How `installSyncTransformers` Works
 
-PowerSync's Rust sync client feeds the storage adapter via:
+PowerSync's Rust sync client feeds the storage adapter one line at a time:
 
 ```
 adapter.control(PROCESS_TEXT_LINE, jsonPayload)   // NDJSON responses
-adapter.control(PROCESS_BSON_LINE, bsonPayload)   // BSON responses (preferred since @powersync/web 1.37+)
+adapter.control(PROCESS_BSON_LINE, bsonPayload)   // BSON responses (preferred by the client)
 ```
 
-`TransformableBucketStorage` overrides `control()` for both formats. The client delivers **one bucket per `control()` call** (one NDJSON or BSON line); for sync data the override:
+`installSyncTransformers` replaces `control` on that adapter instance with a wrapper that, for sync-data lines:
 
-1. Parses the payload (JSON string or BSON binary) to extract the `SyncDataBucket`
+1. Parses the payload (JSON string or BSON `Uint8Array`) to extract the `SyncDataBucket`
 2. Runs the transformer pipeline (each transformer receives the previous one's output)
 3. Re-encodes in the **same format** as the original (JSON → JSON, BSON → BSON)
-4. Passes the result to `super.control()` → `SqliteBucketStorage` → SQLite
+4. Calls the original `control()`, which applies the line in its own write transaction — so decryption never holds the write lock
 
-All other control commands (START, STOP, etc.) pass through unchanged.
+Lines without bucket data (checkpoints, etc.) and all other control commands (START, STOP, …) pass through unchanged. A transformer error, or a sync line in a shape the wrapper can't parse, rejects the call: the line is never applied untransformed (that would persist ciphertext and skip the quarantine), and PowerSync retries the stream.
 
-> **Why both formats?** Since `@powersync/web` 1.37 the `Accept` header prefers BSON, so a BSON-capable server sends `Uint8Array` payloads via `PROCESS_BSON_LINE` rather than JSON strings via `PROCESS_TEXT_LINE`. Handling only one would skip transformation on the other.
+> **Why wrap instead of replace?** `SqliteBucketStorage` registers a `tablesUpdated` listener in its constructor. Swapping in a second instance would leak the discarded one's listener on every reconnect; wrapping keeps upstream's instance, listeners and lifecycle intact.
+
+> **Why both formats?** The client's `Accept` header prefers BSON, so a BSON-capable server sends `Uint8Array` payloads via `PROCESS_BSON_LINE` rather than JSON strings via `PROCESS_TEXT_LINE`. Handling only one would skip transformation on the other.
 
 ### Middleware Interface
 
@@ -124,36 +95,17 @@ Transformers get one `SyncDataBucket`; its `OplogEntry[]` (`bucket.data`) entrie
 - `object_id`: row ID
 - `data`: JSON string of the row (modify this to transform field values)
 - `op`: one of `PUT`, `REMOVE`, `MOVE`, `CLEAR` (`OpTypeJSON` in the sync protocol, not SQL verbs)
-
-> **Why per-bucket and not per-batch?** The legacy `SyncDataBatch` abstraction belonged to the removed JavaScript sync client, which buffered buckets before writing. The Rust client streams one bucket at a time.
-
-### Registering Transformers
-
-Pass them via `ThunderboltPowerSyncOptions.transformers` in `getPowerSyncOptions()`:
-
-```typescript
-transformers: [encryptionMiddleware]
-```
-
-`ThunderboltPowerSyncDatabase.generateBucketStorageAdapter()` registers these on the main thread's `TransformableBucketStorage`, which is **not** on the sync-stream path: the stream runs in a worker that builds its own adapter in `ThunderboltSharedSyncImplementation.generateStreamingImplementation()`. New transformers need registering in both places ([below](#adding-a-non-encryption-transformer)).
+- `checksum`: must be kept — the client sums per-op checksums against the checkpoint
 
 ---
 
-## The Multi-Tab Problem
+## The Sync Worker
 
-On Chrome/Edge/Firefox PowerSync defaults to `enableMultiTabs: true`, launching a **SharedWorker** that shares one sync connection across tabs and deduplicates CRUD uploads. That worker builds its own `SqliteBucketStorage` in `SharedSyncImplementation.generateStreamingImplementation()` and ignores any custom `BucketStorageAdapter` from the main thread. `enableMultiTabs: false` was the original workaround, at the cost of cross-tab sync efficiency.
+On Chrome/Edge/Firefox PowerSync launches a **SharedWorker** that shares one sync connection across tabs and deduplicates CRUD uploads. That worker builds its own `SqliteBucketStorage` inside `SharedSyncImplementation.generateStreamingImplementation()` and never sees anything configured on the main thread: Comlink cannot serialize transformer functions across the worker boundary, and there is no injection option.
 
-The root cause is architectural:
+`ThunderboltSharedSyncImplementation` overrides that one `protected` method, calls `super`, and wraps `sync.webOptions.adapter` (a public getter onto the options the stream reads from at `connect()` time). It copies none of upstream's credential, upload or checkpoint relay, so upstream fixes there apply to us unchanged.
 
-- `SharedSyncImplementation` hardcodes `new SqliteBucketStorage(...)`, no injection hook
-- Comlink cannot serialize transformer functions across the worker boundary
-- `adapter` is omitted from `SharedSyncInitOptions`
-
----
-
-## Solution: Custom SharedWorker
-
-`ThunderboltSharedSyncImplementation` overrides `generateStreamingImplementation()`, the one `protected` method controlling the storage adapter, copying the parent with `SqliteBucketStorage` replaced by `TransformableBucketStorage + encryptionMiddleware`. `ThunderboltSharedSyncImplementation.worker.ts` mirrors PowerSync's worker entry point but instantiates the custom class, and `database.ts` points the default config (Chrome/Edge/Firefox) at it:
+`ThunderboltSharedSyncImplementation.worker.ts` mirrors the sync half of PowerSync's bundled `worker.ts`: each tab posts `{ service: 'sync', port }` on the SharedWorker's port, and the entry hands that inner port to `WorkerClient`. `database.ts` points the default config at it:
 
 ```typescript
 sync: {
@@ -173,16 +125,16 @@ Vite detects `new SharedWorker(new URL(...))` and bundles the worker as a separa
 - The content key (CK) is read from IndexedDB inside the worker, so no `postMessage`
 - The SharedWorker still manages a single connection, preserving multi-tab efficiency
 
-### Accessing `SharedSyncImplementation` Internals
+### Accessing PowerSync Internals
 
-`SharedSyncImplementation` is `@internal` and absent from `@powersync/web`'s exports map, so a Vite alias and a matching TypeScript `paths` entry point at the compiled lib output.
+`SharedSyncImplementation` (`@internal`), `WorkerClient` and `SharedWorkerConnectionRequest` are not exported from `@powersync/web`, so a Vite alias and a matching TypeScript `paths` entry point at the compiled `lib/` output. The adapter types and `PowerSyncControlCommand` come from `@powersync/shared-internals`, a direct dependency pinned to the exact version `@powersync/web` pins.
 
 **`vite.config.ts`:**
 
 ```typescript
 resolve: {
   alias: {
-    'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib/src'),
+    'powersync-web-internal': path.resolve(__dirname, 'node_modules/@powersync/web/lib'),
   }
 }
 ```
@@ -191,7 +143,7 @@ resolve: {
 
 ```json
 "paths": {
-  "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/src/*"]
+  "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/*"]
 }
 ```
 
@@ -199,7 +151,27 @@ resolve: {
 import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/SharedSyncImplementation.js'
 ```
 
-> **Upgrade note**: when upgrading `@powersync/web`, check `generateStreamingImplementation()` in `node_modules/@powersync/web/src/worker/sync/SharedSyncImplementation.ts` and update the override in `ThunderboltSharedSyncImplementation.ts` to match.
+> **Upgrade note**: when upgrading `@powersync/web`, check in `node_modules/@powersync/web/src/`:
+>
+> - `worker/sync/SharedSyncImplementation.ts`: `generateStreamingImplementation()` is still `protected`, still passes its bucket storage as `adapter`, and is still what `connect()` uses to build the stream.
+> - `db/sync/WebStreamingSyncImplementation.ts`: `webOptions` still exposes that options object.
+> - `worker/worker.ts`: the shared worker still uses the `{ service, port }` handshake.
+> - `db/PowerSyncDatabase.ts`: `WebPowerSyncDatabase` (`@internal`) still exists and its base still calls `protected generateBucketStorageAdapter()` (in `@powersync/shared-internals`' `BasePowerSyncDatabase`).
+> - `@powersync/shared-internals` (runtime enum + types, and the types-only `internal/sync_protocol` subpath) is pinned to the exact version `@powersync/web` pins, one copy in `bun.lock`. `@journeyapps/wa-sqlite` is not a direct dependency; it comes only through `@powersync/web`.
+> - The FTS triggers in `src/search/fts-setup.ts` still match PowerSync's internal tables (`ps_data__*` names and the JSON `data` layout): after a fresh sync, the search index fills.
+>
+> Both hooks are declared `override`, so a renamed one fails to compile. `ThunderboltSharedSyncImplementation.test.ts` and `ThunderboltPowerSyncDatabase.test.ts` fail if a hook stops wrapping the adapter it builds; neither proves upstream still calls the hook.
+
+---
+
+## Local Storage
+
+Both configs store the database on OPFS (`OPFSCoopSyncVFS`, chosen by `shouldUseOpfs` in `src/db/powersync/database.ts`), which is faster than IndexedDB. Two cases keep `IDBBatchAtomicVFS`:
+
+- **No usable OPFS** (WebKitGTK on Tauri Linux, Firefox private browsing).
+- **A `default`-config device whose data already lives in IndexedDB.** Switching would start from an empty database and lose local-only rows (secrets, MCP servers) and queued uploads, so it moves at its next reset instead: after the wipe, `resetAppDir` leaves an empty OPFS database file, which the next start takes as the signal to use OPFS, and deletes the IndexedDB database. Another tab holding that database open delays the delete; a later OPFS start retries it. Browsers that can't list their IndexedDB databases (Firefox before 126) stay on IndexedDB.
+
+Sync telemetry reports the VFS as `ps_vfs`.
 
 ---
 
@@ -207,11 +179,13 @@ import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/Sha
 
 Only the worker _hosting_ differs, not the transform. A SharedWorker is ruled out:
 
-- **OPFSCoopSyncVFS** (required on Safari/iOS for stack size reasons) does not support SharedWorker
-- **Tauri** (`tauri://`) blocks SharedWorker and `import.meta.url`-based worker loading for `node_modules` workers, so the DB worker loads from an explicit UMD path (`/@powersync/worker/WASQLiteDB.umd.js`)
+- **Tauri** (`tauri://`) blocks SharedWorker and `import.meta.url`-based worker loading for `node_modules` workers, so the DB worker loads PowerSync's prebuilt worker from an absolute path (`/@powersync/worker.js`, copied from `@powersync/web/dist/worker` by the `copy-powersync-assets` Vite plugin)
 - SharedWorker exceeds iOS WKWebView memory limits and causes black-screen crashes
 
-So the config sets `enableMultiTabs: false` on the inner `WASQLiteOpenFactory` (the DB worker) but `true` at the `PowerSyncDatabase` level. The `true` selects `SharedWebStreamingSyncImplementation`, which drives a worker over Comlink; `createDedicatedSyncWorker()` supplies a dedicated `Worker` instead, mapping `.close()` onto `.terminate()` (a dedicated Worker exposes only the latter). It hosts the same `ThunderboltSharedSyncImplementation`, so the transform runs off the main thread everywhere (THU-777).
+So the config sets `database.enableMultiTabs: true`, which selects `SharedWebStreamingSyncImplementation` (sync driven over Comlink, off the main thread), and keeps both workers dedicated:
+
+- `database.worker` — the URL `/@powersync/worker.js`. It must be a URL, not a factory: PowerSync posts the database options to the sync worker over Comlink, and a function in them fails to clone, so sync never initializes. With a URL, PowerSync opens OPFS in a dedicated worker but the IndexedDB fallback in a SharedWorker whenever `enableMultiTabs` is on — so the fallback (no OPFS, e.g. WebKitGTK) sets `enableMultiTabs: false` and syncs in the tab, through the main-thread adapter `ThunderboltPowerSyncDatabase` wraps.
+- `sync.worker` — `createDedicatedSyncWorker()`. PowerSync uses a dedicated Worker directly as its Comlink endpoint and terminates it on dispose; the factory's declared return type is `SharedWorker`, hence a cast. It hosts the same `ThunderboltSharedSyncImplementation`, so with OPFS the transform runs off the main thread.
 
 ---
 
@@ -226,9 +200,7 @@ Download needs no entry. `encryptionMiddleware` decrypts any `__enc:`-prefixed s
 For a non-encryption transform (normalization, decompression):
 
 1. Create a file in `src/db/powersync/middleware/` implementing `DataTransformMiddleware`.
-2. Register it in **two places**, kept in sync:
-   - `getPowerSyncOptions()` in [src/db/powersync/database.ts](../../../src/db/powersync/database.ts): `transformers: [encryptionMiddleware, myMiddleware]`, in **both** the `default` and `safari-tauri` branches (main-thread adapter, not the sync stream).
-   - `ThunderboltSharedSyncImplementation.generateStreamingImplementation()` in [src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts](../../../src/db/powersync/worker/ThunderboltSharedSyncImplementation.ts): `storage.addTransformer(myMiddleware)` (sync-stream adapter, covers both platforms, which host the same class).
+2. Add it to `syncTransformers` in [src/db/powersync/middleware/index.ts](../../../src/db/powersync/middleware/index.ts). Both the sync worker and sync in the tab read that one list.
 
 ---
 

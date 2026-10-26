@@ -26,12 +26,12 @@ the sign-out.
 
 - **Every platform authenticates with `Authorization: Bearer <token>`, including the browser**: the backend
   enables `bearer({ requireSignature: true })`
-  ([auth.ts:326](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
+  ([auth.ts:521](../../../backend/src/auth/auth.ts)). The stored value is the _signed_ token
   `rawSessionToken.base64Signature`, the same value Better Auth puts in the session cookie, verified by
   HMAC-SHA256 over the raw token ([bearer-token.ts:11](../../../backend/src/auth/bearer-token.ts)).
 - **`localStorage`, not the encrypted settings database, because the getter is synchronous**:
   `token: () => getAuthToken() ?? ''`
-  ([auth-context.tsx:148-151](../../../src/contexts/auth-context.tsx)), and `localStorage` is the only
+  ([auth-context.tsx:145-148](../../../src/contexts/auth-context.tsx)), and `localStorage` is the only
   storage the app has that answers synchronously. A TODO at
   [auth-token.ts:5-12](../../../src/lib/auth-token.ts) moves it once an encryption middleware can serve it.
 - **The plaintext tradeoff is argued once**, at `getUserCacheSecret`
@@ -40,8 +40,8 @@ the sign-out.
 ### How the token gets there
 
 The backend returns it in a `set-auth-token` response header
-([auth.ts:51](../../../backend/src/auth/auth.ts)) and the auth client's `onSuccess` fetch hook captures it
-([auth-context.tsx:152-157](../../../src/contexts/auth-context.tsx)). It reaches browser JavaScript only
+([auth.ts:76](../../../backend/src/auth/auth.ts)) and the auth client's `onSuccess` fetch hook captures it
+([auth-context.tsx:149-154](../../../src/contexts/auth-context.tsx)). It reaches browser JavaScript only
 because `corsExposeHeaders` lists it ([settings.ts:11](../../../backend/src/config/settings.ts)); dropping it
 there silently breaks every web sign-in.
 
@@ -58,7 +58,7 @@ Operator view: [Self-hosting § Configuration](../../self-hosting/configuration.
 | `VITE_CAPTCHA_PROVIDER`      | `altcha` solves a proof-of-work challenge before anonymous sign-in. Must match the backend's `CAPTCHA_PROVIDER`                 |
 
 Email-code sign-in runs `credentials: 'omit'`
-([auth-context.tsx:134](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
+([auth-context.tsx:137](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
 cookies would add ambient authority for nothing. The PowerSync connector repeats the SSO-only choice when
 fetching a sync JWT ([connector.ts:104-105](../../../src/db/powersync/connector.ts)).
 
@@ -89,7 +89,7 @@ than navigating from an effect.
 ## Booting with a session
 
 `AuthProvider` builds the auth client from `cloudUrl` in a `useMemo`, so a backend URL change replaces the
-client wholesale ([auth-context.tsx:206-216](../../../src/contexts/auth-context.tsx)). Session plumbing, in
+client wholesale ([auth-context.tsx:203-213](../../../src/contexts/auth-context.tsx)). Session plumbing, in
 order:
 
 1. **Seed the session atom from the cache, synchronously.** `hydrateSessionFromCache`
@@ -112,14 +112,15 @@ order:
    expired, a 403 `DEVICE_DISCONNECTED` means this device was revoked
    ([auth-context.tsx](../../../src/contexts/auth-context.tsx)).
 
-`refetchOnWindowFocus` and `refetchWhenOffline` are both `false`
-([auth-context.tsx:36-43](../../../src/contexts/auth-context.tsx)): the `storage` listener covers cross-tab
-changes and the 401 handling covers expiry, so leaving them on only spends rate-limit budget on every
-focus, `visibilitychange` and `online`.
+`refetchOnWindowFocus: false` disables focus and visibility-change refetches to avoid spending
+rate-limit budget on every tab switch. `refetchWhenOffline: false` suppresses refresh-manager requests
+while offline; reconnects (`online`) and cross-tab broadcasts still trigger a session refetch
+([auth-context.tsx](../../../src/contexts/auth-context.tsx)). Thunderbolt's `storage` listener handles
+cross-tab token changes, and 401 handling detects session expiry.
 
 ## Cross-tab agreement
 
-`AuthProvider` subscribes at [auth-context.tsx:267-281](../../../src/contexts/auth-context.tsx):
+`AuthProvider` subscribes at [auth-context.tsx:263-277](../../../src/contexts/auth-context.tsx):
 
 | Change                                | Response                                                                                                                                                               |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -147,7 +148,7 @@ client). The cost is one contract duplicated per event, each copy carrying a com
 
 - **Only a 401 against an _existing_ token is an expiry.** Better Auth's `onError` captures token presence
   before clearing it, so a 401 from sign-in or OTP-verify does not pop the sign-in modal
-  ([auth-context.tsx:169-179](../../../src/contexts/auth-context.tsx)).
+  ([auth-context.tsx:166-176](../../../src/contexts/auth-context.tsx)).
 - **Only _our_ backend's 401s count.** `HttpClient` also serves external APIs with caller-supplied OAuth
   tokens, so `beforeRequest` and `afterResponse` both gate on `isBackendRequest`
   ([http.ts:95-103](../../../src/lib/http.ts)) before setting headers or reading a status as a session
@@ -186,12 +187,11 @@ Three builders produce that set and must stay in step:
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | Anything holding an `HttpClient`                     | `beforeRequest` hook ([http.ts:199-223](../../../src/lib/http.ts))                      |
 | Callers that cannot, notably the PowerSync connector | `getAuthenticatedHeaders()` ([auth-token.ts:83](../../../src/lib/auth-token.ts))        |
-| Better Auth methods                                  | `authRequestHeaders()` ([auth-context.tsx:123](../../../src/contexts/auth-context.tsx)) |
+| Better Auth methods                                  | `authRequestHeaders()` ([auth-context.tsx:116](../../../src/contexts/auth-context.tsx)) |
 
-better-fetch **replaces** rather than merges the headers object, so a Better Auth call passing
-`fetchOptions.headers` drops the client-level set and 426s on a current build. `authRequestHeaders()` is
-applied through `onRequest` to survive that shallow spread, and re-read per request so the locale is not
-frozen at client construction. Rules: [AGENTS.md § App version gate](../../../AGENTS.md#app-version-gate) and
+`authRequestHeaders()` is applied through `onRequest` on every Better Auth call, and re-read per request so
+the locale is not frozen at client construction. A per-call `fetchOptions.headers` object is merged with it,
+not substituted for it. Rules: [AGENTS.md § App version gate](../../../AGENTS.md#app-version-gate) and
 [§ The `X-App-Language` header](../../../AGENTS.md#the-x-app-language-header).
 
 ## Signing out

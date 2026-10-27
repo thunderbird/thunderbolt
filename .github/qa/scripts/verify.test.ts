@@ -1407,6 +1407,43 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test("the leg's cold first run does not size the rest, so a bug that fails every run still gets its 3", async () => {
+    // Run 40534656266 on iOS, in seconds: the replay step started 381 s into the job, and the first control run
+    // started Maestro's driver and the app on a cold simulator. Sized on that run, c-name's extra run was refused
+    // at 56 min 49 s, and the job ended 17 minutes before its timeout.
+    const seconds = new Map([
+      ['stack control', [539, 277, 280]],
+      ['a-code', [274, 241, 190]],
+      ['b-back', [277, 168, 166]],
+      ['c-name', [241, 180, 195, 195]],
+      ['d-picker', [350, 291, 266]],
+    ])
+    const clock = { now: 381_000 }
+    // c-name's first run stopped before the name field, as in that run.
+    const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    for (const title of [...seconds.keys()].slice(1)) await writeNative(makeNative(title, layout))
+    const calls: string[] = []
+    const timed: RunFlow = async (yaml) => {
+      const title = /assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? ''
+      const first = !calls.includes(title)
+      calls.push(title)
+      clock.now += (seconds.get(title)?.shift() ?? 0) * 1000
+      return { passed: true, layout: [], logs: [], ...(title === 'c-name' && first ? early : seen) }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, timed, () => clock.now, 0)
+
+    expect(result.flaky).toEqual([])
+    expect(result.confirmed.map(({ id, replay }) => [id, replay.runs, replay.inconclusive ?? 0])).toEqual([
+      ['a-code', 3, 0],
+      ['b-back', 3, 0],
+      ['c-name', 3, 1],
+      ['d-picker', 3, 0],
+    ])
+    expect(clock.now).toBe(4_511_000)
+  })
+
   test('the leg starts when the command does unless the job recorded its start, and a bad start is refused', () => {
     expect(legStartOf(undefined, 5_000)).toBe(5_000)
     expect(legStartOf('', 5_000)).toBe(5_000)

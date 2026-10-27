@@ -556,18 +556,22 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
 /**
  * A native leg's time: `fits(n)` says whether n more runs end `nativeWrapUpMinutes` before the job's
  * `nativeJobMinutes` run out, counted from `legStart` (the job's first step, so the setup is counted as it ran),
- * taking a run to last as long as the longest one `time` has seen, and at least `nativeRunMinutes`.
+ * taking a run to last as long as the longest one `time` has seen after the leg's first, and at least
+ * `nativeRunMinutes`. The first run is a control run, and the control's other runs are timed before any finding's.
  */
 const legClock = (now: () => number, legStart: number) => {
   const minute = 60_000
   const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes) * minute
-  const state = { longest: nativeRunMinutes * minute }
+  const state = { longest: nativeRunMinutes * minute, warm: false }
   return {
     fits: (runs: number) => now() + state.longest * runs <= end,
     time: async <T>(run: () => Promise<T>) => {
       const start = now()
       const result = await run()
-      state.longest = Math.max(state.longest, now() - start)
+      // The first run starts Maestro's driver and the app on a cold device: about 8.5 minutes on iOS in run
+      // 40534656266, against 3 to 6 for each of the 14 after it, and sized on it the leg refused a confirming run.
+      if (state.warm) state.longest = Math.max(state.longest, now() - start)
+      state.warm = true
       return result
     },
   }

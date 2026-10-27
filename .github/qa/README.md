@@ -237,15 +237,17 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
    time: a run starts only if it can end 2 minutes (for the sanitize and the upload) before replay-native's 90
    minutes, counted from `QA_LEG_START`, which the job's first step records, so the setup is counted as it ran. A run
-   is taken to last as long as the slowest so far (at least 2.6 minutes). An extra run must also leave room for the 3
-   runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says
-   why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build,
-   `Ask me anything…` otherwise; three dots count as the ellipsis) but never types the code `12345678` is signed in
-   by the harness. `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same
-   launch, and the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is
-   inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and
-   every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as
-   written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
+   is taken to last as long as the slowest so far (at least 2.6 minutes), leaving out the leg's first run: it starts
+   Maestro's driver and the app on a cold device, and took about 8.5 minutes on iOS in run 40534656266 against 3 to
+   6 for each run after it. The control's other two runs are timed before any finding's. An extra run must also
+   leave room for the 3 runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and
+   `replay.reason` says why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the
+   c1 build, `Ask me anything…` otherwise; three dots count as the ellipsis) but never types the code `12345678` is
+   signed in by the harness. `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`,
+   in the same launch, and the flow then goes on from its own wait. A run whose sign-in failed never runs the flow
+   and is inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the
+   code, and every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs
+   as written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
    A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
    sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
    text (for a stopping layout flow, the quoted element) does not.

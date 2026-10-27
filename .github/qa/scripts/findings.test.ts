@@ -297,7 +297,7 @@ describe('layout oracle', () => {
     expect(severity(layoutFinding('onboarding', '[qa-layout] unnamed-control checkbox "after Consent"'))).toBe('High')
   })
 
-  test('overflow is no longer an oracle', () => {
+  test('overflow is not an oracle type', () => {
     expect(hasOracle(variant({ oracle: { type: 'overflow', evidence: 'x' } }))).toBe(false)
     expect(hasOracle(variant({ oracle: { type: 'layout', evidence: '[qa-layout] covered button "Go"' } }))).toBe(true)
   })
@@ -476,7 +476,7 @@ test('every free session is real AI where the platform has real providers, and e
     const repro = nativePlatformIds.includes(id) ? { repro_spec: undefined, repro_flow: 'repro/1.yaml' } : {}
     expect(findingSchema.safeParse({ ...finding, ...repro, viewport: id }).success, id).toBe(true)
     if (driver === 'playwright') expect(viewport).toMatch(/^\d+x\d+$/)
-    // The Maestro config arrives with the native tasks.
+    // Only Playwright platforms point at a config file to check here.
     if (driver === 'playwright') expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
   }
   expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length)

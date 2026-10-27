@@ -71,7 +71,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
    is cut at its `mcp/` or `mcp-b/` part, so another runner path still resolves) and lists a session whose page
-   loads lack the ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns
+   loads lack the ready line under "Layout probe" (Back is not a load: it is a same-document move), because a clean layout there proves nothing. `noise.txt` turns
    a `[qa-layout]` line filed as a `console-error` into an observation. The explorer also takes a screenshot of
    every new screen and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is
    a `visual` finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is

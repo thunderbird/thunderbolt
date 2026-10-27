@@ -210,7 +210,8 @@ const probeRan = async (result: string, sessionDir: string, readLog: (path: stri
 }
 
 /**
- * Page loads in a session and how many of them did not show `[qa-layout] ready`. The MCP puts no console text in a
+ * Page loads in a session and how many of them did not show `[qa-layout] ready`. Back is not a load: it is a
+ * same-document history move in this SPA, and the probe runs on document loads only. The MCP puts no console text in a
  * navigate result, only a count and a link to the log lines the load wrote, so each link is followed (`readLog`)
  * under `sessionDir`. A load with no link, or whose linked lines lack the ready line, counts as missing.
  */
@@ -220,7 +221,7 @@ export const probeGaps = async (
   readLog = readConsoleLog,
 ): Promise<{ loads: number; missing: number }> => {
   const loads = toSteps(transcript).flatMap((step) =>
-    step.kind === 'result' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ? [step.text] : [],
+    step.kind === 'result' && browserTool(step.tool) === 'navigate' ? [step.text] : [],
   )
   const ran = await Promise.all(loads.map((result) => probeRan(result, sessionDir, readLog)))
   return { loads: loads.length, missing: ran.filter((ok) => !ok).length }
@@ -481,8 +482,10 @@ const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
   const afterReplay = afterLint - deferred('replay') - dropped('replay')
-  // Flaky findings are never judged, and a regression is a new ticket too.
-  const filedCount = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action)).length
+  // Flaky findings are never judged, and a regression is a new ticket too. A fingerprint is one ticket, however many
+  // findings (one per platform) share it.
+  const tickets = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action))
+  const filedCount = tickets && new Set(tickets.map((a) => a.fp)).size
   return [
     `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} ` +
       `(${verified.flaky.length} flaky, ${deferred('replay')} deferred) → judge ${verified.confirmed.length} ` +

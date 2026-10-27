@@ -236,6 +236,10 @@ describe('renderReport', () => {
         { fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
         { fp: 'bcde2345', charterDir: 'c1', id: '5', severity: 'High', action: 'regression' },
         { fp: 'cdef3456', charterDir: 'c1', id: '6', severity: 'High', action: 'commented' },
+        // One ticket seen on two platforms is two entries with one fingerprint, dry run or live.
+        { fp: 'abcd1234', charterDir: 'c2', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
+        { fp: 'def04567', charterDir: 'c1', id: '7', severity: 'Low', action: 'created' },
+        { fp: 'def04567', charterDir: 'c2', id: '7', severity: 'Low', action: 'created' },
       ],
       canary: {
         found: 1,
@@ -249,7 +253,7 @@ describe('renderReport', () => {
       },
     })
     expect(report).toContain(
-      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 2',
+      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 3',
     )
     expect(report).toContain('c1/3: **schema** — bad \\| json')
     expect(report).toContain('c1/4: **judge** — known issue')
@@ -635,7 +639,15 @@ describe('probeGaps', () => {
       ['mcp__playwright_b__browser_navigate', navigated('/out/mcp-b/console-b.log#L1-L3')],
       ['mcp__playwright_b__browser_navigate_back', navigated('/out/mcp-b/gone.log#L1')],
     ] as const
-    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 6, missing: 4 })
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 4, missing: 2 })
+  })
+
+  it('ignores Back: a same-document history move never runs the init script', async () => {
+    const steps = [
+      ['mcp__playwright__browser_navigate_back', navigated()],
+      ['mcp__playwright__browser_navigate_back', navigated('/out/mcp/console-c.log#L1-L2')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 0, missing: 0 })
   })
 
   it('ignores results of other tools, even when they link a log with the ready line', async () => {
@@ -727,6 +739,8 @@ describe('runSummary', () => {
       join(outDir, unlisted, 'transcript.json'),
       JSON.stringify([
         ...navigation('mcp__playwright__browser_navigate', loaded(`${log}#L1`)),
+        ...navigation('mcp__playwright__browser_navigate', '- Console: 0 errors, 0 warnings'),
+        // Back never runs the probe, so it is neither a load nor a gap.
         ...navigation('mcp__playwright__browser_navigate_back', '- Console: 0 errors, 0 warnings'),
       ]),
     )

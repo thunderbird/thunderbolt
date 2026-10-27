@@ -1136,6 +1136,19 @@ describe('publish', () => {
     expect(runs.at(-1)?.stdin).toContain('runs on the onboarding build')
   })
 
+  test('a real-AI web fix PR adds no regression spec, since e2e/ runs the consumer project on the fake provider', async () => {
+    await setup({ real: true, charterDir: 'c3-models-providers-desktop' })
+    await put(specPath(), spec)
+    await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
+    expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
+    expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
+    expect(runs.at(-1)?.stdin).toContain('runs on the fake provider')
+  })
+
   test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3.')

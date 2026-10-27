@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hookDecision } from './native-hook'
@@ -54,17 +54,18 @@ test('a symlink inside the session dir that points out is denied, also when its 
   expect(allows('Write', { file_path: join(sessionDir, 'dangling.json') })).toBe(false)
 })
 
-test('a session dir given by its real path or through its link resolves to the same folder', () => {
+test('a session dir given by its real path or through a link resolves to the same folder', () => {
   mkdirSync(join(sessionDir, 'findings'), { recursive: true })
-  const real = join('/private', sessionDir)
-  expect(
-    hookDecision({ tool_name: 'Write', tool_input: { file_path: join(real, 'findings/2.json') } }, sessionDir, false)
-      .allow,
-  ).toBe(true)
-  expect(
-    hookDecision({ tool_name: 'Write', tool_input: { file_path: join(sessionDir, 'findings/2.json') } }, real, false)
-      .allow,
-  ).toBe(true)
+  const real = realpathSync(sessionDir)
+  // An explicit link, because tmpdir() is a link only on macOS.
+  const link = join(outside, 'session-link')
+  symlinkSync(real, link)
+  for (const [filePath, dir] of [
+    [join(real, 'findings/2.json'), link],
+    [join(link, 'findings/2.json'), real],
+  ]) {
+    expect(hookDecision({ tool_name: 'Write', tool_input: { file_path: filePath } }, dir, false).allow).toBe(true)
+  }
 })
 
 test('the second browser is allowed only when the harness says so, and never its unsafe code tool', () => {

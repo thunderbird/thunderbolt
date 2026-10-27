@@ -13,7 +13,7 @@ import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-me
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
-import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
+import { preloadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
@@ -203,7 +203,7 @@ export default function ChatDetailPage() {
   // from ChatContentReady after the composer renders (typing also preloads it).
   useEffect(() => {
     if (!isNew) {
-      void loadChatMessageList()
+      preloadChatMessageList()
     }
   }, [isNew])
 

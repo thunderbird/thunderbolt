@@ -16,7 +16,7 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
+import { chipMarker, deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -40,6 +40,7 @@ import { AnimatePresence } from 'framer-motion'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
+  type KeyboardEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -116,6 +117,29 @@ const acceptedAttachmentExtensions = [
 
 /** `accept` attribute string for the file picker. */
 const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
+
+/** True for ArrowRight at the end of the text or ArrowLeft at the start, where the caret cannot move. */
+const isArrowAtBoundary = (key: string, ta: HTMLTextAreaElement): boolean => {
+  if (ta.selectionStart !== ta.selectionEnd) {
+    return false
+  }
+  if (key === 'ArrowRight') {
+    return ta.selectionStart === ta.value.length
+  }
+  return key === 'ArrowLeft' && ta.selectionStart === 0
+}
+
+/** Caret target when an unmodified arrow would step onto a chip marker (zero-width, so the step is invisible). */
+const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLTextAreaElement): number | null => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || ta.selectionStart !== ta.selectionEnd) {
+    return null
+  }
+  const caret = ta.selectionStart
+  if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
+    return caret + 2
+  }
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? caret - 2 : null
+}
 
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
@@ -780,6 +804,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (e: Parameters<typeof handleSlashKeyDown>[0]) => {
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
+        const skipTo = caretPastChipMarker(e, ta)
+        if (skipTo !== null) {
+          e.preventDefault()
+          ta.setSelectionRange(skipTo, skipTo)
+          setCursorPos(skipTo)
+          return
+        }
+        if (isArrowAtBoundary(e.key, ta)) {
+          // WKWebView inserts the arrow's private-use codepoint as text when the caret can't move.
+          e.preventDefault()
+          return
+        }
         if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
           const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
           if (deletion) {

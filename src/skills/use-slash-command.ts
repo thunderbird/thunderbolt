@@ -6,6 +6,7 @@ import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } 
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
+import { chipMarker } from './parse-skill-tokens'
 import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
 
 /**
@@ -53,7 +54,40 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   return { tokenStart, query: token.slice(1) }
 }
 
+/** Slash state plus the number of sigil characters in the value before the query. */
+type ActiveToken = SlashState & { sigilLength: 0 | 1 }
+
+/** True at the start of the input or right after whitespace. */
+const isTriggerBoundary = (value: string, caret: number): boolean => caret === 0 || /\s/.test(value[caret - 1] ?? '')
+
+/** Resolve the token at the caret: a pending trigger first, else a sigil in the value. */
+const resolveActiveToken = (value: string, cursor: number, triggerStart: number | null): ActiveToken | null => {
+  if (triggerStart !== null && cursor >= triggerStart) {
+    const query = value.slice(triggerStart, cursor)
+    if (!/\s/.test(query)) {
+      return { tokenStart: triggerStart, query, sigilLength: 0 }
+    }
+  }
+  const state = getSlashState(value, cursor)
+  return state && { ...state, sigilLength: 1 }
+}
+
+/** Swallow a `/` or `@` keypress that starts a token. Returns true when it did. */
+const openTriggerFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): boolean => {
+  if ((e.key !== '/' && e.key !== '@') || e.metaKey || e.ctrlKey || e.altKey) {
+    return false
+  }
+  const { selectionStart, selectionEnd } = e.currentTarget
+  if (selectionStart !== selectionEnd || !isTriggerBoundary(value, selectionStart)) {
+    return false
+  }
+  e.preventDefault()
+  return true
+}
+
 type SlashAction =
+  | { type: 'OPEN_TRIGGER'; tokenStart: number }
+  | { type: 'CLEAR_TRIGGER' }
   | { type: 'SET_CURSOR'; pos: number }
   | { type: 'SET_HIGHLIGHT'; idx: number }
   | { type: 'RESET_HIGHLIGHT' }
@@ -66,16 +100,23 @@ type SlashUiState = {
   /** Suppresses the popup for a specific token-start, so a re-render after
    * Esc doesn't reopen the same suggestion list until the user types more. */
   closedForToken: number | null
+  /** Start offset of a picker opened by a swallowed `/` or `@`; the sigil is not in the value. */
+  triggerStart: number | null
 }
 
 const initialState: SlashUiState = {
   cursorPos: 0,
   highlightedIdx: 0,
   closedForToken: null,
+  triggerStart: null,
 }
 
 const reducer = (state: SlashUiState, action: SlashAction): SlashUiState => {
   switch (action.type) {
+    case 'OPEN_TRIGGER':
+      return { ...state, cursorPos: action.tokenStart, triggerStart: action.tokenStart, closedForToken: null }
+    case 'CLEAR_TRIGGER':
+      return state.triggerStart === null ? state : { ...state, triggerStart: null }
     case 'SET_CURSOR':
       return { ...state, cursorPos: action.pos }
     case 'SET_HIGHLIGHT':
@@ -119,9 +160,17 @@ export const useSlashCommand = ({
   enabled?: boolean
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { cursorPos, highlightedIdx, closedForToken } = state
+  const { cursorPos, highlightedIdx, closedForToken, triggerStart } = state
 
-  const slashState = useMemo(() => (enabled ? getSlashState(value, cursorPos) : null), [enabled, value, cursorPos])
+  const slashState = useMemo(
+    () => (enabled ? resolveActiveToken(value, cursorPos, triggerStart) : null),
+    [enabled, value, cursorPos, triggerStart],
+  )
+
+  // Drop the trigger once the caret leaves it or whitespace ends it.
+  if (triggerStart !== null && slashState?.sigilLength !== 0) {
+    dispatch({ type: 'CLEAR_TRIGGER' })
+  }
 
   // User skills first, then the agent's external commands; each alphabetical,
   // both filtered by the in-progress query. Skills match anywhere in the
@@ -182,19 +231,18 @@ export const useSlashCommand = ({
   }
 
   const insertToken = useCallback(
-    (name: string) => {
+    (token: string) => {
       if (!slashState) {
         return
       }
-      const tokenEnd = slashState.tokenStart + 1 + slashState.query.length
+      const tokenEnd = slashState.tokenStart + slashState.sigilLength + slashState.query.length
       const before = value.slice(0, slashState.tokenStart)
       const after = value.slice(tokenEnd)
-      // Skip the trailing space when the following text already starts with
-      // whitespace — otherwise the user sees a doubled space after completion.
-      const needsTrailingSpace = !/^\s/.test(after)
-      const insert = `/${name}${needsTrailingSpace ? ' ' : ''}`
+      // Add a space only to keep following text from fusing with the token.
+      const needsSpace = after.length > 0 && !/^\s/.test(after)
+      const insert = needsSpace ? `${token} ` : token
       const next = before + insert + after
-      const newCursor = slashState.tokenStart + insert.length + (needsTrailingSpace ? 0 : 1)
+      const newCursor = slashState.tokenStart + insert.length
       // Update value and cursor in the same commit so the popup doesn't
       // flicker open on a stale-cursor render between setValue and rAF.
       setValue(next)
@@ -207,6 +255,11 @@ export const useSlashCommand = ({
     [slashState, value, setValue, inputRef],
   )
 
+  const hasSuggestions = useMemo(
+    () => agentCommands.length > 0 || library.some((s) => isEnabled(s.name)),
+    [agentCommands, library, isEnabled],
+  )
+
   const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
   const skillToken = useCallback(
     (skill: Pick<Skill, 'name' | 'label'>) => tokenForSkill(skill, displayNameToSlug),
@@ -217,15 +270,28 @@ export const useSlashCommand = ({
   // the slug in chat; send-time normalization maps it back for the model.
   // Agent commands insert their literal name, which IS what the agent expects.
   const selectItem = useCallback(
-    (item: SlashItem) => insertToken(item.kind === 'skill' ? skillToken(item.skill) : item.name),
+    (item: SlashItem) => insertToken(item.kind === 'skill' ? chipMarker + skillToken(item.skill) : `/${item.name}`),
     [insertToken, skillToken],
   )
   /** Insert a skill's slash token. Convenience for the skill path (and tests). */
-  const selectSkill = useCallback((skill: Skill) => insertToken(skillToken(skill)), [insertToken, skillToken])
+  const selectSkill = useCallback(
+    (skill: Skill) => insertToken(chipMarker + skillToken(skill)),
+    [insertToken, skillToken],
+  )
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (enabled && hasSuggestions && openTriggerFromKey(e, value)) {
+        dispatch({ type: 'OPEN_TRIGGER', tokenStart: e.currentTarget.selectionStart })
+        return
+      }
       if (!popupOpen) {
+        return
+      }
+      if (e.key === 'Backspace' && slashState?.sigilLength === 0 && slashState.query === '') {
+        // The sigil is not in the value, so cancel the trigger instead.
+        e.preventDefault()
+        dispatch({ type: 'CLEAR_TRIGGER' })
         return
       }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
@@ -247,7 +313,7 @@ export const useSlashCommand = ({
         }
       }
     },
-    [popupOpen, popupItems, highlightedIdx, selectItem, slashState],
+    [enabled, hasSuggestions, value, popupOpen, popupItems, highlightedIdx, selectItem, slashState],
   )
 
   const setCursorPos = useCallback((pos: number) => dispatch({ type: 'SET_CURSOR', pos }), [])

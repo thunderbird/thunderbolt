@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  chipMarker,
   deleteSkillTokenAt,
   findSkillTokens,
   normalizeSkillTokensToSlugs,
@@ -238,5 +239,30 @@ describe('normalizeSkillTokensToSlugs', () => {
 
   it('leaves unknown tokens as typed', () => {
     expect(normalizeSkillTokensToSlugs('try /Unknown Thing', titles)).toBe('try /Unknown Thing')
+  })
+
+  it('rewrites marker chips to slug form', () => {
+    expect(normalizeSkillTokensToSlugs(`run ${chipMarker}Daily Brief now`, titles)).toBe('run /daily-brief now')
+    expect(normalizeSkillTokensToSlugs(`${chipMarker}daily-brief `, titles)).toBe('/daily-brief ')
+  })
+
+  it('drops a marker that no longer precedes a chip', () => {
+    expect(normalizeSkillTokensToSlugs(`a${chipMarker}b ${chipMarker}`, titles)).toBe('ab ')
+  })
+})
+
+describe('chip marker tokens', () => {
+  const titles = new Map([['Daily Brief', 'daily-brief']])
+
+  it('findSkillTokens recognizes a marker chip like a slash chip', () => {
+    const text = `hi ${chipMarker}Daily Brief now`
+    expect(findSkillTokens(text, titles)).toEqual([
+      { slug: 'daily-brief', start: 3, end: 3 + 1 + 'Daily Brief'.length, committed: true, isDisplay: true },
+    ])
+  })
+
+  it('deleteSkillTokenAt removes the marker with the chip', () => {
+    const text = `${chipMarker}Daily Brief `
+    expect(deleteSkillTokenAt(text, text.length, titles)).toEqual({ text: '', caret: 0 })
   })
 })

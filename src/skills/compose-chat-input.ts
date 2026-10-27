@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chipMarker } from './parse-skill-tokens'
+
 /**
- * Append a `/name` token to `value` for the chat composer, normalizing
+ * Append a chip token (`chipMarker` + name) to `value` for the chat composer, normalizing
  * surrounding whitespace. `name` may be a display title with spaces
  * (`Daily Brief`) — the send path maps display tokens back to slugs.
  *
@@ -22,7 +24,7 @@
  * unit-testable without spinning up the chat-store / draft-input stack.
  */
 export const appendSlashToken = (value: string, name: string): string => {
-  const token = `/${name}`
+  const token = `${chipMarker}${name}`
   if (value.length === 0) {
     return `${token} `
   }

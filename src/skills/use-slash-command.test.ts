@@ -7,6 +7,7 @@ import { act, renderHook } from '@testing-library/react'
 import { createRef, type KeyboardEvent } from 'react'
 
 import type { Skill } from '@/types'
+import { chipMarker } from './parse-skill-tokens'
 import { getSlashState, useSlashCommand } from './use-slash-command'
 
 const fakeSkill = (name: string, label: string | null = null): Skill => ({
@@ -114,7 +115,7 @@ describe('useSlashCommand handleKeyDown', () => {
     expect(event.preventDefault).toHaveBeenCalled()
     // setValue was called with the display-title token + trailing space
     // (send-time normalization maps it back to the slug).
-    expect(getValue()).toBe('/Alpha ')
+    expect(getValue()).toBe(`${chipMarker}Alpha`)
   })
 
   it('Enter accepts (regression — Tab path must not break Enter)', () => {
@@ -122,7 +123,7 @@ describe('useSlashCommand handleKeyDown', () => {
     const event = keyEvent('Enter')
     act(() => hook.result.current.handleKeyDown(event))
     expect(event.preventDefault).toHaveBeenCalled()
-    expect(getValue()).toBe('/Alpha ')
+    expect(getValue()).toBe(`${chipMarker}Alpha`)
   })
 
   it('does nothing on non-accept keys', () => {
@@ -156,17 +157,17 @@ describe('useSlashCommand selectSkill', () => {
     return { hook, getValue: () => value }
   }
 
-  it('does not insert a double space when the following text already starts with whitespace', () => {
+  it('leaves following whitespace as is', () => {
     // caret right after "/al"; text after the token starts with " world".
     const { hook, getValue } = setup('/al world', 3)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
-    expect(getValue()).toBe('/Alpha world')
+    expect(getValue()).toBe(`${chipMarker}Alpha world`)
   })
 
-  it('inserts a trailing space when there is no whitespace after the token', () => {
+  it('adds no space when the token ends the input', () => {
     const { hook, getValue } = setup('/al', 3)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
-    expect(getValue()).toBe('/Alpha ')
+    expect(getValue()).toBe(`${chipMarker}Alpha`)
   })
 
   it('does not leave the popup open at the stale cursor after selection', () => {
@@ -179,11 +180,11 @@ describe('useSlashCommand selectSkill', () => {
     expect(hook.result.current.popupOpen).toBe(false)
   })
 
-  it('selecting from an @-trigger inserts a /-prefixed display token', () => {
+  it('selecting from an @-trigger inserts a chip token', () => {
     const { hook, getValue } = setup('@al', 3)
     expect(hook.result.current.popupOpen).toBe(true)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
-    expect(getValue()).toBe('/Alpha ')
+    expect(getValue()).toBe(`${chipMarker}Alpha`)
   })
 })
 
@@ -273,7 +274,7 @@ describe('useSlashCommand agent commands', () => {
     const command = hook.result.current.popupItems.find((i) => i.kind === 'command')
     expect(command).toBeDefined()
     act(() => hook.result.current.selectItem(command!))
-    expect(getValue()).toBe('/research_codebase ')
+    expect(getValue()).toBe('/research_codebase')
   })
 
   it('drops an agent command that collides with a skill name (skill wins)', () => {
@@ -305,5 +306,104 @@ describe('useSlashCommand enabled option', () => {
     const event = keyEvent('Enter')
     act(() => hook.result.current.handleKeyDown(event))
     expect(setValue.mock.calls.length > 0).toBe(open)
+  })
+})
+
+describe('useSlashCommand swallowed trigger', () => {
+  const library = [fakeSkill('alpha'), fakeSkill('beta')]
+  const inputRef = createRef<HTMLTextAreaElement>()
+
+  /** A keydown with the textarea selection the hook reads from `currentTarget`. */
+  const triggerEvent = (key: string, caret: number, selectionEnd = caret) => {
+    const e = { key, shiftKey: false, preventDefault: mock(), currentTarget: { selectionStart: caret, selectionEnd } }
+    return e as unknown as KeyboardEvent<HTMLTextAreaElement>
+  }
+
+  const setup = (initial: string, skills = library) => {
+    let value = initial
+    const hook = renderHook(
+      ({ v }: { v: string }) =>
+        useSlashCommand({
+          value: v,
+          setValue: (next) => (value = next),
+          inputRef,
+          library: skills,
+          isEnabled: () => true,
+        }),
+      { initialProps: { v: initial } },
+    )
+    return { hook, getValue: () => value }
+  }
+
+  it.each(['/', '@'])('opens the picker on "%s" without writing it to the value', (key) => {
+    const { hook, getValue } = setup('')
+    const event = triggerEvent(key, 0)
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(getValue()).toBe('')
+    expect(hook.result.current.popupOpen).toBe(true)
+    expect(hook.result.current.popupItems).toHaveLength(2)
+  })
+
+  it('opens after whitespace', () => {
+    const { hook } = setup('hello ')
+    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 6)))
+    expect(hook.result.current.popupOpen).toBe(true)
+  })
+
+  it('leaves a mid-word "/" as a literal character', () => {
+    const { hook } = setup('and')
+    const event = triggerEvent('/', 3)
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(hook.result.current.popupOpen).toBe(false)
+  })
+
+  it('leaves "/" literal when there is a selection range', () => {
+    const { hook } = setup('abc')
+    const event = triggerEvent('/', 0, 3)
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('leaves "/" literal when nothing could be suggested', () => {
+    const { hook } = setup('', [])
+    const event = triggerEvent('/', 0)
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('filters on text typed after the trigger and selects at the right offset', () => {
+    const { hook, getValue } = setup('')
+    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
+    hook.rerender({ v: 'al' })
+    act(() => hook.result.current.setCursorPos(2))
+    expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['alpha'])
+    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
+    expect(getValue()).toBe(`${chipMarker}Alpha`)
+  })
+
+  it('keeps following text intact when selecting', () => {
+    const { hook, getValue } = setup('hi there')
+    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 3)))
+    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
+    expect(getValue()).toBe(`hi ${chipMarker}Alpha there`)
+  })
+
+  it('closes when whitespace ends the query', () => {
+    const { hook } = setup('')
+    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
+    hook.rerender({ v: 'al ' })
+    act(() => hook.result.current.setCursorPos(3))
+    expect(hook.result.current.popupOpen).toBe(false)
+  })
+
+  it('Backspace on an empty query cancels the trigger', () => {
+    const { hook } = setup('')
+    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
+    const event = keyEvent('Backspace')
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(hook.result.current.popupOpen).toBe(false)
   })
 })

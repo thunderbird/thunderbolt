@@ -103,7 +103,7 @@ export const renderHighlightedSkillTokens = (
     const colorClass = colorClassFor(committed, status)
     const tokenSpan = (
       <span key={key++} className={colorClass}>
-        {hiddenSlash()}
+        {value[start] === '/' ? hiddenSlash() : value[start]}
         {value.slice(start + 1, end)}
       </span>
     )

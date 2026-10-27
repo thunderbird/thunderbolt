@@ -20,6 +20,13 @@
  * The captured group is the bare slug (no leading `/`), which is also how
  * skills are stored after THU-533 (the `/` is display only).
  */
+/**
+ * Zero-width sigil the composer writes in front of a chip. It takes no width in
+ * the textarea or its overlay, so a chip shows no gap. {@link normalizeSkillTokensToSlugs}
+ * turns it into `/` at send time.
+ */
+export const chipMarker = '\u2060'
+
 export const skillTokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
 
 /**
@@ -79,6 +86,12 @@ export type SkillTokenMatch = {
   isDisplay: boolean
 }
 
+const isSigil = (char: string): boolean => char === '/' || char === chipMarker
+
+/** A token is committed when text follows it, or when it is a picker chip (marker sigil), which is complete on insert. */
+const isCommitted = (text: string, start: number, end: number): boolean =>
+  end < text.length || text[start] === chipMarker
+
 const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index])
 
 /**
@@ -109,7 +122,7 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
   const tokens: SkillTokenMatch[] = []
   let i = 0
   while (i < text.length) {
-    const isTokenStart = text[i] === '/' && (i === 0 || /\s/.test(text[i - 1]))
+    const isTokenStart = isSigil(text[i]) && (i === 0 || /\s/.test(text[i - 1]))
     if (!isTokenStart) {
       i++
       continue
@@ -118,14 +131,14 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
     if (entry) {
       const [name, slug] = entry
       const end = i + 1 + name.length
-      tokens.push({ slug, start: i, end, committed: end < text.length, isDisplay: true })
+      tokens.push({ slug, start: i, end, committed: isCommitted(text, i, end), isDisplay: true })
       i = end
       continue
     }
     const slugMatch = /^[\w-]+/.exec(text.slice(i + 1))
     if (slugMatch && isBoundary(text, i + 1 + slugMatch[0].length)) {
       const end = i + 1 + slugMatch[0].length
-      tokens.push({ slug: slugMatch[0], start: i, end, committed: end < text.length, isDisplay: false })
+      tokens.push({ slug: slugMatch[0], start: i, end, committed: isCommitted(text, i, end), isDisplay: false })
       i = end
       continue
     }
@@ -162,18 +175,17 @@ export const deleteSkillTokenAt = (
  * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
  * form (`/daily-brief`). Run at send time so the composer can show human
  * titles while the model — and the stored message — only ever sees slugs.
- * Slug tokens and unrecognized text pass through untouched.
+ * Slug tokens and unrecognized text pass through untouched; stray chip
+ * markers are dropped.
  */
 export const normalizeSkillTokensToSlugs = (text: string, displayNameToSlug: ReadonlyMap<string, string>): string => {
   const tokens = findSkillTokens(text, displayNameToSlug)
-  if (tokens.length === 0) {
-    return text
-  }
   let result = ''
   let cursor = 0
   for (const { slug, start, end } of tokens) {
     result += text.slice(cursor, start) + `/${slug}`
     cursor = end
   }
-  return result + text.slice(cursor)
+  // A marker left behind by editing a chip must not reach the model.
+  return (result + text.slice(cursor)).replaceAll(chipMarker, '')
 }

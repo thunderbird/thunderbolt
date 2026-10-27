@@ -115,6 +115,7 @@ export type CreateMessage = (params: Anthropic.MessageCreateParamsNonStreaming) 
 >
 
 const judgeModel = 'claude-opus-5-5'
+// https://platform.claude.com/docs/en/about-claude/pricing
 const judgeUsdPerMillionTokens = { input: 4, output: 20 }
 const judgeMaxTokens = 4096
 // Per-leg caps; the README's "Budget calibration" section explains them.
@@ -125,14 +126,13 @@ export const nativeRunEstimateMinutes = 4.1
 export const nativeSetupEstimateMinutes = 6.5
 export const nativeWrapUpMinutes = 2
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
-// 27 runs (3 control + 4 findings × 6) × 4.1 + 6.5 setup + 2 wrap-up + 3 driver = 122 min, plus about 5 for the cold
-// first run: inside nativeJobMinutes.
+// workflow.test.ts sizes the cap without the cold first run, which adds about 5 minutes.
 export const nativeReplayCap = 4
 const judgeCap = 15
 const judgeCeilingUsd = 2
 // Message framing and the verdict schema, on top of the prompt text.
 const judgeOverheadTokens = 1_000
-// The API scales a larger image down to about 1.15 megapixels, about 1,600 tokens.
+// The API scales a larger image down to about 1.15 megapixels.
 const judgeImageTokens = 1_600
 
 /**
@@ -363,7 +363,7 @@ const assertion = z.union([z.object({ assertVisible: selector }), z.object({ ass
 /** A `layout` flow must stop on the screen (drivers/maestro.md); a trailing wait for its text is not an assertion. */
 const endsOnAssertion = (yaml: string) => assertion.safeParse(commandsOf(yaml).at(-1)).success
 
-/** Layout and log oracles show the bug in output; for every other oracle, and the visual check, the failure is it. */
+/** Layout and log oracles show the bug in output; for the others, and the visual check, a failed flow is the bug. */
 const failureIsBug = (oracle: Oracle | undefined) =>
   oracle === undefined || (oracle.type !== 'layout' && !logOracles.has(oracle.type))
 
@@ -378,7 +378,10 @@ const endsOnBugAssertion = (yaml: string, oracle: Oracle | undefined) => {
   return assertion.safeParse(last).success || (oracle?.type === 'stuck' && waitsFor.safeParse(last).success)
 }
 
-/** `signIn` runs first in the same launch: the harness's sign-in and every step before the bug's assertion. */
+/**
+ * `signIn` runs first in the same launch and its failure is never the bug: the harness's sign-in and, where a failed
+ * flow is the bug, the steps before its assertion.
+ */
 type NativeFlow = { yaml: string; signIn?: string }
 
 /** Serializes through the allow list, so only checked commands reach a device. */
@@ -667,7 +670,8 @@ type Oracle = FindingFile['finding']['oracle']
 
 /**
  * The native half of a fix's verification, run with no key on the platform's runner. The flow runs three times on the
- * patched app, and a run fails when the flow fails or shows the bug (`flowFailure`). A run whose driver never started
+ * patched app, and a run fails when the flow fails or shows the bug (`flowFailure`, or the visual check's own
+ * assertions). A run whose driver never started
  * counts as failed, and so does one without the probe's ready line when the oracle reads the WebView log: a dead
  * stream or a silenced probe shows no bug either. A failure before the bug's assertion fails the patched run too: a
  * fix must leave the whole way there working. `passed` needs three counted runs, every one clean.

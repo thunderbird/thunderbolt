@@ -61,7 +61,7 @@ const readJson = async <T>(path: string): Promise<T | undefined> => {
 
 /**
  * Session metrics from a claude-code-action execution file (a JSON array of SDK messages ending in the
- * `result` message). Tokens are summed from `modelUsage`: on a budget cut `usage` is all zeros.
+ * `result` message).
  */
 export const sessionFromExecution = async (path: string, charter: string, timedOut = false): Promise<Session> => {
   // A job killed mid-write leaves a truncated file: the session was cut, and its numbers are unknown.

@@ -51,7 +51,10 @@ jobs:
         run: cd backend && bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step stalled on a slow mirror long enough to time the job out.
+        timeout-minutes: 3
+        run: bunx playwright install chromium
 
       - name: Runner CPU/memory diagnostics (pre-test)
         run: |
@@ -119,7 +122,10 @@ jobs:
         run: cd backend && bun install --frozen-lockfile
 
       - name: Install Playwright browser
-        run: bunx playwright install --with-deps chromium
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step stalled on a slow mirror long enough to time the job out.
+        timeout-minutes: 3
+        run: bunx playwright install chromium
 
       - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
         # Playwright names every blob `report-<shard>.zip`, so this job's shard

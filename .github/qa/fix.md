@@ -39,7 +39,7 @@ defect is a layout problem, or another assertion on the DOM. It follows the rule
 `bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-<fp>/repro/check.spec.ts` and see it fail. Only
 then fix the bug, and run it again to see it pass. The workflow runs your check on the code without your patch and
 with it. The patch is published only when the check fails without it and passes with it, and the check becomes the
-PR's regression test.
+PR's regression test, except in a c1 task, whose check runs on the onboarding build that `e2e/` does not serve.
 
 If you cannot write a check that fails because of the defect, change no code and write a diagnosis instead.
 

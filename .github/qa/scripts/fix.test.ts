@@ -468,6 +468,13 @@ describe('regressionSpec', () => {
     )
   })
 
+  test('moves the ports import from qa-out/ to e2e/, in either quote style', () => {
+    const source = `import { frontendURL } from '../../../.github/qa/ports'\nimport { stackURLs } from "../../../.github/qa/ports"\n`
+    expect(regressionSpec('c2-chat-power-user', 'ab12cd34', source).source).toBe(
+      `import { frontendURL } from '../.github/qa/ports'\nimport { stackURLs } from "../.github/qa/ports"\n`,
+    )
+  })
+
   test('uses the sync prefix for the two-device charter', () => {
     expect(regressionSpec('c7-two-devices', 'ab12cd34', spec).path).toBe('e2e/sync-qa-ab12cd34.spec.ts')
   })

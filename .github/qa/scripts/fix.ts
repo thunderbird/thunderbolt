@@ -209,15 +209,15 @@ const e2eTestExports = new Set(['test', 'expect', 'Page', 'Request', 'Route'])
  * The repro spec as a permanent regression test. The name matches a Playwright project so
  * `scripts/check-e2e-specs-collected.ts` accepts it: `sync-qa-` for the two-device charter (the only one on
  * Postgres + PowerSync), `consumer-qa-` for the rest, which replay against the consumer pair. Imports move from
- * `qa-out/<charter>/repro/` to `e2e/` (the layout helper stays in `.github/qa/`), and `@playwright/test` becomes
- * `./test` like every other spec (it adds WebKit's persistent profile and the attestation stub) unless the spec
- * imports something `./test` lacks.
+ * `qa-out/<charter>/repro/` to `e2e/` (the layout and ports helpers stay in `.github/qa/`), and `@playwright/test`
+ * becomes `./test` like every other spec (it adds WebKit's persistent profile and the attestation stub) unless the
+ * spec imports something `./test` lacks.
  */
 export const regressionSpec = (charterDir: string, fp: string, source: string) => ({
   path: `e2e/${charterDir.startsWith('c7-') ? 'sync' : 'consumer'}-qa-${fp}.spec.ts`,
   source: source
     .replace(/(from\s*)(['"])\.\.\/\.\.\/\.\.\/e2e\/helpers\2/g, '$1$2./helpers$2')
-    .replace(/(from\s*)(['"])\.\.\/\.\.\/\.\.\/(\.github\/qa\/layout)\2/g, '$1$2../$3$2')
+    .replace(/(from\s*)(['"])\.\.\/\.\.\/\.\.\/(\.github\/qa\/(?:layout|ports))\2/g, '$1$2../$3$2')
     .replace(
       /(import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*)(['"])@playwright\/test\3/g,
       (whole: string, head: string, names: string, quote: string) =>

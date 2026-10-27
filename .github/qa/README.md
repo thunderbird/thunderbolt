@@ -182,7 +182,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
    is cut at its `mcp/` or `mcp-b/` part, so another runner path still resolves) and lists a session whose page
-   loads lack the ready line under "Layout probe", because a clean layout there proves nothing. A native `run`
+   loads lack the ready line under "Layout probe" (Back is not a load: it is a same-document move), because a
+   clean layout there proves nothing. A native `run`
    result whose gate output has no `[qa-layout] ready` line counts the same way, and the report says "screens
    without a measurement" for both. Maestro tools count in coverage like browser tools: `run` is an action,
    `inspect_screen`, `take_screenshot`, `read_logs` and `cheat_sheet` are reads, and a reload on native is a `run`
@@ -255,7 +256,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
-   wording; one without an element is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+   wording; one without an element or a function is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
    An Android `layout` finding is refused too, with its reason in the report, until the probe has swept correct
    Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding of the same bug is
    filed as usual.
@@ -313,7 +314,8 @@ restored and the canary leg is skipped as if nothing qualified, so a bad canary 
 gets an explore session with its charter on that build, so at most 2 sessions a week. A canary counts as found only when a judge-confirmed finding from its charter fails on the
 canary build and passes on the normal build. The report lists each fix (title, sha, charter, found or missed), and
 "Real bugs seen in the canary leg" lists confirmed findings that still fail on the normal build: real bugs, not
-counted. Canary findings are never filed.
+counted. A `visual` finding is judged on its screenshot and has no baseline replay, so it is neither found nor real;
+the report lists it as "Not measured". Canary findings are never filed.
 
 To calibrate by hand, run the workflow with the `canaries` input set to up to two commit SHAs. Those commits are used
 as they are, without the checks above except that each must have a charter, its reversal must apply, and both must use

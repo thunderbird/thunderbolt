@@ -96,6 +96,8 @@ type CanaryResult = {
   results: (Canary & { found: boolean })[]
   /** Confirmed findings not proven canary-caused (still failing on the normal build): real bugs, never counted. */
   real: string[]
+  /** Visual findings: confirmed from a screenshot with no baseline replay, so neither found nor real. */
+  unmeasured: string[]
 }
 
 const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
@@ -104,7 +106,7 @@ const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir
  * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build
  * without failing, so the reverted fixes caused it. Area, oracle type and wording are not compared: the explorer
  * files the same bug under different ones. A finding the baseline never ran, or ran on an unhealthy stack, is not
- * proven canary-caused and counts as real.
+ * proven canary-caused and counts as real. A visual finding has no replay to check, so it counts as neither.
  */
 export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
   const caused = (f: VerifiedFinding) =>
@@ -117,12 +119,14 @@ export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], b
         file.replay.runs > 0 &&
         file.replay.failed === 0,
     )
+  const isVisual = (f: VerifiedFinding) => f.finding.oracle.type === 'visual'
   const results = canaries.map((c) => ({ ...c, found: findings.some((f) => f.charterDir === c.charter && caused(f)) }))
   return {
     found: results.filter((r) => r.found).length,
     total: results.length,
     results,
-    real: findings.filter((f) => !caused(f)).map(findingId),
+    real: findings.filter((f) => !isVisual(f) && !caused(f)).map(findingId),
+    unmeasured: findings.filter(isVisual).map(findingId),
   }
 }
 
@@ -229,6 +233,7 @@ const probeRan = async (result: string, sessionDir: string, readLog: (path: stri
 
 /**
  * Screens in a session and how many of them did not show `[qa-layout] ready`: page loads and native `run` calls.
+ * Back is not a load: it is a same-document history move in this SPA, and the probe runs on document loads only.
  * The Playwright MCP puts no console text in a navigate result, only a count and a link to the log lines the load
  * wrote, so each link is followed (`readLog`) under `sessionDir`. A load with no link, or whose linked lines lack
  * the ready line, counts as missing. The Maestro gate appends the ready line to a `run` result itself.
@@ -241,9 +246,7 @@ export const probeGaps = async (
   const screens = toSteps(transcript).flatMap((step) => {
     if (step.kind !== 'result') return []
     if (browserTool(step.tool) === 'run') return [Promise.resolve(nativeReady.test(step.text))]
-    return ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
-      ? [probeRan(step.text, sessionDir, readLog)]
-      : []
+    return browserTool(step.tool) === 'navigate' ? [probeRan(step.text, sessionDir, readLog)] : []
   })
   const ran = await Promise.all(screens)
   return { loads: ran.length, missing: ran.filter((ok) => !ok).length }
@@ -517,8 +520,10 @@ const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
   const afterReplay = afterLint - deferred('replay') - dropped('replay')
-  // Flaky findings are never judged, and a regression is a new ticket too.
-  const filedCount = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action)).length
+  // Flaky findings are never judged, and a regression is a new ticket too. A fingerprint is one ticket, however many
+  // findings (one per platform) share it.
+  const tickets = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action))
+  const filedCount = tickets && new Set(tickets.map((a) => a.fp)).size
   return [
     `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} ` +
       `(${verified.flaky.length} flaky, ${deferred('replay')} deferred) → judge ${verified.confirmed.length} ` +
@@ -639,6 +644,9 @@ export const renderReport = (input: ReportInput) => {
         (r) => `- ${r.found ? 'found' : '**MISSED**'} ${safe(r.title, 150)} (${r.sha.slice(0, 9)}, ${r.charter})`,
       ),
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
+      ...(canary.unmeasured.length > 0
+        ? [`Not measured (visual findings have no baseline replay): ${canary.unmeasured.join(', ')}`]
+        : []),
     )
   }
   const rows = calibrationRows(explore, fixes, verified?.judge_usage?.cost_usd)

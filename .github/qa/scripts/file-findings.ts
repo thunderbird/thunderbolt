@@ -318,7 +318,9 @@ const videoPath = (outDir: string, video: string) =>
  * holding back an Android finding never holds back its iOS twin.
  */
 const refusal = (f: Finding) => {
-  if (f.oracle.type === 'visual' && !f.element) return 'visual finding without an element to deduplicate on'
+  if (f.oracle.type === 'visual' && !(f.element?.trim() && f.function?.trim())) {
+    return 'visual finding without an element and a function to deduplicate on'
+  }
   // Spec 10 asks for a clean probe sweep of correct screens before a platform files layout tickets. Android's never
   // ran, and runs 39380764343 and 39391108579 logged `covered` on sidebar buttons their screenshots show uncovered.
   if (f.viewport === 'android' && f.oracle.type === 'layout') {

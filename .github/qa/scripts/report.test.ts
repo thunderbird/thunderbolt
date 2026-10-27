@@ -238,6 +238,10 @@ describe('renderReport', () => {
         { fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
         { fp: 'bcde2345', charterDir: 'c1', id: '5', severity: 'High', action: 'regression' },
         { fp: 'cdef3456', charterDir: 'c1', id: '6', severity: 'High', action: 'commented' },
+        // One ticket seen on two platforms is two entries with one fingerprint, dry run or live.
+        { fp: 'abcd1234', charterDir: 'c2', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
+        { fp: 'def04567', charterDir: 'c1', id: '7', severity: 'Low', action: 'created' },
+        { fp: 'def04567', charterDir: 'c2', id: '7', severity: 'Low', action: 'created' },
       ],
       canary: {
         found: 1,
@@ -247,10 +251,11 @@ describe('renderReport', () => {
           { ...canary('b', 'c2-chat-power-user'), found: false },
         ],
         real: ['c8-phone/7'],
+        unmeasured: ['c8-phone/8'],
       },
     })
     expect(report).toContain(
-      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 2',
+      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 3',
     )
     expect(report).toContain('c1/3: **schema** — bad \\| json')
     expect(report).toContain('c1/4: **judge** — known issue')
@@ -259,6 +264,7 @@ describe('renderReport', () => {
     expect(report).toContain('Canary recall: 1/2')
     expect(report).toContain('**MISSED** fix: b (bbbbbbbbb, c2-chat-power-user)')
     expect(report).toContain('Real bugs seen in the canary leg (not counted): c8-phone/7')
+    expect(report).toContain('Not measured (visual findings have no baseline replay): c8-phone/8')
   })
 
   it('adds a calibration row per metric with max observed and the +50% cap', () => {
@@ -758,7 +764,15 @@ describe('probeGaps', () => {
       ['mcp__playwright_b__browser_navigate', navigated('/out/mcp-b/console-b.log#L1-L3')],
       ['mcp__playwright_b__browser_navigate_back', navigated('/out/mcp-b/gone.log#L1')],
     ] as const
-    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 6, missing: 4 })
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 4, missing: 2 })
+  })
+
+  it('ignores Back: a same-document history move never runs the init script', async () => {
+    const steps = [
+      ['mcp__playwright__browser_navigate_back', navigated()],
+      ['mcp__playwright__browser_navigate_back', navigated('/out/mcp/console-c.log#L1-L2')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 0, missing: 0 })
   })
 
   it('ignores results of other tools, even when they link a log with the ready line', async () => {
@@ -869,6 +883,8 @@ describe('runSummary', () => {
       join(outDir, unlisted, 'transcript.json'),
       JSON.stringify([
         ...navigation('mcp__playwright__browser_navigate', loaded(`${log}#L1`)),
+        ...navigation('mcp__playwright__browser_navigate', '- Console: 0 errors, 0 warnings'),
+        // Back never runs the probe, so it is neither a load nor a gap.
         ...navigation('mcp__playwright__browser_navigate_back', '- Console: 0 errors, 0 warnings'),
       ]),
     )
@@ -935,6 +951,17 @@ describe('canaries', () => {
   it('does not count a spec that never ran on the normal build', () => {
     const result = matchCanaries(canaries, [finding('1')], droppedOnNormal(['1'], 0))
     expect(result).toMatchObject({ found: 0, real: ['c8-phone/1'] })
+  })
+
+  it('sets visual findings apart: they are neither a found canary nor a real bug', () => {
+    const result = matchCanaries(canaries, [finding('v', 'c8-phone', 'other', 'visual')], emptyVerified)
+    expect(result).toMatchObject({ found: 0, real: [], unmeasured: ['c8-phone/v'] })
+  })
+
+  it('still counts a canary found by a caused spec finding next to a visual one', () => {
+    const findings = [finding('1'), finding('v', 'c8-phone', 'other', 'visual')]
+    const result = matchCanaries(canaries, findings, droppedOnNormal(['1']))
+    expect(result).toMatchObject({ found: 1, real: [], unmeasured: ['c8-phone/v'] })
   })
 
   it('does not count a canary-caused finding from another charter', () => {

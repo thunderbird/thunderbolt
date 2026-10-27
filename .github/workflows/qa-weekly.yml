@@ -465,6 +465,7 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.png
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpeg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpg
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.log
           if-no-files-found: warn
           retention-days: 7
@@ -761,6 +762,7 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/maestro/shot-*.png
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.png
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.jpeg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.jpg
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.log
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}.gate.log
           if-no-files-found: warn

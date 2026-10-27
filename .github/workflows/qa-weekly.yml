@@ -440,6 +440,7 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.png
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpeg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpg
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.log
           if-no-files-found: warn
           retention-days: 7

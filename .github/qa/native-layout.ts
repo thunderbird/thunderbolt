@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // What the native harness reads from the tree Maestro dumps: the screen and the on-screen keyboard. Layout problems
-// come from the web probe injected into every native QA build: the tree has no z-order and leaves
-// out unlabelled boxes, so it can miss a field the keyboard hides and report a cover that is not there. Two rules stay on
-// the tree: Android's behind-keyboard, because the Android WebView never sees the keyboard, and unnamed-control,
+// come from the web probe injected into every native QA build: the tree has no z-order and leaves out unlabelled
+// boxes, so it can miss a field the keyboard hides and report a cover that is not there. Two rules stay on the
+// tree: Android's behind-keyboard, because the Android WebView never sees the keyboard, and unnamed-control,
 // because the name a screen reader reads comes from the platform's accessibility tree, not from the page.
 
 import platforms from './platforms.json'
@@ -20,7 +20,6 @@ export type NativeNode = {
   focused: boolean
   /** The control's role (`button`, `checkbox`, …), or empty when the node is no control the tree can tell. */
   role: string
-  /** What a screen reader reads for the node. */
   name: string
   children: NativeNode[]
 }

@@ -189,7 +189,7 @@ export const sessionProblem = ({ charterDir, finding }: FindingFile): string | u
   return undefined
 }
 
-/** Specs are replayed where the explorer wrote them, `qa-out/<charter>/repro/<n>.spec.ts`, three levels below the repo. */
+/** Specs replay where the explorer wrote them, `qa-out/<charter>/repro/<n>.spec.ts`, three levels below the repo. */
 const allowedImports = new Set([
   '@playwright/test',
   '../../../e2e/helpers',

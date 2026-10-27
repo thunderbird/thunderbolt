@@ -1371,7 +1371,7 @@ describe('replay of native flows', () => {
 
     const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
 
-    // a-stuck gets no extra run, since b-bug and c-late are owed theirs; c-late's first run would end past the limit.
+    // a-stuck gets no extra run, since b-bug and c-late are owed theirs; c-late's first run would end after the leg.
     expect(calls).toEqual([...Array(3).fill('stack control'), ...Array(3).fill('a-stuck'), ...Array(3).fill('b-bug')])
     expect(clock.now).toBe(82 * 60_000)
     expect(titles(result.confirmed)).toEqual(['b-bug'])

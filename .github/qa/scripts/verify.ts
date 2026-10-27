@@ -244,7 +244,7 @@ export const replayEnv = (outDir: string, env: Record<string, string | undefined
   HOME: Bun.env.HOME,
   CI: Bun.env.CI,
   PLAYWRIGHT_BROWSERS_PATH: Bun.env.PLAYWRIGHT_BROWSERS_PATH,
-  // A failed replay would otherwise write the page's aria snapshot (it can hold typed field values) into error-context.md.
+  // Otherwise a failed replay writes the page's aria snapshot, which can hold typed field values, to error-context.md.
   PLAYWRIGHT_NO_COPY_PROMPT: '1',
   QA_OUT: outDir,
   // The Playwright config and the c1 specs read the stack's frontends from these.
@@ -393,7 +393,7 @@ const serialize = (commands: unknown[], appId: string) => {
 
 const consentFile = join(import.meta.dir, '../control/consent.yaml')
 
-/** Where a flow waits for the first screen after sign-in, with `...` matching the chat's ellipsis; -1 if it never does. */
+/** Where a flow waits for the first screen after sign-in; `...` matches the chat's ellipsis, and -1 means never. */
 const landingIndex = (commands: unknown[], session: string) =>
   commands.findIndex((command) => awaitedText.safeParse(command).data?.replaceAll('...', '…') === landingOf(session))
 
@@ -671,10 +671,10 @@ type Oracle = FindingFile['finding']['oracle']
 /**
  * The native half of a fix's verification, run with no key on the platform's runner. The flow runs three times on the
  * patched app, and a run fails when the flow fails or shows the bug (`flowFailure`, or the visual check's own
- * assertions). A run whose driver never started
- * counts as failed, and so does one without the probe's ready line when the oracle reads the WebView log: a dead
- * stream or a silenced probe shows no bug either. A failure before the bug's assertion fails the patched run too: a
- * fix must leave the whole way there working. `passed` needs three counted runs, every one clean.
+ * assertions). A run whose driver never started counts as failed, and so does one without the probe's ready line when
+ * the oracle reads the WebView log: a dead stream or a silenced probe shows no bug either. A failure before the bug's
+ * assertion fails the patched run too: a fix must leave the whole way there working. `passed` needs three counted
+ * runs, every one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`); `passed` then needs both. A visual check needs `original`, and so does a real-AI session, which
  * is verified here on the fake AI: its flow must fail without the patch to prove anything.

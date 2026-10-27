@@ -27,7 +27,7 @@ import type { Verified } from './verify'
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
 const maxFixes = 3
 
-/** Dependency manifests, lockfiles and the build-tool files that pick a registry, download or binary every build runs. */
+/** Manifests, lockfiles and the build-tool files that pick a registry, download or binary every build runs. */
 const dependencyFiles = new RegExp(
   `(^|/)(${[
     String.raw`package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)`,
@@ -275,7 +275,7 @@ const patchedFiles = async (run: Run, patch: string) => {
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
 
-/** The fix agent's visual check sits three levels under the repo root, like a repro spec, so imports and project match. */
+/** Three levels under the repo root, like a repro spec, so imports and the Playwright project match. */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
 /** `fix/<fp>.verify.json`: whether the visual check failed on the tree without the patch and passed with it. */
 const checkResult = z.object({ failsWithout: z.boolean(), passesWith: z.boolean() })

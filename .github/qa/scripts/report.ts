@@ -255,8 +255,8 @@ const recordWritten = (step: Step) =>
   step.kind === 'call' && step.tool === 'Write' ? /\/attempts\/([^/]+)\.json$/.exec(step.path ?? '')?.[1] : undefined
 
 /**
- * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers do not count,
- * so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
+ * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers
+ * do not count, so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
  */
 const normalize = (text: string) =>
   text

@@ -11,7 +11,7 @@ const native = join(import.meta.dir, 'native.sh')
 const work = mkdtempSync(join(tmpdir(), 'qa-native-'))
 afterAll(() => rmSync(work, { recursive: true, force: true }))
 
-// Unset, so a caller's shell cannot change the defaults a test expects.
+// The port variables are unset so a caller's shell cannot change the defaults a test expects.
 const noPorts = {
   QA_FRONTEND_PORT: '',
   QA_ONBOARDING_PORT: '',
@@ -111,7 +111,10 @@ test('device android reverses the stack ports it is configured with', () => {
   )
 })
 
-/** Launch n runs as pid 400n; only launch `step1At` reaches `[init] step1_`, and 0 means none does. */
+/**
+ * Launch n runs as pid 400n. The first pidof look finds no pid and later ones find it, even from launch 2 on when
+ * a slow machine spent launch 1's 1 s on one look. Only launch `step1At` reaches `[init] step1_`, and 0 means none.
+ */
 const warmUp = (step1At: number) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const calls = join(bin, 'calls.log')

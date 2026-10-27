@@ -1,5 +1,5 @@
-# The harness's way past the privacy step and Connect Google to the name step of a fresh onboarding install.
-# `verify.ts` runs it at the end of the sign-in step and adds the flow's next text to the `when` as `notVisible`.
+# Run by `verify.ts` at the end of the sign-in step, past the privacy and Connect Google steps of a fresh onboarding
+# install. verify.ts adds the flow's next text to the `when` as `notVisible`.
 - extendedWaitUntil:
     visible: Onboarding Wizard
     timeout: 120000

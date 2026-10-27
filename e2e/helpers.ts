@@ -8,9 +8,8 @@ import { expect, type Page } from '@playwright/test'
 const e2eSignInCode = '12345678'
 
 /**
- * The backend refuses a second code for the same email within 15 s (`defaultCooldownMs` in waitlist/routes.ts). This
- * remembers when this process last asked for a code per address, and `wait` sleeps until the address may ask again.
- * Tests inject `now` and `sleep`.
+ * The backend refuses a second code for the same email within `defaultCooldownMs` (waitlist/routes.ts); `wait` sleeps
+ * out what remains for an address this process already asked. Tests inject `now` and `sleep`.
  */
 export const createOtpCooldown = (
   now = Date.now,
@@ -33,9 +32,8 @@ export const createOtpCooldown = (
 const otpCooldown = createOtpCooldown()
 
 /**
- * Sign in by hand up to the code: open the entry page, request a code for `email` (a fresh address by default) and
- * type it. Nothing after the code is awaited, so it works with onboarding on as well. Signing in again with the same
- * address first waits out the backend's per-address cooldown. Returns the address.
+ * Signs in up to the code and awaits nothing after it, so it works with onboarding on. Signing in again with the same
+ * address first waits out the backend's cooldown. Returns the address.
  */
 export const enterEmailCode = async (page: Page, email = `e2e-${crypto.randomUUID()}@thunderbolt.test`) => {
   await page.goto('/')

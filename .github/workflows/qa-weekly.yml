@@ -53,7 +53,6 @@ concurrency:
 permissions: {}
 
 env:
-  # Per-session caps. Initial values: recalibrate them with the rule in .github/qa/README.md.
   QA_EXPLORE_MAX_BUDGET_USD: 10
   QA_EXPLORE_MAX_TURNS: 400
   QA_EXPLORE_TIMEOUT_MINUTES: 60
@@ -115,15 +114,12 @@ jobs:
       - &install-browsers
         name: Install browsers
         timeout-minutes: 10
-        # The repo's Playwright replays specs; the Playwright MCP (pinned in .github/qa/mcp.json) drives its own
-        # Chromium.
+        # Two installs: the repo's Playwright replays specs, the MCP (pinned in .github/qa/mcp.json) has its own Chromium.
         run: |
           bunx playwright install chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
 
-      # Up to two recent fixes from main whose reversal applies to this tree: the canary build carries their bugs
-      # again. The log says why every other fix was skipped. The canary build comes first and may fail without
-      # failing the run: the canaries are then dropped, so the legs are planned without them.
+      # Reverts up to two recent fixes from main; a failed canary build drops the canaries instead of failing the run.
       - name: Pick the canaries and build them
         id: canaries
         env:
@@ -152,10 +148,8 @@ jobs:
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
             (github.event_name == 'schedule' || inputs.autofix) }}
         run: |
-          # This week's case for the free session, unless the dispatch names one. It runs on every platform.
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
-          # One explore session per charter and platform, plus the free session and the canary legs; the replay and
-          # judge legs follow from them. An unknown charter id fails here, with the CLI's own ::error:: line.
+          # An unknown charter id fails here, with the CLI's own ::error:: line.
           if ! legs=$(bun .github/qa/scripts/legs.ts --charters "$CHARTERS" --journey "$journey" \
             --canaries "$RUNNER_TEMP/qa-canaries.json"); then
             echo "$legs"
@@ -217,7 +211,7 @@ jobs:
       max-parallel: 8
       matrix:
         leg: ${{ fromJSON(needs.build.outputs.legs) }}
-    # From nightly.yml's linux job. An empty image skips the container, so only Postgres legs start them.
+    # An empty image skips the container, so only Postgres legs start them.
     services: &postgres-services
       postgres:
         image: ${{ matrix.leg.postgres && 'ghcr.io/thunderbird/thunderbolt/thunderbolt-postgres:latest' || '' }}
@@ -263,9 +257,7 @@ jobs:
         with: *browser-cache
       - *install-browsers
 
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes the CLI refuse to start without bubblewrap. With it, the processes the
-      # agent starts run in a sandbox, so they cannot read the key from the CLI's /proc/<pid>/environ either. Same
-      # install as claude-code-action's for allowed_non_write_users. It needs root, so it runs before the lock step.
+      # Needs root, so before the lock step; CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes the CLI refuse to start without it.
       - &install-sandbox
         name: Install the subprocess sandbox
         run: |
@@ -294,7 +286,6 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
-        # From nightly.yml's linux job.
         run: |
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET wal_level = logical"
           docker restart "$POSTGRES_CONTAINER"
@@ -310,8 +301,7 @@ jobs:
       - &start-stack
         name: Start the stack
         env:
-          # Real providers only for the charters that need them, with QA-only keys, and only in a backend that runs
-          # as the OS user qa-backend: stack.sh moves the keys into a file only that user can read.
+          # stack.sh moves the keys into a file only qa-backend can read, and the backend runs as that user.
           QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
           QA_BACKEND_USER: ${{ matrix.leg.real && 'qa-backend' || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_ANTHROPIC_API_KEY || '' }}
@@ -322,8 +312,7 @@ jobs:
           ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
         run: .github/qa/scripts/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
 
-      # Root could read the keys from the backend and the secrets from the runner's memory. No step after this one
-      # needs it.
+      # Root could read the backend's keys and the runner's secrets from memory; no later step needs it.
       - &lock
         name: Take root away from the job's user
         if: matrix.leg.real
@@ -344,17 +333,15 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # The browser tools can write files anywhere in the checkout, so no repo code runs in this job after the
-      # explorer: the stack is stopped inline, a checksum tripwire guards the upload, and report.ts runs later. The
-      # one repo file read afterwards is transcript.jq, a jq filter (no shell, no file access) the tripwire covers.
+      # The browser tools can write anywhere in the checkout, so after the explorer only transcript.jq (a jq filter,
+      # covered by the tripwire) is read from it.
       - name: Record the checksums of the tracked files
         # Symlinks are skipped: one tracked link dangles, and the files they point to are tracked themselves.
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 sha256sum > "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # Same flags as .github/qa/scripts/explore.sh. Only Write (inside the out dir) and the browser tools, no shell
-      # and no file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
+      # Same flags as explore.sh; `--setting-sources user` keeps the repo's agent instructions and skills out.
       - name: Explore
         id: explore
         continue-on-error: true
@@ -379,10 +366,8 @@ jobs:
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 
-      # Inline, from the files stack.sh wrote outside the checkout: the backend may hold provider keys. SIGKILL for
-      # the serve script, so bash reads no more of a file the explorer may have rewritten, and SIGTERM for this user's
-      # servers. Servers that run as another user sit under sudo, which this user cannot signal: the rule stack.sh
-      # start installed sends that user's processes SIGTERM, and a server left running fails the step.
+      # Inline, from files outside the checkout. SIGKILL for the serve script so bash reads no more of a file the
+      # explorer may have rewritten; another user's servers get SIGTERM through the sudo rule stack.sh start installed.
       - &stop-stack
         name: Stop the stack
         if: always()
@@ -405,7 +390,6 @@ jobs:
       - name: Check that the checkout is unchanged
         id: tripwire
         if: always()
-        # A changed tracked file means the explorer wrote into the repo: the job fails and uploads nothing.
         run: sha256sum --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
       - name: Save the session
@@ -416,13 +400,9 @@ jobs:
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
-          # The explorer's Write tool can reach its out dir, so these files are removed and written here only. Two
-          # things it can also write still reach later steps: the judge reads screenshots under mcp/, which replay
-          # accepts only when the browser tool took them and no file tool wrote them; the report reads the MCP
-          # console logs, which nothing guards, so a forged log at worst turns a missing probe line into "measured".
+          # The explorer's Write tool reaches its out dir, so these files are removed and written here only.
           rm -f "$dir/execution.json" "$dir/timed-out" "$dir/transcript.json"
-          # Only the result message's counters, and the tool calls with capped results for the coverage check: the
-          # full execution file also holds the prompt and everything the model wrote.
+          # The full execution file also holds the prompt and everything the model wrote.
           if [ -f "$EXECUTION_FILE" ]; then
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
               "$EXECUTION_FILE" > "$dir/execution.json"
@@ -431,10 +411,8 @@ jobs:
           # A step killed by its timeout leaves no execution file; the marker tells report.ts why.
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
 
-      # Artifacts are public, and GitHub masks secrets in logs only. The pages the explorer read could show a key (a
-      # backend bug in a real-AI leg), so any key this job holds, found anywhere in the session output, means no
-      # upload. Exact values only: a token-shaped pattern would also match a made-up key typed into a model form. The
-      # session and the stack have ended, so no untrusted process is meant to be left to read this step's keys.
+      # Artifacts are public and GitHub masks secrets in logs only, so a held key in the session output blocks the
+      # upload. Exact values: a token-shaped pattern would also match a made-up key typed into a form.
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -470,7 +448,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Like build, before any untrusted code: the app with onboarding off and on, for each native platform of the run.
+  # Like build, runs before any untrusted code.
   build-native:
     name: build-native ${{ matrix.target.platform }}
     needs: build
@@ -496,8 +474,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with: *bun-cache
       - *install
-      # The Android build and the SDK tools need it, and so does Maestro on both platforms. QA_NO_DEVICE is set only
-      # by verify-native-run when it has no app to check.
+      # The Android build, the SDK tools and Maestro need Java. verify-native-run sets QA_NO_DEVICE when it has no app.
       - &setup-java
         if: env.QA_NO_DEVICE != 'true'
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
@@ -511,7 +488,7 @@ jobs:
             rustup target add aarch64-apple-ios-sim
             exit
           fi
-          # Room for the NDK build, as in the Android discovery runs.
+          # Frees disk for the NDK build.
           sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/boost
           rustup target add x86_64-linux-android
           echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
@@ -536,8 +513,8 @@ jobs:
           path: ${{ runner.temp }}/qa-native/onboarding/app.tar
           retention-days: 1
 
-  # On the Mac (README, "Native explore on macOS"): the model drives the app only through the Maestro gate and
-  # starts no process, so the key may sit in the env of the canary and session steps. On Android the same flags hold.
+  # The model starts no process and reaches the app only through the Maestro gate (README, "Native explore on macOS"),
+  # so the key may sit in the env of the canary and session steps.
   explore-native:
     name: explore ${{ matrix.leg.charter }}
     needs: [build, build-native]
@@ -577,8 +554,7 @@ jobs:
         name: Install Maestro and the device
         if: env.QA_NO_DEVICE != 'true'
         run: |
-          # The release the gate's allow list was measured on, on both platforms, checked before anything in it runs.
-          # shasum, not sha256sum, because this step also runs on macOS.
+          # The release the gate's allow list was measured on, checked before it runs. shasum: macOS has no sha256sum.
           curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
             https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.11.0/maestro.zip
           echo "5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a  $RUNNER_TEMP/maestro.zip" |
@@ -586,8 +562,7 @@ jobs:
           unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
           if [ "$QA_PLATFORM" = android ]; then
-            # The emulator needs KVM, and its qemu links libpulse even with -no-audio. The scrubbed claude needs
-            # bubblewrap on Linux, as in install-sandbox.
+            # The emulator needs KVM and libpulse (qemu links it even with -no-audio); the scrubbed claude needs bubblewrap.
             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
               sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
             sudo udevadm control --reload-rules
@@ -639,7 +614,6 @@ jobs:
       - &start-native-stack
         name: Start the stack
         env:
-          # As in the web legs: real providers only for Android's real-AI sessions, in a backend that runs as qa-backend.
           QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
           QA_BACKEND_USER: ${{ matrix.leg.real && 'qa-backend' || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_ANTHROPIC_API_KEY || '' }}
@@ -654,22 +628,20 @@ jobs:
         name: Stream the WebView console
         run: .github/qa/scripts/native.sh logs "$QA_PLATFORM" "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
 
-      # c7's second browser can write anywhere in the checkout while the key is in the environment, so from here to
-      # the end of the session nothing runs from the checkout: the gate and the hook as binaries, the browser's MCP
-      # server, the MCP config and explore.sh itself (bash reads a script as it goes) sit in a read-only dir outside it.
+      # c7's second browser can write anywhere in the checkout, so from here nothing runs from it: the gate, the hook,
+      # the MCP server and config, and explore.sh itself (bash reads a script as it goes) sit in a read-only dir.
       - name: Prepare the session harness outside the checkout
         run: |
           .github/qa/scripts/explore.sh harness "$QA_CHARTER" "$RUNNER_TEMP/qa-native-bin"
           chmod -R a-w "$RUNNER_TEMP/qa-native-bin"
           echo "QA_HARNESS=$RUNNER_TEMP/qa-native-bin" >> "$GITHUB_ENV"
 
-      # The web explore job's after-session checks apply too. shasum, because the macOS runner has no sha256sum.
+      # shasum, because the macOS runner has no sha256sum.
       - name: Record the checksums of the tracked files
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 shasum -a 256 > "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # No session runs unless the gate and the hook deny this one.
       - name: Check that the gate denies a canary session
         id: canary
         env:
@@ -683,8 +655,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
         env:
-          # The key lives in this step's env and the canary's, never in run: text or
-          # $GITHUB_ENV. With QA_HARNESS set, explore.sh leaves the summary to the save step, which has no key.
+          # The key stays in this step's env and the canary's, never in run: text or $GITHUB_ENV.
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
         run: '"$QA_HARNESS/explore.sh" run "$QA_CHARTER" "$QA_OUT" "$QA_EXPLORE_MAX_BUDGET_USD"'
 
@@ -698,9 +669,7 @@ jobs:
         if: always()
         run: shasum -a 256 --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # As in the web explore job, before any later step, over everything the save step reads. The browser's file
-      # writes are not a boundary its authors stand behind, so this step clears the startup and preload variables
-      # and calls its tools by absolute path (GitHub still prepends $GITHUB_PATH to any PATH set here).
+      # Clears startup and preload variables and calls tools by absolute path: GitHub still prepends $GITHUB_PATH.
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -723,9 +692,8 @@ jobs:
             fi
           done
 
-      # What explore.sh's summary did locally, here without the key: metrics from the result message, and the tool
-      # calls with capped results for coverage, from the stream next to the gate log, which the model cannot write.
-      # The model could write the old copies in its session dir, so they go first.
+      # Reads the stream next to the gate log, which the model cannot write; the copies in its session dir could be
+      # forged, so they go first.
       - name: Save the session
         if: always() && steps.tripwire.outcome == 'success'
         env:
@@ -774,9 +742,7 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.verify != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # This job runs model-written specs. Only the real-AI legs (real, and the canary ones on real-AI charters) have an
-    # environment, for the provider keys that their start step hands to a backend running as another user; the replay
-    # step holds no secret.
+    # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another user's backend.
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read
@@ -830,17 +796,13 @@ jobs:
           path: ${{ matrix.leg.out }}/
           retention-days: 7
 
-  # Model-written flows, and c7's specs on Android, so no secret here either. Only android-real has an environment,
-  # for the provider keys its start step hands to a backend running as another user.
+  # Only android-real has an environment, for the provider keys its start step hands to another user's backend.
   replay-native:
     name: replay ${{ matrix.leg.name }}
     needs: [build, build-native, explore-native]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
-    # About 4 minutes a run on iOS, so with `nativeReplayCap` in verify.ts the control's 3 runs and
-    # up to 6 per finding take about 122 minutes with setup, wrap-up and a driver retry. The job ends when its runs
-    # do; this is only the ceiling. A timeout loses every finding of the leg, so verify.ts also starts no run that
-    # might end after it, counted from QA_LEG_START. Every native leg, Android's too, shares this timeout.
+    # Only a ceiling: a timeout loses every finding of the leg, so verify.ts starts no run that could end after it.
     timeout-minutes: 130
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
@@ -893,11 +855,8 @@ jobs:
           merge-multiple: true
       - *postgres-setup
       - *device
-      # Maestro starts its driver inside a session's first launchApp, and the first session on a fresh emulator
-      # can fail there with no reason given. One session that counts for nothing
-      # starts it before the console stream and the counted runs, which each install the app again. The install takes
-      # about 45 s; Android's setup (about 2.4 minutes) stays inside the 6.5 minutes verify.ts
-      # sizes a leg's setup with.
+      # Maestro starts its driver in a session's first launchApp, which can fail on a fresh emulator with no reason
+      # given; one uncounted session absorbs that before the counted runs.
       - name: Start Maestro's driver on the emulator
         if: matrix.leg.platform == 'android'
         run: |
@@ -919,8 +878,7 @@ jobs:
             --app "$RUNNER_TEMP/apps/plain/$QA_APP_FILE" --app-onboarding "$RUNNER_TEMP/apps/onboarding/$QA_APP_FILE" \
             --leg "$LEG"
 
-      # Read once the replay is over rather than streamed during it: a reset of the device's adb connection ends a
-      # stream, which fits the WebView one ending early. The log buffer is grown at boot to hold a whole leg.
+      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold a leg.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |
@@ -930,9 +888,8 @@ jobs:
 
       - *sanitize
       - *upload-replay
-      # A failed stack control says nothing readable without them. On Android after every replay:
-      # the files are small next to the videos, and a passed control does not show whether the console stream lasted
-      # the whole leg. Never on the real leg, whose backend held the provider keys.
+      # On Android after every replay: a passed control does not show whether the console stream lasted the whole leg.
+      # Never on the real leg, whose backend held the provider keys.
       - name: Upload the stack, device and Maestro logs
         if: (failure() || matrix.leg.platform == 'android') && !matrix.leg.real
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -978,8 +935,7 @@ jobs:
         if: matrix.leg.name == 'weekly'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          # Matches nothing when neither c7, a real-AI charter nor a native session ran. Each artifact gets its own
-          # directory.
+          # Matches nothing when neither c7, a real-AI charter nor a native session ran.
           pattern: 'qa-replay-{sync,real,ios,android,android-sync,android-real}'
           path: qa-out-legs
       # Each leg's stack health stays with its own replay job, which fails loudly when the stack was broken.
@@ -1014,7 +970,7 @@ jobs:
         with:
           name: qa-canaries
           path: qa-canaries
-      # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
+      # The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
         env:
@@ -1050,8 +1006,7 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      # c7's specs and videos come from the sync replay, c3's and c5's from the real one, the native flows, videos
-      # and screenshots from each native leg's; all land in qa-out.
+      # c7's specs come from the sync replay, c3's and c5's from the real one, native flows from the native legs.
       - &download-replay
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1126,8 +1081,8 @@ jobs:
       # Needs root, so before the lock below.
       - *install-sandbox
 
-      # The dev servers reload the agent's edits outside its sandbox. As the job's user they could read the agent's
-      # environment, which holds the key, so they run as another user and the job's user then loses root.
+      # The dev servers reload the agent's edits outside its sandbox: as the job's user they could read the key, so
+      # they run as another user.
       - name: Start the stack on the working tree
         env:
           QA_BACKEND_USER: qa-dev
@@ -1159,8 +1114,7 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # The tool rules keep the agent on task; they are not the boundary. This job holds no write token and
-      # publishing is a separate, deterministic job.
+      # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
       - name: Fix
         id: fix
         continue-on-error: true
@@ -1191,12 +1145,10 @@ jobs:
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
 
-      # The last step that holds the key, right after the session and before any code the agent wrote or changed runs
-      # outside its sandbox: such code could leave a process that reads a later step's environment. Everything the
-      # patch and the uploads come from is in the checkout, node_modules included (the real-AI build bundles it), so
-      # the key found anywhere there means no upload. Only .git is left out: the agent may neither edit it
-      # (Edit(.git/**)) nor run git, and git stores objects compressed. The startup and preload variables are cleared
-      # and the tools called by absolute path, since GitHub still prepends $GITHUB_PATH.
+      # The last step that holds the key: after it, code the agent wrote runs outside its sandbox. The key anywhere
+      # in the checkout blocks the upload (node_modules is bundled into the real-AI build) except in .git, which the
+      # agent cannot edit and git compresses. Exact key only: minified code is full of prefixes like sk-. Startup and
+      # preload variables are cleared and tools called by absolute path, since GitHub still prepends $GITHUB_PATH.
       - name: Check the agent's output for the key
         id: key-scan
         if: always()
@@ -1214,9 +1166,7 @@ jobs:
             exit 1
           fi
 
-      # Only a finished session whose patch makes the original spec pass may become a PR. The spec comes fresh
-      # from the artifact (the agent's commands could have changed qa-out/), and no secret is left in this job.
-      # A real-AI task's spec runs on the real providers in verify-real instead, and a native task has a flow.
+      # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
       - name: Download the original spec
         if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1232,9 +1182,7 @@ jobs:
           SPEC: ${{ matrix.task.spec }}
         run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
 
-      # The agent's own check, three runs on the patched tree the dev stack still serves, then three on the builds
-      # without the patch. verify.json is deleted first and written here only, so the file publish reads is never the
-      # agent's. Each run counts when the whole file passes.
+      # verify.json is deleted first and written here only, so publish never reads the agent's copy.
       - name: Run the visual check on the patched tree
         id: visual-with
         if: steps.fix.outcome == 'success' && matrix.task.kind == 'visual' && !matrix.task.flow
@@ -1258,9 +1206,8 @@ jobs:
         run: |
           mkdir -p qa-out/fix
           rm -f "qa-out/fix/$QA_FP.verify.json"
-          # The backend serves from the working tree, so the patch is stashed for these runs (qa-out*/ and qa-dist*/
-          # are ignored and stay). The trap puts it back for "Collect the patch", also after a failed run, and pops
-          # only an entry this step created, since an agent that edited nothing leaves none.
+          # The backend serves from the working tree, so the patch is stashed (ignored qa-out*/ and qa-dist*/ stay).
+          # The trap restores it for "Collect the patch", also after a failure, and pops only a stash this step made.
           stash=$(git rev-parse --quiet --verify refs/stash || true)
           trap '[ "$(git rev-parse --quiet --verify refs/stash || true)" = "$stash" ] || git stash pop --quiet' EXIT
           # A stash is a commit, and the runner has no git identity.
@@ -1289,8 +1236,7 @@ jobs:
           SPEC: ${{ matrix.task.spec }}
           FLOW: ${{ matrix.task.kind == 'spec' && matrix.task.flow || '' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
-          # The checks this task needs, and their steps' outcomes: anything but success (failure, skipped, cancelled,
-          # or none at all) means no PR.
+          # Any outcome but success (failure, skipped, cancelled, none) of a check the task needs means no PR.
           NEEDS_REPLAY: ${{ matrix.task.spec && !matrix.task.real && 'true' || '' }}
           NEEDS_VISUAL: ${{ matrix.task.kind == 'visual' && !matrix.task.flow && 'true' || '' }}
           NEEDS_REAL_BUILD: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
@@ -1326,11 +1272,9 @@ jobs:
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
           bun .github/qa/scripts/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
 
-      # The agent could write anything under qa-out/, and artifacts are public: a secret in what is uploaded means no
-      # upload. JWT-shaped strings are left to publish's own check, because repo test fixtures contain some. The
-      # patched build gets the exact-key check only: minified code is full of prefixes like sk-.
-      # Token shapes only: no step from here on holds the key. The steps since the session ran patched code, which
-      # could have changed $GITHUB_ENV or $GITHUB_PATH, hence the cleared variables and absolute paths.
+      # Token shapes only, since no later step holds the key; JWT shapes are left to publish's check because repo
+      # test fixtures contain some. Patched code ran in earlier steps and could have changed $GITHUB_ENV or
+      # $GITHUB_PATH, hence the cleared variables and absolute paths.
       - name: Check the fix output for secrets
         id: secret-scan
         if: always()
@@ -1348,7 +1292,7 @@ jobs:
             echo "::error::The fix output contains a secret, so nothing is uploaded."
             exit 1
           fi
-      # With the agent's check, so verify-native and publish read the file it wrote. The artifact's root is qa-out/.
+      # Carries verify.json, which verify-native and publish read. The artifact's root is qa-out/.
       - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1373,8 +1317,7 @@ jobs:
           path: qa-out/fix-*/session.json
           retention-days: 7
 
-  # A native fix's patch runs here (the build, and anything it adds), so this job holds no secret and only outputs the
-  # app. The verdict comes from verify-native-run, on a fresh checkout this code never ran in.
+  # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run.
   verify-native-build:
     name: verify-native-build ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, file, fix]
@@ -1419,8 +1362,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
-  # No secret either: runs the flow three times on the patched app (and on the original one when `unpatched`) and
-  # writes the verdict publish requires. No patched app means no verdict, which publish reads as a failure.
+  # No patched app means no verdict, which publish reads as a failure.
   verify-native-run:
     name: verify-native-run ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, build-native, file, verify-native-build]
@@ -1463,8 +1405,7 @@ jobs:
           name: qa-native-${{ matrix.check.platform }}${{ startsWith(matrix.check.session, 'c1-first-run-') && '-onboarding' || '' }}
           path: ${{ runner.temp }}/apps/original
       - *unpack-apps
-      # The fix artifact first, for a visual check's flow, then the replays and verified.json, for a repro flow and
-      # its oracle: the files from before the fix agent ran win.
+      # Downloaded after the fix artifact, so the files from before the fix agent ran win.
       - if: steps.patched.outcome == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1497,9 +1438,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # A web real-AI task's spec on the real providers, with the isolation of the real replay leg: a fresh checkout's
-  # backend runs as qa-backend and serves the patched frontend that the fix job built, and root goes before the spec.
-  # The fix job's tree never runs here, so the patch reaches no process that holds a key.
+  # Isolated like the real replay leg: a fresh checkout's backend serves the frontend the fix job built, so the
+  # patch reaches no process that holds a key.
   verify-real:
     name: verify-real ${{ matrix.task.fp }}
     needs: [build, file, fix]
@@ -1588,8 +1528,7 @@ jobs:
       # install a pre-commit hook that runs formatters over the agent's patch.
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      # The original specs and the plan come from before the fix agent ran, and are downloaded after its output so
-      # they win; only the patch, the repro as the agent left it and its own check come from the fix job.
+      # The original specs and the plan are downloaded after the fix output, so the pre-fix files win.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-fix-${{ matrix.task.fp }}
@@ -1604,8 +1543,7 @@ jobs:
           pattern: qa-verify-${{ matrix.task.fp }}-*
           path: qa-out/verify
           merge-multiple: true
-      # checkPatch does not read these. Every native platform of this bug (the task's own, and the same bug's repro
-      # flows elsewhere, web tasks included) and a web real-AI task's real providers must pass; no verdict is a fail.
+      # checkPatch does not read these results, so a missing verdict is a failure here.
       - name: Require the native and real-AI checks
         env:
           REAL: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
@@ -1658,9 +1596,8 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
-  # By hand only, and meant to run before the QA is enabled, so it has no kill switch. It mints the token publish
-  # would get, which fails if the app lacks a requested permission, and writes nothing. It holds the two app secrets
-  # and nothing else.
+  # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get and
+  # writes nothing.
   app-check:
     if: github.event_name == 'workflow_dispatch' && inputs.app_check
     runs-on: ubuntu-latest
@@ -1731,8 +1668,7 @@ jobs:
           NATIVE_LEGS: ${{ needs.explore-native.result != 'skipped' && needs.build.outputs.nativeLegs || '[]' }}
           CANARIES: ${{ needs.build.outputs.canaries }}
         run: |
-          # Session metrics come from each explore job's result message, here rather than in the explorer's job.
-          # A leg without one (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
+          # A leg without a result message (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
           jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS $NATIVE_LEGS" | while read -r out charter; do
             timed_out=()
             if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
@@ -1741,8 +1677,8 @@ jobs:
           done
           # Missing when the guard failed; report.ts needs the directory to exist.
           mkdir -p qa-out
-          # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id),
-          # while the jobs stayed green. Write both reports, then fail the step so notify-on-failure fires.
+          # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id) while
+          # the jobs stayed green: write both reports, then fail so notify-on-failure fires.
           status=0
           bun .github/qa/scripts/report.ts summary --out qa-out || status=1
           if [ "$CANARIES" = 0 ]; then
@@ -1763,8 +1699,7 @@ jobs:
           HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
 
-  # The positive control, by hand only: the calibration build must make the layout check report the covered
-  # Email field. No model and no secret.
+  # By hand only: the calibration build must make the layout check report the covered Email field.
   native-control:
     name: native-control ${{ matrix.target.platform }}
     if: vars.QA_AGENT_ENABLED == 'true' && inputs.native_control && !inputs.app_check

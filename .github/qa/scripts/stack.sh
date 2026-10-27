@@ -8,10 +8,10 @@
 # fixed sign-in code, frontend) plus the fake LLM provider, the fake MCP server and the fake Google (also with real
 # providers), with a production build served by `vite preview` instead of the dev server.
 #
-# The ports below are defaults. QA_FRONTEND_PORT (1424), QA_ONBOARDING_PORT (1425), QA_BACKEND_PORT (8005),
-# QA_PROVIDER_PORT (9878), QA_MCP_PORT (9879) and QA_GOOGLE_PORT (9880) override them; .github/qa/ports.json holds the
-# defaults and ports.sh reads both. `serve` refuses a port that is already in use. A stack on another backend port
-# keeps its pid files in qa-stack-<backend port>.* instead of qa-stack.*, so two stacks can run side by side.
+# QA_FRONTEND_PORT, QA_ONBOARDING_PORT, QA_BACKEND_PORT, QA_PROVIDER_PORT, QA_MCP_PORT and QA_GOOGLE_PORT override the
+# defaults in .github/qa/ports.json; ports.sh reads both. `serve` refuses a port that is already in use. A stack on
+# another backend port keeps its pid files in qa-stack-<backend port>.* instead of qa-stack.*, so two stacks can run
+# side by side.
 #
 #   .github/qa/scripts/stack.sh build <out-dir> [onboarding]  build the frontend (onboarding off unless asked)
 #   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on the frontend port (and one on the
@@ -31,8 +31,7 @@
 # OS user and moves the keys into a file only it can read, and the backend runs as that user, so no process of the
 # job's own user, which later runs model-written specs, holds them. `start dev` with QA_BACKEND_USER runs the backend
 # and both Vite servers as that user (the fix job), so code they reload cannot read the fix agent's environment.
-# DATABASE_URL + POWERSYNC_URL switch the backend
-# from pglite to an already migrated Postgres with PowerSync, as in nightly.yml.
+# DATABASE_URL + POWERSYNC_URL switch the backend from pglite to an already migrated Postgres with PowerSync.
 
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -96,7 +95,7 @@ if [ "$1" = start ]; then
   exit
 fi
 if [ "$1" = stop ]; then
-  # Returns only once every server is gone: CI stops the stack so that no process holds keys any more.
+  # Returns only once every server is gone, so no process still holds keys.
   pid=$(cat "$state.pid")
   kill "$pid"
   while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
@@ -187,7 +186,7 @@ bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; cre
 if [ "$2" = native ]; then
   (cd backend && as_server env "${backend_env[@]}" "${bun_run[@]}" src/index.ts) &
 elif [ "$2" = dev ]; then
-  # The fix job's: these reload the agent's edits, so in CI they run as another user, away from the agent's environment.
+  # These reload the agent's edits, so in CI they run as another user.
   (cd backend && as_server env "${backend_env[@]}" bun run --watch src/index.ts) &
   (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port "$QA_FRONTEND_PORT" --strictPort) &
   (as_server env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port "$QA_ONBOARDING_PORT" --strictPort) &

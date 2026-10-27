@@ -410,9 +410,8 @@ jobs:
       - name: Test miniapps
         run: cd miniapps && bun run test
 
-  # The weekly QA agent in .github/qa/ is CI tooling, not app code. Its tests and
-  # type check sit outside `bun run test` and the root tsconfig, so they run here,
-  # only when the agent or a file it depends on changes.
+  # The weekly QA agent's tests and type check sit outside `bun run test` and the
+  # root tsconfig, so they run here when it or a file it depends on changes.
   qa:
     needs: detect-changes
     if: needs.detect-changes.outputs.qa == 'true'

@@ -16,9 +16,8 @@
 # case in journeys.json (platform ids are in platforms.json and never contain a hyphen), e.g.
 # `run "free-$(.github/qa/scripts/explore.sh journey)-phone" qa-out` for this week's case on the phone.
 # `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<session>/{findings,repro,attempts}/ (the explorer), mcp/ (the
-# browser's screenshots and console logs),
-# execution.json + session.json (metrics) and transcript.json (the tool calls, for the coverage check).
-# The platform sets the viewport and the MCP config. The two-device charter needs
+# browser's screenshots and console logs), execution.json + session.json (metrics) and transcript.json (the tool
+# calls, for the coverage check). The two-device charter needs
 # QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' (its second browser).
 # Keep the claude flags in step with the explore job in .github/workflows/qa-weekly.yml.
 #
@@ -35,7 +34,6 @@
 set -euo pipefail
 cd "${QA_REPO:-$(dirname "$0")/../../..}"
 
-# One field of a platform in platforms.json.
 platform() {
   jq --exit-status --raw-output --arg id "$1" ".[] | select(.id == \$id) | .$2" .github/qa/platforms.json ||
     { echo "unknown platform: $1" >&2; exit 1; }
@@ -49,10 +47,9 @@ journey() {
     { echo "unknown case: $1" >&2; exit 1; }
 }
 
-# The prompt text on stdin with each default stack port in a localhost or 127.0.0.1 URL swapped for the configured one
-# (an empty, unset or malformed QA_*_PORT keeps the default). One pass, so a port that moves onto another default is not
-# moved twice. Other ports, like the unreachable localhost:9, stay. ports.json is data from a checkout CI does not
-# trust, so only a QA_<NAME>_PORT variable holding a port number ever reaches the prompt: no other variable, no text.
+# Swaps each default stack port in a localhost or 127.0.0.1 URL on stdin for the configured one, in one pass so a port
+# that moves onto another default is not moved twice. ports.json comes from a checkout CI does not trust, so only a
+# QA_<NAME>_PORT variable holding a port number ever reaches the prompt: no other variable, no text.
 stack_urls() {
   # shellcheck disable=SC2016 # jq variables
   jq --raw-input --slurp --join-output --slurpfile ports .github/qa/ports.json \
@@ -66,7 +63,6 @@ prompt() { prompt_text "$@" | stack_urls; }
 
 # The shared prefix comes first and is identical for every session, so sessions can reuse its prompt cache.
 prompt_text() {
-  # Platform ids have no hyphen, so the last part of a session id names the platform and the rest the charter.
   local viewport driver base=${1%-*} id=${1##*-}
   viewport=$(platform "$id" viewport)
   driver=$(platform "$id" driver)
@@ -94,11 +90,9 @@ prompt_text() {
     '.[$charter][] | "- `\(.id)`: \(.outcome)\(if .reload then " (after a reload)" else "" end)"' .github/qa/functions.json
 }
 
-# A native session's claude on the session dir $2, its output stream in $3, the prompt and the model's
-# flags after that. The model gets the gated Maestro tools (and c7's second browser) and Write inside the session dir,
-# and the hook checks every call first. The hook settings are the only user settings, in an otherwise empty config
-# dir. The scrubbed CLI ignores --permission-mode, so there is none. It runs from the repo root, where the relative
-# path in mcp-maestro.json points.
+# A native session's claude on the session dir $2, its output stream in $3, then the prompt and the model's flags.
+# The hook settings are the only user settings, in an otherwise empty config dir. The scrubbed CLI ignores
+# --permission-mode, so there is none. It runs from the repo root, where the relative path in mcp-maestro.json points.
 native_claude() {
   local session=$1 dir=$2 stream=$3 config hook log parent
   shift 3
@@ -157,14 +151,12 @@ native_claude() {
   if [ "$cwd" != "$PWD" ]; then rm -rf "$cwd"; fi
 }
 
-# A native session's output dir as an absolute path without links, so the Edit rule, the hook and the paths in the
-# prompt all name the same folder.
+# Resolved without links, so the Edit rule, the hook and the paths in the prompt all name the same folder.
 real_out() {
   mkdir -p "$1/$2"
   (cd "$1" && pwd -P)
 }
 
-# The metrics and the coverage input from a finished session's stream ($3).
 summarize() {
   local session=$1 out=$2 dir=$2/$1
   jq --slurp . "$3" > "$dir/execution.json"
@@ -209,10 +201,9 @@ run() {
   summarize "$session" "$out" "$dir/run.jsonl"
 }
 
-# One cheap session before any native session: it asks for a script through the gate and a write outside
-# the session dir, with the session's own settings. It passes only when the gate log shows the hook letting the run
-# through, the gate denying it and the hook denying the write, and the file does not exist. It prints the session's
-# result line and never a tool result.
+# Asks for a script through the gate and a write outside the session dir, with the session's own settings. Passes only
+# when the gate log shows the hook letting the run through, the gate denying it and the hook denying the write, and the
+# file does not exist. Prints the result line, never a tool result.
 canary() {
   local session=$1 out outside=/tmp/qa-canary-outside.txt dir
   [ "$(platform "${session##*-}" driver)" = maestro ] || { echo "the canary is for native sessions" >&2; exit 2; }
@@ -236,9 +227,8 @@ text canary. Make both calls in your first turn, even if one of them fails, then
   exit 1
 }
 
-# The gate and the hook as standalone binaries that read nothing from the checkout or node_modules, this script, and
-# the session's MCP config pointing at them. c7 on Android also gets its own install of the second browser's MCP
-# server and the layout probe, so npx resolves nothing in the checkout.
+# The gate and the hook are standalone binaries that read nothing from the checkout or node_modules. c7 on Android also
+# gets its own install of the second browser's MCP server and the layout probe, so npx resolves nothing in the checkout.
 harness() {
   local session=$1 dir=$2 servers
   mkdir -p "$dir"

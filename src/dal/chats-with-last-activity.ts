@@ -18,11 +18,11 @@
 
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
-import { and, eq, isNull, sql, type SQL } from 'drizzle-orm'
+import type { SQL } from 'drizzle-orm'
 
 import { useDatabase } from '@/contexts'
-import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 import { uuidv7ToDate } from '@/lib/utils'
+import { getChatActivityQuery } from './chat-activity-query'
 
 export type ChatWithLastActivity = {
   id: string
@@ -30,44 +30,23 @@ export type ChatWithLastActivity = {
   lastActivityAt: Date
 }
 
-type ChatsWithLastActivityRow = { id: string; title: string | null; lastMessageId: string | null }
-
 /**
  * @param queryKey - cache key for this owner, e.g. `['miniAppChats', appId]`
  * @param owner - which column ties a chat to its owner, e.g. `eq(chatThreadsTable.miniAppId, appId)`
  *
- * `MAX(id)` over UUIDv7 message ids is both the newest message and when it
- * happened — `chat_messages` has no timestamp column. Sorting happens in JS
- * because the value is derived after the query, and ties break on id so two
- * chats whose newest messages land in the same millisecond hold a stable order
- * between renders rather than swapping places.
+ * Shares activity ordering with the sidebar and project folders. Only the
+ * displayed date needs conversion from the UUIDv7 activity id.
  */
 export const useChatsWithLastActivity = (queryKey: readonly unknown[], owner: SQL): ChatWithLastActivity[] => {
   const db = useDatabase()
   const { data = [] } = useQuery({
     queryKey: [...queryKey],
-    query: toCompilableQuery(
-      db
-        .select({
-          id: chatThreadsTable.id,
-          title: chatThreadsTable.title,
-          lastMessageId: sql<string | null>`max(${chatMessagesTable.id})`.as('last_message_id'),
-        })
-        .from(chatThreadsTable)
-        .leftJoin(
-          chatMessagesTable,
-          and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
-        )
-        .where(and(owner, isNull(chatThreadsTable.deletedAt)))
-        .groupBy(chatThreadsTable.id, chatThreadsTable.title),
-    ),
+    query: toCompilableQuery(getChatActivityQuery(db, owner)),
   })
 
-  return (data as ChatsWithLastActivityRow[])
-    .map((row) => ({
-      id: row.id,
-      title: row.title,
-      lastActivityAt: uuidv7ToDate(row.lastMessageId ?? row.id),
-    }))
-    .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime() || a.id.localeCompare(b.id))
+  return data.map((row) => ({
+    id: row.id,
+    title: row.title,
+    lastActivityAt: uuidv7ToDate(row.lastActivityId),
+  }))
 }

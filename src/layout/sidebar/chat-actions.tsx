@@ -16,7 +16,8 @@ export const ChatActions = ({
   deleteAllChatsMutation,
   deleteAllChatsDialogRef,
   onSearchClick,
-}: ChatActionsProps) => {
+  showSearch = true,
+}: ChatActionsProps & { showSearch?: boolean }) => {
   const { t } = useLingui()
   if (isCollapsed) {
     return null
@@ -24,13 +25,15 @@ export const ChatActions = ({
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <SidebarMenuButton onClick={onSearchClick} aria-label={t`Search`} className={actionButtonClass}>
-        <Search className="size-[var(--icon-size-default)]" />
-      </SidebarMenuButton>
+      {showSearch && (
+        <SidebarMenuButton onClick={onSearchClick} aria-label={t`Search`} className={actionButtonClass}>
+          <Search className="size-[var(--icon-size-default)]" />
+        </SidebarMenuButton>
+      )}
       {showClearAll && (
         <SidebarMenuButton
           onClick={() => deleteAllChatsDialogRef.current?.open()}
-          aria-label={t`Clear all chats`}
+          aria-label={t`Delete chats outside projects`}
           className={actionButtonClass}
           disabled={deleteAllChatsMutation.isPending}
         >

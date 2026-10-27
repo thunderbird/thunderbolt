@@ -24,13 +24,13 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Search, Smile, X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Virtualizer } from 'virtua'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MobileActionSheet } from '@/components/ui/mobile-action-sheet'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { suggestedEmoji } from './emoji-catalog'
@@ -45,6 +45,8 @@ type EmojiPickerProps = {
   onChange: (emoji: string | null) => void
   /** Accessible name for the trigger (the project's name). */
   label: string
+  /** Adjacent name input; the complete row anchors the desktop picker. */
+  children?: ReactNode
 }
 
 const EmojiButton = ({
@@ -103,7 +105,7 @@ const EmojiPickerBody = ({
   const gridClass = isMobile ? 'grid grid-cols-8 gap-1' : 'grid grid-cols-9 gap-1'
 
   return (
-    <div className={cn('flex flex-col gap-3', !isMobile && 'w-[19rem]')}>
+    <div className="flex min-h-0 w-full flex-col gap-3">
       <div className="relative">
         <Search
           className="pointer-events-none absolute top-1/2 left-2 size-[var(--icon-size-sm)] -translate-y-1/2 text-muted-foreground"
@@ -194,7 +196,13 @@ const EmojiPickerBody = ({
       )}
 
       {value && (
-        <Button variant="ghost" size="sm" className="cursor-pointer self-start" onClick={() => onChange(null)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="cursor-pointer self-start"
+          onClick={() => onChange(null)}
+        >
           <X className="size-[var(--icon-size-sm)]" aria-hidden="true" />
           <Trans>Remove icon</Trans>
         </Button>
@@ -203,10 +211,11 @@ const EmojiPickerBody = ({
   )
 }
 
-export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
+export const EmojiPicker = ({ value, onChange, label, children }: EmojiPickerProps) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | undefined>()
 
   // Choosing an icon closes the picker: it's a single-value control, so staying
   // open just hides the result the user came to see.
@@ -217,6 +226,7 @@ export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
 
   const trigger = (
     <Button
+      type="button"
       variant="outline"
       // Square so the glyph is optically centred; emoji have no consistent
       // baseline, so the fixed box beats padding around variable-width text.
@@ -228,7 +238,16 @@ export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
       // 40px against 44px on mobile, so the mismatch inverted at the breakpoint.
       className="size-[var(--touch-height-default)] shrink-0 cursor-pointer bg-card p-0 text-[1.25rem] leading-none dark:bg-input"
       aria-label={t`Choose an icon for ${label}`}
-      onClick={isMobile ? () => setOpen(true) : undefined}
+      onClick={
+        isMobile
+          ? (event) => {
+              // The project editor is a Radix dialog. Keep this Base UI sheet inside
+              // it so the editor neither covers the picker nor traps focus away from it.
+              setPortalContainer(event.currentTarget.closest<HTMLElement>('[role="dialog"]') ?? document.body)
+              setOpen(true)
+            }
+          : undefined
+      }
     >
       {value ?? <Smile className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />}
     </Button>
@@ -237,8 +256,16 @@ export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
   if (isMobile) {
     return (
       <>
-        {trigger}
-        <MobileActionSheet open={open} onOpenChange={setOpen} title={t`Choose an icon`}>
+        <div className="flex min-w-0 items-center gap-2">
+          {trigger}
+          {children}
+        </div>
+        <MobileActionSheet
+          open={open}
+          onOpenChange={setOpen}
+          portalContainer={portalContainer}
+          title={t`Choose an icon`}
+        >
           {/* Keyed so the body remounts per opening — search resets, and the
               memoized catalogue makes the remount free. */}
           {open && <EmojiPickerBody key="sheet" value={value} onChange={handleChange} isMobile />}
@@ -249,8 +276,21 @@ export const EmojiPicker = ({ value, onChange, label }: EmojiPickerProps) => {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-auto p-3" align="start">
+      <PopoverAnchor asChild>
+        <div className="flex min-w-0 items-center gap-2">
+          <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          {children}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        className={cn(
+          'max-h-[var(--radix-popover-content-available-height)] max-w-[calc(100vw-2rem)] overflow-y-auto p-3',
+          children ? 'w-[var(--radix-popover-trigger-width)]' : 'w-[21rem]',
+        )}
+        align="start"
+        sideOffset={12}
+        collisionPadding={16}
+      >
         {open && <EmojiPickerBody key="popover" value={value} onChange={handleChange} isMobile={false} />}
       </PopoverContent>
     </Popover>

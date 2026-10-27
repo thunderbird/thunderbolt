@@ -15,13 +15,13 @@ The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 U
 
 The explorer reads untrusted pages, so everything it writes is untrusted too. Each job holds only the secret it needs.
 
-| Zone                     | Jobs                                                                       | Holds                                                                                                                                                       | Never holds                                                                                              |
-| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold **no secret**: they run model-written specs and flows |
-| B: file                  | `file`                                                                     | the Linear key                                                                                                                                              | an LLM, a browser                                                                                        |
-| C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                              |
-| D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the canary, session and secret-scan steps                                                                       | any provider key, the Linear key, any write token, an agent that edits code                              |
-| E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                                  |
+| Zone                     | Jobs                                                                       | Holds                                                                                                                                                       | Never holds                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold no secret: they run model-written specs and flows |
+| B: file                  | `file`                                                                     | the Linear key                                                                                                                                              | an LLM, a browser                                                                                    |
+| C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                          |
+| D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the canary, session and secret-scan steps                                                                       | any provider key, the Linear key, any write token, an agent that edits code                          |
+| E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                              |
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
 refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`). It refuses a patch
@@ -80,7 +80,7 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 ### Native explore on macOS
 
 On the macOS runner any process of the job's user can read the Anthropic key in the initial environment of
-`claude`, even with the scrub and Seatbelt, as measured on the runner. Zone D therefore rests on a different
+`claude`, even with the scrub and Seatbelt. Zone D therefore rests on a different
 guarantee: the model cannot start any process. Five conditions hold it up. `explore.sh run` sets (a), (b), (c) and
 (e) for an `ios` or `android` session, and the workflow holds (d). It refuses `c7-two-devices-ios`: its second
 browser could write anywhere in the checkout. Only `c7-two-devices-android` gets that browser.
@@ -132,11 +132,11 @@ the key, after the tripwire and the secret scan.
 c3, c4, c5 and the free sessions explore with the real providers, and their findings replay with them too, so the
 provider keys share a job with model-written specs. Two things keep them apart:
 
-- **A separate OS user for the backend.** With `QA_BACKEND_USER=qa-backend`, `stack.sh start` creates that user,
+- A separate OS user for the backend. With `QA_BACKEND_USER=qa-backend`, `stack.sh start` creates that user,
   writes the four keys to `/home/qa-backend/keys.env` (mode 0400, owned by that user) and drops them from its own
   environment before any server starts. The backend runs through `sudo -u qa-backend` and reads the file with
   `bun --env-file`. No process of the job's user holds a key, in its environment, its command line or a log.
-- **No root after the stack is up.** `stack.sh lock` removes the docker socket (the docker group is root in all but
+- No root after the stack is up. `stack.sh lock` removes the docker socket (the docker group is root in all but
   name), adds a last sudoers rule that denies the job's user every command, and fails unless `sudo` really fails and
   Yama's `ptrace_scope` is 1 or more. Yama 1 keeps a process from reading the memory of its ancestors, such as the
   runner's, which holds every secret the job references.
@@ -340,8 +340,7 @@ skipped fix with the reason. Most often a later change touched the same lines; t
 `functions.json` lists per area (c1 to c7) what must work on every platform: an id, an observable outcome, and `reload: true` when
 the outcome must survive a reload. A function that spans two areas has one owner. Each charter in `charters/` names
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
-The old phone-only charter c8 is gone: every charter runs on desktop and phone, and its content moved into c2, c4 and c6.
-Its `*-fit` functions were dropped because the layout probe covers screen fit.
+Every charter runs on desktop and phone. The layout probe covers screen fit, so no function lists it.
 
 **Coverage** counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
 attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
@@ -407,17 +406,17 @@ ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-deskt
 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-phone qa-out 4
 ```
 
-- **c7** needs its second browser:
+- c7 needs its second browser:
   `QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' … explore.sh run c7-two-devices-desktop qa-out 4`.
 
-- **The free session** runs one case on one platform per call, named `free-<case>-<platform>` (`explore.sh journey`
+- The free session runs one case on one platform per call, named `free-<case>-<platform>` (`explore.sh journey`
   prints this week's case). Like every session it takes its viewport and MCP config from `platforms.json`, and it needs the real-provider
   stack below: `ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run free-trip-planner-phone qa-out 4`.
-- **c3, c4, c5 and the free session** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and
+- c3, c4, c5 and the free session use real providers: start the stack with `QA_REAL_PROVIDERS=true` and
   `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment. Replay their
   findings against that same stack, from their own out dir. Locally the backend runs as you: `QA_BACKEND_USER` and
   `stack.sh lock` are for CI's throwaway Linux runners (`lock` would take your sudo away for good).
-- **c7** needs Postgres and PowerSync. Start them as `nightly.yml` does, run `bunx drizzle-kit migrate` in
+- c7 needs Postgres and PowerSync. Start them as `nightly.yml` does, run `bunx drizzle-kit migrate` in
   `backend/`, start the stack with `DATABASE_URL` and `POWERSYNC_URL` set, and run the session with
   `QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json'` (the second file adds its second browser).
 
@@ -435,7 +434,7 @@ bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.m
 A filer dry run logs only one line per finding, because the Actions log is public. The would-be ticket text is
 `preview` in `filed.json`, except for security findings, which get none.
 
-**Canary leg:** pick the canaries, then build the canary frontend from a reverted copy, so your checkout stays clean:
+Canary leg: pick the canaries, then build the canary frontend from a reverted copy, so your checkout stays clean:
 
 ```sh
 git fetch origin main
@@ -451,14 +450,14 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 `bun .github/qa/scripts/report.ts canary --out qa-out-canary --baseline qa-out-canary-baseline --canaries
 /tmp/qa-canaries.json`.
 
-**Fix agent:** run it in a separate checkout (it edits the working tree), with
+Fix agent: run it in a separate checkout (it edits the working tree), with
 `.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on the frontend port, 1424 by default,
 with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding
 finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, then
 `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
 open.
 
-**Two stacks side by side.** Two agents can run two stacks on one machine when each uses its own six ports. A build
+Two stacks side by side. Two agents can run two stacks on one machine when each uses its own six ports. A build
 bakes the backend and fake Google URLs into the app, so a second stack needs its own builds, made with its own
 variables, and the `control` project needs the same variables as the stack it checks.
 
@@ -551,14 +550,14 @@ a log without the probe's ready line (a dead stream, a build without the probe) 
 `repro_flow` is `native-control.yaml` and whose evidence is that line replays `confirmed` on the control build and
 `dropped` on the plain one.
 
-On this VM `QA_IOS_DEVICE=68705E07-F13D-4557-A925-2BF960A0A105` (an iPhone 17 Pro Max simulator) picks the device; with it unset,
+`QA_IOS_DEVICE=<simulator udid>` picks the device; with it unset,
 `device ios` creates an iPhone 17 Pro Max on the newest iOS runtime. Two scripts share the machine: take
 `/tmp/qa-stack.lock` before the default stack (any other takes `/tmp/qa-stack-<QA_BACKEND_PORT>.lock`) and
 `/tmp/qa-sim.lock` before the simulator (`mkdir`, an `owner` file, `rm -rf` at the end). The state files follow the same
 rule: `qa-stack.*` for the default stack, `qa-stack-<QA_BACKEND_PORT>.*` for another. Shut the simulator down when
 you booted it.
 
-Traps, each of which has cost a run:
+Traps:
 
 - The second iOS build fails with `Directory not empty` while `src-tauri/gen/apple/build/arm64-sim` exists. `build`
   deletes it first.
@@ -586,8 +585,8 @@ Traps, each of which has cost a run:
   app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
   still holds its first runs.
 
-Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
-no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).
+Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, which needs a
+hypervisor, so they run only on GitHub's runners (KVM, `x86_64`).
 
 ### In the weekly workflow
 
@@ -750,7 +749,7 @@ Team Thunderbolt needs these labels, or the filer stops and lists the missing on
 `publish` uses the existing GitHub App `thunderbolt-automation-agent`, shared with the repository's other automation
 (the factory bot), which is why the token is narrowed and why the bypass risk below matters. Its credentials are the
 two `qa-agent` secrets `QA_APP_CLIENT_ID` and `QA_APP_PRIVATE_KEY`. The job mints a token narrowed to this repository
-with **Contents: write** and **Pull requests: write** and nothing else, then pushes `qa-fix/<fp>` and opens a draft PR.
+with Contents: write and Pull requests: write and nothing else, then pushes `qa-fix/<fp>` and opens a draft PR.
 PRs opened with the default `GITHUB_TOKEN` would not start CI until someone approves the run. Enable "Automatically
 delete head branches": `route` skips a fingerprint while its `qa-fix/<fp>` branch exists.
 
@@ -791,21 +790,21 @@ turns, timeout), and the constants at the top of `verify.ts` for the judge. The 
 purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
 (4 on a native leg, whose runs are slow) and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes,
 1,600 tokens per screenshot, plus `max_tokens`, at Opus prices). Findings over a cap are listed as deferred and
-never filed. The app's own provider calls in real-AI sessions are **not measured**: watch the QA provider keys'
+never filed. The app's own provider calls in real-AI sessions are not measured: watch the QA provider keys'
 dashboards.
 
-**Rule:** per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
+The rule: per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
 for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions.
 Recalibrate after the first two scheduled runs and whenever a charter changes. The Anthropic workspace's monthly
 limit stays the hard ceiling.
 
-Measured locally (Sonnet 5.5 explorer, Opus 5.5 judge and fix agent, CLI 2.1.285):
+Costs from local sessions with a Sonnet 5.5 explorer, an Opus 5.5 judge and fix agent, and CLI 2.1.285:
 
 | Step                                                         | Sessions | Cost               | Turns   | Duration    | Stop                  |
 | ------------------------------------------------------------ | -------- | ------------------ | ------- | ----------- | --------------------- |
-| explore, fake AI (c1, c2, c4, c6, old phone charter c8)      | 12       | $0.44–1.22         | 91–227  | 2.6–6.2 min | all finished          |
+| explore, fake AI (c1, c2, c4, c6)                            | 12       | $0.44–1.22         | 91–227  | 2.6–6.2 min | all finished          |
 | explore, real providers (c3, c5)                             | 4        | $0.48–1.11         | 81–134  | 3.3–7.4 min | all finished          |
-| explore, canary leg (old phone charter c8, hand-written)     | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
+| explore, canary leg (hand-written canary)                    | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
 | judge (Opus 5.5, one call per finding, 4–5 findings per run) | 4 runs   | $0.05–0.08 per run | –       | –           | –                     |
 | fix agent (one overflow bug)                                 | 1        | $0.26              | 21      | 3.1 min     | finished, spec passes |
 
@@ -817,7 +816,7 @@ sample per charter, so keep the initial caps until two scheduled runs have repor
 
 The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with the same caps as a web
 session and a Haiku canary before it (4 turns, $0.05). Only c1 has been measured on GitHub: iOS $0.61 to $0.83 and 82 to 104 turns, Android $1.07 to $1.23 and 117 to 137 turns,
-10 to 22 minutes a session; each canary stayed under its $0.05 cap. The spec's estimate is $1.50 to $2.50 per native
+10 to 22 minutes a session; each canary stayed under its $0.05 cap. The estimate is $1.50 to $2.50 per native
 charter session and $0.80 to $1.30 per free session, so $21 to $35 a week on top of the web sessions; the other
 charters are still unmeasured. The turn cap of a native session is the 400 in `explore.sh`, not
 `QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
@@ -877,7 +876,7 @@ Never run on GitHub (only locally, or read in the action's code):
   it (the separate spec replay step runs outside the sandbox), and the fix output's secret scan (run locally as a
   script);
 - c7 (two devices, Postgres and PowerSync) and its sync replay leg on Postgres + PowerSync, which have not run
-  locally either (Docker was down during the local run);
+  locally either;
 - the real-AI isolation on a hosted runner: `useradd`, the backend under `sudo -u qa-backend` reaching bun and the
   checkout in the runner's home, the sudoers rule, the removed docker socket and the Yama check. The same
   `stack.sh` ran in an Ubuntu 24.04 container on Docker Desktop with stub servers, as a `runner` user with
@@ -890,13 +889,13 @@ Never run on GitHub (only locally, or read in the action's code):
   builds and the app tars between jobs, the Maestro installer, Claude Code from npm, the harness, the canary (denied
   before every session), the sessions and their upload, the gate's foreground check, the replay and judge legs
   running, and a dry filing; on iOS, the positive control; on Android, the keyboard rect from the tree and its
-  `behind-keyboard` rule. The agent found the onboarding keyboard bug on its own on both platforms. Still open:
+  `behind-keyboard` rule. Still open:
   a native finding confirmed by replay and filed (iOS replays were dropped, flaky or inconclusive, and Android's
   stopped at the stack control); the Android control exiting 0 (its job stalled on the app's storage check every
   time); the fix agent on a native task, since `claude-code-action` refuses a push event; `verify-native-build`,
   `verify-native-run` and `publish` with a real patched app and verdict; `verify-real`; c7 on Android with the
   `android-sync` and `android-real` legs; every charter but c1 and the free session on both platforms; and a full
-  `replay-native` leg under the `QA_LEG_START` clock (an iOS replay without it hit the timeout);
+  `replay-native` leg under the `QA_LEG_START` clock;
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the fix job's dev
@@ -908,10 +907,9 @@ Also:
   "unattempted"; the charter owner decides whether an area's list is too long.
 - The coverage check trusts the transcript, which the explorer cannot edit, but not what a quote means: an explorer
   can quote a real line that does not show the outcome. Sample covered functions by hand.
-- The judge is a model: a borderline finding can be kept in one run and dropped in the next (the Custom provider
-  placeholder request in c3 was).
+- The judge is a model: a borderline finding can be kept in one run and dropped in the next.
 - Repro specs are model-written. A spec that fails before its assertion is dropped by the judge even when the bug
-  is real, which is how a hand-written skill-delete canary was missed locally (recall 2/3).
+  is real.
 - A security finding's ticket carries no run link, but its finding JSON, repro spec and screenshots still sit in
   the explore and replay artifacts for their 7-day retention. The secret scan before the upload matches key text,
   so it cannot see a key drawn in a screenshot. This repo is public, so any signed-in GitHub user can download
@@ -966,7 +964,7 @@ Also:
   for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
   lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest
   from the left edge were logged, the ones the sliding page uncovers last. The drawer's animation outlasting the
-  probe's 500 ms on the slow emulator fits, but no run shows it, so no probe rule was added. Run the sweep on an
+  probe's 500 ms on the slow emulator fits, but nothing confirms it, so no probe rule was added. Run the sweep on an
   emulator (a keyless GitHub run), fix or exclude what it finds with a fixture, then remove the refusal.
 - The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
 - A fix that touches `backend/` or `shared/` goes to a person when `verify-real` or `verify-native-run` checks it,

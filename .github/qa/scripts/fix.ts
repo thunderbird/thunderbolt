@@ -27,10 +27,7 @@ import type { Verified } from './verify'
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
 const maxFixes = 3
 
-/**
- * Dependency manifests and lockfiles, in any folder, with the build-tool and toolchain files that pick a registry,
- * a download or a binary every build runs (Gradle wrapper, `bunfig.toml`, `.cargo/config`, `rust-toolchain`).
- */
+/** Dependency manifests, lockfiles and the build-tool files that pick a registry, download or binary every build runs. */
 const dependencyFiles = new RegExp(
   `(^|/)(${[
     String.raw`package\.json|bun\.lockb?|Cargo\.(toml|lock)|[^/]+\.gradle(\.kts)?|Podfile[^/]*|Package\.(resolved|swift)`,
@@ -45,24 +42,21 @@ const dependencyFiles = new RegExp(
 )
 /**
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
- * `.github/` (workflows and this pipeline), dependency manifests, lockfiles, git hooks and lint-staged config, the
- * Vite, Playwright and TypeScript configs, and `e2e/`, whose helpers every repro spec and visual check imports (`publish` adds the regression spec there itself).
- * App code of any kind is open, because a person reviews every draft PR.
+ * `.github/`, dependency and hook files, the tool configs, and `e2e/`, whose helpers every repro spec and visual check
+ * imports (`publish` adds the regression spec there itself). App code is open, because a person reviews every draft PR.
  */
 export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 /**
- * What the fix agent must make pass. A `spec` task has the confirmed repro spec, or on iOS and Android the repro
- * `flow`. A `visual` task has neither: the agent writes its own check, which the workflow runs without and with the
- * patch. On the web the check is `qa-out/fix-<fp>/repro/check.spec.ts`; on iOS and Android it is the Maestro flow
- * `qa-out/fix-<fp>/repro/check.yaml`, which the task names as its `flow`.
+ * What the fix agent must make pass. A `visual` task has no repro, so the agent writes its own check, which the
+ * workflow runs without and with the patch: `check.spec.ts` on the web, `check.yaml` (named as the task's `flow`) on
+ * iOS and Android.
  */
 type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: string } | { kind: 'visual' }
 /**
- * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees, `screenshot` the finding's
- * screenshot when it has one. `real` marks a session on the real AI providers, where the workflow verifies the fix on
- * the real providers too.
+ * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
+ * real AI providers, where the workflow verifies the fix on them too.
  */
 export type FixTask = Ticket &
   Proof & {
@@ -73,10 +67,9 @@ export type FixTask = Ticket &
     finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
   }
 /**
- * A flow the native verification runs on its platform with the patched app (`native.sh verify-build`, then
- * `verify-run`): a native task's flow, or the repro flow of the same bug found on another platform. `session` picks
- * the build. `unpatched` asks for a run on the build without the patch too, where the flow must fail: a visual check,
- * and a real-AI session, which the keyless verification can only check on the fake AI.
+ * A flow the native verification runs on its platform with the patched app: a native task's flow, or the repro flow of
+ * the same bug found on another platform. `unpatched` asks for a run without the patch too, where the flow must fail:
+ * a visual check, and a real-AI session, which the keyless verification can only check on the fake AI.
  */
 export type NativeCheck = { fp: string; platform: string; session: string; flow: string; unpatched: boolean }
 /** `qa-out/fix-plan.json`. The workflow's fix matrix is `fixes`, its native verification matrix `verifyNative`. */
@@ -106,7 +99,6 @@ export const runCommand: Run = async (cmd, { env, stdin, cwd } = {}) => {
   return stdout
 }
 
-/** Label tickets the filer created `Human Required`, looking the label up once. */
 const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[]) => {
   if (issueIds.length === 0) return
   const { issueLabels } = await linear<{ issueLabels: { nodes: { id: string; team: { name: string } | null }[] } }>(
@@ -139,7 +131,6 @@ const leadRank = (session: string) => {
   return realAiCharters.has(session) && !nativePlatformIds.includes(parseSession(session).platform) ? 1 : 2
 }
 
-/** The proof the fix agent works against, or undefined when the finding's repro is not on disk. */
 const proofOf = async (
   outDir: string,
   charterDir: string,
@@ -160,15 +151,13 @@ const proofOf = async (
 }
 
 /**
- * Decide in code which filed tickets the fix agent attempts, and write `fix-plan.json`.
- * Every ticket (created, regression or commented) whose finding was confirmed qualifies, whatever its area or oracle,
- * security and real-AI findings included, because a person reviews every draft PR. It is left out this week when an
- * earlier `qa-fix/<fp>` branch still exists (its draft PR is open) or the cap is reached: at most three, highest
- * severity first, and one per fingerprint however many platforms found the bug.
- * A task with a Maestro flow (an iOS or Android finding) goes into `verifyNative` too, and so does the repro flow of
- * the same bug confirmed on another native platform: the patch must pass on each of them.
- * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent; a dry run
- * plans what a live filing would have created.
+ * Decides in code which filed tickets the fix agent attempts, and writes `fix-plan.json`.
+ * Every ticket whose finding was confirmed qualifies, whatever its area or oracle, security and real-AI findings
+ * included, because a person reviews every draft PR. It is left out this week when an earlier `qa-fix/<fp>` branch
+ * still exists (its draft PR is open) or the cap is reached: at most three, highest severity first, one per
+ * fingerprint however many platforms found the bug. A task with a Maestro flow goes into `verifyNative` too, and so
+ * does the repro flow of the same bug confirmed on another native platform: the patch must pass on each of them.
+ * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent.
  */
 export const route = async ({ outDir, live, run = runCommand, log = console.log }: RouteOptions) => {
   const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
@@ -286,15 +275,11 @@ const patchedFiles = async (run: Run, patch: string) => {
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
 
-/**
- * The check the fix agent wrote for a visual task: three levels under the repo root in a `repro/` dir, like a repro
- * spec, so it has the same import paths and the same Playwright project.
- */
+/** The fix agent's visual check sits three levels under the repo root, like a repro spec, so imports and project match. */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
 /** `fix/<fp>.verify.json`: whether the visual check failed on the tree without the patch and passed with it. */
 const checkResult = z.object({ failsWithout: z.boolean(), passesWith: z.boolean() })
 
-/** Parses `verify.json` text; undefined when it is not JSON or misses a boolean field. */
 const readCheckResult = (text: string): z.infer<typeof checkResult> | undefined => {
   try {
     return checkResult.parse(JSON.parse(text))
@@ -303,7 +288,6 @@ const readCheckResult = (text: string): z.infer<typeof checkResult> | undefined 
   }
 }
 
-/** Why a visual check's `verify.json` text does not prove the fix, or undefined when it does. */
 const checkResultProblem = (text: string) => {
   const result = readCheckResult(text)
   if (!result) return 'the visual check result is unreadable'
@@ -312,19 +296,13 @@ const checkResultProblem = (text: string) => {
     : 'the visual check did not fail without the patch and pass with it'
 }
 
-/**
- * What the Maestro allow list finds wrong with a native task's flow: the replay's own check, with `${EMAIL}` as the
- * only variable.
- */
+/** The replay's own allow-list check, with `${EMAIL}` as the only variable. */
 const flowProblems = (platform: string, flow: string) => {
   const check = checkMaestroFlow(flow, { appId: platformOf(platform).appId ?? '', vars: flowVars })
   return check.ok ? [] : check.problems
 }
 
-/**
- * Problems with what the patch must make pass: the repro spec or flow unedited (`fix/<fp>.spec.ts` or `fix/<fp>.yaml`
- * equal to the original), or a visual task's verified check.
- */
+/** Problems with what the patch must make pass: an edited repro spec or flow, or an unverified visual check. */
 const proofProblems = async (outDir: string, task: FixTask) => {
   if (task.kind === 'spec') {
     const [original, copy, lint, name] =
@@ -410,10 +388,9 @@ const reviewNotice =
 
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
- * task the check the fix agent wrote. A native task adds none, neither does a task from the onboarding session,
- * since `e2e/` does not serve that build, nor a real-AI task, since its repro needs providers `e2e/` does not run.
- * The repo is public and a security fix's PR shows up before the fix ships, so that PR names only the ticket, never
- * says "security", and adds no spec: a person adds the spec in a separate commit after the merge.
+ * task the agent's check. A native task adds none, neither does an onboarding-session task (`e2e/` does not serve
+ * that build) nor a real-AI task (its repro needs providers `e2e/` does not run). The repo is public and a security
+ * fix's PR shows up before the fix ships, so that PR names only the ticket, never says "security", and adds no spec.
  */
 const draftOf = async (outDir: string, task: FixTask) => {
   const ticket = task.identifier ?? 'its Linear ticket'
@@ -464,23 +441,20 @@ const draftOf = async (outDir: string, task: FixTask) => {
 }
 
 /**
- * Turn the fix agent's output for one routed ticket into a draft PR, or hand the ticket to a person.
- * Deterministic, no LLM. Dry unless `live`: a dry run validates and returns the plan without touching the
- * checkout, GitHub or Linear.
+ * Turns the fix agent's output for one routed ticket into a draft PR, or hands the ticket to a person. Deterministic,
+ * no LLM. Dry unless `live`: a dry run validates and returns the plan without touching the checkout, GitHub or Linear.
  *
  * The publish job downloads the file job's `qa-out` artifact and only `qa-out/fix/` (plus `qa-out/fix-<fp>/repro/`
  * for a visual task) from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
- * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original (`fix/<fp>.yaml` for a native
- *   task's repro flow);
- * - for a visual task, `fix-<fp>/repro/check.spec.ts` (`check.yaml` on iOS and Android), the check the agent wrote,
- *   and `fix/<fp>.verify.json`, the workflow's record of running it without and with the patch;
+ * - `fix/<fp>.spec.ts` (`fix/<fp>.yaml` for a native flow): the repro as the agent left it, compared with the original;
+ * - for a visual task, the agent's check in `fix-<fp>/repro/`, and `fix/<fp>.verify.json`, the workflow's record of
+ *   running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
- * A diagnosis or a rejected patch (empty, a denied path, an edited spec, an unverified check) means no PR: the
- * ticket gets a comment and the `Human Required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch
- * plus the regression spec `draftOf` picks) under the git identity the workflow configured, is pushed with `token` (a GitHub App
- * token; check out with `persist-credentials: false` so no second auth header competes), and becomes a draft PR
- * linking the ticket, which gets the PR link as a comment.
+ * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
+ * branch `qa-fix/<fp>` gets one commit under the git identity the workflow configured, is pushed with `token` (a
+ * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
+ * draft PR linking the ticket, which gets the PR link as a comment.
  *
  * Guardrail: this never merges, approves, marks ready or enables auto-merge. No `gh pr merge`, `gh pr ready`,
  * `gh pr review`, and no merge or review API call. A person reviews the draft and decides.

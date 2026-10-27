@@ -768,6 +768,7 @@ describe('publish', () => {
     /** A native task's flow: the task carries it instead of a spec. */
     flow?: string
     charterDir?: string
+    real?: boolean
   }
   const setup = async ({
     ticket = true,
@@ -776,13 +777,14 @@ describe('publish', () => {
     extra,
     flow,
     charterDir = 'c2-chat',
+    real = false,
   }: Setup = {}) => {
     const base = {
       fp,
       severity: 'High',
       charterDir,
       platform: 'desktop',
-      real: false,
+      real,
       finding: {
         title: 'Renaming a chat\nloses its title',
         area: 'chat',
@@ -950,6 +952,31 @@ describe('publish', () => {
       regressionSpec('c2-chat', fp, check).source,
     )
     expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
+  })
+
+  test('a real-AI web visual fix is never published, even when its check passed on the fake AI', async () => {
+    await setup({ kind: 'visual', real: true, charterDir: 'c4-skills-projects-desktop' })
+    await put(join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts'), spec)
+    await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+
+    const result = await publish({
+      outDir,
+      fp,
+      live: true,
+      key: 'lin',
+      token: 't',
+      run: fakeRun(runs, diffOutput),
+      fetchFn: fakeLinear(calls),
+      log: () => {},
+    })
+
+    const reason = 'a real-AI web fix without a repro spec cannot be checked on the real AI providers'
+    expect(result).toEqual({ outcome: 'human-required', reasons: [reason] })
+    expect(runs.map((r) => r.cmd[1])).toEqual(['read-tree', 'apply', 'diff'])
+    expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
+    expect(calls[0].variables.body).toContain(`- ${reason}`)
   })
 
   test('a native fix PR adds no regression spec and names the platform the flow checked it on', async () => {

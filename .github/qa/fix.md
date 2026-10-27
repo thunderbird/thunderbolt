@@ -69,8 +69,9 @@ run passes with it, and a visual check must fail every run without it.
 ## A real-AI task
 
 When `real` is true, the explorer found the bug while the app used the real AI providers. You work on the stack with
-the fake AI, like every other task. Fix the app code the finding points to. On the web the workflow checks the fix
-again later on the real providers. A native (Android) task is checked with no key, so on the fake AI: its flow must
+the fake AI, like every other task. Fix the app code the finding points to. On the web the workflow runs the repro
+spec again later on the real providers. A web visual task has no repro spec to run there, so its patch is never
+published and a person takes the ticket. A native (Android) task is checked with no key, so on the fake AI: its flow must
 fail on the app without your patch and pass with it, or a person takes the ticket.
 
 ## Check your work

@@ -268,7 +268,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    defect; the workflow records in `qa-out/fix/<fp>.verify.json` whether it failed without the patch and passed
    with it, and both must be true. The fix job runs that check three times on the patched dev stack, then three
    times on the builds without the patch. A real-AI web task (`real`) is fixed on the fake AI, and `verify-real` runs
-   its spec three times on the real providers against the patched frontend; all three must pass. Any check a task
+   its spec three times on the real providers against the patched frontend; all three must pass. A real-AI web
+   visual task has no spec for `verify-real` to run, so `publish` never opens a PR for it: the ticket gets
+   `Human Required`, like a fix that failed its checks. Any check a task
    needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. An iOS or Android task carries its
    Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing the bug on the web at phone
    size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual task's check is

@@ -327,6 +327,10 @@ const proofProblems = async (outDir: string, task: FixTask) => {
 export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   const patch = resolve(outDir, 'fix', `${task.fp}.patch`)
   const reasons = await proofProblems(outDir, task)
+  // verify-real replays only a repro spec, so nothing checks a web visual fix of a real-AI finding on the real AI.
+  if (task.real && task.kind === 'visual' && !('flow' in task)) {
+    reasons.push('a real-AI web fix without a repro spec cannot be checked on the real AI providers')
+  }
   const text = await readFile(patch, 'utf8')
   if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [] }
   // The patch becomes a public PR.

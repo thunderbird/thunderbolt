@@ -75,6 +75,12 @@ spec again later on the real providers. A web visual task has no repro spec to r
 published and a person takes the ticket. A native (Android) task is checked with no key, so on the fake AI: its flow must
 fail on the app without your patch and pass with it, or a person takes the ticket.
 
+## A sync task
+
+When `charterDir` starts with `c7-`, the bug was found with two devices on Postgres and PowerSync. Your stack and
+the workflow's checks run without them, so the patch of a c7 task is never published and a person takes the ticket.
+Fix it anyway, so the person starts from your patch.
+
 ## Check your work
 
 Run all three and make them pass:

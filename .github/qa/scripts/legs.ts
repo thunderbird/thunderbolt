@@ -61,6 +61,9 @@ const charters: (Partial<Leg> & { charter: string })[] = [
 export const onboardingSession = (session: string) =>
   charters.some((c) => c.onboarding && session.startsWith(`${c.charter}-`))
 
+/** Whether a session (`<charter>-<platform>`) needs Postgres and PowerSync. */
+export const syncSession = (session: string) => charters.some((c) => c.postgres && session.startsWith(`${c.charter}-`))
+
 /**
  * Sessions the grid leaves out, with the reason. `planLegs` drops them before it reads `only`, so asking for one fails
  * as an unknown id, and it reports the ones a dispatch would have run.

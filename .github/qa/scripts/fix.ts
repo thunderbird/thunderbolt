@@ -12,7 +12,7 @@ import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
 import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, platformOf, realAiCharters } from './findings'
-import { onboardingSession } from './legs'
+import { onboardingSession, syncSession } from './legs'
 import { checkMaestroFlow, flowVars } from './maestro-flow'
 import type { Verified } from './verify'
 
@@ -330,6 +330,11 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   // verify-real replays only a repro spec, so nothing checks a web visual fix of a real-AI finding on the real AI.
   if (task.real && task.kind === 'visual' && !('flow' in task)) {
     reasons.push('a real-AI web fix without a repro spec cannot be checked on the real AI providers')
+  }
+  // shortcut: the fix job and verify-native-run start no Postgres or PowerSync, so they cannot verify a sync fix;
+  // publish these once those jobs start the sync services.
+  if (syncSession(task.charterDir)) {
+    reasons.push('a fix found in a session that needs Postgres and PowerSync is not verified with them')
   }
   const text = await readFile(patch, 'utf8')
   if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [] }

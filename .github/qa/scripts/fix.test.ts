@@ -979,6 +979,32 @@ describe('publish', () => {
     expect(calls[0].variables.body).toContain(`- ${reason}`)
   })
 
+  test('a fix from the sync session is never published, on the web or Android, since nothing verifies it with sync', async () => {
+    const flow = join(outDir, 'c7-two-devices-android', 'repro', '1.yaml')
+    const tasks = [{ charterDir: 'c7-two-devices-desktop' }, { charterDir: 'c7-two-devices-android', flow }]
+    for (const task of tasks) {
+      await setup(task)
+      await put(flow, '- launchApp\n')
+      await put(join(outDir, 'fix', `${fp}.yaml`), '- launchApp\n')
+      const calls: Call[] = []
+
+      const result = await publish({
+        outDir,
+        fp,
+        live: true,
+        key: 'lin',
+        token: 't',
+        run: fakeRun([], diffOutput),
+        fetchFn: fakeLinear(calls),
+        log: () => {},
+      })
+
+      const reason = 'a fix found in a session that needs Postgres and PowerSync is not verified with them'
+      expect({ task, result }).toEqual({ task, result: { outcome: 'human-required', reasons: [reason] } })
+      expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
+    }
+  })
+
   test('a native fix PR adds no regression spec and names the platform the flow checked it on', async () => {
     const flow = join(outDir, 'c1-first-run-ios', 'repro', '1.yaml')
     await setup({ flow })

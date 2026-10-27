@@ -275,7 +275,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. An iOS or Android task carries its
    Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing the bug on the web at phone
    size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual task's check is
-   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which fails only on its own assertions. `publish` refuses an
+   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the patch only that
+   final assertion can show the defect; a step before it that fails makes the run inconclusive. `publish` refuses an
    edited repro flow (`fix/<fp>.yaml`) and a flow or check outside the Maestro allow list. `fix-plan.json`'s
    `verifyNative` lists each native task's flow and the repro flows of the same bug on other native platforms.
    `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and

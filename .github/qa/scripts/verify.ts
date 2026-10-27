@@ -390,9 +390,12 @@ const assertion = z.union([z.object({ assertVisible: selector }), z.object({ ass
  */
 const endsOnAssertion = (yaml: string) => assertion.safeParse(commandsOf(yaml).at(-1)).success
 
-/** Whether a failed flow is the oracle's bug: every oracle but `layout` and the log oracles. */
+/**
+ * Whether a failed flow is the oracle's bug: every oracle but `layout` and the log oracles, and the fix agent's visual
+ * check (no oracle), whose own final assertion is the bug.
+ */
 const failureIsBug = (oracle: Oracle | undefined) =>
-  oracle !== undefined && oracle.type !== 'layout' && !logOracles.has(oracle.type)
+  oracle === undefined || (oracle.type !== 'layout' && !logOracles.has(oracle.type))
 
 const waitsFor = z.object({ extendedWaitUntil: z.unknown() })
 const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAnimationToEnd: z.unknown() })])
@@ -401,9 +404,9 @@ const settle = z.union([z.literal('waitForAnimationToEnd'), z.object({ waitForAn
  * for `stuck` an `extendedWaitUntil`. Replay splits there, so a block (`runFlow`, `retry`) would put the whole way to
  * the bug back in the part whose failure confirms it.
  */
-const endsOnBugAssertion = (yaml: string, oracle: Oracle) => {
+const endsOnBugAssertion = (yaml: string, oracle: Oracle | undefined) => {
   const last = commandsOf(yaml).findLast((command) => !settle.safeParse(command).success)
-  return assertion.safeParse(last).success || (oracle.type === 'stuck' && waitsFor.safeParse(last).success)
+  return assertion.safeParse(last).success || (oracle?.type === 'stuck' && waitsFor.safeParse(last).success)
 }
 
 /**
@@ -721,9 +724,9 @@ type Oracle = FindingFile['finding']['oracle']
  * harness sign-in failed is replaced, as in replay. `passed` needs three counted runs, every one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`, a driver that did not start never counting); `passed` then needs both. There a run that never
- * reached the bug, by the replay's rules, is replaced and never counts as showing it. A visual check needs it, and
- * so does a real-AI session: verified here on the fake AI, its flow must fail there without the patch to prove
- * anything.
+ * reached the bug, by the replay's rules, is replaced and never counts as showing it: for a visual check, which must
+ * end on an assertion, a run that failed before that assertion. A visual check needs it, and so does a real-AI
+ * session: verified here on the fake AI, its flow must fail there without the patch to prove anything.
  */
 export const verifyNativeFix = async (
   opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
@@ -737,6 +740,9 @@ export const verifyNativeFix = async (
   const appId = platformOf(platform).appId ?? ''
   const check = checkMaestroFlow(opts.flow, { appId, vars: flowVars })
   if (!check.ok) throw new Error(`the flow fails the Maestro allow list: ${check.problems.join('; ')}`)
+  // Its last command is the only one whose failure shows the defect, so it must be an assertion.
+  if (!oracle && !endsOnBugAssertion(check.yaml, oracle))
+    throw new Error('a visual check must end on assertVisible or assertNotVisible')
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>

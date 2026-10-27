@@ -1449,6 +1449,16 @@ describe('native fix verification', () => {
   }
   const base = { fp: 'ab12cd34', platform: 'ios', session: 'c1-first-run-ios', flow, outDir }
   const layout = { type: 'layout', evidence: nameLine }
+  /** A device whose run fails at the command holding `text`, in whichever part of the split that command ran. */
+  const failsAt = (text: string, times = Infinity): RunFlow => {
+    const state = { failures: 0 }
+    return async (yaml, _outDir, _run, _session, signIn) => {
+      const at = signIn?.includes(text) ? 'first' : yaml.includes(text) ? 'flow' : undefined
+      if (at === undefined || state.failures++ >= times) return { passed: true, layout: [], logs: [] }
+      const error = `Element not found: ${text}`
+      return { passed: false, signInFailed: at === 'first', error, layout: [], logs: [] }
+    }
+  }
 
   test('passes only when no patched run shows the bug: the quoted probe line, or the flow failing', async () => {
     const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })
@@ -1471,16 +1481,6 @@ describe('native fix verification', () => {
   test('a failure-oracle flow failing before its last command fails the patch, but never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }
-    /** A device whose run fails at the command holding `text`, in whichever part of the split that command ran. */
-    const failsAt = (text: string, times = Infinity): RunFlow => {
-      const state = { failures: 0 }
-      return async (yaml, _outDir, _run, _session, signIn) => {
-        const at = signIn?.includes(text) ? 'first' : yaml.includes(text) ? 'flow' : undefined
-        if (at === undefined || state.failures++ >= times) return { passed: true, layout: [], logs: [] }
-        const error = `Element not found: ${text}`
-        return { passed: false, signInFailed: at === 'first', error, layout: [], logs: [] }
-      }
-    }
 
     // A fix must leave the whole way to the bug working: one early failure blocks it, and is not run again.
     const broken = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
@@ -1589,6 +1589,36 @@ describe('native fix verification', () => {
       original: device([failed, failed, failed]),
     })
     expect(stillFailing).toMatchObject({ failed: 1, failsWithout: true, passesWith: false, passed: false })
+  })
+
+  test('a visual check shows the defect only on its final assertion, and must end on one', async () => {
+    const steps = {
+      ...base,
+      flow: '- launchApp\n- tapOn: Settings\n- extendedWaitUntil:\n    visible: Devices\n- assertVisible: Sync is on\n',
+    }
+    // A tap or wait failing without the patch is a changed way to the screen, not the defect.
+    for (const setup of ['Settings', 'Devices']) {
+      const early = await verifyNativeFix({ ...steps, patched: failsAt('nothing'), original: failsAt(setup) })
+      expect({ setup, ...early }).toMatchObject({ setup, failsWithout: false, passed: false })
+    }
+    const shown = await verifyNativeFix({ ...steps, patched: failsAt('nothing'), original: failsAt('Sync is on') })
+    expect(shown).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
+    const brokenSetup = await verifyNativeFix({
+      ...steps,
+      patched: failsAt('Devices', 1),
+      original: failsAt('Sync is on'),
+    })
+    expect(brokenSetup).toMatchObject({ failed: 1, passesWith: false, passed: false })
+
+    const runs: number[] = []
+    const tapLast = verifyNativeFix({
+      ...base,
+      flow: '- launchApp\n- tapOn: Settings\n',
+      patched: device([], runs),
+      original: device([]),
+    })
+    await expect(tapLast).rejects.toThrow('must end on assertVisible or assertNotVisible')
+    expect(runs).toEqual([])
   })
 
   test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {

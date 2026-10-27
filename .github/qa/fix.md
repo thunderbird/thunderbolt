@@ -57,7 +57,8 @@ repro spec (see "A visual task"), and run it with
 
 In a `visual` task the `flow` path is the check you write before you change any code: a Maestro flow that fails
 because of the defect, through its own `assertVisible` or `assertNotVisible`: nothing else counts, layout probe lines
-included. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Keep
+included. End the check on that assertion. A step before it that fails proves nothing, and a check that ends on any
+other command is refused. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Keep
 to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the like) with literal
 text: the Maestro allow list refuses scripts, `env`, `clearState`, links and any variable other than `${EMAIL}`, and a
 refused check means no PR. You cannot run it here.

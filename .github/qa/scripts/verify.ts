@@ -128,12 +128,12 @@ const replayCap = 20
 /** replay-native's `timeout-minutes`: a native leg starts no run that might end after it. */
 export const nativeJobMinutes = 130
 /**
- * Measured on iOS: 4.04 minutes on average for the 14 runs after the leg's cold first one, and 6 min 21 s
- * of job setup before the replay step. Only the cap's sizing uses these; `legClock` times the real runs from `QA_LEG_START`.
+ * On iOS the runs after the leg's cold first one average 4.04 minutes, and the setup before the replay step
+ * takes 6 min 21 s. Only the cap's sizing uses these; `legClock` times the real runs from `QA_LEG_START`.
  */
 export const nativeRunMinutes = 4.1
 export const nativeSetupMinutes = 6.5
-/** Kept for the steps after the replay: the sanitize and the 220 MB upload took 56 s. */
+/** Kept for the steps after the replay: the sanitize and the 220 MB upload take about 56 s. */
 export const nativeWrapUpMinutes = 2
 /** Kept free at the end of a leg's time: on iOS a run whose driver did not start waits this long, then runs again. */
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
@@ -989,9 +989,9 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
- * A kept finding goes to `confirmed`, any other to `dropped` at gate `judge`; flaky candidates are never judged. At most `judgeCap`
- * calls, admitted in order only while their worst-case cost fits under `judgeCeilingUsd`; the rest are `deferred`.
- * Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
+ * A kept finding goes to `confirmed`, any other to `dropped` at gate `judge`; flaky candidates are never judged.
+ * At most `judgeCap` calls, admitted in order only while their worst-case cost fits under `judgeCeilingUsd`;
+ * the rest are `deferred`. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
  */
 export const judge = async (outDir: string, create: CreateMessage = createMessage, qaDir = '.github/qa') => {
   const candidates: Verified = await Bun.file(join(outDir, 'candidates.json')).json()

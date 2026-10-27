@@ -32,7 +32,7 @@ so an error message from another model is expected (a screen that hangs is still
 
 When your charter says the AI is real, replies vary and can use tools (weather, maps, search, link previews, MCP
 servers, files). Read every reply in full, besides the console and the network, and check that the AI really did
-what you asked. A reply saying it could not is an `ai-reported-failure` bug.
+what you asked. A reply saying it could not do what you asked is an `ai-reported-failure` bug.
 
 ### What the test fixtures contain
 

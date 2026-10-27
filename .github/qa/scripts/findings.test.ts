@@ -476,7 +476,7 @@ test('every free session is real AI where the platform has real providers, and e
     const repro = nativePlatformIds.includes(id) ? { repro_spec: undefined, repro_flow: 'repro/1.yaml' } : {}
     expect(findingSchema.safeParse({ ...finding, ...repro, viewport: id }).success, id).toBe(true)
     if (driver === 'playwright') expect(viewport).toMatch(/^\d+x\d+$/)
-    // Only Playwright platforms point at a config file to check here.
+    // explore.sh hard-codes the Maestro gate's config, so only the Playwright paths in platforms.json are checked.
     if (driver === 'playwright') expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
   }
   expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length)

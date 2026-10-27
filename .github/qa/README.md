@@ -342,13 +342,13 @@ the outcome must survive a reload. A function that spans two areas has one owner
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 Every charter runs on desktop and phone. The layout probe covers screen fit, so no function lists it.
 
-**Coverage** counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
+Coverage counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
 attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
 change.
 Text the explorer typed never counts, and a session without a transcript covers nothing. The check proves the quote
 was seen at the right moment, not that it shows the outcome: sample covered functions by hand.
 
-The **free session** plays one case from `journeys.json` (a person, a goal with no steps, and `facts` the explorer
+The free session plays one case from `journeys.json` (a person, a goal with no steps, and `facts` the explorer
 uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI.
 
 - `explore.sh journey` picks the case: weeks since 1970 modulo the number of cases, so every case runs once before
@@ -585,8 +585,8 @@ Traps:
   app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
   still holds its first runs.
 
-Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, which needs a
-hypervisor, so they run only on GitHub's runners (KVM, `x86_64`).
+Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and so far have
+run only on GitHub's runners (KVM, `x86_64`).
 
 ### In the weekly workflow
 

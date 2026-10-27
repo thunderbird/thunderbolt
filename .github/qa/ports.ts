@@ -5,6 +5,7 @@
 // The attribute is required: Playwright's ESM loader rejects a JSON import without it.
 import defaults from './ports.json' with { type: 'json' }
 
+/** The localhost URL for the port variable `name`: its value in `env`, or the `ports.json` default. */
 const urlFor = (name: 'QA_FRONTEND_PORT' | 'QA_ONBOARDING_PORT', env: Record<string, string | undefined>) =>
   `http://localhost:${env[name] || defaults[name]}`
 

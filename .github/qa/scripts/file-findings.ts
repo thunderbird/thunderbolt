@@ -321,7 +321,7 @@ const refusal = (f: Finding) => {
   if (f.oracle.type === 'visual' && !(f.element?.trim() && f.function?.trim())) {
     return 'visual finding without an element and a function to deduplicate on'
   }
-  // Spec 10 asks for a clean probe sweep of correct screens before a platform files layout tickets. Android's never
+  // A platform files layout tickets only after the probe has swept its correct screens clean. Android's never
   // ran, and runs 39380764343 and 39391108579 logged `covered` on sidebar buttons their screenshots show uncovered.
   if (f.viewport === 'android' && f.oracle.type === 'layout') {
     return 'Android layout finding, held back until the probe sweeps correct Android screens clean'

@@ -85,6 +85,7 @@ const controlOf = (node: { cls?: string; a11y: string; txt: string; hint: string
     ? { role: node.leaf && /^[01]$/.test(node.val) ? 'checkbox' : '', name: node.a11y || node.hint }
     : androidControl({ ...node, cls: node.cls })
 
+/** Whether a rect has a positive width and height. */
 const hasArea = ({ left, top, right, bottom }: Rect) => right > left && bottom > top
 
 // inspect_screen leaves out nodes without a frame and lifts their children, so the hierarchy does the same.

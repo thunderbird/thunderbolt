@@ -44,6 +44,7 @@ const bareCommands = [
 ] as const
 const variable = /^\$\{([A-Za-z_]\w*)\}$/
 const percent = /^\s*(\d{1,3})%\s*,\s*(\d{1,3})%\s*$/
+/** The two percentages of a `"x%, y%"` point as numbers, or an empty array when it is not in that form. */
 const coordinates = (point: string) => (percent.exec(point) ?? []).slice(1).map(Number)
 
 // The commands after which the app is no longer in front (Android's back leaves it at the root), and the one that

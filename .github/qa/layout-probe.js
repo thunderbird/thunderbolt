@@ -298,7 +298,7 @@
     )
   }
 
-  // The `overflow` check the explore prompt used to run by hand, now at every width.
+  // Page and text overflow, checked at every viewport width.
   const overflows = () => {
     const root = document.documentElement
     const page =

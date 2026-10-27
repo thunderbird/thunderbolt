@@ -65,7 +65,7 @@ export type Scorecard = {
  * valid / (valid + not-a-bug + env-artifact). Duplicates are counted but move neither precision nor the sample.
  */
 export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
-  // ponytail: one page of 250 tickets, far above the weekly cap of 9; paginate if that ever changes
+  // shortcut: one page of 250 tickets, far above the weekly cap of 9; paginate if that ever changes
   const { issues } = await linear<{ issues: { nodes: { labels: { nodes: { name: string }[] } }[] } }>(
     fetchFn,
     key,

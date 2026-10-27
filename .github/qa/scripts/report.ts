@@ -312,7 +312,7 @@ const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: 
   const first = (pick: (step: Step) => boolean) => steps.findIndex((step, i) => i >= start && pick(step))
   const action = first(isAction)
   if (!quoted.some((r) => action >= 0 && action < r)) return 'no browser action before the quoted result'
-  // ponytail: any reload after the window's first change counts, even one before the change under test; tie the
+  // shortcut: any reload after the window's first change counts, even one before the change under test; tie the
   // reload to the last change before the quote if sampled attempts show explorers exploiting it.
   const change = first((step) => isAction(step) && !isNavigation(step))
   if (reload && !quoted.some((r) => change >= 0 && steps.slice(change, r).some(isNavigation))) {

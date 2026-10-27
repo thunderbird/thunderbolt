@@ -468,7 +468,7 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * Deterministic, no LLM. Dry unless `live`: a dry run validates and returns the plan without touching the
  * checkout, GitHub or Linear.
  *
- * The publish job downloads the file job's `qa-out` artifact and ONLY `qa-out/fix/` (plus `qa-out/fix-<fp>/repro/`
+ * The publish job downloads the file job's `qa-out` artifact and only `qa-out/fix/` (plus `qa-out/fix-<fp>/repro/`
  * for a visual task) from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
  * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original (`fix/<fp>.yaml` for a native

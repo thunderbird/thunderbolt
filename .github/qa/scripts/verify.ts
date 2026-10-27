@@ -189,8 +189,8 @@ const fileToolWrote = (transcript: TranscriptMessage[], file: string) =>
     )
 
 // The Claude API's image limits (https://platform.claude.com/docs/en/build-with-claude/vision): the size once
-// base64-encoded and the pixels per side. Over either, the judge call fails with a 400. The 5 MB limit people
-// remember is Bedrock's and Google Cloud's; the judge calls the Claude API directly.
+// base64-encoded and the pixels per side. Over either, the judge call fails with a 400. Bedrock and Google Cloud
+// limit images to 5 MB instead; the judge calls the Claude API directly.
 const imageLimit = { base64Bytes: 10_000_000, side: 8_000 }
 
 type ImageInfo = { mediaType: 'image/png' | 'image/jpeg'; width: number; height: number }
@@ -574,7 +574,7 @@ const legClock = (now: () => number, legStart: number) => {
       const start = now()
       const result = await run()
       // The first run starts Maestro's driver and the app on a cold device: about 8.5 minutes on iOS,
-      // against 3 to 6 for each of the 14 after it, and sized on it the leg refused a confirming run.
+      // against 3 to 6 for each run after it, and sizing every run on it made the leg refuse a confirming run.
       if (state.warm) state.longest = Math.max(state.longest, now() - start)
       state.warm = true
       return result
@@ -656,7 +656,6 @@ const threeRuns = async (
   return outcome
 }
 
-/** Counts runs from 1. */
 const counter = () => {
   const state = { n: 0 }
   return () => ++state.n
@@ -830,7 +829,7 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * A spec asserts the expected behaviour in its `bugStep` step, which the lint requires, and a run counts as failed only
  * when it failed inside that step. A run that failed before it is inconclusive, and since Playwright runs no
  * replacement, the finding is then flaky unless the other runs confirm it anyway (2 failures for a real-AI charter).
- * Otherwise failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
+ * Otherwise failed 3/3 = confirmed, 1 or 2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
  * and `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped
@@ -847,8 +846,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * `lint`: it would fail on every run without the line, and each such run would be rerun as inconclusive.
  * Both share the cap and the confirmation rule, and any failed control marks the stack unhealthy. Writes and returns
  * `<outDir>/candidates.json`.
- * Needs NO secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
- * and the lints are defence in depth, not the boundary.
+ * Needs no secrets and must run without any: the specs and flows were written by a model that read untrusted pages,
+ * and the lints add a layer of defence without being the security boundary.
  */
 export const replay = async (
   outDir: string,
@@ -876,7 +875,7 @@ export const replay = async (
       result.dropped.push({ file: written, gate: 'schema', reason: misfit })
       continue
     }
-    // The dir names the platform; native sessions have written "phone" from the template instead.
+    // The dir names the platform; a native session can write a generic viewport such as "phone" instead.
     const viewport = parseSession(written.charterDir).platform
     const file = { ...written, finding: { ...written.finding, viewport } }
     const { oracle } = file.finding
@@ -918,7 +917,7 @@ export const replay = async (
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
     else lintClean.push(file)
   }
-  // ponytail: the first findings in path order fill the cap; rank by severity if a capped run ever loses a bad one.
+  // shortcut: the first findings in path order fill the cap, rank by severity if a capped run ever loses a bad one.
   const cap = runFlow ? nativeReplayCap : replayCap
   const replayable = lintClean.slice(0, cap)
   result.deferred = lintClean
@@ -990,7 +989,7 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
- * Kept → `confirmed`, otherwise `dropped` at gate `judge`; flaky candidates are never judged. At most `judgeCap`
+ * A kept finding goes to `confirmed`, any other to `dropped` at gate `judge`; flaky candidates are never judged. At most `judgeCap`
  * calls, admitted in order only while their worst-case cost fits under `judgeCeilingUsd`; the rest are `deferred`.
  * Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
  */

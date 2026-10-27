@@ -251,7 +251,7 @@ const forbiddenNames = new Set([
   // written file could become code. `path` is the option of `screenshot`, `pdf`, `storageState`, `tracing.stop`
   // and `recordHar`. Snapshot matchers write a missing baseline under any name. `outputDir` on the test info
   // moves where Playwright saves the video and trace. A CDP session can send downloads to any folder.
-  // ponytail: a denylist, so a write API added by a Playwright upgrade gets through; the fallback is a
+  // shortcut: a denylist, so a write API added by a Playwright upgrade gets through; the fallback is a
   // read-only checkout during replay.
   'saveAs',
   'path',
@@ -403,8 +403,8 @@ const problemWith = (node: ts.Node, sourceFile: ts.SourceFile, checker: ts.TypeC
  * from `@playwright/test` and `e2e/helpers` only, every undeclared name must be a harmless global, and
  * `x[expr]` is refused so the name checks cannot be dodged. Type annotations are skipped (erased at runtime).
  *
- * This is defence in depth, not the boundary. Playwright's own API can still read local files and reach
- * the network, so the real boundary is that the replay step holds no secrets: none in its env, none on
+ * This is defence in depth. Playwright's own API can still read local files and reach
+ * the network, so the boundary is that the replay step holds no secrets: none in its env, none on
  * disk (checkout with `persist-credentials: false`), and no same-user process with keys in its env
  * (readable through /proc), such as a backend holding real provider keys.
  */

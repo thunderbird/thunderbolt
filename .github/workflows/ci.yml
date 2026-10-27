@@ -348,6 +348,9 @@ jobs:
         run: bun run test:agent-core:5x
 
       - name: Install browser engines
+        # WebKit needs apt packages the runner image lacks, so --with-deps stays;
+        # the timeout makes a slow-mirror stall fail fast instead.
+        timeout-minutes: 10
         run: bunx playwright install --with-deps chromium webkit
 
       - name: Check production agent-core in browsers

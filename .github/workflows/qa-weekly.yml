@@ -104,7 +104,7 @@ jobs:
         # The repo's Playwright replays specs; the Playwright MCP (pinned in .github/qa/mcp.json) drives its own
         # Chromium.
         run: |
-          bunx playwright install --with-deps chromium
+          bunx playwright install chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
 
       # Up to two recent fixes from main whose reversal applies to this tree: the canary build carries their bugs

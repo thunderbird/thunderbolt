@@ -61,6 +61,9 @@ jobs:
           cd backend && bun install --frozen-lockfile
 
       - name: Install Chromium and Firefox
+        # Firefox needs apt packages the runner image may lack, so --with-deps stays;
+        # the timeout makes a slow-mirror stall fail fast instead.
+        timeout-minutes: 10
         run: bunx playwright install --with-deps chromium firefox
 
       - name: Check spec collection

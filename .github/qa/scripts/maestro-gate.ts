@@ -41,7 +41,7 @@ export type GateContext = {
   webviewLog: string
   backendLog: string
   gateLog: string
-  /** The probe debounces 250 ms and confirms over 500 ms; the default wait is 1200 ms. */
+  /** The probe debounces 250 ms and confirms over 500 ms. */
   probeWaitMs?: number
 }
 

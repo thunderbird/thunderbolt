@@ -24,6 +24,7 @@ export const sanitize = (text: string, max: number, runUrl?: string): string =>
   text
     .replace(/!\[[^\]]*\]\([^)]*\)|!\[[^\]]*\]\[[^\]]*\]|<img[^>]*>/gi, '[image removed]')
     .replace(/https?:\/\/[^\s)>\]"'`]+/g, (url) => (keepUrl(url, runUrl) ? url : '[link removed]'))
+    // The ticket body puts this text inside a code fence, and it must not close it.
     .replaceAll('```', "'''")
     .slice(0, max)
 

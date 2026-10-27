@@ -83,7 +83,6 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
   }
 }
 
-/** True when enough tickets were judged and too many were noise. */
 export const shouldBrake = (card: Scorecard): boolean =>
   card.labelled >= brakeMinLabelled && card.precision !== null && card.precision < brakeMinPrecision
 

@@ -175,10 +175,7 @@ const sessionOf = (dir: string) => {
   }
 }
 
-/**
- * The dir decides, never the model-written `charter` or `viewport`. c7 on Android takes either a repro flow (for the
- * app) or a repro spec (for its browser).
- */
+/** The dir decides, never the model-written `charter` or `viewport`. */
 export const sessionProblem = ({ charterDir, finding }: FindingFile): string | undefined => {
   const session = /^[\w-]+$/.test(charterDir) ? sessionOf(charterDir) : undefined
   if (!session) return `not a session dir: ${charterDir}`
@@ -192,7 +189,7 @@ export const sessionProblem = ({ charterDir, finding }: FindingFile): string | u
   return undefined
 }
 
-/** Specs are replayed where the explorer wrote them, `qa-out/<charter>/repro/<n>.spec.ts`: the repo is three levels up. */
+/** Specs are replayed where the explorer wrote them, `qa-out/<charter>/repro/<n>.spec.ts`, three levels below the repo. */
 const allowedImports = new Set([
   '@playwright/test',
   '../../../e2e/helpers',

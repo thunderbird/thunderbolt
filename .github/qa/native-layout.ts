@@ -199,7 +199,7 @@ const keyboardNode = {
 
 const inside = (a: Rect, b: Rect) => a.left >= b.left && a.top >= b.top && a.right <= b.right && a.bottom <= b.bottom
 
-/** On Android, a `behind-keyboard` line when the keyboard covers the app's focused field by 4 units on both axes. */
+/** On Android, a `behind-keyboard` line when the keyboard covers the app's focused field. */
 const behindKeyboard = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
   const window = platform === 'android' && keyboard ? appWindow(root) : undefined
   const field = window && focusedField(window)
@@ -261,8 +261,8 @@ export const keepsProbeLine = (line: string, platform: 'ios' | 'android') => {
 }
 
 /**
- * The Android WebView keeps its full height with the keyboard up, so the probe cannot see it there; on iOS the probe
- * can. The keyboard is drawn over everything, so the rule needs no stacking order.
+ * The Android WebView keeps its full height with the keyboard up, so the probe cannot see the keyboard there; on iOS
+ * the probe can. The keyboard is drawn over everything, so the behind-keyboard rule needs no stacking order.
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
   const keyboard = allNodes(root).find(keyboardNode[platform])?.bounds

@@ -95,6 +95,8 @@ type CanaryResult = {
   results: (Canary & { found: boolean })[]
   /** Confirmed findings not proven canary-caused (still failing on the normal build): real bugs, never counted. */
   real: string[]
+  /** Visual findings: confirmed from a screenshot with no baseline replay, so neither found nor real. */
+  unmeasured: string[]
 }
 
 const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
@@ -103,7 +105,7 @@ const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir
  * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build
  * without failing, so the reverted fixes caused it. Area, oracle type and wording are not compared: the explorer
  * files the same bug under different ones. A finding the baseline never ran, or ran on an unhealthy stack, is not
- * proven canary-caused and counts as real.
+ * proven canary-caused and counts as real. A visual finding has no replay to check, so it counts as neither.
  */
 export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
   const caused = (f: VerifiedFinding) =>
@@ -116,12 +118,14 @@ export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], b
         file.replay.runs > 0 &&
         file.replay.failed === 0,
     )
+  const isVisual = (f: VerifiedFinding) => f.finding.oracle.type === 'visual'
   const results = canaries.map((c) => ({ ...c, found: findings.some((f) => f.charterDir === c.charter && caused(f)) }))
   return {
     found: results.filter((r) => r.found).length,
     total: results.length,
     results,
-    real: findings.filter((f) => !caused(f)).map(findingId),
+    real: findings.filter((f) => !isVisual(f) && !caused(f)).map(findingId),
+    unmeasured: findings.filter(isVisual).map(findingId),
   }
 }
 
@@ -599,6 +603,9 @@ export const renderReport = (input: ReportInput) => {
         (r) => `- ${r.found ? 'found' : '**MISSED**'} ${safe(r.title, 150)} (${r.sha.slice(0, 9)}, ${r.charter})`,
       ),
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
+      ...(canary.unmeasured.length > 0
+        ? [`Not measured (visual findings have no baseline replay): ${canary.unmeasured.join(', ')}`]
+        : []),
     )
   }
   const rows = calibrationRows(explore, fixes, verified?.judge_usage?.cost_usd)

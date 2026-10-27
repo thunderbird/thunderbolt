@@ -245,6 +245,7 @@ describe('renderReport', () => {
           { ...canary('b', 'c2-chat-power-user'), found: false },
         ],
         real: ['c8-phone/7'],
+        unmeasured: ['c8-phone/8'],
       },
     })
     expect(report).toContain(
@@ -257,6 +258,7 @@ describe('renderReport', () => {
     expect(report).toContain('Canary recall: 1/2')
     expect(report).toContain('**MISSED** fix: b (bbbbbbbbb, c2-chat-power-user)')
     expect(report).toContain('Real bugs seen in the canary leg (not counted): c8-phone/7')
+    expect(report).toContain('Not measured (visual findings have no baseline replay): c8-phone/8')
   })
 
   it('adds a calibration row per metric with max observed and the +50% cap', () => {
@@ -791,6 +793,17 @@ describe('canaries', () => {
   it('does not count a spec that never ran on the normal build', () => {
     const result = matchCanaries(canaries, [finding('1')], droppedOnNormal(['1'], 0))
     expect(result).toMatchObject({ found: 0, real: ['c8-phone/1'] })
+  })
+
+  it('sets visual findings apart: they are neither a found canary nor a real bug', () => {
+    const result = matchCanaries(canaries, [finding('v', 'c8-phone', 'other', 'visual')], emptyVerified)
+    expect(result).toMatchObject({ found: 0, real: [], unmeasured: ['c8-phone/v'] })
+  })
+
+  it('still counts a canary found by a caused spec finding next to a visual one', () => {
+    const findings = [finding('1'), finding('v', 'c8-phone', 'other', 'visual')]
+    const result = matchCanaries(canaries, findings, droppedOnNormal(['1']))
+    expect(result).toMatchObject({ found: 1, real: [], unmeasured: ['c8-phone/v'] })
   })
 
   it('does not count a canary-caused finding from another charter', () => {

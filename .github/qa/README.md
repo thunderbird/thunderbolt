@@ -118,7 +118,8 @@ restored and the canary leg is skipped as if nothing qualified, so a bad canary 
 gets an explore session with its charter on that build, so at most 2 sessions a week. A canary counts as found only when a judge-confirmed finding from its charter fails on the
 canary build and passes on the normal build. The report lists each fix (title, sha, charter, found or missed), and
 "Real bugs seen in the canary leg" lists confirmed findings that still fail on the normal build: real bugs, not
-counted. Canary findings are never filed.
+counted. A `visual` finding is judged on its screenshot and has no baseline replay, so it is neither found nor real;
+the report lists it as "Not measured". Canary findings are never filed.
 
 To calibrate by hand, run the workflow with the `canaries` input set to up to two commit SHAs. Those commits are used
 as they are, without the checks above except that each must have a charter, its reversal must apply, and both must use

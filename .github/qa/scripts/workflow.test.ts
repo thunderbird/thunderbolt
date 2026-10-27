@@ -260,7 +260,7 @@ describe('fix job', () => {
     mkdirSync(join(dir, '.github/qa/scripts'), { recursive: true })
     writeFileSync(join(dir, '.gitignore'), 'qa-out*/\nqa-dist*/\n')
     writeFileSync(join(dir, 'backend/index.ts'), 'base')
-    const stack = `if [ "$1" = start ]; then mkdir -p qa-out; cat backend/index.ts > qa-out/served; exit ${failStart ? 1 : 0}; fi\n`
+    const stack = `if [ "$1" = start ]; then mkdir -p qa-out; cat backend/index.ts > qa-out/served; ls backend > qa-out/files; exit ${failStart ? 1 : 0}; fi\n`
     writeFileSync(join(dir, '.github/qa/scripts/stack.sh'), stack, { mode: 0o755 })
     git('add', '-A')
     git('commit', '-q', '-m', 'base')
@@ -285,6 +285,8 @@ describe('fix job', () => {
     const { code, read, stashes } = baseline()
     expect(code).toBe(0)
     expect(read('qa-out/served')).toBe('base')
+    // The untracked file the patch adds is out of the tree during the baseline too.
+    expect(read('qa-out/files')).toBe('index.ts\n')
     expect(read('backend/index.ts')).toBe('patched')
     expect(read('backend/new.ts')).toBe('new')
     expect(stashes).toBe(0)

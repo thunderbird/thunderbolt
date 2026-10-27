@@ -58,10 +58,10 @@ repro spec (see "A visual task"), and run it with
 In a `visual` task the `flow` path is the check you write before you change any code: a Maestro flow that fails
 because of the defect, through its own `assertVisible` or `assertNotVisible`: nothing else counts, layout probe lines
 included. End the check on that assertion. A step before it that fails proves nothing, and a check that ends on any
-other command is refused. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Keep
-to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the like) with literal
-text: the Maestro allow list refuses scripts, `env`, `clearState`, links and any variable other than `${EMAIL}`, and a
-refused check means no PR. You cannot run it here.
+other command is refused. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code
+`12345678`. Keep to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the
+like) with literal text: the Maestro allow list refuses scripts, `env`, `clearState`, links and any variable other
+than `${EMAIL}`, and a refused check means no PR. You cannot run it here.
 
 Every native fix is checked again on the finding's platform: the workflow builds the app with your patch and runs the
 flow three times, and a visual check also runs on the app without your patch. The patch is published only when every
@@ -72,14 +72,14 @@ run passes with it, and a visual check must fail every run without it.
 When `real` is true, the explorer found the bug while the app used the real AI providers. You work on the stack with
 the fake AI, like every other task. Fix the app code the finding points to. On the web the workflow runs the repro
 spec again later on the real providers. A web visual task has no repro spec to run there, so its patch is never
-published and a person takes the ticket. A native (Android) task is checked with no key, so on the fake AI: its flow must
-fail on the app without your patch and pass with it, or a person takes the ticket.
+published and a person takes the ticket. A native (Android) task is checked with no key, so on the fake AI: its flow
+must fail on the app without your patch and pass with it, or a person takes the ticket.
 
 ## A sync task
 
-When `charterDir` starts with `c7-`, the bug was found with two devices on Postgres and PowerSync. Your stack and
-the workflow's checks run without them, so the patch of a c7 task is never published and a person takes the ticket.
-Fix it anyway, so the person starts from your patch.
+Some charters run their sessions on Postgres and PowerSync (today only c7, the two-device charter). Your stack and
+the workflow's checks run without them, so the patch of a task from such a session is never published and a person
+takes the ticket. Fix it anyway, so the person starts from your patch.
 
 ## Check your work
 

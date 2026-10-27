@@ -1596,7 +1596,7 @@ describe('native fix verification', () => {
       ...base,
       flow: '- launchApp\n- tapOn: Settings\n- extendedWaitUntil:\n    visible: Devices\n- assertVisible: Sync is on\n',
     }
-    // A tap or wait failing without the patch is a changed way to the screen, not the defect.
+    // Without the patch, a failed tap or wait only shows that the way to the screen changed.
     for (const setup of ['Settings', 'Devices']) {
       const early = await verifyNativeFix({ ...steps, patched: failsAt('nothing'), original: failsAt(setup) })
       expect({ setup, ...early }).toMatchObject({ setup, failsWithout: false, passed: false })

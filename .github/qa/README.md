@@ -292,8 +292,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `passed: true` from every platform in `verifyNative` for the fingerprint, web tasks included, and from
    `verify-real` for a real-AI web task. Only then does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the
    diagnosis (for a native platform, "the flow still fails on the native platform") and the ticket gets
-   `Human Required`. A fix from c7, on any platform, never gets a PR either: the fix job and `verify-native-run`
-   start no Postgres or PowerSync, so they cannot verify it, and its ticket gets `Human Required`.
+   `Human Required`. A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform,
+   never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they cannot verify
+   it, and its ticket gets `Human Required`.
    `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 

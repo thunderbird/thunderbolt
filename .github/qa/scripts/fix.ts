@@ -11,7 +11,15 @@ import { z } from 'zod'
 import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
-import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, platformOf, realAiCharters } from './findings'
+import {
+  type Finding,
+  findingSchema,
+  lintReproSpec,
+  nativePlatformIds,
+  parseSession,
+  platformOf,
+  realAiCharters,
+} from './findings'
 import { onboardingSession, syncSession } from './legs'
 import { checkMaestroFlow, flowVars } from './maestro-flow'
 import type { Verified } from './verify'
@@ -122,6 +130,15 @@ const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[
 
 type RouteOptions = { outDir: string; live: boolean; run?: Run; log?: (line: string) => void }
 
+/**
+ * Which finding of one bug becomes its fix task, lowest first: a sync session's, so the sync refusal still holds, then
+ * a real-AI web session's, so `verify-real` checks the fix on the real providers with that session's own repro.
+ */
+const leadRank = (session: string) => {
+  if (syncSession(session)) return 0
+  return realAiCharters.has(session) && !nativePlatformIds.includes(parseSession(session).platform) ? 1 : 2
+}
+
 /** The proof the fix agent works against, or undefined when the finding's repro is not on disk. */
 const proofOf = async (
   outDir: string,
@@ -162,7 +179,7 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
   const routed = new Set<string>()
   const tickets = filed
     .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
-    .sort((a, b) => priority[a.severity] - priority[b.severity])
+    .sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
     const fresh = !routed.has(fp)
     if (fresh && (plan.fixes.length === maxFixes || pending.has(fp))) continue
@@ -175,8 +192,9 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
       continue
     }
     const platform = finding.viewport
-    // One fix job per bug (same fp): a second one would fight over `qa-fix/<fp>`. Only the other platforms' repro
-    // flows join it, since the fix agent writes a visual check for its own task alone.
+    // One fix job per bug (same fp): a second one would fight over `qa-fix/<fp>`, and `leadRank` picks which finding
+    // it gets. Only the other platforms' repro flows join it, since the fix agent writes a visual check for its own
+    // task alone.
     const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
     if (flow && !plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
       const unpatched = proof.kind === 'visual' || realAiCharters.has(charterDir)

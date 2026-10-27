@@ -328,6 +328,43 @@ describe('route', () => {
     ])
   })
 
+  const fakeWeb = { fp: 'fp-same', charterDir: 'c2-chat-power-user-desktop', raw: finding('chat') }
+  const realWeb = { fp: 'fp-same', charterDir: 'c3-models-providers-desktop', raw: finding('chat') }
+
+  test.each([
+    ['fake first', [fakeWeb, realWeb]],
+    ['real first', [realWeb, fakeWeb]],
+  ])('a bug found on the fake and the real AI on the web is fixed from the real finding (%s)', async (_n, tickets) => {
+    await fileTickets(tickets)
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes).toHaveLength(1)
+    expect(plan.fixes[0]).toMatchObject({
+      charterDir: 'c3-models-providers-desktop',
+      real: true,
+      spec: join(outDir, 'c3-models-providers-desktop', 'repro', '1.spec.ts'),
+    })
+  })
+
+  test('a bug found on the fake AI on the web and the real AI on Android keeps the web task and checks Android', async () => {
+    const realAndroid = { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/1.yaml' }
+    await fileTickets([
+      fakeWeb,
+      { fp: 'fp-same', charterDir: 'c3-models-providers-android', raw: finding('chat', realAndroid) },
+    ])
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes.map((t) => [t.charterDir, t.real])).toEqual([['c2-chat-power-user-desktop', false]])
+    expect(plan.verifyNative.map((v) => [v.platform, v.session, v.unpatched])).toEqual([
+      ['android', 'c3-models-providers-android', true],
+    ])
+  })
+
+  test('a sync finding of the same bug still leads, so its refusal holds', async () => {
+    const sync = { fp: 'fp-same', charterDir: 'c7-two-devices-desktop', raw: finding('chat') }
+    await fileTickets([fakeWeb, realWeb, sync])
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes.map((t) => t.charterDir)).toEqual(['c7-two-devices-desktop'])
+  })
+
   test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
     const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
     const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const

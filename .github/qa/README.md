@@ -90,7 +90,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
-   wording; one without an element is refused. Its ticket names the element, carries `Human Required` and embeds
+   wording; one without an element or a function is refused. Its ticket names the element, carries `Human Required` and embeds
    the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas, one per
    fingerprint, and never a `visual` one, which has no spec to pass. The original spec

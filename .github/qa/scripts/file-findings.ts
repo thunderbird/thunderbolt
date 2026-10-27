@@ -367,8 +367,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const scored = verified.confirmed.flatMap((v) => {
     const f = findingSchema.parse(v.finding)
     const found = { v, f, fp: fingerprint(v.finding), sev: severity(f) }
-    if (f.oracle.type !== 'visual' || f.element) return [found]
-    const reason = 'visual finding without an element to deduplicate on'
+    if (f.oracle.type !== 'visual' || (f.element?.trim() && f.function?.trim())) return [found]
+    const reason = 'visual finding without an element and a function to deduplicate on'
     filed.push({ fp: found.fp, severity: found.sev, charterDir: v.charterDir, id: v.id, action: 'refused', reason })
     return []
   })

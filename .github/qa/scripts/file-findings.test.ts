@@ -448,11 +448,26 @@ describe('visual findings', () => {
     expect(uploads(api)).toEqual([])
   })
 
-  test('a visual finding without an element is refused', async () => {
-    await writeVerified([visualVerified({ element: undefined })])
-    expect(await run(fakeLinear().fetchFn)).toMatchObject([
-      { action: 'refused', reason: 'visual finding without an element to deduplicate on' },
+  test.each([
+    ['without an element', { element: undefined }],
+    ['with a blank element', { element: '  ' }],
+    ['without a function', { function: undefined }],
+    ['with an empty function', { function: '' }],
+    ['with a whitespace-only function', { function: '  ' }],
+  ])('a visual finding %s is refused', async (_name, fields) => {
+    await writeVerified([visualVerified(fields)])
+    const api = fakeLinear()
+    expect(await run(api.fetchFn, { live: true })).toMatchObject([
+      { action: 'refused', reason: 'visual finding without an element and a function to deduplicate on' },
     ])
+    expect(created(api)).toEqual([])
+  })
+
+  test('a visual finding with an element and a function is filed', async () => {
+    await writeVerified([visualVerified()])
+    const api = fakeLinear()
+    await run(api.fetchFn, { live: true })
+    expect(created(api)).toHaveLength(1)
   })
 })
 

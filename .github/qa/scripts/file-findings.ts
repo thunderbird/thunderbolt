@@ -99,9 +99,9 @@ type Existing = Issue & { completedAt: string | null; state: { type: string } }
 type Decision = { kind: 'new' } | { kind: 'suppressed' } | { kind: 'commented' | 'regression'; issue: Existing }
 /** What the ticket helpers shared with the fix step need. */
 export type LinearAuth = { fetchFn: typeof fetch; key: string }
-type Ctx = LinearAuth & { teamId: string; triageId: string; labels: Map<string, string> }
+type Ctx = LinearAuth & { teamId: string; backlogId: string; labels: Map<string, string> }
 
-/** Resolve team, Triage state and labels once, failing loudly on anything missing. */
+/** Resolve team, Backlog state and labels once, failing loudly on anything missing. */
 const setup = async (fetchFn: typeof fetch, key: string): Promise<Ctx> => {
   const { teams } = await linear<{ teams: { nodes: { id: string; name: string }[] } }>(
     fetchFn,
@@ -117,20 +117,20 @@ const setup = async (fetchFn: typeof fetch, key: string): Promise<Ctx> => {
     fetchFn,
     key,
     `query QaSetup($teamId: ID!, $names: [String!]!) {
-      workflowStates(first: 10, filter: { team: { id: { eq: $teamId } }, type: { eq: "triage" } }) { nodes { id } }
+      workflowStates(first: 10, filter: { team: { id: { eq: $teamId } }, type: { eq: "backlog" } }) { nodes { id } }
       issueLabels(first: 250, filter: { name: { in: $names } }) { nodes { id name team { id } } }
     }`,
     { teamId, names: requiredLabels },
   )
-  const triageId = data.workflowStates.nodes[0]?.id
-  if (!triageId) throw new Error('Thunderbolt team has no Triage workflow state; enable Triage in the team settings')
+  const backlogId = data.workflowStates.nodes[0]?.id
+  if (!backlogId) throw new Error('Thunderbolt team has no workflow state of type backlog to file new tickets in')
   const labels = new Map<string, string>()
   for (const label of data.issueLabels.nodes) {
     if (!label.team || label.team.id === teamId) labels.set(label.name, label.id)
   }
   const missing = requiredLabels.filter((name) => !labels.has(name))
   if (missing.length) throw new Error(`Missing Linear labels: ${missing.join(', ')}`)
-  return { fetchFn, key, teamId, triageId, labels }
+  return { fetchFn, key, teamId, backlogId, labels }
 }
 
 /** Dedupe by the `[qa:<fp>]` title tag, across open, completed, canceled and archived tickets. */
@@ -169,7 +169,7 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
     {
       input: {
         teamId: ctx.teamId,
-        stateId: ctx.triageId,
+        stateId: ctx.backlogId,
         labelIds: names.map((name) => labelId(ctx, name)),
         title,
         description,

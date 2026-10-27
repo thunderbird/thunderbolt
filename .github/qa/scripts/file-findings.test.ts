@@ -29,7 +29,8 @@ type Existing = { id: string; identifier: string; url: string; completedAt: stri
 type Handlers = {
   existing?: Record<string, Existing[]>
   labels?: string[]
-  triage?: boolean
+  /** The team's workflow states; the fake returns the ones whose type the query asks for. */
+  states?: { id: string; type: string }[]
   scorecard?: { labels: { nodes: { name: string }[] } }[]
 }
 
@@ -64,7 +65,11 @@ const fakeLinear = (handlers: Handlers = {}) => {
       if (op === 'QaSetup') {
         const names = handlers.labels ?? ['qa-agent', 'Bug', 'Security', 'Human Required']
         return {
-          workflowStates: { nodes: handlers.triage === false ? [] : [{ id: 'triage-id' }] },
+          workflowStates: {
+            nodes: (handlers.states ?? [{ id: 'backlog-id', type: 'backlog' }]).filter(
+              (state) => state.type === /workflowStates\([^)]*type: \{ eq: "(\w+)" \}/.exec(query)?.[1],
+            ),
+          },
           issueLabels: { nodes: names.map((name) => ({ id: `l-${name}`, name, team: null })) },
         }
       }
@@ -172,13 +177,13 @@ const run = (fetchFn: typeof fetch, extra: Partial<Parameters<typeof fileFinding
   fileFindings({ outDir, live: true, key: 'k', runUrl, sha: 'abc123', fetchFn, log: () => {}, now, ...extra })
 
 describe('dedupe', () => {
-  test('a new finding is created in Triage with labels, priority and no assignee', async () => {
+  test('a new finding is created in Backlog with labels, priority and no assignee', async () => {
     await writeVerified([{}])
     const api = fakeLinear()
     const [entry] = await run(api.fetchFn)
     expect(entry).toMatchObject({ action: 'created', identifier: 'THB-1', severity: 'Urgent' })
     const [input] = created(api)
-    expect(input).toMatchObject({ stateId: 'triage-id', labelIds: ['l-qa-agent', 'l-Bug'], priority: 1 })
+    expect(input).toMatchObject({ stateId: 'backlog-id', labelIds: ['l-qa-agent', 'l-Bug'], priority: 1 })
     expect(input.title).toBe(`Chat title disappears [qa:${fp({})}]`)
     expect(input).not.toHaveProperty('assigneeId')
     expect(input.description).toContain(runUrl)
@@ -525,9 +530,23 @@ describe('setup errors', () => {
     ).rejects.toThrow('Missing Linear labels: Security')
   })
 
-  test('no Triage state fails loudly', async () => {
+  test('a team without a Triage state still files, in its backlog state', async () => {
     await writeVerified([{}])
-    await expect(run(fakeLinear({ triage: false }).fetchFn)).rejects.toThrow('Triage')
+    const api = fakeLinear({
+      states: [
+        { id: 'started-id', type: 'started' },
+        { id: 'team-backlog-id', type: 'backlog' },
+      ],
+    })
+    await run(api.fetchFn)
+    expect(created(api)[0].stateId).toBe('team-backlog-id')
+  })
+
+  test('a team with no backlog state fails loudly', async () => {
+    await writeVerified([{}])
+    const api = fakeLinear({ states: [{ id: 'triage-id', type: 'triage' }] })
+    await expect(run(api.fetchFn)).rejects.toThrow('no workflow state of type backlog')
+    expect(created(api)).toHaveLength(0)
   })
 })
 

@@ -718,8 +718,8 @@ Do not add a `LINEAR_API_KEY` to the `qa-agent` environment: it would override t
 
 ### Linear labels
 
-`file` creates new tickets in the team's Backlog state (the workflow state of type `backlog`), with no type label, like
-any other untriaged issue. The team does not use Linear's Triage state, and the filer stops if it has no backlog state.
+`file` creates new tickets in the team's Backlog state (the workflow state of type `backlog`), labelled `qa-agent` and
+`Bug` (or `Security`). The team does not use Linear's Triage state, and the filer stops if it has no backlog state.
 
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 

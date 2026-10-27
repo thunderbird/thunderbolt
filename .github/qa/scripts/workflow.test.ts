@@ -237,6 +237,70 @@ describe('fix job', () => {
     expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'success' })).toBeUndefined()
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
   })
+
+  test('the visual check runs on the patched tree first, and the steps after the baseline see the patch', () => {
+    const at = (name: string) => indexOf('fix', name)
+    expect(at('Run the visual check on the patched tree')).toBeLessThan(at('Stop the stack'))
+    expect(at('Stop the stack')).toBeLessThan(at('Run the visual check without the patch'))
+    expect(at('Run the visual check without the patch')).toBeLessThan(
+      at('Build the patched frontend for the real-AI check'),
+    )
+    expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
+  })
+
+  // Runs the baseline step in a scratch repo whose stack.sh records the backend it would serve, with the agent's edits
+  // (`edits`) in the tree and a check that always fails, as it should without the patch.
+  const baseline = ({ edits = true, failStart = false, stashed = false } = {}) => {
+    const dir = mkdtempSync(join(work, 'baseline-'))
+    const bin = mkdtempSync(join(work, 'bin-'))
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-C', dir, ...args]).stdout.toString()
+    git('init', '-q')
+    mkdirSync(join(dir, 'backend'))
+    mkdirSync(join(dir, '.github/qa/scripts'), { recursive: true })
+    writeFileSync(join(dir, '.gitignore'), 'qa-out*/\nqa-dist*/\n')
+    writeFileSync(join(dir, 'backend/index.ts'), 'base')
+    const stack = `if [ "$1" = start ]; then mkdir -p qa-out; cat backend/index.ts > qa-out/served; exit ${failStart ? 1 : 0}; fi\n`
+    writeFileSync(join(dir, '.github/qa/scripts/stack.sh'), stack, { mode: 0o755 })
+    git('add', '-A')
+    git('commit', '-q', '-m', 'base')
+    if (stashed) {
+      writeFileSync(join(dir, 'backend/index.ts'), 'older')
+      git('stash', 'push', '--quiet')
+    }
+    if (edits) {
+      writeFileSync(join(dir, 'backend/index.ts'), 'patched')
+      writeFileSync(join(dir, 'backend/new.ts'), 'new')
+    }
+    writeFileSync(join(bin, 'bunx'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
+      cwd: dir,
+      env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', WITH: '3', HOME: dir },
+    })
+    const read = (path: string) => (existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : undefined)
+    return { code: proc.exitCode, read, stashes: git('stash', 'list').trim().split('\n').filter(Boolean).length }
+  }
+
+  test('the baseline serves the backend without the patch, then puts the patch back', () => {
+    const { code, read, stashes } = baseline()
+    expect(code).toBe(0)
+    expect(read('qa-out/served')).toBe('base')
+    expect(read('backend/index.ts')).toBe('patched')
+    expect(read('backend/new.ts')).toBe('new')
+    expect(stashes).toBe(0)
+    expect(JSON.parse(read('qa-out/fix/fp1.verify.json') ?? '{}')).toEqual({ failsWithout: true, passesWith: true })
+  })
+
+  test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
+    const failed = baseline({ failStart: true })
+    expect(failed.code).not.toBe(0)
+    expect(failed.read('backend/index.ts')).toBe('patched')
+    expect(failed.read('backend/new.ts')).toBe('new')
+    const untouched = baseline({ edits: false, stashed: true })
+    expect(untouched.code).toBe(0)
+    expect(untouched.read('backend/index.ts')).toBe('base')
+    expect(untouched.stashes).toBe(1)
+  })
 })
 
 describe('publish', () => {

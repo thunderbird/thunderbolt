@@ -1229,6 +1229,13 @@ jobs:
         run: |
           mkdir -p qa-out/fix
           rm -f "qa-out/fix/$QA_FP.verify.json"
+          # The backend serves from the working tree, so the patch is stashed for these runs (qa-out*/ and qa-dist*/
+          # are ignored and stay). The trap puts it back for "Collect the patch", also after a failed run, and pops
+          # only an entry this step created, since an agent that edited nothing leaves none.
+          stash=$(git rev-parse --quiet --verify refs/stash || true)
+          trap '[ "$(git rev-parse --quiet --verify refs/stash || true)" = "$stash" ] || git stash pop --quiet' EXIT
+          # A stash is a commit, and the runner has no git identity.
+          git -c user.name=qa -c user.email=qa@localhost stash push --include-untracked --quiet
           .github/qa/scripts/stack.sh start qa-dist qa-dist-onboarding
           passed=0
           for _ in 1 2 3; do

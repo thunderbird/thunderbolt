@@ -218,8 +218,8 @@ install_app() {
   fi
   adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
-  # When adb's connection to the device resets, the mappings drop: the backend then gets no request and the
-  # WebView log stream ends.
+  # When adb's connection to the device resets, the mappings drop, and the backend can then get no request and the
+  # WebView log stream can end.
   reverse_ports "$device"
   # A fresh install's first opens can time out on the IndexedDB check and stop the init (sometimes
   # several in a row), so the app is opened until a launch gets past it.

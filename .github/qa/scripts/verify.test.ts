@@ -1378,7 +1378,7 @@ describe('replay of native flows', () => {
   const outOfTime = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
 
   test('a leg stops starting runs before its timeout, keeping time for later findings, and says why', async () => {
-    // 18 inconclusive iOS runs of about 3.5 minutes each run the leg into its 90-minute timeout.
+    // 18 inconclusive iOS runs of about 3.5 minutes each carry the leg into its 90-minute timeout.
     // The job started at minute 0 and its setup took 10 minutes, longer on Android than on iOS.
     const minutes = 8
     const clock = { now: 10 * 60_000 }
@@ -1425,7 +1425,7 @@ describe('replay of native flows', () => {
       ['d-picker', [350, 291, 266]],
     ])
     const clock = { now: 381_000 }
-    // c-name's first run stopped before the name field, as in that run.
+    // c-name's first run stops before the name field.
     const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     for (const title of [...seconds.keys()].slice(1)) await writeNative(makeNative(title, layout))

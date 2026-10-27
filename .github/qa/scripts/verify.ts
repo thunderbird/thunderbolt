@@ -471,7 +471,7 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
 
 /**
  * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
- * typing the code, as iOS flows often do. `signIn` is then `control/sign-in.yaml` and a wait for
+ * typing the code, as an iOS flow can do. `signIn` is then `control/sign-in.yaml` and a wait for
  * that screen, and the flow goes on from its own wait, its partial sign-in before it left out. The two run one after
  * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
  * the sign-in screen among them, runs as written. A c1 flow that expects onboarding past the privacy step has the

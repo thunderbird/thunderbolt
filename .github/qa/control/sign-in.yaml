@@ -1,5 +1,5 @@
 # The harness's sign-in, which `verify.ts` runs before a native repro flow that never types the code but waits for
-# the first screen after sign-in (the model's iOS flows often skip typing it). It adds that wait itself: "Welcome to
+# the first screen after sign-in (the model's iOS flows can skip typing it). It adds that wait itself: "Welcome to
 # Thunderbolt!" on the onboarding build, "Ask me anything…" on the plain one. The same steps as control/stack.yaml,
 # and the block drivers/maestro.md gives the model.
 - launchApp

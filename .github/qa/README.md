@@ -581,7 +581,7 @@ Traps, each of which has cost a run:
   storage check line when none does. Sessions, the control and every replay run start on a warm app, and a bad
   emulator fails at the install instead of later as `stack unhealthy`.
 - adb drops its `adb reverse` mappings when its connection to the emulator resets. After such a reset the backend
-  gets no request and the WebView stream stops with it, so the app's requests fail
+  can get no request and the WebView stream can stop with it, so the app's requests fail
   ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
   app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
   still holds its first runs.
@@ -899,7 +899,7 @@ Never run on GitHub (only locally, or read in the action's code):
   `replay-native` leg under the `QA_LEG_START` clock (an iOS replay without it hit the timeout);
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
-- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. The same copy proved the fix job's dev
+- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the fix job's dev
   stack as `qa-dev`: its start, the `ss` port check, the lock and the stop through the same rule.
 
 Also:

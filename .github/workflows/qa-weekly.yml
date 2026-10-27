@@ -114,7 +114,7 @@ jobs:
       - &install-browsers
         name: Install browsers
         timeout-minutes: 10
-        # Two installs: the repo's Playwright replays specs, the MCP (pinned in .github/qa/mcp.json) has its own Chromium.
+        # Two installs: the repo's Playwright replays specs, the MCP (pinned in mcp.json) has its own Chromium.
         run: |
           bunx playwright install chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
@@ -400,9 +400,11 @@ jobs:
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
-          # The explorer's Write tool reaches its out dir, so these files are removed and written here only.
+          # The explorer's Write tool reaches its out dir, so these files are removed and written here only. The mcp/
+          # files it can also write still reach later steps; the console logs are unguarded: worst case, a forged
+          # probe line reads as "measured".
           rm -f "$dir/execution.json" "$dir/timed-out" "$dir/transcript.json"
-          # The full execution file also holds the prompt and everything the model wrote.
+          # Counters and capped tool calls only: the full execution file holds the prompt and all the model wrote.
           if [ -f "$EXECUTION_FILE" ]; then
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
               "$EXECUTION_FILE" > "$dir/execution.json"
@@ -412,7 +414,8 @@ jobs:
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
 
       # Artifacts are public and GitHub masks secrets in logs only, so a held key in the session output blocks the
-      # upload. Exact values: a token-shaped pattern would also match a made-up key typed into a form.
+      # upload. Exact values: a token-shaped pattern would also match a made-up key typed into a form. It runs after
+      # the session and the stack end, so no untrusted process is left to read its keys.
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -562,7 +565,8 @@ jobs:
           unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
           if [ "$QA_PLATFORM" = android ]; then
-            # The emulator needs KVM and libpulse (qemu links it even with -no-audio); the scrubbed claude needs bubblewrap.
+            # The emulator needs KVM and libpulse (qemu links it even with -no-audio); the scrubbed claude needs
+            # bubblewrap.
             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
               sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
             sudo udevadm control --reload-rules
@@ -669,7 +673,8 @@ jobs:
         if: always()
         run: shasum -a 256 --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # Clears startup and preload variables and calls tools by absolute path: GitHub still prepends $GITHUB_PATH.
+      # The browser's file writes are no promised boundary, so this key-holding step clears startup variables and uses
+      # absolute paths (GitHub still prepends $GITHUB_PATH).
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -742,7 +747,8 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.verify != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another user's backend.
+    # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another
+    # user's backend.
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read
@@ -1317,7 +1323,8 @@ jobs:
           path: qa-out/fix-*/session.json
           retention-days: 7
 
-  # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run.
+  # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run, on a fresh
+  # checkout the patch never ran in.
   verify-native-build:
     name: verify-native-build ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, file, fix]
@@ -1543,7 +1550,7 @@ jobs:
           pattern: qa-verify-${{ matrix.task.fp }}-*
           path: qa-out/verify
           merge-multiple: true
-      # checkPatch does not read these results, so a missing verdict is a failure here.
+      # checkPatch does not read these, so this step requires them; a missing verdict fails.
       - name: Require the native and real-AI checks
         env:
           REAL: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
@@ -1596,8 +1603,8 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
-  # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get and
-  # writes nothing.
+  # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get, which
+  # fails if the app lacks a requested permission, and writes nothing.
   app-check:
     if: github.event_name == 'workflow_dispatch' && inputs.app_check
     runs-on: ubuntu-latest
@@ -1668,7 +1675,7 @@ jobs:
           NATIVE_LEGS: ${{ needs.explore-native.result != 'skipped' && needs.build.outputs.nativeLegs || '[]' }}
           CANARIES: ${{ needs.build.outputs.canaries }}
         run: |
-          # A leg without a result message (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
+          # A leg without a result message (a crash, a tripwire, a timeout) still gets a session, marked error/timeout.
           jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS $NATIVE_LEGS" | while read -r out charter; do
             timed_out=()
             if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi

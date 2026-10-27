@@ -8,8 +8,9 @@ import { expect, type Page } from '@playwright/test'
 const e2eSignInCode = '12345678'
 
 /**
- * The backend refuses a second code for the same email within `defaultCooldownMs` (waitlist/routes.ts); `wait` sleeps
- * out what remains for an address this process already asked. Tests inject `now` and `sleep`.
+ * The backend refuses a second code for the same email within `defaultCooldownMs` (15 s, waitlist/routes.ts; 15_250
+ * adds a margin); `wait` sleeps out what remains for an address this process already asked. Tests inject `now` and
+ * `sleep`.
  */
 export const createOtpCooldown = (
   now = Date.now,

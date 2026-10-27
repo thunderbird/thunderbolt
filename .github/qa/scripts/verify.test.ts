@@ -15,6 +15,7 @@ import { measureNative, parseInspectScreen } from '../native-layout'
 import {
   judge,
   legStartOf,
+  nativeJobMinutes,
   nativeReplayCap,
   oracleOf,
   replay,
@@ -1372,6 +1373,10 @@ describe('replay of native flows', () => {
     ])
   })
 
+  /** A leg start that puts the job's timeout at minute 90, as in the runs these tests replay. */
+  const ninetyMinuteLeg = (90 - nativeJobMinutes) * 60_000
+  const outOfTime = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
+
   test('a leg stops starting runs before its timeout, keeping time for later findings, and says why', async () => {
     // Run 39391108579: 18 inconclusive iOS runs of about 3.5 minutes each ran the leg into its 90-minute timeout.
     // The job started at minute 0 and its setup took 10 minutes, longer on Android than on iOS.
@@ -1393,14 +1398,14 @@ describe('replay of native flows', () => {
       return { passed: true, layout: [], logs: [], ...answers.get(title) }
     }
 
-    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, 0)
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
 
-    // Runs end by minute 88, 2 minutes before the job's timeout. a-stuck gets no extra run, since b-bug and c-late are
-    // owed theirs. c-late's first run would end at minute 90: counted from the replay step, it would have started.
+    // Runs end by minute 85: 2 minutes before the job's timeout for the wrap-up, and 3 for a driver retry. a-stuck
+    // gets no extra run, since b-bug and c-late are owed theirs. c-late's first run would end at minute 90: counted
+    // from the replay step, it would have started.
     expect(calls).toEqual([...Array(3).fill('stack control'), ...Array(3).fill('a-stuck'), ...Array(3).fill('b-bug')])
     expect(clock.now).toBe(82 * 60_000)
     expect(titles(result.confirmed)).toEqual(['b-bug'])
-    const outOfTime = "out of time: another run might not end before the leg's 90-minute timeout"
     expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
       ['a-stuck', { failed: 0, runs: 0, inconclusive: 3, reason: outOfTime }],
       ['c-late', { failed: 0, runs: 0, reason: outOfTime }],
@@ -1410,7 +1415,8 @@ describe('replay of native flows', () => {
   test("the leg's cold first run does not size the rest, so a bug that fails every run still gets its 3", async () => {
     // Run 40534656266 on iOS, in seconds: the replay step started 381 s into the job, and the first control run
     // started Maestro's driver and the app on a cold simulator. Sized on that run, c-name's extra run was refused
-    // at 56 min 49 s, and the job ended 17 minutes before its timeout.
+    // at 56 min 49 s, and the job ended 17 minutes before its timeout. Sized on the warm runs, 4 more runs of 280 s
+    // and a driver retry's 180 s fit the 1871 s left.
     const seconds = new Map([
       ['stack control', [539, 277, 280]],
       ['a-code', [274, 241, 190]],
@@ -1432,7 +1438,7 @@ describe('replay of native flows', () => {
       return { passed: true, layout: [], logs: [], ...(title === 'c-name' && first ? early : seen) }
     }
 
-    const result = await replay(outDir, fakeRunner({}, []), qaDir, timed, () => clock.now, 0)
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, timed, () => clock.now, ninetyMinuteLeg)
 
     expect(result.flaky).toEqual([])
     expect(result.confirmed.map(({ id, replay }) => [id, replay.runs, replay.inconclusive ?? 0])).toEqual([
@@ -1442,6 +1448,27 @@ describe('replay of native flows', () => {
       ['d-picker', 3, 0],
     ])
     expect(clock.now).toBe(4_511_000)
+  })
+
+  test("a slow warm control run still sizes the leg, and a driver retry's wait stays free", async () => {
+    // The leg's timeout at 5400 s, its wrap-up from 5280 s. After the control, 700 s are left: a 600 s run would end
+    // in time only by eating the 180 s a retried driver start may take.
+    const seconds = [100, 600, 100]
+    const clock = { now: 3_780_000 }
+    await writeNative(makeNative('late', layout))
+    const calls: string[] = []
+    const timed: RunFlow = async (yaml) => {
+      calls.push(/assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? '')
+      clock.now += (seconds.shift() ?? 0) * 1000
+      return { passed: true, layout: [nameLine], logs: [] }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, timed, () => clock.now, ninetyMinuteLeg)
+
+    expect(calls).toEqual(Array(3).fill('stack control'))
+    expect(result.flaky.map(({ id, replay }) => [id, replay])).toEqual([
+      ['late', { failed: 0, runs: 0, reason: outOfTime }],
+    ])
   })
 
   test('the leg starts when the command does unless the job recorded its start, and a bad start is refused', () => {

@@ -27,7 +27,7 @@ import {
   type FindingFile,
   type RejectedFile,
 } from './findings'
-import { checkMaestroFlow, flowVars } from './maestro-flow'
+import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
 import { createRunFlow } from './replay-native'
 import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
@@ -126,16 +126,19 @@ const judgeMaxTokens = 4096
 // The aggregate caps, per replay leg and per judge leg; the README explains how to calibrate them.
 const replayCap = 20
 /** replay-native's `timeout-minutes`: a native leg starts no run that might end after it. */
-export const nativeJobMinutes = 90
+export const nativeJobMinutes = 130
 /**
- * Run 39380764343: about 2.6 minutes a run on iOS, and 5 min 42 s for the steps around the replay step. Only the
- * cap's sizing uses the setup; `legClock` counts the real one from `QA_LEG_START`.
+ * Run 40534656266 on iOS: 4.04 minutes on average for the 14 runs after the leg's cold first one, and 6 min 21 s
+ * before the replay step. Only the cap's sizing uses these; `legClock` times the real runs from `QA_LEG_START`.
  */
-export const nativeRunMinutes = 2.6
-export const nativeSetupMinutes = 6
-/** Kept for the steps after the replay: the sanitize and the 169 MB upload took 20 s in run 39380764343. */
+export const nativeRunMinutes = 4.1
+export const nativeSetupMinutes = 6.5
+/** Kept for the steps after the replay: the sanitize and the 220 MB upload took 56 s in run 40534656266. */
 export const nativeWrapUpMinutes = 2
-// (3 control + 4 × 6 runs) × 2.6 min + 6 min setup + 2 min wrap-up = 78 min, inside nativeJobMinutes.
+/** Kept free at the end of a leg's time: on iOS a run whose driver did not start waits this long, then runs again. */
+export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
+// (3 control + 4 × 6 runs) × 4.1 min + 6.5 setup + 2 wrap-up + 3 driver = 122 min, and the cold first run's extra
+// 5 minutes, inside nativeJobMinutes.
 export const nativeReplayCap = 4
 const judgeCap = 15
 const judgeCeilingUsd = 2
@@ -558,10 +561,12 @@ const flowFailure = (oracle: FindingFile['finding']['oracle'], run: FlowRun) => 
  * `nativeJobMinutes` run out, counted from `legStart` (the job's first step, so the setup is counted as it ran),
  * taking a run to last as long as the longest one `time` has seen after the leg's first, and at least
  * `nativeRunMinutes`. The first run is a control run, and the control's other runs are timed before any finding's.
+ * It also keeps `nativeDriverStartupMinutes` free, so one run that waits for its driver and runs again still ends
+ * in time. Only iOS retries, but an Android leg keeps the same margin rather than the clock knowing the platform.
  */
 const legClock = (now: () => number, legStart: number) => {
   const minute = 60_000
-  const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes) * minute
+  const end = legStart + (nativeJobMinutes - nativeWrapUpMinutes - nativeDriverStartupMinutes) * minute
   const state = { longest: nativeRunMinutes * minute, warm: false }
   return {
     fits: (runs: number) => now() + state.longest * runs <= end,

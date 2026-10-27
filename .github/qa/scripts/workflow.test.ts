@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   extraRuns,
+  nativeDriverStartupMinutes,
   nativeJobMinutes,
   nativeReplayCap,
   nativeRunMinutes,
@@ -357,7 +358,8 @@ describe('publish', () => {
 
 test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
   const runs = 3 + nativeReplayCap * (3 + extraRuns)
-  expect(runs * nativeRunMinutes + nativeSetupMinutes + nativeWrapUpMinutes).toBeLessThan(nativeJobMinutes)
+  const minutes = runs * nativeRunMinutes + nativeSetupMinutes + nativeWrapUpMinutes + nativeDriverStartupMinutes
+  expect(minutes).toBeLessThan(nativeJobMinutes)
   // verify.ts stops starting runs by this number, so it must be the job's own.
   expect(jobs['replay-native']['timeout-minutes']).toBe(nativeJobMinutes)
   // ...counted from the job's first step, so the setup before the replay step is on the clock.

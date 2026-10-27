@@ -235,19 +235,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    into the part whose failure confirms the bug. A `layout` flow whose last command is `assertVisible`
    or `assertNotVisible` is dropped at the lint gate: it would fail on every run without the line, so each of those
    runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
-   time: a run starts only if it can end 2 minutes (for the sanitize and the upload) before replay-native's 90
-   minutes, counted from `QA_LEG_START`, which the job's first step records, so the setup is counted as it ran. A run
-   is taken to last as long as the slowest so far (at least 2.6 minutes), leaving out the leg's first run: it starts
-   Maestro's driver and the app on a cold device, and took about 8.5 minutes on iOS in run 40534656266 against 3 to
-   6 for each run after it. The control's other two runs are timed before any finding's. An extra run must also
-   leave room for the 3 runs each later finding is owed. A finding left with fewer than 3 counted runs is flaky, and
-   `replay.reason` says why. A flow that waits for the first screen after sign-in (`Welcome to Thunderbolt!` on the
-   c1 build, `Ask me anything…` otherwise; three dots count as the ellipsis) but never types the code `12345678` is
-   signed in by the harness. `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`,
-   in the same launch, and the flow then goes on from its own wait. A run whose sign-in failed never runs the flow
-   and is inconclusive, whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the
-   code, and every run was inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs
-   as written. `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
+   time: a run starts only if it can end 5 minutes before replay-native's 130 minutes (2 for the sanitize and the
+   upload, 3 for an iOS run whose driver does not start in time and runs again), counted from `QA_LEG_START`, which
+   the job's first step records, so the setup is counted as it ran. A run is taken to last as long as the slowest so
+   far (at least 4.1 minutes), leaving out the leg's first run: it starts Maestro's driver and the app on a cold
+   device, and took about 8.5 minutes on iOS in run 40534656266 against 3 to 6 for each run after it. The control's
+   other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
+   is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
+   for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me anything…` otherwise; three
+   dots count as the ellipsis) but never types the code `12345678` is signed in by the harness.
+   `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same launch, and
+   the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is inconclusive,
+   whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and every run was
+   inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as written.
+   `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
    A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
    sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
    text (for a stopping layout flow, the quoted element) does not.
@@ -606,12 +607,13 @@ Android on `ubuntu-latest` with KVM.
   both builds, the device, the stack (`android-sync` serves the web build with Postgres, PowerSync and Playwright's
   Chromium for c7's specs; `android-real` the real providers), the console stream, then `verify.ts replay --native`
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
-  2.6 minutes on iOS (run 39380764343), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
-  3 runs and up to 6 runs per finding, plus setup, fit the 90-minute job, whose timeout would lose every finding.
-  Runs can be slower than that (about 3.5 minutes in run 39391108579), and Android's setup is longer than iOS's, so
-  the job's first step records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the
-  replay step above. When the replay fails, the job uploads the stack's and the
-  WebView's logs as `qa-logs-replay-<leg>`, except on `android-real`, whose backend held the provider keys.
+  4 minutes on iOS (run 40534656266), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
+  3 runs and up to 6 runs per finding, plus setup, wrap-up and one driver retry, take about 122 minutes and fit the
+  130-minute job, whose timeout would lose every finding. Every native leg shares that timeout, and the job ends
+  when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
+  records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
+  When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`, except on
+  `android-real`, whose backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.
 - **verify-native-build** and **verify-native-run** check a native fix (see "Trust zones"). With no patched app,

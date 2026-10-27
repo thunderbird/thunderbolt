@@ -411,9 +411,9 @@ const reviewNotice =
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
  * task the check the fix agent wrote. A native task adds none, neither does a task from the onboarding session,
- * since `e2e/` does not serve that build, nor a real-AI task, since its repro needs providers `e2e/` does not run. The repo is public and a security fix's PR shows up before the fix ships, so
- * that PR names only the ticket, never says "security", and adds no spec: a person adds the spec in a separate commit
- * after the merge.
+ * since `e2e/` does not serve that build, nor a real-AI task, since its repro needs providers `e2e/` does not run.
+ * The repo is public and a security fix's PR shows up before the fix ships, so that PR names only the ticket, never
+ * says "security", and adds no spec: a person adds the spec in a separate commit after the merge.
  */
 const draftOf = async (outDir: string, task: FixTask) => {
   const ticket = task.identifier ?? 'its Linear ticket'

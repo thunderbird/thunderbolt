@@ -288,9 +288,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Without the patch, a run that never reached the bug, by replay's rules, is run again and never counts as showing
    it. With `unpatched` (a visual check, or an
    Android real-AI task, which the keyless run can only check on the fake AI) the flow also runs on the build without
-   the patch and must fail there every time. A native fix PR adds no regression spec, and neither does a fix PR from
-   a c1 session, because the root `playwright.config.ts` does not serve the onboarding build, nor a real-AI web fix PR,
-   because that config runs the consumer project on the fake provider. `publish` needs
+   the patch and must fail there every time. A native fix PR adds no regression spec. Neither does a fix PR from
+   a c1 session, because the root `playwright.config.ts` does not serve the onboarding build. Neither does a real-AI
+   web fix PR, because that config runs the consumer project on the fake provider. `publish` needs
    `passed: true` from every platform in `verifyNative` for the fingerprint, web tasks included, and from
    `verify-real` for a real-AI web task. Only then does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the
    diagnosis (for a native platform, "the flow still fails on the native platform") and the ticket gets

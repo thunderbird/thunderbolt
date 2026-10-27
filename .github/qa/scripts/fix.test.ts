@@ -1138,8 +1138,6 @@ describe('publish', () => {
 
   test('a real-AI web fix PR adds no regression spec, since e2e/ runs the consumer project on the fake provider', async () => {
     await setup({ real: true, charterDir: 'c3-models-providers-desktop' })
-    await put(specPath(), spec)
-    await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
 
     const { repoDir, runs, result } = await publishLive()
 

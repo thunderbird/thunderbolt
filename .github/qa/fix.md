@@ -41,7 +41,8 @@ defect is a layout problem, or another assertion on the DOM. It follows the rule
 `bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-<fp>/repro/check.spec.ts` and see it fail. Only
 then fix the bug, and run it again to see it pass. The workflow runs your check on the code without your patch and
 with it. The patch is published only when the check fails without it and passes with it, and the check becomes the
-PR's regression test, except in a c1 task, whose check runs on the onboarding build that `e2e/` does not serve, and in a real-AI task, whose repro needs the real providers that `e2e/` does not run.
+PR's regression test, except in a c1 task, whose check runs on the onboarding build that `e2e/` does not serve,
+and in a real-AI task, whose repro needs the real providers that `e2e/` does not run.
 
 If you cannot write a check that fails because of the defect, change no code and write a diagnosis instead.
 
@@ -76,7 +77,7 @@ the fake AI, like every other task. Fix the app code the finding points to. On t
 spec again later on the real providers. A web visual task has no repro spec to run there, so its patch is never
 published and a person takes the ticket. A native (Android) task is checked with no key, so on the fake AI: its flow
 must fail on the app without your patch and pass with it, or a person takes the ticket. Your PR adds no regression
-spec for a real-AI task; the repro stays in the ticket.
+spec for a real-AI task. The ticket keeps the repro spec.
 
 ## A sync task
 

@@ -576,9 +576,14 @@ jobs:
         name: Install Maestro and the device
         if: env.QA_NO_DEVICE != 'true'
         run: |
-          # The official installer pins the version the gate's allow list was measured on, on both platforms.
-          curl -fsSL https://get.maestro.mobile.dev | MAESTRO_VERSION=2.11.0 bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          # The release the gate's allow list was measured on, on both platforms, checked before anything in it runs.
+          # shasum, not sha256sum, because this step also runs on macOS.
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
+            https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.11.0/maestro.zip
+          echo "5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a  $RUNNER_TEMP/maestro.zip" |
+            shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
           if [ "$QA_PLATFORM" = android ]; then
             # The emulator needs KVM, and its qemu links libpulse even with -no-audio. The scrubbed claude needs
             # bubblewrap on Linux, as in install-sandbox.

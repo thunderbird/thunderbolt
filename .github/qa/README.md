@@ -55,8 +55,9 @@ The fix agent's commands run in the fix job's checkout, so after the session not
 provider key. Zone E keeps the patch away from every key. `verify-native-build` applies the patch and builds the app
 with no secret, and uploads only the app. `verify-native-run` installs that app from a fresh checkout and writes the
 verdict there. A real-AI web fix is checked in `verify-real`: a fresh checkout starts the real-AI stack as in the
-`real` replay leg and serves the patched frontend, which the fix job built. The backend there is the one from before
-the patch, so a fix that needs backend code fails this check and goes to a person. `publish` reads one verdict per
+`real` replay leg and serves the patched frontend, which the fix job built. Both jobs run the backend from before the
+patch, so `publish` refuses a patch that touches `backend/` or `shared/` when either job checks the bug, and the
+ticket goes to a person. `publish` reads one verdict per
 native platform of the bug and the real-AI verdict, and a missing verdict counts as a failure. The verdicts keep
 keys away from the patch; they are not proof against a patch built to cheat. The patched build in
 `verify-native-build` runs with sudo, and on iOS the patched app is a process of the job's user, so either could
@@ -949,7 +950,7 @@ Also:
   probe's 500 ms on the slow emulator fits, but no run shows it, so no probe rule was added. Run the sweep on an
   emulator (a keyless GitHub run), fix or exclude what it finds with a fixture, then remove the refusal.
 - The canaries are web only; `native_control` plays their part on the native apps, and only when a dispatch asks.
-- A real-AI web fix that needs backend code cannot pass `verify-real`, whose backend comes from before the patch, so
-  it goes to a person. An Android real-AI fix is checked only on the fake AI.
+- A fix that touches `backend/` or `shared/` goes to a person when `verify-real` or `verify-native-run` checks it,
+  since both run the backend from before the patch. An Android real-AI fix is checked only on the fake AI.
 - Google is covered only through the fake Google, by the free session's `calendar-planner` and `inbox-triager`
   cases. Real Google and Microsoft accounts stay out of scope, and Microsoft has no fake yet.

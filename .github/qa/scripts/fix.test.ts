@@ -8,7 +8,17 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Filed } from './file-findings'
 import type { Area, RawFinding, Severity } from './findings'
-import { checkPatch, type FixPlan, type FixTask, isDenied, publish, regressionSpec, route, type Run } from './fix'
+import {
+  checkPatch,
+  type FixPlan,
+  type FixTask,
+  isDenied,
+  type NativeCheck,
+  publish,
+  regressionSpec,
+  route,
+  type Run,
+} from './fix'
 import type { Verified, VerifiedFinding } from './verify'
 
 const spec = `import { expect, test } from '@playwright/test'
@@ -536,13 +546,13 @@ describe('checkPatch', () => {
 
   test('accepts a patch that only fixes app code, without touching the checkout', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n'))
-    expect(await checkPatch(git, outDir, task())).toEqual({ reasons: [], files: ['src/chat.ts'] })
+    expect(await checkPatch(git, outDir, task(), [])).toEqual({ reasons: [], files: ['src/chat.ts'] })
     expect(await git(['git', 'status', '--porcelain'])).toBe('')
   })
 
   test('rejects an empty patch', async () => {
     await put(join(outDir, 'fix', `${fp}.patch`), '\n')
-    expect(await checkPatch(git, outDir, task())).toEqual({ reasons: ['empty patch'], files: [] })
+    expect(await checkPatch(git, outDir, task(), [])).toEqual({ reasons: ['empty patch'], files: [] })
   })
 
   test('rejects a patch that adds a symlink or a submodule, even under an allowed path', async () => {
@@ -565,7 +575,7 @@ describe('checkPatch', () => {
         'v',
       ])
     })
-    const { reasons, files } = await checkPatch(git, outDir, task())
+    const { reasons, files } = await checkPatch(git, outDir, task(), [])
     expect(files.sort()).toEqual(['src/link', 'src/vendor'])
     expect(reasons.sort()).toEqual([
       'adds or changes a symlink or submodule: src/link',
@@ -581,14 +591,14 @@ describe('checkPatch', () => {
       await rm(join(repo, 'src', 'alias.ts'))
       await writeFile(join(repo, 'src', 'alias.ts'), 'export const alias = 1\n')
     })
-    expect((await checkPatch(git, outDir, task())).reasons).toEqual([
+    expect((await checkPatch(git, outDir, task(), [])).reasons).toEqual([
       'adds or changes a symlink or submodule: src/alias.ts',
     ])
   })
 
   test('rejects a patch that matches a secret pattern', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), "export const token = 'ghs_abc123'\n"))
-    expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the patch matches a secret pattern'])
+    expect((await checkPatch(git, outDir, task(), [])).reasons).toEqual(['the patch matches a secret pattern'])
   })
 
   test('accepts a patch to app code a person must review: Tauri, migrations, auth, sync', async () => {
@@ -597,7 +607,7 @@ describe('checkPatch', () => {
       for (const path of paths) await put(join(repo, path), 'changed\n')
       await writeFile(join(repo, 'shared', 'powersync-tables.ts'), 'export const tables = [1]\n')
     })
-    const { reasons, files } = await checkPatch(git, outDir, task())
+    const { reasons, files } = await checkPatch(git, outDir, task(), [])
     expect(reasons).toEqual([])
     expect(files.sort()).toEqual([...paths, 'shared/powersync-tables.ts'].sort())
   })
@@ -613,7 +623,7 @@ describe('checkPatch', () => {
       for (const path of paths) await put(join(repo, path), 'changed\n')
       await writeFile(join(repo, 'package.json'), '{ "dependencies": { "x": "1" } }\n')
     })
-    const { reasons } = await checkPatch(git, outDir, task())
+    const { reasons } = await checkPatch(git, outDir, task(), [])
     expect(reasons.sort()).toEqual([...paths, 'package.json'].map((path) => `touches ${path}`).sort())
   })
 
@@ -622,7 +632,7 @@ describe('checkPatch', () => {
       await fixed()
       await git(['git', 'mv', 'package.json', 'src/package-copy.json'])
     })
-    const { reasons, files } = await checkPatch(git, outDir, task())
+    const { reasons, files } = await checkPatch(git, outDir, task(), [])
     expect(files.sort()).toEqual(['package.json', 'src/chat.ts', 'src/package-copy.json'])
     expect(reasons).toEqual(['touches package.json'])
   })
@@ -633,7 +643,7 @@ describe('checkPatch', () => {
       await mkdir(join(repo, '.github'))
       await git(['git', 'mv', 'src/chat.ts', '.github/chat.ts'])
     })
-    const { reasons, files } = await checkPatch(git, outDir, task())
+    const { reasons, files } = await checkPatch(git, outDir, task(), [])
     expect(files.sort()).toEqual(['.github/chat.ts', 'package.json', 'src/chat.ts'])
     expect(reasons.sort()).toEqual(['touches .github/chat.ts', 'touches package.json'])
   })
@@ -650,16 +660,16 @@ describe('checkPatch', () => {
       await patchFrom(fixed)
       await put(check(), spec)
       await verify(passed)
-      expect(await checkPatch(git, outDir, visualTask())).toEqual({ reasons: [], files: ['src/chat.ts'] })
+      expect(await checkPatch(git, outDir, visualTask(), [])).toEqual({ reasons: [], files: ['src/chat.ts'] })
     })
 
     test('is rejected without a check, and with a check that fails the lint', async () => {
       await patchFrom(fixed)
       await verify(passed)
-      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual(['the visual check is missing'])
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), `${spec}process.exit(0)\n`)
-      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
         'visual check: line 8: "process" is not allowed',
       ])
     })
@@ -676,7 +686,7 @@ describe('checkPatch', () => {
       await patchFrom(fixed)
       await put(check(), spec)
       if (result) await verify(result)
-      expect((await checkPatch(git, outDir, visualTask())).reasons).toEqual([reason])
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([reason])
     })
   })
 
@@ -707,13 +717,13 @@ describe('checkPatch', () => {
 
     test('accepts a patch to src-tauri/ with the flow unedited', async () => {
       await patchFrom(() => put(join(repo, 'src-tauri', 'src', 'lib.rs'), 'fn main() {}\n'))
-      expect(await checkPatch(git, outDir, native())).toEqual({ reasons: [], files: ['src-tauri/src/lib.rs'] })
+      expect(await checkPatch(git, outDir, native(), [])).toEqual({ reasons: [], files: ['src-tauri/src/lib.rs'] })
     })
 
     test('rejects an edited repro flow', async () => {
       await patchFrom(fixed)
       await put(join(outDir, 'fix', `${fp}.yaml`), flow.replace('Renamed', 'Anything'))
-      expect((await checkPatch(git, outDir, native())).reasons).toEqual(['the repro flow was edited'])
+      expect((await checkPatch(git, outDir, native(), [])).reasons).toEqual(['the repro flow was edited'])
     })
 
     test('rejects a repro flow outside the Maestro allow list', async () => {
@@ -721,7 +731,7 @@ describe('checkPatch', () => {
       const evil = '- runScript: evil.js\n'
       await put(reproFlow(), evil)
       await put(join(outDir, 'fix', `${fp}.yaml`), evil)
-      const { reasons } = await checkPatch(git, outDir, native())
+      const { reasons } = await checkPatch(git, outDir, native(), [])
       expect(reasons.length).toBeGreaterThan(0)
       for (const reason of reasons) expect(reason).toStartWith('repro flow: commands[0]')
     })
@@ -729,25 +739,54 @@ describe('checkPatch', () => {
     test('a visual one needs a Maestro check inside the allow list, verified like a web check', async () => {
       await patchFrom(fixed)
       await put(join(outDir, 'fix', `${fp}.verify.json`), '{ "failsWithout": true, "passesWith": true }')
-      expect((await checkPatch(git, outDir, nativeVisual())).reasons).toEqual(['the visual check is missing'])
+      expect((await checkPatch(git, outDir, nativeVisual(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), flow)
-      expect((await checkPatch(git, outDir, nativeVisual())).reasons).toEqual([])
+      expect((await checkPatch(git, outDir, nativeVisual(), [])).reasons).toEqual([])
 
       await put(check(), `${flow}- evalScript: \${fetch('https://x')}\n`)
-      const { reasons } = await checkPatch(git, outDir, nativeVisual())
+      const { reasons } = await checkPatch(git, outDir, nativeVisual(), [])
       expect(reasons.length).toBeGreaterThan(0)
       for (const reason of reasons) expect(reason).toStartWith('visual check: commands[2]')
+    })
+
+    const androidCheck: NativeCheck = {
+      fp,
+      platform: 'android',
+      session: 'c2-chat-android',
+      flow: 'qa-out/c2-chat-android/repro/1.yaml',
+      unpatched: false,
+    }
+    const unverified = (path: string) =>
+      `touches ${path}, but the verification ran on the backend from before the patch`
+    // No job runs the patched backend for these tasks.
+    test.each([
+      ['a real-AI web task', () => ({ ...task(), charterDir: 'c3-models-providers-desktop', real: true }), []],
+      ['a native task', native, []],
+      ['a web task the native verification also checks', task, [androidCheck]],
+    ] as const)('refuses backend/ and shared/ changes for %s', async (_name, make, checks) => {
+      const cases = [
+        { edits: ['backend/src/x.ts'], refused: ['backend/src/x.ts'] },
+        { edits: ['src/chat.ts', 'backend/src/x.ts'], refused: ['backend/src/x.ts'] },
+        { edits: ['shared/powersync-tables.ts'], refused: ['shared/powersync-tables.ts'] },
+      ]
+      for (const { edits, refused } of cases) {
+        await patchFrom(async () => {
+          for (const path of edits) await put(join(repo, path), 'changed\n')
+        })
+        const { reasons } = await checkPatch(git, outDir, make(), [...checks])
+        expect({ edits, reasons }).toEqual({ edits, reasons: refused.map(unverified) })
+      }
     })
   })
 
   test('rejects an edited repro spec and a spec that fails the lint', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n'))
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec.replace('Renamed', 'Anything'))
-    expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the repro spec was edited'])
+    expect((await checkPatch(git, outDir, task(), [])).reasons).toEqual(['the repro spec was edited'])
 
     await put(reproSpec(), `${spec}process.exit(0)\n`)
-    const { reasons } = await checkPatch(git, outDir, task())
+    const { reasons } = await checkPatch(git, outDir, task(), [])
     expect(reasons).toContain('the repro spec was edited')
     expect(reasons).toContain('repro spec: line 8: "process" is not allowed')
   })
@@ -769,6 +808,7 @@ describe('publish', () => {
     flow?: string
     charterDir?: string
     real?: boolean
+    verifyNative?: NativeCheck[]
   }
   const setup = async ({
     ticket = true,
@@ -778,6 +818,7 @@ describe('publish', () => {
     flow,
     charterDir = 'c2-chat',
     real = false,
+    verifyNative = [],
   }: Setup = {}) => {
     const base = {
       fp,
@@ -802,7 +843,7 @@ describe('publish', () => {
     }
     const task: FixTask = { ...base, ...proof() }
     const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1', url }
-    const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative: [] }
+    const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
     await put(specPath(), spec)
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
@@ -884,8 +925,8 @@ describe('publish', () => {
     ])
   })
 
-  /** Runs a live publish into a fresh `repo/` and returns the commands it ran. */
-  const publishLive = async () => {
+  /** Runs a live publish into a fresh `repo/`, git answering from `outputs`, and returns the commands it ran. */
+  const publishLive = async (outputs = diffOutput) => {
     const repoDir = join(dir, 'repo')
     await mkdir(join(repoDir, 'e2e'), { recursive: true })
     const runs: RunCall[] = []
@@ -896,7 +937,7 @@ describe('publish', () => {
       key: 'lin',
       token: 'app-token',
       repoDir,
-      run: fakeRun(runs, { ...diffOutput, 'gh pr': 'https://github.com/o/r/pull/9\n' }),
+      run: fakeRun(runs, { ...outputs, 'gh pr': 'https://github.com/o/r/pull/9\n' }),
       fetchFn: fakeLinear([]),
       log: () => {},
     })
@@ -1003,6 +1044,20 @@ describe('publish', () => {
       expect({ task, result }).toEqual({ task, result: { outcome: 'human-required', reasons: [reason] } })
       expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     }
+  })
+
+  test("a backend change is published only when the plan's native verification does not check the bug", async () => {
+    const android: NativeCheck = { fp, platform: 'android', session: 'c2-chat-android', flow: 'a', unpatched: false }
+    const outcomes = []
+    for (const verifyNative of [[], [android]]) {
+      await setup({ verifyNative })
+      const { runs, result } = await publishLive({ 'git diff': rawDiff('src/chat.ts', 'backend/src/chat.ts') })
+      outcomes.push([result.outcome, runs.some((r) => r.cmd.includes('push'))])
+    }
+    expect(outcomes).toEqual([
+      ['pr', true],
+      ['human-required', false],
+    ])
   })
 
   test('a native fix PR adds no regression spec and names the platform the flow checked it on', async () => {

@@ -1589,11 +1589,11 @@ jobs:
           fail() { echo "$1" >> "qa-out/fix/$QA_FP.diagnosis.md"; }
           for platform in $(jq --raw-output --arg fp "$QA_FP" '.verifyNative[] | select(.fp == $fp) | .platform' qa-out/fix-plan.json); do
             jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.$platform.json" > /dev/null 2>&1 ||
-              fail "The flow still fails on the native platform ($platform), so the patch is not published."
+              fail "The flow still fails on the native platform ($platform), so the patch is not published. That run used the patched app and the backend from before the patch."
           done
           if [ -n "$REAL" ]; then
             jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.real.json" > /dev/null 2>&1 ||
-              fail "The repro spec still fails on the real AI providers, so the patch is not published."
+              fail "The repro spec still fails on the real AI providers, so the patch is not published. That run used the patched frontend and the backend from before the patch."
           fi
           # A native visual check's result reaches checkPatch as verify.json, never the copy the agent could write.
           if [ -n "$NATIVE_VISUAL" ]; then

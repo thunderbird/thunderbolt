@@ -323,8 +323,11 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   return problem ? [...reasons, problem] : reasons
 }
 
-/** Why the agent's output must not become a PR (empty = it may), and the files its patch touches. */
-export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
+/**
+ * Why the agent's output must not become a PR (empty = it may), and the files its patch touches. `verifyNative` is
+ * the trusted plan's, never anything the fix agent wrote.
+ */
+export const checkPatch = async (run: Run, outDir: string, task: FixTask, verifyNative: NativeCheck[]) => {
   const patch = resolve(outDir, 'fix', `${task.fp}.patch`)
   const reasons = await proofProblems(outDir, task)
   // verify-real replays only a repro spec, so nothing checks a web visual fix of a real-AI finding on the real AI.
@@ -341,10 +344,16 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   // The patch becomes a public PR.
   if (secretPattern.test(text)) reasons.push('the patch matches a secret pattern')
   const files = await patchedFiles(run, patch)
+  // verify-native-run and verify-real start the backend from the checkout without the patch; only the fix job runs
+  // it patched, and only for a fake-AI web spec.
+  const baseBackend = task.real || 'flow' in task || verifyNative.some((v) => v.fp === task.fp)
   return {
     reasons: [
       ...reasons,
       ...files.filter((f) => isDenied(f.path)).map((f) => `touches ${f.path}`),
+      ...files
+        .filter((f) => baseBackend && /^(backend|shared)\//.test(f.path))
+        .map((f) => `touches ${f.path}, but the verification ran on the backend from before the patch`),
       ...files
         .filter((f) => f.modes.some((m) => linkModes.has(m)))
         .map((f) => `adds or changes a symlink or submodule: ${f.path}`),
@@ -456,7 +465,7 @@ export const publish = async ({
   log = console.log,
 }: PublishOptions): Promise<PublishResult> => {
   if (live && (!key || !token)) throw new Error('--live needs LINEAR_API_KEY and GH_TOKEN')
-  const { fixes }: FixPlan = await Bun.file(join(outDir, 'fix-plan.json')).json()
+  const { fixes, verifyNative }: FixPlan = await Bun.file(join(outDir, 'fix-plan.json')).json()
   const task = fixes.find((t) => t.fp === fp)
   if (!task) throw new Error(`${fp} is not in fix-plan.json`)
   const issueId = task.issueId ?? ''
@@ -483,7 +492,7 @@ export const publish = async ({
         : `The fix agent could not fix this and wrote a diagnosis:\n\n${sanitize(text, 6000)}`,
     )
   }
-  const { reasons, files } = await checkPatch(run, outDir, task)
+  const { reasons, files } = await checkPatch(run, outDir, task, verifyNative)
   if (reasons.length) {
     return handOff(
       reasons,

@@ -57,6 +57,10 @@ const charters: (Partial<Leg> & { charter: string })[] = [
   { charter: 'c7-two-devices', postgres: true },
 ]
 
+/** Whether a session (`<charter>-<platform>`) explores the onboarding build. */
+export const onboardingSession = (session: string) =>
+  charters.some((c) => c.onboarding && session.startsWith(`${c.charter}-`))
+
 /**
  * Sessions the grid leaves out, with the reason. `planLegs` drops them before it reads `only`, so asking for one fails
  * as an unknown id, and it reports the ones a dispatch would have run.

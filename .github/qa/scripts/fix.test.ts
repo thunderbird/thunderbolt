@@ -767,6 +767,7 @@ describe('publish', () => {
     extra?: Partial<FixTask['finding']>
     /** A native task's flow: the task carries it instead of a spec. */
     flow?: string
+    charterDir?: string
   }
   const setup = async ({
     ticket = true,
@@ -774,11 +775,12 @@ describe('publish', () => {
     url = 'https://linear.app/t/THB-1',
     extra,
     flow,
+    charterDir = 'c2-chat',
   }: Setup = {}) => {
     const base = {
       fp,
       severity: 'High',
-      charterDir: 'c2-chat',
+      charterDir,
       platform: 'desktop',
       real: false,
       finding: {
@@ -962,6 +964,21 @@ describe('publish', () => {
     expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
     expect(runs.at(-1)?.stdin).toContain("Checked on ios with the finding's Maestro flow")
+  })
+
+  test('an onboarding fix PR adds no regression spec, since e2e/ does not serve the onboarding build', async () => {
+    await setup({ charterDir: 'c1-first-run-desktop' })
+    // A literal port, which the repro lint allows, so the session decides rather than the ports import.
+    const onboardingSpec = `test.use({ baseURL: 'http://localhost:1425' })\n${spec}`
+    await put(specPath(), onboardingSpec)
+    await put(join(outDir, 'fix', `${fp}.spec.ts`), onboardingSpec)
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
+    expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
+    expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
+    expect(runs.at(-1)?.stdin).toContain('runs on the onboarding build')
   })
 
   test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {

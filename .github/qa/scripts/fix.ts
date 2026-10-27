@@ -12,6 +12,7 @@ import { linear } from '../../../scripts/notify-on-failure'
 import { type Action, addComment, type Filed, type LinearAuth, priority, qaLabels, ticketView } from './file-findings'
 import { sanitize, secretPattern } from './sanitize'
 import { type Finding, findingSchema, lintReproSpec, nativePlatformIds, platformOf, realAiCharters } from './findings'
+import { onboardingSession } from './legs'
 import { checkMaestroFlow, flowVars } from './maestro-flow'
 import type { Verified } from './verify'
 
@@ -365,7 +366,8 @@ const reviewNotice =
 
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
- * task the check the fix agent wrote. A native task adds none. The repo is public and a security fix's PR shows up before the fix ships, so
+ * task the check the fix agent wrote. A native task adds none, and neither does a task from the onboarding session,
+ * since `e2e/` does not serve that build. The repo is public and a security fix's PR shows up before the fix ships, so
  * that PR names only the ticket, never says "security", and adds no spec: a person adds the spec in a separate commit
  * after the merge.
  */
@@ -391,6 +393,12 @@ const draftOf = async (outDir: string, task: FixTask) => {
     const checked = `Checked on ${task.platform} with ${task.kind === 'spec' ? "the finding's Maestro flow" : "the fix agent's Maestro check"}`
     const body = [intro, findingLine, `${checked}. The PR adds no regression spec.`, reviewNotice].join('\n\n')
     return { title, commit: `${title}\n\n${checked}.`, body, spec: undefined }
+  }
+  if (onboardingSession(task.charterDir)) {
+    const why =
+      'The repro runs on the onboarding build, which the Playwright config of e2e/ does not serve, so the PR adds no regression spec.'
+    const body = [intro, findingLine, why, reviewNotice].join('\n\n')
+    return { title, commit: `${title}\n\n${why}`, body, spec: undefined }
   }
   const source = task.kind === 'spec' ? task.spec : checkPath(outDir, task.fp)
   const spec = regressionSpec(task.charterDir, task.fp, await readFile(source, 'utf8'))

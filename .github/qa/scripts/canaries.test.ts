@@ -12,7 +12,6 @@ import { type Run, runCommand } from './fix'
 let dir: string
 let run: Run
 
-/** Writes `files` (path → content) and commits them as `title`, `date` being the commit date. */
 const commit = async (title: string, files: Record<string, string>, date?: string) => {
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(dir, path)), { recursive: true })

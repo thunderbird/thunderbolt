@@ -49,7 +49,6 @@ const controlCenter = {
   elements: [{ b: '[0,0][440,956]', c: [{ b: '[52,61][432,114]', a11y: 'Wi-Fi', focused: true }] }],
 }
 
-/** The `inspect_screen` text for a fixture name, or `control-center`. */
 const screenText = (name: string): string => {
   if (name === 'control-center') return JSON.stringify(controlCenter)
   const json = readFileSync(join(fixtureDir, `${name}.json`), 'utf8')
@@ -67,11 +66,7 @@ const consoleLine = (message: string) =>
 
 const nameBug = '[qa-layout] focus-covered textbox "Enter your name"'
 
-/**
- * A gate over a fake Maestro that records every call. `inspect_screen` walks through `screens` and then repeats the
- * last one. Each `run` writes the next batch of `probe` messages to the WebView log, as the app's probe would while
- * the commands run. `respond` can answer any call first.
- */
+/** `inspect_screen` walks `screens`, then repeats the last; `run` logs the next `probe` batch to the WebView log. */
 const fakeGate = ({
   screen = 'hier-00-welcome',
   screens = [screen],
@@ -380,7 +375,6 @@ test('a screenshot is saved in the session dir and the result names the file', a
 test('read_logs returns only new lines, only console and 5xx, sanitized', async () => {
   const { ctx } = fakeGate()
   writeFileSync(ctx.webviewLog, 'x [WebKit] CONSOLE LOG hello\nx unrelated system noise\n')
-  // The backend's access log format.
   writeFileSync(
     ctx.backendLog,
     'INFO: - - "GET /v1/config HTTP/1.1" 200 OK 1ms\nINFO: - - "POST /v1/chat HTTP/1.1" 502 Bad Gateway 12ms\n',

@@ -48,7 +48,6 @@ const asFetch = (fn: (url: string | URL | Request, init?: RequestInit) => Promis
   Object.assign(fn, { preconnect: () => {} })
 
 type Call = { op: string; variables: Record<string, string> }
-/** Fake Linear API that records each operation and answers with success. */
 const fakeLinear = (calls: Call[]) =>
   asFetch(async (_url, init) => {
     const { query, variables } = JSON.parse(String(init?.body))
@@ -70,7 +69,7 @@ const fakeLinear = (calls: Call[]) =>
   })
 
 type RunCall = { cmd: string[]; env?: Record<string, string>; stdin?: string }
-/** Fake command runner: records calls and answers from `outputs` keyed by the first two words. */
+/** `outputs` is keyed by the command's first two words. */
 const fakeRun = (calls: RunCall[], outputs: Record<string, string> = {}): Run => {
   return async (cmd, opts = {}) => {
     calls.push({ cmd, ...opts })
@@ -78,7 +77,6 @@ const fakeRun = (calls: RunCall[], outputs: Record<string, string> = {}): Run =>
   }
 }
 
-/** Runs real commands in `cwd`. */
 const runIn =
   (cwd: string): Run =>
   async (cmd, { env } = {}) => {
@@ -154,8 +152,6 @@ describe('route', () => {
     const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: (line) => lines.push(line) })
 
     expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro on disk, so it is not routed`)
-    // pending-layout (Urgent) has an open qa-fix/ branch; high-sync is the third, so the cap leaves out
-    // high-security, medium-widgets and low-chat.
     expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('high-sync')])
     expect(JSON.parse(await readFile(join(outDir, 'fix-plan.json'), 'utf8'))).toEqual(plan)
     expect(runs.map((r) => r.cmd)).toEqual([['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*']])
@@ -199,7 +195,6 @@ describe('route', () => {
     expect(plan).toEqual({ fixes: [], verifyNative: [] })
   })
 
-  /** Writes filed.json and verified.json for these created, confirmed tickets, with each repro on disk. */
   const fileTickets = async (tickets: { fp: string; charterDir: string; raw: RawFinding }[]) => {
     const filed: Filed[] = tickets.map(({ fp, charterDir }) => ({
       fp,
@@ -223,7 +218,6 @@ describe('route', () => {
       if (raw.repro_flow) await put(join(outDir, charterDir, raw.repro_flow), '- launchApp\n')
     }
   }
-  /** Routes one confirmed, created ticket from `charterDir`, with its repro on disk when it names one. */
   const routeOne = async (charterDir: string, raw: RawFinding) => {
     await fileTickets([{ fp: 'fp-one', charterDir, raw }])
     return route({ outDir, live: false, run: fakeRun([]), log: () => {} })
@@ -570,7 +564,6 @@ describe('checkPatch', () => {
   })
   const fixed = () => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')
 
-  /** Writes `fix/<fp>.patch` from the given working-tree edits, then resets the repo. */
   const patchFrom = async (edit: () => Promise<void>) => {
     await edit()
     await git(['git', 'add', '-A'])
@@ -842,7 +835,6 @@ describe('checkPatch', () => {
 describe('publish', () => {
   const fp = 'ab12cd34'
   const specPath = () => join(outDir, 'c2-chat', 'repro', '1.spec.ts')
-  /** `git diff --raw -z` output for these modified regular files. */
   const rawDiff = (...paths: string[]) => paths.map((p) => `:100644 100644 aaa bbb M\0${p}\0`).join('')
   const diffOutput = { 'git diff': rawDiff('src/chat.ts') }
 
@@ -972,7 +964,6 @@ describe('publish', () => {
     ])
   })
 
-  /** Runs a live publish into a fresh `repo/`, git answering from `outputs`, and returns the commands it ran. */
   const publishLive = async (outputs = diffOutput) => {
     const repoDir = join(dir, 'repo')
     await mkdir(join(repoDir, 'e2e'), { recursive: true })
@@ -990,7 +981,6 @@ describe('publish', () => {
     })
     return { repoDir, runs, result }
   }
-  /** The value after `flag` in a command. */
   const argAfter = (cmd: string[], flag: string) => cmd[cmd.indexOf(flag) + 1]
 
   test('a security fix PR carries no finding text and no regression spec, only the ticket', async () => {

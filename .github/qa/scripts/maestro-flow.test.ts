@@ -7,7 +7,6 @@ import { checkMaestroFlow } from './maestro-flow'
 
 const appId = 'net.thunderbird.thunderbolt.dev'
 
-// Commands that Maestro runs or leaks through, then the edges of the raw-text scan and the limits.
 test.each([
   ['- runScript: x.js', 'runScript'],
   ['- evalScript: ${1+1}', 'evalScript'],

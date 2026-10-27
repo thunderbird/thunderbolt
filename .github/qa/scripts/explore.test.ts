@@ -19,7 +19,7 @@ import { join } from 'node:path'
 
 const explore = join(import.meta.dir, 'explore.sh')
 const repoRoot = realpathSync(join(import.meta.dir, '../../..'))
-// Under /var on macOS, a link to /private/var, so the session dir is reached through a link as on a runner's /tmp.
+// macOS tmpdir sits under a /var link, as a runner's /tmp does.
 const work = mkdtempSync(join(tmpdir(), 'qa-explore-'))
 const out = join(work, 'out')
 const realOut = () => realpathSync(out)
@@ -85,7 +85,7 @@ test('a native session gets only Write and the gated Maestro tools, behind a hoo
   ])
   expect(env.QA_SESSION_DIR).toBe(sessionDir)
   expect(env.QA_PLATFORM).toBe('ios')
-  // The model can write anywhere in the session dir, so the log the canary and the reviewers read lies outside it.
+  // The model can write anywhere in the session dir, so the gate log lies outside it.
   expect(env.QA_GATE_LOG).toBe(`${sessionDir}.gate.log`)
 })
 
@@ -137,7 +137,7 @@ const noPorts = {
   QA_GOOGLE_PORT: '',
 }
 
-/** The prompt of a session with the stack's ports as given, and the rest of them unset whatever the caller's shell has. */
+/** Ports not passed stay unset, whatever the caller's shell has. */
 const promptFor = (session: string, ports: Record<string, string> = {}) => {
   const { code, stdout, stderr } = sh(['prompt', session, out], { ...noPorts, ...ports })
   if (code !== 0) throw new Error(stderr)
@@ -188,8 +188,7 @@ test('a malformed port variable falls back to the default instead of reaching th
 })
 
 test('a ports.json key that is not a QA port variable never reads the environment', () => {
-  // A checkout copy whose ports.json names another variable, with the default of c3's unreachable port. Its value is
-  // a valid port number, so only the name check can keep it out of the prompt.
+  // The value is a valid port number, so only the name check keeps it out of the prompt.
   const repo = mkdtempSync(join(work, 'repo-'))
   const qa = join(repo, '.github/qa')
   mkdirSync(qa, { recursive: true })
@@ -201,7 +200,6 @@ test('a ports.json key that is not a QA port variable never reads the environmen
   expect(prompt).not.toContain('7777')
 })
 
-/** A stand-in `claude` that logs the given gate lines, may write the outside file, and prints a tool result. */
 const fakeClaude = (gateLines: string[], writeOutside = false) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const script = [
@@ -246,7 +244,7 @@ test('the canary refuses a web session', () => {
   expect(sh(['canary', 'c2-chat-power-user-phone', out], fakeClaude(denied)).code).toBe(2)
 })
 
-// Built once, outside any test's timeout: two `bun build --compile` runs. npm is a stand-in that records its arguments.
+// Built once, outside any test's timeout: two `bun build --compile` runs.
 const harnessDir = join(work, 'harness')
 const npmLog = join(work, 'npm.log')
 const npmBin = mkdtempSync(join(work, 'npm-'))
@@ -254,7 +252,6 @@ writeFileSync(join(npmBin, 'npm'), `#!/bin/bash\necho "$*" > ${npmLog}\n`)
 chmodSync(join(npmBin, 'npm'), 0o755)
 const harnessBuild = sh(['harness', 'c7-two-devices-android', harnessDir], { PATH: `${npmBin}:${process.env.PATH}` })
 const harness = realpathSync(harnessDir)
-/** explore.sh run from the harness copy, as the workflow runs it. */
 const fromHarness = (args: string[], env: Record<string, string> = {}) => {
   const proc = Bun.spawnSync(['bash', join(harness, 'explore.sh'), ...args], {
     env: { ...process.env, QA_DEVICE_ID: 'device-1', ...logs, QA_HARNESS: harness, QA_REPO: repoRoot, ...env },
@@ -274,7 +271,7 @@ test('the harness holds the compiled gate and hook, and its MCP config points on
   expect(await Bun.file(npmLog).text()).toBe(
     `install --silent --prefix ${harness}/playwright-mcp @playwright/mcp@0.0.83\n`,
   )
-  // A standalone binary: it runs from the harness with no bun and no checkout, and still denies Bash.
+  // Runs with no bun and no checkout, and still denies Bash.
   const hook = Bun.spawnSync([join(harness, 'native-hook')], {
     cwd: work,
     stdin: new TextEncoder().encode('{"tool_name":"Bash","tool_input":{}}'),
@@ -284,7 +281,7 @@ test('the harness holds the compiled gate and hook, and its MCP config points on
 })
 
 test("the compiled hook ignores a bunfig.toml preload and a .env in the folder it starts in", () => {
-  // What the second browser could plant where a binary starts: Bun loads both by default.
+  // Bun loads both from the start folder by default, and the second browser could plant them there.
   const planted = mkdtempSync(join(work, 'planted-'))
   const marker = join(work, 'preload-ran')
   writeFileSync(join(planted, 'bunfig.toml'), 'preload = ["./evil.ts"]\n')

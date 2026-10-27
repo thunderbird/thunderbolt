@@ -657,7 +657,6 @@ describe('native coverage', () => {
     return [v.state, v.reason]
   }
   const noQuote = ['unsupported', 'quote not in a browser tool result of this attempt']
-  // What the gate returns for a run: the Maestro envelope, then the probe lines.
   const gated = run(
     tap,
     '{"success":true,"device_id":"D","commands_executed":1,"message":"Flow executed successfully","env_vars":{}}\n' +
@@ -736,8 +735,7 @@ describe('probeGaps', () => {
       { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name }] } },
       { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
     ])
-  // What Playwright MCP 0.0.83 returns for a navigation: a count of console errors and a link to the lines the page
-  // wrote since the last result, never the console text itself.
+  // A navigation result carries a count of console errors and a link to the new lines, never the console text.
   const navigated = (link?: string) =>
     "### Ran Playwright code\n```js\nawait page.goto('http://localhost:1424/');\n```\n### Page\n" +
     '- Page URL: http://localhost:1424/\n- Page Title: Thunderbolt\n- Console: 2 errors, 0 warnings\n' +

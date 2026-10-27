@@ -143,7 +143,7 @@ describe('native platforms', () => {
     const only = plan(['c1-first-run-ios'])
     expect(only.legs).toEqual([])
     expect(only.verify).toEqual([])
-    // Still judged, filed and fixed: the weekly judge leg takes the native candidates with no web replay.
+    // The weekly judge leg takes native candidates with no web replay.
     expect(only.judge).toEqual([expect.objectContaining({ name: 'weekly', out: 'qa-out', onboarding: false })])
     expect(plan(['c2-chat-power-user-phone']).judge.map((v) => v.name)).toEqual(['weekly'])
     expect(plan(['free']).judge.map((v) => v.name)).toEqual(['weekly'])

@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The weekly workflow's trust boundaries, read from the YAML with its aliases resolved, and the two steps that decide
-// whether a fix may become a PR, run as the workflow runs them.
+// The workflow's trust boundaries, read from the resolved YAML, and the steps that gate a fix PR.
 
 import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -207,7 +206,6 @@ describe('fix job', () => {
       expect(args).toContain(`"Edit(${rule})"`)
   })
 
-  // Runs the collect step's script in a scratch repo, with the outcomes the workflow would pass.
   const collect = (env: Record<string, string>) => {
     const dir = mkdtempSync(join(work, 'collect-'))
     const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])
@@ -249,8 +247,7 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // Runs the baseline step in a scratch repo whose stack.sh records the backend it would serve, with the agent's edits
-  // (`edits`) in the tree and a check that always fails, as it should without the patch.
+  // The check always fails, as it should without the patch.
   const baseline = ({ edits = true, failStart = false, stashed = false } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
@@ -308,7 +305,6 @@ describe('fix job', () => {
 
 describe('publish', () => {
   type Verdict = { passed?: boolean; failsWithout?: boolean; passesWith?: boolean }
-  // Runs publish's verdict step on a qa-out holding the plan, the given verdicts and the fix job's diagnosis.
   const verdicts = (files: Record<string, Verdict>, env: Record<string, string> = {}, diagnosis?: string) => {
     const dir = mkdtempSync(join(work, 'publish-'))
     mkdirSync(join(dir, 'qa-out/verify'), { recursive: true })

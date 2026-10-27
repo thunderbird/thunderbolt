@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Repro specs sign in through e2e/helpers. A c1 spec that signs out and back in with the same address must wait
-// out the backend's 15 s per-address cooldown, or the second code request gets a 429 and the spec times out.
+// A second sign-in with one address inside the backend's cooldown gets a 429 and the spec times out.
 import { describe, expect, test } from 'bun:test'
 import { createOtpCooldown } from '../../../e2e/helpers'
 

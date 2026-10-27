@@ -102,8 +102,7 @@ test('both formats give the same tree, without the frameless nodes, on the whole
   expect(parseHierarchy(fixture('hier-name-kb.json')).bounds).toEqual({ left: 0, top: 0, right: 440, bottom: 956 })
 })
 
-// The control on the Android emulator: the Email field focused at [84,1131][1000,1281] and Gboard open.
-// Its root and the root's only child have no bounds.
+// The Email field focused with Gboard open; the root and its only child have no bounds.
 const androidControl = fixture('hier-android-control.json')
 const emailAt = (bounds: string) => androidControl.replace('"bounds":"[84,1131][1000,1281]"', `"bounds":"${bounds}"`)
 const keyboardRect = { left: 0, top: 1517, right: 1080, bottom: 2274 }
@@ -112,7 +111,6 @@ test("Android reads the keyboard from Gboard's keyboard_holder and reports no co
   expect(measureNative(parseHierarchy(androidControl), 'android')).toEqual({ keyboard: keyboardRect, problems: [] }))
 
 test('Android reports the focused field behind the keyboard from an overlap of 4 on both axes', () => {
-  // The field's bottom edge 4 units into the keyboard, then 3.
   expect(measureNative(parseHierarchy(emailAt('[84,1131][1000,1521]')), 'android').problems).toEqual([
     '[qa-layout] behind-keyboard textbox "Email"',
   ])
@@ -149,7 +147,7 @@ test('inspect_screen on Android, whose root has no bounds, gives the whole scree
     bottom: 2400,
   }))
 
-// The control run recorded on the iOS simulator: the Email field focused, the keyboard open, the cover pinned over it.
+// The Email field focused, the keyboard open, the cover pinned over it.
 const control = { hierarchy: fixture('hier-control-cover.json'), log: fixture('control-cover.txt') }
 
 test('the control passes when the keyboard is open and the probe covered the Email field', () => {
@@ -209,7 +207,6 @@ test('the Android control run passes, with the keyboard from the tree', () => {
 
 type Dumped = { attributes: Record<string, string>; children?: Dumped[] }
 
-/** A recorded `maestro hierarchy` with `change` applied to every node `pick` matches. */
 const edited = (
   name: string,
   pick: (attributes: Record<string, string>) => boolean,
@@ -223,7 +220,7 @@ const edited = (
   return JSON.stringify(tree)
 }
 
-// The iOS onboarding privacy step, recorded on the simulator: the checkbox is a leaf whose value is its state, 0.
+// On iOS the privacy checkbox is a leaf whose value is its state, 0.
 const consentCheckbox = (attributes: Record<string, string>) => attributes.bounds === '[25,712][51,738]'
 
 test('the iOS privacy checkbox reads its label, so the tree reports no unnamed control there', () =>
@@ -312,7 +309,6 @@ test('on Android a window over the app, like a browser tab, is not the app', () 
 
 type Inspected = { b?: string; txt?: string; rid?: string; cls?: string; c?: Inspected[] }
 
-/** The tree's lines for the recorded Android Connect Google step, with `change` run on every element first. */
 const onboardingLines = (change: (element: Inspected) => void = () => {}) => {
   const screen: { elements: Inspected[] } = JSON.parse(fixture('inspect-android-onboarding.json'))
   const elements = (element: Inspected): Inspected[] => [element, ...(element.c ?? []).flatMap(elements)]
@@ -322,7 +318,6 @@ const onboardingLines = (change: (element: Inspected) => void = () => {}) => {
 
 const isBack = (element: Inspected) => element.cls === 'android.widget.Button' && element.txt === undefined
 
-/** The fingerprint filing gives an onboarding `layout` finding that quotes `line`. */
 const fingerprintOf = (line: string) =>
   fingerprint({
     title: 'An unnamed control',

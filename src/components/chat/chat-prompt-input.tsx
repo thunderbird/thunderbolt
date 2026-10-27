@@ -66,7 +66,7 @@ import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
-import { loadChatMessageList } from './chat-messages-loader'
+import { preloadChatMessageList } from './chat-messages-loader'
 import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
@@ -384,7 +384,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       }
       hasPreloadedSendDependencies.current = true
       preloadAgentConnection()
-      void loadChatMessageList()
+      preloadChatMessageList()
     }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {

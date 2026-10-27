@@ -4,3 +4,12 @@
 
 /** Load the message-rendering subtree separately from the blank new-chat shell. */
 export const loadChatMessageList = () => import('./chat-message-list')
+
+/**
+ * Warm the message subtree without awaiting it. A navigation can abort the fetch
+ * mid-flight (Firefox rejects the import), so the failure is dropped here; the
+ * `lazy()` render loads the module again and surfaces any real error.
+ */
+export const preloadChatMessageList = () => {
+  loadChatMessageList().catch(() => {})
+}

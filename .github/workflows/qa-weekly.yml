@@ -257,7 +257,8 @@ jobs:
         with: *browser-cache
       - *install-browsers
 
-      # Needs root, so before the lock step; CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes the CLI refuse to start without it.
+      # Needs root, so it runs before the lock step. The sandbox keeps the agent's subprocesses from reading the key in
+      # the CLI's /proc/<pid>/environ. With CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set, the CLI refuses to start without it.
       - &install-sandbox
         name: Install the subprocess sandbox
         run: |

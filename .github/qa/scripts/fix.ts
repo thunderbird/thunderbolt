@@ -177,9 +177,17 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
   const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
   const plan: FixPlan = { fixes: [], verifyNative: [] }
   const routed = new Set<string>()
-  const tickets = filed
-    .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
-    .sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
+  const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
+  // Bugs keep their filed order under the cap; `leadRank` only orders the findings inside one bug.
+  const firstAt = new Map<string, number>()
+  for (const [i, { fp }] of tickets.entries()) if (!firstAt.has(fp)) firstAt.set(fp, i)
+  const at = (fp: string) => firstAt.get(fp) ?? 0
+  tickets.sort(
+    (a, b) =>
+      priority[a.severity] - priority[b.severity] ||
+      at(a.fp) - at(b.fp) ||
+      leadRank(a.charterDir) - leadRank(b.charterDir),
+  )
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
     const fresh = !routed.has(fp)
     if (fresh && (plan.fixes.length === maxFixes || pending.has(fp))) continue

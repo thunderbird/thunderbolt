@@ -365,6 +365,16 @@ describe('route', () => {
     expect(plan.fixes.map((t) => t.charterDir)).toEqual(['c7-two-devices-desktop'])
   })
 
+  test('a sync bug filed after three others of the same severity does not take their slots', async () => {
+    const sessions = ['c2-chat-power-user-desktop', 'c2-chat-power-user-phone', 'c6-settings-data-desktop']
+    await fileTickets([
+      ...sessions.map((charterDir, i) => ({ fp: `fp-${i}`, charterDir, raw: finding('chat') })),
+      { fp: 'fp-sync', charterDir: 'c7-two-devices-desktop', raw: finding('chat') },
+    ])
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    expect(plan.fixes.map((t) => t.fp)).toEqual(['fp-0', 'fp-1', 'fp-2'])
+  })
+
   test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
     const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
     const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const

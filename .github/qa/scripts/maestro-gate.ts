@@ -150,7 +150,7 @@ const elementsOf = (element: ScreenElement): ScreenElement[] => [element, ...(el
 /**
  * Whose screen Maestro showed. On iOS the top element is the foreground app, named in `a11y`, and under the Control
  * Center it is blank. The Android top element has no name; there the app's own views carry its
- * package in their resource ids (`<appId>:id/action_bar_root`, run 39373388149), which a launcher icon does not. A reply
+ * package in their resource ids (`<appId>:id/action_bar_root`), which a launcher icon does not. A reply
  * that is not a screen (an error, a second driver timeout) is `unreadable`.
  */
 const whoseScreen = (screen: ToolResult, ctx: GateContext): 'ours' | 'away' | 'unreadable' => {

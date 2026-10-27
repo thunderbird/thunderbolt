@@ -267,7 +267,7 @@ const androidGate = (options: Parameters<typeof fakeGate>[0]) => {
   return gate
 }
 
-// The home screen as the run 39373388149 session met it, cut down: a nameless root, and an icon named like our app.
+// The home screen as an Android session meets it, cut down: a nameless root, and an icon named like our app.
 const launcher = {
   ui_schema: { defaults: { txt: '', rid: '', a11y: '' } },
   elements: [

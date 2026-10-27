@@ -27,7 +27,7 @@ afterAll(() => rmSync(work, { recursive: true, force: true }))
 test('an Android run reinstalls and warms the app first, and adds the tree line for a field behind the keyboard', () => {
   const bin = join(work, 'bin')
   const calls = join(work, 'calls.log')
-  // The run 39373388149 control tree, with the focused Email field moved under the keyboard.
+  // The Android control tree, with the focused Email field moved under the keyboard.
   const hierarchy = join(work, 'hierarchy.json')
   const tree = readFileSync(join(import.meta.dir, '../fixtures/native/hier-android-control.json'), 'utf8')
   writeFileSync(hierarchy, tree.replace('[84,1131][1000,1281]', '[84,1700][1000,1850]'))

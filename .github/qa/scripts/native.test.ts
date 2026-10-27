@@ -118,7 +118,7 @@ test('device android reverses the stack ports it is configured with', () => {
 /**
  * `install android` against a stand-in `adb`: launch n runs as pid 400n (the first one shows up on the second look,
  * the later ones at once, so a busy machine cannot run a launch's second out before its pid shows), and logs
- * the storage check of run 39380764343. Only launch `step1At` gets past it to `[init] step1_`; 0 means none does.
+ * the storage check. Only launch `step1At` gets past it to `[init] step1_`; 0 means none does.
  */
 const warmUp = (step1At: number) => {
   const bin = mkdtempSync(join(work, 'bin-'))

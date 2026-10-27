@@ -562,7 +562,7 @@ jobs:
       QA_APP_FILE: ${{ matrix.leg.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
       QA_REPO: ${{ github.workspace }}
       MAESTRO_CLI_NO_ANALYTICS: '1'
-      # Its "Analyze with AI" banner otherwise fills a failed run's error (run 39391108579).
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
       DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
@@ -837,7 +837,7 @@ jobs:
     needs: [build, build-native, explore-native]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
-    # About 4 minutes a run on iOS (run 40534656266), so with `nativeReplayCap` in verify.ts the control's 3 runs and
+    # About 4 minutes a run on iOS, so with `nativeReplayCap` in verify.ts the control's 3 runs and
     # up to 6 per finding take about 122 minutes with setup, wrap-up and a driver retry. The job ends when its runs
     # do; this is only the ceiling. A timeout loses every finding of the leg, so verify.ts also starts no run that
     # might end after it, counted from QA_LEG_START. Every native leg, Android's too, shares this timeout.
@@ -855,7 +855,7 @@ jobs:
       QA_PLATFORM: ${{ matrix.leg.platform }}
       QA_APP_FILE: ${{ matrix.leg.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
       MAESTRO_CLI_NO_ANALYTICS: '1'
-      # Its "Analyze with AI" banner otherwise fills a failed run's error (run 39391108579).
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
       DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
@@ -894,9 +894,9 @@ jobs:
       - *postgres-setup
       - *device
       # Maestro starts its driver inside a session's first launchApp, and the first session on a fresh emulator
-      # failed there with no reason given (run 40534656266). One session that counts for nothing
-      # starts it before the console stream and the counted runs, which each install the app again. The install took
-      # 45 s in that run's explore leg; Android's setup (2.4 minutes there) stays inside the 6.5 minutes verify.ts
+      # can fail there with no reason given. One session that counts for nothing
+      # starts it before the console stream and the counted runs, which each install the app again. The install takes
+      # about 45 s; Android's setup (about 2.4 minutes) stays inside the 6.5 minutes verify.ts
       # sizes a leg's setup with.
       - name: Start Maestro's driver on the emulator
         if: matrix.leg.platform == 'android'
@@ -920,7 +920,7 @@ jobs:
             --leg "$LEG"
 
       # Read once the replay is over rather than streamed during it: a reset of the device's adb connection ends a
-      # stream, which fits the WebView one ending in run 40534656266. The log buffer is grown at boot to hold a whole leg.
+      # stream, which fits the WebView one ending early. The log buffer is grown at boot to hold a whole leg.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |
@@ -930,7 +930,7 @@ jobs:
 
       - *sanitize
       - *upload-replay
-      # A failed stack control said nothing readable without them (run 39391108579). On Android after every replay:
+      # A failed stack control said nothing readable without them. On Android after every replay:
       # the files are small next to the videos, and a passed control does not show whether the console stream lasted
       # the whole leg. Never on the real leg, whose backend held the provider keys.
       - name: Upload the stack, device and Maestro logs
@@ -1438,7 +1438,7 @@ jobs:
       QA_APP_FILE: ${{ matrix.check.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
       QA_FP: ${{ matrix.check.fp }}
       MAESTRO_CLI_NO_ANALYTICS: '1'
-      # Its "Analyze with AI" banner otherwise fills a failed run's error (run 39391108579).
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
     steps:
@@ -1782,7 +1782,7 @@ jobs:
       QA_PLATFORM: ${{ matrix.target.platform }}
       QA_APP_FILE: ${{ matrix.target.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
       MAESTRO_CLI_NO_ANALYTICS: '1'
-      # Its "Analyze with AI" banner otherwise fills a failed run's error (run 39391108579).
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
     steps:
@@ -1797,7 +1797,7 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
         run: .github/qa/scripts/native.sh build "$QA_PLATFORM" "$RUNNER_TEMP/qa-control-app" control
-      # Only this job builds before it boots the emulator, and only it stalled on the storage check (run 39391108579).
+      # Only this job builds before it boots the emulator, and only it stalled on the storage check.
       - name: Stop the Gradle daemons
         if: matrix.target.platform == 'android'
         working-directory: src-tauri/gen/android

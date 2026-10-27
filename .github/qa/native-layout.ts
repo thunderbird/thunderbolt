@@ -269,8 +269,8 @@ export const keepsProbeLine = (line: string, platform: 'ios' | 'android') => {
 
 /**
  * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible
- * name, and on Android a `behind-keyboard` line. The Android WebView keeps its full height with the keyboard up (run
- * 39373388149), so the probe cannot see it there; on iOS the probe can. The keyboard is drawn over everything, so the
+ * name, and on Android a `behind-keyboard` line. The Android WebView keeps its full height with the keyboard up, so the
+ * probe cannot see it there; on iOS the probe can. The keyboard is drawn over everything, so the
  * rule needs no stacking order.
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {

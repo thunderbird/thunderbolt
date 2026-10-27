@@ -128,12 +128,12 @@ const replayCap = 20
 /** replay-native's `timeout-minutes`: a native leg starts no run that might end after it. */
 export const nativeJobMinutes = 130
 /**
- * Run 40534656266 on iOS: 4.04 minutes on average for the 14 runs after the leg's cold first one, and 6 min 21 s
- * before the replay step. Only the cap's sizing uses these; `legClock` times the real runs from `QA_LEG_START`.
+ * Measured on iOS: 4.04 minutes on average for the 14 runs after the leg's cold first one, and 6 min 21 s
+ * of job setup before the replay step. Only the cap's sizing uses these; `legClock` times the real runs from `QA_LEG_START`.
  */
 export const nativeRunMinutes = 4.1
 export const nativeSetupMinutes = 6.5
-/** Kept for the steps after the replay: the sanitize and the 220 MB upload took 56 s in run 40534656266. */
+/** Kept for the steps after the replay: the sanitize and the 220 MB upload took 56 s. */
 export const nativeWrapUpMinutes = 2
 /** Kept free at the end of a leg's time: on iOS a run whose driver did not start waits this long, then runs again. */
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
@@ -471,7 +471,7 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
 
 /**
  * A checked native flow, signed in by the harness when it waits for the first screen after sign-in without ever
- * typing the code, as every iOS flow of run 39391108579 did. `signIn` is then `control/sign-in.yaml` and a wait for
+ * typing the code, as iOS flows often do. `signIn` is then `control/sign-in.yaml` and a wait for
  * that screen, and the flow goes on from its own wait, its partial sign-in before it left out. The two run one after
  * the other in one app launch, so a failed sign-in is the harness's and never the finding's. Any other flow, a bug on
  * the sign-in screen among them, runs as written. A c1 flow that expects onboarding past the privacy step has the
@@ -573,8 +573,8 @@ const legClock = (now: () => number, legStart: number) => {
     time: async <T>(run: () => Promise<T>) => {
       const start = now()
       const result = await run()
-      // The first run starts Maestro's driver and the app on a cold device: about 8.5 minutes on iOS in run
-      // 40534656266, against 3 to 6 for each of the 14 after it, and sized on it the leg refused a confirming run.
+      // The first run starts Maestro's driver and the app on a cold device: about 8.5 minutes on iOS,
+      // against 3 to 6 for each of the 14 after it, and sized on it the leg refused a confirming run.
       if (state.warm) state.longest = Math.max(state.longest, now() - start)
       state.warm = true
       return result
@@ -606,7 +606,7 @@ export const extraRuns = 3
 
 /**
  * A native `layout` or log-oracle run whose flow failed without showing the quoted line: it never reached the screen,
- * so it says nothing about the bug (run 39380764343, where a point tap landed before the screen was ready). For the
+ * so it says nothing about the bug (for example a point tap that landed before the screen was ready). For the
  * other oracles `withSignIn` splits off the steps before the bug's assertion instead.
  */
 const unreached = (oracle: FindingFile['finding']['oracle']) =>
@@ -876,7 +876,7 @@ export const replay = async (
       result.dropped.push({ file: written, gate: 'schema', reason: misfit })
       continue
     }
-    // The dir names the platform; in run 39373388149 both native sessions wrote "phone".
+    // The dir names the platform; native sessions have written "phone" from the template instead.
     const viewport = parseSession(written.charterDir).platform
     const file = { ...written, finding: { ...written.finding, viewport } }
     const { oracle } = file.finding

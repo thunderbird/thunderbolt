@@ -17,7 +17,7 @@ export const maestroEnv = () => ({
     }),
   ),
   MAESTRO_CLI_NO_ANALYTICS: '1',
-  // Its "Analyze with AI" banner otherwise fills the output a failed run's error is cut from (run 39391108579).
+  // Its "Analyze with AI" banner otherwise fills the output a failed run's error is cut from.
   MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true',
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000',
 })

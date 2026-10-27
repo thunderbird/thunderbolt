@@ -173,7 +173,7 @@ device_android() {
   # Room for a whole replay leg, so the log a job saves at its end still holds its first runs.
   adb -s "$serial" logcat -b main,system,crash,events -G 16M >&2 || echo "warning: could not grow the emulator's log" >&2
   # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
-  # mkdir and push fail (runs 39343228365 and 39344254036).
+  # mkdir and push fail.
   for _ in $(seq 90); do
     adb -s "$serial" shell test -d /sdcard/Android && break
     sleep 2
@@ -218,11 +218,11 @@ install_app() {
   fi
   adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
-  # In run 40534656266 the backend got no request after the replay's first run, and the WebView log stream ended
-  # with it, which fits adb's connection to the device resetting, since that drops the mappings.
+  # When adb's connection to the device resets, the mappings drop: the backend then gets no request and the
+  # WebView log stream ends.
   reverse_ports "$device"
-  # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
-  # 39380764343, several in a row), so the app is opened until a launch gets past it.
+  # A fresh install's first opens can time out on the IndexedDB check and stop the init (sometimes
+  # several in a row), so the app is opened until a launch gets past it.
   for _ in 1 2 3 4; do
     adb -s "$device" shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 > /dev/null
     deadline=$((SECONDS + ${QA_WARM_SECONDS:-30}))

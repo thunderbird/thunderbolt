@@ -102,7 +102,7 @@ test('both formats give the same tree, without the frameless nodes, on the whole
   expect(parseHierarchy(fixture('hier-name-kb.json')).bounds).toEqual({ left: 0, top: 0, right: 440, bottom: 956 })
 })
 
-// The run 39373388149 control on the Android emulator: the Email field focused at [84,1131][1000,1281] and Gboard open.
+// The control on the Android emulator: the Email field focused at [84,1131][1000,1281] and Gboard open.
 // Its root and the root's only child have no bounds.
 const androidControl = fixture('hier-android-control.json')
 const emailAt = (bounds: string) => androidControl.replace('"bounds":"[84,1131][1000,1281]"', `"bounds":"${bounds}"`)
@@ -193,7 +193,7 @@ test('the control fails without the keyboard on either platform, and on another 
   expect(controlVerdict({ ...control, log: other, platform: 'ios' }).ok).toBe(false)
 })
 
-test('the Android control run of run 39373388149 passes, with the keyboard from the tree', () => {
+test('the Android control run passes, with the keyboard from the tree', () => {
   const verdict = controlVerdict({
     hierarchy: androidControl,
     log: fixture('control-cover-android.txt'),

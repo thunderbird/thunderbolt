@@ -991,7 +991,7 @@ describe('replay of native flows', () => {
   })
 
   test('a layout run whose flow stopped before the line is inconclusive and run again, up to 3 extra runs', async () => {
-    // Run 39380764343: of three iOS runs, two stopped on earlier screens and one reached the clipped name field.
+    // Of three iOS runs, two stop on earlier screens and one reaches the clipped name field.
     const early = { passed: false, error: 'Assertion is false: "What should we call you?" is visible' }
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     const unseen = { layout: ['[qa-layout] ready'] }
@@ -1105,7 +1105,7 @@ describe('replay of native flows', () => {
   })
 
   test("a finding's viewport comes from its session dir, so an iOS finding written as phone replays as ios", async () => {
-    // Run 39373388149: both native sessions copied the template's "phone" into every finding.
+    // Native sessions copy the template's "phone" into every finding.
     await writeNative({ ...makeNative('name', layout), viewport: 'phone' })
     const calls: FlowCall[] = []
     const run = { layout: ['[qa-layout] ready', nameLine] }
@@ -1195,7 +1195,7 @@ describe('replay of native flows', () => {
   })
 
   test('a flow that waits for the first screen without typing the code is signed in by the harness first', async () => {
-    // Run 39391108579: every iOS flow pressed Continue and then waited for the welcome screen, with no code typed.
+    // iOS flows press Continue and then wait for the welcome screen, with no code typed.
     const c1 = 'c1-first-run-ios'
     const welcome = '- extendedWaitUntil:\n    visible: Welcome to Thunderbolt!\n    timeout: 60000\n'
     const partial = `- launchApp\n- tapOn: Email\n- inputText: \${EMAIL}\n- tapOn: Continue\n${welcome}- tapOn: Skip\n`
@@ -1204,7 +1204,7 @@ describe('replay of native flows', () => {
     await writeNative(makeNative('typed', layout), typed, c1)
     // A bug on the sign-in screen itself never waits for a later one.
     await writeNative(makeNative('login', layout), '- launchApp\n- tapOn: Email\n', c1)
-    // Run 39391108579's flows wrote the chat's ellipsis as three dots.
+    // Flows write the chat's ellipsis as three dots.
     const chat = '- launchApp\n- extendedWaitUntil:\n    visible:\n      text: Ask me anything...\n'
     await writeNative(makeNative('chat', layout), chat)
     const flows = new Map<string, { flow: unknown[]; signIn?: unknown[] }>()
@@ -1378,7 +1378,7 @@ describe('replay of native flows', () => {
   const outOfTime = `out of time: another run might not end before the leg's ${nativeJobMinutes}-minute timeout`
 
   test('a leg stops starting runs before its timeout, keeping time for later findings, and says why', async () => {
-    // Run 39391108579: 18 inconclusive iOS runs of about 3.5 minutes each ran the leg into its 90-minute timeout.
+    // 18 inconclusive iOS runs of about 3.5 minutes each run the leg into its 90-minute timeout.
     // The job started at minute 0 and its setup took 10 minutes, longer on Android than on iOS.
     const minutes = 8
     const clock = { now: 10 * 60_000 }
@@ -1413,9 +1413,9 @@ describe('replay of native flows', () => {
   })
 
   test("the leg's cold first run does not size the rest, so a bug that fails every run still gets its 3", async () => {
-    // Run 40534656266 on iOS, in seconds: the replay step started 381 s into the job, and the first control run
-    // started Maestro's driver and the app on a cold simulator. Sized on that run, c-name's extra run was refused
-    // at 56 min 49 s, and the job ended 17 minutes before its timeout. Sized on the warm runs, 4 more runs of 280 s
+    // On iOS, in seconds: the replay step starts 381 s into the job, and the first control run
+    // starts Maestro's driver and the app on a cold simulator. Sized on that run, c-name's extra run is refused
+    // at 56 min 49 s, and the job ends 17 minutes before its timeout. Sized on the warm runs, 4 more runs of 280 s
     // and a driver retry's 180 s fit the 1871 s left.
     const seconds = new Map([
       ['stack control', [539, 277, 280]],

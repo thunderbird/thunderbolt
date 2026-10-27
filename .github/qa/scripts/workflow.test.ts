@@ -373,7 +373,7 @@ test("a native replay leg's worst case fits its timeout, since a timeout loses e
 describe('native jobs', () => {
   const maestroJobs = Object.entries(jobs).filter(([, job]) => JSON.stringify(job).includes('MAESTRO_DRIVER_STARTUP'))
 
-  test("every job that runs Maestro turns off its AI banner, which filled run 39391108579's replay error", () => {
+  test("every job that runs Maestro turns off its AI banner, which fills a failed run's error", () => {
     expect(maestroJobs.map(([name]) => name).sort()).toEqual([
       'explore-native',
       'native-control',

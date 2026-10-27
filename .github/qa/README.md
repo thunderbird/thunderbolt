@@ -239,15 +239,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    upload, 3 for an iOS run whose driver does not start in time and runs again), counted from `QA_LEG_START`, which
    the job's first step records, so the setup is counted as it ran. A run is taken to last as long as the slowest so
    far (at least 4.1 minutes), leaving out the leg's first run: it starts Maestro's driver and the app on a cold
-   device, and took about 8.5 minutes on iOS in run 40534656266 against 3 to 6 for each run after it. The control's
+   device, and takes about 8.5 minutes on iOS against 3 to 6 for each run after it. The control's
    other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
    is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
    for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me anything…` otherwise; three
    dots count as the ellipsis) but never types the code `12345678` is signed in by the harness.
    `control/sign-in.yaml` and a wait for that screen run first as their own `maestro test`, in the same launch, and
    the flow then goes on from its own wait. A run whose sign-in failed never runs the flow and is inconclusive,
-   whatever the oracle, so it can never prove a bug. In run 39391108579 no iOS flow typed the code, and every run was
-   inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as written.
+   whatever the oracle, so it can never prove a bug. Without that rule, a replay whose iOS flows never typed the
+   code would have every run inconclusive. A flow for a bug on the sign-in screen waits for no later screen, so it runs as written.
    `drivers/maestro.md` gives the model the same sign-in block to copy, and each build's landing wait.
    A c1 flow that stops at the welcome wait or next waits for a text gets `control/consent.yaml` at the end of its
    sign-in step: it ticks the privacy checkbox and skips Connect Google, but only while the checkbox shows and that
@@ -576,13 +576,13 @@ Traps, each of which has cost a run:
   architecture (`aarch64` on an Apple Silicon Mac, `x86_64` on the runner). The build reads `ANDROID_HOME` and
   `NDK_HOME` from the environment.
 - On a cold emulator the first opens of a fresh install can hit the 5 s IndexedDB timeout, and the init stops at
-  `step0_5_storage_check` (runs 39373388149 and 39380764343, twice in a row there). `install android` opens the app
+  `step0_5_storage_check`, sometimes twice in a row. `install android` opens the app
   until a launch logs `[init] step1_`, up to 4 launches of 30 s each with a stop between them, and fails with the last
   storage check line when none does. Sessions, the control and every replay run start on a warm app, and a bad
   emulator fails at the install instead of later as `stack unhealthy`.
-- adb drops its `adb reverse` mappings when its connection to the emulator resets. In run 40534656266 the backend
-  got no request after the replay's first run and the WebView stream stopped with it, so the app's requests failed
-  ("Something went wrong") in every run after, which fits such a reset. `install android` maps the stack's ports again before it opens the
+- adb drops its `adb reverse` mappings when its connection to the emulator resets. After such a reset the backend
+  gets no request and the WebView stream stops with it, so the app's requests fail
+  ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
   app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
   still holds its first runs.
 
@@ -612,14 +612,14 @@ Android on `ubuntu-latest` with KVM.
   both builds, the device, the stack (`android-sync` serves the web build with Postgres, PowerSync and Playwright's
   Chromium for c7's specs; `android-real` the real providers), the console stream, then `verify.ts replay --native`
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
-  4 minutes on iOS (run 40534656266), so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
+  4 minutes on iOS, so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
   3 runs and up to 6 runs per finding, plus setup, wrap-up and one driver retry, take about 122 minutes and fit the
   130-minute job, whose timeout would lose every finding. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
   On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
   and runs `launchApp`: Maestro starts its driver inside a session's first `launchApp`, and the first session on a
-  fresh emulator failed there with no reason given (run 40534656266). If the Maestro session fails, that is only a
+  fresh emulator can fail there with no reason given. If the Maestro session fails, that is only a
   warning (a failing install in the same step still fails the job), its time counts in the leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
   it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
@@ -632,7 +632,7 @@ Android on `ubuntu-latest` with KVM.
   `verify-native-run` boots no device and writes no verdict.
 - **native-control**, only when a dispatch sets `native_control`: builds the `control` variant per platform, boots a
   device, starts the stack and runs `native.sh control`. It holds no secret and its result is not filed. On Android
-  it stops the Gradle daemons between the build and the emulator: run 39391108579 stalled on the storage check only
+  it stops the Gradle daemons between the build and the emulator: the storage check stalled only
   in this job, the one native job that builds before it boots. A failed control also uploads the stack's log
   (`qa-logs-control-<platform>`); the WebView log is in the control's own folder.
 - Every Maestro process runs with `MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true`, because Maestro's "Analyze with
@@ -799,7 +799,7 @@ for cost, turns and duration. The report's "Calibration hint" table computes it 
 Recalibrate after the first two scheduled runs and whenever a charter changes. The Anthropic workspace's monthly
 limit stays the hard ceiling.
 
-Measured locally on 2026-09-30 (Sonnet 5.5 explorer, Opus 5.5 judge and fix agent, CLI 2.1.285):
+Measured locally (Sonnet 5.5 explorer, Opus 5.5 judge and fix agent, CLI 2.1.285):
 
 | Step                                                         | Sessions | Cost               | Turns   | Duration    | Stop                  |
 | ------------------------------------------------------------ | -------- | ------------------ | ------- | ----------- | --------------------- |
@@ -810,14 +810,13 @@ Measured locally on 2026-09-30 (Sonnet 5.5 explorer, Opus 5.5 judge and fix agen
 | fix agent (one overflow bug)                                 | 1        | $0.26              | 21      | 3.1 min     | finished, spec passes |
 
 A full set of charters plus the canary leg cost about $7 in explore sessions. c7 has not been measured. Later
-samples (2026-10-02): c4 on the real AI, $1.72 and 283 turns in 9.2 min, plus $0.14 on the app side; the free
+samples: c4 on the real AI, $1.72 and 283 turns in 9.2 min, plus $0.14 on the app side; the free
 session, $0.49 and $0.50 per platform plus about $0.25 on the app side for sessions and replays. With the table's
 numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That is one local
 sample per charter, so keep the initial caps until two scheduled runs have reported.
 
 The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with the same caps as a web
-session and a Haiku canary before it (4 turns, $0.05). Only c1 has been measured on GitHub (runs 39373388149,
-39380764343 and 39391108579): iOS $0.61 to $0.83 and 82 to 104 turns, Android $1.07 to $1.23 and 117 to 137 turns,
+session and a Haiku canary before it (4 turns, $0.05). Only c1 has been measured on GitHub: iOS $0.61 to $0.83 and 82 to 104 turns, Android $1.07 to $1.23 and 117 to 137 turns,
 10 to 22 minutes a session; each canary stayed under its $0.05 cap. The spec's estimate is $1.50 to $2.50 per native
 charter session and $0.80 to $1.30 per free session, so $21 to $35 a week on top of the web sessions; the other
 charters are still unmeasured. The turn cap of a native session is the 400 in `explore.sh`, not
@@ -886,21 +885,21 @@ Never run on GitHub (only locally, or read in the action's code):
   kernel has no Yama, so only the check's fail-closed branch ran;
 - the job-level `environment` expression that is empty for every replay leg but the real one, and the judge's
   merge of the sync and real candidates from per-artifact directories (run locally as a script);
-- the native jobs as this workflow runs them. Runs 39373388149, 39380764343 and 39391108579 ran a copy of it on a
-  push trigger, with the c1 sessions only, no environments and no Linear key. On both platforms they proved the
+- the native jobs as this workflow runs them. A copy of it ran on a
+  push trigger, with the c1 sessions only, no environments and no Linear key. On both platforms it proved the
   builds and the app tars between jobs, the Maestro installer, Claude Code from npm, the harness, the canary (denied
   before every session), the sessions and their upload, the gate's foreground check, the replay and judge legs
   running, and a dry filing; on iOS, the positive control; on Android, the keyboard rect from the tree and its
-  `behind-keyboard` rule. The agent found the onboarding keyboard bug on its own on both platforms. They left open:
+  `behind-keyboard` rule. The agent found the onboarding keyboard bug on its own on both platforms. Still open:
   a native finding confirmed by replay and filed (iOS replays were dropped, flaky or inconclusive, and Android's
   stopped at the stack control); the Android control exiting 0 (its job stalled on the app's storage check every
   time); the fix agent on a native task, since `claude-code-action` refuses a push event; `verify-native-build`,
   `verify-native-run` and `publish` with a real patched app and verdict; `verify-real`; c7 on Android with the
   `android-sync` and `android-real` legs; every charter but c1 and the free session on both platforms; and a full
-  `replay-native` leg under the `QA_LEG_START` clock (run 39391108579's iOS replay hit the timeout before it);
+  `replay-native` leg under the `QA_LEG_START` clock (an iOS replay without it hit the timeout);
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
-- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. Run 39391108579 proved the fix job's dev
+- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. The same copy proved the fix job's dev
   stack as `qa-dev`: its start, the `ss` port check, the lock and the stop through the same rule.
 
 Also:
@@ -963,7 +962,7 @@ Also:
   link on both platforms, and a button or field on iOS.
 - Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
   `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
-  Android's sweep has not run. In runs 39380764343 and 39391108579 the probe logged `covered button`
+  Android's sweep has not run. On Android the probe has logged `covered button`
   for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
   lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest
   from the left edge were logged, the ones the sliding page uncovers last. The drawer's animation outlasting the

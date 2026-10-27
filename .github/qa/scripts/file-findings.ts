@@ -322,7 +322,7 @@ const refusal = (f: Finding) => {
     return 'visual finding without an element and a function to deduplicate on'
   }
   // A platform files layout tickets only after the probe has swept its correct screens clean. Android's never
-  // ran, and runs 39380764343 and 39391108579 logged `covered` on sidebar buttons their screenshots show uncovered.
+  // ran, and it has logged `covered` on sidebar buttons that their screenshots show uncovered.
   if (f.viewport === 'android' && f.oracle.type === 'layout') {
     return 'Android layout finding, held back until the probe sweeps correct Android screens clean'
   }

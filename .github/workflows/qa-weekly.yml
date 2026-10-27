@@ -894,7 +894,7 @@ jobs:
       - *postgres-setup
       - *device
       # Maestro starts its driver inside a session's first launchApp, and the first session on a fresh emulator
-      # failed there with no reason given (run 40534656266 and the native spike). One session that counts for nothing
+      # failed there with no reason given (run 40534656266). One session that counts for nothing
       # starts it before the console stream and the counted runs, which each install the app again. The install took
       # 45 s in that run's explore leg; Android's setup (2.4 minutes there) stays inside the 6.5 minutes verify.ts
       # sizes a leg's setup with.
@@ -920,7 +920,7 @@ jobs:
             --leg "$LEG"
 
       # Read once the replay is over rather than streamed during it: a reset of the device's adb connection ends a
-      # stream, as it ended the WebView one in run 40534656266. The log buffer is grown at boot to hold a whole leg.
+      # stream, which fits the WebView one ending in run 40534656266. The log buffer is grown at boot to hold a whole leg.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |

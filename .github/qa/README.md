@@ -213,10 +213,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
    session dir decides which, never the finding's own `charter` or `viewport`: a finding whose repro does not fit
    its session is dropped at the schema gate, and every other finding takes its session's platform as its
-   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
-   times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
-   otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
-   failure marks the stack unhealthy and no flow runs. On Android the install also maps the stack's ports into the
+   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and
+   `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
+   onboarding build for c1, the plain one otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3
+   times first on the plain build; one failure marks the stack unhealthy and no flow runs. On Android the install also maps the stack's ports into the
    emulator again and warms the app up (as `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
    `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like
    the privacy step the harness clicks through, adds no tree line.
@@ -582,7 +582,7 @@ Traps, each of which has cost a run:
   emulator fails at the install instead of later as `stack unhealthy`.
 - adb drops its `adb reverse` mappings when its connection to the emulator resets. In run 40534656266 the backend
   got no request after the replay's first run and the WebView stream stopped with it, so the app's requests failed
-  ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
+  ("Something went wrong") in every run after, which fits such a reset. `install android` maps the stack's ports again before it opens the
   app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
   still holds its first runs.
 
@@ -619,8 +619,8 @@ Android on `ubuntu-latest` with KVM.
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
   On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
   and runs `launchApp`: Maestro starts its driver inside a session's first `launchApp`, and the first session on a
-  fresh emulator failed there with no reason given (run 40534656266 and the native spike). Its failure is only a
-  warning, its time counts in the leg's setup, and every counted run installs the app again.
+  fresh emulator failed there with no reason given (run 40534656266). If the Maestro session fails, that is only a
+  warning (a failing install in the same step still fails the job), its time counts in the leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
   it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
   is over, since a reset of adb's connection ends a stream), the adb server's log (`qa-adb.log`) and Maestro's debug
@@ -735,7 +735,7 @@ Do not add a `LINEAR_API_KEY` to the `qa-agent` environment: it would override t
 ### Linear labels
 
 `file` creates new tickets in the team's Backlog state (the workflow state of type `backlog`), labelled `qa-agent` and
-`Bug` (or `Security`). The team does not use Linear's Triage state, and the filer stops if it has no backlog state.
+`Bug`, plus `Security` for a security finding. The team does not use Linear's Triage state, and the filer stops if it has no backlog state.
 
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 

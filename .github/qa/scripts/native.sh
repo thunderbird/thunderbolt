@@ -219,7 +219,7 @@ install_app() {
   adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
   # In run 40534656266 the backend got no request after the replay's first run, and the WebView log stream ended
-  # with it: the device's adb connection had reset and taken the mappings along.
+  # with it, which fits adb's connection to the device resetting, since that drops the mappings.
   reverse_ports "$device"
   # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
   # 39380764343, several in a row), so the app is opened until a launch gets past it.

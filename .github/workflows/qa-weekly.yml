@@ -175,7 +175,7 @@ jobs:
           .github/qa/scripts/stack.sh build qa-dist
           .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding
 
-      - name: Guard - smoke-test a fresh stack
+      - name: Smoke-test a fresh stack as the guard
         run: |
           .github/qa/scripts/stack.sh start qa-dist
           bunx playwright test --config .github/qa/playwright.config.ts --project control
@@ -536,7 +536,7 @@ jobs:
           path: ${{ runner.temp }}/qa-native/onboarding/app.tar
           retention-days: 1
 
-  # Zone D on the Mac (README, "Native explore on macOS"): the model drives the app only through the Maestro gate and
+  # On the Mac (README, "Native explore on macOS"): the model drives the app only through the Maestro gate and
   # starts no process, so the key may sit in the env of the canary and session steps. On Android the same flags hold.
   explore-native:
     name: explore ${{ matrix.leg.charter }}
@@ -930,7 +930,7 @@ jobs:
 
       - *sanitize
       - *upload-replay
-      # A failed stack control said nothing readable without them. On Android after every replay:
+      # A failed stack control says nothing readable without them. On Android after every replay:
       # the files are small next to the videos, and a passed control does not show whether the console stream lasted
       # the whole leg. Never on the real leg, whose backend held the provider keys.
       - name: Upload the stack, device and Maestro logs

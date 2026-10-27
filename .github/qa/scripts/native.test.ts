@@ -141,7 +141,7 @@ exit 0
   chmodSync(join(bin, 'adb'), 0o755)
   // One second per launch instead of thirty.
   const proc = Bun.spawnSync(['bash', native, 'install', 'android', 'emulator-5554', '/apps/app-debug.apk'], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_WARM_SECONDS: '1' },
+    env: { ...process.env, ...noPorts, PATH: `${bin}:${process.env.PATH}`, QA_WARM_SECONDS: '1' },
   })
   return { proc, log: readFileSync(calls, 'utf8').trim().split('\n') }
 }
@@ -165,6 +165,15 @@ test('install android relaunches the app until a launch gets past the storage ch
   expect(log.slice(launches[0], launches[1])).toContain(forceStop)
   expect(log.slice(launches[1])).toContain('-s emulator-5554 logcat -d --pid=4002 -s Tauri/Console:*')
   expect(log.at(-1)).toBe(forceStop)
+})
+
+test('install android maps the stack ports again before the first launch, since an adb reset drops them', () => {
+  const { proc, log } = warmUp(2)
+  expect(proc.exitCode).toBe(0)
+  const firstLaunch = log.findIndex((line) => line.includes(' shell monkey '))
+  expect(log.slice(2, firstLaunch)).toEqual(
+    ['8005', '9878', '9879', '9880', '18081'].map((port) => `-s emulator-5554 reverse tcp:${port} tcp:${port}`),
+  )
 })
 
 test('install ios removes the app first, so the session starts on the first-run screens a replay run sees', () => {

@@ -216,8 +216,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and `verify.ts replay --native` runs it 3
    times through `replay-native.ts`, each time on a fresh install (the onboarding build for c1, the plain one
    otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one
-   failure marks the stack unhealthy and no flow runs. On Android the install also warms the app up (as
-   `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
+   failure marks the stack unhealthy and no flow runs. On Android the install also maps the stack's ports into the
+   emulator again and warms the app up (as `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
    `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like
    the privacy step the harness clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
@@ -580,6 +580,11 @@ Traps, each of which has cost a run:
   until a launch logs `[init] step1_`, up to 4 launches of 30 s each with a stop between them, and fails with the last
   storage check line when none does. Sessions, the control and every replay run start on a warm app, and a bad
   emulator fails at the install instead of later as `stack unhealthy`.
+- adb drops its `adb reverse` mappings when its connection to the emulator resets. In run 40534656266 the backend
+  got no request after the replay's first run and the WebView stream stopped with it, so the app's requests failed
+  ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
+  app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
+  still holds its first runs.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and this VM has
 no hypervisor, so they run first on GitHub's runners (KVM, `x86_64`).
@@ -612,7 +617,14 @@ Android on `ubuntu-latest` with KVM.
   130-minute job, whose timeout would lose every finding. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
-  When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`, except on
+  On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
+  and runs `launchApp`: Maestro starts its driver inside a session's first `launchApp`, and the first session on a
+  fresh emulator failed there with no reason given (run 40534656266 and the native spike). Its failure is only a
+  warning, its time counts in the leg's setup, and every counted run installs the app again.
+  When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
+  it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
+  is over, since a reset of adb's connection ends a stream), the adb server's log (`qa-adb.log`) and Maestro's debug
+  output for each session (`qa-maestro/<time>/`, with `maestro.log` and the commands). None of it is uploaded on
   `android-real`, whose backend held the provider keys.
 - The weekly **judge** adds the native legs' candidates to the web ones, like the sync and real legs. A dispatch of
   native sessions only still plans it, so its findings are judged, filed and fixed.

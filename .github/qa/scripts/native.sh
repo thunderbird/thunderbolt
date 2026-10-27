@@ -12,9 +12,10 @@
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
 #   native.sh device <platform>                                 boot a device, print its id on stdout
-#   native.sh install <platform> <device> <app-path>            on Android also open the app until a launch gets
-#                                                               past the storage check, up to 4 launches of
-#                                                               $QA_WARM_SECONDS (30) each, and stop it
+#   native.sh install <platform> <device> <app-path>            on Android also reverse the stack's ports again and
+#                                                               open the app until a launch gets past the storage
+#                                                               check, up to 4 launches of $QA_WARM_SECONDS (30)
+#                                                               each, and stop it
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
 #                                                               background, pid in <file>.pid
 #   native.sh stop-logs <file>
@@ -46,6 +47,11 @@ stack_ports="$QA_BACKEND_PORT $QA_PROVIDER_PORT $QA_MCP_PORT $QA_GOOGLE_PORT ${p
 die() {
   echo "$*" >&2
   exit 2
+}
+
+# Maps the stack's ports into the emulator. adb drops the mappings when its connection to the device resets.
+reverse_ports() {
+  for port in $stack_ports; do adb -s "$1" reverse "tcp:$port" "tcp:$port" >&2; done
 }
 
 # Writes the dev config with the CSP that lets the app reach the stack. The Android build keeps its own identifier:
@@ -163,7 +169,9 @@ device_android() {
     sleep 2
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
-  for port in $stack_ports; do adb -s "$serial" reverse "tcp:$port" "tcp:$port" >&2; done
+  reverse_ports "$serial"
+  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs.
+  adb -s "$serial" logcat -b main,system,crash,events -G 16M >&2 || echo "warning: could not grow the emulator's log" >&2
   # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
   # mkdir and push fail (runs 39343228365 and 39344254036).
   for _ in $(seq 90); do
@@ -210,6 +218,9 @@ install_app() {
   fi
   adb -s "$device" uninstall "$app_id" > /dev/null || true
   adb -s "$device" install -r "$app"
+  # In run 40534656266 the backend got no request after the replay's first run, and the WebView log stream ended
+  # with it: the device's adb connection had reset and taken the mappings along.
+  reverse_ports "$device"
   # A fresh install's first opens can time out on the IndexedDB check and stop the init (runs 39373388149 and
   # 39380764343, several in a row), so the app is opened until a launch gets past it.
   for _ in 1 2 3 4; do

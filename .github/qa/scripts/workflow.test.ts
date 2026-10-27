@@ -201,7 +201,7 @@ describe('fix job', () => {
       expect(check).toContain(`sport = :${ports[name]}`)
   })
 
-  test("the agent may not edit git, the pipeline, e2e or the tool configs", () => {
+  test('the agent may not edit git, the pipeline, e2e or the tool configs', () => {
     const args = step('fix', 'Fix').with?.claude_args ?? ''
     for (const rule of ['.git/**', '.github/**', 'e2e/**', '**/vite.config.*', '**/tsconfig*.json', '**/.husky/**'])
       expect(args).toContain(`"Edit(${rule})"`)
@@ -315,12 +315,16 @@ describe('publish', () => {
     mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
     const verifyNative = ['ios', 'android'].map((platform) => ({ fp: 'fp1', platform }))
     writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [], verifyNative }))
-    for (const [path, content] of Object.entries(files)) writeFileSync(join(dir, 'qa-out', path), JSON.stringify(content))
+    for (const [path, content] of Object.entries(files))
+      writeFileSync(join(dir, 'qa-out', path), JSON.stringify(content))
     if (diagnosis) writeFileSync(join(dir, 'qa-out/fix/fp1.diagnosis.md'), diagnosis)
-    const proc = Bun.spawnSync(['bash', '-e', '-c', step('publish', 'Require the native and real-AI checks').run ?? ''], {
-      cwd: dir,
-      env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
-    })
+    const proc = Bun.spawnSync(
+      ['bash', '-e', '-c', step('publish', 'Require the native and real-AI checks').run ?? ''],
+      {
+        cwd: dir,
+        env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
+      },
+    )
     expect(proc.exitCode).toBe(0)
     const read = (path: string) =>
       existsSync(join(dir, 'qa-out', path)) ? readFileSync(join(dir, 'qa-out', path), 'utf8') : undefined
@@ -336,7 +340,7 @@ describe('publish', () => {
     expect(failed.diagnosis).toContain('(android)')
   })
 
-  test("needs the real-AI verdict for a web real-AI task", () => {
+  test('needs the real-AI verdict for a web real-AI task', () => {
     const both = { 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': passed }
     expect(verdicts(both, { REAL: 'true' }).diagnosis).toContain('real AI providers')
     expect(verdicts({ ...both, 'verify/fp1.real.json': { passed: true } }, { REAL: 'true' }).diagnosis).toBeUndefined()
@@ -398,21 +402,34 @@ describe('native jobs', () => {
     expect(at).toBeLessThan(indexOf('native-control', 'Boot the device'))
   })
 
-  test('a failed control uploads the backend and WebView logs, never from a leg whose backend held keys', () => {
+  test('a failed control uploads its logs, an Android replay always does, never a leg whose backend held keys', () => {
     const control = step('native-control', 'Upload the stack log')
     expect(control.if).toBe('failure()')
     expect(control.with?.path).toBe('${{ runner.temp }}/qa-stack.log')
     // The control's own folder, uploaded always, already holds its WebView log.
     expect(steps('native-control').find((s) => s.with?.path === '${{ runner.temp }}/qa-control/')?.if).toBe('always()')
-    const replayLogs = step('replay-native', 'Upload the stack and WebView logs')
-    expect(replayLogs.if).toBe('failure() && !matrix.leg.real')
+    const upload = 'Upload the stack, device and Maestro logs'
+    const save = "Save the emulator's, adb's and Maestro's logs"
+    const replayLogs = step('replay-native', upload)
+    // On Android also after a replay that passed, to show whether the console stream lasted the leg.
+    expect(replayLogs.if).toBe("(failure() || matrix.leg.platform == 'android') && !matrix.leg.real")
+    expect(step('replay-native', save).if).toBe("always() && matrix.leg.platform == 'android' && !matrix.leg.real")
     expect(replayLogs.with?.path?.split('\n').filter(Boolean)).toEqual([
       '${{ runner.temp }}/qa-stack.log',
       '${{ runner.temp }}/qa-webview.log',
+      '${{ runner.temp }}/qa-logcat.log',
+      '${{ runner.temp }}/qa-adb.log',
+      '${{ runner.temp }}/qa-maestro/',
     ])
-    expect(indexOf('replay-native', 'Upload the stack and WebView logs')).toBeGreaterThan(
-      indexOf('replay-native', 'Replay the repro flows and specs'),
-    )
+    expect(indexOf('replay-native', save)).toBeGreaterThan(indexOf('replay-native', 'Replay the repro flows and specs'))
+    expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
+  })
+
+  test("Android's replay starts Maestro's driver once, before the console stream that a reset there would end", () => {
+    const warmUp = "Start Maestro's driver on the emulator"
+    expect(step('replay-native', warmUp).if).toBe("matrix.leg.platform == 'android'")
+    expect(indexOf('replay-native', warmUp)).toBeGreaterThan(indexOf('replay-native', 'Boot the device'))
+    expect(indexOf('replay-native', warmUp)).toBeLessThan(indexOf('replay-native', 'Stream the WebView console'))
   })
 })
 

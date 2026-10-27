@@ -893,6 +893,19 @@ jobs:
           merge-multiple: true
       - *postgres-setup
       - *device
+      # Maestro starts its driver inside a session's first launchApp, and the first session on a fresh emulator
+      # failed there with no reason given (run 40534656266 and the native spike). One session that counts for nothing
+      # starts it before the console stream and the counted runs, which each install the app again. The install took
+      # 45 s in that run's explore leg; Android's setup (2.4 minutes there) stays inside the 6.5 minutes verify.ts
+      # sizes a leg's setup with.
+      - name: Start Maestro's driver on the emulator
+        if: matrix.leg.platform == 'android'
+        run: |
+          .github/qa/scripts/native.sh install android "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/plain/$QA_APP_FILE"
+          app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
+          printf 'appId: %s\n---\n- launchApp\n' "$app_id" > "$RUNNER_TEMP/qa-warm-up.yaml"
+          maestro --udid "$QA_DEVICE_ID" test "$RUNNER_TEMP/qa-warm-up.yaml" ||
+            echo "::warning::Maestro's first session on the emulator failed; the replay's counted runs come after it"
       - *start-native-stack
       - *lock
       - *logs
@@ -906,18 +919,31 @@ jobs:
             --app "$RUNNER_TEMP/apps/plain/$QA_APP_FILE" --app-onboarding "$RUNNER_TEMP/apps/onboarding/$QA_APP_FILE" \
             --leg "$LEG"
 
+      # Read once the replay is over rather than streamed during it: a reset of the device's adb connection ends a
+      # stream, as it ended the WebView one in run 40534656266. The log buffer is grown at boot to hold a whole leg.
+      - name: Save the emulator's, adb's and Maestro's logs
+        if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
+        run: |
+          adb -s "$QA_DEVICE_ID" logcat -d -v epoch -b main,system,crash,events > "$RUNNER_TEMP/qa-logcat.log" || true
+          cp /tmp/adb.*.log "$RUNNER_TEMP/qa-adb.log" || true
+          cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
+
       - *sanitize
       - *upload-replay
-      # A failed stack control said nothing readable without them (run 39391108579). Never on the real leg, whose
-      # backend held the provider keys.
-      - name: Upload the stack and WebView logs
-        if: failure() && !matrix.leg.real
+      # A failed stack control said nothing readable without them (run 39391108579). On Android after every replay:
+      # the files are small next to the videos, and a passed control does not show whether the console stream lasted
+      # the whole leg. Never on the real leg, whose backend held the provider keys.
+      - name: Upload the stack, device and Maestro logs
+        if: (failure() || matrix.leg.platform == 'android') && !matrix.leg.real
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-logs-replay-${{ matrix.leg.name }}
           path: |
             ${{ runner.temp }}/qa-stack.log
             ${{ runner.temp }}/qa-webview.log
+            ${{ runner.temp }}/qa-logcat.log
+            ${{ runner.temp }}/qa-adb.log
+            ${{ runner.temp }}/qa-maestro/
           if-no-files-found: ignore
           retention-days: 7
 

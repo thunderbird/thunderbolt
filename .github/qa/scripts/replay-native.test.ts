@@ -73,12 +73,17 @@ exit 0
   expect(proc.stderr.toString()).toBe('')
   expect(JSON.parse(proc.stdout.toString())).toEqual(['[qa-layout] behind-keyboard textbox "Email"'])
   const log = readFileSync(calls, 'utf8').trim().split('\n')
-  expect(log.slice(0, 3)).toEqual([
+  expect(log.slice(0, 2)).toEqual([
     'adb -s emulator-5554 uninstall net.thunderbird.thunderbolt',
     `adb -s emulator-5554 install -r ${join(realpathSync(work), 'apps/plain.apk')}`,
-    'adb -s emulator-5554 shell monkey -p net.thunderbird.thunderbolt -c android.intent.category.LAUNCHER 1',
   ])
   const at = (pattern: RegExp) => log.findIndex((line) => pattern.test(line))
+  // Then the stack's ports again, which a reset of adb's connection to the emulator drops, and the first launch.
+  const firstLaunch = at(/ shell monkey -p net\.thunderbird\.thunderbolt /)
+  expect(firstLaunch).toBeGreaterThan(2)
+  expect(
+    log.slice(2, firstLaunch).filter((line) => !/^adb -s emulator-5554 reverse tcp:\d+ tcp:\d+$/.test(line)),
+  ).toEqual([])
   expect(at(/^maestro .* test /)).toBeGreaterThan(at(/am force-stop net\.thunderbird\.thunderbolt$/))
   expect(at(/^maestro .* hierarchy$/)).toBeGreaterThan(at(/^maestro .* test /))
 })

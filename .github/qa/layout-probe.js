@@ -122,7 +122,6 @@
     right: (node) => node.scrollWidth - node.clientWidth - node.scrollLeft,
   }
   const axisOf = { up: 'overflowY', down: 'overflowY', left: 'overflowX', right: 'overflowX' }
-  // How many pixels el's scrolling containers, the page included, can still move it in a direction.
   const scrollRoom = ({ chain, fixed }, direction) => {
     const axis = axisOf[direction]
     const lists = chain
@@ -193,7 +192,6 @@
 
   const isInside = (x, y, box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
 
-  // What sits over el at (x, y), unless it is el's own content or an excused overlay.
   const coverAt = (x, y, el) => {
     const hit = document.elementFromPoint(x, y)
     return hit && !el.contains(hit) && !hit.contains(el) && !isExcusedCover(hit) ? hit : null
@@ -246,7 +244,6 @@
   const textField =
     'textarea, [contenteditable=true], input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=password], [type=number])'
 
-  // The controls a screen reader must be able to name.
   const controls = `button, a[href], select, ${textField}, input:is([type=checkbox], [type=radio]), [role=button],
     [role=link], [role=checkbox], [role=switch], [role=radio], [role=textbox], [role=searchbox], [role=combobox]`
 
@@ -338,7 +335,6 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    // With no name to quote, the line quotes which control it is.
     const unnamed = [...document.querySelectorAll(controls)]
       .filter((el) => !accessibleName(el) && isCandidate(el))
       .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))

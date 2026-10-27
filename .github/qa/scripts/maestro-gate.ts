@@ -4,11 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The native explorer's only way to the device: an MCP server of ours between Claude and
-// `maestro mcp`. It offers five tools, fixes the device, sends Maestro only flows that pass the allow list, brings
-// the app back when a command leaves it, and after every run appends the layout probe's new `[qa-layout]` lines from
-// the WebView log. The model never sees Maestro's cloud tools, its viewer or `list_devices`, because they are not
-// forwarded.
+// The native explorer's only way to the device: an MCP server between Claude and `maestro mcp`. Maestro's cloud
+// tools, its viewer and `list_devices` are not forwarded, so the model never sees them.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -31,10 +28,8 @@ import { cleanLogLine } from './sanitize'
 
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 export type ToolResult = { content: Content[]; isError?: boolean }
-/** What the gate sends Maestro: the fixed device and, for `run`, its own serialization of the flow. */
 type MaestroArgs = Record<string, string>
 export type MaestroClient = { callTool: (name: string, args: MaestroArgs) => Promise<ToolResult> }
-/** Tool arguments as the MCP SDK hands them over, after its own request parsing. */
 type CallArgs = NonNullable<CallToolRequest['params']['arguments']>
 export type GateContext = {
   client: MaestroClient
@@ -46,10 +41,7 @@ export type GateContext = {
   webviewLog: string
   backendLog: string
   gateLog: string
-  /**
-   * How long the gate waits after a command for the layout probe's confirmed lines: the probe debounces 250 ms and
-   * confirms over 500 ms. 1200 ms unless a test shortens it.
-   */
+  /** The probe debounces 250 ms and confirms over 500 ms; the default wait is 1200 ms. */
   probeWaitMs?: number
 }
 
@@ -101,7 +93,6 @@ const tools = [
   },
 ]
 
-/** The five tools the native explorer sees. None takes a device: the gate fixes it. */
 export const gateTools = tools.map(({ name, description, args }) => ({
   name,
   description,
@@ -111,9 +102,8 @@ export const gateTools = tools.map(({ name, description, args }) => ({
 const driverTimeout = 'iOS driver not ready in time'
 const consoleMark = { ios: 'CONSOLE', android: 'Tauri/Console' }
 const logOffsets = new Map<string, number>()
-// The WebView logs whose probe has said ready since the app last started. One gate process serves one session.
+// Both reset when the app restarts: the probe and the tree report each line once per launch.
 const probeSeen = new Set<string>()
-// The tree's lines each WebView log has shown since the app last started: like the probe's, each comes once per launch.
 const treeSent = new Map<string, Set<string>>()
 
 const log = (ctx: GateContext, line: string) => appendFileSync(ctx.gateLog, `${line}\n`)
@@ -128,7 +118,7 @@ const withLines = (result: ToolResult, lines: string[]): ToolResult => ({
   content: [...result.content, { type: 'text', text: lines.join('\n') }],
 })
 
-/** One Maestro call, repeated once when its XCTest driver did not start in time, which happens now and then. */
+/** Retries once: the XCTest driver sometimes does not start in time. */
 const callMaestro = async (ctx: GateContext, name: string, args: MaestroArgs) => {
   const result = await ctx.client.callTool(name, args)
   return textOf(result).includes(driverTimeout) ? ctx.client.callTool(name, args) : result
@@ -166,7 +156,6 @@ const whoseScreen = (screen: ToolResult, ctx: GateContext): 'ours' | 'away' | 'u
   }
 }
 
-/** The screen once our app is in front: as it is, or after the harness pressed Home and reopened the app. */
 const foregroundScreen = async (ctx: GateContext) => {
   const screen = await inspect(ctx)
   if (whoseScreen(screen, ctx) !== 'away') return { screen, notes: [] }
@@ -192,7 +181,6 @@ const clean = (line: string) => cleanLogLine(line).slice(0, 500)
 
 const probeReady = '[qa-layout] ready'
 
-/** The tree's measurement of a screen, or undefined when Maestro sent bounds the parser cannot read. */
 const measureScreen = (screen: ToolResult, ctx: GateContext) => {
   try {
     return measureNative(parseInspectScreen(textOf(screen)), ctx.platform)
@@ -202,11 +190,8 @@ const measureScreen = (screen: ToolResult, ctx: GateContext) => {
 }
 
 /**
- * The layout after a command: the probe's new `[qa-layout]` lines from the WebView log, after a wait for its
- * confirmation, under the gate's ready line with the keyboard from the tree and the tree's own new lines
- * (unnamed-control, and Android's behind-keyboard, once per launch like the probe's). The probe's own unnamed-control
- * lines for what the tree reports are left out (`keepsProbeLine`). The ready line needs the probe's own ready line
- * since the app last started, so a build without the probe never looks clean. A foreign screen is never measured.
+ * The ready line needs the probe's own ready line since the app last started, so a build without the probe never
+ * looks clean. A foreign screen is never measured.
  */
 const measured = async (ctx: GateContext, restarted = false) => {
   if (restarted) {
@@ -263,10 +248,7 @@ const screenshot = async (ctx: GateContext) => {
   return withLines(result, [`Saved to ${file}`])
 }
 
-/**
- * The whole lines appended to `file` since this reader's last call; a line still being written waits for the next
- * one. `read_logs` and the layout reader keep separate offsets, so neither takes the other's lines.
- */
+/** A line still being written waits for the next call. `read_logs` and the layout reader keep separate offsets. */
 const newLines = (file: string, reader: 'logs' | 'layout'): string[] => {
   if (!existsSync(file)) return []
   const bytes = readFileSync(file)
@@ -294,10 +276,7 @@ const readLogs = (ctx: GateContext) => {
   return reply(kept.length > 0 ? [...notes, ...kept].join('\n') : 'no new log lines')
 }
 
-/**
- * Handles one tool call from the explorer. A tool the gate does not offer, or an argument its schema does not
- * declare (`device_id`, `files`, `dir`, `env`), is refused and logged without reaching Maestro.
- */
+/** A tool the gate does not offer, or an argument its schema does not declare, is refused without reaching Maestro. */
 export const handleCall = async (name: string, args: CallArgs, ctx: GateContext): Promise<ToolResult> => {
   const tool = tools.find((entry) => entry.name === name)
   if (!tool) {

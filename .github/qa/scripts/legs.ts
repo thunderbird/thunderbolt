@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { type Platform, parseSession, platformIds, platformOf, realAiCharters } from './findings'
 
-/** One explore session of the weekly run, as the workflow's matrix reads it (`charter` is the session id). */
+/** `charter` is the session id. */
 export type Leg = {
   charter: string
   dist: string
@@ -24,7 +24,6 @@ export type Leg = {
   postgres: boolean
 }
 
-/** One replay or judge job of the weekly run. */
 export type VerifyLeg = {
   name: string
   /** The platform id of a native leg, `web` for the web legs, which replay desktop and phone together. */
@@ -46,7 +45,7 @@ const baseLeg = {
   postgres: false,
 }
 
-/** The charters that run on every platform. The free session of the week is added by `planLegs`. */
+/** The free session of the week is added by `allLegs`. */
 const charters: (Partial<Leg> & { charter: string })[] = [
   { charter: 'c1-first-run', onboarding: true },
   { charter: 'c2-chat-power-user' },
@@ -57,11 +56,9 @@ const charters: (Partial<Leg> & { charter: string })[] = [
   { charter: 'c7-two-devices', postgres: true },
 ]
 
-/** Whether a session (`<charter>-<platform>`) explores the onboarding build. */
 export const onboardingSession = (session: string) =>
   charters.some((c) => c.onboarding && session.startsWith(`${c.charter}-`))
 
-/** Whether a session (`<charter>-<platform>`) needs Postgres and PowerSync. */
 export const syncSession = (session: string) => charters.some((c) => c.postgres && session.startsWith(`${c.charter}-`))
 
 /**
@@ -76,24 +73,19 @@ const skippedSessions = [
   },
 ]
 
-/** The artifact a leg's session uploads: the web names are `qa-<kind>`, a native platform's `qa-<id>[-<kind>]`. */
 const artifactName = (platform: Platform, kind: 'explore' | 'sync' | 'real') => {
   if (platform.driver === 'playwright') return `qa-${kind}`
   return kind === 'explore' ? `qa-${platform.id}` : `qa-${platform.id}-${kind}`
 }
 
-/**
- * Whether a dispatch's `only` list picks this session. A session id picks one session, a charter id picks it on every
- * platform, `free` picks the free sessions, and an empty list picks everything. The canary filter in `report.ts`
- * shares this rule.
- */
+/** A charter id in `only` picks it on every platform, `free` the free sessions. `report.ts` shares this rule. */
 export const selects = (only: string[], session: string) =>
   only.length === 0 ||
   only.includes(session) ||
   only.includes(parseSession(session).charter) ||
   (session.startsWith('free-') && only.includes('free'))
 
-/** Every session of the week on every platform, then one extra leg per canary on the canary build. Canaries are web charters only. */
+/** One extra leg per canary, on the canary build; canaries are web charters only. */
 const allLegs = (journey: string, canaries: { charter: string }[]): Leg[] => {
   const sessions = [...charters, { charter: `free-${journey}` }].flatMap((c) =>
     platformIds.map(platformOf).map((platform): Leg => {
@@ -136,7 +128,6 @@ const weeklyLeg = (legs: Leg[]): VerifyLeg => ({
   postgres: false,
 })
 
-/** The replay legs for the selected explore legs: one per kind of stack they explored, plus the canary pair. */
 const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   const has = (artifact: string) => legs.some((leg) => leg.artifact === artifact)
   const weekly = weeklyLeg(legs)
@@ -166,7 +157,6 @@ const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   ]
 }
 
-/** One replay leg per native artifact, on its platform's runner, with the onboarding build when any leg of the platform has it. */
 const nativeVerifyLegs = (legs: Leg[]): VerifyLeg[] =>
   legs
     .filter((leg, i) => legs.findIndex((other) => other.artifact === leg.artifact) === i)
@@ -183,10 +173,9 @@ const nativeVerifyLegs = (legs: Leg[]): VerifyLeg[] =>
     }))
 
 /**
- * The weekly run's plan: the web legs and the native ones to explore (`only` narrows them, see `selects`), their
- * replay legs, the judge legs, and the sessions the grid skips for this dispatch. The `weekly` judge leg judges the
- * native candidates too, so a dispatch of native sessions only still plans it, with no web replay behind it. Throws
- * on an id in `only` that names no session, charter or `free`; a session in `skippedSessions` names none.
+ * The `weekly` judge leg judges the native candidates too, so a dispatch of native sessions only still plans it, with
+ * no web replay behind it. Throws on an id in `only` that names no session, charter or `free`; a session in
+ * `skippedSessions` names none.
  */
 export const planLegs = (input: { only: string[]; journey: string; canaries: { charter: string }[] }) => {
   const skippedIds = new Set(skippedSessions.map((s) => s.session))
@@ -217,7 +206,6 @@ if (import.meta.main) {
   if (!values.journey || !values.canaries)
     throw new Error('usage: legs.ts --charters "<ids>" --journey <id> --canaries <file>')
   try {
-    // Commas and spaces both separate ids.
     const only = values.charters.split(/[ ,]+/).filter(Boolean)
     if (values.charters && only.length === 0) throw new Error(`No charter id in '${values.charters}'`)
     const plan = planLegs({

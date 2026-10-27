@@ -44,7 +44,7 @@ type InspectElement = {
 
 type InspectScreen = { ui_schema: { defaults: Partial<InspectElement> }; elements: InspectElement[] }
 
-/** Reads Maestro's `[left,top][right,bottom]` bounds. A node without any, like the Android root, has no frame. */
+/** A node without bounds, like the Android root, has no frame. */
 const parseBounds = (text: string | undefined): Rect => {
   if (text === undefined) return { left: 0, top: 0, right: 0, bottom: 0 }
   const match = /^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/.exec(text)
@@ -67,7 +67,6 @@ const androidRoles = new Map([
 // A field's text is its value, never its name, as in the web probe.
 const fieldRoles = new Set(['textbox', 'combobox'])
 
-/** An Android node's role, and its name from the content description, the hint or, but for a field, the text. */
 const androidControl = (node: { cls: string; a11y: string; txt: string; hint: string }) => {
   const role = androidRoles.get(node.cls) ?? ''
   return { role, name: node.a11y || node.hint || (fieldRoles.has(role) ? '' : node.txt) }
@@ -76,22 +75,19 @@ const androidControl = (node: { cls: string; a11y: string; txt: string; hint: st
 // shortcut: on iOS only a checkable control shows (a leaf whose value is its state, 0 or 1), always as `checkbox`; an
 // unnamed button, link or field looks like any empty box there. Read the element type once Maestro's iOS tree has one.
 /**
- * A node's control role and accessible name. Android nodes carry a class. iOS nodes carry no element type, and their
- * text is the value, so the name is the label or the placeholder. A heading container also carries a value, its
- * level, which is why an iOS control must be a leaf.
+ * Android nodes carry a class. iOS nodes carry no element type, and their text is the value, so the name is the label
+ * or the placeholder. A heading container also carries a value, its level, which is why an iOS control must be a leaf.
  */
 const controlOf = (node: { cls?: string; a11y: string; txt: string; hint: string; val: string; leaf: boolean }) =>
   node.cls === undefined
     ? { role: node.leaf && /^[01]$/.test(node.val) ? 'checkbox' : '', name: node.a11y || node.hint }
     : androidControl({ ...node, cls: node.cls })
 
-/** Whether a rect has a positive width and height. */
 const hasArea = ({ left, top, right, bottom }: Rect) => right > left && bottom > top
 
 // inspect_screen leaves out nodes without a frame and lifts their children, so the hierarchy does the same.
 const framed = (node: NativeNode): NativeNode[] => (hasArea(node.bounds) ? [node] : node.children)
 
-/** The screen: one root over the top-level windows, sized to cover them. */
 const screenOf = (children: NativeNode[]): NativeNode => {
   if (children.length === 0) throw new Error('The tree has no node with a frame')
   return {
@@ -131,13 +127,12 @@ const fromHierarchy = ({ attributes, children = [] }: HierarchyNode): NativeNode
     children: children.flatMap(fromHierarchy),
   })
 
-/** Parses `maestro hierarchy` output, whose keys sit in `attributes`. */
 export const parseHierarchy = (json: string): NativeNode => {
   const tree: HierarchyNode = JSON.parse(json)
   return screenOf(fromHierarchy(tree))
 }
 
-/** Parses the JSON of the MCP `inspect_screen` tool: abbreviated keys, with omitted ones taken from `ui_schema`. */
+/** `inspect_screen` omits keys that equal the defaults in `ui_schema`. */
 export const parseInspectScreen = (json: string): NativeNode => {
   const screen: InspectScreen = JSON.parse(json)
   const fromInspect = (element: InspectElement): NativeNode[] => {
@@ -171,7 +166,6 @@ const overlaps = (a: Rect, b: Rect) =>
 const sameRect = (a: Rect, b: Rect) =>
   a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom
 
-/** The nodes from `node` down to `target`, both included, or none when `target` is not below `node`. */
 const pathTo = (node: NativeNode, target: NativeNode): NativeNode[] =>
   node === target
     ? [node]
@@ -234,10 +228,9 @@ const whereOf = (node: NativeNode, nodes: NativeNode[]) => {
 }
 
 /**
- * One `unnamed-control` line per control the screen reader cannot name, quoting which control it is (`whereOf`); two
- * with the same quote are one line. On Android only the app's window counts, which leaves out the keyboard and a
- * browser tab over the app; on iOS the keys sit in the app's own tree, so the nodes inside the keyboard's frame are
- * left out.
+ * Two controls with the same quote are one line. On Android only the app's window counts, which leaves out the
+ * keyboard and a browser tab over the app; on iOS the keys sit in the app's own tree, so the nodes inside the
+ * keyboard's frame are left out.
  */
 const unnamedControls = (root: NativeNode, platform: 'ios' | 'android', keyboard: Rect | undefined) => {
   const nodes = platform === 'android' ? allNodes(appWindow(root) ?? root) : allNodes(root)
@@ -268,10 +261,8 @@ export const keepsProbeLine = (line: string, platform: 'ios' | 'android') => {
 }
 
 /**
- * One screen: the keyboard (iOS's `inputView` node, Android's `keyboard_holder`), the controls without an accessible
- * name, and on Android a `behind-keyboard` line. The Android WebView keeps its full height with the keyboard up, so the
- * probe cannot see it there; on iOS the probe can. The keyboard is drawn over everything, so the
- * rule needs no stacking order.
+ * The Android WebView keeps its full height with the keyboard up, so the probe cannot see it there; on iOS the probe
+ * can. The keyboard is drawn over everything, so the rule needs no stacking order.
  */
 export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): NativeMeasure => {
   const keyboard = allNodes(root).find(keyboardNode[platform])?.bounds
@@ -283,18 +274,13 @@ export const measureNative = (root: NativeNode, platform: 'ios' | 'android'): Na
 
 const rect = ({ left, top, right, bottom }: Rect) => `[${left},${top}][${right},${bottom}]`
 
-/** The native ready line, `[qa-layout] ready keyboard=[l,t][r,b]` or `keyboard=none`. */
 export const readyLine = ({ keyboard }: Pick<NativeMeasure, 'keyboard'>) =>
   `[qa-layout] ready keyboard=${keyboard ? rect(keyboard) : 'none'}`
 
-/** The probe's line for the field the positive control covers: the sign-in Email field. */
+/** The sign-in Email field, which the positive control covers. */
 export const controlTarget = 'textbox "Email"'
 
-/**
- * The positive control's verdict, from the hierarchy `maestro hierarchy` dumped and the WebView log of the
- * run: the probe reported ready, the keyboard is open and the probe logged `focus-covered` for the Email field.
- * `lines` is what the control prints: the ready line, the probe's lines and a failure reason.
- */
+/** `lines` is what the control prints: the ready line, the probe's lines and a failure reason. */
 export const controlVerdict = (opts: { hierarchy: string; log: string; platform: 'ios' | 'android' }) => {
   const { keyboard } = measureNative(parseHierarchy(opts.hierarchy), opts.platform)
   const logged = opts.log

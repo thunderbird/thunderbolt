@@ -17,16 +17,14 @@ import { z } from 'zod'
 const hookInputSchema = z.object({ tool_name: z.string(), tool_input: z.record(z.string(), z.unknown()) })
 const writeInputSchema = z.object({ file_path: z.string() })
 
-/** The part of Claude Code's PreToolUse payload the hook reads. */
 export type HookInput = z.infer<typeof hookInputSchema>
 export type HookDecision = { allow: boolean; reason: string }
 
 const maestroTools = ['run', 'inspect_screen', 'take_screenshot', 'cheat_sheet', 'read_logs']
 
 /**
- * The real path `path` would be written to. A path that does not exist yet resolves through its nearest existing
- * ancestor; an entry that exists but cannot be resolved (a link to a missing target) throws, because a write would
- * follow it.
+ * A path that does not exist yet resolves through its nearest existing ancestor; an entry that exists but cannot be
+ * resolved (a link to a missing target) throws, because a write would follow it.
  */
 const realTarget = (path: string): string => {
   try {
@@ -51,11 +49,6 @@ const writeDecision = (toolInput: HookInput['tool_input'], sessionDir: string): 
   }
 }
 
-/**
- * Decides one tool call: the five gated `mcp__maestro__*` tools, `mcp__playwright_b__*` (except
- * `browser_run_code_unsafe`) only with `allowBrowserB`, Write or Edit whose real target is inside `sessionDir`, and
- * ToolSearch. Everything else is denied.
- */
 export const hookDecision = (input: HookInput, sessionDir: string, allowBrowserB: boolean): HookDecision => {
   const tool = input.tool_name
   if (maestroTools.some((name) => tool === `mcp__maestro__${name}`))

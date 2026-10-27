@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Text cleaning shared by filing, the fix step, the report, the Maestro gate and the replay. It imports nothing, so
-// any of them can use it without an import cycle.
+// Imports nothing, so filing, the fix step, the report, the Maestro gate and the replay can all use it without an
+// import cycle.
 
 export const secretPattern =
   /\bsk-[\w-]{8,}|lin_(api|oauth)_\w+|gh[pousr]_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
@@ -20,7 +20,6 @@ const keepUrl = (url: string, runUrl?: string): boolean => {
   }
 }
 
-/** Model-written text made safe for a ticket: no images, no foreign URLs, no fence breakout, capped. */
 export const sanitize = (text: string, max: number, runUrl?: string): string =>
   text
     .replace(/!\[[^\]]*\]\([^)]*\)|!\[[^\]]*\]\[[^\]]*\]|<img[^>]*>/gi, '[image removed]')
@@ -28,8 +27,5 @@ export const sanitize = (text: string, max: number, runUrl?: string): string =>
     .replaceAll('```', "'''")
     .slice(0, max)
 
-/**
- * A log line as the native explorer sees it: secrets hidden, foreign links removed. The replay compares its own log
- * lines in this form, because the explorer quotes them as evidence. The gate also caps each line at 500 characters.
- */
+/** The replay compares its own log lines in this form, because the explorer quotes them as evidence. */
 export const cleanLogLine = (line: string) => sanitize(line.replace(secrets, '[secret removed]'), Infinity)

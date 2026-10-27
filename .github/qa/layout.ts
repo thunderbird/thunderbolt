@@ -5,10 +5,7 @@
 import { resolve } from 'node:path'
 import type { Page } from '@playwright/test'
 
-/**
- * One problem the layout probe confirmed; `target` is `<role> "<accessible name>"`, or for an `unnamed-control`
- * `<role> "<which control>"`.
- */
+/** `target` is `<role> "<accessible name>"`, or for an `unnamed-control` `<role> "<which control>"`. */
 export type LayoutProblem = {
   kind:
     | 'overflow-page'
@@ -32,10 +29,7 @@ declare global {
 
 const probePath = resolve(import.meta.dirname, 'layout-probe.js')
 
-/**
- * The layout problems on the page as it stands. Injects the probe when the page lacks it (a repro spec), then waits
- * long enough for the probe to confirm a problem with two checks 500 ms apart.
- */
+/** Injects the probe when the page lacks it (a repro spec), then waits for two checks 500 ms apart to confirm. */
 export const layoutProblems = async (page: Page): Promise<LayoutProblem[]> => {
   if (!(await page.evaluate(() => Boolean(window.__qaLayout)))) await page.addScriptTag({ path: probePath })
   await page.waitForTimeout(1000)

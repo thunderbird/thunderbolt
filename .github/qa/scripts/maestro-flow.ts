@@ -5,9 +5,8 @@
 import { z } from 'zod'
 
 /**
- * The Maestro settings and SDK paths every Maestro process gets, and nothing else from the caller's environment. The
- * gate's `maestro mcp` and the replay's `maestro test` both add the MCP SDK's default HOME, LOGNAME, PATH, SHELL,
- * TERM and USER.
+ * Nothing else from the caller's environment reaches Maestro. The gate's `maestro mcp` and the replay's
+ * `maestro test` also get the MCP SDK's default HOME, LOGNAME, PATH, SHELL, TERM and USER.
  */
 export const maestroEnv = () => ({
   ...Object.fromEntries(
@@ -22,10 +21,9 @@ export const maestroEnv = () => ({
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000',
 })
 
-/** The only variable a repro flow, a fix's check or a replay may use: a fresh sign-in address per run. */
+/** The only variable a flow may use: a fresh sign-in address per run. */
 export const flowVars = ['EMAIL']
 
-/** A checked Maestro flow: the text to hand to Maestro, or every problem found. */
 export type FlowCheck = { ok: true; yaml: string } | { ok: false; problems: string[] }
 
 const bareCommands = [
@@ -44,7 +42,6 @@ const bareCommands = [
 ] as const
 const variable = /^\$\{([A-Za-z_]\w*)\}$/
 const percent = /^\s*(\d{1,3})%\s*,\s*(\d{1,3})%\s*$/
-/** The two percentages of a `"x%, y%"` point as numbers, or an empty array when it is not in that form. */
 const coordinates = (point: string) => (percent.exec(point) ?? []).slice(1).map(Number)
 
 // The commands after which the app is no longer in front (Android's back leaves it at the root), and the one that
@@ -61,10 +58,7 @@ const back = z.union([
   z.object({ pressKey: z.union([z.literal('Back'), z.object({ key: z.literal('Back') })]) }),
 ])
 
-/**
- * The allow list, as strict schemas: Maestro's GraalJS can make
- * HTTP calls and send any readable file, so every command, key and `${` not listed here is refused.
- */
+/** Maestro's GraalJS can make HTTP calls and send any readable file, so what is not listed is refused. */
 const flowSchemas = (appId: string, vars: string[]) => {
   const text = z
     .string({ error: 'expected text' })
@@ -231,10 +225,7 @@ const flowSchemas = (appId: string, vars: string[]) => {
 const isTypeMismatch = (branch: z.core.$ZodIssue[]) =>
   branch.length === 1 && branch[0].path.length === 0 && ['invalid_type', 'invalid_value'].includes(branch[0].code)
 
-/**
- * Turns zod issues into one line per problem, each starting with the path (`commands[3].runFlow.file`). For a union
- * it reports the branch the value was written for, so a mapping gets its key problems and not "expected text".
- */
+/** A union reports the branch the value was written for, so a mapping gets its key problems, not "expected text". */
 const describeIssues = (issues: z.core.$ZodIssue[], prefix: string): string[] =>
   issues.flatMap((issue) => {
     const path =
@@ -325,12 +316,7 @@ const parseDocuments = (documents: string[]) => {
   }
 }
 
-/**
- * Checks a model-written Maestro flow against the allow list and returns our own serialization of it, with the
- * platform's `appId` in the header. The input text is never returned, so Maestro only sees what this function wrote.
- * The flow may start with a header (`appId`, optional `name`, then `---`); `vars` are the names the harness passes
- * to Maestro, the only ones a `${NAME}` may use.
- */
+/** Maestro only sees what this function wrote, never the input. `vars` are the names a `${NAME}` may use. */
 export const checkMaestroFlow = (input: string, options: { appId: string; vars?: string[] }): FlowCheck => {
   // Bun reads a lone \r as a line break, so the scan must see the same lines.
   const source = input.replace(/\r\n?/g, '\n')

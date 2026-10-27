@@ -17,7 +17,7 @@
 - The third field of a `visual` finding:
   - `screenshot`: the screenshot that shows the defect. Its tool result gives the file's full path: your output
     directory, then `mcp/` (`mcp-b/` for the second device), then the file name. Write the part from `mcp` on, for
-    example `mcp/page-2026-10-19T16-08-14-750Z.png`.
+    example `mcp/page-2000-01-01T00-00-00-000Z.png`.
 
 ### The second file of a finding: its repro spec
 

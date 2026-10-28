@@ -68,7 +68,8 @@ export const createFakeProvider = async (port: number): Promise<Server> => {
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(port, 'localhost', resolve)
+    // Bun's backend fetch uses IPv4 even when localhost resolves to ::1 first.
+    server.listen(port, '127.0.0.1', resolve)
   })
   console.log(`Fake provider started on port ${port}`)
   return server

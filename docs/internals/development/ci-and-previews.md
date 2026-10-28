@@ -97,10 +97,38 @@ stub's error text ("outside the context of compilation"). It fails if `dist/asse
 missing (a moved `outDir` would make it a silent pass), and runs `bun run i18n:check` over
 the frontend and backend email catalogs ([AGENTS.md](../../../AGENTS.md)).
 
-**The glib unsoundness tripwire.** The `rust` job runs
-`scripts/check-glib-variantstriter.sh` first: RUSTSEC-2024-0429 is accepted only because
-`glib::VariantStrIter` has zero callers in the Linux build graph, and the script reds the
-job if a dependency gains one.
+**The glib unsoundness tripwire.** [RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html)
+remains unpatched in the Linux application's `glib 0.18.5`. Risk acceptance rests
+on a source scan finding no references to `VariantStrIter` or its public producer
+`Variant::array_iter_str()` outside glib. Iterating it can cause undefined behavior;
+a passing scan or native smoke does not prove the vulnerable code is absent from
+the executable.
+
+The `rust` job runs `scripts/check-glib-variantstriter.sh` for x86_64 and aarch64.
+It checks that the excluded crate is exactly one upstream `glib 0.18.5`, then
+scans every package directory reported by Cargo, including registry, Git and path
+sources and first-party build scripts. Missing sources or metadata failures fail
+the job. Guard and workflow changes trigger the job, which also runs negative
+fixtures. Comments count as references. Generated references and `include!` paths
+outside package directories still need manual review.
+
+The fixed release line starts at glib 0.20, but the current GTK/WebKit/Tauri
+consumers require glib 0.18. A direct update fails dependency resolution.
+Upstream's [0.18 backport proposal](https://github.com/gtk-rs/gtk-rs-core/pull/2009)
+was closed without merging. A local backport of the
+[two-line upstream fix](https://github.com/gtk-rs/gtk-rs-core/commit/b5a4071e439bef2b5eea76c3aa25e5ae84839e34)
+would repair this defect, but would make us maintain a vendored EOL crate; this
+change does not take on that maintenance.
+
+A coordinated GTK3 upgrade is also possible in principle:
+[gtk3-rs 0.19](https://github.com/gtk-rs/gtk3-rs/releases/tag/0.19.0) uses glib 0.22,
+but its consumers must migrate together. GTK4 is not required solely to fix this
+advisory, and Tauri 3 alone does not select GTK4: its
+[runtime documentation](https://v3.tauri.app/develop/webview-runtime/#gtk-version)
+distinguishes Wry/GTK3 from CEF/GTK4. Re-audit the exemption when changing glib,
+its source, code generation or the runtime stack. A compatible fixed graph or
+reviewed backport must pass optimized iterator tests and native Linux validation
+before this advisory can be reported as fixed.
 
 **Shared CLI dependency skew.** `cli/` has its own lockfile but imports `shared/agent-core`,
 which resolves from the repo root. The `cli` job asserts `@earendil-works/pi-ai` and

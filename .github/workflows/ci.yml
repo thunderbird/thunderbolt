@@ -43,6 +43,8 @@ jobs:
         with:
           filters: |
             rust:
+              - 'scripts/check-glib-variantstriter*.sh'
+              - '.github/workflows/ci.yml'
               - 'src-tauri/**/*.rs'
               - 'src-tauri/**/Cargo.toml'
               - 'src-tauri/**/Cargo.lock'
@@ -569,7 +571,10 @@ jobs:
       # (GHSA-wrw7-89jp-8q8g) ever gains a caller in our code or any dependency.
       # Cheap (cargo metadata + grep, no build), so it runs before the build.
       - name: Guard glib VariantStrIter unsoundness (RUSTSEC-2024-0429)
-        run: ./scripts/check-glib-variantstriter.sh
+        run: |
+          bash scripts/check-glib-variantstriter.test.sh
+          ./scripts/check-glib-variantstriter.sh x86_64-unknown-linux-gnu
+          ./scripts/check-glib-variantstriter.sh aarch64-unknown-linux-gnu
 
       - name: Cache cargo build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

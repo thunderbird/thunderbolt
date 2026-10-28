@@ -167,12 +167,13 @@ cap comes from `resolveWebToolIntent`, reading the prompt's skill token.
 
 Checked in this order:
 
-| Case                                                                               | Why not                                                                        |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `connection-lost`                                                                  | The agent may already have performed side effects; only the user may resubmit. |
-| Rate limit                                                                         | Retrying makes it worse.                                                       |
-| Context overflow, content rejection, or anything the provider marked non-retryable | Identical input will not succeed, and a "Retrying…" spinner would be a lie.    |
-| Web budget spent                                                                   | Regeneration would discard the research already done.                          |
+| Case                                                                               | Why not                                                                         |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `connection-lost`                                                                  | The agent may already have performed side effects; only the user may resubmit.  |
+| `tools-unsupported`                                                                | The model rejects tools on every retry; the error card offers to turn them off. |
+| Rate limit                                                                         | Retrying makes it worse.                                                        |
+| Context overflow, content rejection, or anything the provider marked non-retryable | Identical input will not succeed, and a "Retrying…" spinner would be a lie.     |
+| Web budget spent                                                                   | Regeneration would discard the research already done.                           |
 
 Content rejections are excluded because attachment remediation owns re-delivery
 and surfaces the error itself once its ladder is exhausted.

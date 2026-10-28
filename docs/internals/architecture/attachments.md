@@ -152,7 +152,8 @@ goes to text; one with none is a scan and jumps straight to images.
 
 - **Only a genuine content rejection triggers it.** `isContentRejectionError`
   ([`src/lib/error-utils.ts`](../../../src/lib/error-utils.ts)) requires a 400 or 422 and excludes rate limits, context
-  overflow, and structured tool-parameter errors, none of which a conversion fixes. Status extraction covers the Pi
+  overflow, structured tool-parameter errors, and a model rejecting the request's tools, none of which a conversion
+  fixes. Status extraction covers the Pi
   path's flattened string errors (`getPiErrorStatusCode`), not just JSON bodies.
 - **The starting rung is the mode currently in effect**, not the raw `deliverAs`. A plain-text file already going out
   as text would otherwise be re-sent text→text and then falsely declared unreadable.

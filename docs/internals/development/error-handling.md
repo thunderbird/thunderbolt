@@ -72,8 +72,8 @@ parses back out:
 { "error": "<responseBody or message>", "status": 400, "isRetryable": false, "kind": "provider" }
 ```
 
-`ChatErrorKind` ([`src/lib/error-utils.ts:9`](../../../src/lib/error-utils.ts)) is closed at six values:
-`attestation`, `timeout`, `rate-limit`, `provider`, `network`, `connection-lost`. It needs an
+`ChatErrorKind` ([`src/lib/error-utils.ts:9`](../../../src/lib/error-utils.ts)) is closed at seven values:
+`attestation`, `timeout`, `rate-limit`, `provider`, `network`, `connection-lost`, `tools-unsupported`. It needs an
 envelope because the AI SDK's `onError` returns a string, flattening an `APICallError` to a bare
 `"Bad Request"` and losing the status the retry and attachment-remediation layers need.
 
@@ -99,15 +99,20 @@ socket, and the agent may already have performed side effects.
 rejected file part reports as a provider problem (`src/lib/error-utils.ts:97`). Attachment
 remediation uses a separate predicate ([Attachments](../architecture/attachments.md)).
 
+**Except tool refusals**: providers reject tools with different statuses (Ollama and vLLM 400,
+OpenRouter 404, llama.cpp 500), so `classifyErrorKind` matches the wording and returns
+`tools-unsupported` whatever the status.
+
 ### Predicates: what to do next
 
-| Predicate                 | Question                                                    |
-| ------------------------- | ----------------------------------------------------------- |
-| `isRateLimitError`        | A 429, on any of the three wire shapes                      |
-| `getInferenceQuotaWindow` | A managed-inference quota rejection, and which window       |
-| `isContextOverflowError`  | Request too large for the model's context window            |
-| `isContentRejectionError` | The endpoint rejected the _form_ of a file part (400/422)   |
-| `getErrorRetryable`       | The provider's own retry verdict, when it survived the wire |
+| Predicate                     | Question                                                    |
+| ----------------------------- | ----------------------------------------------------------- |
+| `isRateLimitError`            | A 429, on any of the three wire shapes                      |
+| `getInferenceQuotaWindow`     | A managed-inference quota rejection, and which window       |
+| `isContextOverflowError`      | Request too large for the model's context window            |
+| `isContentRejectionError`     | The endpoint rejected the _form_ of a file part (400/422)   |
+| `isToolSupportRejectionError` | The model rejected the request because it carried tools     |
+| `getErrorRetryable`           | The provider's own retry verdict, when it survived the wire |
 
 The retry ladder in `src/chats/chat-instance.ts` consults these one at a time instead of switching on
 the kind; `connection-lost` is the exception, checked as a kind (`chat-instance.ts:915`) because no

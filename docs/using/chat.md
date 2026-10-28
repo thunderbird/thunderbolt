@@ -89,14 +89,15 @@ An artifact runs in an isolated frame that cannot fetch data, load a remote scri
 
 ## When a reply fails
 
-| What you see                | What it means                                                                                                                                                                                 |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reply retries on its own    | A transient failure. Thunderbolt retries up to 3 times with a growing delay                                                                                                                   |
-| **Retry** button            | Automatic retries are done or were not appropriate. Click to run the turn again                                                                                                               |
-| **Too many requests**       | The provider rate-limited you. Retrying immediately makes it worse                                                                                                                            |
-| **Context Window Exceeded** | The conversation plus your message is larger than the model's limit. Start a new chat, remove some attachments, or switch to a model with a larger window                                     |
-| **AI usage limit reached**  | Your allowance on a metered deployment is spent. The message names the window, 5 hours or 7 days. Both windows roll continuously, so the allowance frees up gradually as older usage ages out |
-| Agent connection lost       | An external agent dropped mid-turn. Thunderbolt does not retry it for you: the agent may already have carried out part of the work, and a retry can repeat it                                 |
+| What you see                         | What it means                                                                                                                                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reply retries on its own             | A transient failure. Thunderbolt retries up to 3 times with a growing delay                                                                                                                   |
+| **Retry** button                     | Automatic retries are done or were not appropriate. Click to run the turn again                                                                                                               |
+| **Too many requests**                | The provider rate-limited you. Retrying immediately makes it worse                                                                                                                            |
+| **Context Window Exceeded**          | The conversation plus your message is larger than the model's limit. Start a new chat, remove some attachments, or switch to a model with a larger window                                     |
+| **AI usage limit reached**           | Your allowance on a metered deployment is spent. The message names the window, 5 hours or 7 days. Both windows roll continuously, so the allowance frees up gradually as older usage ages out |
+| Agent connection lost                | An external agent dropped mid-turn. Thunderbolt does not retry it for you: the agent may already have carried out part of the work, and a retry can repeat it                                 |
+| **This model doesn't support tools** | The model refused a request that included tools. **Turn off tools and retry** switches off **Supports tools** for that model in **Settings → Models**, on all your devices, and resends       |
 
 The **context window** is the amount of text a model can hold in mind at once, and a long conversation is sent back to it in full on every turn. On desktop, a small ring in the composer shows how much of it the conversation has used; hover it for the figure. If your next message would not fit, Thunderbolt says so before sending rather than failing mid-reply.
 

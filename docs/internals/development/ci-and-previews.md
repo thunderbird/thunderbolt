@@ -27,15 +27,15 @@ Release workflows: [RELEASE.md](../../../RELEASE.md).
 
 ## The `ci.yml` jobs
 
-| Job             | Runs when                                                                      | What it does                                                         |
-| --------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                    |
-| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x) plus the segregated WS suite    |
-| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire  |
-| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check  |
-| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test        |
-| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`       | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
-| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test` |
+| Job             | Runs when                                                                      | What it does                                                                          |
+| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `typescript`    | Always                                                                         | `tsc --noEmit`, `bun run lint`, `bun run test:5x`                                     |
+| `backend`       | Always                                                                         | Backend type-check, lint, tests (5x) plus the segregated WS suite                     |
+| `localization`  | `src/**`, `shared/**`, i18n/build config, `backend/src/emails/**`, `bun.lock`  | `bun run i18n:check`, a catalog-compiling build, the macro tripwire                   |
+| `agent-core`    | `shared/agent-core/**`, `vite.config.ts`, `package.json`, `bun.lock`, `ci.yml` | `bun run test:agent-core:5x` plus the Chromium/WebKit browser check                   |
+| `cli`           | `cli/**`, `shared/agent-core/**` and the shared contracts the CLI imports      | CLI type-check, tests (5x), build, and an artifact smoke test                         |
+| `wasm-artifact` | `src/acp/iroh/pkg/**`, crate inputs, source-manifest tests, or `ci.yml`        | Staleness gate, source-manifest tests, `SOURCES.txt` and `CHECKSUMS.txt` verification |
+| `rust`          | `src-tauri/**` Rust sources/manifests or `crates/**`                           | The RUSTSEC tripwire, then `cargo build`/`clippy -D warnings`/`test`                  |
 
 Only `typescript` and `backend` run on every PR; the rest are gated by `detect-changes`
 (`dorny/paths-filter`), so **"CI passed" can mean "your job never ran"**. `agent-core` runs
@@ -251,18 +251,18 @@ a teardown.
 
 ## Scripts the pipeline depends on
 
-| Script                                    | Invoked by                                           | Notes                                                                 |
-| ----------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `scripts/check-glib-variantstriter.sh`    | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
-| `scripts/agent-core-browser-check.ts`     | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
-| `crates/thunderbolt-acp-client/build.sh`  | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
-| `crates/thunderbolt-acp-client/source-manifest.sh` | `build.sh` and `ci.yml` `wasm-artifact` job | Hashes current crate inputs for `SOURCES.txt` |
-| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job | Tests source drift and build failures without a wasm toolchain |
-| `scripts/drop-preview-db.sh`              | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
-| `.github/scripts/review-orchestrator.mjs` | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
-| `.github/scripts/post-pr-metrics.cjs`     | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
-| `.github/scripts/post-eval-results.ts`    | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
-| `scripts/lingui-macro-bun-shim.ts`        | `--preload` on every `eval*` script                  | See below                                                             |
+| Script                                                  | Invoked by                                           | Notes                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| `scripts/check-glib-variantstriter.sh`                  | `ci.yml` `rust` job                                  | RUSTSEC-2024-0429 tripwire; runs before the build because it is cheap |
+| `scripts/agent-core-browser-check.ts`                   | `bun run test:agent-core:browser` (`agent-core` job) | Chromium + WebKit check of the production agent chunk                 |
+| `crates/thunderbolt-acp-client/build.sh`                | You, by hand                                         | Regenerates `src/acp/iroh/pkg`; `--verify` reproduces the checksums   |
+| `crates/thunderbolt-acp-client/source-manifest.sh`      | `build.sh` and `ci.yml` `wasm-artifact` job          | Hashes current crate inputs for `SOURCES.txt`                         |
+| `crates/thunderbolt-acp-client/source-manifest.test.sh` | `ci.yml` `wasm-artifact` job                         | Tests source drift and build failures without a wasm toolchain        |
+| `scripts/drop-preview-db.sh`                            | `stack-deploy.yml` `destroy` job                     | Drops the per-PR logical database before `pulumi destroy`; idempotent |
+| `.github/scripts/review-orchestrator.mjs`               | `thunder-deep-review.yml`                            | All GitHub I/O for the review bot; unit-tested by `bun run test`      |
+| `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
+| `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
+| `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

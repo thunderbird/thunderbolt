@@ -4199,6 +4199,10 @@ msgstr "Este modelo não conseguiu ler o arquivo anexado. Tente outro modelo."
 msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
 msgstr ""
 
+#: src/components/chat/error-message.tsx
+msgid "This model doesn't support tools."
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
 msgstr "Esta chave de acesso serve para entrar, mas não desbloqueia a sincronização. Você ainda pode aprovar novos dispositivos ou usar sua frase de recuperação."
@@ -4423,6 +4427,10 @@ msgstr "Modelo de TTS"
 #: src/settings/voice.tsx
 msgid "TTS voice"
 msgstr "Voz de TTS"
+
+#: src/components/chat/error-message.tsx
+msgid "Turn off tools and retry"
+msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."

@@ -12,6 +12,7 @@ import {
   isAgentRunInProgressError,
   isContextOverflowError,
   isRateLimitError,
+  isToolSupportRejectionError,
 } from '@/lib/error-utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
@@ -26,6 +27,7 @@ const causeSpecificErrorMessages: Partial<Record<ChatErrorKind, MessageDescripto
   provider: msg`The AI provider is having trouble right now. Try again in a moment.`,
   network: msg`Connection problem. Check your internet and try again.`,
   'connection-lost': msg`The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed.`,
+  'tools-unsupported': msg`This model doesn't support tools.`,
 }
 const inferenceQuotaMessages = {
   '5h': msg`You've reached your AI usage limit for the current 5-hour window. Try again later.`,
@@ -55,10 +57,23 @@ type ErrorMessageProps = {
   /** True when the turn failed on an unreadable attachment with no delivery mode
    *  left to try — shows file-specific guidance instead of the generic message. */
   deliveryExhausted?: boolean
+  /** Turns tools off for the selected model and retries; offered only when the
+   *  model rejected the turn's tools. */
+  onTurnOffTools?: () => void
+  /** Disables the turn-off-tools button while the setting is saved. */
+  isTurningOffTools?: boolean
 }
 
 export const ErrorMessage = memo(
-  ({ retryCount, retriesExhausted, error, onRetry, deliveryExhausted }: ErrorMessageProps) => {
+  ({
+    retryCount,
+    retriesExhausted,
+    error,
+    onRetry,
+    deliveryExhausted,
+    onTurnOffTools,
+    isTurningOffTools,
+  }: ErrorMessageProps) => {
     const { i18n } = useLingui()
     const runInProgress = isAgentRunInProgressError(error)
     // A run still in progress is retried after a delay, so it is not shown as a rate limit.
@@ -126,6 +141,8 @@ export const ErrorMessage = memo(
       )
     }
 
+    const offersTurnOffTools = Boolean(onTurnOffTools) && isToolSupportRejectionError(error)
+
     return (
       <div className="px-4 py-3 rounded-2xl bg-destructive/10 mr-auto w-full mt-2">
         <div className="flex items-center justify-between gap-2 min-h-[var(--touch-height-sm)]">
@@ -137,9 +154,20 @@ export const ErrorMessage = memo(
             )}
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            {/* No Retry when delivery is exhausted — re-running identical input fails
-                identically; the message directs the user to switch models instead. */}
-            {onRetry && !deliveryExhausted && (
+            {offersTurnOffTools && (
+              <button
+                type="button"
+                onClick={onTurnOffTools}
+                disabled={isTurningOffTools}
+                className="cursor-pointer text-[length:var(--font-size-body)] font-medium text-destructive/90 bg-destructive/10 hover:bg-destructive/15 px-3 py-1 rounded-lg disabled:cursor-default disabled:opacity-60"
+              >
+                <Trans>Turn off tools and retry</Trans>
+              </button>
+            )}
+            {/* No Retry when re-running identical input fails identically: delivery is
+                exhausted (the message directs the user to switch models), or the model
+                rejects tools (the button above fixes that). */}
+            {onRetry && !deliveryExhausted && !offersTurnOffTools && (
               <button
                 type="button"
                 onClick={onRetry}

@@ -4187,6 +4187,10 @@ msgstr ""
 msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
 msgstr ""
 
+#: src/components/chat/error-message.tsx
+msgid "This model doesn't support tools."
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
 msgstr ""
@@ -4410,6 +4414,10 @@ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "TTS voice"
+msgstr ""
+
+#: src/components/chat/error-message.tsx
+msgid "Turn off tools and retry"
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx

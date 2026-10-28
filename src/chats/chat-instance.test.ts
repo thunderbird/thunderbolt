@@ -812,6 +812,26 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it.each([
+    ['an Ollama 400', '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'],
+    ['a llama.cpp 500', '500: tools param requires --jinja flag'],
+  ])('never auto-regenerates %s that rejects tools', async (_label, message) => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+
+    try {
+      await finishWithError(new Error(message))
+      await getClock().runAllAsync()
+
+      const session = useChatStore.getState().sessions.get(sessionId)!
+      expect(session.retryCount).toBe(0)
+      expect(session.retriesExhausted).toBe(true)
+      expect(regenerate).not.toHaveBeenCalled()
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
   it('never auto-regenerates a pi-ai flattened JSON 429', async () => {
     const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     const { finishWithError, regenerate, trackEvent } = createRetryHarness()
@@ -859,6 +879,30 @@ describe('createChatInstance — retry policy', () => {
       random.mockRestore()
       errorLog.mockRestore()
     }
+  })
+
+  it('records the model a retry runs on, so a later tool rejection names it', async () => {
+    const { instance, regenerate } = createRetryHarness()
+    instance.messages = [
+      { id: 'prompt', role: 'user', parts: [{ type: 'text', text: 'hi' }], metadata: { modelId: 'previous-model' } },
+    ]
+
+    await instance.regenerate()
+
+    expect(instance.messages[0].metadata?.modelId).toBe('m1')
+    expect(regenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the history untouched when a retry runs on the same model', async () => {
+    const { instance } = createRetryHarness()
+    const history: ThunderboltUIMessage[] = [
+      { id: 'prompt', role: 'user', parts: [{ type: 'text', text: 'hi' }], metadata: { modelId: 'm1' } },
+    ]
+    instance.messages = history
+
+    await instance.regenerate()
+
+    expect(instance.messages).toBe(history)
   })
 
   it('manual regenerate resets the turn budget', async () => {

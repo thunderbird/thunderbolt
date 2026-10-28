@@ -17,6 +17,9 @@ const agentInstructionsTooLarge = JSON.stringify({
   status: 400,
 })
 
+/** Ollama's rejection of a request with tools, as the Pi engine flattens it. */
+const toolSupportRejection = '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'
+
 describe('useAttachmentRemediation', () => {
   test.each([
     {
@@ -31,6 +34,20 @@ describe('useAttachmentRemediation', () => {
       label: 'tool-schema rejection does not claim the file delivery ladder was exhausted',
       message:
         '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection keeps the error visible without converting or regenerating',
+      message: toolSupportRejection,
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection does not claim the file delivery ladder was exhausted',
+      message: toolSupportRejection,
       delivery: 'images' as const,
       expectedDelivery: 'images',
       expectedRegenerations: 0,

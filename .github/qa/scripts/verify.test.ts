@@ -297,6 +297,17 @@ describe('replay', () => {
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['never'])
   })
 
+  test('a layout finding on a web viewport still needs 3/3 failures: only native layout measurements vary', async () => {
+    const evidence = '[qa-layout] covered button "Continue"'
+    await writeFinding(makeFinding('layout', { type: 'layout', evidence }))
+    const runner = fakeRunner({ 'c2-chat-desktop/repro/layout.spec.ts': ['failed', 'passed', 'failed'] }, [])
+
+    const result = await replay(outDir, runner, qaDir)
+
+    expect(titles(result.flaky)).toEqual(['layout'])
+    expect(result.confirmed).toEqual([])
+  })
+
   test('replays at most 20 findings and defers the rest, in path order', async () => {
     const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeFinding(makeFinding(id, pageError))
@@ -849,6 +860,42 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test('a native layout finding confirms at 2/3 failures and is flaky at 1/3, other native oracles still need 3/3', async () => {
+    const onboarding = 'c1-first-run-ios'
+    const title = 'Name field on onboarding is cut off when the keyboard opens'
+    const keyboardFinding: RawFinding = {
+      title,
+      area: 'onboarding',
+      charter: 'c1-first-run',
+      viewport: 'ios',
+      oracle: layout,
+      steps: ['Sign in with fresh address', 'Tick checkbox, Continue', 'Skip Connect Google', 'Name step opens'],
+      expected: 'Name field fully visible above the keyboard',
+      actual: 'The name field is cut in half by the button bar floating above the keyboard',
+      repro_flow: 'repro/keyboard.yaml',
+    }
+    await writeNative(keyboardFinding, null, onboarding)
+    await Bun.write(join(outDir, onboarding, 'repro/keyboard.yaml'), flowOf(title))
+    await writeNative(makeNative('once', layout))
+    await writeNative(makeNative('assert', assertFailed))
+    const seen = { layout: ['[qa-layout] ready', nameLine] }
+    const unseen = { layout: ['[qa-layout] ready'] }
+    const failed = { passed: false, error: 'Assertion is false: "assert" is visible' }
+
+    const result = await nativeReplay({
+      [title]: [seen, unseen, seen],
+      once: [unseen, seen, unseen],
+      assert: [failed, {}, failed],
+    })
+
+    const counts = ({ id, replay: { failed, runs } }: VerifiedFinding) => [id, failed, runs]
+    expect(result.confirmed.map(counts)).toEqual([[title, 2, 3]])
+    expect(result.flaky.map(counts)).toEqual([
+      ['assert', 2, 3],
+      ['once', 1, 3],
+    ])
+  })
+
   test('an unnamed button the run passes, like the onboarding Back arrow, never confirms another one', async () => {
     // The Connect Google step has a Back arrow and a Continue button without a name.
     const step = await Bun.file(join(import.meta.dir, '../fixtures/native/inspect-android-onboarding.json')).text()
@@ -983,7 +1030,7 @@ describe('replay of native flows', () => {
       {
         run5: [early, seen, early, seen, seen],
         stuck: [early, early, seen, early, seen, early, seen],
-        passing: [unseen, seen, seen],
+        passing: [unseen, seen, unseen],
         real: [early, seen, unseen, seenThenFailed],
       },
       calls,
@@ -1001,7 +1048,7 @@ describe('replay of native flows', () => {
     ])
     // Still only two conclusive: flaky, whatever those two showed. A passed run without the line is not run again.
     expect(result.flaky.map(counts)).toEqual([
-      ['passing', 2, 3, 0],
+      ['passing', 1, 3, 0],
       ['stuck', 2, 2, 4],
     ])
     expect(result.flaky.find(({ id }) => id === 'stuck')?.replay.reason).toBe('only 2 of 3 runs reached the screen')

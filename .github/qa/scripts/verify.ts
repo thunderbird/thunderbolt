@@ -16,6 +16,7 @@ import {
   hasOracle,
   lintReproSpec,
   loadFindings,
+  nativePlatformIds,
   normalize,
   parseSession,
   platformOf,
@@ -745,9 +746,15 @@ export const oracleOf = async (flow: string, session: string): Promise<Oracle | 
   return found.finding.oracle
 }
 
-/** Failed runs that confirm a finding: all of them, or two in three for a real-AI charter, whose replies vary. */
+/**
+ * Failed runs that confirm a finding: all of them, or two in three for a real-AI charter, whose replies vary, and for a
+ * native `layout` finding, whose measurements vary with the keyboard animation's timing.
+ */
 const confirmingFailures = (file: FindingFile, runs: number) =>
-  realAiCharters.has(file.charterDir) ? Math.ceil((runs * 2) / 3) : runs
+  realAiCharters.has(file.charterDir) ||
+  (file.finding.oracle.type === 'layout' && nativePlatformIds.includes(parseSession(file.charterDir).platform))
+    ? Math.ceil((runs * 2) / 3)
+    : runs
 
 /**
  * Why the control spec says the stack is broken. It has no `bugStep`, so its failures all count as inconclusive.
@@ -772,7 +779,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * up to `replayCap` findings, `nativeReplayCap` on a native leg (the rest are `deferred`). A run counts as failed only
  * when it failed inside the spec's `bugStep` step. A run that failed before it is inconclusive, and since Playwright
  * runs no replacement, the finding is then flaky unless the other runs confirm it anyway. Failed 3/3 = confirmed,
- * 1 or 2 = flaky, 0 = dropped; a real-AI charter's findings replay against the real providers, so 2/3 confirms them.
+ * 1 or 2 = flaky, 0 = dropped; 2/3 confirms a real-AI charter's findings, which replay against the real providers,
+ * and a native `layout` finding.
  * The same run replays `control/stack.spec.ts`; if any of its runs fails, the stack is broken and no replayed finding
  * is confirmed. A spec that fails to load stops the whole Playwright run, so such specs are dropped at gate `lint` and
  * the rest replay again without them. A `visual` finding has no spec and takes no place under the cap: it is confirmed

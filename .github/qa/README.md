@@ -204,7 +204,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `replay.reason` saying how many runs failed early, unless the runs that reached the step confirm it anyway (2
    failures for a real-AI charter). A spec that puts its sign-in inside the step still passes this check; the judge
    is the backstop there. The control spec has no such step, so any failure of it counts.
-   Otherwise 3 of 3 failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`);
+   Otherwise 3 of 3 failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`)
+   and for a native `layout` finding, whose measurements vary with the keyboard animation's timing;
    1 or 2 are flaky (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against
    the real providers, the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and
    takes no place under the replay cap. It is confirmed when its screenshot exists, a browser screenshot result in

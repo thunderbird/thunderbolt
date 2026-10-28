@@ -977,7 +977,7 @@ const groupingProblem = (confirmed: VerifiedFinding[], groups: string[][]): stri
 }
 
 /** The reply's groups, or undefined when it is not valid JSON or does not match the grouping schema. */
-const readGroups =(response: Reply) => {
+const readGroups = (response: Reply) => {
   try {
     return groupingSchema.parse(JSON.parse(replyText(response))).groups
   } catch {
@@ -987,10 +987,7 @@ const readGroups =(response: Reply) => {
 
 type Grouping = { usage: Reply['usage'] } & ({ groups: string[][] } | { problem: string })
 
-/**
- * The model's groups, or the reason filing cannot use them, with the call's usage. It makes no call when the worst-case
- * cost is over `budgetUsd`, and an API error reaches the caller.
- */
+/** The model's groups, or the reason filing cannot use them, with the call's usage; makes no call over `budgetUsd`. */
 const askForGroups = async (
   confirmed: VerifiedFinding[],
   create: CreateMessage,

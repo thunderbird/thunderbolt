@@ -259,8 +259,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
    line is the proof and a screenshot only context. The default answer is drop. The judge also proposes the
-   ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more call
-   with the same model groups them by defect (`groupFindings`), because each platform can word one bug
+   ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
+   call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
    a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. That call sees each
    finding's title, area, platform, oracle and screenshot path, fenced as untrusted data, and counts against the
@@ -274,10 +274,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    priority keeps the table's value. Dry run unless `--live`. Each group in `verified.json` becomes one ticket;
    without `groups`, findings that share a fingerprint do (the fingerprint ignores the platform). The ticket
    files with the highest severity among its findings, its `**Platforms:**` line lists every platform that found
-   the bug, and an open ticket gets one comment with that line. Under the lead finding, the ticket lists each other
-   member whose fingerprint differs, with its platform, title and evidence. A secret in any member holds back the
-   whole ticket. A group's ticket carries the fingerprint of its
-   first finding in `platforms.json` order, then by fingerprint. Nothing about groups is stored across weeks, so
+   the bug, and an open ticket gets one comment with that line. The ticket text comes from the group's most severe
+   finding (ties go by fingerprint), and it lists each other member whose fingerprint differs, with its platform,
+   title and evidence. A secret in any member holds back the whole ticket. A group's ticket carries the fingerprint
+   of its first finding in `platforms.json` order, then by fingerprint. Nothing about groups is stored across weeks, so
    the same findings land on the same `[qa:<fp>]` ticket every week, and a group that loses its first-platform
    finding moves to another member's fingerprint. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
    wording; one without an element or a function is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.

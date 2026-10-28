@@ -4,7 +4,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { desktopWidth, forceMobileViewport, mobileWidth, restoreViewport, setViewport } from '@/test-utils/viewport'
 import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuItem } from './types'
 
@@ -58,7 +58,8 @@ describe('SearchableMenu', () => {
       expect(disabledButton).toBeDisabled()
     })
 
-    it('closes before running a footer action', () => {
+    it.each([desktopWidth, mobileWidth])('closes before running a footer action at %dpx', (width) => {
+      setViewport(width)
       const expandedStates: Array<string | null> = []
       render(
         <SearchableMenu

@@ -17,6 +17,7 @@ import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import type { Agent } from '@/types/acp'
+import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { MemoryRouter } from 'react-router'
@@ -201,7 +202,7 @@ describe('ChatModelPicker', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
   })
 
-  it('closes the mobile model drawer before opening creation', async () => {
+  it('closes the mobile model drawer when opening creation', async () => {
     forceMobileViewport()
     setupWithAgent(builtInAgent)
     render(
@@ -218,8 +219,10 @@ describe('ChatModelPicker', () => {
     fireEvent.click(await screen.findByText('Add Model'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the create surface opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|model')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 })

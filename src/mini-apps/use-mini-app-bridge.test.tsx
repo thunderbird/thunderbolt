@@ -162,7 +162,8 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 
   const Harness = () => {
     bridge.current = useMiniAppBridge({ app, onChatOpen })
-    return <iframe ref={bridge.current.frameRef} title={app.name} src="about:blank" />
+    // srcdoc provides a local guest window without enabling Happy DOM's iframe page loading.
+    return <iframe ref={bridge.current.frameRef} title={app.name} srcDoc="" />
   }
 
   const { unmount } = render(

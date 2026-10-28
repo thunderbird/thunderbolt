@@ -437,6 +437,20 @@ describe('native jobs', () => {
       expect(indexOf(job, early)).toBeLessThan(indexOf(job, 'Start the stack'))
     }
     expect(indexOf('explore-native', early)).toBeLessThan(indexOf('explore-native', 'Install the app'))
+    // The wait comes after the install and the stack start, before the first step that reads the log.
+    const wait = 'Wait for the console stream'
+    for (const [job, first] of [
+      ['explore-native', 'Check that the gate denies a canary session'],
+      ['replay-native', 'Replay the repro flows and specs'],
+    ]) {
+      expect(step(job, wait).if).toBe("matrix.leg.platform == 'ios'")
+      expect(step(job, wait).run).toBe('.github/qa/scripts/native.sh wait-logs "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"')
+      expect(indexOf(job, wait)).toBeGreaterThan(indexOf(job, 'Start the stack'))
+      expect(indexOf(job, wait)).toBeLessThan(indexOf(job, first))
+    }
+    expect(indexOf('explore-native', 'Wait for the console stream')).toBeGreaterThan(
+      indexOf('explore-native', 'Install the app'),
+    )
     // Android's stream stays after the install, whose launches would otherwise fill the log.
     const late = step('explore-native', 'Stream the WebView console')
     expect(late.if).toBe("matrix.leg.platform == 'android'")

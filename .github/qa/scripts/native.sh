@@ -17,7 +17,10 @@
 #                                                               check, up to 4 launches of $QA_WARM_SECONDS (30)
 #                                                               each, and stop it
 #   native.sh logs <platform> <device> <file>                   stream the WebView console to <file> in the
-#                                                               background, pid in <file>.pid
+#                                                               background, pid in <file>.pid; on iOS it returns at
+#                                                               once and records the start time in <file>.start
+#   native.sh wait-logs <device> <file>                         iOS only: wait for that stream to attach, replacing
+#                                                               it once; 60 s and 120 s after its start
 #   native.sh stop-logs <file>
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
@@ -194,27 +197,38 @@ start_ios_stream() {
   echo $! > "$2.pid"
 }
 
-# Waits up to 60 s for the stream's header.
+# Waits up to <seconds> for the stream's header; with none left it checks once.
 wait_for_header() {
-  for _ in $(seq 300); do
+  local i
+  for ((i = 0; i < $2 * 5; i++)); do
     grep -q 'Filtering the log data' "$1" && return
     sleep 0.2
   done
-  return 1
+  grep -q 'Filtering the log data' "$1"
 }
 
+# Console lines written before the stream attaches are lost. On a slow runner it can take over a minute to attach,
+# or never, so a stream still silent 60 s after `logs ios` started it is replaced once, and 120 s after it is too
+# long. The budget counts from that start, so time spent on other steps since then is not waited again.
+wait_logs() {
+  local device=$1 file=$2 start
+  start=$(cat "$file.start")
+  wait_for_header "$file" $((start + 60 - $(date +%s))) && return
+  stop_logs "$file"
+  start_ios_stream "$device" "$file"
+  wait_for_header "$file" $((start + 120 - $(date +%s))) && return
+  stop_logs "$file"
+  die "the log stream never attached"
+}
+
+# On iOS this only starts the stream, so the app install and the stack start can run while it attaches; wait-logs
+# then waits for it.
 logs() {
   local platform=$1 device=$2 file=$3
   if [ "$platform" = ios ]; then
     start_ios_stream "$device" "$file"
-    # Console lines written before the stream attaches are lost. On a slow runner it can take over a minute to
-    # attach, or never, so a stream still silent after 60 s is replaced once.
-    wait_for_header "$file" && return
-    stop_logs "$file"
-    start_ios_stream "$device" "$file"
-    wait_for_header "$file" && return
-    stop_logs "$file"
-    die "the log stream never attached"
+    date +%s > "$file.start"
+    return
   fi
   # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
   adb -s "$device" logcat -c
@@ -258,7 +272,7 @@ install_app() {
 
 stop_logs() {
   kill "$(cat "$1.pid" 2> /dev/null)" 2> /dev/null || true
-  rm -f "$1.pid"
+  rm -f "$1.pid" "$1.start"
 }
 
 # Exits 0 only when the keyboard is open and the probe logged focus-covered for the Email field. The flow, log and
@@ -272,6 +286,7 @@ control() {
   # shellcheck disable=SC2064 # $out is fixed by now
   trap "stop_logs '$out/webview.log'" EXIT
   logs "$platform" "$device" "$out/webview.log"
+  [ "$platform" != ios ] || wait_logs "$device" "$out/webview.log"
   # The iOS driver sometimes is not ready in time, so one more try.
   maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
     || maestro --udid "$device" test "$out/flow.yaml" > "$out/maestro.log" 2>&1 \
@@ -320,6 +335,7 @@ verify_run() {
   # shellcheck disable=SC2064 # the path is fixed by now
   trap "stop_logs '$work/webview.log'; rm -rf '$work'" EXIT
   logs "$platform" "$device" "$work/webview.log"
+  [ "$platform" != ios ] || wait_logs "$device" "$work/webview.log"
   mkdir -p "$(dirname "$result")"
   name=$(basename "$result")
   QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
@@ -327,13 +343,18 @@ verify_run() {
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
 if [ "$command" = stop-logs ]; then
   [ $# -eq 1 ] || die "$usage"
   stop_logs "$1"
+  exit
+fi
+if [ "$command" = wait-logs ]; then
+  [ $# -eq 2 ] || die "$usage"
+  wait_logs "$@"
   exit
 fi
 [ $# -ge 1 ] || die "$usage"

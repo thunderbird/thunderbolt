@@ -615,9 +615,10 @@ jobs:
             echo "QA_WEBVIEW_LOG=$RUNNER_TEMP/qa-webview.log"
             echo "QA_BACKEND_LOG=$RUNNER_TEMP/qa-stack.log"
           } >> "$GITHUB_ENV"
-      # iOS only: its stream is slow to attach, so it starts here and attaches while the app installs and the stack
-      # starts. Nothing opens the app before the session, so the log holds no earlier line. Android's stays after
-      # the install, whose launches would otherwise fill the log.
+      # iOS only: its stream is slow to attach, so it starts here, without waiting, and attaches while the app
+      # installs and the stack starts. The wait comes later, before the first step that needs the log; its 60 s
+      # restart and 120 s budget both count from this start. Nothing opens the app before the session, so the log
+      # holds no earlier line. Android's stream stays after the install, whose launches would otherwise fill the log.
       - &logs-ios
         name: Stream the WebView console on iOS
         if: matrix.leg.platform == 'ios'
@@ -656,6 +657,11 @@ jobs:
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 shasum -a 256 > "$RUNNER_TEMP/qa-tracked.sha256"
+
+      - &wait-logs-ios
+        name: Wait for the console stream
+        if: matrix.leg.platform == 'ios'
+        run: .github/qa/scripts/native.sh wait-logs "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
 
       - name: Check that the gate denies a canary session
         id: canary
@@ -886,6 +892,7 @@ jobs:
       - *start-native-stack
       - *lock
       - *logs-android
+      - *wait-logs-ios
 
       - name: Replay the repro flows and specs
         env:

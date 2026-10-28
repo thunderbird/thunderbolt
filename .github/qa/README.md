@@ -502,6 +502,7 @@ it: the backend and the fakes, with no Vite, since the app carries its own front
 udid=$(.github/qa/scripts/native.sh device ios)
 .github/qa/scripts/native.sh logs ios "$udid" /tmp/webview.log
 .github/qa/scripts/native.sh install ios "$udid" "/tmp/qa-ios/Thunderbolt Dev.app"
+.github/qa/scripts/native.sh wait-logs "$udid" /tmp/webview.log           # iOS only: until the stream has attached
 
 # A session on it: the canary first, then the session (both need ANTHROPIC_API_KEY). The backend log is the one
 # `stack.sh start` writes. QA_DRY_RUN=1 prints the claude command and its hook settings instead.
@@ -570,12 +571,14 @@ Traps:
 - `simctl addmedia` aborts on a file it cannot read as media, even when the Maestro step says `optional`, so
   `device ios` adds only `fixtures/*.png`, never the `.txt` files.
 - The console reaches the iOS system log only with `WebKitDebugLogsPageMessagesToSystemConsoleEnabled` set, which
-  `device ios` does, and lines logged before `log stream` attaches are lost, so `logs ios` returns once the
-  stream's `Filtering the log data` header shows up. On a slow runner the header can take a minute or never come:
-  `logs ios` replaces a stream that is still silent after 60 s, once, and fails with "the log stream never
-  attached" after 120 s in all. The workflow starts it right after the boot, so it attaches while the app installs
-  and the stack starts. Piping it into `tail` hangs the shell; it runs in the background and `stop-logs` stops it by
-  pid.
+  `device ios` does, and lines logged before `log stream` attaches are lost, so a session must not start before the
+  stream's `Filtering the log data` header shows up. `logs ios` only starts the stream and records the time;
+  `wait-logs` waits for the header. The workflow runs `logs ios` right after the boot, so the stream attaches while
+  the app installs and the stack starts, and `wait-logs` just before the first step that reads the log. On a slow
+  runner the header can take a minute or never come: `wait-logs` replaces a stream that is still silent 60 s after
+  its start, once, and fails with "the log stream never attached" 120 s after the start. Both limits count from the
+  start, so time spent on the install is not waited twice. Piping it into `tail` hangs the shell; it runs in the
+  background and `stop-logs` stops it by pid.
 - On macOS the stack must run under the system `/bin/bash` 3.2 as well: `serve` polls its servers instead of using
   `wait -n`, which 3.2 lacks.
 - The Android console (`Tauri/Console` in logcat) exists only in debug builds, and the APK's target is the host's

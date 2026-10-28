@@ -217,7 +217,7 @@ test('a QA build reaches the backend and fake Google on the ports it is configur
 /**
  * `xcrun` fakes the log stream: it records its pid and prints the header on launch `headerOn` (0 means never). `sleep`
  * returns at once and is counted, so the 60 s and 120 s budgets are counted, not waited. The streams' own idle wait
- * uses /bin/sleep.
+ * uses /bin/sleep. `date` starts at the time a test sets and moves 1 s per 5 counted sleeps, as the real clock would.
  */
 const fakeLogStream = (headerOn: number) => {
   const bin = mkdtempSync(join(work, 'bin-'))
@@ -232,40 +232,71 @@ exec /bin/sleep 30
 `,
   )
   writeFileSync(join(bin, 'sleep'), `#!/bin/bash\necho x >> '${sleeps}'\n`)
-  for (const tool of ['xcrun', 'sleep']) chmodSync(join(bin, tool), 0o755)
+  writeFileSync(join(bin, 'date'), `#!/bin/bash\necho $((FAKE_NOW + $(cat '${sleeps}' 2> /dev/null | wc -l) / 5))\n`)
+  for (const tool of ['xcrun', 'sleep', 'date']) chmodSync(join(bin, tool), 0o755)
   const file = join(bin, 'webview.log')
-  const proc = Bun.spawnSync(['bash', native, 'logs', 'ios', 'UDID-1', file], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
-  })
   const lines = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n') : [])
-  return { proc, file, pids: lines(pids), sleeps: lines(sleeps).length }
+  const run = (command: 'logs' | 'wait-logs', now = 1000) =>
+    Bun.spawnSync(['bash', native, command, ...(command === 'logs' ? ['ios'] : []), 'UDID-1', file], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_NOW: String(now) },
+    })
+  return { run, file, pids: () => lines(pids), sleeps: () => lines(sleeps).filter(Boolean).length }
 }
 
 /** A zombie of a stream that was killed counts as gone. */
 const running = (pid: string) =>
   !['', 'Z'].includes(Bun.spawnSync(['ps', '-o', 'stat=', '-p', pid]).stdout.toString().trim()[0] ?? '')
 
-test('logs ios replaces a stream that is silent after 60 s and keeps the second one running', () => {
-  const { proc, file, pids, sleeps } = fakeLogStream(2)
+test('logs ios returns at once, before the header shows, and leaves the stream running', () => {
+  const { run, file, pids, sleeps } = fakeLogStream(0)
+  const proc = run('logs')
   expect(proc.stderr.toString()).toBe('')
   expect(proc.exitCode).toBe(0)
-  expect(pids).toHaveLength(2)
-  expect(sleeps).toBeGreaterThanOrEqual(300)
-  expect(sleeps).toBeLessThan(600)
-  expect(readFileSync(`${file}.pid`, 'utf8').trim()).toBe(pids[1])
-  expect(running(pids[0])).toBe(false)
-  expect(running(pids[1])).toBe(true)
-  expect(readFileSync(file, 'utf8')).toContain('Filtering the log data')
+  expect(sleeps()).toBe(0)
+  expect(pids()).toHaveLength(1)
+  expect(readFileSync(`${file}.pid`, 'utf8').trim()).toBe(pids()[0])
+  expect(readFileSync(`${file}.start`, 'utf8').trim()).toBe('1000')
+  expect(running(pids()[0])).toBe(true)
   Bun.spawnSync(['bash', native, 'stop-logs', file])
-  expect(running(pids[1])).toBe(false)
+  expect(running(pids()[0])).toBe(false)
+  expect(existsSync(`${file}.start`)).toBe(false)
 })
 
-test('logs ios gives up after 120 s with no header and leaves no stream running', () => {
-  const { proc, file, pids, sleeps } = fakeLogStream(0)
+test('wait-logs replaces a stream that is silent after 60 s and keeps the second one running', () => {
+  const { run, file, pids, sleeps } = fakeLogStream(2)
+  run('logs')
+  const proc = run('wait-logs')
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  expect(pids()).toHaveLength(2)
+  expect(sleeps()).toBe(300)
+  expect(readFileSync(`${file}.pid`, 'utf8').trim()).toBe(pids()[1])
+  expect(running(pids()[0])).toBe(false)
+  expect(running(pids()[1])).toBe(true)
+  expect(readFileSync(file, 'utf8')).toContain('Filtering the log data')
+  Bun.spawnSync(['bash', native, 'stop-logs', file])
+  expect(running(pids()[1])).toBe(false)
+})
+
+test('wait-logs gives up after 120 s with no header and leaves no stream running', () => {
+  const { run, file, pids, sleeps } = fakeLogStream(0)
+  run('logs')
+  const proc = run('wait-logs')
   expect(proc.stderr.toString()).toBe('the log stream never attached\n')
   expect(proc.exitCode).toBe(2)
-  expect(pids).toHaveLength(2)
-  expect(sleeps).toBe(600)
-  expect(pids.some(running)).toBe(false)
+  expect(pids()).toHaveLength(2)
+  expect(sleeps()).toBe(600)
+  expect(pids().some(running)).toBe(false)
+  expect(existsSync(`${file}.pid`)).toBe(false)
+})
+
+test('wait-logs counts its budget from the stream start, so time spent on other steps is not waited again', () => {
+  const { run, file, pids, sleeps } = fakeLogStream(0)
+  run('logs')
+  const proc = run('wait-logs', 1061)
+  expect(proc.stderr.toString()).toBe('the log stream never attached\n')
+  expect(pids()).toHaveLength(2)
+  expect(sleeps()).toBe(295)
+  expect(pids().some(running)).toBe(false)
   expect(existsSync(`${file}.pid`)).toBe(false)
 })

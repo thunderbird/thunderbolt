@@ -95,9 +95,9 @@ for mode in failed changed-lock changed-source; do
   test ! -e "$TEST_DIR/pkg-$mode/CHECKSUMS.txt"
 done
 PATH="$TEST_DIR/bin:$PATH" TEST_BUILD_MODE=success OUT_DIR="$TEST_DIR/pkg-success" \
-  bash "$TEST_DIR/crate/build.sh" > "$TEST_DIR/build.log" 2>&1
+  bash "$TEST_DIR/crate/build.sh"
 manifest | diff -u "$TEST_DIR/pkg-success/SOURCES.txt" -
 (cd "$TEST_DIR/pkg-success" && shasum -a 256 -c CHECKSUMS.txt > /dev/null)
 PATH="$TEST_DIR/bin:$PATH" TEST_BUILD_MODE=success OUT_DIR="$TEST_DIR/pkg-success" \
-  bash "$TEST_DIR/crate/build.sh" --verify > "$TEST_DIR/build.log" 2>&1
+  bash "$TEST_DIR/crate/build.sh" --verify
 echo 'source manifest checks passed'

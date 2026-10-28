@@ -571,8 +571,11 @@ Traps:
   `device ios` adds only `fixtures/*.png`, never the `.txt` files.
 - The console reaches the iOS system log only with `WebKitDebugLogsPageMessagesToSystemConsoleEnabled` set, which
   `device ios` does, and lines logged before `log stream` attaches are lost, so `logs ios` returns once the
-  stream's `Filtering the log data` header shows up. Piping it into `tail` hangs the shell; it runs in the
-  background and `stop-logs` stops it by pid.
+  stream's `Filtering the log data` header shows up. On a slow runner the header can take a minute or never come:
+  `logs ios` replaces a stream that is still silent after 60 s, once, and fails with "the log stream never
+  attached" after 120 s in all. The workflow starts it right after the boot, so it attaches while the app installs
+  and the stack starts. Piping it into `tail` hangs the shell; it runs in the background and `stop-logs` stops it by
+  pid.
 - On macOS the stack must run under the system `/bin/bash` 3.2 as well: `serve` polls its servers instead of using
   `wait -n`, which 3.2 lacks.
 - The Android console (`Tauri/Console` in logcat) exists only in debug builds, and the APK's target is the host's
@@ -603,7 +606,7 @@ Android on `ubuntu-latest` with KVM.
   the app, because an artifact drops file modes.
 - **explore-native**, one job per native session: Maestro 2.11.0 from the official installer on both platforms,
   Claude Code 2.1.303, the app the session needs (the onboarding build for c1), the device, `stack.sh start native`
-  and the console stream. `c7-two-devices-android` also gets Postgres, PowerSync, the web build on 1424 by default
+  and the console stream (on iOS started right after the device, on Android after the install). `c7-two-devices-android` also gets Postgres, PowerSync, the web build on 1424 by default
   (`stack.sh start qa-dist`) and the second browser's Chromium. The app reaches PowerSync on `localhost:18081`:
   `native.sh device` reverses that port too, and a QA build's CSP allows it. Android's real-AI sessions run the
   backend as `qa-backend` and lock root, as the web real legs do. Then the harness (see "Native explore on macOS"),

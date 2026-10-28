@@ -337,6 +337,7 @@ jobs:
       # The browser tools can write anywhere in the checkout, so after the explorer only transcript.jq (a jq filter,
       # covered by the tripwire) is read from it.
       - name: Record the checksums of the tracked files
+        id: tracked
         # Symlinks are skipped: one tracked link dangles, and the files they point to are tracked themselves.
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
@@ -390,7 +391,7 @@ jobs:
 
       - name: Check that the checkout is unchanged
         id: tripwire
-        if: always()
+        if: always() && steps.tracked.outcome == 'success'
         run: sha256sum --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
       - name: Save the session
@@ -614,6 +615,13 @@ jobs:
             echo "QA_WEBVIEW_LOG=$RUNNER_TEMP/qa-webview.log"
             echo "QA_BACKEND_LOG=$RUNNER_TEMP/qa-stack.log"
           } >> "$GITHUB_ENV"
+      # iOS only: its stream is slow to attach, so it starts here and attaches while the app installs and the stack
+      # starts. Nothing opens the app before the session, so the log holds no earlier line. Android's stays after
+      # the install, whose launches would otherwise fill the log.
+      - &logs-ios
+        name: Stream the WebView console on iOS
+        if: matrix.leg.platform == 'ios'
+        run: .github/qa/scripts/native.sh logs "$QA_PLATFORM" "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
       - name: Install the app
         run: .github/qa/scripts/native.sh install "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/session/$QA_APP_FILE"
       - &start-native-stack
@@ -629,8 +637,9 @@ jobs:
           QA_SERVE: ${{ matrix.leg.postgres && 'qa-dist' || 'native' }}
         run: .github/qa/scripts/stack.sh start "$QA_SERVE"
       - *lock
-      - &logs
+      - &logs-android
         name: Stream the WebView console
+        if: matrix.leg.platform == 'android'
         run: .github/qa/scripts/native.sh logs "$QA_PLATFORM" "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
 
       # c7's second browser can write anywhere in the checkout, so from here nothing runs from it: the gate, the hook,
@@ -643,6 +652,7 @@ jobs:
 
       # shasum, because the macOS runner has no sha256sum.
       - name: Record the checksums of the tracked files
+        id: tracked
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 shasum -a 256 > "$RUNNER_TEMP/qa-tracked.sha256"
@@ -671,7 +681,7 @@ jobs:
 
       - name: Check that the checkout is unchanged
         id: tripwire
-        if: always()
+        if: always() && steps.tracked.outcome == 'success'
         run: shasum -a 256 --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
       # The browser's file writes are no promised boundary, so this key-holding step clears startup variables and uses
@@ -862,6 +872,7 @@ jobs:
           merge-multiple: true
       - *postgres-setup
       - *device
+      - *logs-ios
       # Maestro starts its driver in a session's first launchApp, which can fail on a fresh emulator with no reason
       # given; one uncounted session absorbs that before the counted runs.
       - name: Start Maestro's driver on the emulator
@@ -874,7 +885,7 @@ jobs:
             echo "::warning::Maestro's first session on the emulator failed; the replay's counted runs come after it"
       - *start-native-stack
       - *lock
-      - *logs
+      - *logs-android
 
       - name: Replay the repro flows and specs
         env:

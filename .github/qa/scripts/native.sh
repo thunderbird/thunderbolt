@@ -185,23 +185,39 @@ device_android() {
   echo "$serial"
 }
 
+# Starts the iOS stream into <file>, which the redirect empties, and records its pid. It starts right after the
+# boot, so its 3 h limit has to outlast replay-native's 130-minute job.
+start_ios_stream() {
+  xcrun simctl spawn "$1" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 3h > "$2" 2>&1 &
+  echo $! > "$2.pid"
+}
+
+# Waits up to 60 s for the stream's header.
+wait_for_header() {
+  for _ in $(seq 300); do
+    grep -q 'Filtering the log data' "$1" && return
+    sleep 0.2
+  done
+  return 1
+}
+
 logs() {
   local platform=$1 device=$2 file=$3
   if [ "$platform" = ios ]; then
-    xcrun simctl spawn "$device" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 2h > "$file" 2>&1 &
-  else
-    # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
-    adb -s "$device" logcat -c
-    adb -s "$device" logcat -v epoch -s 'Tauri/Console:*' > "$file" 2>&1 &
+    start_ios_stream "$device" "$file"
+    # Console lines written before the stream attaches are lost. On a slow runner it can take over a minute to
+    # attach, or never, so a stream still silent after 60 s is replaced once.
+    wait_for_header "$file" && return
+    stop_logs "$file"
+    start_ios_stream "$device" "$file"
+    wait_for_header "$file" && return
+    stop_logs "$file"
+    die "the log stream never attached"
   fi
+  # logcat first replays its whole buffer, so lines of an earlier run would look like this one's.
+  adb -s "$device" logcat -c
+  adb -s "$device" logcat -v epoch -s 'Tauri/Console:*' > "$file" 2>&1 &
   echo $! > "$file.pid"
-  [ "$platform" = ios ] || return 0
-  # Console lines written before the stream attaches are lost, so wait for its header.
-  for _ in $(seq 100); do
-    grep -q 'Filtering the log data' "$file" && return
-    sleep 0.2
-  done
-  die "the log stream never attached"
 }
 
 install_app() {

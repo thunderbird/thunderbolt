@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, expect, test } from 'bun:test'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -212,4 +212,60 @@ test('a QA build reaches the backend and fake Google on the ports it is configur
   expect(sources).toContain('http://localhost:8105')
   expect(sources).toContain('http://127.0.0.1:9980')
   expect(sources).not.toContain('http://localhost:8005')
+})
+
+/**
+ * `xcrun` fakes the log stream: it records its pid and prints the header on launch `headerOn` (0 means never). `sleep`
+ * returns at once and is counted, so the 60 s and 120 s budgets are counted, not waited. The streams' own idle wait
+ * uses /bin/sleep.
+ */
+const fakeLogStream = (headerOn: number) => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const pids = join(bin, 'pids')
+  const sleeps = join(bin, 'sleeps')
+  writeFileSync(
+    join(bin, 'xcrun'),
+    `#!/bin/bash
+echo $$ >> '${pids}'
+[ "$(wc -l < '${pids}' | tr -d ' ')" = ${headerOn} ] && echo 'Filtering the log data'
+exec /bin/sleep 30
+`,
+  )
+  writeFileSync(join(bin, 'sleep'), `#!/bin/bash\necho x >> '${sleeps}'\n`)
+  for (const tool of ['xcrun', 'sleep']) chmodSync(join(bin, tool), 0o755)
+  const file = join(bin, 'webview.log')
+  const proc = Bun.spawnSync(['bash', native, 'logs', 'ios', 'UDID-1', file], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  const lines = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n') : [])
+  return { proc, file, pids: lines(pids), sleeps: lines(sleeps).length }
+}
+
+/** A zombie of a stream that was killed counts as gone. */
+const running = (pid: string) =>
+  !['', 'Z'].includes(Bun.spawnSync(['ps', '-o', 'stat=', '-p', pid]).stdout.toString().trim()[0] ?? '')
+
+test('logs ios replaces a stream that is silent after 60 s and keeps the second one running', () => {
+  const { proc, file, pids, sleeps } = fakeLogStream(2)
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  expect(pids).toHaveLength(2)
+  expect(sleeps).toBeGreaterThanOrEqual(300)
+  expect(sleeps).toBeLessThan(600)
+  expect(readFileSync(`${file}.pid`, 'utf8').trim()).toBe(pids[1])
+  expect(running(pids[0])).toBe(false)
+  expect(running(pids[1])).toBe(true)
+  expect(readFileSync(file, 'utf8')).toContain('Filtering the log data')
+  Bun.spawnSync(['bash', native, 'stop-logs', file])
+  expect(running(pids[1])).toBe(false)
+})
+
+test('logs ios gives up after 120 s with no header and leaves no stream running', () => {
+  const { proc, file, pids, sleeps } = fakeLogStream(0)
+  expect(proc.stderr.toString()).toBe('the log stream never attached\n')
+  expect(proc.exitCode).toBe(2)
+  expect(pids).toHaveLength(2)
+  expect(sleeps).toBe(600)
+  expect(pids.some(running)).toBe(false)
+  expect(existsSync(`${file}.pid`)).toBe(false)
 })

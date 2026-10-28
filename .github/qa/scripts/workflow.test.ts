@@ -428,6 +428,31 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', warmUp)).toBeGreaterThan(indexOf('replay-native', 'Boot the device'))
     expect(indexOf('replay-native', warmUp)).toBeLessThan(indexOf('replay-native', 'Stream the WebView console'))
   })
+
+  test("iOS's console stream starts right after the boot, before the app installs and the stack starts", () => {
+    const early = 'Stream the WebView console on iOS'
+    for (const job of ['explore-native', 'replay-native']) {
+      expect(step(job, early).if).toBe("matrix.leg.platform == 'ios'")
+      expect(indexOf(job, early)).toBe(indexOf(job, 'Boot the device') + 1)
+      expect(indexOf(job, early)).toBeLessThan(indexOf(job, 'Start the stack'))
+    }
+    expect(indexOf('explore-native', early)).toBeLessThan(indexOf('explore-native', 'Install the app'))
+    // Android's stream stays after the install, whose launches would otherwise fill the log.
+    const late = step('explore-native', 'Stream the WebView console')
+    expect(late.if).toBe("matrix.leg.platform == 'android'")
+    expect(indexOf('explore-native', 'Stream the WebView console')).toBeGreaterThan(
+      indexOf('explore-native', 'Install the app'),
+    )
+  })
+
+  test('the checkout check runs only after its checksums were recorded, so one failure shows once', () => {
+    for (const job of ['explore', 'explore-native']) {
+      expect(step(job, 'Record the checksums of the tracked files').id).toBe('tracked')
+      expect(step(job, 'Check that the checkout is unchanged').if).toBe(
+        "always() && steps.tracked.outcome == 'success'",
+      )
+    }
+  })
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {

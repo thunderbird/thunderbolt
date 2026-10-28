@@ -292,6 +292,8 @@ describe('MobileSidebar', () => {
     await flushAnimations()
 
     expect(sidebarContent).toBeInTheDocument()
+    // Base UI settles its portal on the frame after the foreground close commits.
+    await flushAnimations()
     expect(sidebarContent.closest('[role="presentation"]')).toHaveAttribute('hidden')
   })
 

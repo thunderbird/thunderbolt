@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import { CreateItemProvider } from '@/components/create-item/context'
@@ -12,6 +12,7 @@ import { defaultSkillWeather } from '@/defaults/skills'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
 
@@ -172,7 +173,7 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
   })
 
-  it('closes the mobile skill drawer before opening creation', () => {
+  it('closes the mobile skill drawer when opening creation', async () => {
     forceMobileViewport()
     const a = skill('a', 'daily-brief')
     renderBar(
@@ -190,9 +191,11 @@ describe('ChatSkillsBar', () => {
     fireEvent.click(screen.getByText('New Skill'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the create surface opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 
   it('opens the add-skill menu as a mobile bottom drawer', () => {

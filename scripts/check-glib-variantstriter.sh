@@ -4,12 +4,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# RUSTSEC-2024-0429 / GHSA-wrw7-89jp-8q8g remains open in glib 0.18.5.
-# Risk acceptance depends on finding no references to VariantStrIter or its
-# producer array_iter_str outside that audited upstream crate. This text scan
-# is a tripwire, not proof that the vulnerable code is absent from a binary.
-# See docs/internals/development/ci-and-previews.md for the upgrade constraints.
-#
 # Scan all package sources, including path/git dependencies and build scripts.
 # Comments count as hits: investigate them rather than weakening the pattern.
 # shortcut: macro-generated references and Rust sources outside package roots

@@ -616,8 +616,8 @@ jobs:
             echo "QA_BACKEND_LOG=$RUNNER_TEMP/qa-stack.log"
           } >> "$GITHUB_ENV"
       # iOS only: its stream is slow to attach, so it starts here, without waiting, and attaches while the app
-      # installs and the stack starts. The wait comes later, before the first step that needs the log; its 60 s
-      # restart and 120 s budget both count from this start. Nothing opens the app before the session, so the log
+      # installs and the stack starts. The wait comes later, before the first step that needs the log; the first
+      # stream gets until 60 s after this start, a replacement 60 s of its own. Nothing opens the app before the session, so the log
       # holds no earlier line. Android's stream stays after the install, whose launches would otherwise fill the log.
       - &logs-ios
         name: Stream the WebView console on iOS

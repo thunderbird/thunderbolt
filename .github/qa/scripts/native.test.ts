@@ -219,15 +219,22 @@ test('a QA build reaches the backend and fake Google on the ports it is configur
  * returns at once and is counted, so the 60 s and 120 s budgets are counted, not waited. The streams' own idle wait
  * uses /bin/sleep. `date` starts at the time a test sets and moves 1 s per 5 counted sleeps, as the real clock would.
  */
-const fakeLogStream = (headerOn: number) => {
+const fakeLogStream = (headerOn: number, attachAfterSleeps = 0) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const pids = join(bin, 'pids')
   const sleeps = join(bin, 'sleeps')
+  // The header waits for that many more counted sleeps, so a stream can attach late in fake time.
   writeFileSync(
     join(bin, 'xcrun'),
     `#!/bin/bash
 echo $$ >> '${pids}'
-[ "$(wc -l < '${pids}' | tr -d ' ')" = ${headerOn} ] && echo 'Filtering the log data'
+if [ "$(wc -l < '${pids}' | tr -d ' ')" = ${headerOn} ]; then
+  if [ ${attachAfterSleeps} -gt 0 ]; then
+    seen=$(cat '${sleeps}' 2> /dev/null | wc -l)
+    while [ $(($(cat '${sleeps}' 2> /dev/null | wc -l) - seen)) -lt ${attachAfterSleeps} ]; do /bin/sleep 0.01; done
+  fi
+  echo 'Filtering the log data'
+fi
 exec /bin/sleep 30
 `,
   )
@@ -269,7 +276,9 @@ test('wait-logs replaces a stream that is silent after 60 s and keeps the second
   expect(proc.stderr.toString()).toBe('')
   expect(proc.exitCode).toBe(0)
   expect(pids()).toHaveLength(2)
-  expect(sleeps()).toBe(300)
+  // The replacement's header lands a poll or two after its spawn, so the count is not exact.
+  expect(sleeps()).toBeGreaterThanOrEqual(300)
+  expect(sleeps()).toBeLessThan(310)
   expect(readFileSync(`${file}.pid`, 'utf8').trim()).toBe(pids()[1])
   expect(running(pids()[0])).toBe(false)
   expect(running(pids()[1])).toBe(true)
@@ -290,13 +299,24 @@ test('wait-logs gives up after 120 s with no header and leaves no stream running
   expect(existsSync(`${file}.pid`)).toBe(false)
 })
 
-test('wait-logs counts its budget from the stream start, so time spent on other steps is not waited again', () => {
+test('wait-logs counts the first stream from its start, but the replacement gets its own 60 s', () => {
   const { run, file, pids, sleeps } = fakeLogStream(0)
   run('logs')
   const proc = run('wait-logs', 1061)
   expect(proc.stderr.toString()).toBe('the log stream never attached\n')
   expect(pids()).toHaveLength(2)
-  expect(sleeps()).toBe(295)
+  expect(sleeps()).toBe(300)
   expect(pids().some(running)).toBe(false)
   expect(existsSync(`${file}.pid`)).toBe(false)
+})
+
+test('wait-logs still lets a replacement attach after 20 s when setup already took over 120 s', () => {
+  const { run, file, pids } = fakeLogStream(2, 100)
+  run('logs')
+  const proc = run('wait-logs', 1130)
+  expect(proc.stderr.toString()).toBe('')
+  expect(proc.exitCode).toBe(0)
+  expect(pids()).toHaveLength(2)
+  expect(running(pids()[1])).toBe(true)
+  Bun.spawnSync(['bash', native, 'stop-logs', file])
 })

@@ -20,7 +20,8 @@
 #                                                               background, pid in <file>.pid; on iOS it returns at
 #                                                               once and records the start time in <file>.start
 #   native.sh wait-logs <device> <file>                         iOS only: wait for that stream to attach, replacing
-#                                                               it once; 60 s and 120 s after its start
+#                                                               it once; the first gets until 60 s after its start,
+#                                                               the replacement 60 s of its own
 #   native.sh stop-logs <file>
 #   native.sh control <platform> <device> [out-dir]             run the positive control on the control build
 #                                                               installed on <device>; exit 0 when the layout check
@@ -208,15 +209,16 @@ wait_for_header() {
 }
 
 # Console lines written before the stream attaches are lost. On a slow runner it can take over a minute to attach,
-# or never, so a stream still silent 60 s after `logs ios` started it is replaced once, and 120 s after it is too
-# long. The budget counts from that start, so time spent on other steps since then is not waited again.
+# or never, so a stream still silent 60 s after `logs ios` started it is replaced once. The first wait counts from that
+# start, so time spent on other steps since then is not waited again; the replacement gets 60 s of its own, because
+# those steps can already have used up the first stream's budget.
 wait_logs() {
   local device=$1 file=$2 start
   start=$(cat "$file.start")
   wait_for_header "$file" $((start + 60 - $(date +%s))) && return
   stop_logs "$file"
   start_ios_stream "$device" "$file"
-  wait_for_header "$file" $((start + 120 - $(date +%s))) && return
+  wait_for_header "$file" 60 && return
   stop_logs "$file"
   die "the log stream never attached"
 }

@@ -576,8 +576,9 @@ Traps:
   `wait-logs` waits for the header. The workflow runs `logs ios` right after the boot, so the stream attaches while
   the app installs and the stack starts, and `wait-logs` just before the first step that reads the log. On a slow
   runner the header can take a minute or never come: `wait-logs` replaces a stream that is still silent 60 s after
-  its start, once, and fails with "the log stream never attached" 120 s after the start. Both limits count from the
-  start, so time spent on the install is not waited twice. Piping it into `tail` hangs the shell; it runs in the
+  its start, once, and fails with "the log stream never attached" when the replacement is silent for 60 s as well.
+  The first stream's wait counts from its start, so time spent on the install is not waited twice; the replacement
+  gets its own 60 s even when the install already used the first stream's. Piping it into `tail` hangs the shell; it runs in the
   background and `stop-logs` stops it by pid.
 - On macOS the stack must run under the system `/bin/bash` 3.2 as well: `serve` polls its servers instead of using
   `wait -n`, which 3.2 lacks.

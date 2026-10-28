@@ -2,7 +2,7 @@
 
 Goal: choosing, switching and configuring models works with real providers.
 
-Start state: fresh user, desktop viewport. In this charter the AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash"
+Start state: fresh user. In this charter the AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash"
 and "GLM 5.3" answer for real, so replies vary. Keep prompts short and send at most 20 chat messages in total. Read
 every reply: a model that says it cannot answer is a finding.
 

@@ -1,0 +1,24 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Modal</title>
+  </head>
+  <!-- An open modal the way Radix leaves the page: the body stops taking clicks and the background is hidden from
+       assistive tech or inert. Each background part takes one of the three routes on its own. -->
+  <body style="pointer-events: none">
+    <main aria-hidden="true" style="pointer-events: auto">
+      <button>New chat</button>
+      <a href="#settings">Settings</a>
+    </main>
+    <nav inert style="pointer-events: auto"><button>Menu</button></nav>
+    <aside><button>Help</button></aside>
+    <div style="position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); pointer-events: auto"></div>
+    <div role="dialog" aria-label="Rename" style="position: fixed; top: 40%; left: 40%; pointer-events: auto">
+      <button>OK</button>
+    </div>
+  </body>
+</html>

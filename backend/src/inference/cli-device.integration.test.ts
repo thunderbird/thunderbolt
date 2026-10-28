@@ -77,6 +77,12 @@ const issueCliBearer = async (harness: TestAppHandle): Promise<string> => {
   expect(codeResponse.status).toBe(200)
   const code = (await codeResponse.json()) as DeviceCodeResponse
 
+  // The frontend /device page claims the code for the signed-in user before approving it.
+  const claim = await harness.app.handle(
+    new Request(`${authBaseUrl}/device?user_code=${code.user_code}`, { headers: authHeaders(harness.bearerToken) }),
+  )
+  expect(claim.status).toBe(200)
+
   const approval = await postAuthJson(
     harness.app,
     '/device/approve',

@@ -10,31 +10,35 @@ import {
   deletePersistedSignInOtp,
   getUserByEmail,
   getWaitlistByEmail,
+  passkeyHoldsSyncSlot,
+  userHasPasskey,
   markUserNotNew,
   validateOtpChallenge,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { cliRegistrationPendingDeviceId, isCliGrantSession } from '@/dal/sessions'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
-import { getSettings } from '@/config/settings'
+import { getPasskeyAndroidOriginsList, getSettings, isPasskeyEnabled, getPasskeyRpName } from '@/config/settings'
 import { createRateLimitConsumer, type RateLimitSet } from '@/middleware/rate-limit'
 import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
+import { captchaTokenHeader, captchaVerificationFailedCode } from '@shared/captcha'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
-import { betterAuth } from 'better-auth'
+import { betterAuth, type User } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
-import { computeDiscoveryUrl, sso } from '@better-auth/sso'
+import { passkey } from '@better-auth/passkey'
+import { computeDiscoveryUrl, sso, type SSOOptions } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { captchaTokenHeader, createCaptchaProvider } from './captcha'
-import { anonymousSignInPath, authBasePath } from './paths'
+import { createCaptchaProvider } from './captcha'
+import { anonymousSignInPath, authBasePath, configuredSsoProviderId, getSessionPath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -71,6 +75,83 @@ const otpSignInPath = '/sign-in/email-otp'
 const deviceTokenPath = '/device/token'
 const authTokenHeader = 'set-auth-token'
 
+/** The caller fields the passkey before-hook rules need. */
+type SessionLookup = {
+  user: { id: string; isAnonymous?: boolean | null }
+  session: { deviceId?: string | null }
+} | null
+
+type SsoRequest = Partial<Record<'body' | 'params' | 'query', { providerId?: unknown }>>
+
+/** The SSO routes the app uses, each with the part of the request that names the provider. */
+const ssoRouteProviderPart = new Map<string, keyof SsoRequest>([
+  ['/sign-in/sso', 'body'],
+  ['/sso/callback/:providerId', 'params'],
+  ['/sso/saml2/sp/acs/:providerId', 'params'],
+  ['/sso/saml2/sp/metadata', 'query'],
+])
+
+/**
+ * Better Auth still reads `sso_provider` rows that older releases let any signed-in user
+ * register, and a row's owner holds its IdP. Any SSO route outside the table above, or naming
+ * another provider, is refused so such a row can neither sign in nor be edited.
+ */
+const isForeignSsoRequest = (path: string, request: SsoRequest) => {
+  if (path !== '/sign-in/sso' && !path.startsWith('/sso/')) {
+    return false
+  }
+  const part = ssoRouteProviderPart.get(path)
+  return part === undefined || request[part]?.providerId !== configuredSsoProviderId
+}
+
+type SsoUserResolution = Parameters<NonNullable<SSOOptions['resolveUser']>>[0]
+
+/** True when an OIDC provider states it never confirmed the address. SAML carries no such claim. */
+const idpDeniesEmailVerified = (input: SsoUserResolution) =>
+  input.protocol === 'oidc' &&
+  [input.verifiedIdTokenClaims, input.providerClaims].some(
+    (claims) => claims.email_verified === false || claims.email_verified === 'false',
+  )
+
+/**
+ * Signs a new SSO identity into the existing user with the same email when that user verified
+ * it by email code, or already signed in through the configured provider (a new IdP, subject or
+ * SAML NameID for the same person). We trust the operator's env-configured IdP once Better Auth
+ * has checked the SAML signature or OIDC id_token, unless it says the email is unverified.
+ * See backend/docs/authentication.md.
+ */
+const linkSsoToKnownEmailOwner: NonNullable<SSOOptions['resolveUser']> = async (input, { database }) => {
+  const hasSsoAccount = async (field: 'accountId' | 'userId', value: string) =>
+    (await database.findOne({
+      model: 'account',
+      where: [
+        { field: 'providerId', value: configuredSsoProviderId },
+        { field, value },
+      ],
+    })) !== null
+  // This runs on every sign-in, before Better Auth finds a known identity's own user.
+  if (idpDeniesEmailVerified(input) || (await hasSsoAccount('accountId', input.accountKey.accountId))) {
+    return { action: 'continue' }
+  }
+  const existing = await database.findOne<User>({
+    model: 'user',
+    where: [{ field: 'email', value: normalizeEmail(input.providerUser.email) }],
+  })
+  if (!existing) {
+    return { action: 'continue' }
+  }
+  return existing.emailVerified || (await hasSsoAccount('userId', existing.id))
+    ? { action: 'link', userId: existing.id, profile: 'preserve' }
+    : { action: 'continue' }
+}
+
+/** What every SSO mode needs, so a new mode cannot leave one out. */
+const sharedSsoOptions = {
+  // Stops new rows; isForeignSsoRequest refuses the ones older releases stored.
+  providersLimit: 0,
+  resolveUser: linkSsoToKnownEmailOwner,
+} satisfies SSOOptions
+
 /**
  * Create a Better Auth instance with the provided database
  * This factory pattern allows tests to inject their own database
@@ -94,9 +175,10 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        ...sharedSsoOptions,
         defaultSSO: [
           {
-            providerId: 'sso',
+            providerId: configuredSsoProviderId,
             domain: new URL(settings.betterAuthUrl).host,
             oidcConfig: {
               issuer: settings.oidcIssuer,
@@ -126,17 +208,20 @@ const buildSsoPlugins = () => {
 
     return [
       sso({
+        ...sharedSsoOptions,
+        // Without a callback, a response with no RelayState (IdP-initiated) lands on the API origin, not the app.
+        saml: { allowIdpInitiated: settings.samlAllowIdpInitiated, idpInitiatedCallbackUrl: settings.appUrl },
         defaultSSO: [
           {
-            providerId: 'sso',
+            providerId: configuredSsoProviderId,
             domain: new URL(settings.betterAuthUrl).host,
             samlConfig: {
-              issuer: settings.samlIdpIssuer,
+              // `issuer` names our service provider; the IdP is identified by idpMetadata.entityID.
+              issuer: settings.samlEntityId,
               entryPoint: settings.samlEntryPoint,
               cert: settings.samlCert,
-              callbackUrl: `${settings.betterAuthUrl}/v1/api/auth/sso/saml2/sp/acs/sso`,
-              spMetadata: {
-                entityID: settings.samlEntityId,
+              idpMetadata: {
+                entityID: settings.samlIdpIssuer,
               },
             },
           },
@@ -185,40 +270,34 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     )
   }
 
-  // The IdP is operator-controlled in self-hosted enterprise deployments, so we trust the
-  // 'sso' provider for account linking. Without this, Better Auth blocks linking an SSO
-  // account to an existing user record with the same email — causing the SSO callback to
-  // fail with "account not linked" for any user record that wasn't originally created via
-  // the same SSO flow. Replaces the deprecated `trustEmailVerified` SSO plugin option, and
-  // makes trust explicit in operator config rather than depending on the IdP's
-  // `email_verified` claim.
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
 
-  return betterAuth({
+  // This before-hook runs ahead of every plugin hook, bearer included, so
+  // `getSessionFromCtx` can't see a bearer-only session here. Going through the
+  // real `getSession` endpoint runs the full pipeline. Assigned once `auth` exists.
+  let resolveSession: (headers: Headers) => Promise<SessionLookup> = async () => null
+
+  const auth = betterAuth({
     basePath: authBasePath,
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
+      // The SSO plugin's resolveUser hook refuses to run without native transactions.
+      transaction: ssoEnabled,
     }),
     trustedOrigins,
-    ...(ssoEnabled && {
-      account: {
-        accountLinking: {
-          trustedProviders: ['sso'],
-        },
-      },
-    }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only. Today this
-    // limiter and the DB-backed `auth` IP tier are the controls; the captcha on anonymous
-    // sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once the app supports
-    // ALTCHA.
+    // horizontally-scaled deployments. Provides single-instance defence only. The DB-backed
+    // `auth` IP tier holds across instances, and CAPTCHA_PROVIDER=altcha (with an app built with
+    // VITE_CAPTCHA_PROVIDER=altcha) is the distributed bot control on anonymous sign-in.
+    // `/get-session` is exempt from the `auth` tier (see createAuthPluginIpRateLimit), so the
+    // custom rule below is its only limit.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
       customRules: {
-        '/get-session': { window: 1, max: 30 },
+        [getSessionPath]: { window: 1, max: 30 },
         // Anonymous sign-in is limited only by our DB-backed limiter (createAuthPluginIpRateLimit):
         // a true fixed window, shared across instances and keyed on the TRUSTED_PROXY-resolved IP.
         // Better Auth's limiter resets only after a full idle window and falls back to
@@ -227,6 +306,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     },
     advanced: {
+      database: { joins: true },
       ipAddress: {
         ipAddressHeaders: getTrustedIpHeaders(settings.trustedProxy),
       },
@@ -259,7 +339,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       user: {
         create: {
           // normalizeEmail is .toLowerCase().trim() — idempotent on Better Auth's
-          // synthetic anonymous emails (`temp@{generateId()}.com`). No guard needed.
+          // synthetic anonymous emails (`{generateId()}@anonymous.placeholder.invalid`). No guard needed.
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
@@ -276,6 +356,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (ssoEnabled && isForeignSsoRequest(ctx.path, ctx)) {
+          console.warn(`Refused ${ctx.path}: only the configured SSO provider is available`)
+          throw ctx.error('FORBIDDEN', { message: 'Only the configured SSO provider is available' })
+        }
+
         // Guard: prevent session fixation. A real (non-anonymous) user MUST NOT be
         // able to acquire a new anonymous session that could shadow their real session.
         // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous
@@ -290,7 +375,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           if (!captchaSolved) {
             throw ctx.error('FORBIDDEN', {
               message: 'Captcha verification failed',
-              code: 'CAPTCHA_VERIFICATION_FAILED',
+              code: captchaVerificationFailedCode,
             })
           }
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
@@ -303,6 +388,51 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
             if (rejected) {
               throw ctx.error('TOO_MANY_REQUESTS', { message: rejected.error }, toHeaderRecord(set.headers))
             }
+          }
+          return
+        }
+
+        // Passkey management (register/list/update/delete) requires a real account:
+        // an anonymous user's credential would bind to a throwaway identity that is
+        // deleted on promotion. The two authentication paths stay open — they're how
+        // sign-in works and need no session at all.
+        if (
+          ctx.path.startsWith('/passkey/') &&
+          ctx.path !== '/passkey/generate-authenticate-options' &&
+          ctx.path !== '/passkey/verify-authentication'
+        ) {
+          const headers = ctx.headers ?? new Headers()
+          const existing = await resolveSession(headers)
+          if (!existing) {
+            return
+          }
+          if (existing.user.isAnonymous) {
+            throw ctx.error('FORBIDDEN', { message: 'Passkeys are not available for anonymous users' })
+          }
+          // API keys and CLI device grants are delegated, non-interactive
+          // credentials; letting one register a passkey would turn it into a
+          // permanent interactive sign-in that outlives the key.
+          if (headers.has('x-api-key') || isCliGrantSession(existing.session.deviceId)) {
+            throw ctx.error('FORBIDDEN', { message: 'Passkeys need an interactive session' })
+          }
+          // One passkey per account — it is also the account's single E2EE
+          // passkey slot. The unique index on passkey.user_id backs this up.
+          const isRegistration =
+            ctx.path === '/passkey/generate-register-options' || ctx.path === '/passkey/verify-registration'
+          if (isRegistration && (await userHasPasskey(database, existing.user.id))) {
+            throw ctx.error('CONFLICT', { message: 'This account already has a passkey' })
+          }
+          // A passkey holding the sync slot can still unlock the AK, so deleting
+          // its row first would leave a working slot nobody can see or remove.
+          // The client clears the slot with an AK rotation, then deletes. This
+          // gives a clear error; the slot's foreign key also covers a racing enroll.
+          const passkeyId = (ctx.body as { id?: string } | undefined)?.id
+          if (
+            ctx.path === '/passkey/delete-passkey' &&
+            passkeyId &&
+            (await passkeyHoldsSyncSlot(database, existing.user.id, passkeyId))
+          ) {
+            throw ctx.error('CONFLICT', { message: 'Remove this passkey from sync before deleting it' })
           }
           return
         }
@@ -487,6 +617,20 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
         rateLimit: { enabled: false },
       }),
+      // Changing the RP ID orphans every registered passkey. `origin` comes from
+      // the trusted-origins list plus the Android app's signing-key origins, never
+      // the request's Origin header. The challenge
+      // rides a signed cookie, which `elysia-plugin.ts` relays through the
+      // `X-Passkey-Challenge` header.
+      ...(isPasskeyEnabled(settings)
+        ? [
+            passkey({
+              rpID: settings.passkeyRpId,
+              rpName: getPasskeyRpName(settings),
+              origin: [...trustedOrigins, ...getPasskeyAndroidOriginsList(settings)],
+            }),
+          ]
+        : []),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
       // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.
@@ -506,6 +650,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       ...buildSsoPlugins(),
     ],
   })
+
+  resolveSession = (headers) => auth.api.getSession({ headers, query: { disableRefresh: true } })
+
+  return auth
 }
 
 export type Auth = ReturnType<typeof createAuth>

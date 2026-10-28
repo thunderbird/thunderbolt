@@ -80,9 +80,9 @@ test.describe.serial('adversary primitives', () => {
 
     const revoked = await revokedDeviceContext(browser, page, { email, userId, profile: 'firefox' })
     try {
-      // Revocation deletes the server envelope and rotates AK+DEK; it cannot
-      // reach this context's IndexedDB. If this ever fails, C5's attack surface
-      // shrank and the threat model should say so.
+      // Revocation deletes the server envelope and rotates AK+DEK; a device it
+      // reaches wipes itself, but one held offline keeps its IndexedDB. If this
+      // ever fails, C5's attack surface shrank and the threat model should say so.
       expect(await getEncryptionKeyNames(revoked.page)).toEqual(
         expect.arrayContaining(['thunderbolt_ak', 'thunderbolt_dek_0']),
       )

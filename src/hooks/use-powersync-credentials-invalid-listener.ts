@@ -2,22 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { getDevice } from '@/dal'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import type { CredentialsInvalidReason } from '@/db/powersync/connector'
-import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
+import { showSignInModalEvent, signInSuccessEvent } from '@/hooks/use-credential-events'
 import { clearAuthToken, getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { clearLocalData as defaultClearLocalData } from '@/lib/cleanup'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
 
+/** Where each reset lands; every other reason goes to `/`. */
+const resetRedirects: Partial<Record<CredentialsInvalidReason, string>> = {
+  account_deleted: '/account-deleted',
+  device_revoked: '/device-revoked',
+}
+
 /**
- * Full app reset when credentials are no longer valid: disable PowerSync sync, clear
- * localStorage (token + device id), reset app directory (DB), then navigate away.
- * Leaves the user in a clean signed-out state so they can sign in again or use the app offline.
+ * Full app reset when credentials are no longer valid: disable sync, wipe encryption keys,
+ * the database and browser storage, then navigate away. Leaves a clean signed-out state.
  */
 const performCredentialsInvalidReset = async (
   redirectTo: string,
@@ -37,7 +42,7 @@ const performCredentialsInvalidReset = async (
  *
  * 2. **Devices table (synced via PowerSync)** – We have a token and a device id (we consider
  *    ourselves a logged-in device). We watch the current device row:
- *    - **revokedAt set** – User revoked this device from another device; show revoked modal.
+ *    - **revokedAt set** – User revoked this device from another device; reset to /device-revoked.
  *    - **Device row missing** – Only reset if we had seen the device in this session and it
  *      then disappeared (account deleted elsewhere; PowerSync synced and wiped user data).
  *      We do not reset when the device is missing on first load: the local DB may not have
@@ -68,8 +73,8 @@ export const usePowerSyncCredentialsInvalidListener = ({
   clearLocalData = defaultClearLocalData,
 }: UsePowerSyncCredentialsInvalidListenerOptions = {}): void => {
   const db = useDatabase()
+  const httpClient = useHttpClient()
   const hasTriggeredResetRef = useRef(false)
-  const hasDispatchedRevokedModalRef = useRef(false)
   const hasDispatchedSignInModalRef = useRef(false)
   const hadDeviceOnceRef = useRef(false)
   const deviceId = getDeviceId()
@@ -91,9 +96,9 @@ export const usePowerSyncCredentialsInvalidListener = ({
       const reason = (event as CustomEvent<{ reason: CredentialsInvalidReason }>).detail?.reason
 
       if (reason === 'session_expired') {
-        // A real device revocation or account deletion supersedes a session expiry —
-        // don't pop the sign-in modal on top of a reset/revocation flow.
-        if (hasDispatchedRevokedModalRef.current || hasDispatchedSignInModalRef.current) {
+        // A revocation or account deletion already returned above via hasTriggeredResetRef,
+        // so this only guards against stacking a second sign-in modal.
+        if (hasDispatchedSignInModalRef.current) {
           return
         }
         hasDispatchedSignInModalRef.current = true
@@ -102,14 +107,11 @@ export const usePowerSyncCredentialsInvalidListener = ({
         clearAuthToken()
         void setSyncEnabled(false)
         window.dispatchEvent(new CustomEvent(showSignInModalEvent))
-        return
-      }
-
-      if (reason === 'device_revoked') {
-        if (!hasDispatchedRevokedModalRef.current) {
-          hasDispatchedRevokedModalRef.current = true
-          window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
-        }
+        // A 401 can't tell an expired session from a revoked device (revocation deletes
+        // its sessions). Ask now: the session check answers a revoked device with a 403
+        // that the HttpClient turns into device_revoked, wiping it. If this request is
+        // lost, the startup check asks again on the next launch.
+        void httpClient.get('api/auth/get-session').catch(() => {})
         return
       }
 
@@ -122,12 +124,12 @@ export const usePowerSyncCredentialsInvalidListener = ({
       }
 
       hasTriggeredResetRef.current = true
-      void performCredentialsInvalidReset(reason === 'account_deleted' ? '/account-deleted' : '/', clearLocalData)
+      void performCredentialsInvalidReset(resetRedirects[reason] ?? '/', clearLocalData)
     }
 
     window.addEventListener(powersyncCredentialsInvalid, handler)
     return () => window.removeEventListener(powersyncCredentialsInvalid, handler)
-  }, [clearLocalData])
+  }, [clearLocalData, httpClient])
 
   // After successful re-authentication, allow a future session expiry to re-trigger the modal.
   useEffect(() => {
@@ -154,10 +156,8 @@ export const usePowerSyncCredentialsInvalidListener = ({
     const missingAfterHavingDevice = hadDeviceOnceRef.current && device == null
 
     if (revoked) {
-      if (!hasDispatchedRevokedModalRef.current) {
-        hasDispatchedRevokedModalRef.current = true
-        window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
-      }
+      hasTriggeredResetRef.current = true
+      void performCredentialsInvalidReset('/device-revoked', clearLocalData)
       return
     }
 

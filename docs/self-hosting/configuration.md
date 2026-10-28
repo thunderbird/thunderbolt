@@ -46,13 +46,13 @@ Don't use the embedded `pglite` driver outside evaluation and testing. The sync 
 
 Pick one mode.
 
-| Variable               | Default                                   | What it does                                                                                                           |
-| ---------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`            | `consumer`                                | `consumer` for email sign-in codes, `oidc` or `saml` for enterprise SSO.                                               |
-| `AUTH_ALLOW_ANONYMOUS` | `false`                                   | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
-| `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
+| Variable               | Default                                                          | What it does                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`            | `consumer`                                                       | `consumer` for email sign-in codes, `oidc` or `saml` for enterprise SSO.                                               |
+| `AUTH_ALLOW_ANONYMOUS` | `false`                                                          | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
+| `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
 
-`tauri://localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
+`tauri://localhost` and `http://tauri.localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
 
 ### First-time email sign-in
 
@@ -81,12 +81,13 @@ Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 
 ### SAML
 
-| Variable           | Default | What it does                                                                      |
-| ------------------ | ------- | --------------------------------------------------------------------------------- |
-| `SAML_ENTRY_POINT` | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                    |
-| `SAML_ENTITY_ID`   | none    | Service provider entity ID. Must match the SAML client in your identity provider. |
-| `SAML_IDP_ISSUER`  | none    | Identity provider entity ID.                                                      |
-| `SAML_CERT`        | none    | Identity provider signing certificate, base64, without PEM headers.               |
+| Variable                   | Default | What it does                                                                                                                                                                                                            |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAML_ENTRY_POINT`         | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                                                                                                                                                          |
+| `SAML_ENTITY_ID`           | none    | Service provider entity ID. Must match the SAML client in your identity provider.                                                                                                                                       |
+| `SAML_IDP_ISSUER`          | none    | Identity provider entity ID.                                                                                                                                                                                            |
+| `SAML_CERT`                | none    | Identity provider signing certificate, base64, without PEM headers.                                                                                                                                                     |
+| `SAML_ALLOW_IDP_INITIATED` | `false` | `true` accepts SAML responses that answer no login request, which is a login started at the provider's dashboard. Read the risk in [Authentication](./authentication.md#logging-in-from-the-providers-dashboard) first. |
 
 Under OIDC, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. SAML has no discovery step, so it does not need the entry. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
@@ -112,6 +113,23 @@ Users create personal access tokens in the app so a script or the command-line c
 | `API_KEY_DEFAULT_EXPIRES_IN` | `7776000` (90 days) | Default lifetime, in seconds, of a personal access token.                                        |
 | `DEVICE_AUTH_EXPIRES_IN`     | `30m`               | How long a code shown by the command-line client stays valid. Digits plus `s`, `m`, `h`, or `d`. |
 | `DEVICE_AUTH_INTERVAL`       | `5s`                | Minimum interval at which the command-line client polls while waiting for approval.              |
+
+### Passkeys
+
+Lets users sign in with a passkey, and unlock sync on a new device with it instead of approving it from another device. Consumer sign-in only; ignored under OIDC and SAML.
+
+| Variable                  | Default               | What it does                                                                                                                                            |
+| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSKEY_ENABLED`         | `false`               | Turns passkeys on.                                                                                                                                      |
+| `PASSKEY_RP_ID`           | `APP_URL`'s hostname  | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
+| `PASSKEY_RP_NAME`         | the branding app name | Name shown in the browser's passkey prompt. Unset, it uses `appName` from [`BRANDING`](#branding), then `Thunderbolt`.                                  |
+| `PASSKEY_ANDROID_ORIGINS` | empty                 | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
+
+> [!WARNING]
+> The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
+
+> [!NOTE]
+> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. The Windows app follows the same rule. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
 
 ## Models and inference
 
@@ -147,13 +165,13 @@ Enabling `CONFIDENTIAL_API_KEYS_ENABLED`, `false` by default, lets a personal ac
 
 The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync; the app still works on one device at a time.
 
-| Variable                         | Default         | What it does                                                                                                                                                                                                     |
-| -------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | none            | URL of your sync service, as the browser reaches it. Setting it turns sync on.                                                                                                                                   |
-| `POWERSYNC_INTERNAL_URL`         | `POWERSYNC_URL` | Address the API itself uses to check the sync service for `/v1/health/powersync`. Set it when the public URL does not resolve inside your network.                                                               |
-| `POWERSYNC_JWT_SECRET`           | none            | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.                                                                                                                              |
-| `POWERSYNC_JWT_KID`              | none            | Key identifier, so the sync service can pick between secrets during a rotation.                                                                                                                                  |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`           | Lifetime, in seconds, of the token each client uses to connect to the sync service. The sync service checks it without asking the API, so a revoked device keeps syncing until its token expires. Keep it short. |
+| Variable                         | Default         | What it does                                                                                                                                                                                                                                     |
+| -------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POWERSYNC_URL`                  | none            | URL of your sync service, as the browser reaches it. Setting it turns sync on.                                                                                                                                                                   |
+| `POWERSYNC_INTERNAL_URL`         | `POWERSYNC_URL` | Address the API itself uses to check the sync service for `/v1/health/powersync`. Set it when the public URL does not resolve inside your network.                                                                                               |
+| `POWERSYNC_JWT_SECRET`           | none            | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.                                                                                                                                                              |
+| `POWERSYNC_JWT_KID`              | none            | Key identifier, so the sync service can pick between secrets during a rotation.                                                                                                                                                                  |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`           | Lifetime, in seconds, of the token each client uses to connect to the sync service. Revoking a device cuts its sync as soon as the revocation reaches the sync service; this only bounds how long a client can keep reconnecting. Keep it short. |
 
 The secret and key identifier must match the values your sync service loads. If you generate the secret in base64, use base64url: a value containing `+`, `/`, or `=` is rejected by the sync service.
 
@@ -193,29 +211,72 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `ENABLED_AGENTS`         | empty   | Comma-separated list of agent identifiers to offer. Empty means offer all of them.                 |
 | `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the option to add a custom agent, so users cannot connect their own.                 |
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
+| `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
+
+`MINIMAL_MODE=true` hides the Settings section, the header's agent name (replaced by your logo when one is set, see below), the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
+
+Minimal mode has no theme control: the app follows the visitor's stored theme, which is the system theme unless they chose otherwise before minimal mode was on.
+
+| Variable              | Default | What it does                                                                                                                                                             |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BRAND_LOGO_URL`      | empty   | In minimal mode, a logo shown in the header for visitors who open the site directly in a browser, not inside an app (see below). An `https:` URL or a `data:image/` URL. |
+| `BRAND_LOGO_DARK_URL` | empty   | The logo for dark theme. Falls back to `BRAND_LOGO_URL`. Same URL rules.                                                                                                 |
+| `BRAND_LOGO_ALT`      | empty   | The logo's accessible name. Falls back to the agent's name.                                                                                                              |
+
+The logo shows only to visitors who open the site directly in a browser. Inside a native app's WebView the app's own chrome already carries the branding, so the logo stays hidden. The app counts as embedded once a load carries `?embed=app`: any load carrying it sets the marker. The marker is saved in `localStorage` from then on, so it survives navigation and restarts, and the web UI never clears it. There is no user agent detection: link the app with `?embed=app`, and a visitor who opens the plain URL sees the logo.
+
+A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
 
 ### Hosted agent
 
-`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls one model upstream. `AGENT_MODEL` takes one of two shapes: a Fireworks serverless id, `accounts/fireworks/models/<name>`, which runs on Fireworks with `FIREWORKS_API_KEY`, or a bare Anthropic id, which runs on Anthropic with `ANTHROPIC_API_KEY`. The API refuses to start on an id it does not support or when the provider's key is unset; Fireworks models in other accounts are not supported yet. Each supported id also needs a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The supported ids and their seeded prices are listed under [Model prices](./models.md#model-prices). The agent has no tools yet.
+`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls one model upstream. `AGENT_MODEL` takes one of two shapes: a Fireworks serverless id, `accounts/fireworks/models/<name>`, which runs on Fireworks with `FIREWORKS_API_KEY`, or a bare Anthropic id, which runs on Anthropic with `ANTHROPIC_API_KEY`. The API refuses to start on an id it does not support or when the provider's key is unset; Fireworks models in other accounts are not supported yet. Each supported id also needs a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The supported ids and their seeded prices are listed under [Model prices](./models.md#model-prices). The agent can call read-only tools on the MCP servers in `AGENT_MCP_SERVERS` (see [Tools](#hosted-agent-tools) below).
 
 The agent is also offered through agent discovery, and the discovery response names it as the default agent unless `ENABLED_AGENTS` excludes it. Excluding `hosted-agent` there hides it from discovery but does not unmount the route, the same as the Haystack route. A brand-new chat opens on it unless the user has already chosen: an agent picked before (the remembered choice syncs across their devices), or a model, which counts as choosing the built-in agent. Existing chats keep their agent, and a user can switch from the chat header at any time.
 
-A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that), and a reply stops at 8,192 output tokens or after 2 minutes upstream. The agent takes text only, whatever the model: a request carrying a file attachment is refused with `400 AGENT_FILES_UNSUPPORTED`.
+A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that), and at most 50,000 UTF-16 code units (50,000 characters of most text) of project and skill instructions (`400 AGENT_INSTRUCTIONS_TOO_LARGE` beyond that), which the agent appends after `AGENT_SYSTEM_PROMPT`, and after the rules for tool results when the reply has tools, under a header telling the model to follow them unless they conflict with what comes before. Each model step stops at 8,192 output tokens, and the whole reply, its tool calls included, stops after 2 minutes or when the client goes away (the user presses Stop or the connection drops). The last two abort the reply upstream, and the user's next message goes through at once. A reply whose later step fails upstream is billed at what its finished steps reported. An aborted reply usually ends before the provider reports its token usage, so it is billed against the [spending limits](#spending-limits) at what its finished steps reported, plus an estimate for the step it was in, counting the system prompt, the tool definitions (except on the last step, which is sent none), the conversation and earlier tool calls and results sent, plus the text and tool calls streamed so far: one token per Chinese, Japanese or Korean character, one per three characters of any other text, and no cache discount. The estimate errs high on purpose, and the usage row does not mark it as an estimate; the API logs `agent_usage_estimated` with both counts for each one. The agent takes text only, whatever the model: a request carrying a file attachment is refused with `400 AGENT_FILES_UNSUPPORTED`.
 
-The agent replies in the language of the conversation. When the conversation does not establish one, it falls back to the app language the client sends in the `X-App-Language` header, or to English when the header is missing or names a language the app does not ship. This rule is appended after `AGENT_SYSTEM_PROMPT`, so your prompt still comes first. The current date and hour come last, written in `AGENT_TIMEZONE`, so everything before them stays the same between requests. Because the system prompt is sent ahead of the conversation, a new hour means the provider cannot reuse that user's cached conversation for the next turn. Leaving out the minutes limits that to once an hour. This applies to Fireworks models, whose prompt cache reuses the conversation per user; Anthropic models are sent without cache control, so nothing is cached for them.
+The agent replies in the language of the conversation. When the conversation does not establish one, it falls back to the app language the client sends in the `X-App-Language` header, or to English when the header is missing or names a language the app does not ship. This rule is appended after `AGENT_SYSTEM_PROMPT`, the rules for tool results when the reply has tools, and any project and skill instructions, so your prompt still comes first. The current date and hour come next, written in `AGENT_TIMEZONE`, then a note naming any MCP server that could not be reached, so everything before them stays the same between requests that carry the same instructions and tools. Because the system prompt is sent ahead of the conversation, a new hour means the provider cannot reuse that user's cached conversation for the next turn. Leaving out the minutes limits that to once an hour. This applies to Fireworks models, whose prompt cache reuses the conversation per user; Anthropic models are sent without cache control, so nothing is cached for them.
 
 | Variable                          | Default     | What it does                                                                                                               |
 | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.                                                            |
 | `AGENT_MODEL`                     | empty       | Model the agent uses; its id picks the provider. Required when enabled.                                                    |
-| `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run. No effect until MCP tools land.                                                              |
+| `AGENT_MAX_STEPS`                 | `8`         | Most model steps per reply, at most 21. A slow reply takes its last step early ([Cost](#hosted-agent-tools)).              |
+| `AGENT_FIREWORKS_SERVICE_TIER`    | `standard`  | `priority` uses Fireworks' Priority tier: less often load-shed, but dearer. Fireworks models only. Invalid stops startup.  |
 | `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                                                               |
-| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call. No effect yet.                                                               |
+| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers whose read-only tools the agent may call. See [Tools](#hosted-agent-tools).                      |
 | `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                                                                |
 | `AGENT_DESCRIPTION`               | empty       | Description shown when clients discover the agent.                                                                         |
 | `AGENT_ICON`                      | empty       | Icon shown for the agent: `bot`, `brain`, `globe`, `message-circle`, `server` or `sparkles`. Anything else shows `server`. |
 | `AGENT_TIMEZONE`                  | `UTC`       | IANA time zone (or a UTC offset such as `+01:00`) for the date in the agent's system prompt. Invalid stops startup.        |
 | `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false`     | Lets anonymous sessions discover agents; they see only anonymous-safe ones.                                                |
+
+#### Hosted agent tools
+
+`AGENT_MCP_SERVERS` lists the MCP servers the agent may call, as a JSON array. Each entry has a unique `name`, a `url` reached over Streamable HTTP (`http` or `https`), optional `headers` sent with every request, and an optional `allowedTools` list:
+
+```json
+[
+  {
+    "name": "schedule",
+    "url": "https://schedule.example.com/mcp",
+    "headers": { "Authorization": "Bearer <token>" },
+    "allowedTools": ["search_sessions"]
+  }
+]
+```
+
+With `AGENT_ENABLED=true`, the API refuses to start on a malformed value, an unknown key included, and says where it went wrong without quoting it, since the headers hold credentials.
+
+- **Read-only tools only.** The model is offered only the tools a server marks read-only (`readOnlyHint`). `allowedTools` narrows those further; it cannot add a tool the server does not mark read-only. Once per connection, the API logs `agent_mcp_tools_skipped`, naming the tools it left out and the allowlisted names the server does not list. `readOnlyHint` is the server's own claim, so list only servers you trust. On a public deployment, set `allowedTools`, so a tool a server adds later is never offered to visitors unreviewed. It pins names only: a listed tool's description, schema and results still come from the server, and the server can change them.
+- **Names.** Each tool is offered as `<server>_<tool>`, the server's `name` lowercased with every other character turned into `_`, the way the app names MCP tools for the built-in agent. A tool whose full name model providers would refuse (anything but letters, digits, `_` and `-`, or longer than 64 characters) is left out, since one such name rejects the whole request. The `name` also appears in the note the model gets while the server is unreachable.
+- **Credentials stay on the server.** The headers never reach the browser, and a redirect is refused, so they cannot be carried to another origin. `http` suits a server on a private network, such as a Render private service; use `https` for anything that crosses the internet.
+- **Connections.** Each server is connected, and its tools listed, on the first reply that needs it, within 5 seconds, and that connection is reused after that by every visitor, so a server must keep no per-session state. A tool list is fixed for the connection's life; restart the API to pick up a server's new tools. A server that cannot be reached is left out of that reply: the model is told its tools are unavailable, the API logs `agent_mcp_server_unavailable`, and the next reply tries again, waiting up to 5 seconds before its model starts.
+- **Failed calls.** A call may take 15 seconds, a reconnect included. A slower one, or one whose server fails, goes back to the model as a short error it can answer, and the next call, from that reply or another, reconnects. A reply whose reconnect fails makes no more calls to that server. A reconnect lists the tools again, and a call to a tool the server no longer offers read-only is refused. An error the server returns for that call alone goes back as the server's message. The visitor sees a generic error in its place, and the API logs `agent_mcp_tool_call_failed`.
+- **Limits.** A reply makes at most 20 tool calls, and the model reads at most 20,000 characters of each result, text only. A server may send at most 1 MB in one response: a larger result goes back to the model as an error, and a larger tool list leaves the server out of the reply. Each server offers at most 32 tools, the first it lists, and a tool whose title, description and input schema come to more than 8,000 characters is left out; `agent_mcp_tools_skipped` names both.
+- **Cost.** N tool round trips take N + 1 model steps, at most `AGENT_MAX_STEPS`. The last step offers no tools, so the model answers. A reply takes it early once it has made its 20 tool calls, or has used all but 30 seconds of its 2 minutes, so slow calls still leave time for an answer. Every step resends the conversation, the tool definitions and the tool calls and results so far, and every step is billed, so tools multiply what a reply costs. The spending limit is checked once, before the reply, so one reply can go past it by up to its own cost; the next is refused. On `priority`, each reply is recorded at the model's Fireworks Priority rate (the stored Standard price times its surcharge: 1.25x for GLM 5.3, 1.5x for MiniMax M3), so recorded spend and the per-visitor spending limits track the real cost. Priority on a Fireworks model without a known surcharge stops startup.
+- **Across turns.** Tool results are not carried into the next turn: the browser's copy of the conversation drops them, so a follow-up question calls the tools again.
+- **Visibility.** Tool calls, their inputs and the text the model reads stream to the visitor's browser along with the reply. Visitors' questions reach your MCP servers as tool inputs, and those servers may log them.
 
 ### Deepset (Haystack) pipelines
 
@@ -233,6 +294,65 @@ HAYSTACK_PIPELINES='[{"id":"rag-chat","name":"RAG Chat","pipelineName":"rag-chat
 ```
 
 A pipeline that should accept file attachments needs `"supportedContent": {"text": true, "files": true}`. Without it attachments never reach the pipeline, and it is run as a chat pipeline rather than a generative one.
+
+## Branding
+
+| Variable   | Default | What it does                                                                     |
+| ---------- | ------- | -------------------------------------------------------------------------------- |
+| `BRANDING` | empty   | JSON object that renames the app and restyles it with shadcn-style theme tokens. |
+
+Every key is optional; anything you leave out keeps the default look. The API refuses to start when the value is not valid JSON or breaks the rules below, and lists every problem at once. In a `.env` file, wrap the value in single quotes (`BRANDING='{…}'`): unquoted, the `#` of the first hex color starts a comment and cuts the JSON short.
+
+```json
+{
+  "appName": "Acme AI",
+  "defaultThemeMode": "dark",
+  "cssVars": {
+    "theme": { "radius": "0.75rem" },
+    "light": { "background": "#f8fafc", "foreground": "#0f172a", "primary": "#4f46e5" },
+    "dark": { "background": "#0f172a", "foreground": "#e2e8f0", "primary": "#6366f1" }
+  }
+}
+```
+
+- `appName` (up to 60 characters) replaces Thunderbolt wherever the text means the app: the browser tab, sign-in, onboarding, settings and the standalone screens, the built-in agent's name, transactional emails, the passkey prompt (unless `PASSKEY_RP_NAME` is set), the consent screen of MCP servers users connect to, and the host name Mini Apps see. Text about the Thunderbolt product itself keeps the name: the command-line client, Thunderbolt Pro, the desktop app downloads and the open-source note. The desktop and mobile apps' own name and icon are set when they are built, so they stay Thunderbolt.
+- `debugTranscriptRecipient` (up to 60 characters) is who the debug-transcript share dialog says receives the transcript, as "the {name} team". It defaults to Thunderbolt, not to `appName`, because the default intake at `DEBUG_TRANSCRIPT_UPSTREAM_URL` is Thunderbolt's. Set it when you forward [debug transcripts](#debug-transcripts) to your own intake.
+- `defaultThemeMode` is `light`, `dark` or `system`, and applies to users who have never chosen a theme on that device, including existing installs that were left on the default.
+- `cssVars` uses the [shadcn theme](https://ui.shadcn.com/docs/theming) format, so a theme exported from an editor such as [tweakcn](https://tweakcn.com) can be pasted in as its `cssVars` object. `light` and `dark` are set independently; a mode you omit keeps the default palette.
+
+**Colors** are hex, `rgb()`, `hsl()`, `oklch()` or `oklab()` with plain numbers. Each mode accepts shadcn's tokens — `background`, `foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive` (each with a `-foreground` partner), `border`, `input`, `ring`, `chart-1` to `chart-5`, and the `sidebar-*` set — plus Thunderbolt's own:
+
+- `brand` fills primary buttons, checkboxes, switches and highlights. On its own it is a solid color; add `brand-gradient-start` to make it a left-to-right gradient that starts from `brand-gradient-start`. Without `brand`, the theme's `primary` is used, which is how shadcn themes color their buttons. `brand-foreground` sets the text on it.
+- `border-strong` is the firmer border on focused inputs.
+- `success` and `warning`, each with a `-foreground` partner.
+
+Setting `background` or `foreground` in a mode also derives the surfaces you don't set from them — cards, menus, the sidebar, hover fills, borders and secondary text — so a three-color theme stays coherent. Any token you set explicitly wins. Text on `brand` and `primary` switches between light and dark automatically for contrast unless you set its `-foreground`.
+
+**Lengths** (`shadow-blur`, `shadow-spread`, `shadow-offset-x`, `shadow-offset-y`, `letter-spacing`) need a `px`, `rem` or `em` unit; only `0` may omit it.
+
+**Shadows** come from six parameters per mode, as in tweakcn: `shadow-color`, `shadow-opacity` (0 to 1), `shadow-blur`, `shadow-spread`, `shadow-offset-x` and `shadow-offset-y`. Thunderbolt generates every shadow size from them; a hard offset shadow with no blur gives a neo-brutalist look, and an opacity of `0` a flat one.
+
+**Shape**: `radius` (a non-negative `px` or `rem` length, or `0`; the default is `0.625rem`, `0px` is square) scales every corner in the app together, and `letter-spacing` sets the text tracking. Both apply to both modes; put them in `theme`.
+
+**Links**: `links` points the legal and support links at your own pages: `privacyPolicy` and `termsOfService` (http or https URLs), shown on the sign-up, onboarding and Preferences screens, and `support` (an http or https URL, or a `mailto:` address), used by the Contact Support button on the startup error screen. A link you leave out keeps Thunderbolt's.
+
+```json
+"links": { "privacyPolicy": "https://acme.com/privacy", "termsOfService": "https://acme.com/terms", "support": "mailto:help@acme.com" }
+```
+
+**Logo**: `logo` takes `light` and an optional `dark` image URL (https only; SVG, PNG, WebP or JPEG up to 512 KB). The API downloads them at startup and serves them itself, so users' browsers never contact the logo host; the API needs outbound access to it. The app shows them in place of the Thunderbolt mark, and on the web as the browser tab icon. A square mark works best, since every placement is square. A `dark` logo that fails to download falls back to the light one. Emails use the light logo when it is a PNG or JPEG, which email clients can display, and link the API's copy of it rather than your logo host; an SVG or WebP logo leaves the emails with the Thunderbolt mark. The desktop and mobile app icons are set when the apps are built and do not change.
+
+**Fonts**: `font-sans` (all body text), `font-heading` (display headings), `font-mono` (code) and `font-serif` each take a font list such as `"DM Sans", sans-serif`; put them in `theme`. A slot you leave out keeps the default: the system font for body text and code, Mozilla Headline for headings. At startup the API downloads each list's first named font from Google Fonts (Latin and Latin Extended characters) and serves the files itself, so users' browsers never contact Google; the API needs outbound access to `fonts.googleapis.com` and `fonts.gstatic.com`. A name Google does not host, such as Georgia, is left to the fonts installed on each device. Every list is followed by the system and Japanese fallback fonts, so other scripts keep rendering. A returning user sees the system font for a moment on launch before the brand font swaps in.
+
+**Downloads**: the API waits up to 15 seconds for the font and logo downloads before it starts taking requests, so a new instance serves them from its first response, and logs a warning if they are still running when it starts. Each font and each logo downloads on its own over https only, from public addresses only (a logo on a private or internal host is refused). A download that fails for a reason that can clear up (a network error, a timeout, a 5xx, a 408 or 429) is logged and retried in the background, after 30 seconds, then doubling up to every 15 minutes, until it succeeds. One no retry can fix (any other 4xx such as a 404, a wrong file type, a file over the limit, a redirect loop, a refused address) is logged once as an error; fix `BRANDING` and restart. Anything served by Google Fonts is always retried, since it comes from Google rather than from `BRANDING`. The app shows the default until a download lands. Each API instance downloads on its own, so behind a load balancer instances can briefly disagree while one is still retrying; a client that misses a file shows the default and picks it up on its next launch.
+
+Keys that theme exports carry but Thunderbolt does not apply are accepted and ignored: `spacing`, the `tracking-*` set and the precomputed `shadow-*` sizes. Any other unknown key is an error, which catches typos.
+
+Transactional emails take the light-mode colors, converted to hex for email clients: the page from `background` and `foreground`, the message card from `card` and `card-foreground`, and `border`. The button fill is `brand`, else `primary`, as in the app, with `brand-foreground` as its text (or `primary-foreground` when the theme has no `brand`), else whichever of light or dark reads better; links take the button fill. Each surface and its text are used as a pair: if either is missing or can't be converted, both keep the default, so text never lands on a background it wasn't chosen for.
+
+The API checks `BRANDING` strictly; the app applies what it receives leniently. If an older app version gets a key or value it does not recognize from a newer API, it skips that one with a console warning and applies the rest.
+
+Changes reach users on their next app load; a returning user sees the previous branding for a moment until the new configuration arrives.
 
 ## Mini Apps
 
@@ -270,7 +390,7 @@ Set `EMAIL_FROM` to an address on a domain your Resend account has verified: Res
 | `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Permitted HTTP methods.                                 |
 | `CORS_EXPOSE_HEADERS`    | a protocol-required list                                         | Response headers the browser makes readable to the app. |
 
-Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read. `CORS_ALLOW_HEADERS` is accepted but ignored, and kept only so that older configuration files keep working.
+Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read. Dropping `X-Proxy-Final-Url` in particular makes an upstream's 401 look like an expired session and signs users out. `CORS_ALLOW_HEADERS` is accepted but ignored, and kept only so that older configuration files keep working.
 
 ## Rate limiting
 
@@ -282,12 +402,19 @@ Request headers need no configuration: the API echoes back whatever the browser 
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`        | `60`     | Length of that window, in seconds.                                                                                                 |
 | `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`         | `2000`   | Anonymous sign-ins allowed per window across the whole deployment, every IP together. See [Anonymous sign-in](#anonymous-sign-in). |
 | `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS` | `3600`   | Length of that window, in seconds.                                                                                                 |
-| `CAPTCHA_PROVIDER`                                | `none`   | Captcha on anonymous sign-in. Keep `none`: the app cannot complete `altcha` yet. See [ALTCHA](#altcha).                            |
+| `CAPTCHA_PROVIDER`                                | `none`   | Captcha on anonymous sign-in. `altcha` needs the app built with `VITE_CAPTCHA_PROVIDER=altcha`. See [ALTCHA](#altcha).             |
 | `ALTCHA_SECRET`                                   | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                                  |
 | `ALTCHA_DIFFICULTY`                               | `100000` | Upper bound of the ALTCHA search, at least `50000`. Higher costs bots more and makes phones wait longer.                           |
 | `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                    |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
+
+With `TRUSTED_PROXY` empty, the API cannot read a client address from a header it trusts. Two limiters then put every client in one shared bucket instead of skipping the limit:
+
+- The API's own limit on authentication requests (10 per minute) counts the address of whatever connects to it. Behind a reverse proxy or CDN, that is the proxy.
+- The built-in authentication limiter reads `X-Forwarded-For`. It trusts that header only when it holds a single address. A request that crossed two or more hops carries several, and the limiter then ignores the header and puts the request in one bucket per route. So does a request that arrives without the header. Those buckets allow 10 requests per minute, 3 per 10 seconds for starting an SSO sign-in, 3 per minute for requesting or entering an emailed sign-in code, and 30 per second for session checks.
+
+The symptom is many users getting `429` at the same moment, most often when a team signs in at the start of the day. If Cloudflare or Akamai sits in front of the API, set `TRUSTED_PROXY` to `cloudflare` or `akamai`. Behind any other proxy there is no setting that fixes it, because the limits are fixed: all users behind that proxy share them.
 
 Apart from anonymous sign-in, the limits are not configurable:
 
@@ -314,13 +441,15 @@ Whether to raise the limit depends on the captcha, which protects anonymous sign
 
 A second, deployment-wide budget applies on top whenever `AUTH_ALLOW_ANONYMOUS=true`: at most `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` anonymous sign-ins per `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS`, counted across every IP and every API instance. It counts only sign-ins that passed the captcha (every sign-in, with `CAPTCHA_PROVIDER=none`), so attempts without a valid solution cannot use it up. It is the control that caps a scripted run, since a captcha costs a native solver only milliseconds. It also bounds what anonymous use can cost: each window admits at most that many new accounts, and each account can spend at most its [spending limit](#spending-limits) (`INFERENCE_QUOTA_ANONYMOUS_5H_CENTS` per five hours, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS` per seven days). At the defaults (2000 an hour, 10 and 60 cents), one hour of sign-ins can spend at most $200 in its first five hours and $1,200 over a week. Size the budget to the attendees you expect, times that quota. A request refused by its per-IP limit or by the captcha does not count against the budget, so one busy address cannot use it up for everyone.
 
-The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. The `altcha` provider will lift this once the app supports it; until then an anonymous deployment keeps the defaults.
+The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. Set `CAPTCHA_PROVIDER=altcha` to raise them.
+
+Every anonymous sign-in creates a user record. With `AUTH_ALLOW_ANONYMOUS=true`, the API deletes an anonymous user once it has been idle for more than `ANONYMOUS_USER_IDLE_DAYS` days (default `30`), together with its sessions, devices and usage records, just as when an account is deleted. A user counts as idle when it has no session still valid, and nothing in the last `ANONYMOUS_USER_IDLE_DAYS` days: no sign-in, no session refresh and no metered request. The check runs at startup and then every hour. `0` keeps anonymous users forever, and anything other than a whole number of days stops the API at startup. A visitor who signed in with an account keeps it, however long they stay away. Because the usage records go too, a usage report no longer counts a visitor whose last activity was more than this many days before it runs. For an event, keep it at `0` until the report has been run, or at least the event's length plus the days until the report runs.
 
 ### ALTCHA
 
-> The API supports ALTCHA, but the app does not yet. It never fetches or solves a challenge, so with `CAPTCHA_PROVIDER=altcha` every anonymous sign-in is refused with `403`. Leave `CAPTCHA_PROVIDER` unset (or `none`) until a release of the app adds ALTCHA support.
+> ALTCHA works end to end only when the app is built with `VITE_CAPTCHA_PROVIDER=altcha` (see [Frontend build settings](#frontend-build-settings)). An app built without it never fetches a challenge, so with `CAPTCHA_PROVIDER=altcha` every anonymous sign-in it makes is refused with `403`. An app built with it against an API without it gets `404` for the challenge, and every anonymous visitor gets a blank page. Set both or neither.
 
-[ALTCHA](https://altcha.org) is a self-hosted proof-of-work captcha: the browser spends a moment of CPU time instead of solving a puzzle, and no third party sees the request. The API side works like this: a client fetches a challenge from `GET /v1/captcha/challenge`, solves it, and sends the result in the `X-Captcha-Token` header of the anonymous sign-in request. A missing, wrong, expired or reused solution gets `403`.
+[ALTCHA](https://altcha.org) is a self-hosted proof-of-work captcha: the browser spends a moment of CPU time instead of solving a puzzle, and no third party sees the request. It works like this: the app fetches a challenge from `GET /v1/captcha/challenge` and solves it in a background worker while the visitor sees a short browser check, then sends the result in the `X-Captcha-Token` header of the anonymous sign-in request. A missing, wrong, expired or reused solution gets `403`, and the app offers to try again with a fresh challenge, as it does when the challenge fetch fails on the network, times out or gets a `5xx`, a worker fails, or the solve times out. Any other failure, such as a `429` from the challenge's rate limit, stops the app with a blank page, as a failed anonymous sign-in does.
 
 Each solution works once. Redeemed challenges are recorded in the database, so a token cannot be replayed against another API instance, and expired records are swept hourly. Generate the secret with `openssl rand -hex 32` and give every instance the same value; changing it invalidates challenges already issued.
 
@@ -380,7 +509,7 @@ If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wr
 
 ## Debug transcripts
 
-Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
+Users can send a conversation transcript to whoever runs your intake (the Thunderbolt team, unless you run your own) for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
 
 | Variable                          | Default | What it does                                                                                |
 | --------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
@@ -388,9 +517,9 @@ Users can send a conversation transcript to the Thunderbolt team for troubleshoo
 | `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
 
-Contact the team with a deployment name to get a key.
+Contact the team with a deployment name to get a key. The share dialog names the recipient as "the Thunderbolt team"; if you forward to your own intake, set `debugTranscriptRecipient` in [`BRANDING`](#branding).
 
-> Understand what leaves your infrastructure before you enable this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). The Thunderbolt team retains what it receives, and a transcript survives deletion of the account that submitted it.
+> Understand what leaves your infrastructure before you enable this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). Whoever runs the intake (the team the share dialog names) retains what it receives, and a transcript survives deletion of the account that submitted it.
 
 ## Frontend build settings
 
@@ -402,16 +531,18 @@ The web app is a static bundle, so these are fixed when its image is built, not 
 | `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for email sign-in codes.                                                                                            |
 | `VITE_ORG_ESCROW_PUBLIC_KEY` | empty   | Base64 P-256 public key the app wraps account keys to, for [organizational key escrow](#organizational-key-escrow). Build it in before turning escrow on. |
 
-Several further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself. Anonymous sessions need `VITE_AUTH_ENABLE_ANONYMOUS=true` **and** `VITE_BYPASS_WAITLIST=true` alongside `AUTH_ALLOW_ANONYMOUS`; with only the first two a visitor still meets the sign-in wall. `VITE_APP_VERSION` is what makes a client send `X-App-Version`, so the version gate depends on it. `VITE_IROH_RELAY_URL` points the command-line bridge at a relay of your own instead of the public ones.
+Several further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself. Anonymous sessions need `VITE_AUTH_ENABLE_ANONYMOUS=true` **and** `VITE_BYPASS_WAITLIST=true` alongside `AUTH_ALLOW_ANONYMOUS`; with only the first two a visitor still meets the sign-in wall. `VITE_APP_VERSION` is what makes a client send `X-App-Version`, so the version gate depends on it. `VITE_IROH_RELAY_URL` points the command-line bridge at a relay of your own instead of the public ones. `VITE_CAPTCHA_PROVIDER=altcha` makes the app solve an [ALTCHA](#altcha) challenge before anonymous sign-in; set it exactly when the API runs with `CAPTCHA_PROVIDER=altcha`.
 
 ## Common startup errors
 
-| What it reports                                       | Fix                                                                                       |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                           |
-| The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.           |
-| `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                    |
-| `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                    |
-| `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                  |
-| The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither. |
-| `ALTCHA_SECRET` must be at least 32 characters        | Generate one with `openssl rand -hex 32`, or leave `CAPTCHA_PROVIDER` unset.              |
+| What it reports                                       | Fix                                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                            |
+| The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.            |
+| `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                     |
+| `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                     |
+| `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                   |
+| The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither.  |
+| `ALTCHA_SECRET` must be at least 32 characters        | Generate one with `openssl rand -hex 32`, or leave `CAPTCHA_PROVIDER` unset.               |
+| `BRANDING` must be valid JSON                         | In a `.env` file, wrap the whole value in single quotes; an unquoted `#` starts a comment. |
+| `BRANDING` is invalid, followed by keys               | Correct each listed key; [Branding](#branding) gives what each one accepts.                |

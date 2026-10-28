@@ -1,4 +1,38 @@
 [
-  { "id": "desktop", "viewport": "1280x800", "mcp": ".github/qa/mcp.json" },
-  { "id": "phone", "viewport": "390x844", "mcp": ".github/qa/mcp.json" }
+  {
+    "id": "desktop",
+    "driver": "playwright",
+    "runner": "ubuntu-latest",
+    "viewport": "1280x800",
+    "mcp": ".github/qa/mcp.json",
+    "realAi": true
+  },
+  {
+    "id": "phone",
+    "driver": "playwright",
+    "runner": "ubuntu-latest",
+    "viewport": "390x844",
+    "mcp": ".github/qa/mcp.json",
+    "realAi": true
+  },
+  {
+    "id": "ios",
+    "driver": "maestro",
+    "runner": "macos-latest",
+    "viewport": "iPhone 17 Pro Max",
+    "mcp": ".github/qa/mcp-maestro.json",
+    "realAi": false,
+    "appId": "net.thunderbird.thunderbolt.dev",
+    "appName": "Thunderbolt Dev"
+  },
+  {
+    "id": "android",
+    "driver": "maestro",
+    "runner": "ubuntu-latest",
+    "viewport": "Android phone (API 36)",
+    "mcp": ".github/qa/mcp-maestro.json",
+    "realAi": true,
+    "appId": "net.thunderbird.thunderbolt",
+    "appName": "Thunderbolt"
+  }
 ]

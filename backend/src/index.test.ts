@@ -93,7 +93,7 @@ describe('createApp inference receipt wiring', () => {
 
     expect(app.routes.filter((route) => route.path === path && route.method === 'POST')).toHaveLength(1)
     expect(unauthenticated.status).toBe(401)
-    expect(await unauthenticated.text()).toBe('Unauthorized')
+    expect(await unauthenticated.json()).toEqual({ code: 'UNAUTHENTICATED' })
     expect(authenticated.status).toBe(204)
     expect(await authenticated.text()).toBe('')
     expect(authenticated.headers.get(inferenceUsageReceiptHeader)).toBeNull()

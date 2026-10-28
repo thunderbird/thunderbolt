@@ -22,6 +22,7 @@ import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from './chat-store'
 import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
 import { getTurnActivity } from './turn-activity'
@@ -240,6 +241,37 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     })
   })
+
+  it.each([
+    [false, ['WEATHER_BODY']],
+    [true, []],
+  ])(
+    'resolves a /weather token for a non-built-in agent only outside minimal mode (%s)',
+    async (minimalMode, expected) => {
+      useConfigStore.setState({ config: { minimalMode } })
+      const remote: Agent = { ...builtInAgent, id: 'remote', type: 'managed-http' }
+      useChatStore.getState().updateSession(sessionId, { selectedAgent: remote })
+      const seen: Array<string[] | undefined> = []
+      const adapter: AgentAdapter = {
+        ...makeAdapter(remote),
+        fetch: async (_init, context) => {
+          seen.push(context.skillInstructions)
+          return new Response('ok')
+        },
+      }
+      const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+        getOrConnectAdapter: async () => adapter,
+        getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
+        getDb: (() => ({})) as never,
+      })
+      await fetch('https://x', {
+        body: JSON.stringify({
+          messages: [{ id: 'u', role: 'user', parts: [{ type: 'text', text: '/weather today' }] }],
+        }),
+      })
+      expect(seen[0] ?? []).toEqual(expected)
+    },
+  )
 
   it('transitions connecting → ready when connectToAgent resolves', async () => {
     const observed: string[] = []

@@ -9,14 +9,16 @@ operator of a deployment.
 
 Conversations live on each device first, and reach your server only once sync is on for that device.
 Synced content is encrypted on the device, so you cannot read a user's chats from your database
-unless you run organizational key escrow, though every turn still passes through your relay in
-plaintext. Provider API keys stay on the device that entered them and never reach your server or
-another device. Uploaded files stay on the device too, and are sent only inside the request that
-answers that turn.
+unless you run organizational key escrow. Own-key model and HTTP/SSE MCP traffic passes through
+your Thunderbolt server in the web app and in desktop/mobile with **Use Cloud Proxy** on for
+non-loopback targets. With it off (the default) in desktop and mobile, those requests go directly
+from the device. Provider API keys are stored only on the device that entered them; a relayed request
+forwards the key without storing it. Uploaded files stay on the device too, and are sent only inside
+the request that answers that turn.
 
 A prompt goes to whichever model provider answers it, and to a web search provider if the model
-searches. Nothing goes to the Thunderbolt team by default: analytics need both a key you configure
-and a user who has them turned on.
+searches. Nothing goes to the Thunderbolt team by default: analytics need a key you configure, and
+each user can turn them off.
 
 ## Where data lives
 
@@ -64,8 +66,8 @@ a compromised server could switch it off to collect plain text.
   it for them, unless you run organizational key escrow.
 - Revoking a device ends its sessions and replaces both the account key and the data key used for
   new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
-  That does not lock what is already there: the local database holds decrypted rows, and the old
-  keys stay on the device until it signs out.
+  The device clears its local database and keys the next time it connects. One that never comes
+  back online keeps its decrypted rows and old keys.
 
 **What it covers**
 
@@ -93,22 +95,25 @@ request.
 
 ## What leaves your deployment
 
-| Destination                                    | What it receives                                                                                                                           | How to stop it                                                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model providers the user adds                  | The prompt, conversation history, and attachments, plus the user's own API key                                                             | Point users at a local model server instead                                                                                                     |
-| Tool servers and external agents the user adds | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential | `ALLOW_CUSTOM_AGENTS=false` hides the add-agent control; it is not enforced server-side. MCP servers have no equivalent switch                  |
-| Managed models you configure                   | Depends on the tier, see below                                                                                                             | Leave the provider keys unset                                                                                                                   |
-| Exa (web search, page fetch)                   | The search query, and the URL of any page the model reads                                                                                  | Leave `EXA_API_KEY` unset and neither tool can call out. A user can also switch the **Thunderbolt** connection off under Settings → Connections |
-| Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                               | Not separately configurable today                                                                                                               |
-| Resend                                         | The recipient address for sign-in codes                                                                                                    | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
-| PostHog                                        | Product analytics, never prompt or response content                                                                                        | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
-| The Thunderbolt team                           | Nothing beyond the desktop update check, unless you configure debug transcript forwarding                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
-| The update feed (desktop only)                 | App version, OS, architecture and IP, shortly after each launch                                                                            | Rebuild the app with `updater.endpoints` removed                                                                                                |
+| Destination                                                | What it receives                                                                                                                                                                                                                                                        | How to stop it                                                                                                                                  |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model providers the user adds                              | The prompt, conversation history, and attachments, plus the user's own API key. With Use Cloud Proxy off (the desktop/mobile default), providers get requests directly from the device and see its IP address                                                           | Point users at a local model server instead                                                                                                     |
+| Tool servers and external agents the user adds             | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential. With Use Cloud Proxy off (the desktop/mobile default), servers get requests directly from the device and see its IP address | `ALLOW_CUSTOM_AGENTS=false` hides the add-agent control; it is not enforced server-side. MCP servers have no equivalent switch                  |
+| Managed models you configure                               | Depends on the tier, see below                                                                                                                                                                                                                                          | Leave the provider keys unset                                                                                                                   |
+| Exa (web search, page fetch)                               | The search query, and the URL of any page the model reads                                                                                                                                                                                                               | Leave `EXA_API_KEY` unset and neither tool can call out. A user can also switch the **Thunderbolt** connection off under Settings → Connections |
+| Open-Meteo                                                 | A place name or coordinates, for location search and weather                                                                                                                                                                                                            | Not separately configurable today                                                                                                               |
+| Resend                                                     | The recipient address for sign-in codes                                                                                                                                                                                                                                 | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
+| PostHog                                                    | Product analytics, never prompt or response content                                                                                                                                                                                                                     | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
+| Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | Requests from your server, at startup and on retry, for the fonts `BRANDING` names. No user data; users' browsers never contact Google                                                                                                                                  | Leave the font tokens out of `BRANDING`                                                                                                         |
+| Your logo host                                             | Requests from your server, at startup and on retry, for the logo URLs in `BRANDING`. No user data; users' browsers and emails never contact it                                                                                                                          | Leave `logo` out of `BRANDING`                                                                                                                  |
+| The Thunderbolt team                                       | Nothing beyond the desktop update check, unless you configure debug transcript forwarding                                                                                                                                                                               | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
+| The update feed (desktop only)                             | App version, OS, architecture and IP, shortly after each launch                                                                                                                                                                                                         | Rebuild the app with `updater.endpoints` removed                                                                                                |
 
-Requests to a user-added provider or tool server pass through your server, because a browser cannot
-call most provider APIs directly. Your server forwards the bytes and the user's credential untouched
-and stores neither. Access logs record the upstream hostname, not the full URL, so a user's browsing
-is not written into your logs.
+Own-key model and HTTP/SSE MCP requests pass through your Thunderbolt server in the web app
+and in desktop/mobile with **Use Cloud Proxy** on for non-loopback targets. With it off (the default)
+in desktop and mobile, they go directly from the device. When relaying, your server forwards the
+bytes and the user's credential untouched and stores neither. Access logs record the upstream
+hostname, not the full URL, so a user's browsing is not written into your logs.
 
 > Tracing is the exception. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, each request's headers are
 > recorded alongside the trace, and those headers carry the forwarded credential and the full
@@ -117,15 +122,18 @@ is not written into your logs.
 A model server on the user's own machine, such as Ollama or LM Studio, is the exception: the app
 calls it directly, so the prompt and reply never cross your infrastructure. The rest of the turn
 still does, including synced rows, link previews, web-search calls and analytics. The bypass covers
-loopback addresses only, so a model server elsewhere on the LAN is not included.
+custom loopback models on every platform. On desktop and mobile, loopback models, HTTP/SSE MCP
+servers and external agents always connect directly, even with Use Cloud Proxy on.
+Servers elsewhere on the LAN need Use Cloud Proxy off for direct connections.
 
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
 
 > With debug transcript forwarding on, a user can share one thread at a time from the chat view,
 > after an explicit consent check. A shared transcript carries the whole conversation plus the user id
-> and email your deployment holds. The Thunderbolt team retains it, and it survives deletion of the
-> submitting account.
+> and email your deployment holds. Whoever runs the intake retains it (the share dialog names them,
+> from `debugTranscriptRecipient` in `BRANDING`, and says the Thunderbolt team by default), and it survives
+> deletion of the submitting account.
 
 ## Managed models and confidential inference
 
@@ -158,7 +166,8 @@ same confidential route but are not metered or charged against those caps. See
 
 Two independent switches, and both must be on before anything is sent. `POSTHOG_API_KEY` on the
 server is unset by default, and no key means no analytics client exists in the app. The user's own
-preference, **Anonymous Usage Data**, is under Settings → Preferences → Help Thunderbolt Improve.
+preference, **Anonymous Usage Data**, is on by default and can be turned off under Settings →
+Preferences → Help Thunderbolt Improve. Turning it off covers every device that syncs the account.
 
 Events are sent to your server and relayed from there, so the app never contacts an analytics host
 directly and you can block the egress at your firewall. Where your server forwards them is
@@ -198,12 +207,15 @@ user's conversations. What follows is about direct access to your own database a
   request reached.
 - Every field outside the encrypted list above, for every account with sync on.
 - Rows synced in plain text before a deployment upgraded to always-on encryption.
-- Plaintext prompts, replies and attachments in transit, for every model except one on the user's own
-  loopback address. Encryption covers stored rows, not the relay.
+- Plaintext prompts, replies and attachments in transit for requests relayed through your server:
+  own-key models in the web app or non-loopback models with Use Cloud Proxy on in desktop/mobile,
+  and managed models except confidential inference. Direct device requests bypass the relay.
+  Encryption covers stored rows.
 
 **You cannot see**
 
-- Provider API keys, tool server credentials, or external agent credentials. None are ever uploaded.
+- Stored provider API keys, tool server credentials, or external agent credentials. They are excluded
+  from sync, but own-key model and HTTP/SSE MCP credentials pass through your server in relayed requests.
 - Uploaded file contents, which never reach your server for storage.
 - Prompts or responses on the confidential inference tier.
 - Encrypted content, including messages, with no way to recover it for a user who loses every
@@ -216,7 +228,7 @@ user's conversations. What follows is about direct access to your own database a
 | ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Turn sync on or off      | Settings → Preferences → Data | Off keeps everything local to that device                                                                                    |
 | Approve or deny a device | Settings → Devices            | An unapproved device cannot decrypt anything                                                                                 |
-| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. The user chooses whether the local data is wiped                            |
+| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. Its local data is cleared the next time it connects                         |
 | Export data              | Settings → Preferences → Data | A single JSON file with chats, settings, models, skills, and configuration                                                   |
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |
@@ -229,16 +241,16 @@ An export file does not include attached file contents.
 
 ## Hardening a deployment
 
-| Do this                                                               | Why                                                                                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended |
-| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                     |
-| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                   |
-| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                    |
-| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits                                      |
-| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                          |
-| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                 |
-| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                     |
+| Do this                                                               | Why                                                                                                                                                          |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Replace every credential in the evaluation Compose file               | It ships a fixed PowerSync secret, OIDC client secret and Postgres password so the stack starts unattended                                                   |
+| Generate `BETTER_AUTH_SECRET` with `openssl rand -hex 32`             | It signs sessions and is the one value with no default                                                                                                       |
+| Set `CORS_ORIGINS` to your exact origins                              | Wildcards are not accepted, and the default only covers local evaluation                                                                                     |
+| Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                                                                      |
+| Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits. Empty behind a CDN puts every client in one bucket, and many users get `429` together |
+| Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                                                                            |
+| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                                                                   |
+| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                                                                       |
 
 Full variable reference: [Configuration](../self-hosting/configuration.md).
 

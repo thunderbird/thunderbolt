@@ -426,6 +426,35 @@ export const encodeDeviceAttestationPayload = (
 ): Uint8Array =>
   utf8.encode([deviceAttestationDomain, userId, deviceId, ecdhPublicKey, mlkemPublicKey].join(payloadSeparator))
 
+/**
+ * Domain tag for the PASSKEY-slot attestation. Distinct from the recovery and
+ * device tags for the same reason they are distinct from each other: all three
+ * sign a tuple of public keys with the same epoch key.
+ */
+const passkeyAttestationDomain = 'thunderbolt-passkey-attestation-v1'
+
+/**
+ * Canonical passkey-slot attestation byte layout:
+ * UTF-8(`domain ␟ userId ␟ credentialId ␟ passkeyEcdhPublicKey ␟ passkeyMlkemPublicKey`).
+ *
+ * The passkey slot is a second virtual device, so it is anchored exactly like
+ * the recovery slot: signed with the epoch's canary-derived key on every write,
+ * verified before a rotation re-wraps the new AK to those public keys.
+ * `credentialId` is bound in so a valid attestation cannot be carried over to a
+ * different passkey.
+ */
+export const encodePasskeyAttestationPayload = (
+  userId: string,
+  credentialId: string,
+  passkeyEcdhPublicKey: string,
+  passkeyMlkemPublicKey: string,
+): Uint8Array =>
+  utf8.encode(
+    [passkeyAttestationDomain, userId, credentialId, passkeyEcdhPublicKey, passkeyMlkemPublicKey].join(
+      payloadSeparator,
+    ),
+  )
+
 /** ECDSA key algorithm — used by importKey/generateKey on both sides. */
 export const ecdsaKeyAlgorithm = { name: 'ECDSA', namedCurve: 'P-256' } as const
 
@@ -608,6 +637,17 @@ export type EncryptionMetadataResponse = {
    * before the column existed — those fail closed on their next rotation.
    */
   recovery_attestation: string | null
+  /**
+   * The passkey slot — a second virtual device, keyed by a passkey's PRF output.
+   * All five are null until the user enrolls their passkey (and after removal).
+   * Inert without the passkey, so serving it to any authenticated caller is safe.
+   */
+  passkey_credential_id: string | null
+  passkey_ecdh_public_key: string | null
+  passkey_mlkem_public_key: string | null
+  passkey_wrapped_ak: string | null
+  /** Signature over the passkey anchor; verified before every re-wrap, like `recovery_attestation`. */
+  passkey_attestation: string | null
   /** Bumped on every AK rotation — a bump tells devices to refresh their AK envelope. */
   key_version: number
   /** The key_id all new writes must encrypt under. */
@@ -690,48 +730,69 @@ export type RecoverySlotRequest = {
 }
 
 /**
+ * The optional passkey slot: the PRF-derived hybrid PUBLIC keys, the AK wrapped
+ * to them, and the attestation over them, for the account's one passkey. All
+ * five travel together or not at all. A rotation that omits them CLEARS the
+ * slot — removal is a rotation, and a client that knows nothing about passkeys
+ * fails safe by revoking passkey unlock rather than by being unable to rotate.
+ */
+export type PasskeySlotRequest = {
+  /** The base64url WebAuthn credential id of the account's passkey. */
+  passkeyCredentialId: string
+  /** Base64 raw SEC1 ECDH P-256 public key of the PRF-derived keypair. */
+  passkeyEcdhPublicKey: string
+  /** Base64 raw ML-KEM-768 public key of the PRF-derived keypair. */
+  passkeyMlkemPublicKey: string
+  /** The AK hybrid-wrapped to the passkey public keys. */
+  passkeyWrappedAK: string
+  /** Base64 ECDSA signature over `encodePasskeyAttestationPayload(...)` with THIS write's signing key. */
+  passkeyAttestation: string
+}
+
+/**
  * POST /v1/encryption/rotate request body (atomic AK rotation). Request bodies
  * are camelCase (matching existing routes); responses use the snake_case DTOs
  * above. The FULL keyring is re-wrapped under the new AK — every existing
  * key_id, including the `"v1"` slot when present (coverage validation, Risk 1).
  */
-export type RotateRequest = RecoverySlotRequest & {
-  /** Challenge proof with operation 'rotate'. */
-  proof: ChallengeProof
-  /**
-   * Step-up verification code (THU-875): the server refuses a rotation whose
-   * recovery slot re-anchors to DIFFERENT recovery keys than the stored ones (a
-   * phrase change) unless this carries a valid emailed code. Same-key rotations
-   * (revocation's silent re-anchor) never need it.
-   */
-  stepUpOtp?: string
-  /** The new AK wrapped per trusted device (`wrappedCK` historically named — it carries the AK). */
-  envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }>
-  /** The FULL keyring re-wrapped under the new AK — every existing key_id, no exceptions. */
-  wrappedKeys: WrappedKeyEntry[]
-  /**
-   * One freshly minted DEK, already wrapped under the NEW AK, which becomes the
-   * primary (THU-871). Present when the rotation is also a DEK rotation — that
-   * is, device revocation, which needs both. Omitted by a phrase change, which
-   * rotates only the AK.
-   *
-   * This is the ONLY way a key_id enters an established keyring. `keyId` must
-   * match `keyIdPattern` and must not already exist; the server mints it in the
-   * same transaction as the rotation, so a failed rotation adds nothing.
-   */
-  newPrimaryKey?: WrappedKeyEntry
-  canaryIv: string
-  canaryCtext: string
-  /** Base64 SPKI ECDSA P-256 public key derived from the NEW canary secret. */
-  signingPublicKey: string
-  /** Base64 random salt for the NEW recovery-seed KDF. */
-  kdfSalt: string
-  /**
-   * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
-   * server when org escrow is enabled; ignored (never persisted) when disabled.
-   */
-  orgEnvelope?: string
-}
+export type RotateRequest = RecoverySlotRequest &
+  Partial<PasskeySlotRequest> & {
+    /** Challenge proof with operation 'rotate'. */
+    proof: ChallengeProof
+    /**
+     * Step-up verification code (THU-875): the server refuses a rotation whose
+     * recovery slot re-anchors to DIFFERENT recovery keys than the stored ones (a
+     * phrase change) unless this carries a valid emailed code. Same-key rotations
+     * (revocation's silent re-anchor) never need it.
+     */
+    stepUpOtp?: string
+    /** The new AK wrapped per trusted device (`wrappedCK` historically named — it carries the AK). */
+    envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }>
+    /** The FULL keyring re-wrapped under the new AK — every existing key_id, no exceptions. */
+    wrappedKeys: WrappedKeyEntry[]
+    /**
+     * One freshly minted DEK, already wrapped under the NEW AK, which becomes the
+     * primary (THU-871). Present when the rotation is also a DEK rotation — that
+     * is, device revocation, which needs both. Omitted by a phrase change, which
+     * rotates only the AK.
+     *
+     * This is the ONLY way a key_id enters an established keyring. `keyId` must
+     * match `keyIdPattern` and must not already exist; the server mints it in the
+     * same transaction as the rotation, so a failed rotation adds nothing.
+     */
+    newPrimaryKey?: WrappedKeyEntry
+    canaryIv: string
+    canaryCtext: string
+    /** Base64 SPKI ECDSA P-256 public key derived from the NEW canary secret. */
+    signingPublicKey: string
+    /** Base64 random salt for the NEW recovery-seed KDF. */
+    kdfSalt: string
+    /**
+     * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+     * server when org escrow is enabled; ignored (never persisted) when disabled.
+     */
+    orgEnvelope?: string
+  }
 
 /** POST /v1/encryption/rotate response. */
 export type RotateResponse = {

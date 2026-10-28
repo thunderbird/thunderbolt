@@ -4,7 +4,15 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { isIndexedDbAvailable, isPrPreview, prPreviewHostRegex } from './platform'
+import {
+  deleteIndexedDbDatabase,
+  hasIndexedDbDatabase,
+  hasOpfsFile,
+  isIndexedDbAvailable,
+  isPrPreview,
+  isTouchPlatform,
+  prPreviewHostRegex,
+} from './platform'
 
 describe('prPreviewHostRegex', () => {
   it('matches thunderbolt-pr-{number}.onrender.com hostnames', () => {
@@ -146,5 +154,119 @@ describe('isIndexedDbAvailable', () => {
     const promise = isIndexedDbAvailable(idb)
     await getClock().tickAsync(5000)
     expect(await promise).toBe(false)
+  })
+})
+
+describe('hasIndexedDbDatabase', () => {
+  const idbWith = (...names: string[]) => ({ databases: async () => names.map((name) => ({ name, version: 1 })) })
+
+  it('finds a database by exact name', async () => {
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', idbWith('thunderbolt-keys', 'thunderbolt-sync.db'))).toBe(
+      true,
+    )
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', idbWith('thunderbolt-keys'))).toBe(false)
+  })
+
+  it('counts a browser without databases() as having it', async () => {
+    expect(await hasIndexedDbDatabase('thunderbolt-sync.db', {} as Pick<IDBFactory, 'databases'>)).toBe(true)
+  })
+})
+
+describe('deleteIndexedDbDatabase', () => {
+  type FakeDeleteRequest = { onsuccess?: () => void; onblocked?: () => void; onerror?: () => void; error?: Error }
+
+  /** A factory whose delete request fires `outcome` once the caller has attached its handlers. */
+  const idbThat = (outcome: 'success' | 'blocked' | 'error') => {
+    const deleted: string[] = []
+    const idb = {
+      deleteDatabase: (name: string) => {
+        deleted.push(name)
+        const request: FakeDeleteRequest = { error: new Error('delete failed') }
+        queueMicrotask(() => request[`on${outcome}`]?.())
+        return request as unknown as IDBOpenDBRequest
+      },
+    }
+    return { idb, deleted }
+  }
+
+  it('resolves once the database is deleted', async () => {
+    const { idb, deleted } = idbThat('success')
+    await deleteIndexedDbDatabase('thunderbolt-sync.db', idb)
+    expect(deleted).toEqual(['thunderbolt-sync.db'])
+  })
+
+  it('resolves without waiting when another tab still holds the database open', async () => {
+    const { idb } = idbThat('blocked')
+    await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).resolves.toBeUndefined()
+  })
+
+  it('rejects when the delete fails', async () => {
+    const { idb } = idbThat('error')
+    await expect(deleteIndexedDbDatabase('thunderbolt-sync.db', idb)).rejects.toThrow('delete failed')
+  })
+})
+
+describe('hasOpfsFile', () => {
+  const rootThat = (error?: DOMException) => ({
+    getFileHandle: async () => {
+      if (error) {
+        throw error
+      }
+      return {} as FileSystemFileHandle
+    },
+  })
+
+  it('finds an existing file', async () => {
+    expect(await hasOpfsFile('thunderbolt-sync.db', rootThat())).toBe(true)
+  })
+
+  it('reports a missing file', async () => {
+    expect(await hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('gone', 'NotFoundError')))).toBe(false)
+  })
+
+  it('rethrows other errors', async () => {
+    await expect(hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('no', 'SecurityError')))).rejects.toThrow(
+      'no',
+    )
+  })
+})
+
+describe('isTouchPlatform', () => {
+  const originalUserAgent = navigator.userAgent
+  const originalMaxTouchPoints = navigator.maxTouchPoints
+
+  const stubNavigator = (userAgent: string, maxTouchPoints: number) => {
+    Object.defineProperty(navigator, 'userAgent', { value: userAgent, configurable: true })
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: maxTouchPoints, configurable: true })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: originalUserAgent, configurable: true })
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: originalMaxTouchPoints, configurable: true })
+  })
+
+  it('is true for an iPhone browser', () => {
+    stubNavigator('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is true for an Android browser', () => {
+    stubNavigator('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is true for iPadOS Safari posing as a Mac', () => {
+    stubNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is false for a Mac with no touch input', () => {
+    stubNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', 0)
+    expect(isTouchPlatform()).toBe(false)
+  })
+
+  it('is false for a Windows touchscreen laptop', () => {
+    stubNavigator('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36', 10)
+    expect(isTouchPlatform()).toBe(false)
   })
 })

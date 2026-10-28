@@ -18,6 +18,7 @@ import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { deleteExpiredCaptchaChallenges, deleteExpiredOrConsumedNonces } from '@/dal'
+import { sweepIdleAnonymousUsers } from '@/auth/idle-anonymous-users'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
@@ -43,6 +44,8 @@ import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createHostedAgentRoutes } from '@/hosted-agent/routes'
 import { createConfigRoutes } from '@/api/config'
+import { createBrandingAssets, noBrandingAssets } from '@/branding/assets'
+import { createSafeFetch } from '@/utils/url-validation'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -142,7 +145,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())
-      .use(createSsoDesktopCallbackRoutes(settings))
+      .use(createSsoDesktopCallbackRoutes(settings, fetchFn))
       .use(createProToolsRoutes(auth, proRateLimit))
       .use(
         createUniversalProxyRoutes({
@@ -201,7 +204,7 @@ export const createApp = async (deps?: AppDeps) => {
           rateLimit: inferenceRateLimit,
         }),
       )
-      .use(createConfigRoutes(settings))
+      .use(createConfigRoutes(settings, deps?.brandingAssets ?? noBrandingAssets))
       .use(
         createDebugTranscriptsRoutes({
           auth,
@@ -237,6 +240,9 @@ export const createApp = async (deps?: AppDeps) => {
   )
 }
 
+// How long boot waits for the branding downloads; per-request timeouts bound each one.
+const brandingStartupWaitMs = 15_000
+
 /**
  * Start the server
  */
@@ -261,13 +267,30 @@ const startServer = async () => {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
 
-    const app = await createApp()
+    // Downloads the operator's fonts and logos before the server takes traffic, so
+    // a pod that joins a rolling deploy serves them from its first /config: a
+    // client fetches /config once per launch and caches it. The wait is capped,
+    // and a download still running (or failed, and retrying) lands later.
+    // Started here rather than in createApp, so apps built by tests never fetch.
+    const brandingAssets = createBrandingAssets(settings.branding, {
+      fetchFn: createSafeFetch(globalThis.fetch, undefined, { httpsOnly: true }),
+      logger: log,
+    })
+    if (!(await brandingAssets.loadWithin(brandingStartupWaitMs))) {
+      log.warn(
+        { waitedMs: brandingStartupWaitMs },
+        'Branding downloads still running; starting without them, they appear in /config once they land',
+      )
+    }
 
-    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7) and
-    // expired solved captcha challenges. There is no cron infra, so a startup sweep plus an hourly
-    // interval keeps both tables bounded (nonces have a ~5-minute TTL, captcha challenges
-    // ALTCHA_TTL_SECS). The db is lazily imported to preserve the "no db init at module
-    // load" invariant that keeps tests/CI clean.
+    const app = await createApp({ brandingAssets })
+
+    // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
+    // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
+    // sweep plus an hourly interval keeps these tables bounded (nonces have a ~5-minute TTL,
+    // captcha challenges ALTCHA_TTL_SECS, anonymous users ANONYMOUS_USER_IDLE_DAYS). The db is
+    // lazily imported to preserve the "no db init at module load" invariant that keeps tests/CI
+    // clean.
     const { db: sweepDb } = await import('@/db/client')
     const sweepExpiredRows = async () => {
       try {
@@ -280,6 +303,7 @@ const startServer = async () => {
       } catch (err) {
         log.error({ err }, 'Failed to sweep expired captcha challenges')
       }
+      await sweepIdleAnonymousUsers(sweepDb, settings, log)
     }
     void sweepExpiredRows()
     const sweepTimer = setInterval(() => void sweepExpiredRows(), 60 * 60 * 1000)

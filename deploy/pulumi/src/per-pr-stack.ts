@@ -24,11 +24,12 @@ export type PerPrStackArgs = {
   imagePrefix: string
   /** GHCR PAT for pulling images. */
   ghcrToken?: pulumi.Output<string>
-  /** Resolved per-PR subdomains. `auth` and `powersync` come from shared. */
+  /** Resolved per-PR subdomains. `auth` comes from shared. */
   hostnames: {
     marketing: pulumi.Input<string>
     app: pulumi.Input<string>
     api: pulumi.Input<string>
+    powersync: pulumi.Input<string>
   }
   /** Cloudflare zone + token for CNAMEs. */
   cloudflareZoneId: pulumi.Input<string>
@@ -47,6 +48,8 @@ export type PerPrStackArgs = {
   cliDeviceRegistrationEnabled: boolean
   /** Lets a personal access token reach the confidential (Tinfoil) routes. */
   confidentialApiKeysEnabled: boolean
+  /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
+  branding: string
 }
 
 export type PerPrStackOutputs = {
@@ -63,8 +66,11 @@ export type PerPrStackOutputs = {
 /** Stable priority offset for per-PR listener rules. Shared stack uses 1-99. */
 const PR_RULE_PRIORITY_BASE = 100
 
-/** Derive a per-stack DB name from the Pulumi stack name (`preview-pr-846` → `pr_846`). */
+/** Derive a per-stack DB name from the Pulumi stack name (`preview-pr-846` → `preview_pr_846`). */
 const dbNameFromStack = (stackName: string): string => stackName.replace(/[^a-z0-9]/gi, '_').toLowerCase()
+
+/** PowerSync bucket storage DB for a per-stack DB. Must match `backend-entrypoint.sh` and `drop-preview-db.sh`. */
+const powersyncStorageDbName = (dbName: string): string => `${dbName}_ps_storage`
 
 /**
  * Hash the stack name to a small offset for ALB rule priorities. Pulumi-managed
@@ -79,6 +85,22 @@ const stableOffset = (input: string, span: number): number => {
     h = Math.imul(h, 0x01000193) >>> 0
   }
   return h % span
+}
+
+/** First priority above the three-rule blocks, which top out at 48,099. */
+const POWERSYNC_RULE_PRIORITY_BASE = PR_RULE_PRIORITY_BASE + 16000 * 3
+const POWERSYNC_RULE_PRIORITY_SPAN = 50000 - POWERSYNC_RULE_PRIORITY_BASE
+
+/**
+ * Priority for a stack's PowerSync rule, in a band of its own so adding it moved
+ * no existing rule. Keyed on the PR number rather than a hash: open PRs sit in a
+ * narrow recent range, so two only collide if their numbers differ by a multiple
+ * of the span, where a hash in a band this small would collide routinely.
+ */
+const powersyncRulePriority = (stackName: string): number => {
+  const prNumber = stackName.match(/(\d+)$/)?.[1]
+  const offset = prNumber ? Number(prNumber) : stableOffset(stackName, POWERSYNC_RULE_PRIORITY_SPAN)
+  return POWERSYNC_RULE_PRIORITY_BASE + (offset % POWERSYNC_RULE_PRIORITY_SPAN)
 }
 
 export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
@@ -126,9 +148,9 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     } satisfies Record<string, pulumi.Input<string>>,
   })
 
-  // -------- 3. Per-PR target groups (3: frontend, backend, marketing) --------
-  // Keycloak + PowerSync TGs live in the shared stack. Per-PR backend connects
-  // to those services in-cluster (postgres) or via shared subdomains (auth, powersync).
+  // -------- 3. Per-PR target groups (4: frontend, backend, marketing, powersync) --------
+  // Keycloak's TG lives in the shared stack. PowerSync is per-PR: it replicates
+  // this PR's own database, which a shared instance can't (one source DB each).
   const frontendTg = new aws.lb.TargetGroup(`${name}-frontend-tg`, {
     namePrefix: 'tb-fe',
     port: 8080,
@@ -159,35 +181,54 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     tags: { Name: `${name}-marketing` },
   })
 
+  const powersyncTg = new aws.lb.TargetGroup(`${name}-powersync-tg`, {
+    namePrefix: 'tb-ps',
+    port: 8080,
+    protocol: 'HTTP',
+    targetType: 'ip',
+    vpcId: shared.vpcId,
+    healthCheck: { path: '/probes/liveness', healthyThreshold: 2, interval: 30 },
+    tags: { Name: `${name}-powersync` },
+  })
+
   // -------- 4. Per-PR listener rules on shared ALB listener --------
   // ALB rule priorities must be unique per listener; derive a deterministic offset
   // from the stack name so a stack always claims the same trio of priorities.
   // Span keeps comfortable headroom under ALB's max priority (50,000).
   const baseOffset = PR_RULE_PRIORITY_BASE + stableOffset(args.stackName, 16000) * 3
 
-  new aws.lb.ListenerRule(`${name}-host-marketing-rule`, {
+  // ECS rejects a service whose target group isn't attached to the ALB yet, and
+  // only these rules attach them, so each service below depends on its rule.
+  const marketingRule = new aws.lb.ListenerRule(`${name}-host-marketing-rule`, {
     listenerArn: shared.listenerArn,
     priority: baseOffset,
     conditions: [{ hostHeader: { values: [args.hostnames.marketing] } }],
     actions: [{ type: 'forward', targetGroupArn: marketingTg.arn }],
   })
 
-  new aws.lb.ListenerRule(`${name}-host-app-rule`, {
+  const appRule = new aws.lb.ListenerRule(`${name}-host-app-rule`, {
     listenerArn: shared.listenerArn,
     priority: baseOffset + 1,
     conditions: [{ hostHeader: { values: [args.hostnames.app] } }],
     actions: [{ type: 'forward', targetGroupArn: frontendTg.arn }],
   })
 
-  new aws.lb.ListenerRule(`${name}-host-api-rule`, {
+  const apiRule = new aws.lb.ListenerRule(`${name}-host-api-rule`, {
     listenerArn: shared.listenerArn,
     priority: baseOffset + 2,
     conditions: [{ hostHeader: { values: [args.hostnames.api] } }],
     actions: [{ type: 'forward', targetGroupArn: backendTg.arn }],
   })
 
+  const powersyncRule = new aws.lb.ListenerRule(`${name}-host-powersync-rule`, {
+    listenerArn: shared.listenerArn,
+    priority: powersyncRulePriority(args.stackName),
+    conditions: [{ hostHeader: { values: [args.hostnames.powersync] } }],
+    actions: [{ type: 'forward', targetGroupArn: powersyncTg.arn }],
+  })
+
   // -------- 5. Cloudflare CNAMEs for the per-PR subdomains --------
-  // auth.shared.* and powersync.shared.* are owned by the shared stack.
+  // auth.shared.* is owned by the shared stack.
   const cloudflareProvider = new cloudflare.Provider(`${name}-cf`, { apiToken: args.cloudflareApiToken })
 
   const albFqdn = shared.albDnsName
@@ -195,6 +236,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     { name: 'marketing', hostname: args.hostnames.marketing },
     { name: 'app', hostname: args.hostnames.app },
     { name: 'api', hostname: args.hostnames.api },
+    { name: 'powersync', hostname: args.hostnames.powersync },
   ]
   for (const { name: subdomain, hostname } of cnameSpecs) {
     new cloudflare.Record(
@@ -303,6 +345,27 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/postgres`,
   })
 
+  // PowerSync's bucket storage DB, created by the backend entrypoint.
+  const powersyncStorageUrlSecret = new aws.secretsmanager.Secret(`${name}-powersync-storage-url`, {
+    tags: { Name: `${name}-powersync-storage-url` },
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-powersync-storage-url-version`, {
+    secretId: powersyncStorageUrlSecret.id,
+    secretString: pulumi.interpolate`postgresql://postgres:${shared.postgresPassword}@${shared.postgresHost}:${shared.postgresPort}/${powersyncStorageDbName(dbName)}`,
+  })
+
+  // PowerSync takes the shared JWT secret base64-encoded, which ECS can't do on
+  // the way in, so keep an encoded copy per stack.
+  const powersyncJwtKeySecret = new aws.secretsmanager.Secret(`${name}-powersync-jwt-key`, {
+    tags: { Name: `${name}-powersync-jwt-key` },
+  })
+  new aws.secretsmanager.SecretVersion(`${name}-powersync-jwt-key-version`, {
+    secretId: powersyncJwtKeySecret.id,
+    secretString: aws.secretsmanager
+      .getSecretVersionOutput({ secretId: shared.powersyncJwtSecretArn })
+      .secretString.apply((s) => Buffer.from(s).toString('base64')),
+  })
+
   // -------- 8. Per-PR exec role policy: read per-PR secrets + shared secrets --------
   new aws.iam.RolePolicy(`${name}-exec-secrets-policy`, {
     role: execRole.name,
@@ -318,6 +381,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             debugTranscriptKeySecret.arn,
             databaseUrlSecret.arn,
             postgresAdminUrlSecret.arn,
+            powersyncStorageUrlSecret.arn,
+            powersyncJwtKeySecret.arn,
             oidcClientSecretArn,
             // Shared (consumed by per-PR backend at startup)
             shared.powersyncJwtSecretArn,
@@ -332,14 +397,16 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     }),
   })
 
-  // -------- 9. Per-PR ECS services (backend / frontend / marketing) --------
+  // -------- 9. Per-PR ECS services (backend / frontend / marketing / powersync) --------
   const beImage = `${imagePrefix}/thunderbolt-backend:${version}`
   const feImage = `${imagePrefix}/thunderbolt-frontend:${version}`
   const mkImage = `${imagePrefix}/thunderbolt-marketing:${version}`
+  const psImage = `${imagePrefix}/thunderbolt-powersync:${version}`
 
   const apiUrl = pulumi.interpolate`https://${args.hostnames.api}`
   const appUrl = pulumi.interpolate`https://${args.hostnames.app}`
   const marketingUrl = pulumi.interpolate`https://${args.hostnames.marketing}`
+  const powersyncUrl = pulumi.interpolate`https://${args.hostnames.powersync}`
 
   const beTaskDef = new aws.ecs.TaskDefinition(`${name}-be-task`, {
     family: `${name}-backend`,
@@ -373,7 +440,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           },
           { name: 'CORS_ORIGINS', value: pulumi.interpolate`${appUrl},${marketingUrl}` },
           { name: 'CORS_ORIGIN_REGEX', value: '' },
-          { name: 'POWERSYNC_URL', value: shared.powersyncPublicUrl },
+          { name: 'POWERSYNC_URL', value: powersyncUrl },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
           { name: 'MIN_APP_VERSION', value: args.minAppVersion },
@@ -390,6 +457,8 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'DEBUG_TRANSCRIPT_UPSTREAM_URL', value: apiUrl },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
+          // Omitted when empty so the backend applies its own defaults.
+          ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },
         ],
         secrets: [
@@ -412,15 +481,19 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     ]),
   })
 
-  new aws.ecs.Service(`${name}-be-svc`, {
-    cluster: shared.clusterArn,
-    taskDefinition: beTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    healthCheckGracePeriodSeconds: 120,
-    networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
-    loadBalancers: [{ targetGroupArn: backendTg.arn, containerName: 'backend', containerPort: 8000 }],
-  })
+  new aws.ecs.Service(
+    `${name}-be-svc`,
+    {
+      cluster: shared.clusterArn,
+      taskDefinition: beTaskDef.arn,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      healthCheckGracePeriodSeconds: 120,
+      networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
+      loadBalancers: [{ targetGroupArn: backendTg.arn, containerName: 'backend', containerPort: 8000 }],
+    },
+    { dependsOn: [apiRule] },
+  )
 
   const feTaskDef = new aws.ecs.TaskDefinition(`${name}-fe-task`, {
     family: `${name}-frontend`,
@@ -442,14 +515,20 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     ]),
   })
 
-  new aws.ecs.Service(`${name}-fe-svc`, {
-    cluster: shared.clusterArn,
-    taskDefinition: feTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
-    loadBalancers: [{ targetGroupArn: frontendTg.arn, containerName: 'frontend', containerPort: 8080 }],
-  })
+  new aws.ecs.Service(
+    `${name}-fe-svc`,
+    {
+      cluster: shared.clusterArn,
+      taskDefinition: feTaskDef.arn,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      // Smoke tests must wait until old tasks stop serving HTML/assets from another build.
+      waitForSteadyState: true,
+      networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
+      loadBalancers: [{ targetGroupArn: frontendTg.arn, containerName: 'frontend', containerPort: 8080 }],
+    },
+    { dependsOn: [appRule] },
+  )
 
   const mkTaskDef = new aws.ecs.TaskDefinition(`${name}-mk-task`, {
     family: `${name}-marketing`,
@@ -471,18 +550,70 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     ]),
   })
 
-  new aws.ecs.Service(`${name}-mk-svc`, {
-    cluster: shared.clusterArn,
-    taskDefinition: mkTaskDef.arn,
-    desiredCount: 1,
-    launchType: 'FARGATE',
-    networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
-    loadBalancers: [{ targetGroupArn: marketingTg.arn, containerName: 'marketing', containerPort: 8080 }],
+  new aws.ecs.Service(
+    `${name}-mk-svc`,
+    {
+      cluster: shared.clusterArn,
+      taskDefinition: mkTaskDef.arn,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
+      loadBalancers: [{ targetGroupArn: marketingTg.arn, containerName: 'marketing', containerPort: 8080 }],
+    },
+    { dependsOn: [marketingRule] },
+  )
+
+  // Built from this PR's commit, so a sync-config change is exercised by its own
+  // preview. Replicates the per-PR DB as the postgres superuser, which already
+  // holds REPLICATION and reads every table; the backend entrypoint creates the
+  // storage DB and the `powersync` publication. Until it has, PowerSync exits
+  // and ECS restarts it.
+  const psTaskDef = new aws.ecs.TaskDefinition(`${name}-ps-task`, {
+    family: `${name}-powersync`,
+    requiresCompatibilities: ['FARGATE'],
+    networkMode: 'awsvpc',
+    cpu: '512',
+    memory: '1024',
+    executionRoleArn: execRole.arn,
+    taskRoleArn: taskRole.arn,
+    containerDefinitions: pulumi.jsonStringify([
+      {
+        name: 'powersync',
+        image: psImage,
+        essential: true,
+        // Must match the backend's POWERSYNC_JWT_KID.
+        environment: [{ name: 'PS_JWT_KID', value: 'enterprise-powersync' }],
+        secrets: [
+          // Same URL as the backend's DATABASE_URL: the database PowerSync replicates.
+          { name: 'PS_PG_URI', valueFrom: databaseUrlSecret.arn },
+          { name: 'PS_STORAGE_URI', valueFrom: powersyncStorageUrlSecret.arn },
+          // base64 of the backend's POWERSYNC_JWT_SECRET.
+          { name: 'PS_JWT_KEY_BASE64', valueFrom: powersyncJwtKeySecret.arn },
+        ],
+        portMappings: [{ containerPort: 8080 }],
+        logConfiguration: logConfig('powersync'),
+        ...(repositoryCredentials && { repositoryCredentials }),
+      },
+    ]),
   })
 
+  new aws.ecs.Service(
+    `${name}-ps-svc`,
+    {
+      cluster: shared.clusterArn,
+      taskDefinition: psTaskDef.arn,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      healthCheckGracePeriodSeconds: 120,
+      networkConfiguration: { subnets: shared.privateSubnetIds, securityGroups: [shared.servicesSgId] },
+      loadBalancers: [{ targetGroupArn: powersyncTg.arn, containerName: 'powersync', containerPort: 8080 }],
+    },
+    { dependsOn: [powersyncRule] },
+  )
+
   // -------- 10. Outputs --------
-  // Auth + powersync URLs come from the shared stack so users see consistent
-  // hostnames per environment regardless of which PR they came in through.
+  // The auth URL comes from the shared stack so users see one Keycloak per
+  // environment regardless of which PR they came in through.
   const authUrl = shared.keycloakIssuerUrl.apply((u) => u.replace(/\/realms\/.*$/, ''))
   return {
     url: marketingUrl,
@@ -491,7 +622,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
       app: appUrl,
       api: apiUrl,
       auth: authUrl,
-      powersync: shared.powersyncPublicUrl,
+      powersync: powersyncUrl,
     },
   }
 }

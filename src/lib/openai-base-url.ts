@@ -8,12 +8,9 @@
  * URLs as `${baseURL}${path}` where `path` is e.g. `/chat/completions`; a
  * baseURL without `/v1` sends the request to the wrong path (404), and a
  * baseURL with a trailing slash produces `//chat/completions` which some
- * servers reject. Applied at two entry points that need to agree on the same
- * base: the `Load Models` fetch in the settings UI, and
- * `resolveOpenAiCompatConnection` (feeds both the legacy `createModel` path
- * and the built-in Pi agent path). Load Models is always a direct browser
- * fetch; the connection returned by `resolveOpenAiCompatConnection` picks its
- * own transport (loopback → direct, everything else → proxy).
+ * servers reject. Applied in `resolveOpenAiCompatConnection`, which feeds the
+ * legacy `createModel` path, the built-in Pi agent path and the settings
+ * `Load Models` catalog, and picks the transport (loopback → direct; other URLs → native HTTP on Tauri with Use Cloud Proxy off, otherwise proxy).
  */
 export const normalizeOpenAiBaseUrl = (raw: string): string => {
   const trimmed = raw.trim().replace(/\/+$/, '')

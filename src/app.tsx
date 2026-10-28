@@ -14,10 +14,10 @@ import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
 import { AccountDeleted } from '@/components/account-deleted'
+import { DeviceRevoked } from '@/components/device-revoked'
 import { SignedOut } from '@/components/signed-out'
 import { StorageUnavailableScreen } from '@/components/storage-unavailable-screen'
 import NotFound from '@/components/not-found'
-import { RevokedDeviceModal } from '@/components/revoked-device-modal'
 import { WindowControls } from '@/components/window-controls'
 import ChatLayout from '@/layout/main-layout'
 import SettingsLayout from '@/settings/layout'
@@ -26,6 +26,7 @@ import WaitlistPage from '@/waitlist/waitlist-page'
 import { HapticsProvider } from '@/hooks/use-haptics'
 import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAnalyticsConsent } from '@/hooks/use-analytics-consent'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
@@ -49,7 +50,6 @@ import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
-import { useCredentialEvents } from './hooks/use-credential-events'
 import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
 import { RecoveryKeyDialog } from './components/recovery-key-dialog'
 import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
@@ -67,6 +67,7 @@ import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
+import { preloadInBackground } from '@/lib/after-paint'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
 import { LazyMotion } from 'framer-motion'
 
@@ -80,7 +81,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 //
 // Every loader in this map is both the `lazy()` source for its route and part
 // of `preloadAllRouteChunks`, so a new lazy route added here is warmed on the
-// Tauri apps automatically. Deliberately-cold chunks (SSO, dev-only routes)
+// Tauri apps automatically. Deployment-specific chunks (SSO, dev-only routes)
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
@@ -115,9 +116,12 @@ const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 // deliberately-cold chunk (outside routeChunkLoaders) — lazy but not warmed.
 const VoiceSettingsPage = lazy(() => import('@/settings/voice'))
 
-// Lazily import SSO components so non-enterprise deployments don't pay
-// for the extra bundle size and attack surface.
-const SsoRedirect = lazy(() => import('@/components/sso-redirect'))
+// Keep SSO out of consumer builds' startup requests. SSO deployments warm the
+// redirect during initialization so routing doesn't add a chunk-fetch waterfall.
+const loadSsoRedirect = () => import('@/components/sso-redirect')
+const SsoRedirect = lazy(loadSsoRedirect)
+// Reached only after a failed SSO login: deliberately cold, not in routeChunkLoaders.
+const SsoError = lazy(() => import('@/components/sso-error'))
 
 // Dev-only routes: guarded by import.meta.env.DEV so Vite eliminates
 // both the lazy() call and the dynamic import() from production builds.
@@ -125,14 +129,13 @@ const DevSettingsPage = import.meta.env.DEV ? lazy(() => import('@/settings/dev-
 const MessageSimulatorPage = import.meta.env.DEV ? lazy(() => import('./devtools/message-simulator')) : () => null
 
 /**
- * Prefetch every lazily routed chunk. The Tauri apps serve chunks from local
- * disk, so warming them right after first paint makes every screen render
- * instantly on navigation while the web build keeps true lazy loading to
- * protect its first load. Dynamic imports are memoized, so the `lazy()`
+ * Prefetch lazily routed chunks after core initialization, yielding between
+ * imports. Tauri serves these from local disk; the web build keeps true lazy
+ * loading to protect its first load. Dynamic imports are memoized, so the `lazy()`
  * components resolve from the same in-flight module records.
  */
 const preloadAllRouteChunks = () => {
-  void Promise.allSettled(Object.values(routeChunkLoaders).map((load) => load()))
+  return preloadInBackground(Object.values(routeChunkLoaders))
 }
 
 const queryClient = new QueryClient()
@@ -142,10 +145,19 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useBootstrapSystemAgents()
   useAppLanguage()
+  useAnalyticsConsent()
   useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
+
+  // Start only after core initialization has mounted the app, regardless of its
+  // entry route. Serial warming yields between chunks but can overlap hydration.
+  useEffect(() => {
+    if (isTauri()) {
+      return preloadAllRouteChunks()
+    }
+  }, [])
 
   return (
     <BrowserRouter>
@@ -162,14 +174,14 @@ const AppContent = ({ initData }: { initData: InitData }) => {
  * URL (see `device-approval-return.ts`) so the approval page reopens pre-filled.
  * Read once on mount via a lazy initializer, so normal landings are a no-op.
  */
-const HomeShell = () => {
+const HomeShell = ({ sidebarOpen }: { sidebarOpen: boolean }) => {
   const [deviceReturn] = useState(takeDeviceApprovalReturn)
   if (deviceReturn) {
     return <Navigate to={deviceReturn} replace />
   }
   return (
     <>
-      <Layout />
+      <Layout initialSidebarOpen={sidebarOpen} />
       <OnboardingDialog />
       <WelcomeDialog />
     </>
@@ -198,6 +210,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
 
         {/* SSO redirect route — no guard, only in OIDC/SAML mode */}
         {ssoMode && <Route path="/sso-redirect" element={<SsoRedirect />} />}
+        {ssoMode && <Route path="/sso-error" element={<SsoError />} />}
 
         {/* Waitlist routes - unauthenticated only (skip when bypass or SSO mode) */}
         {!ssoMode && !shouldBypassWaitlist && (
@@ -211,7 +224,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Main app routes - authenticated only. The gate decides redirect
             targets internally from VITE_AUTH_MODE + VITE_AUTH_ENABLE_ANONYMOUS. */}
         <Route element={<AuthGate require="authenticated" />}>
-          <Route path="/" element={<HomeShell />}>
+          <Route path="/" element={<HomeShell sidebarOpen={initData.sidebarOpen} />}>
             {/* Home routes with HomeLayout */}
             <Route element={<ChatLayout />}>
               <Route index element={<Navigate to="/chats/new" replace />} />
@@ -248,6 +261,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Fallback routes - no guards */}
         <Route path="/signed-out" element={<SignedOut />} />
         <Route path="/account-deleted" element={<AccountDeleted />} />
+        <Route path="/device-revoked" element={<DeviceRevoked />} />
         <Route path="/not-found" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/not-found" replace />} />
       </Routes>
@@ -287,19 +301,22 @@ export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
-  const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
-  const { revokedDeviceOpen } = useCredentialEvents()
+  const { initData, initError, clearDatabase } = useAppInitialization()
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
   // Start the palette's chunk during boot so it is in memory by the time
   // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
-  // the `sidebarState` gate in `Layout`, so fetching only from there leaves a
+  // core initialization in `Layout`, so fetching only from there leaves a
   // window where Cmd+K has nothing to show. ~10KB, for the one surface
   // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
   // runs on web too; that policy is about not warming *every* route.
   useEffect(() => {
     void loadSearchPalette()
+    if (isSsoMode()) {
+      // Speculative loading must not interrupt startup; the route owns failures.
+      void loadSsoRedirect().catch(() => {})
+    }
   }, [])
 
   // Show the Tauri window after React mounts and CSS is applied.
@@ -308,7 +325,6 @@ export const App = () => {
   useEffect(() => {
     if (isTauri()) {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().show()).catch(console.error)
-      preloadAllRouteChunks()
     }
   }, [])
 
@@ -337,7 +353,7 @@ export const App = () => {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
         return <StorageUnavailableScreen />
       }
-      return <AppErrorScreen error={initError} isClearingDatabase={isInitializing} onClearDatabase={clearDatabase} />
+      return <AppErrorScreen error={initError} onClearDatabase={clearDatabase} />
     }
 
     // TODO: PowerSync is our only database provider, so we can safely assert it's not null.
@@ -409,9 +425,6 @@ export const App = () => {
         <LazyMotion features={loadMotionFeatures} strict>
           {renderAppContent()}
           <WindowControls />
-          {/* The upgrade blocker replaces the whole app, so it must win over the
-              revoked-device modal that renders outside renderAppContent. */}
-          <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
           {/* Seamless v1→v2 migration completed at init — show the new recovery
               phrase once. Blocked while the upgrade screen owns the viewport; the
               phrase is not lost in that case, because the mint marked it pending

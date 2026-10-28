@@ -4,6 +4,7 @@
 
 import type { Page } from '@playwright/test'
 import { defaultModelOpus55 } from '../shared/defaults/models'
+import { completeFirstDeviceSetup, finishAdditionalDeviceSetup, startAdditionalDeviceSetup } from './e2ee/helpers'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile, sendChatPrompt } from './helpers'
 import { expect, isolateProviderRequests, test } from './test'
@@ -11,14 +12,13 @@ import { expect, isolateProviderRequests, test } from './test'
 test.slow()
 test.skip(process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true', 'PowerSync runs only in the Linux extended suite')
 
-/** Enable cloud sync through the same preference a user sets on each device. */
-const enableCloudSync = async (page: Page) => {
-  await page.goto('/settings/preferences')
-  const toggle = page.getByRole('switch', { name: 'Sync This Device With Cloud' })
-  await toggle.click()
-  await expect(toggle).toBeChecked()
-  await page.goto('/')
-  await expect(page.locator('textarea')).toBeVisible()
+/** Enrol a second device the way a user without the first device at hand does: with the recovery phrase. */
+const enrollWithRecoveryPhrase = async (page: Page, recoveryPhrase: string) => {
+  const dialog = await startAdditionalDeviceSetup(page)
+  await dialog.getByRole('button', { name: 'Use my recovery key' }).click()
+  await dialog.getByPlaceholder('word1 word2 word3 ...').fill(recoveryPhrase)
+  await dialog.getByRole('button', { name: 'Submit' }).click()
+  await finishAdditionalDeviceSetup(page)
 }
 
 test('a chat created on one device appears on another without reloading', async ({
@@ -35,31 +35,18 @@ test('a chat created on one device appears on another without reloading', async 
       console.warn(`Consumer sign-in request failed: ${request.url()}: ${request.failure()?.errorText}`)
     }
   })
-  await loginViaEmailCode(page)
-  const storageState = await page.context().storageState()
-  const otherDevice = await browser.newContext({
-    baseURL,
-    storageState: {
-      ...storageState,
-      origins: storageState.origins.map((origin) => ({
-        ...origin,
-        localStorage: origin.localStorage.filter(
-          ({ name }) => name !== 'thunderbolt_device_id' && name !== 'thunderbolt_user_cache_secret',
-        ),
-      })),
-    },
-  })
+  const email = await loginViaEmailCode(page)
+  const recoveryPhrase = await completeFirstDeviceSetup(page)
+  // A session is bound to the device that set up encryption, so the second device needs its own sign-in.
+  const otherDevice = await browser.newContext({ baseURL })
   try {
     await isolateProviderRequests(otherDevice, testInfo.project.name)
     const secondPage = await otherDevice.newPage()
     const secondErrors = collectPageErrors(secondPage)
+    await loginViaEmailCode(secondPage, email)
+    await enrollWithRecoveryPhrase(secondPage, recoveryPhrase)
+    await page.goto('/')
     await secondPage.goto('/')
-    await expect(secondPage.locator('textarea')).toBeVisible()
-    await enableCloudSync(page)
-    await enableCloudSync(secondPage)
-    expect(await page.evaluate(() => localStorage.getItem('thunderbolt_device_id'))).not.toBe(
-      await secondPage.evaluate(() => localStorage.getItem('thunderbolt_device_id')),
-    )
 
     await page.getByTestId('model-selector-trigger').click()
     await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()

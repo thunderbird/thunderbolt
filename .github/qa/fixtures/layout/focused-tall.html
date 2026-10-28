@@ -1,0 +1,37 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Focused tall</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #form {
+        height: 200px;
+        margin-top: 100px;
+        overflow-y: auto;
+      }
+      textarea {
+        display: block;
+        height: 400px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- A grown textarea twice as tall as its scroll box, which sits above the keyboard. It can never show in full,
+         so its box scrolled to the caret at the end is as good as it gets. -->
+    <div id="form">
+      <textarea aria-label="Instructions"></textarea>
+    </div>
+    <script src="fake-keyboard.js"></script>
+    <script>
+      const form = document.getElementById('form')
+      form.scrollTop = form.scrollHeight
+    </script>
+  </body>
+</html>

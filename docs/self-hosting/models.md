@@ -67,14 +67,14 @@ Bring-your-own-key and custom-endpoint traffic is never counted.
 
 Quota accounting looks up a price for every deployment-provided request in the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a price row is necessary for a model to be usable, but not sufficient: the model must also be registered and routed. The managed chat routes recognize the Anthropic and confidential models only; the Fireworks rows are used by the hosted agent when `AGENT_MODEL` names a Fireworks model (see [Hosted agent](./configuration.md#hosted-agent)). Prices are integers in nano-USD per token (USD per million tokens x 1000), so $1.40 per million input tokens is `1400`.
 
-Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`, `0034_*`, `0035_*`); there is no admin route. To add a model:
+Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`, `0034_*`, `0035_*`), and `0037` adds the cache-read column and sets the Fireworks rates; there is no admin route. To add a model:
 
 1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
-2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends; for Fireworks that is the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup.
+2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends; for Fireworks that is the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup. Set the cached-input rate when the provider publishes one; null bills cache reads at the input rate (Anthropic: a tenth of it).
 
    ```sql
-   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
-   VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token", "cache_read_nano_usd_per_token")
+   VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400, 260)
    ON CONFLICT ("provider", "model") DO NOTHING;
    ```
 
@@ -83,15 +83,18 @@ Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029
 To change a price on a running deployment without a migration, run the equivalent SQL:
 
 ```sql
-INSERT INTO inference_prices (provider, model, input_nano_usd_per_token, output_nano_usd_per_token)
-VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+INSERT INTO inference_prices (provider, model, input_nano_usd_per_token, output_nano_usd_per_token, cache_read_nano_usd_per_token)
+VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400, 260)
 ON CONFLICT (provider, model) DO UPDATE
 SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
     output_nano_usd_per_token = EXCLUDED.output_nano_usd_per_token,
+    cache_read_nano_usd_per_token = EXCLUDED.cache_read_nano_usd_per_token,
     updated_at = now();
 ```
 
-Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Those two and `claude-opus-5-5` are the ids the [hosted agent](./configuration.md#hosted-agent) accepts as `AGENT_MODEL` (`managedAgentModels` in `backend/src/inference/managed-models.ts`); a new agent model needs an entry there as well as a price row. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which overstates spend.
+Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Those two and `claude-opus-5-5` are the ids the [hosted agent](./configuration.md#hosted-agent) accepts as `AGENT_MODEL` (`managedAgentModels` in `backend/src/inference/managed-models.ts`); a new agent model needs an entry there as well as a price row.
+
+Prompt tokens served from the provider's cache are priced by the nullable `cache_read_nano_usd_per_token` column. Migration `0037` sets it from Fireworks' published cached-input prices: 260 for `glm-5p3` and 60 for `minimax-m3`. When the column is null, Anthropic rows bill cache reads at a tenth of the input price and every other provider bills them at the full input price, which overstates spend. The upsert above sets it on a running deployment.
 
 ## Confidential inference
 
@@ -125,7 +128,11 @@ The key is stored on the device it was typed on and is never synced to other dev
 
 Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
 
-Desktop and mobile relay through your API service as well. The desktop app shows a **Settings → Preferences → Network → Use Cloud Proxy** switch, but the direct path it would select is behind a build flag that no released build enables, so plan for provider traffic leaving your server rather than user devices. The switch is greyed out in the browser, which has no alternative.
+Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying non-loopback requests through your API service. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
+
+**Upgrade note:** Upgrading the desktop or mobile app enables direct routing for own-key model and HTTP/SSE MCP requests when **Settings → Preferences → Network → Use Cloud Proxy** is off or unset; earlier releases relayed these requests despite that setting. Providers then see the device's egress IP. Deployments that require backend egress should have users enable **Use Cloud Proxy**. An existing enabled setting stays enabled.
+
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy.
 
 Adding a model requires a successful **Test Connection** first. The only exception is the deployment-provided models, which have nothing for the user to verify.
 
@@ -146,7 +153,7 @@ http://localhost:1234/v1    LM Studio
 | Public address over HTTPS                                                          | Works, relayed by your API service                                                                          | Works                              |
 | A private LAN address, or `host.docker.internal`                                   | Blocked. The relay refuses private and internal addresses, and browsers block plain HTTP from an HTTPS page | Works with **Use Cloud Proxy** off |
 
-Anything that is not on the user's own machine is dialled over HTTPS whether or not the user typed `https://`, so an HTTP-only endpoint on a public address will not work.
+Public `http://` model addresses are upgraded to `https://`, so an HTTP-only endpoint on a public address will not work. Direct connections in desktop and mobile keep plain HTTP for local and private addresses, including link-local and IPv4-mapped private addresses, `host.docker.internal`, `.local` and `*.localhost` names. Other hostnames, including single-word names such as `nas`, `ollama` and `llm-box`, are upgraded to `https://` even if they resolve to a private address. For an HTTP-only model server on your local network, turn off **Use Cloud Proxy** in the desktop or mobile app and use its private IP address (for example, `http://192.168.1.10:8080`) or a `.local` name your device can resolve (for example, `http://nas.local:8080`).
 
 No server setting points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach. A LAN-only model server cannot be reached from the web app at all. We recommend putting it behind HTTPS on a resolvable name; failing that, have the team use the desktop app.
 

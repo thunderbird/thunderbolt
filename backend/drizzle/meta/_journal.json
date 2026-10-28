@@ -260,6 +260,27 @@
       "when": 1791482944983,
       "tag": "0036_solved_captcha_challenges",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791975667825,
+      "tag": "0037_fireworks-cache-read-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792004142532,
+      "tag": "0038_passkey",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792431652652,
+      "tag": "0039_device_code_unique_codes",
+      "breakpoints": true
     }
   ]
 }

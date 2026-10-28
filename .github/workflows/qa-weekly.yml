@@ -7,7 +7,8 @@ name: QA weekly
 # Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
 # token. The replay step holds no secret at all: in the real-AI leg the provider keys sit with a backend that runs as
 # another OS user, and the job's own user loses root first. Only the build job saves caches, because it runs before
-# any untrusted code.
+# any untrusted code. The jobs that check a fix's patch hold no secret, except verify-real, whose provider keys go to a
+# backend from a fresh checkout that never ran the patch.
 
 on:
   schedule:
@@ -19,7 +20,9 @@ on:
         type: boolean
         default: true
       charters:
-        description: Comma-separated charter ids, free for the free session, e.g. c4-skills-projects,free (empty = all)
+        description: >-
+          Comma-separated charter ids (every platform), session ids (one platform), or free, e.g.
+          c4-skills-projects,c2-chat-power-user-phone,free (empty = all)
         type: string
         default: ''
       journey:
@@ -34,6 +37,14 @@ on:
         description: Let the fix agent attempt confirmed bugs (also needs vars.QA_AUTOFIX_ENABLED)
         type: boolean
         default: false
+      native_control:
+        description: Also run the positive control of the native layout check on iOS and Android
+        type: boolean
+        default: false
+      app_check:
+        description: Only check the GitHub App credentials and permissions, run nothing else
+        type: boolean
+        default: false
 
 concurrency:
   group: qa-weekly
@@ -42,7 +53,6 @@ concurrency:
 permissions: {}
 
 env:
-  # Per-session caps. Initial values: recalibrate them with the rule in .github/qa/README.md.
   QA_EXPLORE_MAX_BUDGET_USD: 10
   QA_EXPLORE_MAX_TURNS: 400
   QA_EXPLORE_TIMEOUT_MINUTES: 60
@@ -52,14 +62,17 @@ env:
 
 jobs:
   build:
-    if: vars.QA_AGENT_ENABLED == 'true'
+    if: vars.QA_AGENT_ENABLED == 'true' && !inputs.app_check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     outputs:
       legs: ${{ steps.plan.outputs.legs }}
+      nativeLegs: ${{ steps.plan.outputs.nativeLegs }}
+      nativeBuilds: ${{ steps.plan.outputs.nativeBuilds }}
       verify: ${{ steps.plan.outputs.verify }}
+      nativeVerify: ${{ steps.plan.outputs.nativeVerify }}
       judge: ${{ steps.plan.outputs.judge }}
       live: ${{ steps.plan.outputs.live }}
       autofix: ${{ steps.plan.outputs.autofix }}
@@ -101,15 +114,12 @@ jobs:
       - &install-browsers
         name: Install browsers
         timeout-minutes: 10
-        # The repo's Playwright replays specs; the Playwright MCP (pinned in .github/qa/mcp.json) drives its own
-        # Chromium.
+        # Two installs: the repo's Playwright replays specs, the MCP (pinned in mcp.json) has its own Chromium.
         run: |
-          bunx playwright install --with-deps chromium
+          bunx playwright install chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
 
-      # Up to two recent fixes from main whose reversal applies to this tree: the canary build carries their bugs
-      # again. The log says why every other fix was skipped. The canary build comes first and may fail without
-      # failing the run: the canaries are then dropped, so the legs are planned without them.
+      # Reverts up to two recent fixes from main; a failed canary build drops the canaries instead of failing the run.
       - name: Pick the canaries and build them
         id: canaries
         env:
@@ -138,73 +148,28 @@ jobs:
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
             (github.event_name == 'schedule' || inputs.autofix) }}
         run: |
-          # Commas and spaces both separate charter ids; the same list feeds the check and the legs below.
-          only=$(jq --null-input --compact-output --arg charters "$CHARTERS" '[$charters | splits("[ ,]+") | select(. != "")]')
-          if [ -n "$CHARTERS" ] && [ "$only" = '[]' ]; then echo "::error::No charter id in '$CHARTERS'"; exit 1; fi
-          # The charters that explore with the real AI providers, free sessions included, are listed once, in the QA
-          # scripts.
-          real=$(bun -e "import { realAiCharters } from './.github/qa/scripts/findings'; console.log(JSON.stringify([...realAiCharters]))")
-          # This week's case for the free session, unless the dispatch names one. It runs on every platform.
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
-          # shellcheck disable=SC2016 # jq variables
-          # One explore session per leg. Each canary leg runs its fix's charter on the canary build and is never filed.
-          all=$(jq --null-input --compact-output --argjson real "$real" --arg journey "$journey" \
-            --argjson platforms "$(cat .github/qa/platforms.json)" --slurpfile canaries "$RUNNER_TEMP/qa-canaries.json" '
-            {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: ".github/qa/mcp.json", viewport: "1280x800",
-             onboarding: false, real: false, postgres: false} as $leg
-            | [{charter: "c1-first-run", onboarding: true},
-               {charter: "c2-chat-power-user"},
-               {charter: "c3-models-providers"},
-               {charter: "c4-skills-projects"},
-               {charter: "c5-widgets-connections"},
-               {charter: "c6-settings-data"},
-               {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp.json .github/qa/mcp-two-devices.json",
-                artifact: "qa-sync"},
-               {charter: "c8-phone", viewport: "390x844"}]
-              + ($platforms | map({charter: "free-\($journey)-\(.id)", viewport, mcp}))
-            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)
-            | . + [$canaries[0][] as $canary | .[] | select(.charter == $canary.charter)
-                   | .dist = "qa-dist-canary" | .out = "qa-out-canary" | .artifact = "qa-canary"]')
-          # "free" selects the free session on every platform.
-          unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) - ["free"] | join(" ")' <<< "$all")
-          if [ -n "$unknown" ]; then echo "::error::Unknown charter $unknown"; exit 1; fi
-          legs=$(jq --compact-output --argjson only "$only" 'map(select(.charter as $c | $only == []
-            or ($only | index($c)) or (($c | startswith("free-")) and ($only | index("free")))))' <<< "$all")
-          # Replay each artifact prefix on the kind of stack its sessions explored: pglite, Postgres + PowerSync for c7
-          # (sync), or the real AI providers (real). Sync and real findings share qa-out and are judged with the
-          # weekly ones.
-          verify=$(jq --compact-output '
-            [{name: "weekly", out: "qa-out", artifact: "qa-explore", dist: "qa-dist",
-              onboarding: any(.[]; .onboarding), postgres: false}]
-            + if any(.[]; .artifact == "qa-sync")
-              then [{name: "sync", out: "qa-out", artifact: "qa-sync", dist: "qa-dist", onboarding: false, postgres: true}]
-              else [] end
-            + if any(.[]; .artifact == "qa-real")
-              then [{name: "real", out: "qa-out", artifact: "qa-real", dist: "qa-dist", onboarding: false, postgres: false,
-                     real: true}]
-              else [] end
-            + if any(.[]; .artifact == "qa-canary")
-              # The canary findings replay on the canary build, then on the normal one: a canary counts only when its
-              # finding fails on the first and passes on the second. canaries.ts picks charters of one kind of AI.
-              then any(.[]; .artifact == "qa-canary" and .real) as $real
-                | [{name: "canary", out: "qa-out-canary", dist: "qa-dist-canary"},
-                   {name: "canary-baseline", out: "qa-out-canary-baseline", dist: "qa-dist"}]
-                | map(. + {artifact: "qa-canary", onboarding: false, postgres: false, real: $real})
-              else [] end' <<< "$legs")
+          # An unknown charter id fails here, with the CLI's own ::error:: line.
+          if ! legs=$(bun .github/qa/scripts/legs.ts --charters "$CHARTERS" --journey "$journey" \
+            --canaries "$RUNNER_TEMP/qa-canaries.json"); then
+            echo "$legs"
+            exit 1
+          fi
+          native=$(sed -n 's/^nativeLegs=//p' <<< "$legs")
           {
-            echo "legs=$legs"
-            echo "verify=$verify"
-            echo "judge=$(jq --compact-output 'map(select(.name == "weekly" or .name == "canary"))' <<< "$verify")"
+            echo "$legs"
+            echo "nativeBuilds=$(jq --compact-output '[.[] | {platform, runner}] | unique' <<< "$native")"
             echo "live=$LIVE"
             echo "autofix=$AUTOFIX"
           } >> "$GITHUB_OUTPUT"
+          sed -n 's/^skipped=//p' <<< "$legs" | jq --raw-output '.[] | "::notice::\(.session) does not run: \(.reason)"'
 
       - name: Build the frontend (onboarding off, onboarding on)
         run: |
           .github/qa/scripts/stack.sh build qa-dist
           .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding
 
-      - name: Guard - smoke-test a fresh stack
+      - name: Smoke-test a fresh stack as the guard
         run: |
           .github/qa/scripts/stack.sh start qa-dist
           bunx playwright test --config .github/qa/playwright.config.ts --project control
@@ -234,6 +199,8 @@ jobs:
   explore:
     name: explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}
     needs: build
+    # A dispatch of native sessions only plans no web leg, and an empty matrix is an error.
+    if: needs.build.outputs.legs != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
     environment: qa-agent
@@ -244,7 +211,7 @@ jobs:
       max-parallel: 8
       matrix:
         leg: ${{ fromJSON(needs.build.outputs.legs) }}
-    # From nightly.yml's linux job. An empty image skips the container, so only Postgres legs start them.
+    # An empty image skips the container, so only Postgres legs start them.
     services: &postgres-services
       postgres:
         image: ${{ matrix.leg.postgres && 'ghcr.io/thunderbird/thunderbolt/thunderbolt-postgres:latest' || '' }}
@@ -290,9 +257,8 @@ jobs:
         with: *browser-cache
       - *install-browsers
 
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes the CLI refuse to start without bubblewrap. With it, the processes the
-      # agent starts run in a sandbox, so they cannot read the key from the CLI's /proc/<pid>/environ either. Same
-      # install as claude-code-action's for allowed_non_write_users. It needs root, so it runs before the lock step.
+      # Needs root, so it runs before the lock step. The sandbox keeps the agent's subprocesses from reading the key in
+      # the CLI's /proc/<pid>/environ. With CLAUDE_CODE_SUBPROCESS_ENV_SCRUB set, the CLI refuses to start without it.
       - &install-sandbox
         name: Install the subprocess sandbox
         run: |
@@ -321,7 +287,6 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
-        # From nightly.yml's linux job.
         run: |
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET wal_level = logical"
           docker restart "$POSTGRES_CONTAINER"
@@ -337,8 +302,7 @@ jobs:
       - &start-stack
         name: Start the stack
         env:
-          # Real providers only for the charters that need them, with QA-only keys, and only in a backend that runs
-          # as the OS user qa-backend: stack.sh moves the keys into a file only that user can read.
+          # stack.sh moves the keys into a file only qa-backend can read, and the backend runs as that user.
           QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
           QA_BACKEND_USER: ${{ matrix.leg.real && 'qa-backend' || '' }}
           ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_ANTHROPIC_API_KEY || '' }}
@@ -349,8 +313,7 @@ jobs:
           ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
         run: .github/qa/scripts/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
 
-      # Root could read the keys from the backend and the secrets from the runner's memory. No step after this one
-      # needs it.
+      # Root could read the backend's keys and the runner's secrets from memory; no later step needs it.
       - &lock
         name: Take root away from the job's user
         if: matrix.leg.real
@@ -371,17 +334,15 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # The browser tools can write files anywhere in the checkout, so no repo code runs in this job after the
-      # explorer: the stack is stopped inline, a checksum tripwire guards the upload, and report.ts runs later. The
-      # one repo file read afterwards is transcript.jq, a jq filter (no shell, no file access) the tripwire covers.
+      # The browser tools can write anywhere in the checkout, so after the explorer only transcript.jq (a jq filter,
+      # covered by the tripwire) is read from it.
       - name: Record the checksums of the tracked files
         # Symlinks are skipped: one tracked link dangles, and the files they point to are tracked themselves.
         run: |
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 sha256sum > "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # Same flags as .github/qa/scripts/explore.sh. Only Write (inside the out dir) and the browser tools, no shell
-      # and no file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
+      # Same flags as explore.sh; `--setting-sources user` keeps the repo's agent instructions and skills out.
       - name: Explore
         id: explore
         continue-on-error: true
@@ -406,25 +367,30 @@ jobs:
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 
-      # Inline, from the pid files stack.sh wrote outside the checkout: the backend may hold provider keys. SIGKILL
-      # for the serve script, so bash reads no more of a file the explorer may have rewritten. SIGTERM for its
-      # servers: sudo passes it on to a backend running as another user, where a SIGKILL would orphan that backend.
+      # Inline, from files outside the checkout. SIGKILL for the serve script so bash reads no more of a file the
+      # explorer may have rewritten; another user's servers get SIGTERM through the sudo rule stack.sh start installed.
       - &stop-stack
         name: Stop the stack
         if: always()
         run: |
           serve=$(cat "$RUNNER_TEMP/qa-stack.pid" 2>/dev/null || true)
           servers=$(cat "$RUNNER_TEMP/qa-stack.pids" 2>/dev/null || true)
+          user=$(cat "$RUNNER_TEMP/qa-stack.user" 2>/dev/null || true)
           # shellcheck disable=SC2086 # one pid per word
           kill -9 $serve 2>/dev/null || true
           # shellcheck disable=SC2086
           kill $servers 2>/dev/null || true
           for pid in $serve $servers; do while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done; done
+          if [ -n "$user" ]; then
+            if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi
+            for _ in $(seq 150); do pgrep -u "$user" > /dev/null || exit 0; sleep 0.2; done
+            echo "::error::The servers of $user did not stop."
+            exit 1
+          fi
 
       - name: Check that the checkout is unchanged
         id: tripwire
         if: always()
-        # A changed tracked file means the explorer wrote into the repo: the job fails and uploads nothing.
         run: sha256sum --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
 
       - name: Save the session
@@ -435,10 +401,11 @@ jobs:
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
-          # The explorer can write into its out dir: only what this step writes may reach the report.
+          # The explorer's Write tool reaches its out dir, so these files are removed and written here only. The mcp/
+          # files it can also write still reach later steps; the console logs are unguarded: worst case, a forged
+          # probe line reads as "measured".
           rm -f "$dir/execution.json" "$dir/timed-out" "$dir/transcript.json"
-          # Only the result message's counters, and the tool calls with capped results for the coverage check: the
-          # full execution file also holds the prompt and everything the model wrote.
+          # Counters and capped tool calls only: the full execution file holds the prompt and all the model wrote.
           if [ -f "$EXECUTION_FILE" ]; then
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
               "$EXECUTION_FILE" > "$dir/execution.json"
@@ -447,10 +414,9 @@ jobs:
           # A step killed by its timeout leaves no execution file; the marker tells report.ts why.
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
 
-      # Artifacts are public, and GitHub masks secrets in logs only. The pages the explorer read could show a key (a
-      # backend bug in a real-AI leg), so any key this job holds, found anywhere in the session output, means no
-      # upload. Exact values only: a token-shaped pattern would also match a made-up key typed into a model form. The
-      # session and the stack have ended, so no untrusted process is meant to be left to read this step's keys.
+      # Artifacts are public and GitHub masks secrets in logs only, so a held key in the session output blocks the
+      # upload. Exact values: a token-shaped pattern would also match a made-up key typed into a form. It runs after
+      # the session and the stack end, so no untrusted process is left to read its keys.
       - name: Check the session output for secrets
         id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
@@ -479,18 +445,311 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/execution.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/transcript.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.png
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpeg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.jpg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp*/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Like build, runs before any untrusted code.
+  build-native:
+    name: build-native ${{ matrix.target.platform }}
+    needs: build
+    if: needs.build.outputs.nativeBuilds != '[]'
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.build.outputs.nativeBuilds) }}
+    env:
+      QA_PLATFORM: ${{ matrix.target.platform }}
+      QA_APP_FILE: ${{ matrix.target.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - &restore-bun-linux
+        name: Restore Bun dependencies
+        # The cache holds the Linux build's binaries.
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: *bun-cache
+      - *install
+      # The Android build, the SDK tools and Maestro need Java. verify-native-run sets QA_NO_DEVICE when it has no app.
+      - &setup-java
+        if: env.QA_NO_DEVICE != 'true'
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - &native-build-tools
+        name: Install the native build tools
+        run: |
+          if [ "$QA_PLATFORM" = ios ]; then
+            rustup target add aarch64-apple-ios-sim
+            exit
+          fi
+          # Frees disk for the NDK build.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/boost
+          rustup target add x86_64-linux-android
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+      - name: Build the app (onboarding off, onboarding on)
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          .github/qa/scripts/native.sh build "$QA_PLATFORM" "$RUNNER_TEMP/qa-native/plain"
+          .github/qa/scripts/native.sh build "$QA_PLATFORM" "$RUNNER_TEMP/qa-native/onboarding" onboarding
+          # A tar keeps the app's file modes, which an artifact drops.
+          for variant in plain onboarding; do
+            tar -cf "$RUNNER_TEMP/qa-native/$variant/app.tar" -C "$RUNNER_TEMP/qa-native/$variant" "$QA_APP_FILE"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-native-${{ matrix.target.platform }}
+          path: ${{ runner.temp }}/qa-native/plain/app.tar
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-native-${{ matrix.target.platform }}-onboarding
+          path: ${{ runner.temp }}/qa-native/onboarding/app.tar
+          retention-days: 1
+
+  # The model starts no process and reaches the app only through the Maestro gate (README, "Native explore on macOS"),
+  # so the key may sit in the env of the canary and session steps.
+  explore-native:
+    name: explore ${{ matrix.leg.charter }}
+    needs: [build, build-native]
+    # A platform whose build failed fails its own legs at the download, and the other platform still explores.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeLegs != '[]' }}
+    runs-on: ${{ matrix.leg.runner }}
+    timeout-minutes: 90 # outer bound: the session's own cap plus the device and the canary
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        leg: ${{ fromJSON(needs.build.outputs.nativeLegs) }}
+    # Only c7 on Android starts them: its second device is a browser on the web build.
+    services: *postgres-services
+    env:
+      QA_CHARTER: ${{ matrix.leg.charter }}
+      QA_OUT: ${{ matrix.leg.out }}
+      QA_PLATFORM: ${{ matrix.leg.platform }}
+      QA_APP_FILE: ${{ matrix.leg.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+      QA_REPO: ${{ github.workspace }}
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
+      DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
+      POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun-linux
+      - *install
+      - *setup-java
+      - &device-tools
+        name: Install Maestro and the device
+        if: env.QA_NO_DEVICE != 'true'
+        run: |
+          # The release the gate's allow list was measured on, checked before it runs. shasum: macOS has no sha256sum.
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
+            https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.11.0/maestro.zip
+          echo "5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a  $RUNNER_TEMP/maestro.zip" |
+            shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
+          if [ "$QA_PLATFORM" = android ]; then
+            # The emulator needs KVM and libpulse (qemu links it even with -no-audio); the scrubbed claude needs
+            # bubblewrap.
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+              sudo tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libpulse0 bubblewrap socat
+            if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+              sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+            printf '%s\n' "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/emulator" "$ANDROID_HOME/cmdline-tools/latest/bin" \
+              >> "$GITHUB_PATH"
+            sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+            yes | "$sdkmanager" --licenses > /dev/null || true
+            "$sdkmanager" --install emulator 'system-images;android-36;google_apis;x86_64' > /dev/null
+          fi
+      - name: Install the second device's browser
+        if: matrix.leg.postgres
+        run: npx --yes --package @playwright/mcp@0.0.83 playwright install --with-deps chromium
+      - name: Install Claude Code
+        # The canary, the hook and the Edit rule were measured on this version; a new one has to pass them again.
+        run: |
+          npm install --global --prefix "$HOME/.npm-global" @anthropic-ai/claude-code@2.1.303
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-native-${{ matrix.leg.platform }}${{ matrix.leg.onboarding && '-onboarding' || '' }}
+          path: ${{ runner.temp }}/apps/session
+      - &unpack-apps
+        name: Unpack the apps
+        run: |
+          for tar in "$RUNNER_TEMP"/apps/*/app.tar; do
+            if [ -f "$tar" ]; then tar -xf "$tar" -C "$(dirname "$tar")"; fi
+          done
+      - *download-dist
+      - *postgres-setup
+      - &device
+        name: Boot the device
+        if: env.QA_NO_DEVICE != 'true'
+        run: |
+          # The id is the last line; a file, so a failed boot still fails the step.
+          .github/qa/scripts/native.sh device "$QA_PLATFORM" > "$RUNNER_TEMP/qa-device"
+          {
+            echo "QA_DEVICE_ID=$(tail -1 "$RUNNER_TEMP/qa-device")"
+            echo "QA_WEBVIEW_LOG=$RUNNER_TEMP/qa-webview.log"
+            echo "QA_BACKEND_LOG=$RUNNER_TEMP/qa-stack.log"
+          } >> "$GITHUB_ENV"
+      - name: Install the app
+        run: .github/qa/scripts/native.sh install "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/session/$QA_APP_FILE"
+      - &start-native-stack
+        name: Start the stack
+        env:
+          QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
+          QA_BACKEND_USER: ${{ matrix.leg.real && 'qa-backend' || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_ANTHROPIC_API_KEY || '' }}
+          TINFOIL_API_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
+          TINFOIL_ENCLAVE_URL: ${{ matrix.leg.real && secrets.QA_TINFOIL_ENCLAVE_URL || '' }}
+          EXA_API_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
+          # The apps carry their own frontend; c7's browser device needs the web build on 1424.
+          QA_SERVE: ${{ matrix.leg.postgres && 'qa-dist' || 'native' }}
+        run: .github/qa/scripts/stack.sh start "$QA_SERVE"
+      - *lock
+      - &logs
+        name: Stream the WebView console
+        run: .github/qa/scripts/native.sh logs "$QA_PLATFORM" "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
+
+      # c7's second browser can write anywhere in the checkout, so from here nothing runs from it: the gate, the hook,
+      # the MCP server and config, and explore.sh itself (bash reads a script as it goes) sit in a read-only dir.
+      - name: Prepare the session harness outside the checkout
+        run: |
+          .github/qa/scripts/explore.sh harness "$QA_CHARTER" "$RUNNER_TEMP/qa-native-bin"
+          chmod -R a-w "$RUNNER_TEMP/qa-native-bin"
+          echo "QA_HARNESS=$RUNNER_TEMP/qa-native-bin" >> "$GITHUB_ENV"
+
+      # shasum, because the macOS runner has no sha256sum.
+      - name: Record the checksums of the tracked files
+        run: |
+          git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
+            xargs -0 shasum -a 256 > "$RUNNER_TEMP/qa-tracked.sha256"
+
+      - name: Check that the gate denies a canary session
+        id: canary
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+        run: |
+          "$QA_HARNESS/explore.sh" canary "$QA_CHARTER" "$RUNNER_TEMP/qa-canary"
+          echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Explore
+        id: session
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
+        env:
+          # The key stays in this step's env and the canary's, never in run: text or $GITHUB_ENV.
+          ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+        run: '"$QA_HARNESS/explore.sh" run "$QA_CHARTER" "$QA_OUT" "$QA_EXPLORE_MAX_BUDGET_USD"'
+
+      - *stop-stack
+      - name: Stop the log stream
+        if: always()
+        run: kill "$(cat "$QA_WEBVIEW_LOG.pid" 2>/dev/null)" 2>/dev/null || true
+
+      - name: Check that the checkout is unchanged
+        id: tripwire
+        if: always()
+        run: shasum -a 256 --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
+
+      # The browser's file writes are no promised boundary, so this key-holding step clears startup variables and uses
+      # absolute paths (GitHub still prepends $GITHUB_PATH).
+      - name: Check the session output for secrets
+        id: secret-scan
+        if: always() && steps.tripwire.outcome == 'success'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          TINFOIL_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
+          EXA_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          for key in "$QA_KEY" "$TINFOIL_KEY" "$EXA_KEY"; do
+            if [ -n "$key" ] &&
+              /usr/bin/grep -rqsF -- "$key" "$QA_OUT/$QA_CHARTER" "$QA_OUT/$QA_CHARTER".{gate.log,run.jsonl}; then
+              echo "::error::The session output holds a secret, so nothing is uploaded."
+              exit 1
+            fi
+          done
+
+      # Reads the stream next to the gate log, which the model cannot write; the copies in its session dir could be
+      # forged, so they go first.
+      - name: Save the session
+        if: always() && steps.tripwire.outcome == 'success'
+        env:
+          START: ${{ steps.canary.outputs.start }}
+        run: |
+          dir=$QA_OUT/$QA_CHARTER
+          stream=$dir.run.jsonl
+          mkdir -p "$dir"
+          rm -f "$dir/execution.json" "$dir/transcript.json" "$dir/session.json" "$dir/timed-out"
+          if [ -s "$stream" ]; then
+            # A session cut short can end in half a line.
+            jq --raw-input --null-input '[inputs | fromjson? // empty]' "$stream" > "$RUNNER_TEMP/stream.json"
+            jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
+              "$RUNNER_TEMP/stream.json" > "$dir/execution.json"
+            jq --compact-output --from-file .github/qa/transcript.jq "$RUNNER_TEMP/stream.json" > "$dir/transcript.json"
+          fi
+          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
+
+      - name: Upload findings, flows, attempts and the session result
+        if: always() && steps.secret-scan.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.leg.artifact }}-${{ matrix.leg.charter }}
+          # The `*` keeps the <session>/ directory inside the artifact, next to <session>.gate.log.
+          path: |
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings/*.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.yaml
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.spec.ts
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/attempts/*.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/execution.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/transcript.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/maestro/shot-*.jpg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/maestro/shot-*.png
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.png
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.jpeg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.jpg
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/mcp-b/*.log
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}.gate.log
           if-no-files-found: warn
           retention-days: 7
 
   replay:
     name: replay ${{ matrix.leg.name }}
     needs: [build, explore]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.verify != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # This job runs model-written specs. Only the real-AI legs (real, and the canary ones on real-AI charters) have an
-    # environment, for the provider keys that their start step hands to a backend running as another user; the replay
-    # step holds no secret.
+    # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another
+    # user's backend.
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read
@@ -527,14 +786,16 @@ jobs:
           mkdir -p "$QA_OUT"
           bun .github/qa/scripts/verify.ts replay --out "$QA_OUT"
 
-      - name: Remove credentials and network data from traces
+      - &sanitize
+        name: Remove credentials and network data from traces
         id: sanitize
         if: always()
         run: |
           bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000
           bun scripts/sanitize-nightly-artifacts.ts "$QA_OUT/replay"
 
-      - name: Upload the replay
+      - &upload-replay
+        name: Upload the replay
         if: always() && steps.sanitize.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -542,10 +803,118 @@ jobs:
           path: ${{ matrix.leg.out }}/
           retention-days: 7
 
+  # Only android-real has an environment, for the provider keys its start step hands to another user's backend.
+  replay-native:
+    name: replay ${{ matrix.leg.name }}
+    needs: [build, build-native, explore-native]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
+    runs-on: ${{ matrix.leg.runner }}
+    # Only a ceiling: a timeout loses every finding of the leg, so verify.ts starts no run that could end after it.
+    timeout-minutes: 130
+    environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.build.outputs.nativeVerify) }}
+    services: *postgres-services
+    env:
+      QA_OUT: ${{ matrix.leg.out }}
+      QA_PLATFORM: ${{ matrix.leg.platform }}
+      QA_APP_FILE: ${{ matrix.leg.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
+      DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
+      POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
+    steps:
+      # The timeout counts from the job's start, so the replay's clock does too (verify.ts `legClock`).
+      - name: Record the leg's start
+        run: echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"
+      - *checkout
+      - *setup-bun
+      - *restore-bun-linux
+      - *install
+      - *setup-java
+      - *device-tools
+      - name: Install the browser for c7's specs
+        if: matrix.leg.postgres
+        run: bunx playwright install --with-deps chromium
+      # Both builds: a c1 flow runs on the onboarding one, every other flow on the plain one.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-native-${{ matrix.leg.platform }}
+          path: ${{ runner.temp }}/apps/plain
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-native-${{ matrix.leg.platform }}-onboarding
+          path: ${{ runner.temp }}/apps/onboarding
+      - *unpack-apps
+      - *download-dist
+      - name: Download the sessions' findings
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          # Sessions start with c<n> or free-, so qa-android-[cf]* leaves out qa-android-sync-* and qa-android-real-*.
+          pattern: ${{ matrix.leg.artifact }}-[cf]*
+          path: ${{ matrix.leg.out }}
+          merge-multiple: true
+      - *postgres-setup
+      - *device
+      # Maestro starts its driver in a session's first launchApp, which can fail on a fresh emulator with no reason
+      # given; one uncounted session absorbs that before the counted runs.
+      - name: Start Maestro's driver on the emulator
+        if: matrix.leg.platform == 'android'
+        run: |
+          .github/qa/scripts/native.sh install android "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/plain/$QA_APP_FILE"
+          app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
+          printf 'appId: %s\n---\n- launchApp\n' "$app_id" > "$RUNNER_TEMP/qa-warm-up.yaml"
+          maestro --udid "$QA_DEVICE_ID" test "$RUNNER_TEMP/qa-warm-up.yaml" ||
+            echo "::warning::Maestro's first session on the emulator failed; the replay's counted runs come after it"
+      - *start-native-stack
+      - *lock
+      - *logs
+
+      - name: Replay the repro flows and specs
+        env:
+          LEG: ${{ matrix.leg.name }}
+        run: |
+          mkdir -p "$QA_OUT"
+          bun .github/qa/scripts/verify.ts replay --out "$QA_OUT" --native "$QA_PLATFORM" --device "$QA_DEVICE_ID" \
+            --app "$RUNNER_TEMP/apps/plain/$QA_APP_FILE" --app-onboarding "$RUNNER_TEMP/apps/onboarding/$QA_APP_FILE" \
+            --leg "$LEG"
+
+      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold a leg.
+      - name: Save the emulator's, adb's and Maestro's logs
+        if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
+        run: |
+          adb -s "$QA_DEVICE_ID" logcat -d -v epoch -b main,system,crash,events > "$RUNNER_TEMP/qa-logcat.log" || true
+          cp /tmp/adb.*.log "$RUNNER_TEMP/qa-adb.log" || true
+          cp -R ~/.maestro/tests "$RUNNER_TEMP/qa-maestro" || true
+
+      - *sanitize
+      - *upload-replay
+      # On Android after every replay: a passed control does not show whether the console stream lasted the whole leg.
+      # Never on the real leg, whose backend held the provider keys.
+      - name: Upload the stack, device and Maestro logs
+        if: (failure() || matrix.leg.platform == 'android') && !matrix.leg.real
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-logs-replay-${{ matrix.leg.name }}
+          path: |
+            ${{ runner.temp }}/qa-stack.log
+            ${{ runner.temp }}/qa-webview.log
+            ${{ runner.temp }}/qa-logcat.log
+            ${{ runner.temp }}/qa-adb.log
+            ${{ runner.temp }}/qa-maestro/
+          if-no-files-found: ignore
+          retention-days: 7
+
   judge:
     name: judge ${{ matrix.leg.name }}
-    needs: [build, replay]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    needs: [build, replay, replay-native]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.judge != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: qa-agent
@@ -563,21 +932,27 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # A dispatch of native sessions only has no web replay; the weekly leg then judges the native candidates alone.
+      - if: matrix.leg.name != 'weekly' || needs.build.outputs.verify != '[]'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-replay-${{ matrix.leg.name }}
           path: ${{ matrix.leg.out }}
-      - name: Download the sync and real-AI replays
+      - name: Download the sync, real-AI and native replays
         if: matrix.leg.name == 'weekly'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          # Matches nothing when neither c7 nor a real-AI charter ran. Each artifact gets its own directory.
-          pattern: 'qa-replay-{sync,real}'
+          # Matches nothing when neither c7, a real-AI charter nor a native session ran.
+          pattern: 'qa-replay-{sync,real,ios,android,android-sync,android-real}'
           path: qa-out-legs
       # Each leg's stack health stays with its own replay job, which fails loudly when the stack was broken.
-      - name: Add the sync and real-AI candidates
+      - name: Add the sync, real-AI and native candidates
         if: matrix.leg.name == 'weekly'
         run: |
+          if [ ! -f qa-out/candidates.json ]; then
+            mkdir -p qa-out
+            echo '{"confirmed": [], "flaky": [], "observations": [], "dropped": [], "deferred": []}' > qa-out/candidates.json
+          fi
           for leg in qa-out-legs/*/; do
             [ -f "$leg/candidates.json" ] || continue
             jq --slurp '.[1] as $leg | .[0] | .confirmed += $leg.confirmed | .flaky += $leg.flaky
@@ -602,7 +977,7 @@ jobs:
         with:
           name: qa-canaries
           path: qa-canaries
-      # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
+      # The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
         env:
@@ -610,7 +985,7 @@ jobs:
         run: |
           bun .github/qa/scripts/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline \
             --canaries qa-canaries/qa-canaries.json --charters "$CHARTERS"
-      # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every finding).
+      # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every replayed finding).
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -622,7 +997,7 @@ jobs:
 
   file:
     needs: [build, judge]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.judge != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: qa-agent
@@ -630,6 +1005,7 @@ jobs:
       contents: read
     outputs:
       plan: ${{ steps.route.outputs.plan }}
+      real: ${{ steps.route.outputs.real }}
     env:
       QA_OUT: qa-out
     steps:
@@ -637,11 +1013,11 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      # c7's specs and videos come from the sync replay, c3's and c5's from the real one; all land in qa-out.
+      # c7's specs come from the sync replay, c3's and c5's from the real one, native flows from the native legs.
       - &download-replay
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: 'qa-replay-{weekly,sync,real}'
+          pattern: 'qa-replay-{weekly,sync,real,ios,android,android-sync,android-real}'
           path: qa-out
           merge-multiple: true
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -651,17 +1027,19 @@ jobs:
       # With a Linear key it also writes scorecard.json, the triage precision the brake reads.
       - name: File the confirmed findings
         env:
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
       - name: Route fixable tickets
         id: route
         if: needs.build.outputs.autofix == 'true'
-        env:
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
         run: |
           bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
-          echo "plan=$(jq --compact-output . qa-out/fix-plan.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo "plan=$(jq --compact-output . qa-out/fix-plan.json)"
+            # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
+            echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-filed
@@ -695,9 +1073,39 @@ jobs:
       - *restore-browsers
       - *install-browsers
       - *download-replay
+      # A web visual task's check must also fail on the builds without the patch.
+      - if: matrix.task.kind == 'visual' && !matrix.task.flow
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-dist
+          path: qa-dist
+      - if: matrix.task.kind == 'visual' && !matrix.task.flow
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-dist-onboarding
+          path: qa-dist-onboarding
 
+      # Needs root, so before the lock below.
+      - *install-sandbox
+
+      # The dev servers reload the agent's edits outside its sandbox: as the job's user they could read the key, so
+      # they run as another user.
       - name: Start the stack on the working tree
+        env:
+          QA_BACKEND_USER: qa-dev
         run: .github/qa/scripts/stack.sh start dev
+      - name: Check that no dev server runs as the job's user
+        # By port, not by name: ss names the process only for this user's own sockets.
+        run: |
+          listeners=$(ss -ltnpH '( sport = :8005 or sport = :1424 or sport = :1425 )')
+          echo "$listeners"
+          if grep -q 'users:' <<< "$listeners"; then
+            echo "::error::A dev server runs as the job's user."
+            exit 1
+          fi
+          for port in 8005 1424 1425; do grep -q ":$port " <<< "$listeners"; done
+      - name: Take root away from the job's user
+        run: .github/qa/scripts/stack.sh lock
 
       - name: Build the prompt
         id: prompt
@@ -713,10 +1121,7 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      - *install-sandbox
-
-      # The tool rules keep the agent on task; they are not the boundary. This job holds no write token and
-      # publishing is a separate, deterministic job.
+      # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
       - name: Fix
         id: fix
         continue-on-error: true
@@ -734,47 +1139,135 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bunx playwright test --config .github/qa/playwright.config.ts ${{ matrix.task.spec }})"
-            --disallowedTools "Bash(git:*),WebFetch,WebSearch"
+            --allowedTools "Read,Glob,Grep,Edit(**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
+              "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/tsconfig*.json)"
+              "Edit(**/.husky/**)" "Edit(**/package.json)" "Edit(**/bun.lock)" "Edit(**/bun.lockb)" "Edit(**/Cargo.toml)"
+              "Edit(**/Cargo.lock)" "Edit(**/*.gradle)" "Edit(**/*.gradle.kts)" "Edit(**/gradle-wrapper.*)"
+              "Edit(**/Podfile*)" "Edit(**/Package.resolved)" "Edit(**/Package.swift)" "Edit(**/Gemfile*)"
+              "Edit(**/requirements*.txt)" "Edit(**/go.mod)" "Edit(**/go.sum)" "Edit(**/bunfig.toml)"
+              "Edit(**/.cargo/config*)" "Edit(**/rust-toolchain*)" "Edit(**/.npmrc)" "Edit(**/.nvmrc)"
+              "Edit(**/.tool-versions)" "Edit(**/package-lock.json)" "Edit(**/npm-shrinkwrap.json)" "Edit(**/yarn.lock)"
+              "Edit(**/pnpm-lock.yaml)" "Edit(**/.lintstagedrc*)" "Edit(**/lint-staged.config.*)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
 
-      # Only a finished session whose patch makes the original spec pass may become a PR. The spec comes fresh
-      # from the artifact (the agent's commands could have changed qa-out/), and no secret is left in this job.
+      # The last step that holds the key: after it, code the agent wrote runs outside its sandbox. The key anywhere
+      # in the checkout blocks the upload (node_modules is bundled into the real-AI build) except in .git, which the
+      # agent cannot edit and git compresses. Exact key only: minified code is full of prefixes like sk-. Startup and
+      # preload variables are cleared and tools called by absolute path, since GitHub still prepends $GITHUB_PATH.
+      - name: Check the agent's output for the key
+        id: key-scan
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          if [ -n "$QA_KEY" ] && /usr/bin/grep -rqsF --exclude-dir=.git -- "$QA_KEY" .; then
+            echo "::error::The checkout holds the QA key after the fix session, so nothing is uploaded."
+            exit 1
+          fi
+
+      # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
       - name: Download the original spec
-        if: steps.fix.outcome == 'success'
+        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: 'qa-replay-{weekly,sync}'
+          pattern: 'qa-replay-{weekly,sync,android-sync}'
           path: qa-out-verify
           merge-multiple: true
       - name: Replay the spec on the patched code
         id: verify
-        if: steps.fix.outcome == 'success'
+        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
         env:
           QA_OUT: qa-out-verify
           SPEC: ${{ matrix.task.spec }}
         run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
 
+      # verify.json is deleted first and written here only, so publish never reads the agent's copy.
+      - name: Run the visual check on the patched tree
+        id: visual-with
+        if: steps.fix.outcome == 'success' && matrix.task.kind == 'visual' && !matrix.task.flow
+        run: |
+          rm -f "qa-out/fix/$QA_FP.verify.json"
+          passed=0
+          for _ in 1 2 3; do
+            if bunx playwright test --config .github/qa/playwright.config.ts --retries=0 "qa-out/fix-$QA_FP/repro/check.spec.ts"; then
+              passed=$((passed + 1))
+            fi
+          done
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
       - *stop-stack
+
+      - name: Run the visual check without the patch
+        id: visual
+        if: steps.fix.outcome == 'success' && matrix.task.kind == 'visual' && !matrix.task.flow
+        env:
+          WITH: ${{ steps.visual-with.outputs.passed }}
+        run: |
+          mkdir -p qa-out/fix
+          rm -f "qa-out/fix/$QA_FP.verify.json"
+          # The backend serves from the working tree, so the patch is stashed (ignored qa-out*/ and qa-dist*/ stay).
+          # The trap restores it for "Collect the patch", also after a failure, and pops only a stash this step made.
+          stash=$(git rev-parse --quiet --verify refs/stash || true)
+          trap '[ "$(git rev-parse --quiet --verify refs/stash || true)" = "$stash" ] || git stash pop --quiet' EXIT
+          # A stash is a commit, and the runner has no git identity.
+          git -c user.name=qa -c user.email=qa@localhost stash push --include-untracked --quiet
+          .github/qa/scripts/stack.sh start qa-dist qa-dist-onboarding
+          passed=0
+          for _ in 1 2 3; do
+            if bunx playwright test --config .github/qa/playwright.config.ts --retries=0 "qa-out/fix-$QA_FP/repro/check.spec.ts"; then
+              passed=$((passed + 1))
+            fi
+          done
+          .github/qa/scripts/stack.sh stop
+          jq --null-input --argjson without "$passed" --argjson with "$WITH" \
+            '{failsWithout: ($without == 0), passesWith: ($with == 3)}' > "qa-out/fix/$QA_FP.verify.json"
+
+      # verify-real serves this build from a fresh checkout: the provider keys must never enter this job, whose
+      # tree and tools the agent's commands could have changed.
+      - name: Build the patched frontend for the real-AI check
+        id: real-build
+        if: steps.fix.outcome == 'success' && matrix.task.real && matrix.task.spec
+        run: .github/qa/scripts/stack.sh build "$RUNNER_TEMP/qa-dist-fix"
 
       - name: Collect the patch
         if: always()
         env:
           SPEC: ${{ matrix.task.spec }}
+          FLOW: ${{ matrix.task.kind == 'spec' && matrix.task.flow || '' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
-          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          # Any outcome but success (failure, skipped, cancelled, none) of a check the task needs means no PR.
+          NEEDS_REPLAY: ${{ matrix.task.spec && !matrix.task.real && 'true' || '' }}
+          NEEDS_VISUAL: ${{ matrix.task.kind == 'visual' && !matrix.task.flow && 'true' || '' }}
+          NEEDS_REAL_BUILD: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
+          REPLAY: ${{ steps.verify.outcome }}
+          VISUAL: ${{ steps.visual.outcome }}
+          REAL_BUILD: ${{ steps.real-build.outcome }}
         run: |
           mkdir -p qa-out/fix
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
+          diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
           if [ "$FIX_OUTCOME" != success ]; then
-            echo "The fix session did not finish (step outcome: $FIX_OUTCOME), so its patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"
-          elif [ "$VERIFY_OUTCOME" != success ]; then
-            echo "The repro spec still fails on the patched code, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"
+            diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
+          elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
+            diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
+          elif [ -n "$NEEDS_VISUAL" ] && [ "$VISUAL" != success ]; then
+            diagnose "The visual check did not run without and with the patch (step outcome: ${VISUAL:-none})"
+          elif [ -n "$NEEDS_REAL_BUILD" ] && [ "$REAL_BUILD" != success ]; then
+            diagnose "The patched frontend for the real-AI check did not build (step outcome: ${REAL_BUILD:-none})"
           fi
           git add --all
           git diff --cached --binary HEAD > "qa-out/fix/$QA_FP.patch"
-          cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"
+          # The repro as the agent left it; publish refuses the patch when it differs from the original.
+          if [ -n "$SPEC" ]; then cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"; fi
+          if [ -n "$FLOW" ]; then cp "$FLOW" "qa-out/fix/$QA_FP.yaml"; fi
 
       - name: Record the session metrics
         if: always()
@@ -786,35 +1279,242 @@ jobs:
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
           bun .github/qa/scripts/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
 
-      # The agent could write anything under qa-out/fix/, and artifacts are public: a secret in it means no upload.
-      # JWT-shaped strings are left to publish's own check, because repo test fixtures contain some.
+      # Token shapes only, since no later step holds the key; JWT shapes are left to publish's check because repo
+      # test fixtures contain some. Patched code ran in earlier steps and could have changed $GITHUB_ENV or
+      # $GITHUB_PATH, hence the cleared variables and absolute paths.
       - name: Check the fix output for secrets
         id: secret-scan
         if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
         env:
-          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
         run: |
-          if { [ -n "$QA_KEY" ] && grep -rqF -- "$QA_KEY" qa-out/fix/; } ||
-            grep -rqE '\bsk-[[:alnum:]_-]{8,}|lin_(api|oauth)_|gh[pousr]_[[:alnum:]]{20,}|github_pat_|xox[bp]-' qa-out/fix/; then
-            echo "::error::qa-out/fix/ contains a secret, so nothing is uploaded."
+          out=(qa-out/fix/)
+          if [ -d "qa-out/fix-$QA_FP/repro" ]; then out+=("qa-out/fix-$QA_FP/repro/"); fi
+          if /usr/bin/grep -rqE '\bsk-[[:alnum:]_-]{8,}|lin_(api|oauth)_|gh[pousr]_[[:alnum:]]{20,}|github_pat_|xox[bp]-' "${out[@]}"; then
+            echo "::error::The fix output contains a secret, so nothing is uploaded."
             exit 1
           fi
-      - if: always() && steps.secret-scan.outcome == 'success'
+      # Carries verify.json, which verify-native and publish read. The artifact's root is qa-out/.
+      - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-${{ matrix.task.fp }}
-          path: qa-out/fix/
+          path: |
+            qa-out/fix/
+            qa-out/fix-${{ matrix.task.fp }}/repro/*
           retention-days: 7
-      - if: always() && steps.secret-scan.outcome == 'success'
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          matrix.task.real && matrix.task.spec
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-dist-${{ matrix.task.fp }}
+          path: ${{ runner.temp }}/qa-dist-fix/
+          if-no-files-found: ignore
+          retention-days: 1
+      - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-session-${{ matrix.task.fp }}
           path: qa-out/fix-*/session.json
           retention-days: 7
 
+  # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run, on a fresh
+  # checkout the patch never ran in.
+  verify-native-build:
+    name: verify-native-build ${{ matrix.check.fp }} ${{ matrix.check.platform }}
+    needs: [build, file, fix]
+    if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.file.outputs.plan).verifyNative }}
+    env:
+      QA_PLATFORM: ${{ matrix.check.platform }}
+      QA_APP_FILE: ${{ matrix.check.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+      QA_FP: ${{ matrix.check.fp }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun-linux
+      - *install
+      - *setup-java
+      - *native-build-tools
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-fix-${{ matrix.check.fp }}
+          path: qa-out
+      - name: Build the app with the patch
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          SESSION: ${{ matrix.check.session }}
+        run: |
+          # Nothing to check: publish hands the ticket to a person.
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then exit 0; fi
+          .github/qa/scripts/native.sh verify-build "$QA_PLATFORM" "qa-out/fix/$QA_FP.patch" "$SESSION" "$RUNNER_TEMP/qa-patched"
+          # Only the app: the out dir also holds the build's tauri.conf.json.
+          tar -cf "$RUNNER_TEMP/qa-patched/app.tar" -C "$RUNNER_TEMP/qa-patched" "$QA_APP_FILE"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          path: ${{ runner.temp }}/qa-patched/app.tar
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # No patched app means no verdict, which publish reads as a failure.
+  verify-native-run:
+    name: verify-native-run ${{ matrix.check.fp }} ${{ matrix.check.platform }}
+    needs: [build, build-native, file, verify-native-build]
+    if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.file.outputs.plan).verifyNative }}
+    env:
+      QA_PLATFORM: ${{ matrix.check.platform }}
+      QA_APP_FILE: ${{ matrix.check.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+      QA_FP: ${{ matrix.check.fp }}
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        id: patched
+        continue-on-error: true
+        with:
+          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          path: ${{ runner.temp }}/apps/patched
+      # No app, no verdict: the device steps below skip themselves on this flag.
+      - if: steps.patched.outcome != 'success'
+        run: echo "QA_NO_DEVICE=true" >> "$GITHUB_ENV"
+      - *checkout
+      - *setup-bun
+      - *restore-bun-linux
+      - *install
+      - *setup-java
+      - *device-tools
+      - if: steps.patched.outcome == 'success' && matrix.check.unpatched
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-native-${{ matrix.check.platform }}${{ startsWith(matrix.check.session, 'c1-first-run-') && '-onboarding' || '' }}
+          path: ${{ runner.temp }}/apps/original
+      - *unpack-apps
+      # Downloaded after the fix artifact, so the files from before the fix agent ran win.
+      - if: steps.patched.outcome == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-fix-${{ matrix.check.fp }}
+          path: qa-out
+      - *download-replay
+      - if: steps.patched.outcome == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-verified-weekly
+          path: qa-out
+      - *device
+      - name: Start the stack
+        if: steps.patched.outcome == 'success'
+        run: .github/qa/scripts/stack.sh start native
+      - name: Run the flow on the patched app
+        if: steps.patched.outcome == 'success'
+        env:
+          FLOW: ${{ matrix.check.flow }}
+          SESSION: ${{ matrix.check.session }}
+          ORIGINAL: ${{ matrix.check.unpatched && format('{0}/apps/original/{1}', runner.temp, env.QA_APP_FILE) || '' }}
+        run: |
+          .github/qa/scripts/native.sh verify-run "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/patched/$QA_APP_FILE" \
+            "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"}
+      - if: always() && steps.patched.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-verify-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          path: qa-out/verify/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Isolated like the real replay leg: a fresh checkout's backend serves the frontend the fix job built, so the
+  # patch reaches no process that holds a key.
+  verify-real:
+    name: verify-real ${{ matrix.task.fp }}
+    needs: [build, file, fix]
+    if: ${{ !cancelled() && needs.file.outputs.real != '' && fromJSON(needs.file.outputs.real)[0] != null }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.file.outputs.real) }}
+    env:
+      QA_OUT: qa-out
+      QA_FP: ${{ matrix.task.fp }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - *restore-browsers
+      - *install-browsers
+      - *download-replay
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        id: dist
+        continue-on-error: true
+        with:
+          name: qa-fix-dist-${{ matrix.task.fp }}
+          path: qa-dist-fix
+      - name: Start the stack on the real providers
+        if: steps.dist.outcome == 'success'
+        env:
+          QA_REAL_PROVIDERS: 'true'
+          QA_BACKEND_USER: qa-backend
+          ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          TINFOIL_API_KEY: ${{ secrets.QA_TINFOIL_API_KEY }}
+          TINFOIL_ENCLAVE_URL: ${{ secrets.QA_TINFOIL_ENCLAVE_URL }}
+          EXA_API_KEY: ${{ secrets.QA_EXA_API_KEY }}
+        run: .github/qa/scripts/stack.sh start qa-dist-fix
+      - name: Take root away from the job's user
+        if: steps.dist.outcome == 'success'
+        run: .github/qa/scripts/stack.sh lock
+      - name: Replay the spec on the patched frontend
+        id: replay
+        if: steps.dist.outcome == 'success'
+        continue-on-error: true
+        env:
+          SPEC: ${{ matrix.task.spec }}
+        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"
+      - name: Record the result
+        if: always()
+        env:
+          PASSED: ${{ steps.replay.outcome == 'success' }}
+        run: |
+          mkdir -p qa-out/verify
+          jq --null-input --argjson passed "$PASSED" '{passed: $passed}' > "qa-out/verify/$QA_FP.real.json"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-verify-${{ matrix.task.fp }}-real
+          path: qa-out/verify/
+          retention-days: 7
+
   publish:
     name: publish ${{ matrix.task.fp }}
-    needs: [build, file, fix]
+    needs: [build, file, fix, verify-native-run, verify-real]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -836,7 +1536,11 @@ jobs:
       # install a pre-commit hook that runs formatters over the agent's patch.
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      # The original specs and the plan come from before the fix agent ran; only its patch comes from the fix job.
+      # The original specs and the plan are downloaded after the fix output, so the pre-fix files win.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-fix-${{ matrix.task.fp }}
+          path: qa-out
       - *download-replay
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -844,16 +1548,43 @@ jobs:
           path: qa-out
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-fix-${{ matrix.task.fp }}
-          path: qa-out/fix
+          pattern: qa-verify-${{ matrix.task.fp }}-*
+          path: qa-out/verify
+          merge-multiple: true
+      # checkPatch does not read these, so this step requires them; a missing verdict fails.
+      - name: Require the native and real-AI checks
+        env:
+          REAL: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
+          NATIVE_VISUAL: ${{ matrix.task.kind == 'visual' && matrix.task.flow && matrix.task.platform || '' }}
+        run: |
+          # The fix job's own diagnosis says why; no verify ran on a patch that was never meant to be published.
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ]; then exit 0; fi
+          fail() { echo "$1" >> "qa-out/fix/$QA_FP.diagnosis.md"; }
+          for platform in $(jq --raw-output --arg fp "$QA_FP" '.verifyNative[] | select(.fp == $fp) | .platform' qa-out/fix-plan.json); do
+            jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.$platform.json" > /dev/null 2>&1 ||
+              fail "The flow still fails on the native platform ($platform), so the patch is not published. That run used the patched app and the backend from before the patch."
+          done
+          if [ -n "$REAL" ]; then
+            jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.real.json" > /dev/null 2>&1 ||
+              fail "The repro spec still fails on the real AI providers, so the patch is not published. That run used the patched frontend and the backend from before the patch."
+          fi
+          # A native visual check's result reaches checkPatch as verify.json, never the copy the agent could write.
+          if [ -n "$NATIVE_VISUAL" ]; then
+            rm -f "qa-out/fix/$QA_FP.verify.json"
+            if [ -f "qa-out/verify/$QA_FP.$NATIVE_VISUAL.json" ]; then
+              cp "qa-out/verify/$QA_FP.$NATIVE_VISUAL.json" "qa-out/fix/$QA_FP.verify.json"
+            fi
+          fi
 
       - name: Create the GitHub App token
         id: app-token
         if: needs.build.outputs.live == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
+        # The app's other permissions, and every other repository it is installed on, stay out of the token.
+        with: &app-token
           client-id: ${{ secrets.QA_APP_CLIENT_ID }}
           private-key: ${{ secrets.QA_APP_PRIVATE_KEY }}
+          repositories: thunderbolt
           permission-contents: write
           permission-pull-requests: write
 
@@ -870,11 +1601,48 @@ jobs:
       - name: Publish a draft PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
+  # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get, which
+  # fails if the app lacks a requested permission, and writes nothing.
+  app-check:
+    if: github.event_name == 'workflow_dispatch' && inputs.app_check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: qa-agent
+    permissions: {}
+    steps:
+      - name: Create the GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with: *app-token
+      - name: Check that the token reaches only this repository
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          echo "App: $APP_SLUG"
+          repos=$(gh api /installation/repositories --jq '[.repositories[].full_name]')
+          echo "Repositories the token reaches: $repos"
+          jq --exit-status --arg repo "$GITHUB_REPOSITORY" '. == [$repo]' <<< "$repos" > /dev/null
+
   report:
-    needs: [build, explore, replay, judge, file, fix, publish]
+    needs:
+      - build
+      - explore
+      - build-native
+      - explore-native
+      - replay
+      - replay-native
+      - judge
+      - file
+      - fix
+      - verify-native-build
+      - verify-native-run
+      - verify-real
+      - publish
     if: ${{ always() && needs.build.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -892,7 +1660,7 @@ jobs:
       - continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: '{qa-explore-*,qa-sync-*,qa-real-*,qa-fix-session-*,qa-verified-weekly,qa-filed}'
+          pattern: '{qa-explore-*,qa-sync-*,qa-real-*,qa-ios-*,qa-android-*,qa-fix-session-*,qa-verified-weekly,qa-filed}'
           path: qa-out
           merge-multiple: true
       - continue-on-error: true
@@ -904,24 +1672,21 @@ jobs:
 
       - name: Report
         env:
-          LEGS: ${{ needs.build.outputs.legs }}
+          LEGS: ${{ needs.explore.result != 'skipped' && needs.build.outputs.legs || '[]' }}
+          NATIVE_LEGS: ${{ needs.explore-native.result != 'skipped' && needs.build.outputs.nativeLegs || '[]' }}
           CANARIES: ${{ needs.build.outputs.canaries }}
-          EXPLORE_RESULT: ${{ needs.explore.result }}
         run: |
-          # Session metrics come from each explore job's result message, here rather than in the explorer's job.
-          # A leg without one (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
-          if [ "$EXPLORE_RESULT" != skipped ]; then
-            jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS" | while read -r out charter; do
-              timed_out=()
-              if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
-              bun .github/qa/scripts/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
-                --out "$out" "${timed_out[@]}"
-            done
-          fi
+          # A leg without a result message (a crash, a tripwire, a timeout) still gets a session, marked error/timeout.
+          jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS $NATIVE_LEGS" | while read -r out charter; do
+            timed_out=()
+            if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
+            bun .github/qa/scripts/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
+              --out "$out" "${timed_out[@]}"
+          done
           # Missing when the guard failed; report.ts needs the directory to exist.
           mkdir -p qa-out
-          # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id),
-          # while the jobs stayed green. Write both reports, then fail the step so notify-on-failure fires.
+          # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id) while
+          # the jobs stayed green: write both reports, then fail so notify-on-failure fires.
           status=0
           bun .github/qa/scripts/report.ts summary --out qa-out || status=1
           if [ "$CANARIES" = 0 ]; then
@@ -942,8 +1707,85 @@ jobs:
           HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
 
+  # By hand only: the calibration build must make the layout check report the covered Email field.
+  native-control:
+    name: native-control ${{ matrix.target.platform }}
+    if: vars.QA_AGENT_ENABLED == 'true' && inputs.native_control && !inputs.app_check
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { platform: ios, runner: macos-latest }
+          - { platform: android, runner: ubuntu-latest }
+    env:
+      QA_PLATFORM: ${{ matrix.target.platform }}
+      QA_APP_FILE: ${{ matrix.target.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+      # Its "Analyze with AI" banner otherwise fills a failed run's error.
+      MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun-linux
+      - *install
+      - *setup-java
+      - *native-build-tools
+      - *device-tools
+      - name: Build the control app
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: .github/qa/scripts/native.sh build "$QA_PLATFORM" "$RUNNER_TEMP/qa-control-app" control
+      # Only this job builds before it boots the emulator, and only it stalled on the storage check.
+      - name: Stop the Gradle daemons
+        if: matrix.target.platform == 'android'
+        working-directory: src-tauri/gen/android
+        run: ./gradlew --stop
+      - *device
+      - name: Install the control app
+        run: .github/qa/scripts/native.sh install "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/qa-control-app/$QA_APP_FILE"
+      - name: Start the stack
+        run: .github/qa/scripts/stack.sh start native
+      - name: Run the positive control
+        run: .github/qa/scripts/native.sh control "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/qa-control"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-native-control-${{ matrix.target.platform }}
+          path: ${{ runner.temp }}/qa-control/
+          if-no-files-found: ignore
+          retention-days: 7
+      # The folder above holds the WebView log; a failed control also needs the backend's.
+      - name: Upload the stack log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-logs-control-${{ matrix.target.platform }}
+          path: ${{ runner.temp }}/qa-stack.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   notify:
-    needs: [build, explore, replay, judge, file, fix, publish, report]
+    needs:
+      - build
+      - explore
+      - build-native
+      - explore-native
+      - replay
+      - replay-native
+      - judge
+      - file
+      - fix
+      - verify-native-build
+      - verify-native-run
+      - verify-real
+      - publish
+      - report
+      - native-control
     if: ${{ always() && !cancelled() && needs.build.result != 'skipped' && github.ref == 'refs/heads/main' }}
     permissions:
       actions: read

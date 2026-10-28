@@ -1,0 +1,10 @@
+[
+  "[qa-layout] unnamed-control checkbox \"after Consent\"",
+  "[qa-layout] unnamed-control textbox \"after Consent\"",
+  "[qa-layout] unnamed-control switch \"after Consent\"",
+  "[qa-layout] unnamed-control button \"copy icon after Messages\"",
+  "[qa-layout] unnamed-control button \"trash-2 icon after Messages\"",
+  "[qa-layout] unnamed-control button \"after Theme\"",
+  "[qa-layout] unnamed-control button \"#theme-toggle\"",
+  "[qa-layout] unnamed-control textbox \"[data-testid=search-field]\""
+]

@@ -2,7 +2,7 @@
 
 ## Privacy Policy - [[PAGE]](https://www.thunderbird.net/en-US/privacy/)
 
-Event tracking respects user privacy settings and can be disabled through the application settings. No personally identifiable information is collected without explicit user consent.
+Event tracking is on by default, respects user privacy settings, and can be turned off in the application settings; turning it off covers every device that syncs the account. No personally identifiable information is collected without explicit user consent.
 
 ## Event Tracking
 
@@ -139,12 +139,14 @@ Diagnostic events for investigating app initialization time. All timing values a
   - `bundle_evaluated_ms` - entry bundle downloaded, parsed and evaluated
   - `app_mounted_ms` - first render of the root React component
   - `step0_fetch_config_ms` … `step8_initialize_posthog_ms` - duration of each init step. `src/lib/init-timing.ts` emits one `<label>_ms` property per recorded step, so the set follows the `time('…')` call sites in `src/hooks/use-app-initialization.ts` rather than a fixed list — a new step appears on the event automatically, and this list needs updating when one is added. Besides the numbered steps it currently carries `step0_5_storage_check_ms`, `step2b_db_ready_ms` (the first trivial query, which pays PowerSync's deferred ready gate), `step2c_returning_boot_probe_ms`, `step2d_build_search_index_ms` (the unified full-text index, rebuilt only when missing or after a schema-version bump) and `step4b_run_data_migrations_ms`. `step6_create_http_client_ms` is recorded only when the app builds its own HTTP client rather than receiving an injected one.
-  - `init_total_ms` - total pipeline duration
+  - `init_total_ms` - total pipeline duration, including deferred analytics
   - `init_run` - run counter (greater than 1 means the user retried after an init error)
   - `initial_sync_outcome` - how the initial-sync gate resolved: `disabled`, `synced`, `timed_out`, `failed`, or `skipped_returning` when the returning-boot fast path started the sync in the background instead of waiting. Expect `skipped_returning` to dominate on established devices.
   - `init_path` - `returning` when that fast path applied, `fresh` otherwise
   - `sync_enabled`, `platform` - segmentation context
-- `app_chat_ready` - Fired at most once per session when the first chat finishes hydrating (with `chat_ready_ms`). Together with `app_init_timing`, this captures the user-perceived time to a usable chat.
+- `app_chat_ready` - Fired at most once per session when the first chat finishes hydrating (with `chat_ready_ms`). This measures data readiness before React commits; use `app_content_ready` and visual checks for the subsequent render.
+- `app_content_ready` - Fired once after committed chat content has had a rendering opportunity. Includes `content_ready_ms` (from navigation) and `spinner_to_content_ms` (from the first startup spinner commit). Existing chats wait for the lazy message-list boundary. This is not a compositor-paint or overlay-dismissal guarantee.
+- `app_init_timing.init_core_ms` - Blocking initialization duration, excluding deferred analytics. `init_total_ms` still includes deferred analytics. `step2d_build_search_index_ms` remains part of startup when PowerSync is available. Early startup events are buffered until analytics attaches, with their original timing values and normal consent behavior.
 
 #### Sync Diagnostics (`sync_*`)
 

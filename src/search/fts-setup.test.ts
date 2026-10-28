@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Database } from 'bun:sqlite'
+import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
+import { LockContext, type RawQueryResult, type SqliteRecord, type Transaction } from '@powersync/common'
+import { AppSchema } from '@/db/powersync/schema'
 import type { SearchEntityConfig } from './registry'
-import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql } from './fts-setup'
-import { searchEntities } from './registry'
+import { buildBackfillSql, buildCreateSql, buildDropSql, buildTriggerSql, createSearchIndex } from './fts-setup'
+import { searchEntities, searchIndexVersion } from './registry'
 
 const configOf = (type: string): SearchEntityConfig => {
   const cfg = searchEntities.find((entity) => entity.type === type)
@@ -252,5 +254,120 @@ describe('FTS SQL end-to-end against real SQLite', () => {
     expect(search(db, 'keep*').map((row) => row.id)).toEqual(['keep'])
     expect(search(db, 'skip*')).toHaveLength(0)
     db.close()
+  })
+})
+
+describe('createSearchIndex transactions', () => {
+  /** Uses real SQLite rollback with a queue matching PowerSync's exclusive write-transaction contract. */
+  const makeDatabase = (beforeExecute: (sql: string) => Promise<void>) => {
+    const sqlite = new Database(':memory:')
+    for (const cfg of searchEntities) {
+      const table = AppSchema.tables.find((candidate) => candidate.name === cfg.tableName)!
+      sqlite.run(`CREATE TABLE ${table.internalName} (id TEXT PRIMARY KEY, data TEXT)`)
+    }
+    const transaction = new (class extends LockContext implements Transaction {
+      async executeRaw(sql: string, parameters: SQLQueryBindings[] = []): Promise<RawQueryResult> {
+        await beforeExecute(sql)
+        const statement = sqlite.query<SqliteRecord, SQLQueryBindings[]>(sql)
+        const rows = statement.all(...parameters)
+        const columnNames = statement.columnNames
+        return { columnNames, rawRows: rows.map((row) => columnNames.map((name) => row[name])) }
+      }
+      async commit() {
+        sqlite.run('COMMIT')
+      }
+      async rollback() {
+        sqlite.run('ROLLBACK')
+      }
+    })()
+    const queue: Promise<void>[] = []
+    const powerSync: Parameters<typeof createSearchIndex>[0] = {
+      writeTransaction: async <T>(callback: (tx: Transaction) => Promise<T>): Promise<T> => {
+        const previous = queue.at(-1)
+        const completion = Promise.withResolvers<void>()
+        queue.push(completion.promise)
+        await previous
+        sqlite.run('BEGIN IMMEDIATE')
+        try {
+          const result = await callback(transaction)
+          await transaction.commit()
+          return result
+        } catch (error) {
+          await transaction.rollback()
+          throw error
+        } finally {
+          completion.resolve()
+        }
+      },
+    }
+    return { sqlite, powerSync }
+  }
+
+  it('rolls back an interrupted same-version repair and retries without accepting a partial index', async () => {
+    const lastEntity = searchEntities.at(-1)!
+    const table = AppSchema.tables.find((candidate) => candidate.name === lastEntity.tableName)!
+    const lastBackfill = buildBackfillSql(lastEntity, table.internalName)
+    const failure = { enabled: false }
+    const { sqlite, powerSync } = makeDatabase(async (sql) => {
+      if (failure.enabled && sql === lastBackfill) {
+        throw new Error('Interrupted last backfill')
+      }
+    })
+    const insert = (id: string) =>
+      sqlite.run(`INSERT INTO ${table.internalName} (id, data) VALUES (?, ?)`, [id, JSON.stringify({ item: id })])
+    const indexedIds = () => sqlite.query('SELECT id FROM search_index ORDER BY id').all()
+    const triggerCount = () =>
+      sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'").all().length
+    try {
+      insert('original')
+      await createSearchIndex(powerSync)
+      sqlite.run(`DROP TRIGGER search_index_ai_${lastEntity.type}`)
+      insert('missed')
+      failure.enabled = true
+
+      await expect(createSearchIndex(powerSync)).rejects.toThrow('Interrupted last backfill')
+      expect(indexedIds()).toEqual([{ id: 'original' }])
+      expect(triggerCount()).toBe(searchEntities.length * 3 - 1)
+      expect(sqlite.query('SELECT version FROM search_index_meta').all()).toEqual([{ version: searchIndexVersion }])
+
+      failure.enabled = false
+      await createSearchIndex(powerSync)
+      expect(indexedIds()).toEqual([{ id: 'missed' }, { id: 'original' }])
+      expect(triggerCount()).toBe(searchEntities.length * 3)
+      insert('subsequent')
+      expect(indexedIds()).toEqual([{ id: 'missed' }, { id: 'original' }, { id: 'subsequent' }])
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('validates inside the write lock so concurrent callers build only once', async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const creates: string[] = []
+    const { sqlite, powerSync } = makeDatabase(async (sql) => {
+      if (sql === buildCreateSql()) {
+        creates.push(sql)
+        entered.resolve()
+        await release.promise
+      }
+    })
+    try {
+      const first = createSearchIndex(powerSync)
+      const second = createSearchIndex(powerSync)
+      await entered.promise
+      expect(creates).toHaveLength(1)
+      release.resolve()
+      await Promise.all([first, second])
+
+      expect(creates).toHaveLength(1)
+      expect(sqlite.query('SELECT version FROM search_index_meta').all()).toEqual([{ version: searchIndexVersion }])
+      expect(
+        sqlite.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'search_index_a%'").all(),
+      ).toHaveLength(searchEntities.length * 3)
+    } finally {
+      release.resolve()
+      sqlite.close()
+    }
   })
 })

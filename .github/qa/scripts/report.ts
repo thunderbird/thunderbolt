@@ -5,12 +5,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import type { Canary } from './canaries'
-import { type Filed, sanitize, type Scorecard } from './file-findings'
-import { type FindingFile, loadFindings, realAiCharters } from './findings'
+import type { Filed, Scorecard } from './file-findings'
+import { sanitize } from './sanitize'
+import { type FindingFile, loadFindings, parseSession, realAiCharters } from './findings'
+import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
@@ -59,8 +61,7 @@ const readJson = async <T>(path: string): Promise<T | undefined> => {
 
 /**
  * Session metrics from a claude-code-action execution file (a JSON array of SDK messages ending in the
- * `result` message). Tokens are summed from `modelUsage`: on a budget cut `usage` is all zeros.
- * A missing file or result message is `timeout` when the job timed out, otherwise `error`.
+ * `result` message).
  */
 export const sessionFromExecution = async (path: string, charter: string, timedOut = false): Promise<Session> => {
   // A job killed mid-write leaves a truncated file: the session was cut, and its numbers are unknown.
@@ -85,7 +86,6 @@ export const sessionFromExecution = async (path: string, charter: string, timedO
   }
 }
 
-/** Suggested cap = max observed + 50%; undefined without samples. A run has at most nine sessions per step. */
 export const suggestCap = (samples: number[]) => (samples.length === 0 ? undefined : Math.max(...samples) * 1.5)
 
 type CanaryResult = {
@@ -94,6 +94,8 @@ type CanaryResult = {
   results: (Canary & { found: boolean })[]
   /** Confirmed findings not proven canary-caused (still failing on the normal build): real bugs, never counted. */
   real: string[]
+  /** Visual findings: confirmed from a screenshot with no baseline replay, so neither found nor real. */
+  unmeasured: string[]
 }
 
 const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
@@ -102,7 +104,7 @@ const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir
  * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build
  * without failing, so the reverted fixes caused it. Area, oracle type and wording are not compared: the explorer
  * files the same bug under different ones. A finding the baseline never ran, or ran on an unhealthy stack, is not
- * proven canary-caused and counts as real.
+ * proven canary-caused and counts as real. A visual finding has no replay to check, so it counts as neither.
  */
 export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
   const caused = (f: VerifiedFinding) =>
@@ -115,16 +117,18 @@ export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], b
         file.replay.runs > 0 &&
         file.replay.failed === 0,
     )
+  const isVisual = (f: VerifiedFinding) => f.finding.oracle.type === 'visual'
   const results = canaries.map((c) => ({ ...c, found: findings.some((f) => f.charterDir === c.charter && caused(f)) }))
   return {
     found: results.filter((r) => r.found).length,
     total: results.length,
     results,
-    real: findings.filter((f) => !caused(f)).map(findingId),
+    real: findings.filter((f) => !isVisual(f) && !caused(f)).map(findingId),
+    unmeasured: findings.filter(isVisual).map(findingId),
   }
 }
 
-/** One entry of `.github/qa/functions.json`: what must work in an area, and whether it must survive a reload. */
+/** One entry of `.github/qa/functions.json`; `reload` means the outcome must survive a reload. */
 export type QaFunction = { id: string; outcome: string; reload?: boolean }
 
 const attemptSchema = z.object({
@@ -143,26 +147,42 @@ export type AttemptFile = { id: string; attempt?: Attempt }
 export type TranscriptMessage = {
   message: {
     content: (
-      | { type: 'tool_use'; id: string; name: string; input?: { file_path?: string } }
+      | { type: 'tool_use'; id: string; name: string; input?: { file_path?: string; yaml?: string } }
       | { type: 'tool_result'; tool_use_id: string; content: string }
     )[]
   }
 }
-type Step = { kind: 'call'; tool: string; path?: string } | { kind: 'result'; tool: string; text: string }
+type Step =
+  | { kind: 'call'; tool: string; path?: string; yaml?: string }
+  | { kind: 'result'; tool: string; text: string }
+
+const maestroPrefix = 'mcp__maestro__'
 
 const toSteps = (transcript: TranscriptMessage[]): Step[] => {
-  const blocks = transcript.flatMap((m) => m.message.content)
-  const names = new Map(blocks.flatMap((b) => (b.type === 'tool_use' ? [[b.id, b.name] as const] : [])))
+  const all = transcript.flatMap((m) => m.message.content)
+  const names = new Map(all.flatMap((b) => (b.type === 'tool_use' ? [[b.id, b.name] as const] : [])))
+  // A run the gate refused did nothing and its reply echoes the model's own text, so call and reply both go.
+  const denied = new Set(
+    all.flatMap((b) =>
+      b.type === 'tool_result' && names.get(b.tool_use_id)?.startsWith(maestroPrefix) && b.content.startsWith('denied:')
+        ? [b.tool_use_id]
+        : [],
+    ),
+  )
+  const blocks = all.filter((b) => !denied.has(b.type === 'tool_use' ? b.id : b.tool_use_id))
   return blocks.map(
     (b): Step =>
       b.type === 'tool_use'
-        ? { kind: 'call', tool: b.name, path: b.input?.file_path }
+        ? { kind: 'call', tool: b.name, path: b.input?.file_path, yaml: b.input?.yaml }
         : { kind: 'result', tool: names.get(b.tool_use_id) ?? '', text: b.content },
   )
 }
 
-/** `click` for `mcp__playwright__browser_click` (and device B's `mcp__playwright_b__…`); undefined for other tools. */
-const browserTool = (tool: string) => /^mcp__playwright(?:_b)?__browser_(\w+)$/.exec(tool)?.[1]
+/** The tool's short name, such as `click` (either browser) or `run` (Maestro); undefined for other tools. */
+const browserTool = (tool: string) => /^mcp__(?:playwright(?:_b)?__browser_|maestro__)(\w+)$/.exec(tool)?.[1]
+const readyLine = '[qa-layout] ready'
+/** The gate puts the probe's ready line on a line of its own, so text inside another line does not match. */
+const nativeReady = /^\[qa-layout\] ready/m
 const readOnlyTools = new Set([
   'snapshot',
   'console_messages',
@@ -172,20 +192,71 @@ const readOnlyTools = new Set([
   'find',
   'take_screenshot',
   'wait_for',
+  'inspect_screen',
+  'read_logs',
+  'cheat_sheet',
 ])
 const isAction = (step: Step) => {
   const tool = step.kind === 'call' ? browserTool(step.tool) : undefined
   return tool !== undefined && !readOnlyTools.has(tool)
 }
+/** The lines the MCP says a result added to its console log: `- New console entries: <path>#L<from>[-L<to>]`. */
+const consoleLink = /^- New console entries: (.+)#L(\d+)(?:-L(\d+))?$/m
+
+const readConsoleLog = (path: string) => readFile(resolve(path), 'utf8').catch(() => undefined)
+
+/**
+ * Where a console link points inside this session's directory. The explore runner wrote the link, absolute under
+ * `--file-paths absolute` or relative to its cwd, so everything before the `mcp/` or `mcp-b/` part is replaced.
+ */
+const sessionLogPath = (link: string, sessionDir: string) => {
+  const [, rest] = /^(?:.*\/)?(mcp(?:-b)?\/.+)$/.exec(link) ?? []
+  return rest ? join(sessionDir, rest) : link
+}
+
+const probeRan = async (result: string, sessionDir: string, readLog: (path: string) => Promise<string | undefined>) => {
+  const [, link, from, to = from] = consoleLink.exec(result) ?? []
+  const log = link ? await readLog(sessionLogPath(link, sessionDir)) : undefined
+  return (
+    log
+      ?.split('\n')
+      .slice(Number(from) - 1, Number(to))
+      .some((line) => line.includes(readyLine)) ?? false
+  )
+}
+
+/**
+ * Screens in a session and how many of them did not show `[qa-layout] ready`: page loads and native `run` calls.
+ * Back is not a load: it is a same-document history move in this SPA, and the probe runs on document loads only.
+ * The Playwright MCP puts no console text in a navigate result, only a link to the log lines the load wrote, so each
+ * link is followed under `sessionDir`. A load with no link counts as missing. The Maestro gate appends the ready
+ * line to a `run` result itself.
+ */
+export const probeGaps = async (
+  transcript: TranscriptMessage[],
+  sessionDir: string,
+  readLog = readConsoleLog,
+): Promise<{ loads: number; missing: number }> => {
+  const screens = toSteps(transcript).flatMap((step) => {
+    if (step.kind !== 'result') return []
+    if (browserTool(step.tool) === 'run') return [Promise.resolve(nativeReady.test(step.text))]
+    return browserTool(step.tool) === 'navigate' ? [probeRan(step.text, sessionDir, readLog)] : []
+  })
+  const ran = await Promise.all(screens)
+  return { loads: ran.length, missing: ran.filter((ok) => !ok).length }
+}
+// A relaunch, as the gate's allow list forces it: launchApp right after stopApp or killApp, as top-level commands.
+const relaunch = /^- (?:stopApp|killApp)\b[\s\S]*?^- launchApp\b/m
 const isNavigation = (step: Step) =>
-  step.kind === 'call' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
-/** The id of the attempt record a Write call wrote; undefined for every other step. */
+  step.kind === 'call' &&
+  (['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ||
+    (browserTool(step.tool) === 'run' && relaunch.test(step.yaml ?? '')))
 const recordWritten = (step: Step) =>
   step.kind === 'call' && step.tool === 'Write' ? /\/attempts\/([^/]+)\.json$/.exec(step.path ?? '')?.[1] : undefined
 
 /**
- * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers do not count,
- * so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
+ * Spacing, the JSON escapes of an evaluate result and the snapshot's `[ref=…]` and `[cursor=…]` markers
+ * do not count, so a quote may span snapshot lines and be copied from an evaluate result either escaped or not.
  */
 const normalize = (text: string) =>
   text
@@ -196,13 +267,25 @@ const normalize = (text: string) =>
     .trim()
 /** A browser tool echoes the code it ran, typed text included, which says nothing about the page. */
 const echoedCode = /### Ran Playwright code\n```\w*\n[\s\S]*?\n```/g
+/** What the gate adds to a Maestro reply on its own: the `run` success envelope, `[qa-gate]` notes, the saved path. */
+const gateText = /^(?:\{"success":|\[qa-gate\]|Saved to ).*$/gm
 const minQuote = 10
 
 /**
- * Why an attempt's `observed` quote is not backed by the transcript, or undefined when it is. The quote must be in a
- * browser tool's result within the attempt's window (from the previous record written after a browser action to
- * its own record), after a browser action in that window and, with `reload`, after a navigation that follows a
- * change in that window. The code a tool echoes back never counts.
+ * The part of a tool result that a quote may come from: what the app or the page showed. Native `cheat_sheet` and
+ * `take_screenshot` replies say nothing about the app, and the gate's own text is fixed, so none of it counts.
+ */
+const quotable = (step: Step) => {
+  const tool = browserTool(step.tool)
+  if (step.kind !== 'result' || tool === undefined) return ''
+  if (!step.tool.startsWith(maestroPrefix)) return step.text.replace(echoedCode, '')
+  return ['cheat_sheet', 'take_screenshot'].includes(tool) ? '' : step.text.replace(gateText, '')
+}
+
+/**
+ * Why an attempt's `observed` quote is not backed by the transcript. The quote must be in a browser tool's result
+ * within the attempt's window (from the previous record written after a browser action to its own record), after a
+ * browser action in that window and, with `reload`, after a navigation that follows a change in that window.
  */
 const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: Attempt }, reload: boolean) => {
   const end = steps.findLastIndex((step) => recordWritten(step) === id)
@@ -214,19 +297,13 @@ const evidenceProblem = (steps: Step[], { id, attempt }: { id: string; attempt: 
     1 +
     steps.findLastIndex((step, i) => i < end && recordWritten(step) !== undefined && steps.slice(i, end).some(isAction))
   const quoted = steps.flatMap((step, i) =>
-    i >= start &&
-    i < end &&
-    step.kind === 'result' &&
-    browserTool(step.tool) !== undefined &&
-    normalize(step.text.replace(echoedCode, '')).includes(quote)
-      ? [i]
-      : [],
+    i >= start && i < end && normalize(quotable(step)).includes(quote) ? [i] : [],
   )
   if (quoted.length === 0) return 'quote not in a browser tool result of this attempt'
   const first = (pick: (step: Step) => boolean) => steps.findIndex((step, i) => i >= start && pick(step))
   const action = first(isAction)
   if (!quoted.some((r) => action >= 0 && action < r)) return 'no browser action before the quoted result'
-  // ponytail: any reload after the window's first change counts, even one before the change under test; tie the
+  // shortcut: any reload after the window's first change counts, even one before the change under test; tie the
   // reload to the last change before the quote if sampled attempts show explorers exploiting it.
   const change = first((step) => isAction(step) && !isNavigation(step))
   if (reload && !quoted.some((r) => change >= 0 && steps.slice(change, r).some(isNavigation))) {
@@ -245,10 +322,9 @@ export type Coverage = {
 }
 
 /**
- * Evidence-supported coverage of one session. Every function in the area's list gets a verdict, so one without a
- * record is unattempted. A function is covered (passed or failed) only when one of its passed or failed attempts is
- * backed by the transcript (`evidenceProblem`); without a transcript none is. A passed attempt at a `reload`
- * function also needs the reload; a failed one does not.
+ * Evidence-supported coverage of one session. A function is covered (passed or failed) only when one of its passed or
+ * failed attempts is backed by the transcript (`evidenceProblem`); without a transcript none is. A passed attempt at
+ * a `reload` function also needs the reload; a failed one does not.
  */
 export const checkCoverage = (
   functions: QaFunction[],
@@ -289,6 +365,8 @@ type ReportInput = {
   filed?: Filed[]
   scorecard?: Scorecard
   canary?: CanaryResult
+  /** Sessions with page loads that lacked the layout probe, by session id. */
+  probe?: Map<string, { loads: number; missing: number }>
 }
 
 const stopLabel = {
@@ -306,6 +384,18 @@ const tokens = (s: Session) =>
 const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n', ' ')
 /** Model-written text for the public job summary: one line, no foreign links or images, capped. */
 const safe = (text: string, max: number) => sanitize(escapeCell(text), max)
+
+/** Sessions whose pages loaded without the layout probe, so a clean layout there proves nothing. */
+const probeSection = (probe: ReportInput['probe'] = new Map()) =>
+  probe.size === 0
+    ? []
+    : [
+        '',
+        '## Layout probe',
+        ...[...probe].map(
+          ([charter, { loads, missing }]) => `- **${charter}**: ${missing} of ${loads} screens without a measurement`,
+        ),
+      ]
 
 /** Free sessions record their metrics as `free-<case>-<platform>`: they play a case and have no function list. */
 const isFree = (charter: string) => charter.startsWith('free-')
@@ -341,13 +431,15 @@ const coverageParts = (charter: string, { verdicts, records, invalid, unknown, t
 const coverageLine = (charter: string, coverage?: Coverage) =>
   `- **${charter}**: ${(coverage ? coverageParts(charter, coverage) : ['no function list']).join('; ')}`
 
-/** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
+/** A security finding's text stays out of the public summary. */
 const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
   const text =
     finding.area === 'security'
       ? 'security finding, text withheld'
       : `${safe(finding.title, 150)} — ${finding.oracle.type}: "${safe(finding.oracle.evidence, 300)}"`
-  return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays)`
+  const inconclusive = replay.inconclusive ? `, ${replay.inconclusive} inconclusive` : ''
+  const reason = replay.reason ? `; ${safe(replay.reason, 200)}` : ''
+  return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays${inconclusive}${reason})`
 }
 
 /** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
@@ -398,7 +490,6 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
 /** One group of sessions' findings: how many the explorers wrote, what verify made of them, and what was filed. */
 type Findings = { found: number; verified?: Verified; filed?: Filed[] }
 
-/** The findings of the sessions whose charter directory `keep` selects. */
 const findingsOf = ({ found, verified, filed }: ReportInput, keep: (charterDir: string) => boolean): Findings => ({
   found: found.filter(keep).length,
   verified: verified && {
@@ -418,8 +509,10 @@ const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
   const afterReplay = afterLint - deferred('replay') - dropped('replay')
-  // Flaky findings are never judged, and a regression is a new ticket too.
-  const filedCount = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action)).length
+  // Flaky findings are never judged, and a regression is a new ticket too. A fingerprint is one ticket, however many
+  // findings (one per platform) share it.
+  const tickets = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action))
+  const filedCount = tickets && new Set(tickets.map((a) => a.fp)).size
   return [
     `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} ` +
       `(${verified.flaky.length} flaky, ${deferred('replay')} deferred) → judge ${verified.confirmed.length} ` +
@@ -427,7 +520,7 @@ const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   ]
 }
 
-/** Gate yield, the flaky, deferred and dropped lists, and what was filed; `label` tells two groups' sections apart. */
+/** `label` tells two groups' sections apart. */
 const findingsSection = ({ found, verified, filed }: Findings, label: string) => {
   const out: string[] = []
   if (verified) {
@@ -470,7 +563,6 @@ const cutNote = (s: Session) => {
   return isFree(s.charter) ? 'the case was not fully played' : 'the charter was not fully explored'
 }
 
-/** The free sessions, apart from the charters: one case on every platform, what each tried, and their findings. */
 const freeSection = ({ coverage }: ReportInput, free: Session[], findings: Findings) => [
   '',
   '## Free session',
@@ -488,7 +580,7 @@ const freeSection = ({ coverage }: ReportInput, free: Session[], findings: Findi
   ...findingsSection(findings, ' (free session)'),
 ]
 
-/** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
+/** Cut and failed sessions come first so an incomplete charter never looks clean. */
 export const renderReport = (input: ReportInput) => {
   const { sessions, coverage, verified, scorecard, canary } = input
   const out: string[] = ['# Weekly QA run']
@@ -522,6 +614,7 @@ export const renderReport = (input: ReportInput) => {
     'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
       'and after a reload where the function needs one.',
     ...chartered.map((s) => coverageLine(s.charter, coverage.get(s.charter))),
+    ...probeSection(input.probe),
     ...findingsSection(
       findingsOf(input, (charterDir) => !isFree(charterDir)),
       '',
@@ -539,6 +632,9 @@ export const renderReport = (input: ReportInput) => {
         (r) => `- ${r.found ? 'found' : '**MISSED**'} ${safe(r.title, 150)} (${r.sha.slice(0, 9)}, ${r.charter})`,
       ),
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
+      ...(canary.unmeasured.length > 0
+        ? [`Not measured (visual findings have no baseline replay): ${canary.unmeasured.join(', ')}`]
+        : []),
     )
   }
   const rows = calibrationRows(explore, fixes, verified?.judge_usage?.cost_usd)
@@ -579,7 +675,7 @@ const loadAttempts = async (charterDir: string): Promise<AttemptFile[]> => {
 
 /**
  * Writes `<outDir>/report.md` from everything the run produced, appends it to `stepSummary` when given, and says
- * whether nothing was explored. Coverage reads each session's attempt records and transcript against `functions.json`.
+ * whether nothing was explored.
  */
 export const runSummary = async (
   outDir: string,
@@ -590,17 +686,24 @@ export const runSummary = async (
   const lists: Record<string, QaFunction[]> = await Bun.file(join(qaDir, 'functions.json')).json()
   const functions = new Map(Object.entries(lists))
   const coverage = new Map<string, Coverage>()
+  const probe = new Map<string, { loads: number; missing: number }>()
   for (const s of sessions) {
     const dir = join(outDir, s.charter)
     const attempts = await loadAttempts(dir)
     // A free session has no list: each name it gave its own attempts counts as one function.
     const tried = new Set(attempts.flatMap((f) => (f.attempt ? [f.attempt.function] : [])))
-    const list = isFree(s.charter) ? [...tried].map((id) => ({ id, outcome: 'tried' })) : functions.get(s.charter)
-    if (list) {
-      // A save step cut short can leave a broken file: that session has no transcript.
-      const transcript = await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
-      coverage.set(s.charter, checkCoverage(list, attempts, transcript))
-    }
+    const list = isFree(s.charter)
+      ? [...tried].map((id) => ({ id, outcome: 'tried' }))
+      : isFix(s)
+        ? undefined
+        : functions.get(parseSession(s.charter).charter)
+    // A save step cut short can leave a broken file: that session has no transcript.
+    const transcript = isFix(s)
+      ? undefined
+      : await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
+    const gaps = transcript && (await probeGaps(transcript, dir))
+    if (gaps && gaps.missing > 0) probe.set(s.charter, gaps)
+    if (list) coverage.set(s.charter, checkCoverage(list, attempts, transcript))
   }
   const { valid, rejected } = await loadFindings(outDir)
   const report = renderReport({
@@ -611,6 +714,7 @@ export const runSummary = async (
     filed: await readJson<Filed[]>(join(outDir, 'filed.json')),
     scorecard: await readJson<Scorecard>(join(outDir, 'scorecard.json')),
     canary: await readJson<CanaryResult>(join(outDir, 'canary.json')),
+    probe,
   })
   await writeFile(join(outDir, 'report.md'), report)
   if (stepSummary) await appendFile(stepSummary, report)
@@ -618,17 +722,17 @@ export const runSummary = async (
 }
 
 /**
- * Canary leg: match its confirmed findings against the canaries `canaries.ts` picked and the baseline (the
- * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
- * the canary leg: the file job downloads only the weekly leg's `verified.json`. A dispatch's `charters` list runs only
- * some canary legs; the canaries of the others never ran, so they are left out rather than counted as missed.
+ * Canary leg: match its confirmed findings against the canaries and the baseline (the same findings replayed on the
+ * normal build), and write `canary.json`. The filer never sees the canary leg: the file job downloads only the weekly
+ * leg's `verified.json`. A dispatch's `charters` list runs only some canary legs; the canaries of the others never
+ * ran, so they are left out rather than counted as missed.
  */
 export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string, chartersInput = '') => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
   const picked: Canary[] = await Bun.file(canariesPath).json()
   const ran = chartersInput.split(/[ ,]+/).filter(Boolean)
-  const canaries = ran.length === 0 ? picked : picked.filter((c) => ran.includes(c.charter))
+  const canaries = picked.filter((c) => selects(ran, c.charter))
   const result = matchCanaries(canaries, verified.confirmed, baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
   return result

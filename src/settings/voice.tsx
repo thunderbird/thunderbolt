@@ -9,6 +9,7 @@
  * device-local (holds a key + machine-specific URL) and applies on the next voice
  * turn.
  */
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -97,6 +98,7 @@ const ComboField = ({
 
 export const VoiceSettingsPage = () => {
   const { t } = useLingui()
+  const appName = useAppName()
   const config = useLocalSettingsStore((s) => s.voiceProvider)
   const setLocalSetting = useLocalSettingsStore((s) => s.setLocalSetting)
   const [ui, setUi] = useState<{ conn: ConnState; models: DiscoveredModels | null; loadingModels: boolean }>({
@@ -141,7 +143,7 @@ export const VoiceSettingsPage = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="thunderbolt">
-                  <Trans>Thunderbolt (hosted, private)</Trans>
+                  <Trans>{appName} (hosted, private)</Trans>
                 </SelectItem>
                 <SelectItem value="openai-compatible">
                   <Trans>Custom — OpenAI-compatible endpoint</Trans>

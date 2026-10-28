@@ -1,4 +1,6 @@
-FROM journeyapps/powersync-service:latest
+# Pinned: Sync Streams need 1.20+, and 1.26+ fixes GHSA-hfrf-pvrg-5c3h. Bump together with
+# both compose files, deploy/k8s/values.yaml and its test, and deploy/docker/README.md.
+FROM journeyapps/powersync-service:1.27.0
 
 COPY deploy/config/powersync-config.yaml /config/config.yaml
 

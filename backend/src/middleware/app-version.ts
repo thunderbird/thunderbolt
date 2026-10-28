@@ -18,6 +18,7 @@ export const appVersionExemptPrefixes = [
   '/v1/health',
   '/static',
   '/v1/api/auth/sso',
+  '/v1/api/auth/error', // failed-SSO redirect target
   '/v1/api/auth/device',
   '/v1/posthog',
   '/v1/proxy/ws',

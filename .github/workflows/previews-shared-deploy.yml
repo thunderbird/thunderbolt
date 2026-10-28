@@ -11,7 +11,7 @@ name: Previews Shared Deploy
 #   - ECS cluster + CloudWatch log group
 #   - Cloud Map private DNS namespace (thunderbolt.local)
 #   - ALB + HTTPS listener
-#   - Postgres, Keycloak, PowerSync ECS Fargate services
+#   - Postgres and Keycloak ECS Fargate services
 #   - Shared secrets (AI provider keys, postgres pwd, JWT secret, etc.)
 #
 # Per-PR `preview-pr-*` stacks consume this via Pulumi StackReference; see
@@ -26,18 +26,13 @@ on:
         default: 'previews-shared'
         required: true
       version:
-        description: 'Image tag for postgres / keycloak / powersync containers (default: package.json version)'
+        description: 'Image tag for postgres / keycloak containers (default: package.json version)'
         type: string
         required: false
       auth_hostname:
         description: 'Public hostname for the shared Keycloak'
         type: string
         default: 'auth.shared.preview.thunderbolt.io'
-        required: true
-      powersync_hostname:
-        description: 'Public hostname for the shared PowerSync'
-        type: string
-        default: 'powersync.shared.preview.thunderbolt.io'
         required: true
       region:
         description: 'AWS region'
@@ -100,7 +95,6 @@ jobs:
           INPUT_STACK_NAME: ${{ inputs.stack_name || 'previews-shared' }}
           INPUT_VERSION: ${{ steps.version.outputs.version }}
           INPUT_AUTH_HOSTNAME: ${{ inputs.auth_hostname || 'auth.shared.preview.thunderbolt.io' }}
-          INPUT_POWERSYNC_HOSTNAME: ${{ inputs.powersync_hostname || 'powersync.shared.preview.thunderbolt.io' }}
           INPUT_GHCR_PAT: ${{ secrets.GHCR_PAT }}
           INPUT_CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -113,7 +107,6 @@ jobs:
         run: |
           pulumi config set version "$INPUT_VERSION" -s "$INPUT_STACK_NAME" --non-interactive
           pulumi config set authHostname "$INPUT_AUTH_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
-          pulumi config set powersyncHostname "$INPUT_POWERSYNC_HOSTNAME" -s "$INPUT_STACK_NAME" --non-interactive
 
           if [ -n "$INPUT_GHCR_PAT" ]; then
             pulumi config set --secret ghcrToken "$INPUT_GHCR_PAT" -s "$INPUT_STACK_NAME" --non-interactive

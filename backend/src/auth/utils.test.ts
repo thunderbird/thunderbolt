@@ -6,34 +6,44 @@ import { describe, expect, it } from 'bun:test'
 import { buildVerifyUrl, parseTrustedOrigins } from './utils'
 
 describe('parseTrustedOrigins', () => {
-  it('parses comma-separated origins and adds tauri origin', () => {
+  it('parses comma-separated origins and adds the tauri origins', () => {
     const result = parseTrustedOrigins('http://localhost:1420,https://app.example.com')
-    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com', 'tauri://localhost'])
+    expect(result).toEqual([
+      'http://localhost:1420',
+      'https://app.example.com',
+      'tauri://localhost',
+      'http://tauri.localhost',
+    ])
   })
 
   it('filters empty values from comma-separated string', () => {
     const result = parseTrustedOrigins('http://localhost:1420,,https://app.example.com,')
-    expect(result).toEqual(['http://localhost:1420', 'https://app.example.com', 'tauri://localhost'])
+    expect(result).toEqual([
+      'http://localhost:1420',
+      'https://app.example.com',
+      'tauri://localhost',
+      'http://tauri.localhost',
+    ])
   })
 
   it('returns default origins when env is undefined', () => {
     const result = parseTrustedOrigins(undefined)
-    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
+    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost'])
   })
 
   it('returns default origins when env is empty string', () => {
     const result = parseTrustedOrigins('')
-    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
+    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost'])
   })
 
-  it('handles single origin and adds tauri origin', () => {
+  it('handles single origin and adds the tauri origins', () => {
     const result = parseTrustedOrigins('https://app.example.com')
-    expect(result).toEqual(['https://app.example.com', 'tauri://localhost'])
+    expect(result).toEqual(['https://app.example.com', 'tauri://localhost', 'http://tauri.localhost'])
   })
 
-  it('does not duplicate tauri origin if already included', () => {
-    const result = parseTrustedOrigins('http://localhost:1420,tauri://localhost')
-    expect(result).toEqual(['http://localhost:1420', 'tauri://localhost'])
+  it('does not duplicate tauri origins already included', () => {
+    const result = parseTrustedOrigins('http://localhost:1420,http://tauri.localhost')
+    expect(result).toEqual(['http://localhost:1420', 'http://tauri.localhost', 'tauri://localhost'])
   })
 })
 

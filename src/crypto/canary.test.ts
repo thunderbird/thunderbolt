@@ -13,6 +13,8 @@ import {
   signChallenge,
   signRecoveryAttestation,
   verifyRecoveryAttestation,
+  signPasskeyAttestation,
+  verifyPasskeyAttestation,
 } from './canary'
 import { base64ToUint8Array, encrypt, generateAK, generateDEK } from './primitives'
 
@@ -206,5 +208,49 @@ describe('signRecoveryAttestation / verifyRecoveryAttestation (THU-865)', () => 
     const canaryKey = await canaryKeyFromSeed('seed-f')
     const challengeSignature = await signChallenge(canaryKey, 'nonce-123', 'rotate', 'device-abc')
     expect(await verifyRecoveryAttestation(canaryKey, challengeSignature, anchor)).toBe(false)
+  })
+})
+
+describe('signPasskeyAttestation / verifyPasskeyAttestation', () => {
+  const anchor = {
+    userId,
+    credentialId: 'credential-id',
+    passkeyEcdhPublicKey: 'passkey-ecdh-base64',
+    passkeyMlkemPublicKey: 'passkey-mlkem-base64',
+  }
+
+  it('round-trips: an anchor signed with a canary key verifies under that key', async () => {
+    const canaryKey = await canaryKeyFromSeed('passkey-a')
+    const attestation = await signPasskeyAttestation(canaryKey, anchor)
+    expect(await verifyPasskeyAttestation(canaryKey, attestation, anchor)).toBe(true)
+  })
+
+  it('rejects a tampered anchor field — the slot-substitution attack', async () => {
+    const canaryKey = await canaryKeyFromSeed('passkey-b')
+    const attestation = await signPasskeyAttestation(canaryKey, anchor)
+    for (const tampered of [
+      { ...anchor, passkeyEcdhPublicKey: 'attacker-ecdh' },
+      { ...anchor, passkeyMlkemPublicKey: 'attacker-mlkem' },
+      { ...anchor, credentialId: 'other-credential' },
+      { ...anchor, userId: 'other-user' },
+    ]) {
+      expect(await verifyPasskeyAttestation(canaryKey, attestation, tampered)).toBe(false)
+    }
+  })
+
+  it('rejects an attestation from a different epoch', async () => {
+    const attestation = await signPasskeyAttestation(await canaryKeyFromSeed('passkey-c'), anchor)
+    expect(await verifyPasskeyAttestation(await canaryKeyFromSeed('passkey-d'), attestation, anchor)).toBe(false)
+  })
+
+  it('does not accept a recovery attestation over the same keys (domain separation)', async () => {
+    const canaryKey = await canaryKeyFromSeed('passkey-e')
+    const recoveryAttestation = await signRecoveryAttestation(canaryKey, {
+      userId,
+      kdfSalt: anchor.credentialId,
+      recoveryEcdhPublicKey: anchor.passkeyEcdhPublicKey,
+      recoveryMlkemPublicKey: anchor.passkeyMlkemPublicKey,
+    })
+    expect(await verifyPasskeyAttestation(canaryKey, recoveryAttestation, anchor)).toBe(false)
   })
 })

@@ -15,15 +15,12 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
+import { useAppName } from '@/lib/branding-selectors'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
-import { customProviderLabel, providerLabels } from './model-presentation'
+import { getProviderLabel, providerPickerOrder } from './model-presentation'
 import type { AddModelFormValues } from './use-add-model-form'
-
-/** Provider picker options, derived from the exhaustive labels Record so a new
- *  provider added to `Model['provider']` shows up here by construction. */
-const providerOptions = Object.keys(providerLabels) as Model['provider'][]
 
 type AddModelFormProps = {
   form: UseFormReturn<AddModelFormValues>
@@ -66,6 +63,7 @@ export const AddModelForm = ({
   onTestConnection,
 }: AddModelFormProps) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
@@ -75,9 +73,9 @@ export const AddModelForm = ({
   // provider (the form's first control).
   const providerTriggerRef = useAutofocusOnMount<HTMLButtonElement>()
 
+  // Stays visible when the catalog fails: its "Custom" entry is the manual fallback.
   const showModelSelection =
-    !catalogError &&
-    (providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url)))
+    providerAutoFetchesCatalog(provider) || Boolean(apiKey) || (provider === 'custom' && Boolean(url))
 
   return (
     <Form {...form}>
@@ -101,9 +99,9 @@ export const AddModelForm = ({
                     <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerOptions.map((provider) => (
+                    {providerPickerOrder.map((provider) => (
                       <SelectItem key={provider} value={provider}>
-                        {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
+                        {getProviderLabel(i18n, provider, appName)}
                       </SelectItem>
                     ))}
                   </SelectContent>

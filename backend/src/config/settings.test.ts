@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { maxAgentSteps } from '@/hosted-agent/limits'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import {
@@ -9,9 +10,11 @@ import {
   getWaitlistAutoApproveDomains,
   getCorsMethodsList,
   getCorsOriginsList,
+  getPasskeyAndroidOriginsList,
   getSettings,
   isOAuthRedirectUriAllowed,
   isOriginAllowed,
+  getPasskeyRpName,
 } from './settings'
 
 describe('Config Settings', () => {
@@ -143,6 +146,18 @@ describe('Config Settings', () => {
       const origins = getCorsOriginsList(settings)
 
       expect(origins).toEqual([])
+    })
+  })
+
+  describe('getPasskeyAndroidOriginsList', () => {
+    it('splits, trims, and drops empty entries', () => {
+      const settings = { passkeyAndroidOrigins: ' android:apk-key-hash:aaa ,,android:apk-key-hash:bbb, ' }
+
+      expect(getPasskeyAndroidOriginsList(settings)).toEqual(['android:apk-key-hash:aaa', 'android:apk-key-hash:bbb'])
+    })
+
+    it('is empty when unset', () => {
+      expect(getPasskeyAndroidOriginsList({ passkeyAndroidOrigins: '' })).toEqual([])
     })
   })
 
@@ -336,6 +351,50 @@ describe('Config Settings', () => {
       }
     })
 
+    describe('passkey Relying Party ID', () => {
+      const keys = ['APP_URL', 'PASSKEY_ENABLED', 'PASSKEY_RP_ID'] as const
+      const withEnv = (env: Partial<Record<(typeof keys)[number], string>>, run: () => void) => {
+        const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+        try {
+          for (const key of keys) {
+            delete process.env[key]
+          }
+          Object.assign(process.env, env)
+          clearSettingsCache()
+          run()
+        } finally {
+          for (const key of keys) {
+            if (saved[key] === undefined) {
+              delete process.env[key]
+            } else {
+              process.env[key] = saved[key]
+            }
+          }
+          clearSettingsCache()
+        }
+      }
+
+      it('never parses APP_URL while passkeys are off', () => {
+        withEnv({ APP_URL: 'app.example.com' }, () => {
+          expect(getSettings().passkeyRpId).toBe('')
+        })
+      })
+
+      it("derives the RP ID from APP_URL's hostname when passkeys are on", () => {
+        withEnv({ APP_URL: 'https://app.example.com', PASSKEY_ENABLED: 'true' }, () => {
+          expect(getSettings().passkeyRpId).toBe('app.example.com')
+        })
+      })
+
+      it('refuses an RP ID WebAuthn would reject', () => {
+        for (const appUrl of ['http://192.168.1.10:1420', 'app.example.com']) {
+          withEnv({ APP_URL: appUrl, PASSKEY_ENABLED: 'true' }, () => {
+            expect(() => getSettings()).toThrow()
+          })
+        }
+      })
+    })
+
     it('should have valid default values in schema', () => {
       // Test that the schema itself has sensible defaults
       // This tests the schema definition without env var manipulation
@@ -437,6 +496,7 @@ describe('Config Settings', () => {
       'ALTCHA_DIFFICULTY',
       'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
+      'ANONYMOUS_USER_IDLE_DAYS',
     ] as const
 
     let savedEnv: Partial<Record<string, string>>
@@ -609,6 +669,19 @@ describe('Config Settings', () => {
       expect(settings.altchaTtlSecs).toBe(600)
     })
 
+    it('should default ANONYMOUS_USER_IDLE_DAYS to 30, accept 0 and refuse garbage', () => {
+      delete process.env.ANONYMOUS_USER_IDLE_DAYS
+      expect(getSettings().anonymousUserIdleDays).toBe(30)
+      clearSettingsCache()
+      process.env.ANONYMOUS_USER_IDLE_DAYS = '0'
+      expect(getSettings().anonymousUserIdleDays).toBe(0)
+      for (const value of ['-1', '1.5', 'thirty']) {
+        clearSettingsCache()
+        process.env.ANONYMOUS_USER_IDLE_DAYS = value
+        expect(() => getSettings()).toThrow()
+      }
+    })
+
     it('should read the altcha settings from env', () => {
       process.env.CAPTCHA_PROVIDER = 'ALTCHA'
       process.env.ALTCHA_SECRET = 'a'.repeat(32)
@@ -708,6 +781,39 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('SAML IdP-initiated login setting', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.SAML_ALLOW_IDP_INITIATED
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.SAML_ALLOW_IDP_INITIATED = savedEnv
+      } else {
+        delete process.env.SAML_ALLOW_IDP_INITIATED
+      }
+      clearSettingsCache()
+    })
+
+    it('stays off when the env var is unset', () => {
+      delete process.env.SAML_ALLOW_IDP_INITIATED
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
+    })
+
+    it('turns on only for "true"', () => {
+      process.env.SAML_ALLOW_IDP_INITIATED = 'true'
+      expect(getSettings().samlAllowIdpInitiated).toBe(true)
+    })
+
+    it.each(['TRUE', '1', 'yes', 'false'])('stays off for "%s"', (value) => {
+      process.env.SAML_ALLOW_IDP_INITIATED = value
+      expect(getSettings().samlAllowIdpInitiated).toBe(false)
+    })
+  })
+
   describe('minAppVersion settings', () => {
     let savedEnv: string | undefined
 
@@ -758,6 +864,136 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('brand logo settings', () => {
+    const envKeys = ['BRAND_LOGO_URL', 'BRAND_LOGO_DARK_URL', 'BRAND_LOGO_ALT']
+    const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+
+    beforeEach(() => {
+      clearSettingsCache()
+      envKeys.forEach((key) => delete process.env[key])
+    })
+
+    afterEach(() => {
+      envKeys.forEach((key) =>
+        savedEnv[key] === undefined ? delete process.env[key] : (process.env[key] = savedEnv[key]),
+      )
+      clearSettingsCache()
+    })
+
+    it('defaults to empty', () => {
+      const { brandLogoUrl, brandLogoDarkUrl, brandLogoAlt } = getSettings()
+      expect([brandLogoUrl, brandLogoDarkUrl, brandLogoAlt]).toEqual(['', '', ''])
+    })
+
+    it('accepts an https URL and a data:image URL', () => {
+      process.env.BRAND_LOGO_URL = 'https://example.com/logo.svg'
+      process.env.BRAND_LOGO_DARK_URL = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='
+      expect(getSettings()).toMatchObject({
+        brandLogoUrl: process.env.BRAND_LOGO_URL,
+        brandLogoDarkUrl: process.env.BRAND_LOGO_DARK_URL,
+      })
+    })
+
+    it('trims whitespace, so a blank value is empty', () => {
+      process.env.BRAND_LOGO_URL = '   '
+      process.env.BRAND_LOGO_DARK_URL = '  https://example.com/logo.svg'
+      expect(getSettings()).toMatchObject({ brandLogoUrl: '', brandLogoDarkUrl: 'https://example.com/logo.svg' })
+    })
+
+    it('falls back to empty when the alt text is only whitespace', () => {
+      process.env.BRAND_LOGO_ALT = '   '
+      expect(getSettings().brandLogoAlt).toBe('')
+    })
+
+    it.each([
+      'javascript:alert(1)',
+      'http://example.com/logo.svg',
+      'data:text/html,<script>',
+      '//cdn.example/logo.svg',
+      'https://%',
+    ])('rejects %s', (value) => {
+      process.env.BRAND_LOGO_DARK_URL = value
+      expect(() => getSettings()).toThrow(/BRAND_LOGO_DARK_URL must be empty, an https: URL or a data:image\/ URL/)
+    })
+  })
+
+  describe('branding settings', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      clearSettingsCache()
+      savedEnv = process.env.BRANDING
+    })
+
+    afterEach(() => {
+      if (savedEnv !== undefined) {
+        process.env.BRANDING = savedEnv
+      } else {
+        delete process.env.BRANDING
+      }
+      clearSettingsCache()
+    })
+
+    it('is undefined when BRANDING is unset or blank', () => {
+      delete process.env.BRANDING
+      expect(getSettings().branding).toBeUndefined()
+
+      clearSettingsCache()
+      process.env.BRANDING = '   '
+      expect(getSettings().branding).toBeUndefined()
+    })
+
+    it('parses a valid config and trims the app name', () => {
+      process.env.BRANDING = JSON.stringify({
+        appName: '  Acme AI ',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+      expect(getSettings().branding).toEqual({
+        appName: 'Acme AI',
+        debugTranscriptRecipient: 'Acme Support',
+        defaultThemeMode: 'dark',
+        cssVars: {
+          theme: { radius: '0px', 'font-sans': 'DM Sans, sans-serif' },
+          light: { primary: 'oklch(0.6489 0.237 26.97)', 'brand-gradient-start': '#7c3aed', 'shadow-offset-x': '4px' },
+          dark: { background: '#000' },
+        },
+      })
+    })
+
+    it('rejects malformed JSON at startup', () => {
+      process.env.BRANDING = '{appName:'
+      expect(() => getSettings()).toThrow(/BRANDING must be valid JSON/)
+    })
+
+    it('rejects unsafe colors at startup', () => {
+      process.env.BRANDING = JSON.stringify({ cssVars: { light: { brand: 'red;}body{' } } })
+      expect(() => getSettings()).toThrow(
+        /cssVars\.light\.brand: must be a hex, rgb\(\), hsl\(\), oklch\(\) or oklab\(\) color/,
+      )
+    })
+
+    it('reports every problem at once', () => {
+      process.env.BRANDING = JSON.stringify({ favicon: 'x', cssVars: { light: { cards: '#fff' } } })
+      expect(() => getSettings()).toThrow(/favicon: unknown key[\s\S]*cssVars\.light\.cards: unknown token/)
+    })
+  })
+
+  describe('getPasskeyRpName', () => {
+    it('prefers PASSKEY_RP_NAME, then the branding app name, then Thunderbolt', () => {
+      expect(getPasskeyRpName({ passkeyRpName: 'Acme Passkeys', branding: { appName: 'Acme AI' } })).toBe(
+        'Acme Passkeys',
+      )
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: { appName: 'Acme AI' } })).toBe('Acme AI')
+      expect(getPasskeyRpName({ passkeyRpName: '', branding: undefined })).toBe('Thunderbolt')
     })
   })
 
@@ -976,7 +1212,7 @@ describe('Config Settings', () => {
       expect(settings.powersyncUrl).toBe('')
       expect(settings.powersyncJwtKid).toBe('')
       expect(settings.powersyncJwtSecret).toBe('')
-      // The default doubles as the post-revocation read window for the sync stream.
+      // Bounds how long a device can keep reconnecting to the sync stream.
       expect(settings.powersyncTokenExpirySeconds).toBe(300)
     })
 
@@ -1160,6 +1396,7 @@ describe('Hosted agent settings', () => {
     'AGENT_ENABLED',
     'AGENT_MODEL',
     'AGENT_MAX_STEPS',
+    'AGENT_FIREWORKS_SERVICE_TIER',
     'AGENT_SYSTEM_PROMPT',
     'AGENT_MCP_SERVERS',
     'AGENT_NAME',
@@ -1240,5 +1477,32 @@ describe('Hosted agent settings', () => {
   it('treats an empty AGENT_MAX_STEPS as unset', () => {
     process.env.AGENT_MAX_STEPS = ''
     expect(getSettings().agentMaxSteps).toBe(8)
+  })
+
+  it('accepts AGENT_MAX_STEPS up to one step per tool call a reply may make, plus the answer', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps)
+    expect(getSettings().agentMaxSteps).toBe(maxAgentSteps)
+  })
+
+  it('defaults AGENT_FIREWORKS_SERVICE_TIER to standard, including when empty', () => {
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = ''
+    clearSettingsCache()
+    expect(getSettings().agentFireworksServiceTier).toBe('standard')
+  })
+
+  it('accepts priority as AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priority'
+    expect(getSettings().agentFireworksServiceTier).toBe('priority')
+  })
+
+  it('refuses to start on an unknown AGENT_FIREWORKS_SERVICE_TIER', () => {
+    process.env.AGENT_FIREWORKS_SERVICE_TIER = 'priorty'
+    expect(() => getSettings()).toThrow(/agentFireworksServiceTier/)
+  })
+
+  it('refuses to start on an AGENT_MAX_STEPS past that', () => {
+    process.env.AGENT_MAX_STEPS = String(maxAgentSteps + 1)
+    expect(() => getSettings()).toThrow(`AGENT_MAX_STEPS must be at most ${maxAgentSteps}`)
   })
 })

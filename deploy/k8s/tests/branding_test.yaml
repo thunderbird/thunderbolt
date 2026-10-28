@@ -1,0 +1,36 @@
+suite: Operator branding
+templates:
+  - templates/backend.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: passes branding JSON through verbatim, quotes and hex colors included
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.branding: '{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"light":{"primary":"#4f46e5"},"dark":{"primary":"#818cf8"}}}'
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BRANDING
+            value: '{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"light":{"primary":"#4f46e5"},"dark":{"primary":"#818cf8"}}}'
+
+  - it: omits BRANDING by default
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BRANDING }
+          any: true
+
+  # `helm upgrade --reuse-values` from a release that predates the value leaves
+  # it absent. Helm deletes a key set to null, which reproduces that here.
+  - it: omits BRANDING when an upgrade predates the value
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      backend.env.branding: null
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: BRANDING }
+          any: true

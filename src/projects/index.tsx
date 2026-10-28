@@ -18,8 +18,9 @@ import { plural } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
 import {
@@ -49,7 +50,7 @@ import { ProjectForm } from './project-form'
 import { initialViewState, projectsViewReducer } from './projects-view-state'
 import { ProjectIcon } from './project-icon'
 
-const ProjectsPage = () => {
+const ProjectsView = () => {
   const { i18n, t } = useLingui()
   const db = useDatabase()
   const navigate = useNavigate()
@@ -238,6 +239,15 @@ const ProjectsPage = () => {
       )}
     </div>
   )
+}
+
+/**
+ * Minimal mode (see `selectMinimalMode`) has no Projects, so `/projects` and
+ * `/projects/:projectId` return to the chat home.
+ */
+const ProjectsPage = () => {
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  return minimalMode ? <Navigate to="/chats/new" replace /> : <ProjectsView />
 }
 
 export default ProjectsPage

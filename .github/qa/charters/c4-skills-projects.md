@@ -2,7 +2,7 @@
 
 Goal: skills and projects work end to end for a new user, including edge cases, and really change the AI's replies.
 
-Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5.5"; replies vary. Keep
+Start state: fresh user. In this charter the AI is **real**: select "Opus 5.5"; replies vary. Keep
 prompts short and send at most 10 chat messages in total.
 
 Fill every required field each time you create or edit: a skill needs a name, a description and instructions (the
@@ -18,6 +18,8 @@ not a finding, and neither is a suggestion or opinion.
    double click on Create, cancelling halfway, the back button during an edit, 2,000-character instructions. If a
    skill has dependents, check the dependents dialog. Functions: `skill-create`, `skill-create-home`, `skill-edit`,
    `skill-toggle`, `skill-delete`, `skill-reorder`, `skill-slash`, `skill-invalid-input`.
+   Also create one skill with a name of about 100 characters and instructions of about 1,500 characters that include
+   a few very long words, then open its detail screen and its edit screen.
 2. Skills in replies. Give each skill you chat with instructions that set a checkable rule with a made-up marker
    word of its own, for example "End every reply with the word Abacaxi." Each chat below is a new one, and each
    message is a neutral question ("Say hello in one sentence."). Check the reply for the marker.
@@ -29,6 +31,8 @@ not a finding, and neither is a suggestion or opinion.
 3. Projects (sidebar → Projects): create one with instructions, rename it, edit the instructions, delete it. Same edge
    cases; reload after each change. Functions: `project-create`, `project-rename`, `project-instructions`,
    `project-delete`, `project-invalid-input`.
+   Also create one project with about 1,500 characters of instructions, then open its detail screen and its edit
+   screen.
 4. Project instructions in replies: give a project the instruction "End every reply with the word …" with another
    marker of your own, start a chat in it and send a neutral question. Function: `project-instructions-reply`.
 5. Chats in projects: start a chat and send one message, move it into a project, then into another project, then out

@@ -56,17 +56,18 @@ const getOptionStatus = ({
 const statusStyles: Record<OptionStatus, string> = {
   idle: 'border-border bg-card hover:bg-accent hover:border-border',
   selected: 'border-primary bg-accent ring-1 ring-primary',
-  correct: 'border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30',
-  incorrect: 'border-red-500/60 bg-red-50 dark:bg-red-950/30',
-  missed: 'border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/15',
+  correct: 'border-success/60 bg-success/10',
+  incorrect: 'border-destructive/60 bg-destructive/10',
+  missed: 'border-success/40 bg-success/5',
 }
 
 const badgeStyles: Record<OptionStatus, string> = {
   idle: 'border-border text-muted-foreground',
   selected: 'border-primary bg-primary text-primary-foreground',
-  correct: 'border-emerald-500 bg-emerald-500 text-white',
-  incorrect: 'border-red-500 bg-red-500 text-white',
-  missed: 'border-emerald-500 text-emerald-600 dark:text-emerald-400',
+  correct: 'border-success bg-success text-success-foreground',
+  // White like the destructive button; destructive-foreground is dark.
+  incorrect: 'border-destructive bg-destructive text-white',
+  missed: 'border-success text-success',
 }
 
 type AskUiState = { selected: Set<string>; submitted: boolean }

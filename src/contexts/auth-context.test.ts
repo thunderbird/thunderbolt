@@ -50,9 +50,6 @@ describe('authRequestHeaders', () => {
   })
 
   it('carries the app version alongside a per-call header', () => {
-    // better-fetch REPLACES a per-call `headers` object rather than merging it,
-    // so a call site that only sets its own header loses X-App-Version and the
-    // fail-closed gate answers 426 on a perfectly current build.
     env.VITE_APP_VERSION = '1.2.3'
 
     const headers = authRequestHeaders({ 'X-Challenge-Token': 'tok' })
@@ -170,6 +167,32 @@ describe('buildFetchOptions onError', () => {
     trigger401()
 
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'http://localhost:8000/v1/api/auth/sign-in/email-otp',
+    'http://localhost:8000/v1/api/auth/passkey/verify-authentication',
+  ])('keeps a stored token when a sign-in attempt is rejected with 401 (%s)', (url) => {
+    setAuthToken('valid-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({ response: new Response(null, { status: 401 }), request: { url } })
+
+    expect(getAuthToken()).toBe('valid-token')
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('still treats a 401 from any other route as an expired session', () => {
+    setAuthToken('stale-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({
+      response: new Response(null, { status: 401 }),
+      request: { url: 'http://localhost:8000/v1/api/auth/get-session' },
+    })
+
+    expect(getAuthToken()).toBeNull()
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
   })
 
   it('does not dispatch on non-401 responses', () => {

@@ -89,7 +89,7 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
   return (
     <div className="rounded-xl border border-border bg-card p-4 my-2" role="dialog" aria-labelledby={headingId}>
       <div className="flex items-start gap-3">
-        <ShieldAlert className="size-[var(--icon-size-sm)] text-amber-500 mt-0.5 shrink-0" />
+        <ShieldAlert className="size-[var(--icon-size-sm)] text-warning mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5">
           <p id={headingId} className="text-[length:var(--font-size-body)] font-medium">
             {heading}

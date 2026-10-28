@@ -4,25 +4,31 @@
 
 import type { I18n } from '@lingui/core'
 import { Section, Text } from 'react-email'
-import { EmailLayout } from './email-layout'
+import { EmailLayout, emailAppName } from './email-layout'
 import { getEmailI18n } from './i18n'
 
 type WaitlistJoinedEmailProps = {
   i18n: I18n
 }
 
-export const waitlistJoinedSubject = (i18n: I18n) => i18n._({ id: "You're on the Thunderbolt waitlist!" })
+export const waitlistJoinedSubject = (i18n: I18n) =>
+  i18n._({ id: "You're on the {appName} waitlist!", values: { appName: emailAppName() } })
 
 export const WaitlistJoinedEmail = ({ i18n }: WaitlistJoinedEmailProps) => (
   <EmailLayout i18n={i18n} preview={waitlistJoinedSubject(i18n)}>
-    <Section className="bg-white border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
-      <Text className="text-2xl font-semibold text-tb-text m-0 mb-6">{i18n._({ id: 'Thanks for signing up!' })}</Text>
-      <Text className="text-sm text-tb-text m-0 mb-6">
+    <Section className="bg-tb-card border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
+      <Text className="text-2xl font-semibold text-tb-card-text m-0 mb-6">
+        {i18n._({ id: 'Thanks for signing up!' })}
+      </Text>
+      <Text className="text-sm text-tb-card-text m-0 mb-6">
         {i18n._({
-          id: "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join.",
+          id: "You've been added to the {appName} waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join.",
+          values: { appName: emailAppName() },
         })}
       </Text>
-      <Text className="text-sm text-tb-text m-0">{i18n._({ id: 'The Thunderbolt Team' })}</Text>
+      <Text className="text-sm text-tb-card-text m-0">
+        {i18n._({ id: 'The {appName} Team', values: { appName: emailAppName() } })}
+      </Text>
     </Section>
   </EmailLayout>
 )

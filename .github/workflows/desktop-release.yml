@@ -4,23 +4,31 @@ run-name: Desktop release for v${{ inputs.version }}
 on:
   workflow_call:
     inputs:
+      tag:
+        description: 'Tag to build and release (defaults to v{version})'
+        required: false
+        type: string
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
+      latest:
+        description: 'Mark the published release as Latest'
         required: false
         default: false
         type: boolean
   workflow_dispatch:
     inputs:
+      tag:
+        description: 'Tag to build and release (defaults to v{version})'
+        required: false
+        type: string
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
+      latest:
+        description: 'Mark the published release as Latest. Only for the newest version.'
         required: false
         default: false
         type: boolean
@@ -32,45 +40,29 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  RELEASE_TAG: ${{ inputs.tag || format('v{0}', inputs.version) }}
+
 jobs:
   draft:
     name: Create Draft Release
     runs-on: ubuntu-24.04
-    outputs:
-      version: ${{ steps.set-version.outputs.version }}
 
     steps:
+      - name: Check the tag matches the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && [ "$RELEASE_TAG" != "v$VERSION-desktop-rc" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match version $VERSION"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
-      - name: Set version
-        id: set-version
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          echo "version=v$INPUT_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release (Nightly)
-        if: ${{ inputs.nightly }}
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          tag_name: v${{ inputs.version }}
-          name: Nightly Build v${{ inputs.version }}
-          draft: true
-          prerelease: true
-          body: |
-            ## Nightly Build v${{ inputs.version }}
-
-            **Warning:** This is an automated nightly build and may be unstable. Use at your own risk.
-
-            ### Downloads
-
-            Binaries will be attached to this release after successful builds.
-
-      # Skip CrabNebula for nightly builds to prevent auto-updater from pushing unstable builds
       - name: Create CrabNebula Draft Release
-        if: ${{ !inputs.nightly }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release draft thunderbird/thunderbolt ${{ inputs.version }}
@@ -106,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: v${{ inputs.version }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -210,6 +202,40 @@ jobs:
           echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
 
+      # Passkeys need the Associated Domains entitlement, which macOS only honours
+      # with this profile embedded. Both are added here, not in tauri.conf.json, so
+      # local builds without the profile still launch.
+      - name: Install macOS provisioning profile
+        if: matrix.os == 'macos-latest'
+        env:
+          PROFILE_B64: ${{ secrets.APP_STORE_MACOS_PROVISIONING_PROFILE }}
+        run: |
+          if [ -z "$PROFILE_B64" ]; then
+            echo "APP_STORE_MACOS_PROVISIONING_PROFILE is not set"
+            exit 1
+          fi
+          PROFILE="$RUNNER_TEMP/embedded.provisionprofile"
+          echo "$PROFILE_B64" | tr -d '[:space:]' | base64 --decode > "$PROFILE"
+          security cms -D -i "$PROFILE" > "$RUNNER_TEMP/profile.plist"
+          echo "Profile: $(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          # Only Developer ID profiles cover every Mac; an App Store one won't launch.
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$RUNNER_TEMP/profile.plist" 2>/dev/null)" != "true" ]; then
+            echo "Not a Developer ID provisioning profile"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$RUNNER_TEMP/profile.plist" \
+            || { echo "Profile doesn't authorize Associated Domains"; exit 1; }
+          # macOS.files copies the profile into Contents/ before signing. Older tags
+          # have no Entitlements.plist, so it's only added when present.
+          ENTITLEMENTS=""
+          if [ -f src-tauri/Entitlements.plist ]; then
+            ENTITLEMENTS="Entitlements.plist"
+          fi
+          CONFIG=$(jq -nc --arg profile "$PROFILE" --arg entitlements "$ENTITLEMENTS" \
+            '{bundle: {macOS: ({files: {"embedded.provisionprofile": $profile}}
+              + if $entitlements == "" then {} else {entitlements: $entitlements} end)}}')
+          echo "TAURI_MACOS_PROFILE_CONFIG=$CONFIG" >> "$GITHUB_ENV"
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-24.04'
         run: |
@@ -274,7 +300,7 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         run: |
           bun install --frozen-lockfile
-          bun tauri build --target aarch64-apple-darwin
+          bun tauri build --target aarch64-apple-darwin --config "$TAURI_MACOS_PROFILE_CONFIG"
         env:
           RUSTFLAGS: ''
           CARGO_INCREMENTAL: 0
@@ -294,7 +320,7 @@ jobs:
           rm -rf src-tauri/target/x86_64-apple-darwin
           # Build for Intel with proper environment
           bun install --frozen-lockfile
-          bun tauri build --target x86_64-apple-darwin
+          bun tauri build --target x86_64-apple-darwin --config "$TAURI_MACOS_PROFILE_CONFIG"
         env:
           # Override the target-cpu=native flag
           RUSTFLAGS: '-C target-cpu=x86-64'
@@ -313,7 +339,7 @@ jobs:
         if: matrix.os == 'ubuntu-24.04'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/release/bundle/deb/*.deb
@@ -326,7 +352,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
@@ -346,7 +372,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: v${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: true
           files: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
@@ -356,7 +382,6 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
 
-      # Skip CrabNebula for nightly builds.
       # A late-running matrix job (e.g. macOS Apple Silicon queued behind other
       # runners) can hit the CrabNebula release after it has flipped to published,
       # which makes `cn release upload` fail with "release was already published".
@@ -364,7 +389,6 @@ jobs:
       # CrabNebula auto-updater for this platform just misses this version — and
       # surface a loud warning so any other failure mode stays visible. See THU-643.
       - name: Upload to CrabNebula Cloud
-        if: ${{ !inputs.nightly }}
         id: cn_upload
         continue-on-error: true
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
@@ -373,7 +397,7 @@ jobs:
           api-key: ${{ secrets.CRABNEBULA_CLOUD_API_KEY }}
 
       - name: Warn on CrabNebula upload failure
-        if: ${{ !inputs.nightly && steps.cn_upload.outcome == 'failure' }}
+        if: ${{ steps.cn_upload.outcome == 'failure' }}
         env:
           BUILD_NAME: ${{ matrix.build_name }}
           VERSION: ${{ inputs.version }}
@@ -390,14 +414,14 @@ jobs:
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRERELEASE: ${{ inputs.nightly }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+          # An RC tag stays a prerelease, and GitHub rejects a prerelease marked Latest (HTTP 422).
+          PRERELEASE: ${{ endsWith(env.RELEASE_TAG, '-rc') }}
+          LATEST: ${{ inputs.latest && !endsWith(env.RELEASE_TAG, '-rc') }}
         run: |
-          gh release edit "v${RELEASE_VERSION}" --repo "${{ github.repository }}" --draft=false --prerelease="${PRERELEASE}"
+          gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false --prerelease="${PRERELEASE}" --latest="$LATEST"
 
-      # Publish release on CrabNebula Cloud for auto-updates (skip for nightly to prevent unstable auto-updates)
       - name: Publish to CrabNebula Cloud
-        if: ${{ !inputs.nightly }}
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6
         with:
           command: release publish thunderbird/thunderbolt ${{ inputs.version }} --framework tauri

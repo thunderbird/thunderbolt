@@ -21,9 +21,9 @@
 # build — only build branches you trust. The updater signing key is deliberately
 # NOT provided (see the build step).
 #
-# Entitlements (e.g. passkeys / Associated Domains, THU-790) come from the
-# SELECTED BRANCH's `src-tauri` config — this workflow doesn't add them. Build a
-# branch that carries the entitlement, or the signed app won't have it.
+# Passkeys need the Associated Domains entitlement, which macOS only honours with
+# an embedded Developer ID profile (APP_STORE_MACOS_PROVISIONING_PROFILE). The
+# workflow adds both when the selected branch has `src-tauri/Entitlements.plist`.
 #
 # Installed test builds still point at the production updater endpoint and may be
 # offered a newer prod release; decline the update to keep the test build.
@@ -152,6 +152,27 @@ jobs:
           echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
 
+      - name: Install macOS provisioning profile
+        env:
+          PROFILE_B64: ${{ secrets.APP_STORE_MACOS_PROVISIONING_PROFILE }}
+        run: |
+          if [ -z "$PROFILE_B64" ]; then
+            echo "APP_STORE_MACOS_PROVISIONING_PROFILE is not set"
+            exit 1
+          fi
+          PROFILE="$RUNNER_TEMP/embedded.provisionprofile"
+          echo "$PROFILE_B64" | tr -d '[:space:]' | base64 --decode > "$PROFILE"
+          security cms -D -i "$PROFILE" > "$RUNNER_TEMP/profile.plist"
+          echo "Profile: $(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          # Only Developer ID profiles cover every Mac; an App Store one won't launch.
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$RUNNER_TEMP/profile.plist" 2>/dev/null)" != "true" ]; then
+            echo "Not a Developer ID provisioning profile"
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "$RUNNER_TEMP/profile.plist" \
+            || { echo "Profile doesn't authorize Associated Domains"; exit 1; }
+          echo "PROVISIONING_PROFILE=$PROFILE" >> "$GITHUB_ENV"
+
       - name: Build signed Tauri app
         # TARGET comes from a constrained `choice` input, but route it through an env
         # var (and quote it) rather than interpolating `${{ }}` into the script —
@@ -180,7 +201,24 @@ jobs:
           # production Tauri updater signing key is NOT handed to branch-controlled
           # build code (reduces the secret surface flagged in review). The app is
           # still fully code-signed + notarized via the Apple cert above.
-          bun tauri build --target "$TARGET" --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          # macOS.files copies the profile into Contents/ before signing.
+          ENTITLEMENTS=""
+          if [ -f src-tauri/Entitlements.plist ]; then
+            ENTITLEMENTS="Entitlements.plist"
+          fi
+          CONFIG=$(jq -nc --arg profile "$PROVISIONING_PROFILE" --arg entitlements "$ENTITLEMENTS" \
+            '{bundle: {createUpdaterArtifacts: false, macOS: ({files: {"embedded.provisionprofile": $profile}}
+              + if $entitlements == "" then {} else {entitlements: $entitlements} end)}}')
+          bun tauri build --target "$TARGET" --config "$CONFIG"
+
+      - name: Verify the profile is embedded
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          APP=$(find "src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -name '*.app' | head -1)
+          test -f "$APP/Contents/embedded.provisionprofile" || { echo "No embedded.provisionprofile in $APP"; exit 1; }
+          codesign --verify --deep --strict "$APP"
+          codesign -d --entitlements - "$APP"
 
       - name: Upload signed macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

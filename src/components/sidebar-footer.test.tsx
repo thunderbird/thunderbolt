@@ -6,13 +6,14 @@ import 'fake-indexeddb/auto'
 import { i18n } from '@/i18n'
 import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
 import { clearAllKeys, generateAK, mintDEK, storeAK, storeDEK } from '@/crypto'
+import { useConfigStore } from '@/api/config-store'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -38,9 +39,14 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
+beforeEach(() => {
+  useConfigStore.setState({ config: {}, configLoaded: true })
+})
+
 afterEach(() => {
   cleanup()
   restoreViewport()
+  useConfigStore.setState({ config: {}, configLoaded: false })
 })
 
 const MobileSidebarStateProbe = () => {
@@ -135,6 +141,68 @@ describe('SidebarFooter', () => {
       expect(button.className).toContain('h-[var(--touch-height-lg)]')
       expect(button.className).toContain('w-[var(--touch-height-lg)]')
       expect(button.querySelector('span')).toBeNull()
+    })
+  })
+
+  describe('minimal mode', () => {
+    it('renders no account or cloud control', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it('keeps the mobile New Chat button and drops every account control', () => {
+      forceMobileViewport()
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderWithProviders(
+        createMockAuthClient({ session: { user: { id: 'u1', email: 'real@example.com', name: 'Real' } } }),
+      )
+
+      expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Account menu' })).toBeNull()
+      expect(screen.queryByText('Real')).toBeNull()
+      expect(screen.queryByText('real@example.com')).toBeNull()
+      expect(screen.queryByText('Cloud Sync')).toBeNull()
+    })
+
+    it('renders no footer on desktop', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      const { container } = renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(container.querySelector('[data-sidebar="footer"]')).toBeNull()
+    })
+
+    it('waits for the config before painting the account control', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    })
+
+    it.each([false, true])('renders from a persisted config before the fetch answers (minimal mode %s)', (minimal) => {
+      useConfigStore.setState({ config: { minimalMode: minimal }, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.queryByRole('button', { name: 'Sign in' }) !== null).toBe(!minimal)
+    })
+
+    it('paints the control once the first-ever fetch answers', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      renderWithProviders(createMockAuthClient({ session: null }))
+      expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+
+      act(() => useConfigStore.getState().updateConfig({ minimalMode: false }))
+
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    })
+
+    it('renders the control when minimal mode is off', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: true })
+      renderWithProviders(createMockAuthClient({ session: null }))
+
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
   })
 

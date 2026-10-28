@@ -31,6 +31,7 @@ const buttonVariants = cva(
         // hairline on one side and a drab one on the other (THU-857).
         default:
           'border border-transparent bg-brand bg-origin-border text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
+        // White rather than the dark destructive-foreground token, which would change the default look.
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         // Dark fill uses card (#282a2b) rather than input — input is the dark

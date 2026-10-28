@@ -14,6 +14,7 @@
 import { evictSystemTinfoilClient, getSystemTinfoilClient, isTinfoilTransportWedgedError } from '@/ai/tinfoil-client'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
+import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import type { SecureClient } from 'tinfoil'
@@ -105,6 +106,7 @@ export const createTinfoilTransport =
     }
     const res = await run()
     handleAppVersionUnsupported(res.status)
+    await handleSessionRejected(res)
     return res
   }
 

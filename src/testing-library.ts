@@ -134,7 +134,12 @@ beforeEach(() => {
   suppressConsole()
   // Clear memoized values to prevent pollution between tests
   clearMemoizeCache()
-  useConfigStore.setState({ config: {}, forceUpgrade: undefined, forceUpgradeMinVersion: undefined })
+  useConfigStore.setState({
+    config: {},
+    configLoaded: false,
+    forceUpgrade: undefined,
+    forceUpgradeMinVersion: undefined,
+  })
 })
 
 afterEach(() => {

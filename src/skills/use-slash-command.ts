@@ -105,6 +105,7 @@ export const useSlashCommand = ({
   library,
   isEnabled,
   agentCommands = [],
+  enabled = true,
 }: {
   value: string
   setValue: (v: string) => void
@@ -113,11 +114,14 @@ export const useSlashCommand = ({
   isEnabled: (slug: string) => boolean
   /** Commands advertised by the connected ACP agent, shown as external items. */
   agentCommands?: AcpCommand[]
+  /** When false, `/` and `@` are ordinary text: no slash state, so the popup
+   *  never opens and the key handler stays inert. */
+  enabled?: boolean
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
   const { cursorPos, highlightedIdx, closedForToken } = state
 
-  const slashState = useMemo(() => getSlashState(value, cursorPos), [value, cursorPos])
+  const slashState = useMemo(() => (enabled ? getSlashState(value, cursorPos) : null), [enabled, value, cursorPos])
 
   // User skills first, then the agent's external commands; each alphabetical,
   // both filtered by the in-progress query. Skills match anywhere in the

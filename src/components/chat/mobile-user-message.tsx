@@ -65,9 +65,8 @@ export const MobileUserMessage = ({ message, lastMessageAction, onResendAttachme
       {lastMessageAction && <div className="mt-1 flex justify-end">{lastMessageAction}</div>}
       {isMenuOpen && (
         <MobileBlurBackdrop
-          // Same 40% black in both modes — the dark: entry overrides the
-          // backdrop's default dark:bg-black/30, it is not redundant.
-          className="bg-black/40 dark:bg-black/40"
+          // A black scrim in both modes rather than the default theme-tinted one.
+          className="bg-black/40"
           onClick={handleClose}
           // Keep the backdrop in the message scroller's stacking context so
           // the selected message and its action remain above it.

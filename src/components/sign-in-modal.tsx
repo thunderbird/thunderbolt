@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { BackButton } from '@/components/ui/back-button'
 import {
   ResponsiveModal,
@@ -25,6 +26,7 @@ type SignInModalProps = {
  * Provides the modal chrome and delegates to SignInForm for all form logic.
  */
 export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps) => {
+  const appName = useAppName()
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
 
@@ -79,7 +81,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
               says everything the sighted user needs. */}
           {step === 'email' && (
             <ResponsiveModalDescription className="sr-only">
-              <Trans>Sign in to Thunderbolt</Trans>
+              <Trans>Sign in to {appName}</Trans>
             </ResponsiveModalDescription>
           )}
         </ResponsiveModalHeader>

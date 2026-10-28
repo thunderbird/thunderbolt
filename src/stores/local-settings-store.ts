@@ -5,6 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ExternalLinkBehavior } from '@/lib/external-link-behavior'
+import { isRecord } from '@shared/lib/is-record'
 
 /**
  * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
@@ -42,7 +43,8 @@ type LocalSettingsState = {
    *  Survives reload/crash so the app can re-prompt — the phrase itself is
    *  unrecoverable (AK = PBKDF2(seed, salt)), so the prompt offers a rotation. */
   recoveryPhrasePending: boolean
-  theme: 'light' | 'dark' | 'system'
+  /** Null until the user picks one; ThemeProvider then falls back to the operator default, then 'system'. */
+  theme: 'light' | 'dark' | 'system' | null
   voiceProvider: VoiceProviderConfig
 }
 
@@ -60,8 +62,22 @@ export const initialLocalSettings: LocalSettingsState = {
   hapticsEnabled: true,
   syncEnabled: false,
   recoveryPhrasePending: false,
-  theme: 'system',
+  theme: null,
   voiceProvider: defaultVoiceProvider,
+}
+
+/**
+ * Upgrade persisted local settings to the current version. Version 1 made
+ * `theme` null until the user picks one, so the operator's branding default
+ * can apply; before it, 'system' was the default every install stored, not a
+ * choice, so it is read as unset. index.html's pre-paint script mirrors this.
+ *
+ * @param persisted - The stored state, as zustand hands it over.
+ * @param version - The version it was stored under.
+ */
+export const migrateLocalSettings = (persisted: unknown, version: number): Record<string, unknown> => {
+  const state = isRecord(persisted) ? persisted : {}
+  return version < 1 && state.theme === 'system' ? { ...state, theme: null } : state
 }
 
 export const useLocalSettingsStore = create<LocalSettingsStore>()(
@@ -72,6 +88,11 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
     }),
     {
       name: 'thunderbolt-local-settings',
+      // See migrateLocalSettings; index.html reads this version too.
+      version: 1,
+      // zustand types this as the whole store, but merges it over the initial
+      // state, so stored data missing a key keeps that key's default.
+      migrate: (persisted, version) => migrateLocalSettings(persisted, version) as LocalSettingsStore,
       // Listed explicitly (rather than spread + omit) so TS errors if a new
       // LocalSettingsState field is added without persisting it, and so no
       // future store action can silently leak into localStorage.

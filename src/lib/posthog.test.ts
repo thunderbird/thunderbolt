@@ -2,14 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { deleteSetting, updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { HandleError } from '@/types/handle-errors'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { initPosthog, resetPosthogClient, sanitizeUrl, stripApiKeys, trackError } from './posthog'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import type { PostHog } from 'posthog-js'
+import {
+  initPosthog,
+  resetPosthogClient,
+  sanitizeUrl,
+  setCapturing,
+  shouldCapture,
+  stripApiKeys,
+  trackError,
+  trackEvent,
+} from './posthog'
 
 type PosthogOptions = {
   before_send: (event: PosthogEvent) => PosthogEvent
+  opt_out_capturing_by_default: boolean
 }
 
 type PosthogEvent = {
@@ -19,6 +33,14 @@ type PosthogEvent = {
 
 const mockPosthogInit = mock()
 const mockCaptureException = mock()
+const mockCapture = mock()
+let sdkOptedOut = false
+const mockOptOut = mock(() => {
+  sdkOptedOut = true
+})
+const mockOptIn = mock(() => {
+  sdkOptedOut = false
+})
 let capturedOptions: PosthogOptions | null = null
 
 mock.module('posthog-js', () => ({
@@ -28,10 +50,18 @@ mock.module('posthog-js', () => ({
       // Always capture the options, even if PostHog client is cached
       capturedOptions = options as PosthogOptions
       const result = mockPosthogInit(...args)
-      // Return a mock client with captureException method
+      // A mock client: no saved consent choice unless a test returns one, and a captureException method.
       return {
-        ...result,
+        has_opted_out_capturing: () => sdkOptedOut,
+        opt_in_capturing: mockOptIn,
+        opt_out_capturing: mockOptOut,
         captureException: mockCaptureException,
+        capture: (...captureArgs: unknown[]) => {
+          if (!sdkOptedOut) {
+            mockCapture(...captureArgs)
+          }
+        },
+        ...result,
       }
     },
     captureException: mockCaptureException,
@@ -56,6 +86,12 @@ const createMockHttpClient = (apiKey = 'test-key'): HttpClient => {
 
 beforeAll(async () => {
   await setupTestDatabase()
+})
+
+beforeEach(() => {
+  sdkOptedOut = false
+  mockOptIn.mockClear()
+  mockOptOut.mockClear()
 })
 
 afterAll(async () => {
@@ -102,6 +138,92 @@ describe('analytics sanitizeUrl', () => {
   it('returns routes without query parameters unchanged', () => {
     expect(sanitizeUrl('/settings')).toBe('/settings')
     expect(sanitizeUrl('https://app.test/settings')).toBe('https://app.test/settings')
+  })
+})
+
+describe('analytics consent', () => {
+  const optIn = mock()
+  const optOut = mock()
+  /** A client whose saved choice on this device is opted out, or not. */
+  const clientWithSavedChoice = (isOptedOut: boolean) => ({
+    has_opted_out_capturing: () => isOptedOut,
+    opt_in_capturing: optIn,
+    opt_out_capturing: optOut,
+  })
+
+  beforeEach(() => {
+    resetPosthogClient()
+    mockPosthogInit.mockReset()
+    optIn.mockReset()
+    optOut.mockReset()
+  })
+
+  afterEach(async () => {
+    await updateSettings(getDb(), { data_collection: true })
+    useLocalSettingsStore.setState({ syncEnabled: false })
+  })
+
+  it.each([
+    { dataCollection: true, syncEnabled: false, hasSynced: false, expected: true },
+    { dataCollection: true, syncEnabled: true, hasSynced: true, expected: true },
+    { dataCollection: true, syncEnabled: true, hasSynced: false, expected: false },
+    { dataCollection: false, syncEnabled: false, hasSynced: false, expected: false },
+    { dataCollection: false, syncEnabled: true, hasSynced: true, expected: false },
+  ])(
+    'captures only with the setting on, and once synced when sync is on: %o',
+    ({ dataCollection, syncEnabled, hasSynced, expected }) => {
+      expect(shouldCapture({ dataCollection, syncEnabled, hasSynced })).toBe(expected)
+    },
+  )
+
+  it("opts in over a saved opt-out, without an `$opt_in` event, since it isn't the user's action", () => {
+    setCapturing(clientWithSavedChoice(true) as unknown as PostHog, true)
+    expect(optIn).toHaveBeenCalledWith({ captureEventName: false })
+    expect(optOut).not.toHaveBeenCalled()
+  })
+
+  it('opts out over a saved opt-in', () => {
+    setCapturing(clientWithSavedChoice(false) as unknown as PostHog, false)
+    expect(optOut).toHaveBeenCalledTimes(1)
+    expect(optIn).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])(
+    'leaves a device alone when its saved choice already matches (capturing %p)',
+    (isCapturing) => {
+      setCapturing(clientWithSavedChoice(!isCapturing) as unknown as PostHog, isCapturing)
+      expect(optIn).not.toHaveBeenCalled()
+      expect(optOut).not.toHaveBeenCalled()
+    },
+  )
+
+  it('starts capturing with the setting on, clearing an opt-out saved on this device', async () => {
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(true))
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: false })
+    expect(optIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out with the setting off', async () => {
+    await updateSettings(getDb(), { data_collection: false })
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
+    expect(optOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out on a device with sync on that has not synced yet, whose setting is only a seeded guess', async () => {
+    useLocalSettingsStore.setState({ syncEnabled: true })
+    mockPosthogInit.mockReturnValue(clientWithSavedChoice(false))
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
+    expect(optOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts opted out while the setting has no row', async () => {
+    await deleteSetting(getDb(), 'data_collection')
+    await initPosthog(createMockHttpClient())
+    expect(mockPosthogInit.mock.calls[0][1]).toMatchObject({ opt_out_capturing_by_default: true })
   })
 })
 
@@ -303,5 +425,89 @@ describe('trackError test cases', () => {
       $exception_message: 'Could not create app directory',
       $exception_stack: undefined,
     })
+  })
+})
+
+describe('deferred startup telemetry', () => {
+  beforeEach(async () => {
+    resetPosthogClient()
+    mockCapture.mockReset()
+    mockPosthogInit.mockReset()
+    useLocalSettingsStore.setState({ syncEnabled: false })
+    await updateSettings(getDb(), { data_collection: true })
+  })
+
+  afterEach(() => {
+    useLocalSettingsStore.setState({ syncEnabled: false })
+  })
+
+  it('preserves early startup times and flushes them only once when analytics attaches', async () => {
+    trackEvent('app_chat_ready', { chat_ready_ms: 123 })
+    trackEvent('app_content_ready', { content_ready_ms: 150 })
+    trackEvent('chat_send_prompt', { ignored: true })
+    expect(mockCapture).not.toHaveBeenCalled()
+    await initPosthog(createMockHttpClient())
+    expect(mockCapture).toHaveBeenCalledWith('app_chat_ready', { chat_ready_ms: 123 })
+    expect(mockCapture).toHaveBeenCalledWith('app_content_ready', { content_ready_ms: 150 })
+    expect(mockCapture).toHaveBeenCalledTimes(2)
+    await initPosthog(createMockHttpClient())
+    expect(mockCapture).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not send buffered events without an analytics key', async () => {
+    trackEvent('app_chat_ready', { chat_ready_ms: 123 })
+    await initPosthog(createMockHttpClient(''))
+    expect(mockCapture).not.toHaveBeenCalled()
+  })
+
+  it('uses the latest consent when it changes while analytics configuration is pending', async () => {
+    await updateSettings(getDb(), { data_collection: true })
+    trackEvent('app_content_ready', { content_ready_ms: 150 })
+    const response = Promise.withResolvers<Response>()
+    const client = createClient({ prefixUrl: 'http://test-api.local', fetch: async () => await response.promise })
+    const initializing = initPosthog(client)
+    expect(mockPosthogInit).not.toHaveBeenCalled()
+
+    await updateSettings(getDb(), { data_collection: false })
+    response.resolve(Response.json({ public_posthog_api_key: 'test-key' }))
+    await initializing
+    expect(capturedOptions?.opt_out_capturing_by_default).toBe(true)
+    expect(mockOptOut).toHaveBeenCalledTimes(1)
+    expect(mockCapture).not.toHaveBeenCalled()
+  })
+
+  it('overrides a stored SDK opt-in when app consent is false before flushing startup events', async () => {
+    await updateSettings(getDb(), { data_collection: false })
+    trackEvent('app_content_ready', { content_ready_ms: 150 })
+
+    expect((await initPosthog(createMockHttpClient())).success).toBe(true)
+    expect(mockOptOut).toHaveBeenCalledTimes(1)
+    expect(sdkOptedOut).toBe(true)
+    expect(mockCapture).not.toHaveBeenCalled()
+  })
+
+  it('discards buffered startup events while synced consent is still unknown', async () => {
+    useLocalSettingsStore.setState({ syncEnabled: true })
+    trackEvent('app_content_ready', { content_ready_ms: 150 })
+
+    expect((await initPosthog(createMockHttpClient())).success).toBe(true)
+    expect(capturedOptions?.opt_out_capturing_by_default).toBe(true)
+    expect(mockOptOut).toHaveBeenCalledTimes(1)
+    expect(mockCapture).not.toHaveBeenCalled()
+
+    useLocalSettingsStore.setState({ syncEnabled: false })
+    await initPosthog(createMockHttpClient())
+    expect(sdkOptedOut).toBe(false)
+    expect(mockCapture).not.toHaveBeenCalled()
+  })
+
+  it('applies synced app consent over a stored SDK denial before flushing startup events', async () => {
+    sdkOptedOut = true
+    trackEvent('app_content_ready', { content_ready_ms: 150 })
+
+    expect((await initPosthog(createMockHttpClient())).success).toBe(true)
+    expect(mockOptIn).toHaveBeenCalledWith({ captureEventName: false })
+    expect(sdkOptedOut).toBe(false)
+    expect(mockCapture).toHaveBeenCalledWith('app_content_ready', { content_ready_ms: 150 })
   })
 })

@@ -210,8 +210,9 @@ other item is not applicable.
     swap that touches the judge breaks every eval), the slug-to-name map in
     `.github/scripts/post-eval-results.ts` and its test, `src/ai/eval/README.md`. Done when
     `bun test src/ai/eval --timeout 5000` passes and the post-eval test passes in `bun run test`.
-20. universal. e2e literals: `e2e/native-smoke/ios.yaml` (display names in `visible`, `tapOn`,
-    `assertVisible`), `e2e/native-smoke/linux.ts` (button text), `e2e/fake-provider.ts` and
+20. universal. e2e literals: `e2e/native-smoke/ios.yaml` (`DEFAULT_MODEL` in the `env` block feeds
+    `visible` and `tapOn`; the Opus name sits in `tapOn` and `assertVisible`), `e2e/native-smoke/linux.ts`
+    (button text), `e2e/fake-provider.ts` and
     `e2e/consumer-fake-provider.spec.ts` (the direct internal name `claude-opus-5`). Specs that
     import the export constant follow the rename through `bun run type-check` (`tsconfig.e2e.json`).
     Done when type-check passes and no e2e file names the leaving model's display or internal name.

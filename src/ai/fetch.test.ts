@@ -16,9 +16,10 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
-import type { FetchFn } from '@/lib/proxy-fetch'
+import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
+import { useConfigStore } from '@/api/config-store'
 import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
 import { createMCPClient } from '@ai-sdk/mcp'
@@ -42,7 +43,6 @@ import {
   recordLegacyEmptyResponseRetry,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
-  sanitizeToolPrefix,
   selectPromptSkillDefinitions,
   withAppVersionHeader,
 } from './fetch'
@@ -119,27 +119,6 @@ const named = (name: string, tools: () => Promise<Record<string, Tool>>): NamedM
   name,
   url: `https://${name}.example.com`,
   client: { tools, close: () => {} } as unknown as MCPClient,
-})
-
-describe('sanitizeToolPrefix', () => {
-  const cases: Array<[string | null | undefined, string]> = [
-    ['Render', 'render'],
-    ['render.com', 'render_com'],
-    ['My Server', 'my_server'],
-    ['api.github.com', 'api_github_com'],
-    ['  spaced  ', 'spaced'],
-    ['UPPER_snake', 'upper_snake'],
-    ['weird!!!name', 'weird_name'],
-    ['---', 'mcp'],
-    ['', 'mcp'],
-    [null, 'mcp'],
-    [undefined, 'mcp'],
-    ['localhost-3000', 'localhost_3000'],
-  ]
-
-  it.each(cases)('sanitizes %p → %p', (input, expected) => {
-    expect(sanitizeToolPrefix(input)).toBe(expected)
-  })
 })
 
 describe('addSkillTool', () => {
@@ -240,6 +219,16 @@ describe('selectPromptSkillDefinitions', () => {
     expect(prompt).not.toContain('WIDGET_CONTRACT_BODY')
     expect(prompt).not.toContain('TASK_SKILL_BODY')
     expect(prompt).not.toContain('USER_AUTHORED_SKILL_BODY')
+  })
+
+  it.each([
+    [false, ['weather', 'research', 'user-authored']],
+    [true, ['weather']],
+  ])('minimalMode %s keeps these skills in the selection: %j', (minimalMode, expected) => {
+    useConfigStore.setState({ config: { minimalMode } })
+
+    expect(selectPromptSkillDefinitions(storedSkills, true).map(({ name }) => name)).toEqual(expected)
+    expect(selectPromptSkillDefinitions(storedSkills, false).map(({ name }) => name)).toEqual(['weather'])
   })
 
   it('keeps every enabled skill in the slash-token resolution map', () => {
@@ -484,6 +473,28 @@ describe('mergeMcpTools', () => {
     }
   })
 
+  it('keeps healthy MCP tools when a native plugin request fails with a string', async () => {
+    const fetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => false,
+      tauriFetch: async () => {
+        throw 'connection refused'
+      },
+    })
+    const dropped = named('down', async () => {
+      await fetch('http://localhost:8080/mcp')
+      return {}
+    })
+    const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({}, [dropped, named('healthy', async () => ({ beta: tool('b') }))], reconnect)
+    expect(result.toolset).toEqual({ healthy_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledWith(
+      dropped.client,
+      expect.objectContaining({ name: 'TypeError', message: 'Failed to fetch' }),
+    )
+  })
+
   it('keeps app and other server tools when recovery fails', async () => {
     const dropped = named('render', async () => {
       throw closedError()
@@ -645,6 +656,37 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
 })
 
 describe('createModel', () => {
+  it('opts Anthropic own-key requests into browser-origin access', async () => {
+    const calls: Array<{ url: string; headers: Headers }> = []
+    const providerFetch: FetchFn = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init)
+        calls.push({ url: request.url, headers: request.headers })
+        return Response.json({
+          id: 'msg_test',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-test',
+          content: [{ type: 'text', text: 'Hello' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        })
+      },
+      { preconnect: async () => false },
+    )
+    const model = await createModel(
+      { provider: 'anthropic', model: 'claude-test', apiKey: 'own-key' } as Model,
+      () => providerFetch,
+    )
+
+    await model.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }] })
+
+    expect(calls[0].url).toBe('https://api.anthropic.com/v1/messages')
+    expect(calls[0].headers.get('x-api-key')).toBe('own-key')
+    expect(calls[0].headers.get('anthropic-dangerous-direct-browser-access')).toBe('true')
+  })
+
   it('has no legacy Tinfoil provider path', async () => {
     const model = { provider: 'tinfoil' } as Model
 

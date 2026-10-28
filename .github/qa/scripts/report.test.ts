@@ -12,6 +12,7 @@ import {
   checkCoverage,
   matchCanaries,
   nothingExplored,
+  probeGaps,
   renderReport,
   runCanary,
   runSummary,
@@ -198,6 +199,20 @@ describe('renderReport', () => {
     expect(report).toContain('- **c1**: no function list')
   })
 
+  it('lists each session whose pages loaded without the layout probe, and nothing when all had it', () => {
+    const report = renderReport({
+      sessions: [session({ charter: 'c8-phone' }), session({ charter: 'c2-chat-desktop' })],
+      coverage: new Map(),
+      found: [],
+      probe: new Map([['c8-phone', { loads: 4, missing: 1 }]]),
+    })
+    expect(report).toContain('- **c8-phone**: 1 of 4 screens without a measurement')
+    expect(report.split('## Layout probe')[1]).not.toContain('c2-chat-desktop')
+    expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain(
+      'screens without a measurement',
+    )
+  })
+
   it('has no incomplete banner when every session finished', () => {
     expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('INCOMPLETE')
   })
@@ -206,7 +221,7 @@ describe('renderReport', () => {
     const verified: Verified = {
       ...emptyVerified,
       confirmed: [verifiedFinding('skills', 'page-error')],
-      flaky: [verifiedFinding('layout', 'overflow', '2')],
+      flaky: [verifiedFinding('layout', 'layout', '2')],
       observations: [{ charterDir: 'c1', id: '9', finding: raw('chat', 'x') }],
       dropped: [
         { file: { charterDir: 'c1', id: '3', reason: 'x' }, gate: 'schema', reason: 'bad | json' },
@@ -223,6 +238,10 @@ describe('renderReport', () => {
         { fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
         { fp: 'bcde2345', charterDir: 'c1', id: '5', severity: 'High', action: 'regression' },
         { fp: 'cdef3456', charterDir: 'c1', id: '6', severity: 'High', action: 'commented' },
+        // One ticket seen on two platforms is two entries with one fingerprint, dry run or live.
+        { fp: 'abcd1234', charterDir: 'c2', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
+        { fp: 'def04567', charterDir: 'c1', id: '7', severity: 'Low', action: 'created' },
+        { fp: 'def04567', charterDir: 'c2', id: '7', severity: 'Low', action: 'created' },
       ],
       canary: {
         found: 1,
@@ -232,10 +251,11 @@ describe('renderReport', () => {
           { ...canary('b', 'c2-chat-power-user'), found: false },
         ],
         real: ['c8-phone/7'],
+        unmeasured: ['c8-phone/8'],
       },
     })
     expect(report).toContain(
-      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 2',
+      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 3',
     )
     expect(report).toContain('c1/3: **schema** — bad \\| json')
     expect(report).toContain('c1/4: **judge** — known issue')
@@ -244,6 +264,7 @@ describe('renderReport', () => {
     expect(report).toContain('Canary recall: 1/2')
     expect(report).toContain('**MISSED** fix: b (bbbbbbbbb, c2-chat-power-user)')
     expect(report).toContain('Real bugs seen in the canary leg (not counted): c8-phone/7')
+    expect(report).toContain('Not measured (visual findings have no baseline replay): c8-phone/8')
   })
 
   it('adds a calibration row per metric with max observed and the +50% cap', () => {
@@ -349,16 +370,22 @@ describe('renderReport findings and caps', () => {
   })
 
   it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
-    const overflow = { ...verifiedFinding('layout', 'overflow', '2'), replay: { failed: 1, runs: 3 } }
+    const reason = 'only 2 of 3 runs reached the screen'
+    const overflow = {
+      ...verifiedFinding('layout', 'layout', '2'),
+      replay: { failed: 1, runs: 2, inconclusive: 4, reason },
+    }
     overflow.finding = {
       ...overflow.finding,
       title: 'Row | spills',
-      oracle: { type: 'overflow', evidence: 'see https://evil.example/x' },
+      oracle: { type: 'layout', evidence: 'see https://evil.example/x' },
     }
     const security = { ...verifiedFinding('security', 'assert-failed', '3'), replay: { failed: 2, runs: 3 } }
     const report = render({ ...emptyVerified, flaky: [overflow, security] })
     expect(report).toContain('### Flaky (2), never filed')
-    expect(report).toContain('- c8-phone/2: Row \\| spills — overflow: "see [link removed]" (failed 1/3 replays)')
+    expect(report).toContain(
+      `- c8-phone/2: Row \\| spills — layout: "see [link removed]" (failed 1/2 replays, 4 inconclusive; ${reason})`,
+    )
     expect(report).toContain('- c8-phone/3: security finding, text withheld (failed 2/3 replays)')
   })
 
@@ -385,7 +412,9 @@ describe('renderReport findings and caps', () => {
   })
 
   it('says app-provider spend is not measured only when a real-AI charter ran', () => {
-    expect(render(emptyVerified, 'c5-widgets-connections')).toContain('App providers (real-AI charters): not measured.')
+    expect(render(emptyVerified, 'c5-widgets-connections-desktop')).toContain(
+      'App providers (real-AI charters): not measured.',
+    )
     expect(render(emptyVerified)).not.toContain('App providers')
   })
 })
@@ -567,18 +596,220 @@ describe('checkCoverage', () => {
     const transcript = transcriptOf([browser('click'), browser('snapshot', 'Skill Alpha One'), record('1')])
     const files = [attempt('1', 'done', 'failed', 'Skill Alpha One'), attempt('2', 'blocked', 'blocked', 'no control')]
     const report = renderReport({
-      sessions: [session({ charter: 'c4' }), session({ charter: 'c8' })],
+      sessions: [session({ charter: 'c4-skills-projects-phone' }), session({ charter: 'c4-skills-projects-desktop' })],
       coverage: new Map([
-        ['c4', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
-        ['c8', checkCoverage(fns('done'), files)],
+        ['c4-skills-projects-phone', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
+        ['c4-skills-projects-desktop', checkCoverage(fns('done'), files)],
       ]),
       found: [],
     })
-    expect(report).toContain('- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n')
     expect(report).toContain(
-      '- **c8**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
+      '- **c4-skills-projects-phone**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n',
+    )
+    expect(report).toContain(
+      '- **c4-skills-projects-desktop**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
         'unknown function ids: blocked\n',
     )
+  })
+})
+
+describe('native coverage', () => {
+  type Call = { name: string; result: string; input?: { file_path?: string; yaml?: string } }
+  const transcriptOf = (calls: Call[]): TranscriptMessage[] =>
+    calls.flatMap(({ name, result, input }, i) => [
+      { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name, input }] } },
+      { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+    ])
+  const run = (yaml: string, result = '[qa-layout] ready keyboard=none'): Call => ({
+    name: 'mcp__maestro__run',
+    result,
+    input: { yaml },
+  })
+  const inspect = (result: string): Call => ({ name: 'mcp__maestro__inspect_screen', result })
+  const record: Call = {
+    name: 'Write',
+    result: 'File created successfully',
+    input: { file_path: '/runner/qa-out/c4-ios/attempts/1.json' },
+  }
+  const screen = '{"text":"Skill Alpha One","role":"button"}\n[qa-layout] ready keyboard=none'
+  const header = 'appId: net.thunderbird.thunderbolt.dev\n---\n'
+  const tap = `${header}- tapOn: Add\n`
+  const relaunch = `${header}- stopApp\n- launchApp\n`
+  const files = (id: string, observed: string) => [
+    {
+      id: '1',
+      attempt: {
+        function: id,
+        setup: 'fresh app',
+        action: 'did it',
+        expected: 'it works',
+        observed,
+        status: 'passed' as const,
+      },
+    },
+  ]
+  const verdict = (id: string, calls: Call[], observed = 'text":"Skill Alpha One","role":"button') => {
+    const [v] = checkCoverage(
+      [{ id, outcome: 'works', reload: id.endsWith('!') }],
+      files(id, observed),
+      transcriptOf(calls),
+    ).verdicts
+    return [v.state, v.reason]
+  }
+  const noQuote = ['unsupported', 'quote not in a browser tool result of this attempt']
+  const gated = run(
+    tap,
+    '{"success":true,"device_id":"D","commands_executed":1,"message":"Flow executed successfully","env_vars":{}}\n' +
+      '[qa-gate] layout probe not seen since launch\n[qa-layout] ready keyboard=none',
+  )
+  const denied = (yaml: string, problem: string) => run(yaml, `denied: ${problem}`)
+
+  it('covers a function whose quote comes from an inspect_screen after a run', () => {
+    expect(verdict('edit', [run(tap), inspect(screen), record])).toEqual(['passed', undefined])
+  })
+
+  it('does not cover a quote read before any run, or one no Maestro result holds', () => {
+    expect(verdict('edit', [inspect(screen), record])).toEqual([
+      'unsupported',
+      'no browser action before the quoted result',
+    ])
+    expect(verdict('edit', [run(tap, 'ok'), record])).toEqual([
+      'unsupported',
+      'quote not in a browser tool result of this attempt',
+    ])
+  })
+
+  it('wants a stopApp then launchApp run between the change and the quote for a reload function', () => {
+    const reason = 'no reload between the change and the quoted result'
+    expect(verdict('persist!', [run(tap), inspect(screen), record])).toEqual(['unsupported', reason])
+    expect(verdict('persist!', [run(tap), run(`${header}- launchApp\n`), inspect(screen), record])).toEqual([
+      'unsupported',
+      reason,
+    ])
+    expect(verdict('persist!', [run(tap), run(`${header}- launchApp\n- stopApp\n`), inspect(screen), record])).toEqual([
+      'unsupported',
+      reason,
+    ])
+    expect(verdict('persist!', [run(tap), run(relaunch), inspect(screen), record])).toEqual(['passed', undefined])
+    expect(
+      verdict('persist!', [run(tap), run(`${header}- killApp\n- launchApp: null\n`), inspect(screen), record]),
+    ).toEqual(['passed', undefined])
+  })
+
+  it('does not count a run the gate denied as an action, a reload or a quote source', () => {
+    const echoed = denied(`${header}- Skill Alpha Saved Ok: x\n`, 'commands[0].Skill Alpha Saved Ok: key not allowed')
+    expect(verdict('edit', [run(tap), echoed, record], 'Skill Alpha Saved Ok')).toEqual(noQuote)
+    const fakeReload = denied(`${relaunch}- runScript: x.js\n`, 'commands[2].runScript: command not allowed')
+    expect(verdict('persist!', [run(tap), fakeReload, inspect(screen), record])).toEqual([
+      'unsupported',
+      'no reload between the change and the quoted result',
+    ])
+    expect(verdict('edit', [fakeReload, inspect(screen), record])).toEqual([
+      'unsupported',
+      'no browser action before the quoted result',
+    ])
+  })
+
+  it('does not take the gate text, a cheat sheet or a screenshot reply for what the app showed', () => {
+    expect(verdict('edit', [gated, record], 'Flow executed successfully')).toEqual(noQuote)
+    expect(verdict('edit', [gated, record], 'layout probe not seen since launch')).toEqual(noQuote)
+    const sheet = { name: 'mcp__maestro__cheat_sheet', result: '- tapOn: Custom name for the flow' }
+    expect(verdict('edit', [run(tap), sheet, record], 'Custom name for the flow')).toEqual(noQuote)
+    const shot = { name: 'mcp__maestro__take_screenshot', result: 'Saved to /out/maestro/shot-1.jpg' }
+    expect(verdict('edit', [run(tap), shot, record], 'Saved to /out/maestro/shot-1.jpg')).toEqual(noQuote)
+    // The probe's own line still backs a quote.
+    expect(verdict('edit', [gated, record], '[qa-layout] ready keyboard=none')).toEqual(['passed', undefined])
+  })
+
+  it('does not take a launchApp inside a selector text for a reload', () => {
+    const spoof = `${header}- tapOn: "stopApp"\n- tapOn: "launchApp"\n`
+    expect(verdict('persist!', [run(tap), run(spoof), inspect(screen), record])[1]).toBe(
+      'no reload between the change and the quoted result',
+    )
+  })
+})
+
+describe('probeGaps', () => {
+  const callsOf = (steps: readonly (readonly [string, string])[]): TranscriptMessage[] =>
+    steps.flatMap(([name, result], i) => [
+      { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name }] } },
+      { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+    ])
+  // A navigation result carries a count of console errors and a link to the new lines, never the console text.
+  const navigated = (link?: string) =>
+    "### Ran Playwright code\n```js\nawait page.goto('http://localhost:1424/');\n```\n### Page\n" +
+    '- Page URL: http://localhost:1424/\n- Page Title: Thunderbolt\n- Console: 2 errors, 0 warnings\n' +
+    (link ? `### Events\n- New console entries: ${link}` : '')
+  const readyLog = [
+    '[     217ms] [ERROR] [qa-layout] ready @ /repo/.github/qa/layout-probe.js:242',
+    '[     254ms] [ERROR] Failed to load resource: the server responded with a status of 404',
+    '[     762ms] [ERROR] [qa-layout] covered button "Continue" @ /repo/.github/qa/layout-probe.js:209',
+  ].join('\n')
+  const logs: Record<string, string> = {
+    '/out/mcp/console-a.log': readyLog,
+    '/out/mcp-b/console-b.log': readyLog,
+    '/out/mcp/console-c.log': '[ 90ms] [ERROR] Failed to load resource: 404\n[ 99ms] [ERROR] boom',
+  }
+  const readLog = async (path: string) => logs[path]
+
+  it('counts a load as measured only when its linked console lines hold the ready line', async () => {
+    const steps = [
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L1')],
+      // The ready line is on line 1 of this log, outside the lines this result links.
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L2-L3')],
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-c.log#L1-L2')],
+      ['mcp__playwright__browser_navigate_back', navigated()],
+      ['mcp__playwright_b__browser_navigate', navigated('/out/mcp-b/console-b.log#L1-L3')],
+      ['mcp__playwright_b__browser_navigate_back', navigated('/out/mcp-b/gone.log#L1')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 4, missing: 2 })
+  })
+
+  it('ignores Back: a same-document history move never runs the init script', async () => {
+    const steps = [
+      ['mcp__playwright__browser_navigate_back', navigated()],
+      ['mcp__playwright__browser_navigate_back', navigated('/out/mcp/console-c.log#L1-L2')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 0, missing: 0 })
+  })
+
+  it('ignores results of other tools, even when they link a log with the ready line', async () => {
+    const steps = [
+      ['mcp__playwright__browser_click', navigated('/out/mcp/console-a.log#L1')],
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L1')],
+      ['Write', 'ok'],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 1, missing: 0 })
+  })
+
+  it('counts each native run that did not return the ready line, and no other Maestro tool', async () => {
+    const steps = [
+      ['mcp__maestro__run', '[qa-layout] ready keyboard=none'],
+      ['mcp__maestro__run', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__inspect_screen', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__read_logs', 'no lines'],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 1 })
+  })
+
+  it('leaves a denied run out, even when its reply holds the ready text', async () => {
+    const steps = [
+      ['mcp__maestro__run', 'denied: commands[0].[qa-layout] ready: key not allowed'],
+      ['mcp__maestro__run', '[qa-gate] layout probe not seen since launch'],
+      ['mcp__maestro__run', 'text on screen [qa-layout] ready keyboard=none'],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 2 })
+  })
+
+  it('reads a link written under another root or relative to another cwd from the session dir', async () => {
+    const steps = [
+      [
+        'mcp__playwright__browser_navigate',
+        navigated('/home/runner/work/tb/qa-out/c2-chat-phone/mcp/console-a.log#L1'),
+      ],
+      ['mcp__playwright_b__browser_navigate', navigated('qa-out/c2-chat-phone/mcp-b/console-b.log#L1-L3')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 0 })
   })
 })
 
@@ -586,25 +817,31 @@ describe('runSummary', () => {
   it('reads attempt records and the transcript of each session against functions.json', async () => {
     const qaDir = join(dir, 'qa')
     const outDir = join(dir, 'out')
-    await mkdir(join(outDir, 'c4/attempts'), { recursive: true })
+    const phone = 'c4-skills-projects-phone'
+    const desktop = 'c4-skills-projects-desktop'
+    await mkdir(join(outDir, phone, 'attempts'), { recursive: true })
     await mkdir(qaDir)
     const list = [{ id: 'skill-create', outcome: 'shows' }]
-    await writeFile(join(qaDir, 'functions.json'), JSON.stringify({ c4: list, c8: list }))
-    await writeFile(join(outDir, 'c4/session.json'), JSON.stringify(session({ charter: 'c4' })))
+    // The list belongs to the charter: every platform's session reads it.
+    await writeFile(join(qaDir, 'functions.json'), JSON.stringify({ 'c4-skills-projects': list }))
+    await writeFile(join(outDir, phone, 'session.json'), JSON.stringify(session({ charter: phone })))
     // A save step cut short: the transcript is broken, and that session counts as having none.
-    await mkdir(join(outDir, 'c8'))
-    await writeFile(join(outDir, 'c8/session.json'), JSON.stringify(session({ charter: 'c8' })))
-    await writeFile(join(outDir, 'c8/transcript.json'), '[{"message":')
+    await mkdir(join(outDir, desktop))
+    await writeFile(join(outDir, desktop, 'session.json'), JSON.stringify(session({ charter: desktop })))
+    await writeFile(join(outDir, desktop, 'transcript.json'), '[{"message":')
+    // A fix session has no function list and must not be read as a platform session.
+    await mkdir(join(outDir, 'fix-ab12cd34'))
+    await writeFile(join(outDir, 'fix-ab12cd34/session.json'), JSON.stringify(session({ charter: 'fix-ab12cd34' })))
     const observed = 'button "Skill Alpha One"'
     await writeFile(
-      join(outDir, 'c4/attempts/1.json'),
+      join(outDir, phone, 'attempts/1.json'),
       JSON.stringify({ function: 'skill-create', setup: 's', action: 'a', expected: 'e', observed, status: 'passed' }),
     )
-    await writeFile(join(outDir, 'c4/attempts/2.json'), '{ not json')
+    await writeFile(join(outDir, phone, 'attempts/2.json'), '{ not json')
     const steps = [
       ['mcp__playwright__browser_click', 'ok'],
       ['mcp__playwright__browser_snapshot', observed],
-      ['Write', 'ok', join(outDir, 'c4/attempts/1.json')],
+      ['Write', 'ok', join(outDir, phone, 'attempts/1.json')],
     ]
     const transcript = steps.flatMap(([name, content, path], i) => [
       {
@@ -613,7 +850,7 @@ describe('runSummary', () => {
       },
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `t${i}`, content }] } },
     ])
-    await writeFile(join(outDir, 'c4/transcript.json'), JSON.stringify(transcript))
+    await writeFile(join(outDir, phone, 'transcript.json'), JSON.stringify(transcript))
     // A free session has no list: its attempts' own names are what it tried.
     const free = 'free-phone-commuter-phone'
     await mkdir(join(outDir, free, 'attempts'), { recursive: true })
@@ -629,13 +866,41 @@ describe('runSummary', () => {
         status: 'passed',
       }),
     )
+    // A session with no function list still has its page loads checked; a fix session's transcript is never read.
+    const navigation = (name: string, result: string) => [
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: name, name, input: {} }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: name, content: result }] } },
+    ]
+    const unlisted = 'c9-unlisted-phone'
+    await mkdir(join(outDir, unlisted))
+    await writeFile(join(outDir, unlisted, 'session.json'), JSON.stringify(session({ charter: unlisted })))
+    const log = join(outDir, unlisted, 'mcp-console.log')
+    await writeFile(log, '[ 217ms] [ERROR] [qa-layout] ready @ /repo/.github/qa/layout-probe.js:242\n')
+    const loaded = (link: string) => `- Console: 1 errors, 0 warnings\n### Events\n- New console entries: ${link}`
+    await writeFile(
+      join(outDir, unlisted, 'transcript.json'),
+      JSON.stringify([
+        ...navigation('mcp__playwright__browser_navigate', loaded(`${log}#L1`)),
+        ...navigation('mcp__playwright__browser_navigate', '- Console: 0 errors, 0 warnings'),
+        // Back never runs the probe, so it is neither a load nor a gap.
+        ...navigation('mcp__playwright__browser_navigate_back', '- Console: 0 errors, 0 warnings'),
+      ]),
+    )
+    await writeFile(
+      join(outDir, 'fix-ab12cd34/transcript.json'),
+      JSON.stringify(navigation('mcp__playwright__browser_navigate', 'no probe')),
+    )
     const stepSummary = join(dir, 'step-summary.md')
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
 
-    expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2\n')
+    expect(report).toContain('- **c9-unlisted-phone**: 1 of 2 screens without a measurement')
+    expect(report).not.toContain('fix-ab12cd34**: ')
+
+    expect(report).toContain('- **c4-skills-projects-phone**: 1/1 covered; invalid records: 2\n')
+    expect(report).not.toContain('fix-ab12cd34**:')
     expect(report).toContain(
-      '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
+      '- **c4-skills-projects-desktop**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
     )
     expect(report.split('## Free session')[1]).toContain(
       '- **free-phone-commuter-phone**: tried 1, **no transcript** (1 records unchecked); unsupported: photo-question',
@@ -646,7 +911,11 @@ describe('runSummary', () => {
 })
 
 describe('canaries', () => {
-  const canaries = [canary('a', 'c6-settings-data'), canary('b', 'c4-skills-projects'), canary('c', 'c8-phone')]
+  const canaries = [
+    canary('a', 'c6-settings-data-desktop'),
+    canary('b', 'c4-skills-projects-desktop'),
+    canary('c', 'c8-phone'),
+  ]
   const finding = (id: string, charterDir = 'c8-phone', area = 'other', type = 'console-error') => ({
     ...verifiedFinding(area, type, id),
     charterDir,
@@ -682,6 +951,17 @@ describe('canaries', () => {
     expect(result).toMatchObject({ found: 0, real: ['c8-phone/1'] })
   })
 
+  it('sets visual findings apart: they are neither a found canary nor a real bug', () => {
+    const result = matchCanaries(canaries, [finding('v', 'c8-phone', 'other', 'visual')], emptyVerified)
+    expect(result).toMatchObject({ found: 0, real: [], unmeasured: ['c8-phone/v'] })
+  })
+
+  it('still counts a canary found by a caused spec finding next to a visual one', () => {
+    const findings = [finding('1'), finding('v', 'c8-phone', 'other', 'visual')]
+    const result = matchCanaries(canaries, findings, droppedOnNormal(['1']))
+    expect(result).toMatchObject({ found: 1, real: [], unmeasured: ['c8-phone/v'] })
+  })
+
   it('does not count a canary-caused finding from another charter', () => {
     const result = matchCanaries(canaries.slice(0, 2), [finding('5')], droppedOnNormal(['5']))
     expect(result).toMatchObject({ found: 0, real: [] })
@@ -708,17 +988,18 @@ describe('canaries', () => {
     expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8'))).toEqual(result)
   })
 
-  it('measures only the canaries whose charter a dispatch ran', async () => {
+  it('measures only the canaries a dispatch selected, by charter id, session id or free', async () => {
     const baselineDir = join(dir, 'baseline')
     await mkdir(baselineDir)
     await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(emptyVerified))
     await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))
     await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
+    const ran = async (input: string) =>
+      (await runCanary(dir, baselineDir, join(dir, 'canaries.json'), input)).results.map((r) => r.charter)
 
-    const result = await runCanary(dir, baselineDir, join(dir, 'canaries.json'), 'c4-skills-projects, free')
-
-    expect(result).toMatchObject({ total: 1, found: 0 })
-    expect(result.results.map((r) => r.charter)).toEqual(['c4-skills-projects'])
+    expect(await ran('c4-skills-projects, free')).toEqual(['c4-skills-projects-desktop'])
+    expect(await ran('c4-skills-projects-desktop')).toEqual(['c4-skills-projects-desktop'])
+    expect(await ran('c4-skills-projects-phone')).toEqual([])
   })
 
   it('fails loudly without a baseline', async () => {

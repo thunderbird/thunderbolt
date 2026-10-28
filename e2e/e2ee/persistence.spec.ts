@@ -17,6 +17,7 @@ import {
   waitForAccountDeletion,
   waitForEncryptedSetting,
   waitForNewEncryptedTasks,
+  waitForStepUpOtp,
   waitForUserId,
 } from './db'
 import { expect, test } from './fixtures'
@@ -73,7 +74,16 @@ test.describe('PowerSync E2EE persistence and destructive flows', () => {
     await page.getByRole('button', { name: 'Delete My Account' }).click()
     const confirmation = page.getByRole('alertdialog')
     await expect(confirmation.getByText('Delete your account?')).toBeVisible()
-    await confirmation.getByRole('button', { name: 'Delete account' }).click()
+    await confirmation.getByRole('button', { name: 'Send code' }).click()
+
+    // Deletion is step-up gated: read the emailed code where the inbox would
+    // be. Unlike the rotation dialog this one does NOT auto-submit, so the
+    // button has to be clicked.
+    const codeDialog = page.getByRole('alertdialog')
+    await expect(codeDialog.getByText('Enter your verification code')).toBeVisible({ timeout: 15_000 })
+    const code = await waitForStepUpOtp(email, 'account-deletion')
+    await codeDialog.locator('[data-slot="input-otp"]').fill(code)
+    await codeDialog.getByRole('button', { name: 'Delete account' }).click()
 
     await waitForAccountDeletion(userId)
     await expect(page.getByPlaceholder('Email')).toBeVisible({ timeout: 30_000 })

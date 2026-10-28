@@ -49,6 +49,7 @@ jobs:
               - 'src-tauri/build.rs'
               - 'src-tauri/rust-toolchain.toml'
               - 'src-tauri/.cargo/**'
+              - 'src-tauri/capabilities/**'
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
@@ -96,6 +97,8 @@ jobs:
               # gated by the same `i18n:check`. Without these the check never runs
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
+              # Also scanned by the email catalog: it authors step-up prose outside a template.
+              - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
             helm:
               - 'deploy/k8s/**'
@@ -345,6 +348,9 @@ jobs:
         run: bun run test:agent-core:5x
 
       - name: Install browser engines
+        # WebKit needs apt packages the runner image lacks, so --with-deps stays;
+        # the timeout makes a slow-mirror stall fail fast instead.
+        timeout-minutes: 10
         run: bunx playwright install --with-deps chromium webkit
 
       - name: Check production agent-core in browsers
@@ -404,9 +410,8 @@ jobs:
       - name: Test miniapps
         run: cd miniapps && bun run test
 
-  # The weekly QA agent in .github/qa/ is CI tooling, not app code. Its tests and
-  # type check sit outside `bun run test` and the root tsconfig, so they run here,
-  # only when the agent or a file it depends on changes.
+  # The weekly QA agent's tests and type check sit outside `bun run test` and the
+  # root tsconfig, so they run here when it or a file it depends on changes.
   qa:
     needs: detect-changes
     if: needs.detect-changes.outputs.qa == 'true'
@@ -438,6 +443,13 @@ jobs:
 
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5
+
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # The layout probe's static pages; they need no stack.
+      - name: Run the layout probe tests
+        run: bunx playwright test --config .github/qa/playwright.config.ts --project probe
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`
@@ -589,8 +601,21 @@ jobs:
         run: |
           cd src-tauri
           cargo build --all-targets
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          # --workspace also covers the local plugins (default-members is the app only).
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      # The passkey plugin's Windows backend (src/win.rs) only compiles for Windows,
+      # so the build above never sees it. clippy doesn't link, so it runs here
+      # without the MSVC toolchain.
+      - name: Check the passkey plugin for Windows
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cd src-tauri
+          cargo clippy -p tauri-plugin-passkey --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 
       # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
       # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build

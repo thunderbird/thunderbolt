@@ -4,7 +4,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: docker.io/journeyapps/powersync-service:latest
+    image: docker.io/journeyapps/powersync-service:1.27.0
     command: ["start", "-r", "unified"]
     volumes:
       - ./config/config.yaml:/config/config.yaml:Z

@@ -7,6 +7,7 @@ import { Plus } from 'lucide-react'
 import { lazy, Suspense, useReducer } from 'react'
 import { flushSync } from 'react-dom'
 
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button } from '@/components/ui/button'
 import { MobileCardMenu } from '@/components/ui/mobile-card-menu'
@@ -107,6 +108,11 @@ export const ChatSkillsBar = ({
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
+  // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
+  // text is plain text there.
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  // Hidden too until `/config` answers, so the chips never flash in and out.
+  const configLoaded = useConfigStore(selectConfigSettled)
 
   const { t } = useLingui()
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
@@ -132,7 +138,7 @@ export const ChatSkillsBar = ({
     }
   }
 
-  if (hidden) {
+  if (hidden || minimalMode || !configLoaded) {
     return null
   }
 

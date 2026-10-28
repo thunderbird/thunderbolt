@@ -19,7 +19,8 @@
 import type { LucideIcon } from 'lucide-react'
 import { AppWindow, BarChart3, FileSearch, LineChart, Route, Stethoscope, Table } from 'lucide-react'
 import { z } from 'zod'
-import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
+import type { PublicMiniApp } from '@shared/mini-app-registry'
+import { httpUrlMessage, isHttpUrl } from '@shared/url'
 
 export type MiniAppDefinition = {
   /** URL segment and stable key: `/apps/<id>`. */

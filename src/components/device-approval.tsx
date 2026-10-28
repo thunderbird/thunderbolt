@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans } from '@lingui/react/macro'
 import { AlertCircle, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
@@ -147,8 +148,8 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
     <ApprovalShell>
       {state.status === 'verifying' && (
         <DialogHeader>
-          <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
-            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
+          <div className={`${iconWrapperClass} bg-brand [background-image:var(--gradient-brand)]`}>
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-brand-foreground" />
           </div>
           <DialogTitle className="text-center text-xl">
             <Trans>Checking sign-in request…</Trans>
@@ -195,8 +196,8 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {(state.status === 'confirming' || isSubmitting) && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
-              <ShieldQuestion className="size-[var(--icon-size-default)] text-white" />
+            <div className={`${iconWrapperClass} bg-brand [background-image:var(--gradient-brand)]`}>
+              <ShieldQuestion className="size-[var(--icon-size-default)] text-brand-foreground" />
             </div>
             <DialogTitle className="text-center text-xl">
               <Trans>Approve CLI sign-in?</Trans>
@@ -278,8 +279,8 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
       {state.status === 'failed' && state.error && (
         <>
           <DialogHeader>
-            <div className={`${iconWrapperClass} bg-red-100 dark:bg-red-900/30`}>
-              <AlertCircle className="size-[var(--icon-size-default)] text-red-600 dark:text-red-400" />
+            <div className={`${iconWrapperClass} bg-destructive/10`}>
+              <AlertCircle className="size-[var(--icon-size-default)] text-destructive" />
             </div>
             <DialogTitle className="text-center text-xl">
               {state.error.reason === 'expired' ? <Trans>Request expired</Trans> : <Trans>Code didn't work</Trans>}
@@ -308,6 +309,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
  * a redirect loop through the authenticated home route. Lazy-loaded (off the landing path).
  */
 export const DeviceApproval = () => {
+  const appName = useAppName()
   const authClient = useAuth()
   const { openSignInModal } = useSignInModal()
   const { data: session, isPending } = authClient.useSession()
@@ -319,8 +321,8 @@ export const DeviceApproval = () => {
     return (
       <ApprovalShell>
         <DialogHeader>
-          <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
-            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
+          <div className={`${iconWrapperClass} bg-brand [background-image:var(--gradient-brand)]`}>
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin text-brand-foreground" />
           </div>
           <DialogTitle className="text-center text-xl">
             <Trans>Loading…</Trans>
@@ -354,7 +356,7 @@ export const DeviceApproval = () => {
             <Trans>Sign in to continue</Trans>
           </DialogTitle>
           <DialogDescription className="text-center">
-            <Trans>Sign in to a Thunderbolt account to approve this CLI request.</Trans>
+            <Trans>Sign in with your {appName} account to approve this CLI request.</Trans>
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">

@@ -78,17 +78,20 @@ Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the loc
 
 ## Single sign-on fails
 
-| Symptom                                                  | Cause                                                                                      | Fix                                                                                              |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| The app loads normally and never redirects to the IdP    | The client was not built for SSO                                                           | Build the web client with `VITE_AUTH_MODE=sso`                                                   |
-| The app loads normally and never redirects to the IdP    | A stale session from a previous sign-in                                                    | Clear site data for the app origin and reload                                                    |
-| `discovery_untrusted_origin`                             | The IdP origin is missing from `TRUSTED_ORIGINS`                                           | Add it there, not to `CORS_ORIGINS`, and restart                                                 |
-| `discovery_unexpected_error`                             | The server cannot reach the identity provider                                              | Confirm the provider is running and reachable from the server's network                          |
-| Discovery succeeds but tokens are rejected in containers | The server reaches the IdP on an internal hostname while tokens carry a browser-facing one | Set `OIDC_DISCOVERY_URL` to the internal URL and list both origins in `TRUSTED_ORIGINS`          |
-| OIDC callback returns `404` or `redirect_uri` mismatch   | The redirect URI registered with the provider is wrong                                     | Register `https://your-backend/v1/api/auth/sso/callback/sso`                                     |
-| SAML sign-in is rejected on the way back                 | The assertion consumer service (ACS) URL registered with the provider is wrong             | Register `https://your-backend/v1/api/auth/sso/saml2/sp/acs/sso`                                 |
-| `Invalid certificate`                                    | `SAML_CERT` includes PEM headers or line breaks                                            | Paste the raw base64 only, without `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` |
-| The IdP rejects the entity ID                            | `SAML_ENTITY_ID` does not match the application registered in the IdP                      | Make them identical                                                                              |
+| Symptom                                                  | Cause                                                                                      | Fix                                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| The app loads normally and never redirects to the IdP    | The client was not built for SSO                                                           | Build the web client with `VITE_AUTH_MODE=sso`                                                      |
+| The app loads normally and never redirects to the IdP    | A stale session from a previous sign-in                                                    | Clear site data for the app origin and reload                                                       |
+| `discovery_untrusted_origin`                             | The IdP origin is missing from `TRUSTED_ORIGINS`                                           | Add it there, not to `CORS_ORIGINS`, and restart                                                    |
+| `discovery_unexpected_error`                             | The server cannot reach the identity provider                                              | Confirm the provider is running and reachable from the server's network                             |
+| Discovery succeeds but tokens are rejected in containers | The server reaches the IdP on an internal hostname while tokens carry a browser-facing one | Set `OIDC_DISCOVERY_URL` to the internal URL and list both origins in `TRUSTED_ORIGINS`             |
+| OIDC callback returns `404` or `redirect_uri` mismatch   | The redirect URI registered with the provider is wrong                                     | Register `https://your-backend/v1/api/auth/sso/callback/sso`                                        |
+| SAML sign-in is rejected on the way back                 | The assertion consumer service (ACS) URL registered with the provider is wrong             | Register `https://your-backend/v1/api/auth/sso/saml2/sp/acs/sso`                                    |
+| `Invalid certificate`                                    | `SAML_CERT` includes PEM headers or line breaks                                            | Paste the raw base64 only, without `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----`    |
+| The IdP rejects the entity ID                            | `SAML_ENTITY_ID` does not match the application registered in the IdP                      | Make them identical                                                                                 |
+| Clicking the icon in the IdP dashboard does not sign in  | Thunderbolt refuses SAML responses that answer no login request it sent                    | Point the icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` after reading the risk |
+| Many users get `429` at the same time                    | `TRUSTED_PROXY` is empty behind a CDN, so every client shares one rate-limit bucket        | Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if you use one                                      |
+| "Account not linked" on an SSO sign-in                   | The account with that email is not verified                                                | See [Account not linked](#account-not-linked) below                                                 |
 
 Point your IdP at the service-provider metadata to check what Thunderbolt is actually sending:
 
@@ -100,6 +103,45 @@ Two behaviours that are not faults:
 
 - **Signing out puts the user straight back in.** The identity provider keeps its own session, so the next visit re-authenticates silently. This is normal SSO behaviour and Thunderbolt cannot end the provider's session for you.
 - **The bundled Keycloak forgets its configuration.** In every bundled deployment it runs in development mode with no persistent storage, so anything set in its admin console is lost when the container or pod restarts and the realm is re-imported. Don't use it past evaluation.
+
+### Account not linked
+
+When a sign-in arrives with an identity Thunderbolt has not seen before, and an account with the same email exists, it joins that account only when one of these is true:
+
+- The account's email is verified, because its owner signed in with an emailed code.
+- The account already has an identity from your provider (`provider_id` is `sso`). This covers a new identity for the same person: switching `AUTH_MODE` between `oidc` and `saml`, moving to a different provider, or a provider that changed the user's subject or NameID.
+
+Two things cause "account not linked":
+
+- The account was never verified and has no `sso` identity, such as a local account with the same address that was never verified. Use the check and the fix below.
+- Your OIDC provider reports the email as not verified (`email_verified` is false in the id_token or userinfo). Thunderbolt never links in that case, even to a verified account. Mark the address verified at the provider and have the user sign in again. Keycloak sets `email_verified` only when the realm makes users confirm the address ("Verify email") or an admin ticks "Email verified". When Keycloak loads users from LDAP, it sends `email_verified` false unless "Trust Email" is turned on in the LDAP user federation settings, so turn it on. SAML has no such claim, so this cause does not apply to it.
+
+An address with no account at all gets a new one.
+
+Check the account first:
+
+```sql
+SELECT id, email, email_verified, created_at FROM "user" WHERE email = 'person@example.com';
+```
+
+Older releases let any signed-in user add a second identity provider, and its owner could create an unverified account for someone else's address. Marking such an account verified would hand it to the real person with the owner still inside. So list how the account can be reached, with the `id` from above:
+
+```sql
+SELECT provider_id, created_at FROM account WHERE user_id = '<id>';
+SELECT name, created_at FROM apikey WHERE reference_id = '<id>';
+SELECT name, created_at FROM passkey WHERE user_id = '<id>';
+SELECT id, name, device_type, trusted, created_at, last_seen FROM powersync.devices WHERE user_id = '<id>' AND revoked_at IS NULL;
+```
+
+The last query lists the devices that hold the account's encryption keys. A device you cannot account for may belong to whoever set the account up, and so may the recovery phrase they saw when encryption was set up. You cannot revoke a device from the database, because revoking needs a signature from the account's keys. The account's owner does it on a trusted device: **Settings > Devices** to revoke each unknown device, then **Change recovery phrase**. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) for the details and for deleting an account nobody uses.
+
+Anything other than `sso` accounts, or an API key, passkey or device the person did not create, means someone else set the account up. See [Upgrading](./self-hosting/upgrading.md#single-sign-on-changes) before going further. Otherwise, once you are sure the address belongs to the person signing in, mark it verified, and they can sign in again:
+
+```sql
+UPDATE "user" SET email_verified = true WHERE email = 'person@example.com';
+```
+
+Don't delete the `user` row to make room for a fresh account. That is a hard delete: it removes the person's synced data and their encryption keys with it, and none of it comes back. Consider it only for an account you know nobody uses.
 
 ## Chats are not syncing between devices
 
@@ -168,7 +210,9 @@ This sends one tiny completion to each model in the catalog and reports `not-con
 
 ### Egress allowlists
 
-Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): those calls are relayed through your server, because a browser cannot make them directly. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
+Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): web calls and non-loopback native calls with **Use Cloud Proxy** on are relayed through your server. Desktop and mobile connect directly by default. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
+
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy.
 
 ## Attachments fail
 
@@ -185,7 +229,7 @@ Photos over 10 MB are downscaled before the size check and PDFs get a best-effor
 | The attachment is gone when the chat is opened on another device  | Attachment contents never sync. Open the chat on the device that sent it                                                                                                                                            |
 | The attachment is missing from a data export                      | Exports carry the reference, not the file                                                                                                                                                                           |
 
-> Attachment contents live in the app's own local store. In a browser, clearing site data removes them from messages already sent. On desktop and mobile they outlast signing out, revoking the device and even deleting the account, and go only with the app's data.
+> Attachment contents live in the app's own local store. In a browser, clearing site data removes them from messages already sent. Signing out with "Delete local data" clears them, and so does revoking the device or deleting the account, on each device that notices. A device with sync off, or one that stays offline, keeps its files.
 
 ## Voice does not work
 
@@ -226,4 +270,4 @@ The check fails closed: a client that sends no version is treated as too old. If
 - Open an issue at [github.com/thunderbird/thunderbolt](https://github.com/thunderbird/thunderbolt/issues) with your deployment target, the app version from **Settings → Preferences**, and the relevant server log lines.
 - Sending a debug transcript is an option only if your deployment is configured for it. See the [configuration reference](./self-hosting/configuration.md).
 
-> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by the Thunderbolt team.
+> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by whoever runs the intake (the Thunderbolt team unless you forward to your own, named in the share dialog by `debugTranscriptRecipient` in [`BRANDING`](./self-hosting/configuration.md#branding)).

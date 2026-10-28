@@ -48,4 +48,19 @@ describe('ChatAddMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Connections' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Upload file' })).toBeNull()
   })
+
+  it('offers only Upload file when connections are hidden', () => {
+    render(<ChatAddMenu onUploadFile={() => {}} />)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Add to chat' }), { button: 0, ctrlKey: false })
+
+    expect(screen.getByRole('menuitem', { name: 'Upload file' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Connections' })).toBeNull()
+  })
+
+  it('renders nothing when there are no actions', () => {
+    render(<ChatAddMenu />)
+
+    expect(screen.queryByRole('button', { name: 'Add to chat' })).toBeNull()
+  })
 })

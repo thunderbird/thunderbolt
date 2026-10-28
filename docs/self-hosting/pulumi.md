@@ -140,8 +140,11 @@ The Target column says which compute target reads the value; anything marked Far
 | `cloudflareApiToken`           | Fargate | yes    | Required whenever any hostname is set.                                           |
 | `minAppVersion`                | Fargate |        | Refuse requests from clients older than this version. Off when unset.            |
 | `cliDeviceRegistrationEnabled` | Fargate |        | Allow command-line clients to register devices. Off by default.                  |
+| `branding`                     | Both    |        | [Branding](./configuration.md#branding) as a JSON string. See below.             |
 
 Provider keys are optional. Leave them unset if your users will supply their own keys in the app. Everything else the services read is in the [Configuration reference](./configuration.md).
+
+Set branding from a file so the shell doesn't touch the JSON: `pulumi config set branding "$(cat branding.json)"`.
 
 ## Deploying from CI
 

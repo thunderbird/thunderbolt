@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "maestro": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [".github/qa/scripts/maestro-gate.ts"]
+    }
+  }
+}

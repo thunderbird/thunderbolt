@@ -68,6 +68,8 @@ type ServiceArgs = {
   cliDeviceRegistrationEnabled: boolean
   /** Lets a personal access token reach the confidential (Tinfoil) routes. */
   confidentialApiKeysEnabled: boolean
+  /** Operator branding JSON (env: BRANDING). Empty ships the default look. */
+  branding: string
   /**
    * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
    * for client IP extraction (Cloudflare edge for preview stacks).
@@ -505,6 +507,8 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'CONFIDENTIAL_API_KEYS_ENABLED', value: args.confidentialApiKeysEnabled ? 'true' : 'false' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
+          // Omitted when empty so the backend applies its own defaults.
+          ...(args.branding ? [{ name: 'BRANDING', value: args.branding }] : []),
           // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP
           // header for rate limiting. Enterprise stacks leave this unset (direct socket IP).
           { name: 'TRUSTED_PROXY', value: args.behindCloudflareProxy ? 'cloudflare' : '' },

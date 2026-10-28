@@ -8,10 +8,30 @@
 // `isStandalone` and a fetch override so tests can wire fakes via constructor
 // arguments — pure dependency injection.
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
+import { encodeBase64Url } from '@shared/base64url'
+import { wsTargetPrefix } from '@shared/proxy-protocol'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
+import { setAuthToken } from './auth-token'
+
+let originalStorage: Array<[string, string | null]>
+
+beforeEach(() => {
+  originalStorage = ['proxy_enabled', 'thunderbolt_auth_token'].map((key) => [key, localStorage.getItem(key)])
+  localStorage.removeItem('proxy_enabled')
+})
+
+afterEach(() => {
+  for (const [key, value] of originalStorage) {
+    if (value === null) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, value)
+    }
+  }
+})
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -49,6 +69,53 @@ describe('createProxyFetch — Hosted mode', () => {
     expect(calls[0].headers.get('x-proxy-passthrough-mcp-session-id')).toBe('sess-1')
   })
 
+  it('preserves a Request signal on the hosted hop unless explicitly overridden', async () => {
+    for (const override of [false, true]) {
+      const inherited = new AbortController()
+      const explicit = new AbortController()
+      const sent: Request[] = []
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => false,
+        fetchImpl: Object.assign(
+          async (input: RequestInfo | URL) => {
+            sent.push(input as Request)
+            return new Response('ok')
+          },
+          { preconnect: fetch.preconnect },
+        ),
+      })
+
+      await proxyFetch(
+        new Request('https://provider.example', { signal: inherited.signal }),
+        override ? { signal: explicit.signal } : undefined,
+      )
+      inherited.abort()
+      expect(sent[0].signal.aborted).toBe(!override)
+      explicit.abort()
+      expect(sent[0].signal.aborted).toBe(true)
+    }
+  })
+
+  it('honors signal: null on an already aborted Request on the hosted hop', async () => {
+    const caller = new AbortController()
+    caller.abort()
+    const requests: Request[] = []
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => false,
+      fetchImpl: Object.assign(
+        async (input: RequestInfo | URL) => {
+          requests.push(input as Request)
+          return new Response('ok')
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    await proxyFetch(new Request('https://provider.example', { signal: caller.signal }), { signal: null })
+    expect(requests[0].signal.aborted).toBe(false)
+  })
+
   it('unwraps X-Proxy-Passthrough-* response headers into normal-looking headers', async () => {
     const fakeFetch = (async () =>
       new Response('ok', {
@@ -64,6 +131,27 @@ describe('createProxyFetch — Hosted mode', () => {
 
     const res = await proxyFetch('https://example.com/api', { method: 'GET' })
     expect(res.headers.get('content-type')).toBe('application/json')
+  })
+
+  it('sends backend credentials even when the caller passes a same-origin Request', async () => {
+    const outer: Request[] = []
+    const fetchImpl: typeof fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        outer.push(new Request(input))
+        return new Response('ok')
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://api.thunderbolt.example/v1',
+      fetchImpl,
+      isStandalone: () => false,
+    })
+
+    // `same-origin` is the browser's default for `new Request(...)`, which is what `http` hands over.
+    await proxyFetch(new Request('https://example.com/models', { credentials: 'same-origin' }))
+
+    expect(outer[0].credentials).toBe('include')
   })
 })
 
@@ -155,7 +243,7 @@ describe('createProxyFetch — app-version gate', () => {
 })
 
 describe('createProxyFetch — Standalone (Tauri) mode', () => {
-  it('calls Tauri fetch directly without rewriting headers when toggle is off and native_fetch is available', async () => {
+  it('calls Tauri fetch directly without rewriting headers when the toggle is off', async () => {
     const tauriFetchMock = mock(async () => new Response('tauri-direct', { status: 200 }))
 
     const proxyFetch = createProxyFetch({
@@ -163,7 +251,6 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
       isStandalone: () => true,
       tauriFetch: tauriFetchMock as unknown as typeof fetch,
       getProxyEnabled: () => false,
-      getNativeFetchCapability: () => Promise.resolve(true),
     })
 
     await proxyFetch('https://example.com/api', {
@@ -177,31 +264,239 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
     const h = new Headers(calledInit.headers)
     expect(h.get('authorization')).toBe('Bearer abc')
   })
+})
 
-  it('falls back to the hosted proxy when native_fetch is not compiled into the build', async () => {
-    const tauriFetchMock = mock(async () => new Response('should-not-be-called', { status: 500 }))
-    const hostedFetchMock = mock(async () => new Response('hosted', { status: 200 }))
+describe('createProxyFetch — native request boundaries', () => {
+  afterEach(() => {
+    resetAppVersionBlockedForTesting()
+  })
 
+  it.each(['inherited', 'explicit', 'null'] as const)(
+    'disables native redirects and relays the Request signal (signal: %s)',
+    async (override) => {
+      const native = mock(
+        async (_input: RequestInfo | URL, _init?: RequestInit & { maxRedirections?: number }) => new Response('ok'),
+      )
+      const inherited = new AbortController()
+      const explicit = new AbortController()
+      const request = new Request('https://provider.example/v1/messages', { signal: inherited.signal })
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        tauriFetch: native,
+        fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
+      })
+
+      const response = await proxyFetch(
+        request,
+        override === 'inherited' ? undefined : { signal: override === 'null' ? null : explicit.signal },
+      )
+
+      expect(native.mock.calls[0][0]).toBe(request)
+      const childSignal = native.mock.calls[0][1]?.signal
+      expect(childSignal).toBeInstanceOf(AbortSignal)
+      expect(childSignal).not.toBe(request.signal)
+      expect(childSignal).not.toBe(explicit.signal)
+      expect(native.mock.calls[0][1]?.maxRedirections).toBe(0)
+      inherited.abort()
+      expect(childSignal?.aborted).toBe(override === 'inherited')
+      explicit.abort()
+      expect(childSignal?.aborted).toBe(override !== 'null')
+      await response.body!.cancel()
+    },
+  )
+
+  it.each(['before', 'during'] as const)('reports AbortError when cancelled %s the native request', async (when) => {
+    const controller = new AbortController()
     const proxyFetch = createProxyFetch({
-      cloudUrl: 'http://localhost:8000/v1',
+      cloudUrl: 'https://backend.example/v1',
       isStandalone: () => true,
-      tauriFetch: tauriFetchMock as unknown as typeof fetch,
-      fetchImpl: hostedFetchMock as unknown as typeof fetch,
-      getProxyEnabled: () => false,
-      getNativeFetchCapability: () => Promise.resolve(false),
+      tauriFetch: async () => {
+        controller.abort()
+        throw new Error('Request cancelled')
+      },
+    })
+    if (when === 'before') {
+      controller.abort()
+    }
+
+    const pending = proxyFetch('https://provider.example', { signal: controller.signal })
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(pending).rejects.toBe(controller.signal.reason)
+  })
+
+  it("normalizes native body failures and preserves the caller's abort reason", async () => {
+    for (const aborted of [false, true]) {
+      const controller = new AbortController()
+      let bodyController!: ReadableStreamDefaultController<Uint8Array>
+      const upstream = new ReadableStream<Uint8Array>({
+        start(stream) {
+          bodyController = stream
+          stream.enqueue(new TextEncoder().encode('chunk'))
+        },
+      })
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        tauriFetch: async () => new Response(upstream, { status: 201, headers: { 'x-provider': 'value' } }),
+      })
+      const response = await proxyFetch('https://provider.example', { signal: controller.signal })
+
+      expect(response.status).toBe(201)
+      expect(response.headers.get('x-provider')).toBe('value')
+      const reader = response.body!.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe('chunk')
+      if (aborted) {
+        controller.abort()
+      }
+      bodyController.error('Request cancelled')
+      if (aborted) {
+        await expect(reader.read()).rejects.toBe(controller.signal.reason)
+      } else {
+        await expect(reader.read()).rejects.toMatchObject({
+          name: 'TypeError',
+          message: 'Failed to fetch',
+          cause: 'Request cancelled',
+        })
+      }
+    }
+  })
+
+  it('propagates native failures without retrying through the backend', async () => {
+    const failure = new TypeError('native connection failed')
+    const hosted = mock(async () => new Response('hosted'))
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      tauriFetch: async () => {
+        throw failure
+      },
+      fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
     })
 
-    await proxyFetch('https://example.com/api', { method: 'GET' })
+    await expect(proxyFetch('https://provider.example')).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: failure,
+    })
+    expect(hosted).not.toHaveBeenCalled()
+  })
 
-    expect(tauriFetchMock).toHaveBeenCalledTimes(0)
-    expect(hostedFetchMock).toHaveBeenCalledTimes(1)
-    const [hostedReq] = hostedFetchMock.mock.calls[0] as unknown as [Request]
-    expect(hostedReq.url).toBe('http://localhost:8000/v1/proxy')
-    expect(hostedReq.headers.get('x-proxy-target-url')).toBe('https://example.com/api')
+  it.each([
+    [401, { code: 'UNAUTHENTICATED' }],
+    [426, { code: 'APP_VERSION_UNSUPPORTED', minAppVersion: '99.0.0' }],
+  ] as const)('does not treat a native provider %s as a backend rejection', async (status, body) => {
+    setAuthToken('backend-token')
+    const events: Event[] = []
+    const listener = (event: Event) => events.push(event)
+    window.addEventListener('powersync_credentials_invalid', listener)
+    window.addEventListener(appVersionUnsupported, listener)
+    const response = new Response(JSON.stringify(body), { status })
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      tauriFetch: async () => response,
+      fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
+    })
+    try {
+      const result = await proxyFetch('https://provider.example')
+      expect(result.status).toBe(response.status)
+      expect(await result.json()).toEqual(body)
+      expect(events).toHaveLength(0)
+      expect(isAppVersionBlocked()).toBe(false)
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', listener)
+      window.removeEventListener(appVersionUnsupported, listener)
+    }
   })
 })
 
 describe('createProxyFetch — proxy_enabled toggle', () => {
+  it.each([
+    ['string', 'http://localhost:3000/mcp'],
+    ['URL', 'http://localhost:3000/mcp'],
+    ['Request', 'http://localhost:3000/mcp'],
+    ['string', 'http://127.0.0.1:8080/x'],
+    ['URL', 'http://127.0.0.1:8080/x'],
+    ['Request', 'http://127.0.0.1:8080/x'],
+    ['string', 'http://[::1]:9000/'],
+    ['URL', 'http://[::1]:9000/'],
+    ['Request', 'http://[::1]:9000/'],
+  ] as const)('%s input: keeps %s direct on Tauri and proxied on web with the toggle on', async (kind, url) => {
+    const input = kind === 'Request' ? new Request(url) : kind === 'URL' ? new URL(url) : url
+    const native = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('direct'))
+    const hosted = mock(async (_input: RequestInfo | URL) => new Response('hosted'))
+    const options = {
+      cloudUrl: 'https://backend.example/v1',
+      tauriFetch: native,
+      fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+      getProxyEnabled: () => true,
+    }
+    const tauriFetch = createProxyFetch({ ...options, isStandalone: () => true })
+
+    const response = await tauriFetch(input)
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(native.mock.calls[0][0]).toBe(input)
+    expect(hosted).not.toHaveBeenCalled()
+    expect(await response.text()).toBe('direct')
+
+    const webFetch = createProxyFetch({ ...options, isStandalone: () => false })
+    await webFetch(input)
+
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(hosted).toHaveBeenCalledTimes(1)
+    const hostedRequest = new Request(hosted.mock.calls[0][0])
+    expect(hostedRequest.url).toBe('https://backend.example/v1/proxy')
+    expect(hostedRequest.headers.get('x-proxy-target-url')).toBe(url)
+  })
+
+  it.each([null, 'false'])(
+    'Tauri with stored %s defaults to native HTTP and switches to the backend when the proxy is enabled',
+    async (stored) => {
+      localStorage.removeItem('proxy_enabled')
+      if (stored !== null) {
+        localStorage.setItem('proxy_enabled', stored)
+      }
+      const native = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('direct'))
+      const hosted = mock(async (_input: RequestInfo | URL) => new Response('hosted'))
+      const auth = mock(() => 'backend-token')
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        tauriFetch: native,
+        fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+        getProxyAuthToken: auth,
+      })
+
+      await proxyFetch('https://provider.example/v1/messages', { headers: { 'x-api-key': 'provider-key' } })
+
+      expect(native).toHaveBeenCalledTimes(1)
+      expect(hosted).not.toHaveBeenCalled()
+      expect(auth).not.toHaveBeenCalled()
+      const [, init] = native.mock.calls[0]
+      expect(new Headers(init?.headers).get('x-api-key')).toBe('provider-key')
+      expect(new Headers(init?.headers).has('x-app-version')).toBe(false)
+      expect(new Headers(init?.headers).has('authorization')).toBe(false)
+
+      localStorage.setItem('proxy_enabled', 'true')
+      await proxyFetch('https://provider.example/v1/messages')
+      expect(hosted).toHaveBeenCalledTimes(1)
+      expect(native).toHaveBeenCalledTimes(1)
+      const hostedRequest = new Request(hosted.mock.calls[0][0])
+      expect(hostedRequest.url).toBe('https://backend.example/v1/proxy')
+
+      localStorage.setItem('proxy_enabled', 'false')
+      const webFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => false,
+        fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+      })
+      await webFetch('https://provider.example/v1/messages')
+      expect(hosted).toHaveBeenCalledTimes(2)
+    },
+  )
+
   it('Tauri + toggle on: routes through the hosted proxy (privacy mode)', async () => {
     const tauriFetchMock = mock(async () => new Response('should-not-be-called', { status: 500 }))
     const hostedFetchMock = mock(async (input: RequestInfo | URL) => {
@@ -247,7 +542,7 @@ describe('createProxyFetch — proxy_enabled toggle', () => {
     expect(hostedReq.url).toBe('http://localhost:8000/v1/proxy')
   })
 
-  it('defaults getProxyEnabled to true when not provided (preserves Web behaviour)', async () => {
+  it('defaults to hosted routing on web when getProxyEnabled is omitted', async () => {
     const hostedFetchMock = mock(async () => new Response('ok', { status: 200 }))
 
     const proxyFetch = createProxyFetch({
@@ -337,70 +632,270 @@ describe('createProxyWebSocket', () => {
     close() {}
   }
 
-  it('Hosted: includes carrier + bearer + target subprotocols on /proxy/ws', () => {
+  let originalWS: typeof WebSocket
+
+  beforeEach(() => {
+    originalWS = globalThis.WebSocket
     FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
     globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
+  })
+
+  afterEach(() => {
+    globalThis.WebSocket = originalWS
+  })
+
+  it.each([
+    [false, 'wss://upstream.test/path'],
+    [true, 'wss://upstream.test/path'],
+    [false, 'ws://localhost:8839/'],
+    [true, 'ws://upstream.test/path'],
+    [true, 'ws://192.168.1.10:8839/'],
+    [true, 'wss://192.168.1.10:8839/'],
+  ] as const)(
+    'proxy enabled (Tauri=%s): tunnels %s with carrier + bearer + target + caller protocols',
+    (standalone, url) => {
+      localStorage.setItem('proxy_enabled', 'true')
       const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
+        cloudUrl: 'https://backend.test/v1/',
+        isStandalone: () => standalone,
         getAuthToken: () => 'bearer-abc',
       })
-      factory('wss://upstream.test/path', ['acp.v1'])
+      factory(url, ['acp.v1'])
       expect(FakeWS.instances).toHaveLength(1)
       const real = FakeWS.instances[0]
-      expect(real.url).toBe('ws://localhost:8000/v1/proxy/ws')
-      expect(real.protocols[0]).toBe('thunderbolt.v1')
-      expect(real.protocols[1]).toBe(`thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`)
-      expect(real.protocols[2]?.startsWith('tbproxy.target.')).toBe(true)
-      expect(real.protocols[3]).toBe('acp.v1')
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
-  })
+      expect(real.url).toBe('wss://backend.test/v1/proxy/ws')
+      expect(real.protocols).toEqual([
+        'thunderbolt.v1',
+        `thunderbolt.bearer.${encodeWsBearer('bearer-abc')}`,
+        `${wsTargetPrefix}${encodeBase64Url(url)}`,
+        'acp.v1',
+      ])
+    },
+  )
 
   it('Hosted: omits the bearer entry when no token is available (still offers carrier + target)', () => {
-    FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => false,
-        getAuthToken: () => null,
-      })
-      factory('wss://upstream.test/path')
-      expect(FakeWS.instances).toHaveLength(1)
-      const real = FakeWS.instances[0]
-      expect(real.protocols[0]).toBe('thunderbolt.v1')
-      expect(real.protocols.some((p) => p.startsWith('thunderbolt.bearer.'))).toBe(false)
-      expect(real.protocols.some((p) => p.startsWith('tbproxy.target.'))).toBe(true)
-    } finally {
-      globalThis.WebSocket = originalWS
-    }
+    const url = 'wss://upstream.test/path'
+    const factory = createProxyWebSocket({
+      cloudUrl: 'http://localhost:8000/v1',
+      isStandalone: () => false,
+      getAuthToken: () => null,
+    })
+    factory(url)
+    expect(FakeWS.instances).toHaveLength(1)
+    expect(FakeWS.instances[0].protocols).toEqual(['thunderbolt.v1', `${wsTargetPrefix}${encodeBase64Url(url)}`])
   })
 
-  it('Standalone: connects directly to the target URL with no bearer attached', () => {
-    FakeWS.instances = []
-    const originalWS = globalThis.WebSocket
-    globalThis.WebSocket = FakeWS as unknown as typeof WebSocket
-    try {
-      let tokenReads = 0
-      const factory = createProxyWebSocket({
-        cloudUrl: 'http://localhost:8000/v1',
-        isStandalone: () => true,
-        getAuthToken: () => {
-          tokenReads += 1
-          return 'never-read'
-        },
-      })
-      factory('wss://upstream.test/path')
-      expect(FakeWS.instances).toHaveLength(1)
-      expect(FakeWS.instances[0].url).toBe('wss://upstream.test/path')
-      expect(tokenReads).toBe(0)
-    } finally {
-      globalThis.WebSocket = originalWS
+  it.each([
+    [null, 'wss://upstream.test/path'],
+    ['false', 'wss://upstream.test/path'],
+    ['true', 'ws://127.0.0.1:8839/?token=bridge-token'],
+    ['true', 'wss://127.42.0.1/acp'],
+    ['true', 'ws://[::1]:8839/acp'],
+    ['true', 'ws://localhost:8839/acp'],
+    ['true', 'wss://agent.localhost/acp'],
+  ])('Tauri proxy %s: connects directly to %s without reading or attaching the app bearer', (stored, url) => {
+    if (stored !== null) {
+      localStorage.setItem('proxy_enabled', stored)
     }
+    const auth = mock(() => 'backend-only-token')
+    const factory = createProxyWebSocket({
+      cloudUrl: 'http://localhost:8000/v1',
+      isStandalone: () => true,
+      getAuthToken: auth,
+    })
+    factory(url, ['acp.v1'])
+    expect(FakeWS.instances).toHaveLength(1)
+    expect(FakeWS.instances[0].url).toBe(url)
+    expect(FakeWS.instances[0].protocols).toEqual(['acp.v1'])
+    expect(auth).not.toHaveBeenCalled()
+  })
+
+  it('reads Use Cloud Proxy for each new connection from the same factory', () => {
+    const url = 'wss://upstream.test/path'
+    const factory = createProxyWebSocket({
+      cloudUrl: 'https://backend.test/v1',
+      isStandalone: () => true,
+      getAuthToken: () => 'backend-only-token',
+    })
+    factory(url)
+    localStorage.setItem('proxy_enabled', 'true')
+    factory(url)
+    localStorage.setItem('proxy_enabled', 'false')
+    factory(url)
+    expect(FakeWS.instances.map((socket) => socket.url)).toEqual([url, 'wss://backend.test/v1/proxy/ws', url])
+  })
+})
+
+describe('createProxyFetch — session rejected', () => {
+  const unauthenticated = JSON.stringify({ code: 'UNAUTHENTICATED' })
+  const originalDispatch = window.dispatchEvent
+  let dispatchSpy: ReturnType<typeof mock>
+
+  const proxyFetchReturning = (response: () => Response) =>
+    createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: (async () => response()) as unknown as typeof fetch,
+      isStandalone: () => false,
+    })
+
+  beforeEach(() => {
+    setAuthToken('app-token')
+    dispatchSpy = mock(() => true)
+    window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
+  })
+
+  afterEach(() => {
+    window.dispatchEvent = originalDispatch
+  })
+
+  it('treats our own auth gate rejecting the outer hop as a lost session', async () => {
+    const proxyFetch = proxyFetchReturning(() => new Response(unauthenticated, { status: 401 }))
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    expect((dispatchSpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'session_expired' })
+  })
+
+  it('ignores the same body when an upstream relays it, so a hostile server cannot sign the user out', async () => {
+    const proxyFetch = proxyFetchReturning(
+      () =>
+        new Response(unauthenticated, { status: 401, headers: { 'X-Proxy-Final-Url': 'https://mcp.example.com/' } }),
+    )
+
+    await proxyFetch('https://mcp.example.com/', { method: 'POST' })
+
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('createProxyFetch — native plugin failures and lifecycle', () => {
+  const directFetch = (tauriFetch: NonNullable<Parameters<typeof createProxyFetch>[0]['tauriFetch']>) =>
+    createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => false,
+      tauriFetch,
+    })
+
+  it('normalizes plugin-string request failures to network errors', async () => {
+    const native = directFetch(async () => {
+      throw 'connection refused'
+    })
+    await expect(native('https://provider.example')).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: 'connection refused',
+    })
+  })
+
+  it('normalizes plugin-string body failures even without a caller signal', async () => {
+    const native = directFetch(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error('body read failed')
+            },
+          }),
+        ),
+    )
+    const response = await native('https://provider.example')
+    await expect(response.body!.getReader().read()).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: 'body read failed',
+    })
+  })
+
+  it.each(['null', 'eof', 'rejection', 'stream error', 'cancel'] as const)(
+    'detaches the session-signal relay after %s across repeated requests',
+    async (outcome) => {
+      const caller = new AbortController()
+      const added = spyOn(caller.signal, 'addEventListener')
+      const removed = spyOn(caller.signal, 'removeEventListener')
+      const native = directFetch(async (_input, init) => {
+        // Model the plugin's anonymous listeners, which it never removes.
+        init?.signal?.addEventListener('abort', () => {})
+        if (outcome === 'rejection') {
+          throw 'connection refused'
+        }
+        if (outcome === 'null') {
+          return new Response(null, { status: 204 })
+        }
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              if (outcome === 'stream error') {
+                controller.error('read failed')
+                return
+              }
+              controller.enqueue(new TextEncoder().encode('chunk'))
+              if (outcome === 'eof') {
+                controller.close()
+              }
+            },
+          }),
+          { status: 201, statusText: 'Created', headers: { 'x-provider': 'value' } },
+        )
+      })
+      try {
+        for (const _ of [1, 2, 3]) {
+          if (outcome === 'rejection') {
+            await expect(native('https://provider.example', { signal: caller.signal })).rejects.toBeDefined()
+            continue
+          }
+          const response = await native('https://provider.example', { signal: caller.signal })
+          if (outcome === 'cancel') {
+            await response.body!.cancel()
+            continue
+          }
+          if (outcome === 'stream error') {
+            await expect(response.text()).rejects.toBeDefined()
+            continue
+          }
+          expect(await response.text()).toBe(outcome === 'eof' ? 'chunk' : '')
+          if (outcome === 'eof') {
+            expect(response.status).toBe(201)
+            expect(response.statusText).toBe('Created')
+            expect(response.headers.get('x-provider')).toBe('value')
+          }
+        }
+        expect(added.mock.calls.length - removed.mock.calls.length).toBe(0)
+        for (const [index, call] of added.mock.calls.entries()) {
+          expect(removed.mock.calls[index]?.[1]).toBe(call[1])
+        }
+      } finally {
+        added.mockRestore()
+        removed.mockRestore()
+      }
+    },
+  )
+
+  it('rejects with the abort reason and cancels a body returned after abort', async () => {
+    const caller = new AbortController()
+    const pending = Promise.withResolvers<Response>()
+    const cancel = mock(() => {})
+    const entered = Promise.withResolvers<void>()
+    const native = directFetch(async () => {
+      entered.resolve()
+      return pending.promise
+    })
+    const response = new Response(new ReadableStream({ cancel }))
+    const result = native('https://provider.example', { signal: caller.signal })
+    await entered.promise
+    const reason = new Error('session closed')
+    caller.abort(reason)
+    pending.resolve(response)
+    await expect(result).rejects.toBe(reason)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the native response URL with a wrapped streaming body', async () => {
+    const upstream = new Response('chunks')
+    Object.defineProperty(upstream, 'url', { value: 'https://provider.example/final' })
+    const response = await directFetch(async () => upstream)('https://provider.example')
+    expect(response.url).toBe('https://provider.example/final')
+    expect(await response.text()).toBe('chunks')
   })
 })

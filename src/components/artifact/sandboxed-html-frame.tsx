@@ -213,6 +213,7 @@ export const SandboxedHtmlFrame = ({
       sandbox={allowScripts ? 'allow-scripts' : ''}
       srcDoc={srcDoc}
       style={autoHeight ? { height: contentHeight ?? defaultAutoHeightPx } : undefined}
+      // White like a browser page: the HTML assumes it, whatever the app theme.
       className={cn('w-full border-0 bg-white', autoHeight ? '' : 'h-full', className)}
     />
   )

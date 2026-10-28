@@ -13,7 +13,7 @@ import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-me
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
-import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
+import { preloadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
@@ -199,14 +199,13 @@ export default function ChatDetailPage() {
   const projectId = isNew ? searchParams.get('projectId') : null
   const newChatId = useNewChatId(isNew, projectId)
 
-  // Warm the lazily-split message subtree for new chats as well as existing
-  // ones: the first send swaps the empty state for the message list mid-
-  // animation, and an unloaded chunk would leave the enter fade running over
-  // an empty Suspense shell with the messages popping in afterwards. Firing
-  // from an effect keeps the chunk out of the entry bundle either way.
+  // Overlap the renderer load with existing-chat hydration. Blank chats warm it
+  // from ChatContentReady after the composer renders (typing also preloads it).
   useEffect(() => {
-    void loadChatMessageList()
-  }, [])
+    if (!isNew) {
+      preloadChatMessageList()
+    }
+  }, [isNew])
 
   if (!chatThreadId) {
     return null

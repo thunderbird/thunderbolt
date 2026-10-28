@@ -1,0 +1,17 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Offscreen</title>
+  </head>
+  <body>
+    <!-- The toolbar is on screen but cannot wrap or scroll, so Save sits wholly past the right edge. -->
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; display: flex; overflow: hidden">
+      <button style="flex: none; width: 100vw">Discard</button>
+      <button style="flex: none; width: 200px">Save</button>
+    </div>
+  </body>
+</html>

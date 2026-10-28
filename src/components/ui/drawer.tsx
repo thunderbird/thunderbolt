@@ -101,7 +101,7 @@ const DrawerHandle = ({ className, ...props }: ComponentProps<'div'>) => (
   <div
     aria-hidden
     data-slot="drawer-handle"
-    className={cn('mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/10 dark:bg-white/5', className)}
+    className={cn('mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/10 dark:bg-foreground/5', className)}
     {...props}
   />
 )

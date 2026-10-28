@@ -1,0 +1,26 @@
+# The native counterpart of stack.spec.ts: `verify.ts replay --native` runs it three times on a fresh install of the
+# build without onboarding before any finding's flow, and if one run fails the stack is broken and no replayed
+# finding counts. It passes the same allow list as the findings' flows, which adds the appId header.
+- launchApp
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 120000
+- waitForAnimationToEnd
+# The simulator can drop a focus tap, and inputText types anyway; eraseText stops a partial try doubling up.
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: Email
+          retryTapIfNoChange: true
+      - eraseText
+      - inputText: ${EMAIL}
+      - assertVisible: ${EMAIL}
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Check your email
+    timeout: 120000
+- inputText: '12345678'
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000

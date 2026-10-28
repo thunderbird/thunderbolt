@@ -102,8 +102,8 @@ describe('ErrorMessage', () => {
         for (const element of [title, body]) {
           expect(element).toHaveClass('text-foreground')
           expect(element).not.toHaveClass('text-warning-foreground')
-          expect(element).not.toHaveClass('text-amber-500/90')
-          expect(element).not.toHaveClass('text-amber-500/80')
+          expect(element).not.toHaveClass('text-warning/90')
+          expect(element).not.toHaveClass('text-warning/80')
         }
         expect(screen.queryByText('Too many requests. Please try again in a moment.')).toBeNull()
         expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull()
@@ -155,6 +155,19 @@ describe('ErrorMessage', () => {
       fireEvent.click(screen.getByText('Retry'))
       expect(onRetry).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('names oversized project and skill instructions when the hosted agent refuses them', () => {
+    const tooLarge = new Error(
+      JSON.stringify({ error: JSON.stringify({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }), status: 400 }),
+    )
+    render(<ErrorMessage retryCount={0} retriesExhausted={true} error={tooLarge} />)
+
+    expect(
+      screen.getByText(
+        "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again.",
+      ),
+    ).toBeTruthy()
   })
 
   describe('auto-retry in progress', () => {

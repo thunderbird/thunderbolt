@@ -1,0 +1,34 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Scrollable</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #list button {
+        display: block;
+        height: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <header style="position: sticky; top: 0; height: 60px; background: #ddd">Header</header>
+    <div style="height: 400px"></div>
+    <!-- Scrolled under the sticky header: scrolling up brings it back. -->
+    <button id="under">Under the header</button>
+    <div style="height: 3000px"></div>
+    <button>Below the fold</button>
+    <!-- A fixed side list: the page scrolling does not move it, but its own scroll reaches the items below the fold. -->
+    <div id="list" style="position: fixed; top: 0; right: 0; width: 200px; height: 100vh; overflow: auto"></div>
+    <script>
+      for (let i = 1; i <= 30; i++)
+        document.getElementById('list').insertAdjacentHTML('beforeend', `<button>Item ${i}</button>`)
+      document.getElementById('under').scrollIntoView()
+    </script>
+  </body>
+</html>

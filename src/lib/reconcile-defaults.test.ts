@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { deleteModel, getAllModels } from '@/dal'
+import { deleteModel, getAllModels, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
@@ -1969,4 +1969,59 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     }
     expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
   })
+})
+
+describe('analytics opt-in (`data_collection` ships on)', () => {
+  const key = 'data_collection'
+  const shipped = defaultSettings.find((setting) => setting.key === key)
+  if (!shipped) {
+    throw new Error('fixture drift: `data_collection` no longer in defaultSettings')
+  }
+  /** What the previous bundle shipped, and so the hash every existing row carries. */
+  const previousDefault = { ...shipped, value: 'false' }
+
+  const storedValue = async () =>
+    (await getDb().select().from(settingsTable).where(eq(settingsTable.key, key)).get())?.value
+
+  /** Put the account's settings marker one version behind the bundle, as the next default bump does. */
+  const rewindSettingsMarker = () =>
+    getDb()
+      .update(settingsTable)
+      .set({ value: String(defaultSettingsVersion - 1) })
+      .where(eq(settingsTable.key, 'defaults_version.settings'))
+
+  /** An account from the previous bundle: `value` stored under the old default's hash. */
+  const stageAccountFromPreviousBundle = async (value: 'true' | 'false') => {
+    await reconcileDefaults(getDb())
+    await getDb()
+      .update(settingsTable)
+      .set({ value, defaultHash: hashSetting(previousDefault) })
+      .where(eq(settingsTable.key, key))
+    await rewindSettingsMarker()
+  }
+
+  test('starts a new account opted in', async () => {
+    await reconcileDefaults(getDb())
+    expect(await storedValue()).toBe('true')
+  })
+
+  test('opts in an existing account that had it off, even one that switched it off itself', async () => {
+    await stageAccountFromPreviousBundle('false')
+    await reconcileDefaults(getDb())
+    expect(await storedValue()).toBe('true')
+  })
+
+  // An account that was already on keeps the old default's hash unless reconcile re-stamps it, and an opt-out back
+  // to the old default would then read as unedited and be overwritten by the next bump.
+  test.each(['false', 'true'] as const)(
+    'keeps an opt-out made after the switch through later default bumps (previously %s)',
+    async (previousValue) => {
+      await stageAccountFromPreviousBundle(previousValue)
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { data_collection: false })
+      await rewindSettingsMarker()
+      await reconcileDefaults(getDb())
+      expect(await storedValue()).toBe('false')
+    },
+  )
 })

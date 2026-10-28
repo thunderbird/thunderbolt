@@ -467,6 +467,7 @@ const areaSeverity = {
   i18n: 'Low',
 } satisfies Record<Area, Severity>
 
+/** Console errors and layout overflows start Low and cannot be judged above Medium. */
 const minor = ({ oracle: { type, evidence } }: Finding) =>
   type === 'console-error' || (type === 'layout' && /\[qa-layout\] overflow-/.test(evidence))
 

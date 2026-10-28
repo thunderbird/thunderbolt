@@ -306,10 +306,9 @@ const refusal = (f: Finding) => {
   if (f.oracle.type === 'visual' && !(f.element?.trim() && f.function?.trim())) {
     return 'visual finding without an element and a function to deduplicate on'
   }
-  // A platform files layout tickets only once its probe sweeps correct screens clean; Android's reports
-  // uncovered sidebar buttons as covered.
-  if (f.viewport === 'android' && f.oracle.type === 'layout') {
-    return 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+  // Android's probe reports uncovered sidebar buttons as covered; its other layout kinds file normally.
+  if (f.viewport === 'android' && f.oracle.type === 'layout' && /\[qa-layout\] covered\s/.test(f.oracle.evidence)) {
+    return 'Android covered finding, held back until the probe sweeps correct Android screens clean'
   }
   return undefined
 }

@@ -507,30 +507,36 @@ describe('visual findings', () => {
     expect(uploads(api)).toEqual([])
   })
 
-  test('an Android layout finding is held back until an Android sweep, and its iOS twin is still filed', async () => {
-    const layout = { type: 'layout', evidence: '[qa-layout] covered button "Preferences"' }
-    const native = { oracle: layout, repro_spec: undefined, repro_flow: 'repro/1.yaml' }
-    // The Android keyboard line comes from the tree rule, not the probe, and still waits for the sweep.
-    const keyboard = { type: 'layout', evidence: '[qa-layout] behind-keyboard textbox "Enter your name"' }
+  test('only an Android covered finding is held back; its iOS twin and other Android kinds are filed', async () => {
+    const covered = { type: 'layout', evidence: '[qa-layout] covered button "Preferences"' }
+    const native = { oracle: covered, repro_spec: undefined, repro_flow: 'repro/1.yaml' }
+    const layout = (evidence: string) => ({ ...native, viewport: 'android', oracle: { type: 'layout', evidence } })
     await writeVerified([
       { ...native, viewport: 'ios' },
       { ...native, viewport: 'android' },
-      { ...native, viewport: 'android', oracle: keyboard },
-      { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/2.yaml' },
+      layout('[qa-layout] behind-keyboard textbox "Enter your name"'),
+      layout('[qa-layout] unnamed-control button "after Connect Google"'),
+      layout('[qa-layout] focus-covered textbox "Email"'),
     ])
     const api = fakeLinear()
 
     const filed = await run(api.fetchFn)
 
-    const held = 'Android layout finding, held back until the probe sweeps correct Android screens clean'
+    const held = 'Android covered finding, held back until the probe sweeps correct Android screens clean'
     expect(filed.map((f) => [f.id, f.action, f.reason]).sort()).toEqual([
       ['0', 'created', undefined],
       ['1', 'refused', held],
-      ['2', 'refused', held],
+      ['2', 'created', undefined],
       ['3', 'created', undefined],
+      ['4', 'created', undefined],
     ])
     const platforms = created(api).map((input) => /\*\*Platforms:\*\* \w+/.exec(input.description)?.[0])
-    expect(platforms.sort()).toEqual(['**Platforms:** android', '**Platforms:** ios'])
+    expect(platforms.sort()).toEqual([
+      '**Platforms:** android',
+      '**Platforms:** android',
+      '**Platforms:** android',
+      '**Platforms:** ios',
+    ])
   })
 
   test.each([

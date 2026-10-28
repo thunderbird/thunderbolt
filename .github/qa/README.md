@@ -265,9 +265,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
    wording; one without an element or a function is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
-   An Android `layout` finding is refused too, with its reason in the report, until the probe has swept correct
-   Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding of the same bug is
-   filed as usual.
+   An Android `layout` finding of the `covered` kind is refused too, with its reason in the report, until the probe
+   has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
+   of the same bug is filed as usual. Every other Android layout kind files like any platform.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
    one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
    A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
@@ -965,9 +965,10 @@ Also:
   (button, checkbox, radio, switch, textbox, combobox, and searchbox, which the WebView shows as a text field), and
   on iOS the checkbox, radio and switch lines. Any other role keeps the probe's line, the same one the web gives: a
   link on both platforms, and a button or field on iOS.
-- Android `layout` findings replay, are judged and show in the report, but are never filed or fixed (`refusal` in
-  `file-findings.ts`). Layout tickets need a clean probe sweep of correct screens on each platform first, and
-  Android's sweep has not run. On Android the probe has logged `covered button`
+- Android `layout` findings of the `covered` kind replay, are judged and show in the report, but are never filed or
+  fixed (`refusal` in `file-findings.ts`); the other Android kinds (`behind-keyboard`, `unnamed-control`,
+  `focus-covered`, `overflow-*`) file like any platform. Covered tickets need a clean probe sweep of correct screens
+  on each platform first, and Android's sweep has not run. On Android the probe has logged `covered button`
   for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
   lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest
   from the left edge were logged, the ones the sliding page uncovers last. The drawer's animation outlasting the

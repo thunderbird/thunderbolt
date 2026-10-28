@@ -308,6 +308,23 @@ describe('replay', () => {
     expect(result.confirmed).toEqual([])
   })
 
+  test('c7 on Android keeps 3/3 for a layout finding proved by a browser spec, as the measurement is not a native one', async () => {
+    const session = 'c7-two-devices-android'
+    const finding = {
+      ...makeFinding('layout', { type: 'layout', evidence: '[qa-layout] covered button "Continue"' }),
+      charter: 'c7-two-devices',
+      viewport: 'android',
+    }
+    await Bun.write(join(outDir, session, 'findings', 'layout.json'), JSON.stringify(finding))
+    await Bun.write(join(outDir, session, finding.repro_spec), validSpec('layout'))
+    const runner = fakeRunner({ [`${session}/repro/layout.spec.ts`]: ['failed', 'passed', 'failed'] }, [])
+
+    const result = await replay(outDir, runner, qaDir)
+
+    expect(titles(result.flaky)).toEqual(['layout'])
+    expect(result.confirmed).toEqual([])
+  })
+
   test('replays at most 20 findings and defers the rest, in path order', async () => {
     const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeFinding(makeFinding(id, pageError))
@@ -878,6 +895,12 @@ describe('replay of native flows', () => {
     await Bun.write(join(outDir, onboarding, 'repro/keyboard.yaml'), flowOf(title))
     await writeNative(makeNative('once', layout))
     await writeNative(makeNative('assert', assertFailed))
+    // A real-AI session confirms any oracle at 2 of 3.
+    await writeNative(
+      { ...makeNative('real', assertFailed), viewport: 'android' },
+      undefined,
+      'c3-models-providers-android',
+    )
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     const unseen = { layout: ['[qa-layout] ready'] }
     const failed = { passed: false, error: 'Assertion is false: "assert" is visible' }
@@ -886,10 +909,18 @@ describe('replay of native flows', () => {
       [title]: [seen, unseen, seen],
       once: [unseen, seen, unseen],
       assert: [failed, {}, failed],
+      real: [
+        { ...failed, error: 'Assertion is false: "real" is visible' },
+        {},
+        { ...failed, error: 'Assertion is false: "real" is visible' },
+      ],
     })
 
     const counts = ({ id, replay: { failed, runs } }: VerifiedFinding) => [id, failed, runs]
-    expect(result.confirmed.map(counts)).toEqual([[title, 2, 3]])
+    expect(result.confirmed.map(counts)).toEqual([
+      [title, 2, 3],
+      ['real', 2, 3],
+    ])
     expect(result.flaky.map(counts)).toEqual([
       ['assert', 2, 3],
       ['once', 1, 3],
@@ -1019,9 +1050,7 @@ describe('replay of native flows', () => {
     const unseen = { layout: ['[qa-layout] ready'] }
     for (const title of ['run5', 'stuck', 'passing'])
       await writeNative(makeNative(title, layout), undefined, 'c1-first-run-ios')
-    // An Android real-AI session confirms on 2 of 3 conclusive runs.
-    const real = 'c3-models-providers-android'
-    await writeNative({ ...makeNative('real', layout), viewport: 'android' }, undefined, real)
+    await writeNative(makeNative('after', layout), undefined, 'c1-first-run-ios')
     // A run that fails after the probe logged the line still shows the bug.
     const seenThenFailed = { ...early, layout: [nameLine] }
     const calls: FlowCall[] = []
@@ -1031,7 +1060,7 @@ describe('replay of native flows', () => {
         run5: [early, seen, early, seen, seen],
         stuck: [early, early, seen, early, seen, early, seen],
         passing: [unseen, seen, unseen],
-        real: [early, seen, unseen, seenThenFailed],
+        after: [early, seen, unseen, seenThenFailed],
       },
       calls,
     )
@@ -1043,8 +1072,8 @@ describe('replay of native flows', () => {
       replay.inconclusive ?? 0,
     ]
     expect(result.confirmed.map(counts)).toEqual([
+      ['after', 2, 3, 1],
       ['run5', 3, 3, 2],
-      ['real', 2, 3, 1],
     ])
     // Still only two conclusive: flaky, whatever those two showed. A passed run without the line is not run again.
     expect(result.flaky.map(counts)).toEqual([

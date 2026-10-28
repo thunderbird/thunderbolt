@@ -205,7 +205,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    failures for a real-AI charter). A spec that puts its sign-in inside the step still passes this check; the judge
    is the backstop there. The control spec has no such step, so any failure of it counts.
    Otherwise 3 of 3 failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`)
-   and for a native `layout` finding, whose measurements vary with the keyboard animation's timing;
+   and for a `layout` finding proved by a native flow, whose measurements vary with the keyboard animation's timing
+   (a browser spec, c7's on Android included, keeps 3 of 3);
    1 or 2 are flaky (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against
    the real providers, the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and
    takes no place under the replay cap. It is confirmed when its screenshot exists, a browser screenshot result in
@@ -227,7 +228,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    hidden, foreign links removed). A run whose driver did not start (`iOS driver not ready in time`) is run once more and never counts as the
    bug. A `layout` or log-oracle run whose flow failed before the quoted line showed never reached the screen: it is
    inconclusive and run again, at most 3 extra runs per finding. The finding is confirmed when the line shows in 3 of
-   3 conclusive runs (2 of 3 for the real-AI charters), and flaky when fewer than 3 runs are conclusive after the
+   3 conclusive runs (2 of 3 for the real-AI charters and for a `layout` oracle, whose measurements vary with the
+   keyboard animation's timing), and flaky when fewer than 3 runs are conclusive after the
    extra runs. A run whose flow passed without the line still counts as not shown. For the other oracles, where a
    failed flow is the bug, the flow's last command that is not `waitForAnimationToEnd` is the bug's assertion:
    everything before it runs first as its own `maestro test`, in the same launch, so a failure there is inconclusive

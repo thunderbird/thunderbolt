@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { computeScorecard, fileFindings, shouldBrake } from './file-findings'
+import { computeScorecard, fileFindings, type Filed, shouldBrake } from './file-findings'
 import { sanitize } from './sanitize'
 import { fingerprint, type RawFinding } from './findings'
+import { type CreateMessage, groupFindings, type Verified } from './verify'
 
 const runUrl = 'https://github.com/o/r/actions/runs/1'
 const now = Date.parse('2026-09-29T00:00:00Z')
@@ -424,6 +425,100 @@ describe('one ticket per bug across platforms', () => {
     expect(filed.map((f) => [f.action, f.identifier])).toEqual([
       ['commented', 'THB-9'],
       ['commented', 'THB-9'],
+    ])
+  })
+})
+
+describe('one ticket per defect from the grouping call', () => {
+  // The confirmed findings of a real run, where each platform worded some defects differently.
+  const codeField = ['c1-first-run-desktop/1', 'c1-first-run-phone/1', 'c1-first-run-ios/1']
+  const backButton = ['c1-first-run-desktop/2', 'c1-first-run-phone/2', 'c1-first-run-ios/2', 'c1-first-run-android/1']
+  const locationField = ['c1-first-run-phone/3', 'c1-first-run-android/3']
+  const keyboard = ['c1-first-run-android/2', 'c1-first-run-ios/3']
+
+  const answer =
+    (text: string): CreateMessage =>
+    async () => ({
+      content: [{ type: 'text', text, citations: null }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 500, output_tokens: 50 },
+    })
+
+  /** Groups the fixture's findings with the scripted `reply` standing in for the model, then files a dry run. */
+  const fileGrouped = async (reply: string) => {
+    const verified: Verified = await Bun.file(join(import.meta.dir, '../fixtures/grouping/verified.json')).json()
+    for (const { charterDir, finding } of verified.confirmed) {
+      if (finding.repro_spec) await Bun.write(join(outDir, charterDir, finding.repro_spec), '// spec')
+    }
+    const { groups } = await groupFindings(verified.confirmed, answer(reply), 2, () => {})
+    await writeFile(join(outDir, 'verified.json'), JSON.stringify({ ...verified, groups }))
+    return fileFindings({ outDir, live: false, log: () => {}, now })
+  }
+
+  /** Each ticket the dry run would open, by fingerprint: its severity and its platforms line. */
+  const tickets = (filed: Filed[]) =>
+    Object.fromEntries(
+      filed.map(({ fp, severity, preview }) => [
+        fp,
+        [severity, /\*\*Platforms:\*\* (\w+(?:, \w+)*)/.exec(preview?.body ?? '')?.[1]],
+      ]),
+    )
+
+  test('files one ticket per defect, listing every platform, under its first platform finding fingerprint', async () => {
+    const filed = await fileGrouped(JSON.stringify({ groups: [codeField, backButton, locationField, keyboard] }))
+
+    expect(filed).toHaveLength(11)
+    expect(tickets(filed)).toEqual({
+      c2df0dd5: ['High', 'desktop, phone, ios'],
+      '32e97796': ['High', 'desktop, phone, ios, android'],
+      '75fcfd86': ['High', 'phone, android'],
+      '7944d694': ['High', 'ios, android'],
+    })
+  })
+
+  test('a group files with the highest priority among its members', async () => {
+    const filed = await fileGrouped(JSON.stringify({ groups: [codeField, backButton, locationField, keyboard] }))
+
+    // The judge rated the Android keyboard finding Medium; the iOS one has the table's High.
+    expect(filed.find((f) => f.charterDir === 'c1-first-run-android' && f.id === '2')?.severity).toBe('High')
+  })
+
+  const fingerprintTickets = {
+    c2df0dd5: ['High', 'desktop, phone, ios'],
+    '32e97796': ['High', 'desktop, phone, ios'],
+    '75fcfd86': ['High', 'phone'],
+    cfa5e25a: ['High', 'android'],
+    '92ab6f2a': ['Medium', 'android'],
+    ee7d67ea: ['Medium', 'android'],
+    '7944d694': ['High', 'ios'],
+  }
+  test('a malformed answer files by fingerprint', async () => {
+    expect(tickets(await fileGrouped('{"groups": "all of them"}'))).toEqual(fingerprintTickets)
+  })
+
+  test('a group that joins two areas files the whole run by fingerprint', async () => {
+    const mixed = JSON.stringify({ groups: [[...codeField, ...backButton], locationField, keyboard] })
+    expect(tickets(await fileGrouped(mixed))).toEqual(fingerprintTickets)
+  })
+
+  test("the ticket fingerprint follows platform order, not severity or the fingerprint's own order", async () => {
+    // Two wordings of one bug; desktop gets the one whose fingerprint sorts last, and Android the more severe rating.
+    const wordings = numbered(2).toSorted((a, b) => fp(b).localeCompare(fp(a)))
+    await writeVerified([
+      { ...wordings[0], viewport: 'desktop', priority: 'High' },
+      { ...wordings[1], viewport: 'android' },
+    ])
+    const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+    await writeFile(
+      join(outDir, 'verified.json'),
+      JSON.stringify({ ...verified, groups: [['c2-chat/0', 'c2-chat/1']] }),
+    )
+
+    const filed = await fileFindings({ outDir, live: false, log: () => {}, now })
+
+    expect(filed.map((f) => [f.fp, f.severity])).toEqual([
+      [fp(wordings[0]), 'Urgent'],
+      [fp(wordings[0]), 'Urgent'],
     ])
   })
 })

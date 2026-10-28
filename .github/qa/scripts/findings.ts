@@ -156,6 +156,9 @@ const findingFileSchema = z
 export type FindingFile = { charterDir: string; id: string; finding: RawFinding }
 export type RejectedFile = { charterDir: string; id: string; reason: string }
 
+/** A finding's id within the run: `id` alone repeats across sessions. */
+export const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
+
 export const loadFindings = async (outDir: string) => {
   const valid: FindingFile[] = []
   const rejected: RejectedFile[] = []

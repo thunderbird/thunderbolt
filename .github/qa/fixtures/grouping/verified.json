@@ -1,0 +1,342 @@
+{
+  "confirmed": [
+    {
+      "charterDir": "c1-first-run-desktop",
+      "id": "1",
+      "finding": {
+        "title": "Login code textbox has no accessible name",
+        "area": "auth",
+        "charter": "c1-first-run-desktop",
+        "viewport": "desktop",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control textbox \"after If you received a code to log in, enter \""
+        },
+        "steps": ["Enter a fresh email and press Enter", "Code entry screen appears"],
+        "expected": "The code text field has an accessible name",
+        "actual": "The code textbox (below 'If you received a code to log in, enter it here:') has no name in the snapshot; probe reports unnamed-control",
+        "repro_spec": "repro/1.spec.ts"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reports an unnamed-control textbox located after 'If you received a code to log in, enter' on the login code screen. The replay reproduced the same line, and the finding's actual describes that code field. A screen reader user cannot identify the field needed to sign in.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-desktop",
+      "id": "2",
+      "finding": {
+        "title": "Onboarding back (arrow-left) button has no accessible name",
+        "area": "onboarding",
+        "charter": "c1-first-run-desktop",
+        "viewport": "desktop",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control button \"arrow-left icon after Connect Google\""
+        },
+        "steps": [
+          "Sign in with fresh address on onboarding build",
+          "Agree to the terms and press Continue",
+          "On the Connect Google step, look at the arrow-left button at bottom left of the dialog"
+        ],
+        "expected": "The back button has an accessible name such as Back",
+        "actual": "The arrow-left icon button next to Skip/Continue has no name; the probe reports unnamed-control",
+        "repro_spec": "repro/2.spec.ts"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reports an unnamed-control for the arrow-left icon button after the 'Connect Google' heading, and the replay failure shows the same line. The finding's actual describes that same back button, so a screen reader user cannot identify the onboarding back control.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-phone",
+      "id": "1",
+      "finding": {
+        "title": "Sign-in code field has no accessible name",
+        "area": "auth",
+        "charter": "c1-first-run-phone",
+        "viewport": "phone",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control textbox \"after If you received a code to log in, enter \""
+        },
+        "steps": ["Enter a fresh email and press Continue", "Look at the code entry screen"],
+        "expected": "The code text field has an accessible name",
+        "actual": "Console reports an unnamed textbox: the code field below 'If you received a code to log in, enter it here:' shows in the snapshot as textbox with no name",
+        "repro_spec": "repro/1.spec.ts"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reports an unnamed-control textbox located after the text 'If you received a code to log in, enter', and the replay shows the same line. That matches the finding's description of the sign-in code field, which screen reader users cannot identify during sign-in.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-phone",
+      "id": "2",
+      "finding": {
+        "title": "Onboarding back arrow button has no accessible name",
+        "area": "onboarding",
+        "charter": "c1-first-run-phone",
+        "viewport": "phone",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control button \"arrow-left icon after Connect Google\""
+        },
+        "steps": [
+          "Sign in with a fresh address",
+          "Accept the privacy checkbox and press Continue",
+          "Look at the Connect Google step"
+        ],
+        "expected": "The back arrow button has an accessible name",
+        "actual": "The arrow-left icon button at bottom left of the Connect Google step (next to Skip) shows in the snapshot as a button with no name",
+        "repro_spec": "repro/2.spec.ts"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reported 'unnamed-control button \"arrow-left icon after Connect Google\"' and the replay failed on that same line at the bug-check step after reaching the Connect Google heading. The finding's actual describes that same arrow-left back button, so screen reader users cannot identify the back control in onboarding.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-phone",
+      "id": "3",
+      "finding": {
+        "title": "Onboarding location dropdown has no accessible name",
+        "area": "onboarding",
+        "charter": "c1-first-run-phone",
+        "viewport": "phone",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control combobox \"chevron-down icon after This helps us personalize your experienc\""
+        },
+        "steps": [
+          "Sign in with a fresh address",
+          "Accept privacy, Continue, Skip Connect Google, Continue the name step",
+          "Look at the 'Where are you located?' step"
+        ],
+        "expected": "The location combobox has an accessible name",
+        "actual": "The 'Select location…' combobox is reported by the probe as an unnamed control",
+        "repro_spec": "repro/3.spec.ts"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reports an unnamed combobox (chevron-down icon after the 'This helps us personalize your experience' text) on the 'Where are you located?' onboarding step. The replay reproduced the same line after reaching that heading, and the finding's 'Select location…' combobox matches that control. Screen reader users cannot identify the field in the onboarding flow.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-android",
+      "id": "1",
+      "finding": {
+        "title": "Onboarding back arrow button has no accessible name",
+        "area": "onboarding",
+        "charter": "c1-first-run-android",
+        "viewport": "android",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control button \"after Connect Google\""
+        },
+        "steps": [
+          "Sign in with a fresh address and code 12345678",
+          "Tick the privacy checkbox and press Continue",
+          "On the Connect Google step see the back arrow button at bottom left"
+        ],
+        "expected": "Back button has an accessible name (e.g. Back)",
+        "actual": "The bottom-left arrow-left button on the Connect Google step ([49,2254][160,2373]) has no text or a11y label",
+        "repro_flow": "repro/1.yaml"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The replay logged the layout probe line `[qa-layout] unnamed-control button \"after Connect Google\"`, and the flow reaches the Connect Google onboarding step. The finding's actual describes that control, the arrow-left back button after the Connect Google text, which has no accessible name for screen reader users.",
+        "priority": "Medium"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-android",
+      "id": "2",
+      "finding": {
+        "title": "Name field on onboarding is hidden behind the keyboard",
+        "area": "onboarding",
+        "charter": "c1-first-run-android",
+        "viewport": "android",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] behind-keyboard textbox \"Enter your name\""
+        },
+        "steps": [
+          "Sign in with a fresh address",
+          "Accept privacy, Continue, Skip Connect Google",
+          "On What should we call you? the name field autofocuses and the keyboard opens"
+        ],
+        "expected": "Focused name field stays fully visible above the keyboard",
+        "actual": "The Enter your name field is cut by the keyboard (only its top half visible), Continue button not reachable without hiding keyboard",
+        "repro_flow": "repro/2.yaml"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The replay hit the same layout probe line, [qa-layout] behind-keyboard textbox \"Enter your name\", and the repro reaches the \"What should we call you?\" onboarding screen on Android. The focused name field is covered by the keyboard during first-run onboarding.",
+        "priority": "Medium"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-android",
+      "id": "3",
+      "finding": {
+        "title": "Location step: unnamed combobox/textbox and field behind keyboard",
+        "area": "onboarding",
+        "charter": "c1-first-run-android",
+        "viewport": "android",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control combobox \"after This helps us personalize your experienc\""
+        },
+        "steps": [
+          "Sign in, accept privacy, Skip Google, type a name, Continue",
+          "On Where are you located? the keyboard opens automatically"
+        ],
+        "expected": "Location combobox has an accessible name and is visible above keyboard",
+        "actual": "The Select location… combobox (below the 'This helps us personalize your experience' text) has no accessible name, and is half behind the keyboard",
+        "repro_flow": "repro/3.yaml"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe logged an unnamed-control combobox after 'This helps us personalize your experienc' on the Location onboarding step, and the replay saw the same line again. The finding's actual describes that same Select location combobox, so screen reader users cannot tell what the onboarding control does.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-ios",
+      "id": "1",
+      "finding": {
+        "title": "Code entry text field has no accessible name",
+        "area": "auth",
+        "charter": "c1-first-run-ios",
+        "viewport": "ios",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control textbox \"after If you received a code to log in, enter \""
+        },
+        "steps": ["Open app", "Enter email, Continue", "Look at the code entry screen"],
+        "expected": "The code input boxes have an accessible name",
+        "actual": "The code entry textbox (row of 8 boxes under 'If you received a code to log in, enter it here:') is reported as an unnamed control",
+        "repro_flow": "repro/1.yaml"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The replayed layout probe logged an unnamed-control textbox after 'If you received a code to log in, enter'. That matches the code entry field described in the finding, so screen reader users cannot tell what the field is for on the sign-in screen.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-ios",
+      "id": "2",
+      "finding": {
+        "title": "Onboarding back arrow button has no accessible name",
+        "area": "onboarding",
+        "charter": "c1-first-run-ios",
+        "viewport": "ios",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] unnamed-control button \"arrow-left icon after Connect Google\""
+        },
+        "steps": [
+          "Sign in with fresh address",
+          "Tick privacy checkbox, Continue",
+          "On Connect Google step look at the bottom-left arrow"
+        ],
+        "expected": "Back button has an accessible name",
+        "actual": "The arrow-left icon button at bottom-left, left of Skip and Continue, is unnamed",
+        "repro_flow": "repro/2.yaml"
+      },
+      "replay": {
+        "failed": 3,
+        "runs": 3
+      },
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The replay logged the same [qa-layout] unnamed-control line for the arrow-left icon button after 'Connect Google', and the flow reaches that onboarding step. The finding's actual describes that same back-arrow control, so a screen reader user cannot tell what the button does.",
+        "priority": "High"
+      }
+    },
+    {
+      "charterDir": "c1-first-run-ios",
+      "id": "3",
+      "finding": {
+        "title": "Name field on onboarding is cut off when the keyboard opens",
+        "area": "onboarding",
+        "charter": "c1-first-run-ios",
+        "viewport": "ios",
+        "oracle": {
+          "type": "layout",
+          "evidence": "[qa-layout] focused-clipped textbox \"Enter your name\""
+        },
+        "steps": [
+          "Sign in with fresh address",
+          "Tick checkbox, Continue",
+          "Skip Connect Google",
+          "Name step opens with keyboard focused"
+        ],
+        "expected": "Name field fully visible above the keyboard",
+        "actual": "The name field is cut in half by the button bar (Skip/Continue) floating mid-screen above the keyboard",
+        "repro_flow": "repro/3.yaml"
+      },
+      "replay": {
+        "failed": 2,
+        "runs": 3
+      },
+      "artifacts": {}
+    }
+  ],
+  "flaky": [],
+  "observations": [],
+  "dropped": []
+}

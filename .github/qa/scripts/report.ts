@@ -11,7 +11,7 @@ import { z } from 'zod'
 import type { Canary } from './canaries'
 import type { Filed, Scorecard } from './file-findings'
 import { sanitize } from './sanitize'
-import { type FindingFile, loadFindings, parseSession, realAiCharters } from './findings'
+import { findingId, loadFindings, parseSession, realAiCharters } from './findings'
 import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -97,8 +97,6 @@ type CanaryResult = {
   /** Visual findings: confirmed from a screenshot with no baseline replay, so neither found nor real. */
   unmeasured: string[]
 }
-
-const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
 
 /**
  * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build

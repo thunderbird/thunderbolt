@@ -10,6 +10,7 @@ import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
 import {
   type Finding,
+  findingId,
   findingSchema,
   fingerprint,
   judgedSeverity,
@@ -236,7 +237,10 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
 
 // ---------- ticket text ----------
 
-/** Findings sharing a fingerprint, filed as one ticket. `v` and `f` are the most severe and give it its text. */
+/**
+ * Findings of one defect (a group from `verified.json`, or else a fingerprint), filed as one ticket. `v` and `f` are
+ * the most severe and give it its text; `fp` is `ticketFingerprint`.
+ */
 type Entry = {
   v: VerifiedFinding
   f: Finding
@@ -301,7 +305,7 @@ const videoPath = (outDir: string, video: string) =>
 
 // ---------- filing ----------
 
-/** Runs before grouping by fingerprint, so holding back an Android finding never holds back its iOS twin. */
+/** Runs before grouping, so holding back an Android finding never holds back its iOS twin. */
 const refusal = (f: Finding) => {
   if (f.oracle.type === 'visual' && !(f.element?.trim() && f.function?.trim())) {
     return 'visual finding without an element and a function to deduplicate on'
@@ -312,6 +316,15 @@ const refusal = (f: Finding) => {
   }
   return undefined
 }
+
+/**
+ * The fingerprint a group files under: its first finding in `platforms.json` order, then by fingerprint. Nothing is
+ * stored across weeks, so the same findings must pick the same `[qa:<fp>]` ticket every week.
+ */
+const ticketFingerprint = (group: { f: Finding; fp: string }[]) =>
+  group.toSorted(
+    (a, b) => platformIds.indexOf(a.f.viewport) - platformIds.indexOf(b.f.viewport) || a.fp.localeCompare(b.fp),
+  )[0].fp
 
 type FileOptions = {
   outDir: string
@@ -356,11 +369,15 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   })
   // Sorted before grouping, so a group files with the severity of its most severe finding.
   scored.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
-  const entries: Entry[] = [...Map.groupBy(scored, (s) => s.fp).values()].map((group) => ({
-    ...group[0],
-    platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
-    group: group.map((s) => s.v),
-  }))
+  const groupOf = new Map(verified.groups?.flatMap((ids, i) => ids.map((id) => [id, i] as const)))
+  const entries: Entry[] = [...Map.groupBy(scored, (s) => groupOf.get(findingId(s.v)) ?? s.fp).values()].map(
+    (group) => ({
+      ...group[0],
+      fp: ticketFingerprint(group),
+      platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
+      group: group.map((s) => s.v),
+    }),
+  )
 
   const opened = { bug: 0, security: 0 }
   const overflow: Overflow = { bug: [], security: [] }

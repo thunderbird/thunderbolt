@@ -259,14 +259,25 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
    line is the proof and a screenshot only context. The default answer is drop. The judge also proposes the
-   ticket's priority from a four-line rubric in `judge.md`. Writes `verified.json`.
-5. **file** (`file-findings.ts`): fingerprint dedupe, severity, ticket caps and roll-ups, secret refusal.
+   ticket's priority from a four-line rubric in `judge.md`. When it keeps two findings or more, one more call
+   with the same model groups them by defect (`groupFindings`), because each platform can word one bug
+   differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
+   a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. That call sees each
+   finding's title, area, platform, oracle and screenshot path, fenced as untrusted data, and counts against the
+   judge's spend ceiling and `judge_usage`. Code checks the answer: every confirmed finding in exactly one group,
+   one area per group, and findings that share a fingerprint kept together. Only an answer that passes goes into
+   `verified.json` as `groups`. A malformed answer, a failed check, an API error or too little room under the
+   ceiling logs why and leaves the whole run to fingerprint grouping. Writes `verified.json`.
+5. **file** (`file-findings.ts`): grouping and dedupe, severity, ticket caps and roll-ups, secret refusal.
    A table keyed on area and oracle type gives each finding a starting severity. The judge's priority may move it
    one level up or down, but a console error or an overflow never goes above Medium. A missing or unknown
-   priority keeps the table's value. Findings that share a fingerprint file with the highest severity among them.
-   Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
-   whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
-   that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
+   priority keeps the table's value. Dry run unless `--live`. Each group in `verified.json` becomes one ticket;
+   without `groups`, findings that share a fingerprint do (the fingerprint ignores the platform). The ticket
+   files with the highest severity among its findings, its `**Platforms:**` line lists every platform that found
+   the bug, and an open ticket gets one comment with that line. A group's ticket carries the fingerprint of its
+   first finding in `platforms.json` order, then by fingerprint. Nothing about groups is stored across weeks, so
+   the same findings land on the same `[qa:<fp>]` ticket every week, and a group that loses its first-platform
+   finding moves to another member's fingerprint. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
    wording; one without an element or a function is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
    An Android `layout` finding of the `covered` kind is refused too, with its reason in the report, until the probe
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
@@ -802,7 +813,7 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
 turns, timeout), and the constants at the top of `verify.ts` for the judge. The first values are generous on
 purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
-(4 on a native leg, whose runs are slow) and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes,
+(4 on a native leg, whose runs are slow) and 15 judged, and a judge leg spends at most $2, its grouping call included (a call is admitted only if its worst case fits: prompt bytes,
 1,600 tokens per screenshot, plus `max_tokens`, at Opus prices). Findings over a cap are listed as deferred and
 never filed. The app's own provider calls in real-AI sessions are not measured: watch the QA provider keys'
 dashboards.

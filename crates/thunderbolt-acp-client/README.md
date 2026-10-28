@@ -16,9 +16,11 @@ Because the artifact is prebuilt, it is verified three ways:
 
 - **Staleness gate (CI):** the `wasm-artifact` job also triggers when the crate source
   changes (`src/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/`,
-  `build.sh`). If the crate changed without a matching `src/acp/iroh/pkg/` regeneration
-  in the same PR, the job fails — so editing the crate can't silently leave the
-  committed wasm stale. No toolchain needed.
+  `build.sh`, `build.rs`, `source-manifest.sh`). If the crate changed without a matching
+  `src/acp/iroh/pkg/` regeneration in the same PR, the job fails. CI also compares
+  `pkg/SOURCES.txt` with the current source paths and SHA-256 hashes, so changed,
+  added, removed, or omitted inputs fail even if another package file changed.
+  No toolchain needed.
 - **Tamper-evidence (CI):** `src/acp/iroh/pkg/CHECKSUMS.txt` lists the sha256 of each
   committed artifact. The `wasm-artifact` CI job verifies both exact file-set equality
   and every digest, so changed, missing, or unlisted files fail. No toolchain needed.
@@ -32,13 +34,17 @@ Because the artifact is prebuilt, it is verified three ways:
 ## Rebuilding
 
 ```sh
-./build.sh            # rebuild + regenerate CHECKSUMS.txt into src/acp/iroh/pkg
+./build.sh            # locked rebuild + regenerate SOURCES.txt and CHECKSUMS.txt
 ./build.sh --verify   # rebuild into a temp dir and diff against the committed manifest
+bash source-manifest.test.sh  # test source provenance checks without a wasm toolchain
 ```
 
-Commit the regenerated `pkg/` (including `CHECKSUMS.txt`) in the same change as any
-crate/dependency edit. Bumping the toolchain below also changes the artifact — bump
-and regenerate in one commit.
+Commit the regenerated `pkg/` (including `SOURCES.txt` and `CHECKSUMS.txt`) in the same
+change as any crate/dependency edit. The build captures source hashes before
+compilation, checks they still match afterward, and publishes them only after
+the locked wasm build succeeds. A host-only lockfile update can
+leave the wasm bytes identical while changing both manifests. Bump the toolchain
+and regenerate in one commit too.
 
 ## Toolchain provenance
 

@@ -34,17 +34,19 @@ ARTIFACTS=(
   thunderbolt_acp_client.d.ts
   thunderbolt_acp_client.js
   package.json
+  SOURCES.txt
 )
 
 # `--verify` rebuilds into a throwaway dir and fails if the result drifts from the
 # committed CHECKSUMS.txt, instead of overwriting src/acp/iroh/pkg. The build is
 # byte-for-byte reproducible only on the pinned toolchain and OS (see README.md).
 VERIFY=0
+BUILD_DIR="$(mktemp -d)"
+trap 'rm -rf "$BUILD_DIR"' EXIT
 if [[ "${1:-}" == "--verify" ]]; then
   VERIFY=1
   COMMITTED_DIR="$OUT_DIR"
-  OUT_DIR="$(mktemp -d)"
-  trap 'rm -rf "$OUT_DIR"' EXIT
+  OUT_DIR="$BUILD_DIR/pkg"
 fi
 
 if [[ "$(uname)" == "Darwin" ]]; then
@@ -80,8 +82,9 @@ encoded="$(printf '%s\x1f' "${rustflags[@]}")"
 export CARGO_ENCODED_RUSTFLAGS="${encoded%$'\x1f'}"
 
 cd "$CRATE_DIR"
+bash "$CRATE_DIR/source-manifest.sh" > "$BUILD_DIR/SOURCES.txt"
 echo "building wasm → $OUT_DIR"
-wasm-pack build --target web --release --out-dir "$OUT_DIR"
+wasm-pack build --target web --release --out-dir "$OUT_DIR" -- --locked
 
 WASM="$OUT_DIR/thunderbolt_acp_client_bg.wasm"
 if command -v wasm-opt >/dev/null 2>&1; then
@@ -102,6 +105,13 @@ fi
 # be committed) and copies the crate README (drop it — redundant, unchecksummed, and
 # would otherwise show up untracked after every build).
 rm -f "$OUT_DIR/.gitignore" "$OUT_DIR/README.md"
+
+# Record the source and lockfile even when a host-only update leaves wasm unchanged.
+if ! bash "$CRATE_DIR/source-manifest.sh" | diff -u "$BUILD_DIR/SOURCES.txt" -; then
+  echo "error: build inputs changed during compilation; rebuild from stable sources." >&2
+  exit 1
+fi
+cp "$BUILD_DIR/SOURCES.txt" "$OUT_DIR/SOURCES.txt"
 
 # Manifest of the committed artifacts (bare filenames, so it's path-independent
 # and CI can `shasum -a 256 -c` it from the pkg dir without a wasm toolchain).

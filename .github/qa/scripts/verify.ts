@@ -924,6 +924,7 @@ const verdictSchema = z.object({ keep: z.boolean(), reason: z.string().min(1), p
 const replySchema = verdictSchema.extend({ priority: proposedSeveritySchema })
 
 type Reply = Awaited<ReturnType<CreateMessage>>
+/** The reply's text blocks joined; every other block type is ignored. */
 const replyText = (response: Reply) =>
   response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
 
@@ -975,7 +976,8 @@ const groupingProblem = (confirmed: VerifiedFinding[], groups: string[][]): stri
   return undefined
 }
 
-const readGroups = (response: Reply) => {
+/** The reply's groups, or undefined when it is not valid JSON or does not match the grouping schema. */
+const readGroups =(response: Reply) => {
   try {
     return groupingSchema.parse(JSON.parse(replyText(response))).groups
   } catch {
@@ -985,6 +987,10 @@ const readGroups = (response: Reply) => {
 
 type Grouping = { usage: Reply['usage'] } & ({ groups: string[][] } | { problem: string })
 
+/**
+ * The model's groups, or the reason filing cannot use them, with the call's usage. It makes no call when the worst-case
+ * cost is over `budgetUsd`, and an API error reaches the caller.
+ */
 const askForGroups = async (
   confirmed: VerifiedFinding[],
   create: CreateMessage,

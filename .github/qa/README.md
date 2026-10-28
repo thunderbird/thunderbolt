@@ -500,8 +500,8 @@ it: the backend and the fakes, with no Vite, since the app carries its own front
 
 # A booted device (its id on stdout), the app on it, and the console in the background.
 udid=$(.github/qa/scripts/native.sh device ios)
-.github/qa/scripts/native.sh install ios "$udid" "/tmp/qa-ios/Thunderbolt Dev.app"
 .github/qa/scripts/native.sh logs ios "$udid" /tmp/webview.log
+.github/qa/scripts/native.sh install ios "$udid" "/tmp/qa-ios/Thunderbolt Dev.app"
 
 # A session on it: the canary first, then the session (both need ANTHROPIC_API_KEY). The backend log is the one
 # `stack.sh start` writes. QA_DRY_RUN=1 prints the claude command and its hook settings instead.
@@ -966,8 +966,7 @@ Also:
   on iOS the checkbox, radio and switch lines. Any other role keeps the probe's line, the same one the web gives: a
   link on both platforms, and a button or field on iOS.
 - Android `layout` findings of the `covered` kind replay, are judged and show in the report, but are never filed or
-  fixed (`refusal` in `file-findings.ts`); the other Android kinds (`behind-keyboard`, `unnamed-control`,
-  `focus-covered`, `overflow-*`) file like any platform. Covered tickets need a clean probe sweep of correct screens
+  fixed (`refusal` in `file-findings.ts`); every other Android kind files like any platform. Covered tickets need a clean probe sweep of correct screens
   on each platform first, and Android's sweep has not run. On Android the probe has logged `covered button`
   for the sidebar's buttons while the screenshots show them uncovered, or off screen with the drawer closed. The
   lines came only as the drawer closed, or as it opened after a relaunch, and on opening only the buttons farthest

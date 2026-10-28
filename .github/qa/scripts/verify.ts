@@ -28,7 +28,6 @@ import {
   signature,
   type FindingFile,
   type RejectedFile,
-  type Severity,
 } from './findings'
 import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
 import { createRunFlow } from './replay-native'
@@ -36,7 +35,7 @@ import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
 
 /** `priority` is the judge's proposal, which filing holds near the severity table; older records have none. */
-type Verdict = { keep: boolean; reason: string; priority?: Severity }
+type Verdict = z.infer<typeof replySchema>
 
 export type VerifiedFinding = FindingFile & {
   /**

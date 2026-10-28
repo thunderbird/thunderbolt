@@ -188,6 +188,8 @@ device_android() {
 # Starts the iOS stream into <file>, which the redirect empties, and records its pid. It starts right after the
 # boot, so its 3 h limit has to outlast replay-native's 130-minute job.
 start_ios_stream() {
+  # A killed stream's process can outlive its wrapper; unlinking keeps it from overwriting the new stream's file.
+  rm -f "$2"
   xcrun simctl spawn "$1" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 3h > "$2" 2>&1 &
   echo $! > "$2.pid"
 }

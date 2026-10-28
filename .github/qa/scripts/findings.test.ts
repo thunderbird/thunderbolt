@@ -11,6 +11,7 @@ import {
   findingSchema,
   fingerprint,
   hasOracle,
+  judgedSeverity,
   lintReproSpec,
   loadFindings,
   parseSession,
@@ -273,6 +274,35 @@ describe('severity', () => {
     ['layout', 'ai-reported-failure', 'Low'],
   ] as const)('%s + %s is %s', (area, type, expected) => {
     expect(severity({ ...finding, area, oracle: { type, evidence: 'quoted' } })).toBe(expected)
+  })
+})
+
+describe('judgedSeverity', () => {
+  const skillsBug: Finding = { ...finding, area: 'skills' }
+  const signInBug: Finding = { ...finding, area: 'auth', oracle: { type: 'assert-failed', evidence: 'quoted' } }
+
+  test('takes the judge priority within one level of the table', () => {
+    expect(judgedSeverity(skillsBug, 'High')).toBe('High')
+    expect(judgedSeverity(skillsBug, 'Low')).toBe('Low')
+    expect(judgedSeverity(signInBug, 'High')).toBe('High')
+  })
+
+  test('moves at most one level up or down from the table', () => {
+    expect(judgedSeverity(skillsBug, 'Urgent')).toBe('High')
+    expect(judgedSeverity(signInBug, 'Low')).toBe('High')
+  })
+
+  test('without a proposal the table value stands', () => {
+    expect(judgedSeverity(skillsBug, undefined)).toBe('Medium')
+    expect(judgedSeverity(signInBug, undefined)).toBe('Urgent')
+  })
+
+  test('a console error or an overflow never goes above Medium', () => {
+    const consoleError: Finding = { ...finding, oracle: { type: 'console-error', evidence: 'Warning: key' } }
+    const overflow: Finding = { ...finding, oracle: { type: 'layout', evidence: '[qa-layout] overflow-text span "A"' } }
+    expect(judgedSeverity(consoleError, 'Urgent')).toBe('Medium')
+    expect(judgedSeverity(overflow, 'Urgent')).toBe('Medium')
+    expect(judgedSeverity(overflow, 'Low')).toBe('Low')
   })
 })
 

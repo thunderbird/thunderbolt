@@ -8,7 +8,15 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
-import { type Finding, findingSchema, fingerprint, platformIds, type Severity, severity } from './findings'
+import {
+  type Finding,
+  findingSchema,
+  fingerprint,
+  judgedSeverity,
+  platformIds,
+  proposedSeveritySchema,
+  type Severity,
+} from './findings'
 import { sanitize, secretPattern } from './sanitize'
 import { imageInfo, screenshotPath, type Verified, type VerifiedFinding } from './verify'
 
@@ -340,12 +348,14 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const filed: Filed[] = []
   const scored = verified.confirmed.flatMap((v) => {
     const f = findingSchema.parse(v.finding)
-    const found = { v, f, fp: fingerprint(v.finding), sev: severity(f) }
+    const sev = judgedSeverity(f, proposedSeveritySchema.parse(v.judge?.priority))
+    const found = { v, f, fp: fingerprint(v.finding), sev }
     const reason = refusal(f)
     if (!reason) return [found]
     filed.push({ fp: found.fp, severity: found.sev, charterDir: v.charterDir, id: v.id, action: 'refused', reason })
     return []
   })
+  // Sorted before grouping, so a group files with the severity of its most severe finding.
   scored.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
   const entries: Entry[] = [...Map.groupBy(scored, (s) => s.fp).values()].map((group) => ({
     ...group[0],

@@ -19,18 +19,24 @@ import {
   normalize,
   parseSession,
   platformOf,
+  proposedSeveritySchema,
   realAiCharters,
   reproFlowFile,
   screenshotFile,
   sessionProblem,
+  severitySchema,
   signature,
   type FindingFile,
   type RejectedFile,
+  type Severity,
 } from './findings'
 import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
 import { createRunFlow } from './replay-native'
 import { cleanLogLine } from './sanitize'
 import type { TranscriptMessage } from './report'
+
+/** `priority` is the judge's proposal, which filing holds near the severity table; older records have none. */
+type Verdict = { keep: boolean; reason: string; priority?: Severity }
 
 export type VerifiedFinding = FindingFile & {
   /**
@@ -39,7 +45,7 @@ export type VerifiedFinding = FindingFile & {
    * `reason`: why too few runs counted to decide, which makes the finding flaky.
    */
   replay: { failed: number; runs: number; error?: string; inconclusive?: number; reason?: string }
-  judge?: { keep: boolean; reason: string }
+  judge?: Verdict
   /** Paths relative to the cwd. */
   artifacts: { video?: string; trace?: string; screenshot?: string }
 }
@@ -899,13 +905,15 @@ export const replay = async (
   return result
 }
 
-const verdictSchema = z.object({ keep: z.boolean(), reason: z.string().min(1) })
+const verdictSchema = z.object({ keep: z.boolean(), reason: z.string().min(1), priority: severitySchema })
+// A bad priority falls back to the severity table at filing; it must not drop a real bug.
+const replySchema = verdictSchema.extend({ priority: proposedSeveritySchema })
 
 /** The judge's verdict, or a drop when the reply is not the requested JSON (refusal, truncation, anything else). */
-const readVerdict = (response: Awaited<ReturnType<CreateMessage>>) => {
+const readVerdict = (response: Awaited<ReturnType<CreateMessage>>): Verdict => {
   const text = response.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
   try {
-    return verdictSchema.parse(JSON.parse(text))
+    return replySchema.parse(JSON.parse(text))
   } catch {
     return { keep: false, reason: `malformed judge reply (stop_reason: ${response.stop_reason})` }
   }

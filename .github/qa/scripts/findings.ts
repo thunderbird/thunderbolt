@@ -87,7 +87,12 @@ export const realAiCharters = new Set([
 ])
 
 export type Area = (typeof areas)[number]
-export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
+/** Most urgent first, so a lower index is a higher priority. */
+const severities = ['Urgent', 'High', 'Medium', 'Low'] as const
+export const severitySchema = z.enum(severities)
+/** A model-proposed severity: a missing or unknown value reads as no proposal. */
+export const proposedSeveritySchema = severitySchema.optional().catch(undefined)
+export type Severity = z.infer<typeof severitySchema>
 
 /** A path inside the session dir; `mcp-b/` holds c7's second device. */
 export const screenshotFile = z.string().regex(/^(mcp(-b)?\/[\w.-]+|maestro\/shot-\d+)\.(png|jpe?g)$/)
@@ -462,14 +467,29 @@ const areaSeverity = {
   i18n: 'Low',
 } satisfies Record<Area, Severity>
 
+const minor = ({ oracle: { type, evidence } }: Finding) =>
+  type === 'console-error' || (type === 'layout' && /\[qa-layout\] overflow-/.test(evidence))
+
 /**
- * Severity from area and oracle type only, so the model can never set it. An app that does not load never
- * reaches this table: the guard's smoke spec aborts the run first.
+ * Severity from area and oracle type only: the anchor the judge's proposal is held to. An app that does not load
+ * never reaches this table: the guard's smoke spec aborts the run first.
  */
 export const severity = (finding: Finding): Severity => {
-  const { type, evidence } = finding.oracle
-  if (type === 'console-error' || (type === 'layout' && /\[qa-layout\] overflow-/.test(evidence))) return 'Low'
+  const { type } = finding.oracle
+  if (minor(finding)) return 'Low'
   if (type === 'lost-on-reload' || (type === 'page-error' && finding.area === 'chat')) return 'Urgent'
   // Everything else, an AI reporting that a feature failed included, is a broken feature: its area decides.
   return areaSeverity[finding.area]
+}
+
+/**
+ * The judge's proposed priority, kept within one level of the table's and never above Medium for a console error
+ * or an overflow. Without a proposal the table's value stands. The judge read untrusted pages, so its proposal only
+ * nudges the table.
+ */
+export const judgedSeverity = (finding: Finding, proposed: Severity | undefined): Severity => {
+  const table = severities.indexOf(severity(finding))
+  const nudged = proposed ? severities.indexOf(proposed) : table
+  const highest = minor(finding) ? Math.max(table - 1, severities.indexOf('Medium')) : table - 1
+  return severities[Math.min(Math.max(nudged, highest), table + 1)]
 }

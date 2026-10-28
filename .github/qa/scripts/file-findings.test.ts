@@ -130,9 +130,12 @@ beforeEach(async () => {
 })
 afterEach(() => rm(outDir, { recursive: true, force: true }))
 
-const writeVerified = async (findings: Partial<RawFinding>[], video?: string, charterDir = 'c2-chat') => {
+/** `priority` is what the judge proposed for that finding, written as is so a test can send a malformed one. */
+type Judged = Partial<RawFinding> & { priority?: string }
+
+const writeVerified = async (findings: Judged[], video?: string, charterDir = 'c2-chat') => {
   const confirmed = []
-  for (const [i, fields] of findings.entries()) {
+  for (const [i, { priority, ...fields }] of findings.entries()) {
     const finding = { ...base, ...fields }
     await mkdir(join(outDir, charterDir, 'repro'), { recursive: true })
     if (finding.screenshot) {
@@ -151,6 +154,7 @@ const writeVerified = async (findings: Partial<RawFinding>[], video?: string, ch
       finding,
       replay: { failed: 3, runs: 3 },
       artifacts: { video },
+      judge: { keep: true, reason: 'A real bug.', priority },
     })
   }
   await writeFile(
@@ -421,6 +425,48 @@ describe('one ticket per bug across platforms', () => {
       ['commented', 'THB-9'],
       ['commented', 'THB-9'],
     ])
+  })
+})
+
+describe('judged priority', () => {
+  test('a sign-in code field with no accessible name, judged High, files High', async () => {
+    const signInCodeField: Judged = {
+      title: 'Sign-in code field has no accessible name',
+      area: 'auth',
+      charter: 'c1-first-run-desktop',
+      oracle: {
+        type: 'layout',
+        evidence: '[qa-layout] unnamed-control textbox "after If you received a code to log in, enter "',
+      },
+      steps: ['Open http://localhost:1425', 'Enter a fresh email and press Continue', 'Code entry screen shows'],
+      expected: 'The code text field has an accessible name',
+      actual: "The code input below 'If you received a code to log in, enter it here:' has no name",
+      priority: 'High',
+    }
+    await writeVerified([signInCodeField], undefined, 'c1-first-run-desktop')
+    const api = fakeLinear()
+    const [entry] = await run(api.fetchFn)
+    expect(entry).toMatchObject({ action: 'created', severity: 'High' })
+    expect(created(api)[0].priority).toBe(2)
+  })
+
+  test('a malformed judge priority files at the table severity', async () => {
+    await writeVerified([{ priority: 'Critical' }])
+    const api = fakeLinear()
+    const [entry] = await run(api.fetchFn)
+    expect(entry).toMatchObject({ action: 'created', severity: 'Urgent' })
+    expect(created(api)[0].priority).toBe(1)
+  })
+
+  test('one bug on several platforms files with the highest priority any of them was judged', async () => {
+    await writeVerified([
+      { viewport: 'desktop', priority: 'High' },
+      { viewport: 'phone', priority: 'Urgent' },
+    ])
+    const api = fakeLinear()
+    const filed = await run(api.fetchFn)
+    expect(filed.map((f) => f.severity)).toEqual(['Urgent', 'Urgent'])
+    expect(created(api).map((input) => input.priority)).toEqual([1])
   })
 })
 

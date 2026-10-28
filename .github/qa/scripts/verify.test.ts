@@ -1872,6 +1872,32 @@ describe('judge', () => {
     expect(await Bun.file(join(outDir, 'verified.json')).json()).toEqual(result)
   })
 
+  test('stores the priority the judge proposes, and keeps a finding whose priority is missing or malformed', async () => {
+    await writeCandidates({
+      confirmed: [candidate('rated'), candidate('unrated'), candidate('overrated')],
+      flaky: [],
+      observations: [],
+      dropped: [],
+    })
+    const create = fakeCreate(
+      {
+        rated: '{"keep":true,"reason":"Sending fails.","priority":"High"}',
+        unrated: '{"keep":true,"reason":"Sending fails."}',
+        overrated: '{"keep":true,"reason":"Sending fails.","priority":"Critical"}',
+      },
+      [],
+    )
+
+    const result = await judge(outDir, create, qaDir)
+
+    expect(result.confirmed.map((file) => [file.id, file.judge?.priority])).toEqual([
+      ['rated', 'High'],
+      ['unrated', undefined],
+      ['overrated', undefined],
+    ])
+    expect(result.dropped).toEqual([])
+  })
+
   test('sends one bounded, structured call per candidate with only the finding, its spec and the known issues', async () => {
     await writeCandidates({ confirmed: [candidate('real')], flaky: [], observations: [], dropped: [] })
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
@@ -1883,7 +1909,7 @@ describe('judge', () => {
     expect(params.max_tokens).toBeLessThanOrEqual(8192)
     expect(params.system).toBe('JUDGE PROMPT\n\nKNOWN ISSUES')
     expect(params.output_config?.format?.type).toBe('json_schema')
-    expect(params.output_config?.format?.schema).toMatchObject({ required: ['keep', 'reason'] })
+    expect(params.output_config?.format?.schema).toMatchObject({ required: ['keep', 'reason', 'priority'] })
     expect(params.messages).toHaveLength(1)
     const prompt = String(params.messages[0].content)
     expect(prompt).toContain('TypeError: messages is undefined')

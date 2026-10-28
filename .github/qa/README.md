@@ -255,8 +255,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
-   line is the proof and a screenshot only context. The default answer is drop. Writes `verified.json`.
-5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
+   line is the proof and a screenshot only context. The default answer is drop. The judge also proposes the
+   ticket's priority from a four-line rubric in `judge.md`. Writes `verified.json`.
+5. **file** (`file-findings.ts`): fingerprint dedupe, severity, ticket caps and roll-ups, secret refusal.
+   A table keyed on area and oracle type gives each finding a starting severity. The judge's priority may move it
+   one level up or down, but a console error or an overflow never goes above Medium. A missing or unknown
+   priority keeps the table's value. Findings that share a fingerprint file with the highest severity among them.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its

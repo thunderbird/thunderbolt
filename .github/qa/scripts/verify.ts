@@ -964,7 +964,7 @@ const groupingProblem = (confirmed: VerifiedFinding[], groups: string[][]): stri
   const ids = groups.flat()
   const known = new Set(confirmed.map(findingId))
   // The public job log gets this reason, so it never repeats the model's ids.
-  if (ids.some((id) => !known.has(id))) return 'an id that is no confirmed finding'
+  if (ids.some((id) => !known.has(id))) return 'an id that is not a confirmed finding'
   if (ids.length !== known.size || new Set(ids).size !== ids.length) return 'a finding is missing or in two groups'
   const members = groups.map((group) => confirmed.filter((v) => group.includes(findingId(v))))
   const areas = members.map((group) => [...new Set(group.map((v) => v.finding.area))])
@@ -1019,7 +1019,7 @@ const askForGroups = async (
 /**
  * One model call that groups the judged findings by defect, since each platform can word one bug differently and
  * the fingerprint then keeps them apart. It sees each finding's title, area, platform, oracle and screenshot path.
- * Runs only for two findings or more, and only when its worst-case cost fits in `budgetUsd`. Any failure (over
+ * Runs only for two fingerprints or more, and only when its worst-case cost fits in `budgetUsd`. Any failure (over
  * budget, an API error, an answer `groupingProblem` rejects) returns no `groups` and logs why, so filing falls back
  * to fingerprints for the whole run.
  */
@@ -1029,7 +1029,8 @@ export const groupFindings = async (
   budgetUsd: number,
   log: (line: string) => void,
 ): Promise<{ groups?: string[][]; usage: Reply['usage'] }> => {
-  if (confirmed.length < 2) return { usage: noUsage }
+  // With one fingerprint the only valid answer is one group, which filing makes anyway.
+  if (new Set(confirmed.map((v) => fingerprint(v.finding))).size < 2) return { usage: noUsage }
   const fallback = (problem: string, usage: Reply['usage']) => {
     log(`grouping: ${problem}; findings file grouped by fingerprint`)
     return { usage }

@@ -333,7 +333,12 @@
         "failed": 2,
         "runs": 3
       },
-      "artifacts": {}
+      "artifacts": {},
+      "judge": {
+        "keep": true,
+        "reason": "The layout probe reports the focused name field clipped once the keyboard opens, and the replay logged the same line. The name step cannot be filled in while it is hidden.",
+        "priority": "High"
+      }
     }
   ],
   "flaky": [],

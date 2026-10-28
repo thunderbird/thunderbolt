@@ -239,16 +239,13 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
 
 /**
  * Findings of one defect (a group from `verified.json`, or else a fingerprint), filed as one ticket. `v` and `f` are
- * the most severe and give it its text; `fp` is `ticketFingerprint`.
+ * the most severe and give it its text; `fp` is `ticketFingerprint`. `group` starts with that most severe finding.
  */
-type Entry = {
-  v: VerifiedFinding
-  f: Finding
-  fp: string
-  sev: Severity
+type Member = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
+type Entry = Member & {
   /** The group's platforms, in `platforms.json` order. */
   platforms: string[]
-  group: VerifiedFinding[]
+  group: Member[]
 }
 type Overflow = { bug: Entry[]; security: Entry[] }
 
@@ -272,12 +269,18 @@ export const ticketView = (f: Finding, runUrl?: string) => {
 
 /** The charter is the session's directory, not model text, so a free session's ticket names its case and platform. */
 const buildBody = (
-  { v, f, sev, platforms }: Entry,
+  { v, f, sev, platforms, group }: Entry,
   spec: string,
   extra: { runUrl?: string; sha?: string; videoUrl?: string; screenshotUrl?: string; regressionOf?: Existing },
 ): string => {
   const runUrl = f.area === 'security' ? undefined : extra.runUrl
   const view = ticketView(f, runUrl)
+  // The grouping call can be wrong, so a member worded differently keeps its own title and evidence on the ticket.
+  const others = group.slice(1).flatMap(({ f: other, fp }) => {
+    if (fp === group[0].fp) return []
+    const { title, oracle } = ticketView(other, runUrl)
+    return [`- ${other.viewport}: ${title} (${oracle.evidence.replace(/\s+/g, ' ')})`]
+  })
   return [
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
@@ -290,6 +293,7 @@ const buildBody = (
     `## Expected\n${view.expected}`,
     `## Actual\n${view.actual}`,
     `## Oracle: ${f.oracle.type}\n\`\`\`\n${view.oracle.evidence}\n\`\`\``,
+    others.length > 0 && `## Also in this group\n${others.join('\n')}`,
     spec && `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
     extra.screenshotUrl && `![Screenshot](${extra.screenshotUrl})`,
     extra.videoUrl && `[Replay video](${extra.videoUrl})`,
@@ -321,7 +325,7 @@ const refusal = (f: Finding) => {
  * The fingerprint a group files under: its first finding in `platforms.json` order, then by fingerprint. Nothing is
  * stored across weeks, so the same findings must pick the same `[qa:<fp>]` ticket every week.
  */
-const ticketFingerprint = (group: { f: Finding; fp: string }[]) =>
+const ticketFingerprint = (group: Member[]) =>
   group.toSorted(
     (a, b) => platformIds.indexOf(a.f.viewport) - platformIds.indexOf(b.f.viewport) || a.fp.localeCompare(b.fp),
   )[0].fp
@@ -375,14 +379,14 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       ...group[0],
       fp: ticketFingerprint(group),
       platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
-      group: group.map((s) => s.v),
+      group,
     }),
   )
 
   const opened = { bug: 0, security: 0 }
   const overflow: Overflow = { bug: [], security: [] }
   const record = ({ group, fp, sev }: Entry, outcome: Omit<Filed, 'fp' | 'severity' | 'charterDir' | 'id'>) =>
-    filed.push(...group.map((v) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id, ...outcome })))
+    filed.push(...group.map(({ v }) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id, ...outcome })))
   /** The job log is public, so a dry run logs no ticket text; `filed.json` keeps it as `preview` unless security. */
   const act = async (
     entry: Entry,
@@ -426,9 +430,9 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   try {
     for (const entry of entries) {
       const { v, f, fp, sev } = entry
-      // Only this finding's text reaches Linear; the rest of its group adds platform ids, which the schema checked.
+      // The lead's spec and text reach Linear, and the other members' titles and evidence with them.
       const spec = f.repro_spec ? await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8') : ''
-      if (secretPattern.test(modelText(f, spec))) {
+      if ([modelText(f, spec), ...entry.group.map((m) => modelText(m.f, ''))].some((t) => secretPattern.test(t))) {
         record(entry, { action: 'refused', reason: 'secret pattern in model-written text' })
         continue
       }

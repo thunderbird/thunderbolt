@@ -977,7 +977,8 @@ Also:
   iOS tree cannot tell a field from text, so an unnamed checkbox right after a filled field quotes what was typed
   there. The tree has no icons, no `data-testid` and no `name`, and iOS gives no page ids, so a control without an
   `id` can quote differently there than in the probe, and a web finding about it and a tree finding about it get
-  different fingerprints. Two unnamed controls with no text between them share one line on the tree. So that one
+  different fingerprints, which only the judge's grouping call can join into one ticket. Two unnamed controls with
+  no text between them share one line on the tree. So that one
   control never makes two findings on one platform, the gate and the replay drop the probe's own `unnamed-control`
   lines for what the tree reports (`keepsProbeLine` in `native-layout.ts`): on Android the roles the tree maps
   (button, checkbox, radio, switch, textbox, combobox, and searchbox, which the WebView shows as a text field), and

@@ -1864,8 +1864,7 @@ describe('judge', () => {
       type: 'image',
       source: { type: 'base64', media_type: mediaType, data: bytes.toString('base64') },
     })
-    // The third call groups the two kept findings.
-    expect(calls.slice(0, 2).map((call) => call.messages[0].content)).toEqual([
+    expect(calls.map((call) => call.messages[0].content)).toEqual([
       [image('image/png', pngBytes), { type: 'text', text: `<finding>\n${JSON.stringify(png, null, 2)}\n</finding>` }],
       [
         image('image/jpeg', jpegBytes),
@@ -2105,10 +2104,15 @@ describe('judge', () => {
         usage: { input_tokens: 500, output_tokens: 50 },
       }
     }
+  /** A candidate with other evidence, so its fingerprint differs from every `candidate`'s. */
+  const reworded = (title: string) => ({
+    ...candidate(title),
+    finding: makeFinding(title, { type: 'page-error', evidence: 'TypeError: reply is undefined' }),
+  })
 
   test('groups only what the judge kept, in one more call counted in judge_usage', async () => {
     await writeCandidates({
-      confirmed: [candidate('real'), candidate('twin'), candidate('intended')],
+      confirmed: [candidate('real'), reworded('twin'), candidate('intended')],
       flaky: [],
       observations: [],
       dropped: [],
@@ -2131,7 +2135,7 @@ describe('judge', () => {
 
   test("the grouping call counts against the judge's spend ceiling", async () => {
     await writeCandidates({
-      confirmed: [candidate('big'), candidate('large')],
+      confirmed: [candidate('big'), reworded('large')],
       flaky: [],
       observations: [],
       dropped: [],
@@ -2200,9 +2204,9 @@ describe('grouping', () => {
     ],
     ['a group that joins two areas', reply([...backButton, ...codeField]), 'a group joins the areas'],
     [
-      'an id that is no confirmed finding',
+      'an id that is not a confirmed finding',
       reply(backButton, codeField, ['c9/1']),
-      'an id that is no confirmed finding',
+      'an id that is not a confirmed finding',
     ],
     ['a finding left out', reply(backButton), 'a finding is missing or in two groups'],
     ['a finding in two groups', reply(backButton, codeField, codeField.slice(0, 1)), 'in two groups'],
@@ -2226,6 +2230,19 @@ describe('grouping', () => {
       expect(lines[0]).not.toContain('c9/1')
     })
   }
+
+  test('findings that all share one fingerprint make no call', async () => {
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+    const lines: string[] = []
+    const sameField = (await findings()).filter((v) => codeField.includes(`${v.charterDir}/${v.id}`))
+
+    const result = await groupFindings(sameField, answer(reply(codeField), calls), 2, (line) => lines.push(line))
+
+    expect(sameField).toHaveLength(3)
+    expect(calls).toEqual([])
+    expect(result).toEqual({ usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(lines).toEqual([])
+  })
 
   test('an API error leaves the run to fingerprints and says why', async () => {
     const lines: string[] = []

@@ -474,12 +474,37 @@ describe('one ticket per defect from the grouping call', () => {
       '75fcfd86': ['High', 'phone, android'],
       '7944d694': ['High', 'ios, android'],
     })
+    const body = (fp: string) => filed.find((f) => f.fp === fp)?.preview?.body ?? ''
+    // The Android wording reaches the ticket in case the grouping was wrong; members sharing the lead's fp add nothing.
+    expect(body('7944d694')).toContain(
+      '- android: Name field on onboarding is hidden behind the keyboard ([qa-layout] behind-keyboard textbox',
+    )
+    expect(body('32e97796')).toContain('- android: Onboarding back arrow button has no accessible name')
+    expect(body('32e97796')).not.toContain('- phone:')
+  })
+
+  test('a secret in any member refuses the whole group', async () => {
+    const wordings = numbered(2)
+    // The leaking member is rated lower, so it is never the one whose text leads the ticket.
+    await writeVerified([
+      { ...wordings[0], viewport: 'desktop' },
+      { ...wordings[1], title: 'Leak lin_api_abc123', priority: 'High' },
+    ])
+    const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+    await writeFile(
+      join(outDir, 'verified.json'),
+      JSON.stringify({ ...verified, groups: [['c2-chat/0', 'c2-chat/1']] }),
+    )
+
+    const filed = await fileFindings({ outDir, live: false, log: () => {}, now })
+
+    expect(filed.map((f) => f.action)).toEqual(['refused', 'refused'])
   })
 
   test('a group files with the highest priority among its members', async () => {
     const filed = await fileGrouped(JSON.stringify({ groups: [codeField, backButton, locationField, keyboard] }))
 
-    // The judge rated the Android keyboard finding Medium; the iOS one has the table's High.
+    // The judge rated the Android keyboard finding Medium and the iOS one High.
     expect(filed.find((f) => f.charterDir === 'c1-first-run-android' && f.id === '2')?.severity).toBe('High')
   })
 

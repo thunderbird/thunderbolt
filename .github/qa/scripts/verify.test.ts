@@ -1020,6 +1020,44 @@ describe('replay of native flows', () => {
     ])
   })
 
+  describe('a control run whose driver never started', () => {
+    const driver = { passed: false, error: 'Unable to launch app: iOS driver not ready in time' }
+    const failed = { passed: false, error: 'Assertion is false: "hello" is visible' }
+
+    test('is replaced, and the stack stays healthy once 3 runs counted', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      // Both tries of the first run fail to start the driver; the next three runs pass.
+      const result = await nativeReplay({ 'stack control': [driver, driver], always: [failed, failed, failed] }, calls)
+
+      expect(calls.filter((call) => call.title === 'stack control')).toHaveLength(5)
+      expect(result.stack_unhealthy).toBeUndefined()
+      expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.runs])).toEqual([['always', 3, 3]])
+    })
+
+    test('never makes the stack healthy when no run counts: the control stops after its extra runs', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      const result = await nativeReplay({ 'stack control': Array(12).fill(driver), always: [failed] }, calls)
+
+      expect(result.stack_unhealthy).toBe('control flow never completed 3 runs: only 0 of 3 runs reached the screen')
+      expect(calls.map((call) => call.title)).toEqual(Array(12).fill('stack control'))
+      expect(result.confirmed).toEqual([])
+      expect(result.dropped.map((entry) => [entry.file.id, entry.reason])).toEqual([['always', 'stack unhealthy']])
+    })
+
+    test('does not hide another failure in the same control: it still marks the stack unhealthy', async () => {
+      await writeNative(makeNative('always', assertFailed))
+
+      const result = await nativeReplay({ 'stack control': [driver, driver, failed], always: [failed] })
+
+      expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failed.error}`)
+      expect(result.confirmed).toEqual([])
+    })
+  })
+
   test('a log oracle fails a run when a new log line holds the evidence, whatever the run-specific noise', async () => {
     const line = (time: string, pid: string, hash: string, chat: string) =>
       `webview: 2026-10-19 ${time} Df Thunderbolt Dev[${pid}] [com.apple.WebKit:Generic] WebContent[49912] ` +

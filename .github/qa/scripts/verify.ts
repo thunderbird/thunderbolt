@@ -623,7 +623,9 @@ const counter = () => {
 
 /**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
- * control run stops the replay: the findings never run.
+ * control run stops the replay: the findings never run. A run whose driver never started, even on its retry, is
+ * inconclusive and replaced like a finding's, but a control that still has fewer than 3 counted runs proves nothing,
+ * so it stops the replay as well.
  */
 const replayFlows = async (
   outDir: string,
@@ -637,15 +639,18 @@ const replayFlows = async (
   for (const appId of new Set([...flows.keys()].map(appIdOf))) {
     const check = checkMaestroFlow(control, { appId, vars: flowVars })
     if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
-    const { replay } = await threeRuns(device, { yaml: check.yaml }, 'control', (run) =>
-      run.passed ? undefined : (run.error ?? 'the flow failed'),
+    const { replay } = await threeRuns(
+      device,
+      { yaml: check.yaml },
+      'control',
+      (run) => (run.passed ? undefined : (run.error ?? 'the flow failed')),
+      (run) => run.error?.includes(driverTimeout) === true,
     )
-    if (replay.failed > 0) {
-      return {
-        stackProblem: `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`,
-        outcomes: new Map<FindingFile, Outcome>(),
-      }
-    }
+    const problem =
+      replay.failed > 0
+        ? `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`
+        : replay.runs < 3 && `control flow never completed 3 runs: ${replay.reason}`
+    if (problem) return { stackProblem: problem, outcomes: new Map<FindingFile, Outcome>() }
   }
   const outcomes = new Map<FindingFile, Outcome>()
   for (const [index, [file, flow]] of [...flows].entries()) {

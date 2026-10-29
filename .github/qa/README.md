@@ -220,7 +220,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and
    `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
    onboarding build for c1, the plain one otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3
-   times first on the plain build; one failure marks the stack unhealthy and no flow runs. On Android the install also maps the stack's ports into the
+   times first on the plain build; one failure marks the stack unhealthy and no flow runs. A control run whose iOS driver did not
+   start, even on its retry, is inconclusive and replaced like a finding's run, up to 3 extra runs; a control left with fewer than 3
+   counted runs also marks the stack unhealthy. On Android the install also maps the stack's ports into the
    emulator again and warms the app up (as `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
    `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like
    the privacy step the harness clicks through, adds no tree line.

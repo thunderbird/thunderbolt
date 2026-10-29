@@ -286,6 +286,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the same findings land on the same `[qa:<fp>]` ticket every week, and a group that loses its first-platform
    finding moves to another member's fingerprint. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
    wording; one without an element or a function is refused. Its ticket names the element and embeds the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+   A screenshot or video that fails to upload costs the ticket only that attachment: the ticket is filed without it,
+   the log gets a warning with Linear's or the storage's error message, and the ticket's `filed.json` rows list it
+   under `lostAttachments` with that reason. When Linear will not create a ticket or add a comment, the error is
+   logged and filing goes on with the next one; the job fails once every ticket has been tried.
    An Android `layout` finding of the `covered` kind is refused too, with its reason in the report, until the probe
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
    of the same bug is filed as usual. Every other Android layout kind files like any platform.

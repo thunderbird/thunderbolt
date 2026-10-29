@@ -18,11 +18,13 @@ import {
   proposedSeveritySchema,
   type Severity,
 } from './findings'
-import { sanitize, secretPattern } from './sanitize'
+import { cleanLogLine, sanitize, secretPattern } from './sanitize'
 import { imageInfo, screenshotPath, type Verified, type VerifiedFinding } from './verify'
 
 export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'rolled-up' | 'refused' | 'dry-run'
 type Preview = { title?: string; issue?: string; labels?: string[]; body: string }
+/** An attachment the ticket was filed without, and the cleaned error that cost it. */
+export type LostAttachment = { kind: 'video' | 'screenshot'; reason: string }
 /** One `filed.json` entry. Security findings get no dry-run preview: their text only ever goes to Linear. */
 export type Filed = {
   fp: string
@@ -36,6 +38,7 @@ export type Filed = {
   identifier?: string
   url?: string
   reason?: string
+  lostAttachments?: LostAttachment[]
 }
 
 /** Linear's scale: lower is more urgent, which also makes it the sort order. */
@@ -177,6 +180,7 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
         priority: priority[sev],
       },
     },
+    { errorDetail: true },
   )
   if (!issueCreate.success) throw new Error('Linear did not create the ticket')
   return issueCreate.issue
@@ -215,6 +219,7 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
       fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } }
     }`,
     { contentType, filename: basename(path), size: bytes.length },
+    { errorDetail: true },
   )
   if (!fileUpload.success) throw new Error('Linear did not prepare the upload')
   const { uploadUrl, assetUrl, headers } = fileUpload.uploadFile
@@ -231,9 +236,22 @@ const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> 
     .catch(() => {
       throw new Error('Linear upload request failed')
     })
-  if (!response.ok) throw new Error(`Linear upload HTTP ${response.status}`)
+  if (!response.ok) {
+    // Storage answers XML; its <Message> is the reason without the request details echoed around it.
+    const body = await response.text()
+    throw new Error(`Linear upload HTTP ${response.status}: ${/<Message>([^<]*)/.exec(body)?.[1] ?? body}`)
+  }
   return assetUrl
 }
+
+/**
+ * An error message as one public log line: no URL query string (an upload URL's is its signature), no secret shapes,
+ * no link outside Linear's uploads, at most 300 characters.
+ */
+const logSafe = (message: string) =>
+  cleanLogLine(message.replace(/(https?:\/\/[^\s?#]+)[?#]\S*/g, '$1'))
+    .replace(/\s+/g, ' ')
+    .slice(0, 300)
 
 // ---------- ticket text ----------
 
@@ -401,6 +419,28 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     }
     record(entry, { action: would, ...(await run(ctx)) })
   }
+  /** A failed upload costs the ticket only that attachment. */
+  const attach = async (ctx: Ctx, fp: string, kind: LostAttachment['kind'], path: string, lost: LostAttachment[]) => {
+    try {
+      return await uploadAsset(ctx, path)
+    } catch (error) {
+      const reason = logSafe(error instanceof Error ? error.message : String(error))
+      lost.push({ kind, reason })
+      log(`::warning::${fp}: filing without the ${kind}: ${reason}`)
+      return undefined
+    }
+  }
+  /** A ticket that fails is logged and kept for the end, so every other ticket is still tried. */
+  const failures: string[] = []
+  const attempt = async (what: string, step: () => Promise<void>) => {
+    try {
+      await step()
+    } catch (error) {
+      const reason = logSafe(error instanceof Error ? error.message : String(error))
+      failures.push(`${what}: ${reason}`)
+      log(`::error::Linear failed on ${what}: ${reason}`)
+    }
+  }
 
   const rollUp = async (kind: keyof typeof ticketCap) => {
     const rest = overflow[kind]
@@ -427,19 +467,19 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     }
   }
 
-  try {
-    for (const entry of entries) {
+  for (const entry of entries) {
+    await attempt(entry.fp, async () => {
       const { v, f, fp, sev } = entry
       // The lead's spec and text reach Linear, and the other members' titles and evidence with them.
       const spec = f.repro_spec ? await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8') : ''
       if ([modelText(f, spec), ...entry.group.map((m) => modelText(m.f, ''))].some((t) => secretPattern.test(t))) {
         record(entry, { action: 'refused', reason: 'secret pattern in model-written text' })
-        continue
+        return
       }
       const decision: Decision = ctx ? await decide(ctx, fp, now) : { kind: 'new' }
       if (decision.kind === 'suppressed') {
         record(entry, { action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
-        continue
+        return
       }
       if (decision.kind === 'commented') {
         const link = f.area === 'security' || !runUrl ? '' : `: ${runUrl}`
@@ -448,12 +488,12 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
           await addComment(ctx, decision.issue.id, body)
           return { issueId: decision.issue.id, identifier: decision.issue.identifier, url: decision.issue.url }
         })
-        continue
+        return
       }
       const kind = f.area === 'security' ? 'security' : 'bug'
       if (opened[kind] >= ticketCap[kind]) {
         overflow[kind].push(entry)
-        continue
+        return
       }
       opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
@@ -465,19 +505,25 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       const screenshot = f.area === 'security' || !visual ? undefined : screenshotPath(outDir, v)
       const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
       await act(entry, regressionOf ? 'regression' : 'created', preview, async (ctx) => {
-        const videoUrl = video ? await uploadAsset(ctx, videoPath(outDir, video)) : undefined
-        const screenshotUrl = screenshot ? await uploadAsset(ctx, screenshot) : undefined
+        const lost: LostAttachment[] = []
+        const videoUrl = video ? await attach(ctx, fp, 'video', videoPath(outDir, video), lost) : undefined
+        const screenshotUrl = screenshot ? await attach(ctx, fp, 'screenshot', screenshot, lost) : undefined
         const body = buildBody(entry, spec, { runUrl, sha, videoUrl, screenshotUrl, regressionOf })
         const issue = await createIssue(ctx, title, body, sev, names)
-        return { issueId: issue.id, identifier: issue.identifier, url: issue.url }
+        return {
+          issueId: issue.id,
+          identifier: issue.identifier,
+          url: issue.url,
+          lostAttachments: lost.length ? lost : undefined,
+        }
       })
-    }
-
-    await rollUp('bug')
-    await rollUp('security')
-  } finally {
-    await writeFile(join(outDir, 'filed.json'), JSON.stringify(filed, null, 2))
+    })
   }
+
+  await attempt('the bug roll-up', () => rollUp('bug'))
+  await attempt('the security roll-up', () => rollUp('security'))
+  await writeFile(join(outDir, 'filed.json'), JSON.stringify(filed, null, 2))
+  if (failures.length) throw new Error(`Filing failed for ${failures.length}:\n${failures.join('\n')}`)
   return filed
 }
 

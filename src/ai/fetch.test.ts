@@ -741,7 +741,11 @@ describe('withAppVersionHeader', () => {
   })
 
   afterEach(() => {
-    env.VITE_APP_VERSION = savedVersion
+    if (savedVersion === undefined) {
+      delete env.VITE_APP_VERSION
+    } else {
+      env.VITE_APP_VERSION = savedVersion
+    }
   })
 
   it('adds X-App-Version to the outgoing request without clobbering caller headers', async () => {
@@ -758,7 +762,7 @@ describe('withAppVersionHeader', () => {
   })
 
   it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
-    env.VITE_APP_VERSION = undefined
+    delete env.VITE_APP_VERSION
     const base = capturingFetch()
 
     await withAppVersionHeader(base.fn)('https://cloud.example.com/v1/chat/completions')

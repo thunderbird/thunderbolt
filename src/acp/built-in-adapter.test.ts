@@ -455,7 +455,7 @@ describe('resolvePiModel — Tinfoil', () => {
           headers: { Authorization: 'Bearer thunderbolt-managed', [inferenceModelHeader]: 'wrong-model' },
         })
 
-        env.VITE_AUTH_MODE = undefined
+        delete env.VITE_AUTH_MODE
         setAuthToken('session-token')
         await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
 
@@ -468,8 +468,16 @@ describe('resolvePiModel — Tinfoil', () => {
         expect(new Headers(calls[1].headers).get('authorization')).toBe('Bearer session-token')
         expect(new Headers(calls[1].headers).get('x-app-version')).toBe('1.2.3')
       } finally {
-        env.VITE_AUTH_MODE = savedMode
-        env.VITE_APP_VERSION = savedVersion
+        if (savedMode === undefined) {
+          delete env.VITE_AUTH_MODE
+        } else {
+          env.VITE_AUTH_MODE = savedMode
+        }
+        if (savedVersion === undefined) {
+          delete env.VITE_APP_VERSION
+        } else {
+          env.VITE_APP_VERSION = savedVersion
+        }
         if (savedToken) {
           setAuthToken(savedToken)
         } else {

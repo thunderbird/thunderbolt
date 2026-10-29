@@ -46,7 +46,11 @@ describe('authRequestHeaders', () => {
   })
 
   afterEach(() => {
-    env.VITE_APP_VERSION = savedVersion
+    if (savedVersion === undefined) {
+      delete env.VITE_APP_VERSION
+    } else {
+      env.VITE_APP_VERSION = savedVersion
+    }
   })
 
   it('carries the app version alongside a per-call header', () => {

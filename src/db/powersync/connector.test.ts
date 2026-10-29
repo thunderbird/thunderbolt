@@ -20,6 +20,7 @@ import {
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
+const env: { VITE_AUTH_MODE?: string } = import.meta.env
 
 const createFetchStub = (fetchMock: ReturnType<typeof mock>): typeof fetch =>
   Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init), {
@@ -154,7 +155,7 @@ describe('ThunderboltConnector', () => {
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     fetchMock = mock()
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
@@ -167,7 +168,11 @@ describe('ThunderboltConnector', () => {
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     dispatchSpy.mockRestore()
     // Clear the auth token/device id so the last test's value can't leak into
     // the next test file and trigger AuthProvider's mount get-session call.
@@ -510,14 +515,18 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     fetchMock = mock(() => Promise.resolve(okResponse({})))
     await clearAllKeys()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     clearAuthToken()
     clearDeviceId()
@@ -604,14 +613,18 @@ describe('ThunderboltConnector upload encryption gate', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()
@@ -738,7 +751,7 @@ describe('ThunderboltConnector download encryption gate', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     await clearAllKeys()
@@ -746,7 +759,11 @@ describe('ThunderboltConnector download encryption gate', () => {
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     dispatchSpy.mockRestore()
     await clearAllKeys()
     resetCodecState()
@@ -922,14 +939,18 @@ describe('ThunderboltConnector.uploadData', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()

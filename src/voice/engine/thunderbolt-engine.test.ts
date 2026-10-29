@@ -44,7 +44,11 @@ describe('createTinfoilTransport', () => {
   })
 
   afterEach(() => {
-    env.VITE_APP_VERSION = savedVersion
+    if (savedVersion === undefined) {
+      delete env.VITE_APP_VERSION
+    } else {
+      env.VITE_APP_VERSION = savedVersion
+    }
     resetAppVersionBlockedForTesting()
   })
 
@@ -63,7 +67,7 @@ describe('createTinfoilTransport', () => {
   })
 
   it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
-    env.VITE_APP_VERSION = undefined
+    delete env.VITE_APP_VERSION
     const { transport, received } = createTransport(() => new Response('ok'))
 
     await transport('/audio/speech', 'body')

@@ -1102,7 +1102,9 @@ jobs:
             # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
             echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Also when filing failed: filed.json then lists the tickets that did reach Linear and the attachments lost.
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-filed
           path: |

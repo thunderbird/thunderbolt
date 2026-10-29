@@ -155,6 +155,11 @@ describe('native explore', () => {
   })
 })
 
+test('filed.json is uploaded even when filing fails, so the report lists the tickets that reached Linear', () => {
+  const upload = steps('file').find((s) => s.with?.name === 'qa-filed')
+  expect(upload?.if).toBe('always()')
+})
+
 describe('fix job', () => {
   test('the dev servers run as another user, checked, and the job user loses root before the agent', () => {
     const start = indexOf('fix', 'Start the stack on the working tree')

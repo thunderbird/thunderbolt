@@ -180,7 +180,8 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
         priority: priority[sev],
       },
     },
-    { errorDetail: true },
+    // Linear's message can quote the input back, and a security ticket's text must stay out of the public log.
+    { errorDetail: !names.includes(qaLabels.security) },
   )
   if (!issueCreate.success) throw new Error('Linear did not create the ticket')
   return issueCreate.issue

@@ -608,6 +608,17 @@ describe('Linear failures', () => {
     const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
     expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
   })
+
+  test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {
+    await writeVerified([{ area: 'security', title: 'Leaky token list', oracle: { type: 'http-5xx', evidence: 'x' } }])
+    const echo = 'Variable "$input" got invalid value { title: "Leaky token list" }'
+    const api = fakeLinear({ fail: (op) => (op === 'CreateIssue' ? graphqlError(echo) : undefined) })
+    const lines: string[] = []
+    const error = await run(api.fetchFn, { log: (l) => lines.push(l) }).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(lines).toEqual([expect.stringContaining('Linear CreateIssue HTTP 400')])
+    expect(`${lines.join('\n')}\n${String(error)}`).not.toContain('Leaky')
+  })
 })
 
 describe('judged priority', () => {

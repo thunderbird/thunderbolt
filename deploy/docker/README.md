@@ -6,12 +6,12 @@ Shared Docker images used by all deployment targets (docker-compose, k8s, Fargat
 
 | Dockerfile             | Base                                                     | Purpose                                                |
 | ---------------------- | -------------------------------------------------------- | ------------------------------------------------------ |
-| `backend.Dockerfile`   | `oven/bun:1.3.14`                                        | Bun API server with Drizzle migration entrypoint       |
-| `frontend.Dockerfile`  | `oven/bun:1.3.14` → `nginxinc/nginx-unprivileged:alpine` | Vite SPA build, served by nginx with COEP/COOP headers |
+| `backend.Dockerfile`   | `oven/bun:1.4.4`                                         | Bun API server with Drizzle migration entrypoint       |
+| `frontend.Dockerfile`  | `oven/bun:1.4.4` → `nginxinc/nginx-unprivileged:alpine`  | Vite SPA build, served by nginx with COEP/COOP headers |
 | `postgres.Dockerfile`  | `postgres:18-alpine`                                     | PostgreSQL with PowerSync replication role init        |
 | `keycloak.Dockerfile`  | `quay.io/keycloak/keycloak:26.7`                         | Keycloak with enterprise realm auto-import             |
 | `powersync.Dockerfile` | `journeyapps/powersync-service:1.27.0`                   | PowerSync with Sync Streams config                     |
-| `marketing.Dockerfile` | `oven/bun:latest` → `nginxinc/nginx-unprivileged:alpine` | Astro site (marketing, blog, docs), served by nginx    |
+| `marketing.Dockerfile` | `oven/bun:1.4.4` → `nginxinc/nginx-unprivileged:alpine`  | Astro site (marketing, blog, docs), served by nginx    |
 
 ## Building
 

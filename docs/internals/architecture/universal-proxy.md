@@ -155,7 +155,7 @@ bytes and corrupt the decode. `decompress: false` keeps the bytes and the header
 
 **Silent-breakage risk on a Bun upgrade:** the unit test asserts the option is _passed_, not that
 Bun honours it, so a Bun behaviour change keeps the suite green while responses break. Verified on
-Bun 1.3.10; add an integration test before bumping the Bun major.
+Bun 1.4.4; add an integration test before bumping the Bun major.
 
 ## The WebSocket relay
 

@@ -71,16 +71,13 @@ with up to five attempts: they wait on same-process WebSocket close and message 
 that Bun drops or delays under load. Five consecutive non-zero attempts still red the
 build.
 
-## The Bun versions differ on purpose
+## One Bun version everywhere
 
-| Bun version | Jobs                                                   |
-| ----------- | ------------------------------------------------------ |
-| 1.3.14      | `typescript`, `localization`, `agent-core`, `cli`, e2e |
-| 1.3.13      | `backend`, `pr-metrics.yml`                            |
-
-Not drift: on the backend job 1.3.14 caused multi-minute hangs inside PGlite's WASM that
-the per-test timeout could not interrupt, never seen on 1.3.13. Rationale sits by the pin
-in [`ci.yml`](../../../.github/workflows/ci.yml).
+Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and the `BUN_VERSION` of
+both services in `deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along
+with `BUN_VERSION` on the production backend, which is set in the Render dashboard. A
+`setup-bun` step without `bun-version` silently installs the latest release, and a Render
+service without `BUN_VERSION` runs Render's default Bun for the date it was created.
 
 ## Gates that surprise people
 

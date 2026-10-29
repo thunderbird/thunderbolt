@@ -177,9 +177,8 @@ Never run a bare `bun test` from the repo root: it discovers every `*.test.*` fi
 
 ### In CI
 
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs the backend job differently from local in four ways:
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs the backend job differently from local in three ways:
 
-- **Bun is pinned to 1.3.13.** 1.3.14 correlated with intermittent hard hangs inside PGlite's WASM, where even the 5s per-test timeout could not fire.
 - **No meaningful per-test timeout** (`--timeout 3600000`; `--timeout 0` hangs async tests in Bun). The 10-minute step cap is the real ceiling, so a test only slow under CI/PGlite contention does not fail spuriously.
 - **Everything runs `--rerun-each 5`.** A test that passes once but not five times is a failing test.
 - **`src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` are excluded from that run**, then run once afterwards under a retry wrapper (up to 5 attempts). Both wait on same-process WebSocket close/message events that Bun drops or delays under load. The systematic causes (shared PGlite, missing event waits, over-strict close codes) are fixed; the residual drop is irreducible, so one run with retries self-heals while five consecutive failures still red CI. Keep new WebSocket e2e tests in those files, or they inherit the 5x exposure.

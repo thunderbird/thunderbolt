@@ -469,6 +469,50 @@ describe('native jobs', () => {
   })
 })
 
+describe('caches', () => {
+  const cacheSteps = (job: string, action: RegExp) =>
+    steps(job)
+      .filter((s) => action.test(s.uses ?? ''))
+      .map((s) => JSON.stringify({ path: s.with?.path, key: s.with?.key }))
+  const saving = /^actions\/cache(\/save)?@/
+
+  test('only build and build-native save caches, and every cache another job restores is one of theirs', () => {
+    expect(Object.keys(jobs).filter((job) => cacheSteps(job, saving).length > 0)).toEqual(['build', 'build-native'])
+    const saved = [...cacheSteps('build', saving), ...cacheSteps('build-native', saving)]
+    for (const job of Object.keys(jobs))
+      for (const restored of cacheSteps(job, /^actions\/cache\/restore@/))
+        expect({ job, restored, saved: saved.includes(restored) }).toEqual({ job, restored, saved: true })
+  })
+
+  test('build-native caches the image native.sh installs, only once installed, and every device job restores it first', async () => {
+    const native = await Bun.file(join(import.meta.dir, 'native.sh')).text()
+    const image = native.match(/^android_image="(system-images;[^"$]+);\$android_abi"$/m)?.[1] ?? '?'
+    // CI's runners are x86_64.
+    expect(step('build-native', 'Look up the Android system image').with?.path).toEndWith(
+      `/${image.replaceAll(';', '/')}/x86_64`,
+    )
+    expect(step('build-native', 'Download the Android system image').run).toBe(
+      '.github/qa/scripts/native.sh system-image',
+    )
+    // A failed install can leave half an image, which would then reach every Android job.
+    expect(step('build-native', 'Save the Android system image').if).toBe(
+      "steps.system-image-install.outcome == 'success'",
+    )
+    const deviceJobs = Object.keys(jobs).filter((job) => indexOf(job, 'Install Maestro and the device') >= 0)
+    expect(deviceJobs.length).toBeGreaterThan(0)
+    for (const job of deviceJobs) {
+      expect(step(job, 'Install Maestro and the device').run).toContain('.github/qa/scripts/native.sh system-image')
+      expect(indexOf(job, 'Restore the Android system image')).toBe(indexOf(job, 'Install Maestro and the device') - 1)
+    }
+  })
+
+  test("the MCP's Chromium installs before the repo's, whose install would delete it otherwise", () => {
+    const [first, second] = (step('build', 'Install browsers').run ?? '').trim().split('\n')
+    expect(first).toStartWith('npx --yes --package @playwright/mcp@')
+    expect(second).toBe('bunx playwright install chromium')
+  })
+})
+
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })

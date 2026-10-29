@@ -11,6 +11,8 @@
 #                                                               layout-probe.js)
 #   native.sh build <platform> <out-dir> [onboarding] [control] build the app into <out-dir> (onboarding is off
 #                                                               unless asked; control also injects control/cover.js)
+#   native.sh system-image                                      Android only: install the emulator and the AVD's
+#                                                               system image, retrying once after a failed download
 #   native.sh device <platform>                                 boot a device, print its id on stdout
 #   native.sh install <platform> <device> <app-path>            on Android also reverse the stack's ports again and
 #                                                               open the app until a launch gets past the storage
@@ -47,6 +49,9 @@ fixtures=.github/qa/fixtures
 # c7's CI PowerSync service, which the backend hands to the app through POWERSYNC_URL.
 powersync=localhost:18081
 stack_ports="$QA_BACKEND_PORT $QA_PROVIDER_PORT $QA_MCP_PORT $QA_GOOGLE_PORT ${powersync#*:}"
+android_abi=x86_64
+case $(uname -m) in arm64 | aarch64) android_abi=arm64-v8a ;; esac
+android_image="system-images;android-36;google_apis;$android_abi"
 
 die() {
   echo "$*" >&2
@@ -134,15 +139,25 @@ device_ios() {
   echo "$udid"
 }
 
+# A download can arrive corrupt ("Error on ZipFile unknown archive"), so the retry starts without what it left behind.
+system_image() {
+  local sdk=${ANDROID_HOME:?}
+  local sdkmanager=$sdk/cmdline-tools/latest/bin/sdkmanager
+  yes | "$sdkmanager" --licenses > /dev/null || true
+  "$sdkmanager" --install emulator "$android_image" > /dev/null && return
+  echo "warning: sdkmanager failed; removing its partial downloads and trying once more" >&2
+  rm -rf "${sdk:?}/.downloadIntermediates" "${sdk:?}/.temp" "${sdk:?}/${android_image//;//}"
+  "$sdkmanager" --install emulator "$android_image" > /dev/null
+}
+
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
   mkdir -p "$ANDROID_AVD_HOME"
-  local abi=x86_64 avd=qa-android avds devices
-  case $(uname -m) in arm64 | aarch64) abi=arm64-v8a ;; esac
+  local avd=qa-android avds devices
   # Captured first: `grep -q` closing the pipe early fails the producer under pipefail.
   avds=$(avdmanager list avd -c)
   if ! grep -qx "$avd" <<< "$avds"; then
-    echo no | avdmanager create avd --name "$avd" --package "system-images;android-36;google_apis;$abi" --device pixel_7 >&2
+    echo no | avdmanager create avd --name "$avd" --package "$android_image" --device pixel_7 >&2
     local config="$ANDROID_AVD_HOME/$avd.avd/config.ini"
     grep -v '^hw.keyboard=' "$config" > "$config.tmp" || true
     mv "$config.tmp" "$config"
@@ -345,13 +360,18 @@ verify_run() {
     --session "$session" --result "$result" ${original:+--original "$original"}
 }
 
-usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
+usage="usage: $0 config <platform> <out-json> [control] | build <platform> <out-dir> [onboarding] [control] | system-image | device <platform> | install <platform> <device> <app-path> | logs <platform> <device> <file> | wait-logs <device> <file> | stop-logs <file> | control <platform> <device> [out-dir] | verify-build <platform> <patch> <session> <out-dir> | verify-run <platform> <device> <app> <flow> <session> <out-json> [original-app]"
 [ $# -ge 1 ] || die "$usage"
 command=$1
 shift
 if [ "$command" = stop-logs ]; then
   [ $# -eq 1 ] || die "$usage"
   stop_logs "$1"
+  exit
+fi
+if [ "$command" = system-image ]; then
+  [ $# -eq 0 ] || die "$usage"
+  system_image
   exit
 fi
 if [ "$command" = wait-logs ]; then

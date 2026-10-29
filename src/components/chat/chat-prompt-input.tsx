@@ -136,9 +136,9 @@ const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLText
   }
   const caret = ta.selectionStart
   if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
-    return caret + 2
+    return Math.min(ta.value.length, caret + 2)
   }
-  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? caret - 2 : null
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
 }
 
 const isAcceptedAttachment = (file: File): boolean =>
@@ -431,6 +431,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setHighlightedIdx,
       selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
+      handleChange: handleSlashChange,
+      handleSelect: handleSlashSelect,
+      valueWithTrigger,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -568,8 +571,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => (minimalMode ? input : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
-      [minimalMode, input, displayNameToSlug],
+      () => (minimalMode ? input : normalizeSkillTokensToSlugs(valueWithTrigger, displayNameToSlug)),
+      [minimalMode, input, valueWithTrigger, displayNameToSlug],
     )
 
     const additionalInputTokens = useMemo(() => {
@@ -990,7 +993,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               if (value.length > 0) {
                 preloadSendDependencies()
               }
-              setInput(value)
+              handleSlashChange(value, getTextarea()?.selectionStart ?? value.length)
             }}
             placeholder={t`Ask me anything…`}
             showSubmitButton
@@ -1044,7 +1047,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : null
             }
             onTextareaKeyDown={handleTextareaKeyDown}
-            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart)}
             onTextareaPaste={handlePaste}
           />
           {/* Voice mode morphs the composer in-place: the overlay covers the

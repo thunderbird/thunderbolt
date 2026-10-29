@@ -25,7 +25,7 @@ const fakeSkill = (name: string, label: string | null = null): Skill => ({
 
 /** Build a partial KeyboardEvent that's just enough to satisfy the hook. */
 const keyEvent = (key: string): KeyboardEvent<HTMLTextAreaElement> => {
-  const e = { key, shiftKey: false, preventDefault: mock() }
+  const e = { key, shiftKey: false, preventDefault: mock(), currentTarget: { selectionStart: 0, selectionEnd: 0 } }
   return e as unknown as KeyboardEvent<HTMLTextAreaElement>
 }
 
@@ -405,5 +405,60 @@ describe('useSlashCommand swallowed trigger', () => {
     act(() => hook.result.current.handleKeyDown(event))
     expect(event.preventDefault).toHaveBeenCalled()
     expect(hook.result.current.popupOpen).toBe(false)
+  })
+
+  const open = (initial = '') => {
+    const ctx = setup(initial)
+    act(() => ctx.hook.result.current.handleKeyDown(triggerEvent('/', 0)))
+    return ctx
+  }
+
+  it('writes the sigil back when whitespace ends the query', () => {
+    const { hook, getValue } = open()
+    act(() => hook.result.current.handleChange('al ', 3))
+    expect(getValue()).toBe('/al ')
+  })
+
+  it('writes the sigil back when nothing matches the query', () => {
+    const { hook, getValue } = open()
+    act(() => hook.result.current.handleChange('zz', 2))
+    expect(getValue()).toBe('/zz')
+  })
+
+  it('keeps the value free of the sigil while a match remains', () => {
+    const { hook, getValue } = open()
+    act(() => hook.result.current.handleChange('al', 2))
+    expect(getValue()).toBe('al')
+  })
+
+  it('writes the sigil back on Escape', () => {
+    const { hook, getValue } = open()
+    hook.rerender({ v: 'al' })
+    act(() => hook.result.current.handleKeyDown(triggerEvent('Escape', 2)))
+    expect(getValue()).toBe('/al')
+  })
+
+  it('exposes the value with the sigil restored while the trigger is pending', () => {
+    const { hook } = open()
+    hook.rerender({ v: 'al' })
+    expect(hook.result.current.valueWithTrigger).toBe('/al')
+  })
+
+  it('clears the trigger after a selection so a deleted chip does not reopen the picker', () => {
+    const { hook } = open()
+    hook.rerender({ v: 'al' })
+    act(() => hook.result.current.setCursorPos(2))
+    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
+    hook.rerender({ v: '' })
+    act(() => hook.result.current.setCursorPos(0))
+    expect(hook.result.current.popupOpen).toBe(false)
+  })
+
+  it('puts a space between a chip and a character typed right after it', () => {
+    const { hook, getValue } = setup(`${chipMarker}Alpha`)
+    const event = triggerEvent('h', 6)
+    act(() => hook.result.current.handleKeyDown(event))
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(getValue()).toBe(`${chipMarker}Alpha h`)
   })
 })

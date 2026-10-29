@@ -33,9 +33,11 @@ export const appendSlashToken = (value: string, name: string): string => {
   // splitting on the last space) keeps this correct for multi-word display
   // titles.
   const trimmedRight = value.replace(/\s+$/, '')
-  const boundaryChar = trimmedRight[trimmedRight.length - token.length - 1]
-  const endsWithToken =
-    trimmedRight.endsWith(token) && (trimmedRight.length === token.length || /\s/.test(boundaryChar))
+  // Older drafts and hand-typed tokens use a literal `/` instead of the marker.
+  const endsWithToken = [token, `/${name}`].some((candidate) => {
+    const boundaryChar = trimmedRight[trimmedRight.length - candidate.length - 1]
+    return trimmedRight.endsWith(candidate) && (trimmedRight.length === candidate.length || /\s/.test(boundaryChar))
+  })
   if (endsWithToken) {
     // Preserve the existing trailing space behaviour: if there was no space
     // after the token, add one so the caret lands clear of it.

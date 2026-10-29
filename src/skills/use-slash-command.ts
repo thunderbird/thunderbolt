@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } from 'react'
+import { useCallback, useMemo, useReducer, useRef, type KeyboardEvent, type RefObject } from 'react'
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
-import { chipMarker } from './parse-skill-tokens'
+import { chipMarker, findSkillTokens } from './parse-skill-tokens'
 import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
 
 /**
@@ -54,6 +54,35 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   return { tokenStart, query: token.slice(1) }
 }
 
+/** A picker opened by a swallowed `/` or `@`: the sigil is held here, not in the value. */
+type Trigger = { start: number; sigil: string }
+
+/** Put the swallowed sigil back into the value at the trigger start. */
+const restoreSigil = (value: string, trigger: Trigger): string =>
+  value.slice(0, trigger.start) + trigger.sigil + value.slice(trigger.start)
+
+/** True while the caret stays inside the trigger's query (no whitespace in it). */
+const caretInTrigger = (value: string, caret: number, trigger: Trigger): boolean =>
+  caret >= trigger.start && !/\s/.test(value.slice(trigger.start, caret))
+
+/** True for a printable, non-space key typed with a collapsed caret right after a chip. */
+const typedAgainstChip = (
+  e: KeyboardEvent<HTMLTextAreaElement>,
+  value: string,
+  displayNameToSlug: ReadonlyMap<string, string>,
+): boolean => {
+  if (e.key.length !== 1 || /\s/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey) {
+    return false
+  }
+  const { selectionStart, selectionEnd } = e.currentTarget
+  if (selectionStart !== selectionEnd) {
+    return false
+  }
+  return findSkillTokens(value, displayNameToSlug).some(
+    (token) => token.end === selectionStart && value[token.start] === chipMarker,
+  )
+}
+
 /** Slash state plus the number of sigil characters in the value before the query. */
 type ActiveToken = SlashState & { sigilLength: 0 | 1 }
 
@@ -61,32 +90,29 @@ type ActiveToken = SlashState & { sigilLength: 0 | 1 }
 const isTriggerBoundary = (value: string, caret: number): boolean => caret === 0 || /\s/.test(value[caret - 1] ?? '')
 
 /** Resolve the token at the caret: a pending trigger first, else a sigil in the value. */
-const resolveActiveToken = (value: string, cursor: number, triggerStart: number | null): ActiveToken | null => {
-  if (triggerStart !== null && cursor >= triggerStart) {
-    const query = value.slice(triggerStart, cursor)
-    if (!/\s/.test(query)) {
-      return { tokenStart: triggerStart, query, sigilLength: 0 }
-    }
+const resolveActiveToken = (value: string, cursor: number, trigger: Trigger | null): ActiveToken | null => {
+  if (trigger && caretInTrigger(value, cursor, trigger)) {
+    return { tokenStart: trigger.start, query: value.slice(trigger.start, cursor), sigilLength: 0 }
   }
   const state = getSlashState(value, cursor)
   return state && { ...state, sigilLength: 1 }
 }
 
-/** Swallow a `/` or `@` keypress that starts a token. Returns true when it did. */
-const openTriggerFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): boolean => {
+/** Swallow a `/` or `@` keypress that starts a token. Returns the trigger it opened, or null. */
+const openTriggerFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): Trigger | null => {
   if ((e.key !== '/' && e.key !== '@') || e.metaKey || e.ctrlKey || e.altKey) {
-    return false
+    return null
   }
   const { selectionStart, selectionEnd } = e.currentTarget
   if (selectionStart !== selectionEnd || !isTriggerBoundary(value, selectionStart)) {
-    return false
+    return null
   }
   e.preventDefault()
-  return true
+  return { start: selectionStart, sigil: e.key }
 }
 
 type SlashAction =
-  | { type: 'OPEN_TRIGGER'; tokenStart: number }
+  | { type: 'OPEN_TRIGGER'; trigger: Trigger }
   | { type: 'CLEAR_TRIGGER' }
   | { type: 'SET_CURSOR'; pos: number }
   | { type: 'SET_HIGHLIGHT'; idx: number }
@@ -100,23 +126,22 @@ type SlashUiState = {
   /** Suppresses the popup for a specific token-start, so a re-render after
    * Esc doesn't reopen the same suggestion list until the user types more. */
   closedForToken: number | null
-  /** Start offset of a picker opened by a swallowed `/` or `@`; the sigil is not in the value. */
-  triggerStart: number | null
+  trigger: Trigger | null
 }
 
 const initialState: SlashUiState = {
   cursorPos: 0,
   highlightedIdx: 0,
   closedForToken: null,
-  triggerStart: null,
+  trigger: null,
 }
 
 const reducer = (state: SlashUiState, action: SlashAction): SlashUiState => {
   switch (action.type) {
     case 'OPEN_TRIGGER':
-      return { ...state, cursorPos: action.tokenStart, triggerStart: action.tokenStart, closedForToken: null }
+      return { ...state, cursorPos: action.trigger.start, trigger: action.trigger, closedForToken: null }
     case 'CLEAR_TRIGGER':
-      return state.triggerStart === null ? state : { ...state, triggerStart: null }
+      return state.trigger === null ? state : { ...state, trigger: null }
     case 'SET_CURSOR':
       return { ...state, cursorPos: action.pos }
     case 'SET_HIGHLIGHT':
@@ -160,15 +185,18 @@ export const useSlashCommand = ({
   enabled?: boolean
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { cursorPos, highlightedIdx, closedForToken, triggerStart } = state
+  const { cursorPos, highlightedIdx, closedForToken, trigger } = state
+  // Synchronous copy for event handlers that run before the next render.
+  const triggerRef = useRef<Trigger | null>(null)
 
   const slashState = useMemo(
-    () => (enabled ? resolveActiveToken(value, cursorPos, triggerStart) : null),
-    [enabled, value, cursorPos, triggerStart],
+    () => (enabled ? resolveActiveToken(value, cursorPos, trigger) : null),
+    [enabled, value, cursorPos, trigger],
   )
 
   // Drop the trigger once the caret leaves it or whitespace ends it.
-  if (triggerStart !== null && slashState?.sigilLength !== 0) {
+  if (trigger !== null && slashState?.sigilLength !== 0) {
+    triggerRef.current = null
     dispatch({ type: 'CLEAR_TRIGGER' })
   }
 
@@ -177,41 +205,42 @@ export const useSlashCommand = ({
   // slug OR the display name, so searching "brief" finds "Daily Brief"
   // (/daily-brief) — and "notes" finds a label-less /meeting-notes displayed
   // as "Meeting Notes".
-  const popupItems = useMemo<SlashItem[]>(() => {
-    if (!slashState) {
-      return []
-    }
-    // `skillMatchesQuery` lowercases internally; the lowered copy is only for
-    // the agent-command comparisons below.
-    const query = slashState.query.toLowerCase()
-    const skillItems: SlashItem[] = library
-      .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, slashState.query))
-      // Slug tiebreak keeps ordering deterministic when two skills share a
-      // display name (labels are free text).
-      .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
-      .map((s) => ({
-        kind: 'skill',
-        id: s.id,
-        name: s.name,
-        label: skillDisplayName(s),
-        description: s.description,
-        skill: s,
-      }))
-    // A skill and an agent command can share a name; the skill wins so the
-    // menu doesn't show two identical `/foo` rows.
-    const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
-    const commandItems: SlashItem[] = [...agentCommands]
-      .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({
-        kind: 'command',
-        id: `command:${c.name}`,
-        name: c.name,
-        label: c.name,
-        description: c.description,
-      }))
-    return [...skillItems, ...commandItems]
-  }, [slashState, library, isEnabled, agentCommands])
+  const itemsFor = useCallback(
+    (rawQuery: string): SlashItem[] => {
+      // `skillMatchesQuery` lowercases internally; the lowered copy is only for
+      // the agent-command comparisons below.
+      const query = rawQuery.toLowerCase()
+      const skillItems: SlashItem[] = library
+        .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, rawQuery))
+        // Slug tiebreak keeps ordering deterministic when two skills share a
+        // display name (labels are free text).
+        .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
+        .map((s) => ({
+          kind: 'skill',
+          id: s.id,
+          name: s.name,
+          label: skillDisplayName(s),
+          description: s.description,
+          skill: s,
+        }))
+      // A skill and an agent command can share a name; the skill wins so the
+      // menu doesn't show two identical `/foo` rows.
+      const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
+      const commandItems: SlashItem[] = [...agentCommands]
+        .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({
+          kind: 'command',
+          id: `command:${c.name}`,
+          name: c.name,
+          label: c.name,
+          description: c.description,
+        }))
+      return [...skillItems, ...commandItems]
+    },
+    [library, isEnabled, agentCommands],
+  )
+  const popupItems = useMemo(() => (slashState ? itemsFor(slashState.query) : []), [slashState, itemsFor])
 
   const popupOpen = slashState !== null && popupItems.length > 0 && closedForToken !== slashState.tokenStart
 
@@ -245,6 +274,8 @@ export const useSlashCommand = ({
       const newCursor = slashState.tokenStart + insert.length
       // Update value and cursor in the same commit so the popup doesn't
       // flicker open on a stale-cursor render between setValue and rAF.
+      triggerRef.current = null
+      dispatch({ type: 'CLEAR_TRIGGER' })
       setValue(next)
       dispatch({ type: 'SET_CURSOR', pos: newCursor })
       requestAnimationFrame(() => {
@@ -279,10 +310,78 @@ export const useSlashCommand = ({
     [insertToken, skillToken],
   )
 
+  /** Write the swallowed sigil back into `live` and place the caret after it. */
+  const foldTrigger = useCallback(
+    (live: string, caret: number) => {
+      const pending = triggerRef.current
+      if (!pending) {
+        return
+      }
+      triggerRef.current = null
+      dispatch({ type: 'CLEAR_TRIGGER' })
+      const pos = caret >= pending.start ? caret + 1 : caret
+      setValue(restoreSigil(live, pending))
+      dispatch({ type: 'SET_CURSOR', pos })
+      requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos))
+    },
+    [setValue, inputRef],
+  )
+
+  /** Route a textarea edit; a trigger that can no longer match gets its sigil back. */
+  const handleChange = useCallback(
+    (next: string, caret: number) => {
+      const pending = triggerRef.current
+      const continues =
+        pending && caretInTrigger(next, caret, pending) && itemsFor(next.slice(pending.start, caret)).length > 0
+      if (pending && !continues) {
+        foldTrigger(next, caret)
+        return
+      }
+      setValue(next)
+    },
+    [itemsFor, foldTrigger, setValue],
+  )
+
+  /** Track the caret; leaving a pending trigger writes its sigil back. */
+  const handleSelect = useCallback(
+    (caret: number) => {
+      const pending = triggerRef.current
+      const live = inputRef.current?.value ?? value
+      if (pending && !caretInTrigger(live, caret, pending)) {
+        foldTrigger(live, caret)
+        return
+      }
+      dispatch({ type: 'SET_CURSOR', pos: caret })
+    },
+    [inputRef, value, foldTrigger],
+  )
+
+  /** `value` with a pending trigger's sigil restored, for sending. */
+  const valueWithTrigger = useMemo(() => (trigger ? restoreSigil(value, trigger) : value), [value, trigger])
+
+  /** Insert the typed key after a space so it does not fuse with the chip before it. */
+  const insertSpacedChar = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      e.preventDefault()
+      const caret = e.currentTarget.selectionStart
+      const pos = caret + 2
+      setValue(`${value.slice(0, caret)} ${e.key}${value.slice(caret)}`)
+      dispatch({ type: 'SET_CURSOR', pos })
+      requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos))
+    },
+    [value, setValue, inputRef],
+  )
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (enabled && hasSuggestions && openTriggerFromKey(e, value)) {
-        dispatch({ type: 'OPEN_TRIGGER', tokenStart: e.currentTarget.selectionStart })
+      const opened = enabled && hasSuggestions ? openTriggerFromKey(e, value) : null
+      if (opened) {
+        triggerRef.current = opened
+        dispatch({ type: 'OPEN_TRIGGER', trigger: opened })
+        return
+      }
+      if (typedAgainstChip(e, value, displayNameToSlug)) {
+        insertSpacedChar(e)
         return
       }
       if (!popupOpen) {
@@ -291,6 +390,7 @@ export const useSlashCommand = ({
       if (e.key === 'Backspace' && slashState?.sigilLength === 0 && slashState.query === '') {
         // The sigil is not in the value, so cancel the trigger instead.
         e.preventDefault()
+        triggerRef.current = null
         dispatch({ type: 'CLEAR_TRIGGER' })
         return
       }
@@ -308,12 +408,26 @@ export const useSlashCommand = ({
         dispatch({ type: 'SET_HIGHLIGHT', idx: Math.max(highlightedIdx - 1, 0) })
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        if (slashState) {
+        if (triggerRef.current) {
+          foldTrigger(value, e.currentTarget.selectionStart)
+        } else if (slashState) {
           dispatch({ type: 'DISMISS', tokenStart: slashState.tokenStart })
         }
       }
     },
-    [enabled, hasSuggestions, value, popupOpen, popupItems, highlightedIdx, selectItem, slashState],
+    [
+      enabled,
+      hasSuggestions,
+      value,
+      popupOpen,
+      popupItems,
+      highlightedIdx,
+      selectItem,
+      slashState,
+      displayNameToSlug,
+      insertSpacedChar,
+      foldTrigger,
+    ],
   )
 
   const setCursorPos = useCallback((pos: number) => dispatch({ type: 'SET_CURSOR', pos }), [])
@@ -328,5 +442,8 @@ export const useSlashCommand = ({
     selectItem,
     selectSkill,
     handleKeyDown,
+    handleChange,
+    handleSelect,
+    valueWithTrigger,
   }
 }

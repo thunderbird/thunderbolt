@@ -62,4 +62,9 @@ describe('appendSlashToken', () => {
     // this is prose containing a path, not an existing token — append.
     expect(appendSlashToken('prefix/name', 'name')).toBe(`prefix/name ${m}name `)
   })
+
+  it('treats a literal-slash token at the end as the same chip', () => {
+    expect(appendSlashToken('/Daily Brief ', 'Daily Brief')).toBe('/Daily Brief ')
+    expect(appendSlashToken('hi /Daily Brief', 'Daily Brief')).toBe('hi /Daily Brief ')
+  })
 })

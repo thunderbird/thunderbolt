@@ -3,6 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
+ * Zero-width sigil the composer writes in front of a chip. It takes no width in
+ * the textarea or its overlay, so a chip shows no gap. {@link normalizeSkillTokensToSlugs}
+ * turns it into `/` at send time.
+ */
+export const chipMarker = '\u2060'
+
+/**
  * Slash-token grammar: `/` followed by one or more `[a-z0-9-_]` chars,
  * matched only when *preceded* by whitespace or start-of-input AND
  * terminated by whitespace or end-of-input. Mirrors the AgentSkills spec
@@ -20,13 +27,6 @@
  * The captured group is the bare slug (no leading `/`), which is also how
  * skills are stored after THU-533 (the `/` is display only).
  */
-/**
- * Zero-width sigil the composer writes in front of a chip. It takes no width in
- * the textarea or its overlay, so a chip shows no gap. {@link normalizeSkillTokensToSlugs}
- * turns it into `/` at send time.
- */
-export const chipMarker = '\u2060'
-
 export const skillTokenRegex = /(?<=^|\s)\/([\w-]+)(?=\s|$)/g
 
 /**

@@ -148,6 +148,19 @@ export const createTestApp = async (
   }
 }
 
+/**
+ * Resolve once the server answers a ping sent now. A server takes frames in order and, in this
+ * process, runs its handlers before the pong reaches the client, so every frame sent before the
+ * ping has been handled by then. Use it instead of a sleep to know a frame has landed.
+ */
+export const pingRoundTrip = (ws: WebSocket): Promise<void> =>
+  new Promise((resolve) => {
+    // Bun's client WebSocket at runtime; the DOM typings this workspace loads omit its `ping()`.
+    const bunClient = ws as WebSocket & Pick<Bun.WebSocket, 'ping'>
+    bunClient.addEventListener('pong', () => resolve(), { once: true })
+    bunClient.ping()
+  })
+
 /** Build the Authorization header for a test request. */
 export const authHeaders = (bearerToken: string): Record<string, string> => ({
   Authorization: `Bearer ${bearerToken}`,

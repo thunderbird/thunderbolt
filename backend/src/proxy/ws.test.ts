@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { classifyWsCloseCode, parseTargetSubprotocol, validateWsTarget, wsCloseCodes } from './ws'
+import { classifyWsCloseCode, parseTargetSubprotocol, relayCloseCode, validateWsTarget, wsCloseCodes } from './ws'
 
 describe('parseTargetSubprotocol', () => {
   it('extracts target from base64url subprotocol entry', () => {
@@ -119,5 +119,21 @@ describe('classifyWsCloseCode', () => {
     // Upstream-defined close codes pass through but stay uncategorised — only
     // proxy-initiated closes have a known semantic category.
     expect(classifyWsCloseCode(4321)).toBeUndefined()
+  })
+})
+
+describe('relayCloseCode', () => {
+  it('keeps codes a close frame may carry', () => {
+    const codes = [1000, 1001, 1003, 1007, 1011, 1014, 3000, 4321, 4999]
+    expect(codes.map(relayCloseCode)).toEqual(codes)
+  })
+
+  it('relays a close that carried no status (1005, or a missing 0) as 1000', () => {
+    expect([1005, 0].map(relayCloseCode)).toEqual([1000, 1000])
+  })
+
+  it('relays a dropped connection, a TLS failure, a reserved or an out-of-range code as no status', () => {
+    const codes = [1006, 1015, 1004, 999, 1016, 2999, 5000]
+    expect(codes.map(relayCloseCode)).toEqual(codes.map(() => undefined))
   })
 })

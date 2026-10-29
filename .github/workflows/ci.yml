@@ -657,6 +657,19 @@ jobs:
     # 15min cap = >6x headroom over the worst legitimate run (even with the 5x
     # rerun gate) while killing a starved run ~24x sooner than the 360min default.
     timeout-minutes: 15
+    # Only the binary smoke step uses it: inside a compiled binary PGlite can't find its pglite.data.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -715,3 +728,28 @@ jobs:
           retry_wait_seconds: 5
           retry_on: error
           command: bun run test:backend:ws
+
+      # Render runs the compiled ./server, whose bundle can fail at boot while every test
+      # (run from source) passes. bun build bakes NODE_ENV in, so it is set for the build too.
+      - name: Smoke backend binary
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          BETTER_AUTH_SECRET: ci-smoke-secret
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          WEB_CONCURRENCY: 1
+          PORT: 8000
+        run: |
+          bun run build
+          ./server > server.log 2>&1 &
+          server_pid=$!
+          for _ in $(seq 30); do
+            if curl -fsS "http://localhost:$PORT/v1/health"; then
+              kill "$server_pid"
+              exit 0
+            fi
+            kill -0 "$server_pid" 2>/dev/null || break
+            sleep 1
+          done
+          cat server.log
+          exit 1

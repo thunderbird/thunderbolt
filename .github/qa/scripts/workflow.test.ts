@@ -357,6 +357,8 @@ describe('publish', () => {
 })
 
 test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
+  // The control's 3 runs and every finding's 3 plus extras. The control's own extras are left out: they start only
+  // while the findings' base runs still fit the clock.
   const runs = 3 + nativeReplayCap * (3 + extraRuns)
   const minutes =
     runs * nativeRunEstimateMinutes + nativeSetupEstimateMinutes + nativeWrapUpMinutes + nativeDriverStartupMinutes

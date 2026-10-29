@@ -624,8 +624,8 @@ const counter = () => {
 /**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
  * control run stops the replay: the findings never run. A run whose driver never started, even on its retry, is
- * inconclusive and replaced like a finding's, but a control that still has fewer than 3 counted runs proves nothing,
- * so it stops the replay as well.
+ * inconclusive and replaced like a finding's, but only while every finding's base runs still fit the leg. A control
+ * with fewer than 3 counted runs proves nothing, so it stops the replay as well.
  */
 const replayFlows = async (
   outDir: string,
@@ -645,6 +645,7 @@ const replayFlows = async (
       'control',
       (run) => (run.passed ? undefined : (run.error ?? 'the flow failed')),
       (run) => run.error?.includes(driverTimeout) === true,
+      3 * flows.size,
     )
     const problem =
       replay.failed > 0

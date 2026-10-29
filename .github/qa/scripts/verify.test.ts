@@ -1551,6 +1551,26 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test("a control's replacement run starts only while the findings' base runs still fit the leg", async () => {
+    const clock = { now: 60 * 60_000 }
+    await writeNative(makeNative('late', layout))
+    const calls: string[] = []
+    // The control's first run fails to start its driver on both launches; every call takes 5 minutes.
+    const slow: RunFlow = async (yaml) => {
+      calls.push(/assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? '')
+      clock.now += 5 * 60_000
+      if (calls.length <= 2) return { passed: false, error: 'iOS driver not ready in time', layout: [], logs: [] }
+      return { passed: true, layout: [nameLine], logs: [] }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
+
+    // Two counted runs, and a third would leave no room for the finding's 3.
+    expect(calls).toEqual(Array(4).fill('stack control'))
+    expect(result.stack_unhealthy).toBe(`control flow never completed 3 runs: ${outOfTime}`)
+    expect(result.dropped.map((entry) => [entry.file.id, entry.reason])).toEqual([['late', 'stack unhealthy']])
+  })
+
   test('the leg starts when the command does unless the job recorded its start, and a bad start is refused', () => {
     expect(legStartOf(undefined, 5_000)).toBe(5_000)
     expect(legStartOf('', 5_000)).toBe(5_000)

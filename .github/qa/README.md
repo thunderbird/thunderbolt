@@ -649,7 +649,9 @@ Android on `ubuntu-latest` with KVM.
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
   4 minutes on iOS, so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
   3 runs and up to 6 runs per finding, plus setup, wrap-up and one driver retry, take about 122 minutes and fit the
-  130-minute job, whose timeout would lose every finding. Every native leg shares that timeout, and the job ends
+  130-minute job, whose timeout would lose every finding. The control's own extra runs, which replace one whose iOS
+  driver never started, start only while every finding's 3 base runs still fit, so the leg still ends inside the
+  timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
   On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build

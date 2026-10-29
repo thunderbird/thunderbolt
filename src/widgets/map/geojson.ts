@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isRecord } from '@/lib/utils'
 import { z } from 'zod'
 
 /**
@@ -51,7 +52,33 @@ export type MapFeatureCollection = z.infer<typeof featureCollectionSchema>
 export type MapFeature = z.infer<typeof feature>
 export type MapFeatureProperties = z.infer<typeof featureProperties>
 
-/** Parse + validate a raw JSON string into a FeatureCollection, or null. */
+const geometryTypeNames = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'] as const
+
+/**
+ * Rewrite a geometry that names its type as a key (`{"Point":"","coordinates":[…]}`)
+ * into the GeoJSON shape (`{"type":"Point","coordinates":[…]}`). Models, DeepSeek
+ * in particular, emit the first form inside an otherwise valid collection.
+ * The repaired name is applied last so a non-string `type` already on the object
+ * cannot replace it.
+ */
+const normalizeGeometry = (geometry: unknown): unknown => {
+  if (!isRecord(geometry) || typeof geometry.type === 'string') {
+    return geometry
+  }
+  const typeName = geometryTypeNames.find((name) => Object.hasOwn(geometry, name))
+  if (!typeName) {
+    return geometry
+  }
+  const { [typeName]: _dropped, ...rest } = geometry
+  return { ...rest, type: typeName }
+}
+
+/**
+ * Parse a GeoJSON FeatureCollection, or null when nothing in it can be drawn.
+ * A feature that fails validation is dropped so one bad pin does not discard
+ * the rest of the map. An empty result is null — the widget must not render
+ * a blank map.
+ */
 export const parseFeatureCollection = (raw: string): MapFeatureCollection | null => {
   let json: unknown
   try {
@@ -59,8 +86,19 @@ export const parseFeatureCollection = (raw: string): MapFeatureCollection | null
   } catch {
     return null
   }
-  const result = featureCollectionSchema.safeParse(json)
-  return result.success ? result.data : null
+  if (!isRecord(json) || json.type !== 'FeatureCollection' || !Array.isArray(json.features)) {
+    return null
+  }
+
+  const features = json.features.flatMap((item) => {
+    const candidate = isRecord(item) ? { ...item, geometry: normalizeGeometry(item.geometry) } : item
+    const parsed = feature.safeParse(candidate)
+    return parsed.success ? [parsed.data] : []
+  })
+  if (features.length === 0) {
+    return null
+  }
+  return { type: 'FeatureCollection', features }
 }
 
 /**

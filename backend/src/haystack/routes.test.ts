@@ -108,8 +108,8 @@ const bearerProtocols = (bearerToken: string): string[] => [
 
 const initializeFrame = (id: number) => JSON.stringify({ jsonrpc: '2.0', id, method: 'initialize' })
 
-/** Mount only the Haystack routes, with no database. The bearer check waits for `releaseAuth()` or
- *  `failAuth()`, so a test can hold `open()` mid-auth. */
+/** Mount only the Haystack routes, with no database. The bearer check waits for `releaseAuth()`, so
+ *  a test can hold `open()` mid-auth. */
 const startGatedHaystack = async () => {
   const authGate = Promise.withResolvers<void>()
   const settings = createTestSettings({
@@ -124,7 +124,6 @@ const startGatedHaystack = async () => {
   return {
     url: `ws://127.0.0.1:${app.server?.port}/haystack/ws?pipeline=rag`,
     releaseAuth: () => authGate.resolve(),
-    failAuth: () => authGate.reject(new Error('session store unavailable')),
     stop: async () => {
       await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
     },
@@ -329,23 +328,6 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     }
 
     expect((await term).code).toBe(wsCloseCodes.queueOverflow)
-  }, 15000)
-
-  it('closes 1011 once, without answering, when the bearer check itself fails', async () => {
-    const gated = await startGatedHaystack()
-    cleanups.push(gated.stop)
-
-    const client = await openGatedClient(gated.url)
-    const replies: string[] = []
-    client.addEventListener('message', (event: MessageEvent) => replies.push(String(event.data)))
-    const term = observeWsTermination(client)
-    client.send(initializeFrame(1))
-    await pingRoundTrip(client)
-    gated.failAuth()
-    client.send(initializeFrame(2))
-
-    expect((await term).code).toBe(1011)
-    expect(replies).toEqual([])
   }, 15000)
 
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {

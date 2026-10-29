@@ -621,8 +621,8 @@ describe('Universal proxy WS observability — error_type per close path', () =>
   }, 15_000)
 })
 
-/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()` or
- *  `failAuth()`, so a test can hold `open()` mid-auth. */
+/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, so a
+ *  test can hold `open()` mid-auth. */
 const startRelay = async (upstreamPort: number, observability?: ObservabilityRecorder) => {
   const authGate = Promise.withResolvers<void>()
   const app = new Elysia().use(
@@ -638,7 +638,6 @@ const startRelay = async (upstreamPort: number, observability?: ObservabilityRec
   return {
     url: `ws://127.0.0.1:${app.server?.port}/proxy/ws`,
     releaseAuth: () => authGate.resolve(),
-    failAuth: () => authGate.reject(new Error('session store unavailable')),
     stop: async () => {
       await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
     },
@@ -718,24 +717,6 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
 
     await waitFor(() => received.includes('early'), { label: 'early frame at upstream' })
     client.close()
-  }, 15_000)
-
-  it('closes with 1011 and dials nothing when the bearer check itself fails', async () => {
-    const upstreamConnections: unknown[] = []
-    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
-    const relay = await startRelay(upstream.port)
-    servers.push(relay, upstream)
-
-    const client = new WebSocket(relay.url, relayProtocols)
-    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
-    const closed = waitForClose(client)
-    client.send('queued')
-    await pingRoundTrip(client)
-    relay.failAuth()
-    client.send('after the failure')
-
-    expect((await closed).code).toBe(wsCloseCodes.internalError)
-    expect(upstreamConnections).toEqual([])
   }, 15_000)
 
   it('opens no upstream when the client closes before the bearer check finishes', async () => {

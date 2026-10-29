@@ -40,7 +40,7 @@ export const createMockAuth = (id: string, isAnonymous?: boolean): Auth => {
 
 /**
  * Creates a bearer-only session lookup that waits for `gate`, so a test can hold a WebSocket's
- * bearer check pending, and rejects when `gate` rejects. A lookup without an `Authorization` header
+ * bearer check pending. A lookup without an `Authorization` header
  * (a route's cookie `derive`) resolves to no session at once instead of blocking the upgrade.
  */
 export const createGatedAuth = (id: string, gate: Promise<unknown>): Auth =>

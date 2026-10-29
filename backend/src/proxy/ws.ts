@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsOpen } from '@/auth/ws-bearer-auth'
+import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { isPrivateAddress } from '@/utils/url-validation'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, type AnyElysia } from 'elysia'
@@ -334,12 +334,12 @@ export const createUniversalProxyWsRoutes = (options: {
       // rejected — they must never open a proxy WebSocket.
       const data = ws.data as unknown as { request?: Request }
       const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-      const authorization = await authorizeWsOpen(auth, subprotocolHeader)
-      if (!authorization.ok) {
-        refuse(authorization.closeCode, authorization.closeReason)
+      const user = await authorizeWsBearer(auth, subprotocolHeader)
+      if (!user) {
+        refuse(wsCloseUnauthorized, 'unauthorized')
         return
       }
-      const userId = authorization.user.id
+      const userId = user.id
 
       const connectArgs = deriveConnectArgs(extras)
       if (!connectArgs) {

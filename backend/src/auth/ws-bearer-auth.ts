@@ -21,7 +21,6 @@
  */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { getSafeLogMessage } from '@/middleware/error-handling'
 import type { User } from '@shared/types/auth'
 import { decodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
 
@@ -71,28 +70,4 @@ export const authorizeWsBearer = async (auth: Auth, subprotocolHeader: string | 
     return null
   }
   return user
-}
-
-/** Close code (1011) for a socket whose bearer could not be checked because the session lookup threw. */
-const wsCloseAuthUnavailable = 1011
-
-/** Outcome of {@link authorizeWsOpen}: the user, or how to close a refused socket. */
-export type WsOpenAuthorization = { ok: true; user: User } | { ok: false; closeCode: number; closeReason: string }
-
-/**
- * {@link authorizeWsBearer} for a WebSocket `open()` handler. A missing, invalid or anonymous bearer
- * asks for a 4001 close. A session lookup that throws (the database is down) is logged and asks for
- * a 1011 close: rejecting into Elysia's error handler instead would leave the socket open.
- */
-export const authorizeWsOpen = async (auth: Auth, subprotocolHeader: string | null): Promise<WsOpenAuthorization> => {
-  try {
-    const user = await authorizeWsBearer(auth, subprotocolHeader)
-    if (!user) {
-      return { ok: false, closeCode: wsCloseUnauthorized, closeReason: 'unauthorized' }
-    }
-    return { ok: true, user }
-  } catch (error) {
-    console.error(`WebSocket bearer check failed — ${getSafeLogMessage(error)}`)
-    return { ok: false, closeCode: wsCloseAuthUnavailable, closeReason: 'auth unavailable' }
-  }
 }

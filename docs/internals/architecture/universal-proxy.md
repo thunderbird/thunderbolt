@@ -212,7 +212,7 @@ and unchanged.
 | `4002` | Target subprotocol unparseable at `open()` time                       |
 | `4003` | Reserved for a non-`wss://` target; classified but not emitted today  |
 | `4008` | Pre-connect queue exceeded its message or byte budget                 |
-| `1011` | Upstream connection failed or errored, or the session lookup threw    |
+| `1011` | Upstream connection failed or errored                                 |
 
 Otherwise a close code and reason are relayed verbatim, upstream to client and client to upstream,
 except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun 1.4's

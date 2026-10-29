@@ -4,7 +4,7 @@
 
 import { registerAgentProvider } from '@/agents'
 import type { Auth } from '@/auth/elysia-plugin'
-import { authorizeWsOpen, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
+import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -165,9 +165,9 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         // (browsers can't set `Authorization` on `new WebSocket()`); it is
         // verified via the same Better Auth path REST uses (HMAC + DB lookup).
         const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
-        const authorization = await authorizeWsOpen(auth, subprotocolHeader)
-        if (!authorization.ok) {
-          refuse(ws, state, authorization.closeCode, authorization.closeReason)
+        const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
+        if (!user) {
+          refuse(ws, state, wsCloseUnauthorized, 'unauthorized')
           return
         }
 
@@ -203,10 +203,7 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           deps,
         })
         state.server = server
-        log.debug(
-          { pipelineSlug, pipelineName: descriptor.pipelineName, userId: authorization.user.id },
-          'haystack ws opened',
-        )
+        log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
         const queued = state.pending
         state.pending = []
         state.pendingBytes = 0

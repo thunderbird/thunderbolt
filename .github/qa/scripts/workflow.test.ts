@@ -478,33 +478,47 @@ describe('caches', () => {
       .map((s) => JSON.stringify({ path: s.with?.path, key: s.with?.key }))
   const saving = /^actions\/cache(\/save)?@/
 
-  test('only build and build-native save caches, and every cache another job restores is one of theirs', () => {
-    expect(Object.keys(jobs).filter((job) => cacheSteps(job, saving).length > 0)).toEqual(['build', 'build-native'])
-    const saved = [...cacheSteps('build', saving), ...cacheSteps('build-native', saving)]
+  test('only build and cache-system-image save caches, and every cache another job restores is one of theirs', () => {
+    const savers = ['build', 'cache-system-image']
+    expect(Object.keys(jobs).filter((job) => cacheSteps(job, saving).length > 0)).toEqual(savers)
+    const saved = savers.flatMap((job) => cacheSteps(job, saving))
     for (const job of Object.keys(jobs))
       for (const restored of cacheSteps(job, /^actions\/cache\/restore@/))
         expect({ job, restored, saved: saved.includes(restored) }).toEqual({ job, restored, saved: true })
   })
 
-  test('build-native caches the image native.sh installs, only once installed, and every device job restores it first', async () => {
+  test("setup-bun's own cache is off, since its post step would save after the job's steps", () => {
+    const setups = Object.entries(jobs).flatMap(([job, { steps = [] }]) =>
+      steps
+        .filter((s) => s.uses?.startsWith('oven-sh/setup-bun@'))
+        .map((s) => ({ job, noCache: s.with?.['no-cache'] })),
+    )
+    expect(setups.length).toBeGreaterThan(0)
+    for (const { job, noCache } of setups) expect({ job, noCache: String(noCache) }).toEqual({ job, noCache: 'true' })
+  })
+
+  test('cache-system-image caches the image native.sh installs, before untrusted code, and device jobs restore it', async () => {
+    const fill = 'cache-system-image'
     const native = await Bun.file(join(import.meta.dir, 'native.sh')).text()
     const image = native.match(/^android_image="(system-images;[^"$]+);\$android_abi"$/m)?.[1] ?? '?'
     // CI's runners are x86_64.
-    expect(step('build-native', 'Look up the Android system image').with?.path).toEndWith(
-      `/${image.replaceAll(';', '/')}/x86_64`,
-    )
-    expect(step('build-native', 'Download the Android system image').run).toBe(
-      '.github/qa/scripts/native.sh system-image',
-    )
+    expect(step(fill, 'Look up the Android system image').with?.path).toEndWith(`/${image.replaceAll(';', '/')}/x86_64`)
+    expect(jobs[fill].needs).toBe('build')
+    expect(jobs[fill].if).toBe("contains(needs.build.outputs.nativeBuilds, 'android')")
+    // The first Android job to restore waits for the save; the later ones wait on it.
+    expect(jobs['explore-native'].needs).toContain(fill)
+    const download = step(fill, 'Download the Android system image')
+    expect(download.run).toBe('.github/qa/scripts/native.sh system-image')
+    expect(download.if).toBe("steps.system-image.outputs.cache-hit != 'true'")
     // A failed install can leave half an image, which would then reach every Android job.
-    expect(step('build-native', 'Save the Android system image').if).toBe(
-      "steps.system-image-install.outcome == 'success'",
-    )
+    expect(step(fill, 'Save the Android system image').if).toBe("steps.system-image-install.outcome == 'success'")
     const deviceJobs = Object.keys(jobs).filter((job) => indexOf(job, 'Install Maestro and the device') >= 0)
     expect(deviceJobs.length).toBeGreaterThan(0)
     for (const job of deviceJobs) {
       expect(step(job, 'Install Maestro and the device').run).toContain('.github/qa/scripts/native.sh system-image')
-      expect(indexOf(job, 'Restore the Android system image')).toBe(indexOf(job, 'Install Maestro and the device') - 1)
+      const restore = indexOf(job, 'Restore the Android system image')
+      expect(restore).toBe(indexOf(job, 'Install Maestro and the device') - 1)
+      expect(steps(job)[restore].if).toBe("env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'")
     }
   })
 

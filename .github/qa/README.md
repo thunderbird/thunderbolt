@@ -65,9 +65,10 @@ forge a verdict. The fix job's own verdicts (the spec replay, the visual check's
 agent's checkout, whose `node_modules` its test runs could rewrite and `publish` does not check. The most a forged
 verdict does is open a draft PR, which a person reviews.
 
-Only `build` and `build-native` save caches, because they run before any untrusted code. Every other job only
+Only `build` and `cache-system-image` save caches, because they run before any untrusted code. Every other job only
 restores them with `actions/cache/restore`, `native-control` included, so code a model wrote never fills a cache a
-later run trusts.
+later run trusts. `setup-bun` runs with `no-cache: true`: its own cache save is a post step, after the job's steps,
+which in most jobs include model-written code.
 The judge runs in a fresh job, because the replayed specs may have changed files in the replay job's checkout.
 
 The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
@@ -627,12 +628,13 @@ Android on `ubuntu-latest` with KVM.
 
 - **build-native**, one job per platform of the run, before any untrusted code: `native.sh build` with onboarding
   off and on, uploaded as `qa-native-<platform>` and `qa-native-<platform>-onboarding`. Each artifact is a tar of
-  the app, because an artifact drops file modes. On Android it then downloads the emulator's system image (1.9 GB
-  from Google) with `native.sh system-image` and saves it as a cache, unless the cache already has it. Every job that
-  boots an Android device restores that cache before its own `native.sh system-image`, which then finds the image
-  installed. `native.sh system-image` retries a failed install once, after deleting what the failed download left
-  behind, because a download can arrive corrupt. A failed download in `build-native` saves nothing, and each Android
-  job downloads the image itself.
+  the app, because an artifact drops file modes.
+- **cache-system-image**, when the run builds Android, beside build-native and before any untrusted code: downloads
+  the emulator's system image (1.9 GB from Google) with `native.sh system-image` and saves it as a cache, unless the
+  cache already has it. `explore-native` waits for it, and every job that boots an Android device restores that
+  cache before its own `native.sh system-image`, which then finds the image installed. `native.sh system-image`
+  retries a failed install once, after deleting what the failed download left behind, because a download can arrive
+  corrupt. A failed download saves nothing and fails nothing: each Android job then downloads the image itself.
 - **explore-native**, one job per native session: Maestro 2.11.0 from the official installer on both platforms,
   Claude Code 2.1.303, the app the session needs (the onboarding build for c1), the device, `stack.sh start native`
   and the console stream (on iOS started right after the device, on Android after the install). `c7-two-devices-android` also gets Postgres, PowerSync, the web build on 1424 by default

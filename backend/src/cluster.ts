@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Must stay first, and here: `bun build` runs x509's CJS polyfill import after tsyringe's check, even in index.ts.
+// Initialize reflection before the bundled app graph (loaded below via import('.')).
+// In index.ts, `bun build` would run it after x509's tsyringe check.
 import 'reflect-metadata'
 import cluster from 'node:cluster'
 import os from 'node:os'

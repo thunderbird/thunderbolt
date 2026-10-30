@@ -708,7 +708,8 @@ describe('a fix-only run', () => {
     expect(checkRun('123')).toBe(0)
     const calls = readFileSync(args, 'utf8').split('\n')
     expect(calls[0]).toStartWith('api repos/owner/repo/actions/runs/123 ')
-    expect(calls[1]).toStartWith('api repos/owner/repo/compare/abc123...main ')
+    // The full ref: a bare main would resolve to a tag named main and compare that tag with itself.
+    expect(calls[1]).toStartWith('api repos/owner/repo/compare/abc123...refs/heads/main ')
     expect(calls[2]).toStartWith('api repos/owner/repo/actions/runs/123/artifacts?name=qa-filed ')
     expect(checkRun('123', { ...mainRun, event: 'schedule' }, 'identical')).toBe(0)
     const refused = {

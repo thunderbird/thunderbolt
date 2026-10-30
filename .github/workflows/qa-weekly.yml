@@ -109,8 +109,9 @@ jobs:
               exit 1
               ;;
           esac
-          # A tag named main also reports head_branch main, so the run's commit must be on main itself.
-          case "$(gh api "repos/$GITHUB_REPOSITORY/compare/${run##* }...main" --jq .status)" in
+          # A tag named main also reports head_branch main, so the run's commit must be on the main branch itself.
+          # The full ref, since the bare name would resolve to that tag.
+          case "$(gh api "repos/$GITHUB_REPOSITORY/compare/${run##* }...refs/heads/main" --jq .status)" in
             ahead | identical) ;;
             *)
               echo "::error::Run $FIX_FROM_RUN ran a commit that is not on main."

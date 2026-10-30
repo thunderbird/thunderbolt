@@ -20,7 +20,7 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold no secret: they run model-written specs and flows |
 | B: file                  | `file`                                                                     | the Linear key                                                                                                                                              | an LLM, a browser                                                                                    |
 | C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                          |
-| D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the canary, session and secret-scan steps                                                                       | any provider key, the Linear key, any write token, an agent that edits code                          |
+| D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the session and secret-scan steps                                                                               | any provider key, the Linear key, any write token, an agent that edits code                          |
 | E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                              |
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
@@ -101,7 +101,7 @@ browser could write anywhere in the checkout. Only `c7-two-devices-android` gets
 - (c) Maestro's cloud tools, `list_devices` and `open_maestro_viewer` never reach the model: the gate does not offer
   them, and they are disallowed by name.
 - (d) No copy of the key in a file the job's user can read. In `explore-native` it lives only in the `env:` of the
-  canary step, the session step and the secret scan after the session, never interpolated in `run:` and never
+  session step and the secret scan after the session, never interpolated in `run:` and never
   written to `$GITHUB_ENV`. The scan runs once `claude` has exited, so the model can no longer act.
 - (e) Write only inside the session dir: the rule `Edit(//<session dir>/**)` and the hook (`scripts/native-hook.ts`),
   which resolves links before it compares paths.
@@ -114,17 +114,24 @@ none. The session dir is passed as a path without links, because the Edit rule d
 `/tmp/…` misses a rule on `/private/tmp/…`. The gate log (`<out>/<session>.gate.log`), the WebView log and the
 backend log stay outside the session dir, since the model can write anywhere inside it.
 
-Before any session, `explore.sh canary <session> <out>` runs a short `claude-haiku-5-5` session with the same
-settings (5 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
-passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too), the
-gate's `deny run`, the hook's `deny Write`, and the file does not exist. If it fails, no session runs. It prints the session's result line and never a tool result. The CLI stays pinned to
-`@anthropic-ai/claude-code@2.1.303`, which is the version tested for the hook, the scrub and the Edit rule; a new version
-has to pass the canary and the Edit rule again. iOS sessions use the fake AI only (no provider key on the Mac), and no
+Before any session, `explore.sh canary <session> <out>` checks the gate with no model and no key.
+`scripts/native-canary.ts` takes the place of `claude` in the session's own command: it builds the same config dir, so
+it reads the hook command from the same `settings.json` and the gate from the same `--mcp-config` file, then makes the
+two forbidden calls itself. It runs the hook as Claude Code does (the call as JSON on stdin; only exit code 2 blocks)
+for a Write to `/tmp/qa-canary-outside.txt`, and creates the file if the hook lets it through. It runs the hook for the
+`run` call too, and if that passes it sends `run` with `- runScript: canary.js` to the real gate over MCP stdio. The
+canary passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too),
+the gate's `deny run`, the hook's `deny Write`, and the file does not exist. A crash anywhere leaves a line missing, so
+it fails the same way. If it fails, no session runs. It differs from a session in one way: Claude Code itself does not
+run, so its own rules (`--tools`, `--disallowedTools`, the Edit rule) and its scrub of the hook's environment are not
+exercised here. The CLI stays pinned to
+`@anthropic-ai/claude-code@2.1.303`, which is the version tested for the hook, the scrub and the Edit rule; the canary
+does not run Claude Code, so a new version has to be checked for those by hand. iOS sessions use the fake AI only (no provider key on the Mac), and no
 agent that edits code runs there.
 
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,
-`explore.sh harness <session> <dir>` compiles the gate and the hook with `bun build --compile` into standalone
+`explore.sh harness <session> <dir>` compiles the gate, the hook and the canary with `bun build --compile` into standalone
 binaries that read nothing from the checkout or `node_modules`, built with the `--no-compile-autoload-*` flags so
 they ignore a `bunfig.toml` (whose `preload` is code) or `.env` where they start. It copies `explore.sh` and, for
 c7, the layout probe, installs the second browser's MCP server there, and writes the session's MCP config pointing
@@ -844,7 +851,7 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 ## Budget calibration
 
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
-turns, timeout), `explore.sh` for a native session's turns and its canary's, and the constants at the top of
+turns, timeout), `explore.sh` for a native session's turns, and the constants at the top of
 `verify.ts` for replay and the judge. Explore: $4.01 / 552 turns (299 in a native session) / 63 min. Fix: $20 /
 200 turns / 60 min, its first values, since no fix has run on GitHub yet. Per leg, at most 30 findings are
 replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge leg spends at most $17, its grouping
@@ -874,7 +881,6 @@ turns, is left out of every peak.
 | explore turns, web               | 18 sessions  | 368 (c4, phone)        | 552                    |
 | explore turns, native            | 14 sessions  | 199 (c4, Android)      | 299                    |
 | explore timeout                  | 32 sessions  | 41.9 min (c4, Android) | 63 min                 |
-| native canary turns              | 15 canaries  | 3                      | 5                      |
 | findings replayed per web leg    | 5 legs       | 20 (real)              | 30                     |
 | findings replayed per native leg | 4 legs       | 25 (android-real)      | 24, the job's limit    |
 | a native run, once warm          | 62 runs      | about 3 min (iOS)      | counted as 4.5 min     |
@@ -915,9 +921,9 @@ numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 
 sample per charter.
 
 The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with a web session's budget
-and timeout and a Haiku canary before it (5 turns, $0.05). On GitHub an iOS session cost $0.43 to $1.42 and took 59
-to 149 turns and 11 to 39 minutes, an Android one $0.89 to $2.26, 108 to 199 turns and 12 to 42 minutes, and every
-canary took 3 turns. The 15 native sessions cost $14.67 together. The turn cap of a native session is the 299 in
+and timeout. On GitHub an iOS session cost $0.43 to $1.42 and took 59
+to 149 turns and 11 to 39 minutes, an Android one $0.89 to $2.26, 108 to 199 turns and 12 to 42 minutes. The 15
+native sessions cost $14.67 together. The turn cap of a native session is the 299 in
 `explore.sh`, not `QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
 per platform, and every native explore, replay and verify job boots a simulator or an emulator, on macOS runners for
 iOS.

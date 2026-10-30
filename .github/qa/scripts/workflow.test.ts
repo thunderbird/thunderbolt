@@ -85,13 +85,14 @@ describe('secrets', () => {
       expect(value).toMatch(/^\$\{\{ matrix\.leg\.real && secrets\.\w+ \|\| '' \}\}$/)
   })
 
-  test('explore-native has the QA key only in the env of the real stack, the canary, the session and the scan', () => {
+  test('explore-native has the QA key only in the env of the real stack, the session and the scan, never the canary', () => {
     expect(mentions('explore-native', qaKey)).toEqual([
       'Start the stack:env',
-      'Check that the gate denies a canary session:env',
       'Explore:env',
       'Check the session output for secrets:env',
     ])
+    // The canary calls the hook and the gate itself, so it has nothing to spend a key on.
+    expect(step('explore-native', 'Check that the gate denies a canary session').env).toBeUndefined()
     expect(step('explore-native', 'Start the stack').env?.ANTHROPIC_API_KEY).toBe(
       `\${{ matrix.leg.real && ${qaKey} || '' }}`,
     )

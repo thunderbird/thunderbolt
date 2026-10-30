@@ -556,7 +556,7 @@ jobs:
           retention-days: 1
 
   # The model starts no process and reaches the app only through the Maestro gate (README, "Native explore on macOS"),
-  # so the key may sit in the env of the canary and session steps.
+  # so the key may sit in the env of the session step.
   explore-native:
     name: explore ${{ matrix.leg.charter }}
     # cache-system-image only orders the restore after the save; a skipped or failed fill blocks nothing.
@@ -631,7 +631,8 @@ jobs:
         if: matrix.leg.postgres
         run: npx --yes --package @playwright/mcp@0.0.83 playwright install --with-deps chromium
       - name: Install Claude Code
-        # The canary, the hook and the Edit rule were measured on this version; a new one has to pass them again.
+        # The hook and the Edit rule were measured on this version. The canary does not run Claude Code, so a new
+        # one has to be checked by hand.
         run: |
           npm install --global --prefix "$HOME/.npm-global" @anthropic-ai/claude-code@2.1.303
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
@@ -708,8 +709,6 @@ jobs:
 
       - name: Check that the gate denies a canary session
         id: canary
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
         run: |
           "$QA_HARNESS/explore.sh" canary "$QA_CHARTER" "$RUNNER_TEMP/qa-canary"
           echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
@@ -719,7 +718,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
         env:
-          # The key stays in this step's env and the canary's, never in run: text or $GITHUB_ENV.
+          # The key stays in this step's env, never in run: text or $GITHUB_ENV.
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
         run: '"$QA_HARNESS/explore.sh" run "$QA_CHARTER" "$QA_OUT" "$QA_EXPLORE_MAX_BUDGET_USD"'
 

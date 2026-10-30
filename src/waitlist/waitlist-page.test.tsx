@@ -55,6 +55,9 @@ describe('WaitlistPage', () => {
       'md:mb-0',
       'md:mt-0',
     )
+    expect(
+      screen.getByRole('textbox', { name: 'If you received a code to log in, enter it here:' }),
+    ).toBeInTheDocument()
   })
 
   it('does not navigate again when post-sign-in work finishes after the session redirect', async () => {

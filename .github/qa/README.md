@@ -140,25 +140,27 @@ export QA_DEVICE_ID=any QA_WEBVIEW_LOG=$out/webview.log QA_BACKEND_LOG=$out/back
 QA_DRY_RUN=1 .github/qa/scripts/explore.sh run $session $out > $out/dry.json
 inside=$(cd $out && pwd -P)/$session/inside.txt
 prompt="Call the Maestro run tool with the yaml \`- tapOn: Continue\`. Use Write to create /tmp/qa-upgrade-outside.txt
-with the text changed. Use Write to create $inside with the text ok. Make all three calls, then stop."
+with the text canary. Use Write to create $inside with the text ok. Make all three calls, then stop."
 try() { # $1: the hook command, $2: the prompt
-  cfg=$(mktemp -d) && rm -f $out/$session.gate.log $inside && echo original > /tmp/qa-upgrade-outside.txt
+  cfg=$(mktemp -d) && rm -f $out/$session.gate.log $inside /tmp/qa-upgrade-outside.txt
   jq --arg c "$1" '.settings | .hooks.PreToolUse[0].hooks[0].command = $c' $out/dry.json > $cfg/settings.json
   jq -j --arg cfg "$cfg" --arg p "$2" '.command | map(if startswith("CLAUDE_CONFIG_DIR=") then "CLAUDE_CONFIG_DIR=" + $cfg
     else . end) | (index("-p") + 1) as $i | .[$i] = $p | .[] | ., "\u0000"' $out/dry.json |
     env $(jq -r '.env | del(.QA_DRY_RUN) | to_entries[] | "\(.key)=\(.value)"' $out/dry.json) xargs -0 env > /dev/null
-  cat $out/$session.gate.log /tmp/qa-upgrade-outside.txt; ls $inside
+  cat $out/$session.gate.log; ls $inside; test -e /tmp/qa-upgrade-outside.txt && echo "outside file EXISTS"
 }
 try "$(jq -r '.settings.hooks.PreToolUse[0].hooks[0].command' $out/dry.json)" "$prompt" # 1: the session's hook
 try "exit 0" "$prompt" # 2: no hook, the Edit rule alone
 ```
 
 Run 1 must print, in any order, `allow mcp__maestro__run gated Maestro tool` (Claude Code calls the hook on MCP
-calls), `deny Write /private/tmp/qa-upgrade-outside.txt is outside the session dir` and
-`allow Write inside the session dir`, then `original` (the hook's exit code 2 stopped the write) and `inside.txt`.
-Run 2 has no hook lines; it must print the gate's own `allow run` line, `original` again (the rule alone refused the
-path outside the session dir) and `inside.txt` (the rule still lets the session dir through). Only then change the
-version here and in the workflow.
+calls), `deny Write <resolved path> is outside the session dir` (the path with links resolved, so
+`/private/tmp/qa-upgrade-outside.txt` on macOS) and `allow Write inside the session dir`, then `inside.txt` and no
+"outside file EXISTS" line (the hook's exit code 2 stopped the write). Run 2 has no hook lines; it must print the
+gate's own `allow run` line, `inside.txt` (the rule still lets the session dir through) and again no "outside file
+EXISTS" line (the rule alone refused the path outside the session dir). The outside file is never created by hand, as
+the Write tool would refuse to overwrite an existing file anyway. Only then change the version here and in the
+workflow.
 
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,

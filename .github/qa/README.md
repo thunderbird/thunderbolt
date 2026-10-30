@@ -311,7 +311,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks. Any check
-   a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. An iOS or Android task carries its
+   a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. A fix job that dies before the
+   fix step starts (setup or the stack start failed, so the step's outcome is `skipped`) diagnosed nothing: it leaves
+   `fix/<fp>.infrastructure.md` instead, `publish` touches neither Linear nor GitHub and still succeeds, and the run
+   summary names the ticket and says it was left for a later run. The fix job itself shows as failed, so the failure
+   notification fires. A fix step that started and then failed or timed out keeps the diagnosis and `Human Required`.
+   A fix job that uploaded no artifact at all (its key or secret scan failed, or the runner was lost) fails
+   `publish`, because nothing says whether the agent ran. An iOS or Android task carries its
    Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing the bug on the web at phone
    size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual task's check is
    the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the patch only that
@@ -789,7 +795,7 @@ Do not add a `LINEAR_API_KEY` to the `qa-agent` environment: it would override t
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 
 - `qa-agent`, `Bug`, `Security` (filing)
-- `Human Required` (`publish` puts it on a ticket whose fix ended in a diagnosis or a rejected patch)
+- `Human Required` (`publish` puts it on a ticket whose fix ended in a diagnosis or a rejected patch, never one whose fix job died before the agent started)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
   precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
   not duplicates)

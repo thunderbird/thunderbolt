@@ -382,6 +382,7 @@ type PublishOptions = {
 type PublishResult =
   | { outcome: 'pr'; branch: string; files: string[]; spec?: string; commit: string; prUrl?: string }
   | { outcome: 'human-required'; reasons: string[] }
+  | { outcome: 'infrastructure'; reason: string }
 
 const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
@@ -450,7 +451,9 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * - `fix/<fp>.spec.ts` (`fix/<fp>.yaml` for a native flow): the repro as the agent left it, compared with the original;
  * - for a visual task, the agent's check in `fix-<fp>/repro/`, and `fix/<fp>.verify.json`, the workflow's record of
  *   running it without and with the patch;
- * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
+ * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored;
+ * - `fix/<fp>.infrastructure.md`: written when the job stopped before the agent started. Nothing was diagnosed, so
+ *   the ticket is left untouched for a later run and the result says why.
  * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
  * branch `qa-fix/<fp>` gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
@@ -488,6 +491,12 @@ export const publish = async ({
     return { outcome: 'human-required', reasons }
   }
 
+  const infrastructure = Bun.file(join(outDir, 'fix', `${fp}.infrastructure.md`))
+  if (await infrastructure.exists()) {
+    const reason = oneLine(sanitize(await infrastructure.text(), 300))
+    log(`${task.identifier ?? fp} is left untouched: ${reason}`)
+    return { outcome: 'infrastructure', reason }
+  }
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))
   if (await diagnosis.exists()) {
     const text = await diagnosis.text()

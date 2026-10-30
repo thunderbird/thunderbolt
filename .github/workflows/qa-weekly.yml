@@ -1319,7 +1319,13 @@ jobs:
           mkdir -p qa-out/fix
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
           diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
-          if [ "$FIX_OUTCOME" != success ]; then
+          # Only this step writes the marker, after the agent's last command, so the agent cannot leave one behind.
+          rm -f "qa-out/fix/$QA_FP.infrastructure.md"
+          if [ "$FIX_OUTCOME" = skipped ]; then
+            # No session ran, so there is nothing to diagnose: publish leaves the ticket alone.
+            echo "The fix job stopped before the fix agent started, so the ticket is left unchanged for a later run." \
+              > "qa-out/fix/$QA_FP.infrastructure.md"
+          elif [ "$FIX_OUTCOME" != success ]; then
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
@@ -1423,8 +1429,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           SESSION: ${{ matrix.check.session }}
         run: |
-          # Nothing to check: publish hands the ticket to a person.
-          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then exit 0; fi
+          # Nothing to check: publish hands the ticket to a person, or leaves it for a later run.
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ -e "qa-out/fix/$QA_FP.infrastructure.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then exit 0; fi
           .github/qa/scripts/native.sh verify-build "$QA_PLATFORM" "qa-out/fix/$QA_FP.patch" "$SESSION" "$RUNNER_TEMP/qa-patched"
           # Only the app: the out dir also holds the build's tauri.conf.json.
           tar -cf "$RUNNER_TEMP/qa-patched/app.tar" -C "$RUNNER_TEMP/qa-patched" "$QA_APP_FILE"
@@ -1624,7 +1630,7 @@ jobs:
           NATIVE_VISUAL: ${{ matrix.task.kind == 'visual' && matrix.task.flow && matrix.task.platform || '' }}
         run: |
           # The fix job's own diagnosis says why; no verify ran on a patch that was never meant to be published.
-          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ]; then exit 0; fi
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ -e "qa-out/fix/$QA_FP.infrastructure.md" ]; then exit 0; fi
           fail() { echo "$1" >> "qa-out/fix/$QA_FP.diagnosis.md"; }
           for platform in $(jq --raw-output --arg fp "$QA_FP" '.verifyNative[] | select(.fp == $fp) | .platform' qa-out/fix-plan.json); do
             jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.$platform.json" > /dev/null 2>&1 ||
@@ -1669,6 +1675,13 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+
+      - name: Say when a ticket was left for a later run
+        run: |
+          marker="qa-out/fix/$QA_FP.infrastructure.md"
+          if [ ! -e "$marker" ]; then exit 0; fi
+          ticket=$(jq --raw-output --arg fp "$QA_FP" '.fixes[] | select(.fp == $fp) | .identifier // $fp' qa-out/fix-plan.json)
+          echo "- $ticket: $(cat "$marker")" >> "$GITHUB_STEP_SUMMARY"
 
   # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get, which
   # fails if the app lacks a requested permission, and writes nothing.

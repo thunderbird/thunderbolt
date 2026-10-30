@@ -1181,6 +1181,30 @@ describe('publish', () => {
     expect(calls.find((c) => c.op === 'Label')?.variables.name).toBe('Human Required')
   })
 
+  test('a job that died before the agent started leaves the ticket and the repository alone', async () => {
+    await setup()
+    const reason = 'The fix job stopped before the fix agent started.'
+    await put(join(outDir, 'fix', `${fp}.infrastructure.md`), `${reason}\n`)
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+    const lines: string[] = []
+    const result = await publish({
+      outDir,
+      fp,
+      live: true,
+      key: 'lin',
+      token: 't',
+      run: fakeRun(runs, diffOutput),
+      fetchFn: fakeLinear(calls),
+      log: (line) => lines.push(line),
+    })
+
+    expect(result).toEqual({ outcome: 'infrastructure', reason })
+    expect(runs).toEqual([])
+    expect(calls).toEqual([])
+    expect(lines.join('\n')).toContain(reason)
+  })
+
   test('never posts a diagnosis that matches a secret pattern', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'The key is sk-ant-abcdefghijklmnop')

@@ -265,11 +265,18 @@ const systemSkillIds = new Set([
   defaultSkillMap.id,
 ])
 
-/**
- * Whether a skill is internal: only the agent loads it, so the skills
- * library, composer and pinned chips hide it from the user.
- */
+/** Whether a skill id belongs to a default that only the agent loads. */
 export const isSystemSkillId = (id: string): boolean => systemSkillIds.has(id)
+
+/**
+ * Whether the library hides a skill: a system skill in its shipped state. A row
+ * the user edited, disabled or pinned stays visible, so it can still be managed.
+ */
+export const isHiddenSystemSkill = (skill: Skill): boolean =>
+  isSystemSkillId(skill.id) &&
+  skill.enabled === 1 &&
+  skill.pinnedOrder === null &&
+  skill.defaultHash === hashSkill(skill)
 
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,

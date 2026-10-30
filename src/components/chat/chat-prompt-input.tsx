@@ -244,7 +244,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       experimental_throttle: messageBookkeepingThrottleMs,
     })
 
-    const { skills: library } = useLibrarySkills()
+    // Hidden system skills still resolve when typed, because the agent runs them.
+    const { allSkills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     const trackSkillEvent = useSkillTelemetry()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,

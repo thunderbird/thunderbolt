@@ -4,6 +4,7 @@
 
 import { describe, expect, it, test } from 'bun:test'
 
+import type { Skill } from '@/types'
 import { instructions as askWidgetInstruction } from '@/widgets/ask/instructions'
 import { instructions as connectIntegrationWidgetInstruction } from '@/widgets/connect-integration/instructions'
 import { instructions as linkPreviewWidgetInstruction } from '@/widgets/link-preview/instructions'
@@ -22,6 +23,7 @@ import {
   defaultSkillsVersion,
   defaultSkillWeather,
   hashSkill,
+  isHiddenSystemSkill,
   isSystemSkillId,
   isWidgetSkillId,
 } from './skills'
@@ -113,6 +115,38 @@ describe('defaultSkills', () => {
   it('marks research and the widget contracts except weather as system skills', () => {
     const systemNames = defaultSkills.filter((skill) => isSystemSkillId(skill.id)).map((skill) => skill.name)
     expect(systemNames).toEqual(['research', 'link-preview', 'connect-integration', 'ask', 'map'])
+  })
+
+  describe('isHiddenSystemSkill', () => {
+    const stamped = (skill: Skill): Skill => ({ ...skill, defaultHash: hashSkill(skill) })
+
+    it('hides system skills in their shipped state', () => {
+      const hidden = defaultSkills.map(stamped).filter(isHiddenSystemSkill)
+      expect(hidden.map((skill) => skill.name)).toEqual([
+        'research',
+        'link-preview',
+        'connect-integration',
+        'ask',
+        'map',
+      ])
+    })
+
+    it('shows a system skill the user edited, disabled or pinned', () => {
+      const research = stamped(defaultSkillResearch)
+      expect(isHiddenSystemSkill({ ...research, instruction: 'Mine' })).toBe(false)
+      expect(isHiddenSystemSkill({ ...research, enabled: 0 })).toBe(false)
+      expect(isHiddenSystemSkill({ ...research, pinnedOrder: 0 })).toBe(false)
+    })
+
+    it('shows a disabled or pinned widget contract, whose hash ignores both fields', () => {
+      const map = stamped(defaultSkillMap)
+      expect(isHiddenSystemSkill({ ...map, enabled: 0 })).toBe(false)
+      expect(isHiddenSystemSkill({ ...map, pinnedOrder: 0 })).toBe(false)
+    })
+
+    it('shows a system skill without a default hash', () => {
+      expect(isHiddenSystemSkill(defaultSkillResearch)).toBe(false)
+    })
   })
 
   it('identifies widget contracts by stable default id', () => {

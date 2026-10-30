@@ -413,6 +413,7 @@ describe('ChatPromptInput', () => {
     // compile error, not a silently-drifting fake.
     const fakeUseLibrarySkills: typeof import('@/skills/use-skills').useLibrarySkills = () => ({
       skills: [chipSkill],
+      allSkills: [chipSkill],
       isLoading: false,
       createSkill: async () => chipSkill,
       updateSkill: async () => undefined,

@@ -15,7 +15,7 @@ import {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from '@/dal'
-import { isSystemSkillId } from '@/defaults/skills'
+import { isHiddenSystemSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -31,6 +31,10 @@ import { useMemo } from 'react'
 // invalidation on mutation success cuts that to zero latency.
 const skillsQueryKey = ['skills']
 
+/** Position after the last pin in an ascending list. Stored positions can have gaps. */
+export const nextPinnedOrder = (pinned: ReadonlyArray<Pick<Skill, 'pinnedOrder'>>): number =>
+  (pinned.at(-1)?.pinnedOrder ?? -1) + 1
+
 /**
  * Read-only subscription to all non-deleted skills. Shared by
  * {@link useLibrarySkills} and {@link useEnabledSkills} so co-located callers
@@ -43,17 +47,21 @@ const useSkillsQuery = () => {
     queryKey: skillsQueryKey,
     query: toCompilableQuery(getAllSkills(db)),
   })
-  return { skills: (skills as Skill[]).filter((skill) => !isSystemSkillId(skill.id)), isLoading }
+  const allSkills = skills as Skill[]
+  const visibleSkills = useMemo(() => allSkills.filter((skill) => !isHiddenSystemSkill(skill)), [allSkills])
+  return { allSkills, visibleSkills, isLoading }
 }
 
 /**
  * Library of non-deleted skills + mutations to create / update / soft-delete.
+ * `skills` is what users browse; `allSkills` also holds hidden system skills
+ * and resolves tokens typed in the composer.
  */
 export const useLibrarySkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-  const { skills, isLoading } = useSkillsQuery()
+  const { allSkills, visibleSkills, isLoading } = useSkillsQuery()
 
   const create = useMutation({
     mutationFn: (input: CreateSkillInput) => createSkill(db, input),
@@ -69,7 +77,8 @@ export const useLibrarySkills = () => {
   })
 
   return {
-    skills,
+    skills: visibleSkills,
+    allSkills,
     isLoading,
     createSkill: create.mutateAsync,
     updateSkill: update.mutateAsync,
@@ -91,7 +100,7 @@ export const usePinnedSkills = () => {
     queryKey: [...skillsQueryKey, 'pinned'],
     query: toCompilableQuery(getPinnedSkills(db)),
   })
-  const pinnedSkills = (pinned as Skill[]).filter((skill) => !isSystemSkillId(skill.id))
+  const pinnedSkills = pinned as Skill[]
 
   const pinnedSet = useMemo(() => new Set(pinnedSkills.map((s) => s.id)), [pinnedSkills])
 
@@ -105,7 +114,7 @@ export const usePinnedSkills = () => {
   })
 
   /**
-   * Toggle pin state. Pins land at the next available position (current count).
+   * Toggle pin state. Pins land after the last pin.
    * Throws `PinLimitExceededError` if the cap is reached — callers should
    * surface this inline on the trigger control.
    */
@@ -113,7 +122,7 @@ export const usePinnedSkills = () => {
     if (pinnedSet.has(id)) {
       await pin.mutateAsync({ id, order: null })
     } else {
-      await pin.mutateAsync({ id, order: pinnedSkills.length })
+      await pin.mutateAsync({ id, order: nextPinnedOrder(pinnedSkills) })
     }
   }
 
@@ -134,15 +143,15 @@ export const useEnabledSkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-  const { skills } = useSkillsQuery()
+  const { allSkills } = useSkillsQuery()
 
   const enabledById = useMemo(() => {
     const map = new Map<string, boolean>()
-    for (const skill of skills) {
+    for (const skill of allSkills) {
       map.set(skill.id, skill.enabled === 1)
     }
     return map
-  }, [skills])
+  }, [allSkills])
 
   const set = useMutation({
     mutationFn: ({ id, next }: { id: string; next: boolean }) => setSkillEnabled(db, id, next),

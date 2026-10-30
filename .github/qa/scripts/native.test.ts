@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, expect, test } from 'bun:test'
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -109,6 +109,46 @@ test('device android reverses the stack ports it is configured with', () => {
   expect(reversed).toEqual(
     ['8105', '9978', '9979', '9980', '18081'].map((port) => `-s emulator-5554 reverse tcp:${port} tcp:${port}`),
   )
+})
+
+/**
+ * An SDK whose sdkmanager fails its first `failures` installs the way a corrupt download does, leaving a partial
+ * download and a half-written image behind. Each install logs whether the previous attempt's leftovers are still there.
+ */
+const systemImage = (failures: number) => {
+  const sdk = mkdtempSync(join(work, 'sdk-'))
+  const bin = join(sdk, 'cmdline-tools/latest/bin')
+  mkdirSync(bin, { recursive: true })
+  const calls = join(sdk, 'calls.log')
+  const script = `#!/bin/bash
+[ "$1" = --licenses ] && exit 0
+image='${sdk}/'"\${3//;//}"
+leftovers=$(ls -A '${sdk}/.downloadIntermediates' "$image" 2>/dev/null | tr -d '\\n')
+echo "$* leftovers=$leftovers" >> '${calls}'
+[ "$(wc -l < '${calls}')" -gt ${failures} ] && exit 0
+mkdir -p '${sdk}/.downloadIntermediates' "$image"
+touch '${sdk}/.downloadIntermediates/image.zip' "$image/system.img"
+echo 'Warning: An error occurred while preparing SDK package Google APIs Intel x86_64 Atom System Image: Error on ZipFile unknown archive.' >&2
+exit 1
+`
+  writeFileSync(join(bin, 'sdkmanager'), script, { mode: 0o755 })
+  const proc = Bun.spawnSync(['bash', native, 'system-image'], { env: { ...process.env, ANDROID_HOME: sdk } })
+  return { proc, installs: readFileSync(calls, 'utf8').trim().split('\n') }
+}
+
+test('system-image clears a corrupt download and installs once more', () => {
+  const { proc, installs } = systemImage(1)
+  expect(proc.exitCode).toBe(0)
+  expect(installs).toHaveLength(2)
+  expect(installs[0]).toMatch(/^--install emulator system-images;android-36;google_apis;\S+ leftovers=$/)
+  // The retry starts from nothing: neither the partial zip nor the half-written image is left.
+  expect(installs[1]).toBe(installs[0])
+})
+
+test('system-image fails after the second failed install', () => {
+  const { proc, installs } = systemImage(2)
+  expect(proc.exitCode).not.toBe(0)
+  expect(installs).toHaveLength(2)
 })
 
 /**

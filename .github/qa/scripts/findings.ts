@@ -470,21 +470,27 @@ const areaSeverity = {
   i18n: 'Low',
 } satisfies Record<Area, Severity>
 
+type Ranked = Pick<RawFinding, 'area' | 'oracle'>
+
 /** Console errors and layout overflows start Low and cannot be judged above Medium. */
-const minor = ({ oracle: { type, evidence } }: Finding) =>
+const minor = ({ oracle: { type, evidence } }: Ranked) =>
   type === 'console-error' || (type === 'layout' && /\[qa-layout\] overflow-/.test(evidence))
 
 /**
  * Severity from area and oracle type only: the anchor the judge's proposal is held to. An app that does not load
  * never reaches this table: the guard's smoke spec aborts the run first.
  */
-export const severity = (finding: Finding): Severity => {
+export const severity = (finding: Ranked): Severity => {
   const { type } = finding.oracle
   if (minor(finding)) return 'Low'
   if (type === 'lost-on-reload' || (type === 'page-error' && finding.area === 'chat')) return 'Urgent'
   // Everything else, an AI reporting that a feature failed included, is a broken feature: its area decides.
   return areaSeverity[finding.area]
 }
+
+/** Most severe first by `severity`, so a cap that slices the result defers the least severe. Ties keep their order. */
+export const mostSevereFirst = <T extends { finding: Ranked }>(files: T[]) =>
+  files.toSorted((a, b) => severities.indexOf(severity(a.finding)) - severities.indexOf(severity(b.finding)))
 
 /**
  * The judge's proposed priority, kept within one level of the table's and never above Medium for a console error

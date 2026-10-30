@@ -10,7 +10,9 @@ import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classific
  *  `mock.module('node:dns')` (which leaks across files — see docs/internals/development/testing.md). */
 export type DnsLookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>
 
-const defaultDnsLookup: DnsLookup = (hostname) => dnsPromises.lookup(hostname, { all: true })
+// validateAndPin connects to the first address; list IPv4 first so a host without IPv6 egress
+// still reaches the target.
+const defaultDnsLookup: DnsLookup = (hostname) => dnsPromises.lookup(hostname, { all: true, order: 'ipv4first' })
 
 /**
  * Returns true if the IP address falls within a private/internal/reserved range.

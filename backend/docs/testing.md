@@ -112,7 +112,7 @@ Beyond `test-setup.ts` and `db.ts`, `src/test-utils/` holds:
 
 | File                 | Exports                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mock-auth.ts`       | `mockAuth` (always a `test-user` session), `mockAuthUnauthenticated` (always `null`), `createMockAuth(id, isAnonymous?)`, `createThrowingAuth(error)`. Pass any as `createApp({ auth })`.                                                                                                                                                                                 |
+| `mock-auth.ts`       | `mockAuth` (always a `test-user` session), `mockAuthUnauthenticated` (always `null`), `createMockAuth(id, isAnonymous?)`, `createThrowingAuth(error)`, `createGatedAuth(id, gate)` (a bearer lookup held until `gate` settles, for WebSocket auth races). Pass any as `createApp({ auth })`.                                                                              |
 | `auth-token.ts`      | `signTestToken(token)` HMACs a bearer the way Better Auth does, using `betterAuthTestSecret` (the value the preload pins into `BETTER_AUTH_SECRET`).                                                                                                                                                                                                                      |
 | `otp-challenge.ts`   | `createTestChallenge(db, email)` inserts the challenge row `auth.api.signInEmailOTP` requires.                                                                                                                                                                                                                                                                            |
 | `session-cookie.ts`  | `createSessionCookie(auth, db)` signs a fresh approved user in through email OTP and returns the `Cookie` header value, for tests that call a session-guarded Better Auth endpoint over HTTP.                                                                                                                                                                             |
@@ -125,6 +125,8 @@ Beyond `test-setup.ts` and `db.ts`, `src/test-utils/` holds:
 | `e2e.ts`             | `createTestApp()` (fresh DB, approved waitlist user, real OTP sign-in, bearer token; `authHeaders(bearerToken)` wraps it), `e2eDnsLookup` (deterministic resolver where `private.test` is private and everything else public, so SSRF paths are testable), `createTestUpstream`/`createUpstreamRouter` for routing the proxy's pinned-IP requests to in-process handlers. |
 
 Pass `database` to `createTestApp()` when the suite binds a real `.listen()` server: the caller then owns that instance's lifecycle and the returned `cleanup` is a no-op.
+
+`e2e.ts` also exports `pingRoundTrip(ws)`, which resolves once the server has run the synchronous part of its message handler, up to the first `await`, for every frame the client sent before it. Use it instead of a sleep when a test must know a frame has been received, as the WebSocket auth-race tests do with `createGatedAuth`.
 
 ## Testing settings-dependent code
 
@@ -175,9 +177,8 @@ Never run a bare `bun test` from the repo root: it discovers every `*.test.*` fi
 
 ### In CI
 
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs the backend job differently from local in four ways:
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs the backend job differently from local in three ways:
 
-- **Bun is pinned to 1.3.13.** 1.3.14 correlated with intermittent hard hangs inside PGlite's WASM, where even the 5s per-test timeout could not fire.
 - **No meaningful per-test timeout** (`--timeout 3600000`; `--timeout 0` hangs async tests in Bun). The 10-minute step cap is the real ceiling, so a test only slow under CI/PGlite contention does not fail spuriously.
 - **Everything runs `--rerun-each 5`.** A test that passes once but not five times is a failing test.
 - **`src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` are excluded from that run**, then run once afterwards under a retry wrapper (up to 5 attempts). Both wait on same-process WebSocket close/message events that Bun drops or delays under load. The systematic causes (shared PGlite, missing event waits, over-strict close codes) are fixed; the residual drop is irreducible, so one run with retries self-heals while five consecutive failures still red CI. Keep new WebSocket e2e tests in those files, or they inherit the 5x exposure.

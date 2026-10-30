@@ -372,7 +372,7 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               // Bun (>=1.3) auto-decompresses but ALSO keeps `content-encoding` on the
               // Response — without `decompress: false` we would forward gzip headers
               // with already-decoded bodies and the browser would corrupt the result.
-              // Verified empirically on Bun 1.3.10; if Bun ever changes this, the
+              // Verified empirically on Bun 1.4.4; if Bun ever changes this, the
               // routes.test.ts "passes decompress: false" assertion will still pass
               // but real responses will silently break — add an integration test
               // before bumping Bun major.

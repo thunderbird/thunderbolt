@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type Anthropic from '@anthropic-ai/sdk'
+import Anthropic from '@anthropic-ai/sdk'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -17,7 +17,6 @@ import {
   judge,
   legStartOf,
   nativeJobMinutes,
-  nativeReplayCap,
   oracleOf,
   replay,
   replayEnv,
@@ -207,8 +206,8 @@ describe('replay', () => {
     expect(calls).toEqual([
       [
         controlSpec(),
-        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
         join(outDir, 'c2-chat-desktop/repro/page-noise.spec.ts'),
+        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
       ],
     ])
     expect(titles(result.observations)).toEqual(['blank-evidence', 'no-oracle', 'noise'])
@@ -326,19 +325,25 @@ describe('replay', () => {
     expect(result.confirmed).toEqual([])
   })
 
-  test('replays at most 20 findings and defers the rest, in path order', async () => {
-    const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
+  test('replays at most 30 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeFinding({ ...makeFinding('a-wording', pageError), area: 'i18n' })
+    const ids = Array.from({ length: 30 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeFinding(makeFinding(id, pageError))
     const calls: string[][] = []
 
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
-    expect(calls[0]).toHaveLength(21) // the control spec and 20 findings
-    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/f20.spec.ts'))
+    expect(calls[0]).toHaveLength(31) // the control spec and 30 findings
+    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/a-wording.spec.ts'))
     expect(result.deferred).toEqual([
-      { file: expect.objectContaining({ id: 'f20' }), step: 'replay', reason: 'over the cap of 20 replayed findings' },
+      {
+        file: expect.objectContaining({ id: 'a-wording' }),
+        step: 'replay',
+        reason: 'over the cap of 30 replayed findings',
+      },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('f20')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
   test('a spec missing from the report is dropped, and nothing replayable means no Playwright run', async () => {
@@ -1020,6 +1025,44 @@ describe('replay of native flows', () => {
     ])
   })
 
+  describe('a control run whose driver never started', () => {
+    const driver = { passed: false, error: 'Unable to launch app: iOS driver not ready in time' }
+    const failed = { passed: false, error: 'Assertion is false: "hello" is visible' }
+
+    test('is replaced, and the stack stays healthy once 3 runs counted', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      // Both tries of the first run fail to start the driver; the next three runs pass.
+      const result = await nativeReplay({ 'stack control': [driver, driver], always: [failed, failed, failed] }, calls)
+
+      expect(calls.filter((call) => call.title === 'stack control')).toHaveLength(5)
+      expect(result.stack_unhealthy).toBeUndefined()
+      expect(result.confirmed.map(({ id, replay }) => [id, replay.failed, replay.runs])).toEqual([['always', 3, 3]])
+    })
+
+    test('never makes the stack healthy when no run counts: the control stops after its extra runs', async () => {
+      await writeNative(makeNative('always', assertFailed))
+      const calls: FlowCall[] = []
+
+      const result = await nativeReplay({ 'stack control': Array(12).fill(driver), always: [failed] }, calls)
+
+      expect(result.stack_unhealthy).toBe('control flow never completed 3 runs: only 0 of 3 runs reached the screen')
+      expect(calls.map((call) => call.title)).toEqual(Array(12).fill('stack control'))
+      expect(result.confirmed).toEqual([])
+      expect(result.dropped.map((entry) => [entry.file.id, entry.reason])).toEqual([['always', 'stack unhealthy']])
+    })
+
+    test('does not hide another failure in the same control: it still marks the stack unhealthy', async () => {
+      await writeNative(makeNative('always', assertFailed))
+
+      const result = await nativeReplay({ 'stack control': [driver, driver, failed], always: [failed] })
+
+      expect(result.stack_unhealthy).toBe(`control flow failed 1/3 runs: ${failed.error}`)
+      expect(result.confirmed).toEqual([])
+    })
+  })
+
   test('a log oracle fails a run when a new log line holds the evidence, whatever the run-specific noise', async () => {
     const line = (time: string, pid: string, hash: string, chat: string) =>
       `webview: 2026-10-19 ${time} Df Thunderbolt Dev[${pid}] [com.apple.WebKit:Generic] WebContent[49912] ` +
@@ -1040,8 +1083,9 @@ describe('replay of native flows', () => {
       server: [logs, logs, logs],
     })
 
-    expect(titles(result.confirmed)).toEqual(['console', 'server'])
-    expect(result.confirmed[0].replay.error).toBe(`logged during the run: ${later}`)
+    // A console error is Low, so it replays after the server error.
+    expect(titles(result.confirmed)).toEqual(['server', 'console'])
+    expect(result.confirmed[1].replay.error).toBe(`logged during the run: ${later}`)
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
   })
 
@@ -1086,21 +1130,33 @@ describe('replay of native flows', () => {
     expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
   })
 
-  test('a native leg replays at most nativeReplayCap findings, so its worst case fits the job, and defers the rest', async () => {
-    const ids = Array.from({ length: nativeReplayCap + 1 }, (_, n) => `f${n}`)
+  test('a native leg replays at most 24 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    const ids = Array.from({ length: 24 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeNative(makeNative(id, assertFailed))
     const calls: FlowCall[] = []
 
     const result = await nativeReplay({}, calls)
 
-    expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', ...ids.slice(0, -1)]))
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', ...ids])
     expect(result.deferred).toEqual([
       {
-        file: expect.objectContaining({ id: ids.at(-1) }),
+        file: expect.objectContaining({ id: 'a-wording' }),
         step: 'replay',
-        reason: `over the cap of ${nativeReplayCap} replayed findings`,
+        reason: 'over the cap of 24 replayed findings',
       },
     ])
+  })
+
+  test("a native leg runs its flows most severe first, so the leg's clock runs out on the least severe", async () => {
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    await writeNative(makeNative('b-send', assertFailed))
+    const calls: FlowCall[] = []
+
+    await nativeReplay({}, calls)
+
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', 'b-send', 'a-wording'])
   })
 
   test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {
@@ -1513,6 +1569,26 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test("a control's replacement run starts only while the findings' base runs still fit the leg", async () => {
+    const clock = { now: 60 * 60_000 }
+    await writeNative(makeNative('late', layout))
+    const calls: string[] = []
+    // The control's first run fails to start its driver on both launches; every call takes 5 minutes.
+    const slow: RunFlow = async (yaml) => {
+      calls.push(/assertVisible: "?([^"\n]+)/.exec(yaml)?.[1] ?? '')
+      clock.now += 5 * 60_000
+      if (calls.length <= 2) return { passed: false, error: 'iOS driver not ready in time', layout: [], logs: [] }
+      return { passed: true, layout: [nameLine], logs: [] }
+    }
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir, slow, () => clock.now, ninetyMinuteLeg)
+
+    // Two counted runs, and a third would leave no room for the finding's 3.
+    expect(calls).toEqual(Array(4).fill('stack control'))
+    expect(result.stack_unhealthy).toBe(`control flow never completed 3 runs: ${outOfTime}`)
+    expect(result.dropped.map((entry) => [entry.file.id, entry.reason])).toEqual([['late', 'stack unhealthy']])
+  })
+
   test('the leg starts when the command does unless the job recorded its start, and a bad start is refused', () => {
     expect(legStartOf(undefined, 5_000)).toBe(5_000)
     expect(legStartOf('', 5_000)).toBe(5_000)
@@ -1897,7 +1973,7 @@ describe('judge', () => {
     expect(worstJudgeCost('s', 'u', 1) - worstJudgeCost('s', 'u', 0)).toBeCloseTo((1_600 * 4) / 1_000_000)
     // Text that fits under the ceiling with room to spare, so only the image pushes it over.
     const base = makeVisual('tight')
-    const room = (2 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
+    const room = (17 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
     const pad = room - JSON.stringify(base, null, 2).length - '<finding>\n\n</finding>'.length
     const tight = { ...base, actual: 'x'.repeat(Math.floor(pad)) }
     await writeCandidates({ confirmed: [visualCandidate(tight)], flaky: [], observations: [], dropped: [] })
@@ -1907,7 +1983,7 @@ describe('judge', () => {
 
     expect(calls).toEqual([])
     expect(result.deferred).toEqual([
-      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2033,11 +2109,16 @@ describe('judge', () => {
     expect(calls).toEqual([])
   })
 
-  test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {
-    const ids = Array.from({ length: 16 }, (_, n) => `j${String(n).padStart(2, '0')}`)
+  test('judges at most 84 candidates, most severe first, and defers the rest, keeping the replay leg deferrals', async () => {
+    // First in the replay's order, so only the ordering by severity puts this Low candidate over the cap.
+    const wording = {
+      ...candidate('a-wording'),
+      finding: { ...makeFinding('a-wording', pageError), area: 'i18n' as const },
+    }
+    const ids = Array.from({ length: 84 }, (_, n) => `j${String(n).padStart(2, '0')}`)
     const replayDeferred = { file: candidate('late'), step: 'replay' as const, reason: 'over the cap' }
     await writeCandidates({
-      confirmed: ids.map(candidate),
+      confirmed: [wording, ...ids.map(candidate)],
       flaky: [],
       observations: [],
       dropped: [],
@@ -2047,12 +2128,71 @@ describe('judge', () => {
 
     const result = await judge(outDir, fakeCreate({}, calls), qaDir)
 
-    expect(calls).toHaveLength(15)
+    expect(calls).toHaveLength(84)
     expect(result.deferred).toEqual([
       replayDeferred,
-      { file: candidate('j15'), step: 'judge', reason: 'over the cap of 15 judged findings' },
+      { file: wording, step: 'judge', reason: 'over the cap of 84 judged findings' },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('j15')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
+  })
+
+  describe('a judge call that fails after its retries', () => {
+    const apiError = (status: number, message: string) =>
+      Anthropic.APIError.generate(status, undefined, message, new Headers())
+    const brokenDeferred = { file: candidate('broken'), step: 'judge' as const, reason: 'the judge call failed' }
+    /** Keeps "fine" and answers "broken" with `error`; with `failAll`, every call fails. */
+    const failing = (error: Error, failAll = false): CreateMessage => {
+      const fine = fakeCreate({ fine: '{"keep":true,"reason":"Sending fails."}' }, [])
+      return async (params) => {
+        if (failAll || String(params.messages[0].content).includes('"title": "broken"')) throw error
+        return fine(params)
+      }
+    }
+    const writeBoth = () =>
+      writeCandidates({
+        confirmed: [candidate('broken'), candidate('fine')],
+        flaky: [],
+        observations: [],
+        dropped: [],
+      })
+    const written = async (): Promise<Verified> => Bun.file(join(outDir, 'verified.json')).json()
+
+    test('on a rate limit defers only its own finding, and the rest keep their verdicts', async () => {
+      await writeBoth()
+      const lines: string[] = []
+
+      const result = await judge(outDir, failing(apiError(429, 'rate limited\n::error::injected')), qaDir, (line) =>
+        lines.push(line),
+      )
+
+      expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
+      expect(result.deferred).toEqual([brokenDeferred])
+      expect(lines).toEqual([
+        '::warning::the judge call for c2-chat-desktop/broken failed: 429 rate limited ::error::injected',
+      ])
+      expect((await written()).confirmed).toHaveLength(1)
+    })
+
+    test('fails the job on an error a retry cannot fix, keeping the other verdicts', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(400, 'credit balance too low')), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('1 of 2 judge calls failed, 1 for a lasting reason')
+      expect((await written()).confirmed.map((file) => file.id)).toEqual(['fine'])
+    })
+
+    test('fails the job when every call fails, even on rate limits, keeping the deferrals', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(429, 'rate limited'), true), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('2 of 2 judge calls failed, 0 for a lasting reason')
+      expect((await written()).deferred).toEqual([
+        brokenDeferred,
+        { file: candidate('fine'), step: 'judge', reason: 'the judge call failed' },
+      ])
+    })
   })
 
   test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {
@@ -2063,7 +2203,7 @@ describe('judge', () => {
       dropped: [],
     })
     // A byte may cost an input token, so this file alone is over the ceiling.
-    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(600_000))
+    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(4_300_000))
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, fakeCreate({ small: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
@@ -2071,7 +2211,7 @@ describe('judge', () => {
     expect(calls).toHaveLength(1)
     expect(result.confirmed.map((file) => file.id)).toEqual(['small'])
     expect(result.deferred).toEqual([
-      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2140,9 +2280,9 @@ describe('judge', () => {
       observations: [],
       dropped: [],
     })
-    // Both judge calls fit under the $2 ceiling, and what they leave is less than any call's worst case.
+    // Both judge calls fit under the $17 ceiling, and what they leave is less than any call's worst case.
     for (const title of ['big', 'large']) {
-      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(220_000))
+      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(2_100_000))
     }
     const keep = '{"keep":true,"reason":"Sending fails."}'
     const groupingCalls: Anthropic.MessageCreateParamsNonStreaming[] = []
@@ -2155,7 +2295,7 @@ describe('judge', () => {
     expect(result.confirmed).toHaveLength(2)
     expect(groupingCalls).toEqual([])
     expect(result.groups).toBeUndefined()
-    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $2; findings file grouped by fingerprint"])
+    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $17; findings file grouped by fingerprint"])
   })
 })
 

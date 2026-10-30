@@ -15,7 +15,11 @@ describe('pinnedOrgEscrowPublicKey', () => {
   })
 
   afterEach(() => {
-    env.VITE_ORG_ESCROW_PUBLIC_KEY = saved
+    if (saved === undefined) {
+      delete env.VITE_ORG_ESCROW_PUBLIC_KEY
+    } else {
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = saved
+    }
   })
 
   it('returns the pinned key when set', () => {
@@ -32,7 +36,7 @@ describe('pinnedOrgEscrowPublicKey', () => {
   // empty pin: `buildOrgEnvelope` branches on undefined and would otherwise hand
   // an empty string to importOrgPublicKey.
   it('returns undefined when unset', () => {
-    env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
+    delete env.VITE_ORG_ESCROW_PUBLIC_KEY
     expect(pinnedOrgEscrowPublicKey()).toBeUndefined()
   })
 

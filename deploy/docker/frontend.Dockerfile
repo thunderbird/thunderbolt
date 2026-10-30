@@ -9,7 +9,7 @@
 # of under QEMU emulation for the target platform — faster, and sidesteps any
 # arch-specific quirks in bun's/rollup's native build tooling. Only the final
 # nginx stage below is built per target platform.
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 

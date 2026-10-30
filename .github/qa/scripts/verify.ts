@@ -18,6 +18,7 @@ import {
   hasOracle,
   lintReproSpec,
   loadFindings,
+  mostSevereFirst,
   normalize,
   parseSession,
   platformOf,
@@ -61,7 +62,7 @@ export type Verified = {
     gate: 'schema' | 'lint' | 'replay' | 'judge'
     reason: string
   }[]
-  /** Over a cap, so neither confirmed nor dropped. */
+  /** Not replayed or judged (over a cap, or a judge call that failed), so neither confirmed nor dropped. */
   deferred?: { file: FindingFile; step: 'replay' | 'judge'; reason: string }[]
   judge_usage?: { input_tokens: number; output_tokens: number; cost_usd: number }
   /**
@@ -131,17 +132,18 @@ const judgeModel = 'claude-opus-5-5'
 const judgeUsdPerMillionTokens = { input: 4, output: 20 }
 const judgeMaxTokens = 4096
 // Per-leg caps; the README's "Budget calibration" section explains them.
-const replayCap = 20
-/** Must equal replay-native's `timeout-minutes`. */
-export const nativeJobMinutes = 130
-export const nativeRunEstimateMinutes = 4.1
-export const nativeSetupEstimateMinutes = 6.5
+const replayCap = 30
+/** Must equal replay-native's `timeout-minutes`: GitHub's limit for a job on a hosted runner. */
+export const nativeJobMinutes = 360
+export const nativeRunEstimateMinutes = 4.5
+export const nativeSetupEstimateMinutes = 7.4
 export const nativeWrapUpMinutes = 2
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
-// workflow.test.ts sizes the cap without the cold first run, which adds about 5 minutes.
-export const nativeReplayCap = 4
-const judgeCap = 15
-const judgeCeilingUsd = 2
+// workflow.test.ts sizes the cap without the cold first run, which adds about 2 minutes.
+export const nativeReplayCap = 24
+const judgeCap = 84
+// Calls are admitted on their worst case, about seven times what one costs.
+const judgeCeilingUsd = 17
 // Message framing and the verdict schema, on top of the prompt text.
 const judgeOverheadTokens = 1_000
 // The API scales a larger image down to about 1.15 megapixels.
@@ -564,7 +566,7 @@ export const legStartOf = (seconds: string | undefined, now = Date.now()) => {
 type Device = { runFlow: RunFlow; outDir: string; next: () => number; clock?: LegClock }
 
 /** Runs past the three that replace inconclusive ones, per finding. */
-export const extraRuns = 3
+const extraRuns = 3
 
 /**
  * A native `layout` or log-oracle run whose flow failed without showing the quoted line never reached the screen
@@ -623,7 +625,9 @@ const counter = () => {
 
 /**
  * Runs `control/stack.yaml` three times, then each finding's checked flow three times, on fresh installs. A failed
- * control run stops the replay: the findings never run.
+ * control run stops the replay: the findings never run. A run whose driver never started, even on its retry, is
+ * inconclusive and replaced like a finding's, but only while every finding's base runs still fit the leg. A control
+ * with fewer than 3 counted runs proves nothing, so it stops the replay as well.
  */
 const replayFlows = async (
   outDir: string,
@@ -637,15 +641,19 @@ const replayFlows = async (
   for (const appId of new Set([...flows.keys()].map(appIdOf))) {
     const check = checkMaestroFlow(control, { appId, vars: flowVars })
     if (!check.ok) throw new Error(`control/stack.yaml: ${check.problems.join('; ')}`)
-    const { replay } = await threeRuns(device, { yaml: check.yaml }, 'control', (run) =>
-      run.passed ? undefined : (run.error ?? 'the flow failed'),
+    const { replay } = await threeRuns(
+      device,
+      { yaml: check.yaml },
+      'control',
+      (run) => (run.passed ? undefined : (run.error ?? 'the flow failed')),
+      (run) => run.error?.includes(driverTimeout) === true,
+      3 * flows.size,
     )
-    if (replay.failed > 0) {
-      return {
-        stackProblem: `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`,
-        outcomes: new Map<FindingFile, Outcome>(),
-      }
-    }
+    const problem =
+      replay.failed > 0
+        ? `control flow failed ${replay.failed}/${replay.runs} runs: ${replay.error}`
+        : replay.runs < 3 && `control flow never completed 3 runs: ${replay.reason}`
+    if (problem) return { stackProblem: problem, outcomes: new Map<FindingFile, Outcome>() }
   }
   const outcomes = new Map<FindingFile, Outcome>()
   for (const [index, [file, flow]] of [...flows].entries()) {
@@ -783,7 +791,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 
 /**
  * Verify step 1: schema, oracle and spec lint, then one Playwright run replaying the surviving specs three times each,
- * up to `replayCap` findings, `nativeReplayCap` on a native leg (the rest are `deferred`). A run counts as failed only
+ * up to `replayCap` findings, `nativeReplayCap` on a native leg, most severe first (the rest are `deferred`), with a
+ * native leg's flows run in that order. A run counts as failed only
  * when it failed inside the spec's `bugStep` step. A run that failed before it is inconclusive, and since Playwright
  * runs no replacement, the finding is then flaky unless the other runs confirm it anyway. Failed 3/3 = confirmed,
  * 1 or 2 = flaky, 0 = dropped; 2/3 confirms a real-AI charter's findings, which replay against the real providers,
@@ -867,15 +876,21 @@ export const replay = async (
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
     else lintClean.push(file)
   }
-  // shortcut: the first findings in path order fill the cap, rank by severity if a capped run ever loses a bad one.
   const cap = runFlow ? nativeReplayCap : replayCap
-  const replayable = lintClean.slice(0, cap)
-  result.deferred = lintClean
+  const queue = mostSevereFirst(lintClean)
+  const replayable = queue.slice(0, cap)
+  result.deferred = queue
     .slice(cap)
     .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${cap} replayed findings` }))
 
   const specFiles = replayable.filter((file) => !flows.has(file))
-  const replayedFlows = new Map([...flows].filter(([file]) => replayable.includes(file)))
+  // In queue order: the leg's clock runs out on the last flows, so those must be the least severe.
+  const replayedFlows = new Map(
+    replayable.flatMap((file) => {
+      const flow = flows.get(file)
+      return flow ? [[file, flow] as const] : []
+    }),
+  )
   if (replayedFlows.size > 0 && !runFlow) throw new Error('findings with a repro_flow need a device: pass --native')
   const noRuns = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   const outcomes = new Map<FindingFile, Outcome>()
@@ -938,6 +953,9 @@ const readVerdict = (response: Reply): Verdict => {
 }
 
 const createMessage: CreateMessage = (params) => new Anthropic().messages.create(params)
+
+/** Whether an API status may pass on a later try: a timeout, a conflict, a rate limit or a server error. */
+const transientStatus = (status: number) => status >= 500 || [408, 409, 429].includes(status)
 
 const groupingPrompt = `# QA finding grouping
 
@@ -1051,9 +1069,12 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
- * Flaky candidates are never judged. At most `judgeCap` calls, admitted in order only while their worst-case cost fits
- * under `judgeCeilingUsd`; the rest are `deferred`. Then `groupFindings` groups what the judge kept, within what is
- * left of that ceiling. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
+ * Flaky candidates are never judged. At most `judgeCap` calls, admitted most severe first only while their worst-case
+ * cost fits under `judgeCeilingUsd`; the rest are `deferred`, and so is a finding whose call fails after the SDK's
+ * retries. Then `groupFindings` groups what the judge kept, within what is left of that ceiling. Writes
+ * `<outDir>/verified.json` and returns it, then throws when a call failed for a reason other than a lost connection,
+ * a timeout, a conflict, a rate limit or a server error, or when every call failed. Needs `ANTHROPIC_API_KEY` and
+ * nothing else.
  */
 export const judge = async (
   outDir: string,
@@ -1064,7 +1085,7 @@ export const judge = async (
   const candidates: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
   const system = `${await Bun.file(join(qaDir, 'judge.md')).text()}\n\n${await Bun.file(join(qaDir, 'known-issues.md')).text()}`
   const prompts = await Promise.all(
-    candidates.confirmed.map(async (candidate): Promise<Prompt> => {
+    mostSevereFirst(candidates.confirmed).map(async (candidate): Promise<Prompt> => {
       const finding = `<finding>\n${JSON.stringify(candidate.finding, null, 2)}\n</finding>`
       if (candidate.finding.oracle.type === 'visual') {
         const path = screenshotPath(outDir, candidate)
@@ -1103,18 +1124,36 @@ export const judge = async (
       deferred.push({ file: prompt.candidate, step: 'judge', reason })
     }
   }
-  const judged = await Promise.all(
-    toJudge.map(async ({ candidate, content }) => {
-      const response = await create({
+  const calls = await Promise.allSettled(
+    toJudge.map(({ content }) =>
+      create({
         model: judgeModel,
         max_tokens: judgeMaxTokens,
         system,
         output_config: { effort: 'medium', format: zodOutputFormat(verdictSchema) },
         messages: [{ role: 'user', content }],
-      })
-      return { finding: { ...candidate, judge: readVerdict(response) }, usage: response.usage }
-    }),
+      }),
+    ),
   )
+  // A call that still fails after the SDK's retries (a 429 when many run at once) costs only its own finding.
+  const failures: { transient: boolean }[] = []
+  const judged = calls.flatMap((call, i) => {
+    const { candidate } = toJudge[i]
+    if (call.status === 'fulfilled') {
+      return [{ finding: { ...candidate, judge: readVerdict(call.value) }, usage: call.value.usage }]
+    }
+    const { reason } = call
+    // A lost connection or a timeout carries no status.
+    const transient =
+      reason instanceof Anthropic.APIConnectionError ||
+      (reason instanceof Anthropic.APIError && reason.status !== undefined && transientStatus(reason.status))
+    const error = reason instanceof Error ? reason.message : String(reason)
+    // One line, so the message cannot start another workflow command.
+    log(`::warning::the judge call for ${findingId(candidate)} failed: ${error.replace(/\s+/g, ' ').slice(0, 300)}`)
+    deferred.push({ file: candidate, step: 'judge', reason: 'the judge call failed' })
+    failures.push({ transient })
+    return []
+  })
   const confirmed = judged.flatMap(({ finding }) => (finding.judge.keep ? [finding] : []))
   const { groups, usage } = await groupFindings(confirmed, create, judgeCeilingUsd - worstTotal, log)
   const usages = [...judged.map((call) => call.usage), usage]
@@ -1139,6 +1178,11 @@ export const judge = async (
     },
   }
   await Bun.write(join(outDir, 'verified.json'), JSON.stringify(verified, null, 2))
+  // A revoked key, a bad request or a drained balance fails every later run too, so the job must go red.
+  const lasting = failures.filter((failure) => !failure.transient).length
+  if (lasting > 0 || (toJudge.length > 0 && judged.length === 0)) {
+    throw new Error(`${failures.length} of ${toJudge.length} judge calls failed, ${lasting} for a lasting reason`)
+  }
   return verified
 }
 

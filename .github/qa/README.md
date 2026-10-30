@@ -164,16 +164,16 @@ workflow.
 
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,
-`explore.sh harness <session> <dir>` compiles the gate, the hook and the canary with `bun build --compile` into standalone
-binaries that read nothing from the checkout or `node_modules`, built with the `--no-compile-autoload-*` flags so
-they ignore a `bunfig.toml` (whose `preload` is code) or `.env` where they start. It copies `explore.sh` and, for
-c7, the layout probe, installs the second browser's MCP server there, and writes the session's MCP config pointing
+`explore.sh harness <session> <dir>` compiles the gate, the hook and the canary with `bun build --compile` into
+standalone binaries that read nothing from the checkout or `node_modules`, built with the `--no-compile-autoload-*`
+flags so they ignore a `bunfig.toml` (whose `preload` is code) or `.env` where they start. It copies `explore.sh` and,
+for c7, the layout probe, installs the second browser's MCP server there, and writes the session's MCP config pointing
 only at those files. The workflow makes the dir read-only and runs `<dir>/explore.sh canary` and `run` with
 `QA_HARNESS=<dir>`. In that mode `claude` starts in an empty temp dir, so neither it, the hook, the gate nor the
-browser's MCP server starts in the checkout, and `run` skips its summary, so no repo code runs in a step that holds
-the key after the session. The stream goes to `<out>/<session>.run.jsonl`, next to the gate log and outside the
-session dir the model can write to; the save step builds `execution.json` and `transcript.json` from it without
-the key, after the tripwire and the secret scan.
+browser's MCP server starts in the checkout, and `run` skips its summary, so no repo code runs in a step that holds the
+key after the session. The stream goes to `<out>/<session>.run.jsonl`, next to the gate log and outside the session dir
+the model can write to; the save step builds `execution.json` and `transcript.json` from it without the key, after the
+tripwire and the secret scan.
 
 ### Real-AI legs
 
@@ -356,34 +356,32 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    only a skipped Fix step triggers uploads `qa-fix-infra-<fp>` with `fix/<fp>.infrastructure.md`, `publish` trusts
    that artifact alone (it deletes a marker that came inside the agent's `qa-fix-<fp>`), touches neither Linear nor
    GitHub and still succeeds, and the run summary names the ticket and says it was left for a later run. If that
-   upload itself fails, the diagnosis the fix job also writes stands and the ticket gets `Human Required`. The fix job itself shows as failed, so the failure
-   notification fires. A fix step that started and then failed or timed out keeps the diagnosis and `Human Required`.
-   A fix job that uploaded no artifact at all (its key or secret scan failed, or the runner was lost) fails
-   `publish`, because nothing says whether the agent ran. An iOS or Android task carries its
-   Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing the bug on the web at phone
-   size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual task's check is
-   the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the patch only that
-   final assertion can show the defect; a step before it that fails makes the run inconclusive. `publish` refuses an
-   edited repro flow (`fix/<fp>.yaml`) and a flow or check outside the Maestro allow list. `fix-plan.json`'s
-   `verifyNative` lists each native task's flow and the repro flows of the same bug on other native platforms.
-   `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
-   `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow
-   three times on it with no key; a layout or log oracle also
-   needs the probe's ready line in every run. A patched run that fails anywhere, before the bug's assertion too,
-   fails the patch: a fix must leave the whole way to the bug working. Only a failed harness sign-in is run again.
-   Without the patch, a run that never reached the bug, by replay's rules, is run again and never counts as showing
-   it. With `unpatched` (a visual check, or an
-   Android real-AI task, which the keyless run can only check on the fake AI) the flow also runs on the build without
-   the patch and must fail there every time. A native fix PR adds no regression spec. Neither does a fix PR from
-   a c1 session, because the root `playwright.config.ts` does not serve the onboarding build. Neither does a real-AI
-   web fix PR, because that config runs the consumer project on the fake provider. `publish` needs
-   `passed: true` from every platform in `verifyNative` for the fingerprint, web tasks included, and from
-   `verify-real` for a real-AI web task. Only then does it open a draft PR on `qa-fix/<fp>`. Otherwise it writes the
-   diagnosis (for a native platform, "the flow still fails on the native platform") and the ticket gets
-   `Human Required`. A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform,
-   never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they cannot verify
-   it, and its ticket gets `Human Required`.
-   `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
+   upload itself fails, the diagnosis the fix job also writes stands and the ticket gets `Human Required`. The fix job
+   itself shows as failed, so the failure notification fires. A fix step that started and then failed or timed out
+   keeps the diagnosis and `Human Required`. A fix job that uploaded no artifact at all (its key or secret scan
+   failed, or the runner was lost) fails `publish`, because nothing says whether the agent ran.
+   An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
+   the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
+   task's check is the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the
+   patch only that final assertion can show the defect; a step before it that fails makes the run inconclusive.
+   `publish` refuses an edited repro flow (`fix/<fp>.yaml`) and a flow or check outside the Maestro allow list.
+   `fix-plan.json`'s `verifyNative` lists each native task's flow and the repro flows of the same bug on other native
+   platforms. `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
+   `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow three
+   times on it with no key; a layout or log oracle also needs the probe's ready line in every run. A patched run that
+   fails anywhere, before the bug's assertion too, fails the patch: a fix must leave the whole way to the bug working.
+   Only a failed harness sign-in is run again. Without the patch, a run that never reached the bug, by replay's rules,
+   is run again and never counts as showing it. With `unpatched` (a visual check, or an Android real-AI task, which the
+   keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail there
+   every time. A native fix PR adds no regression spec. Neither does a fix PR from a c1 session, because the root
+   `playwright.config.ts` does not serve the onboarding build. Neither does a real-AI web fix PR, because that config
+   runs the consumer project on the fake provider. `publish` needs `passed: true` from every platform in `verifyNative`
+   for the fingerprint, web tasks included, and from `verify-real` for a real-AI web task. Only then does it open a
+   draft PR on `qa-fix/<fp>`. Otherwise it writes the diagnosis (for a native platform, "the flow still fails on the
+   native platform") and the ticket gets `Human Required`. A fix from a session whose charter has `postgres` in
+   `legs.ts` (today c7), on any platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres
+   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. `preview-deploy.yml` deploys no preview
+   for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -865,7 +863,8 @@ Do not add a `LINEAR_API_KEY` to the `qa-agent` environment: it would override t
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 
 - `qa-agent`, `Bug`, `Security` (filing)
-- `Human Required` (`publish` puts it on a ticket whose fix ended in a diagnosis or a rejected patch, never one whose fix job died before the agent started)
+- `Human Required` (`publish` puts it on a ticket whose fix ended in a diagnosis or a rejected patch, never one whose
+  fix job died before the agent started)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
   precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
   not duplicates)
@@ -1064,8 +1063,9 @@ Never run on GitHub (only locally, or read in the action's code):
   `replay-native` leg under the `QA_LEG_START` clock;
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
-- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the fix job's dev
-  stack as `qa-dev`: its start, the `ss` port check, the lock and the stop through the same rule.
+- the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
+  lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
+  Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.
 
 Also:
 

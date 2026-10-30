@@ -727,6 +727,8 @@ jobs:
 
       # Render runs the compiled ./server, whose bundle can fail at boot while every test
       # (run from source) passes. bun build bakes NODE_ENV in, so it is set for the build too.
+      # The second boot turns tracing on (against a dummy collector): the OTEL packages load only then.
+      # It gets its own port, so a worker of the first boot that is still exiting cannot answer for it.
       - name: Smoke backend binary
         working-directory: backend
         env:
@@ -734,18 +736,23 @@ jobs:
           BETTER_AUTH_SECRET: ci-smoke-secret
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           WEB_CONCURRENCY: 1
-          PORT: 8000
         run: |
           bun run build
-          ./server > server.log 2>&1 &
-          server_pid=$!
-          for _ in $(seq 30); do
-            if curl -fsS "http://localhost:$PORT/v1/health"; then
-              kill "$server_pid"
-              exit 0
-            fi
-            kill -0 "$server_pid" 2>/dev/null || break
-            sleep 1
-          done
-          cat server.log
-          exit 1
+          bun -e 'Bun.serve({ port: 4318, fetch: () => new Response() })' &
+          boot() {
+            ./server > server.log 2>&1 &
+            local server_pid=$!
+            for _ in $(seq 30); do
+              if curl -fsS --max-time 2 "http://localhost:$PORT/v1/health"; then
+                kill "$server_pid"
+                return 0
+              fi
+              kill -0 "$server_pid" 2>/dev/null || break
+              sleep 1
+            done
+            cat server.log
+            return 1
+          }
+          PORT=8000 boot
+          PORT=8001 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces boot
+          grep 'OpenTelemetry traces exporting to' server.log

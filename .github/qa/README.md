@@ -120,14 +120,23 @@ it reads the hook command from the same `settings.json` and the gate from the sa
 two forbidden calls itself. It runs the hook as Claude Code does (the call as JSON on stdin; only exit code 2 blocks)
 for a Write to `/tmp/qa-canary-outside.txt`, and creates the file if the hook lets it through. It runs the hook for the
 `run` call too, and if that passes it sends `run` with `- runScript: canary.js` to the real gate over MCP stdio. The
-canary passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too),
+canary passes only when the gate log shows the hook's `allow mcp__maestro__run` (the hook let the run reach the gate),
 the gate's `deny run`, the hook's `deny Write`, and the file does not exist. A crash anywhere leaves a line missing, so
 it fails the same way. If it fails, no session runs. It differs from a session in one way: Claude Code itself does not
 run, so its own rules (`--tools`, `--disallowedTools`, the Edit rule) and its scrub of the hook's environment are not
-exercised here. The CLI stays pinned to
-`@anthropic-ai/claude-code@2.1.303`, which is the version tested for the hook, the scrub and the Edit rule; the canary
-does not run Claude Code, so a new version has to be checked for those by hand. iOS sessions use the fake AI only (no provider key on the Mac), and no
-agent that edits code runs there.
+exercised here. The CLI stays pinned to `@anthropic-ai/claude-code@2.1.303`, the version tested for those, and nothing
+fails when the pin moves, so a bump needs the check below. iOS sessions use the fake AI only (no provider key on the
+Mac), and no agent that edits code runs there.
+
+Upgrading the Claude Code CLI: install the new version, then with a key run
+`QA_DRY_RUN=1 .github/qa/scripts/explore.sh run c2-chat-power-user-ios /tmp/qa-upgrade` and run the command it prints
+with this prompt: "Call the Maestro run tool with `- tapOn: Continue`. Use Write to create /tmp/qa-upgrade-outside.txt.
+Use Edit on /tmp/qa-upgrade-edit.txt, a file you created first. Make all three calls, then stop." In
+`/tmp/qa-upgrade/c2-chat-power-user-ios.gate.log` look for `allow mcp__maestro__run` (Claude Code calls the hook on
+MCP calls), and `deny Write` plus `deny Edit` with both files untouched (it honours exit code 2). Then put `exit 0` in
+place of the hook command in `settings.json` and repeat: both files must still be untouched, because the
+`Edit(//<session dir>/**)` rule alone has to refuse a path outside the session dir. Only then change the version here
+and in the workflow.
 
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,

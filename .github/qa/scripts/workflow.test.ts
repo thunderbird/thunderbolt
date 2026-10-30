@@ -92,7 +92,7 @@ describe('secrets', () => {
       'Check the session output for secrets:env',
     ])
     // The canary calls the hook and the gate itself, so it has nothing to spend a key on.
-    expect(step('explore-native', 'Check that the gate denies a canary session').env).toBeUndefined()
+    expect(step('explore-native', 'Check that the gate denies the forbidden calls').env).toBeUndefined()
     expect(step('explore-native', 'Start the stack').env?.ANTHROPIC_API_KEY).toBe(
       `\${{ matrix.leg.real && ${qaKey} || '' }}`,
     )
@@ -139,9 +139,9 @@ describe('native explore', () => {
     const harness = step('explore-native', 'Prepare the session harness outside the checkout')
     expect(harness.run).toContain('explore.sh harness "$QA_CHARTER" "$RUNNER_TEMP/qa-native-bin"')
     expect(harness.run).toContain('chmod -R a-w "$RUNNER_TEMP/qa-native-bin"')
-    const canary = indexOf('explore-native', 'Check that the gate denies a canary session')
+    const canary = indexOf('explore-native', 'Check that the gate denies the forbidden calls')
     expect(indexOf('explore-native', harness.name ?? '')).toBeLessThan(canary)
-    for (const name of ['Check that the gate denies a canary session', 'Explore']) {
+    for (const name of ['Check that the gate denies the forbidden calls', 'Explore']) {
       const run = step('explore-native', name).run ?? ''
       expect(run).toContain('"$QA_HARNESS/explore.sh"')
       expect(run).not.toContain('.github/')
@@ -563,7 +563,7 @@ describe('native jobs', () => {
     // The wait comes after the install and the stack start, before the first step that reads the log.
     const wait = 'Wait for the console stream'
     for (const [job, first] of [
-      ['explore-native', 'Check that the gate denies a canary session'],
+      ['explore-native', 'Check that the gate denies the forbidden calls'],
       ['replay-native', 'Replay the repro flows and specs'],
     ]) {
       expect(step(job, wait).if).toBe("matrix.leg.platform == 'ios'")

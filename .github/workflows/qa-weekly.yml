@@ -631,8 +631,8 @@ jobs:
         if: matrix.leg.postgres
         run: npx --yes --package @playwright/mcp@0.0.83 playwright install --with-deps chromium
       - name: Install Claude Code
-        # The hook and the Edit rule were measured on this version. The canary does not run Claude Code, so a new
-        # one has to be checked by hand.
+        # The hook and the Edit rule were measured on this version; the canary does not run Claude Code. Before a
+        # bump, follow "Upgrading the Claude Code CLI" in .github/qa/README.md.
         run: |
           npm install --global --prefix "$HOME/.npm-global" @anthropic-ai/claude-code@2.1.303
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
@@ -707,7 +707,7 @@ jobs:
         if: matrix.leg.platform == 'ios'
         run: .github/qa/scripts/native.sh wait-logs "$QA_DEVICE_ID" "$QA_WEBVIEW_LOG"
 
-      - name: Check that the gate denies a canary session
+      - name: Check that the gate denies the forbidden calls
         id: canary
         run: |
           "$QA_HARNESS/explore.sh" canary "$QA_CHARTER" "$RUNNER_TEMP/qa-canary"

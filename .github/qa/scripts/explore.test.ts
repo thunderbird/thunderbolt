@@ -276,6 +276,21 @@ test('the canary fails when the hook lets the write through', () => {
   expect(existsSync(outside)).toBe(true)
 })
 
+// Logs the right lines, as a hook whose deny lost its exit code 2 would, so only the file check can catch it.
+const logsDenyButExitsZero =
+  "import { appendFileSync } from 'node:fs'\n" +
+  'const input = JSON.parse(await Bun.stdin.text())\n' +
+  "const verb = input.tool_name === 'Write' ? 'deny' : 'allow'\n" +
+  'appendFileSync(process.env.QA_GATE_LOG ?? "", `${verb} ${input.tool_name} x\\n`)\n'
+
+test('the canary fails when the write went through even though both denials were logged', () => {
+  const hook = checkoutWith({ 'native-hook.ts': logsDenyButExitsZero })
+  const { code, stderr } = canary({ ...fakeMaestro().env, ...hook })
+  expect(code).toBe(1)
+  expect(stderr).toContain('canary NOT denied')
+  expect(existsSync(outside)).toBe(true)
+})
+
 test('the canary fails when the hook crashes on the write, because no denial was logged', () => {
   const { code, stderr } = canary({
     ...fakeMaestro().env,
@@ -323,7 +338,6 @@ test('the canary needs no key and makes no model call: its dry run starts the st
     'bun',
     `${repoRoot}/.github/qa/scripts/native-canary.ts`,
   ])
-  expect(command).not.toContain('claude')
   expect(command).not.toContain('--model')
   expect(flag(command, '--mcp-config')).toEqual(['.github/qa/mcp-maestro.json'])
   expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(

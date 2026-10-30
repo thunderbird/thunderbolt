@@ -219,7 +219,7 @@ canary() {
   if [ -n "${QA_HARNESS:-}" ]; then native_launcher=("$QA_HARNESS/native-canary"); fi
   native_claude "$session" "$dir" /dev/null
   if [ "${QA_DRY_RUN:-}" = 1 ]; then return; fi
-  # The hook's own line for the Maestro call proves it runs on MCP calls too, not only on Write.
+  # The hook's line for the run shows it let the call reach the gate; without it the gate was never asked.
   if grep -qs '^allow mcp__maestro__run ' "$dir.gate.log" && grep -qs '^deny run ' "$dir.gate.log" &&
     grep -qs '^deny Write ' "$dir.gate.log" && [ ! -e "$outside" ]; then
     echo "canary denied"

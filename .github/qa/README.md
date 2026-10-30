@@ -807,7 +807,7 @@ gh workflow run qa-weekly.yml --repo thunderbird/thunderbolt --ref main -f fix_f
   whose `qa-filed` artifact has not expired. Artifacts last 7 days. A branch or a fork's pull request runs workflow
   files of its own, which could upload any artifact without the `qa-agent` environment. It then builds the
   frontend and both native apps from the current `main`, picks no canaries and plans no explore, replay or judge
-  leg.
+  leg. It ignores `charters`, because every ticket of the earlier run is routed and may need either native app.
 - `file` downloads that run's `qa-replay-*`, `qa-verified-weekly` and `qa-filed`. It uploads the replays again as
   one `qa-replay-weekly` and the verified findings as `qa-verified-weekly`, so the later jobs read them from this
   run as usual. It files nothing and routes that run's `filed.json` with the current `fix.ts route`, so routing

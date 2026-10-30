@@ -321,18 +321,33 @@ describe("CI's check of the fix job's dev stack", () => {
   const check = ci.jobs.qa.steps.find((s) => s.name === 'Start the dev stack as another user')
   const ports = JSON.parse(readFileSync(join(import.meta.dir, '../ports.json'), 'utf8')) as Record<string, number>
 
-  const runCheck = (log: string) => {
+  const runCheck = (log: string, fail: { screenshot?: boolean; stop?: boolean } = {}) => {
     const dir = mkdtempSync(join(work, 'dev-check-'))
     mkdirSync(join(dir, '.github/qa/scripts'), { recursive: true })
-    const stack = `echo "stack $*" >> "$RUNNER_TEMP/calls"\n[ "$1" = start ] && cat "$RUNNER_TEMP/log" > "$RUNNER_TEMP/qa-stack.log"\nexit 0\n`
+    const stack = `echo "stack $*" >> "$RUNNER_TEMP/calls"\n[ "$1" = start ] && cat "$RUNNER_TEMP/log" > "$RUNNER_TEMP/qa-stack.log"\n[ "$1" = stop ] && [ -n "$FAIL_STOP" ] && exit 1\nexit 0\n`
     writeFileSync(join(dir, '.github/qa/scripts/stack.sh'), stack, { mode: 0o755 })
-    writeFileSync(join(dir, 'bunx'), '#!/bin/sh\necho "bunx $*" >> "$RUNNER_TEMP/calls"\n', { mode: 0o755 })
+    writeFileSync(
+      join(dir, 'bunx'),
+      '#!/bin/sh\necho "bunx $*" >> "$RUNNER_TEMP/calls"\n[ -n "$FAIL_BUNX" ] && exit 1\nexit 0\n',
+      {
+        mode: 0o755,
+      },
+    )
     writeFileSync(join(dir, 'log'), log)
     const proc = Bun.spawnSync(['bash', '-e', '-c', check?.run ?? 'exit 99'], {
       cwd: dir,
-      env: { PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: dir },
+      env: {
+        PATH: `${dir}:${process.env.PATH}`,
+        RUNNER_TEMP: dir,
+        FAIL_BUNX: fail.screenshot ? '1' : '',
+        FAIL_STOP: fail.stop ? '1' : '',
+      },
     })
-    return { code: proc.exitCode, calls: readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n') }
+    return {
+      code: proc.exitCode,
+      calls: readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n'),
+      out: proc.stdout.toString(),
+    }
   }
 
   test("starts the dev stack as the fix job's user, loads both pages, then stops it", () => {
@@ -355,6 +370,23 @@ describe("CI's check of the fix job's dev stack", () => {
       expect(code).not.toBe(0)
       expect(calls.at(-1)).toBe('stack stop')
     }
+  })
+
+  test('fails when a page does not load or the stack does not stop, still stops it and prints the log', () => {
+    for (const fail of [{ screenshot: true }, { stop: true }]) {
+      const { code, calls, out } = runCheck('VITE ready\nstack ready\n', fail)
+      expect(code).not.toBe(0)
+      expect(calls.at(-1)).toBe('stack stop')
+      expect(out).toContain('stack ready')
+    }
+    const { calls } = runCheck('stack ready\n', { screenshot: true })
+    expect(calls.filter((c) => c.startsWith('bunx playwright screenshot'))).toHaveLength(2)
+  })
+
+  test('reports a write error in the log even when a page did not load', () => {
+    const { code, out } = runCheck('EACCES: permission denied\n', { screenshot: true })
+    expect(code).not.toBe(0)
+    expect(out).toContain('::error::A dev server could not write a file as another user.')
   })
 
   test('runs on the changes that decide what the dev servers write', () => {
@@ -806,6 +838,10 @@ describe('a fix-only run', () => {
     expect(route).toBeGreaterThan(verifiedUpload)
     expect(step('file', 'Route fixable tickets').if).toBe("needs.build.outputs.autofix == 'true'")
     expect(step('build', 'Plan the legs').env?.AUTOFIX).toContain("inputs.fix_from_run != ''")
+    // route() sends every ticket of the earlier run, so a charters filter must not drop a native build.
+    expect(step('build', 'Plan the legs').env?.CHARTERS).toBe(
+      "${{ inputs.fix_from_run == '' && inputs.charters || '' }}",
+    )
   })
 
   test('publishes only when the run is live, as on any run: main, Linear on and dry_run off', () => {

@@ -193,7 +193,8 @@ jobs:
       - name: Plan the legs
         id: plan
         env:
-          CHARTERS: ${{ inputs.charters }}
+          # A fix-only run routes every ticket of the earlier run, so it needs both native apps whatever `charters` says.
+          CHARTERS: ${{ inputs.fix_from_run == '' && inputs.charters || '' }}
           JOURNEY: ${{ inputs.journey }}
           FIX_FROM_RUN: ${{ inputs.fix_from_run }}
           LIVE: ${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}

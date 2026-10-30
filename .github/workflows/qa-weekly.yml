@@ -947,7 +947,8 @@ jobs:
             --app "$RUNNER_TEMP/apps/plain/$QA_APP_FILE" --app-onboarding "$RUNNER_TEMP/apps/onboarding/$QA_APP_FILE" \
             --leg "$LEG"
 
-      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold a leg.
+      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold
+      # a 6-hour leg.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |

@@ -373,6 +373,12 @@ test("a native replay leg's base runs fit its timeout, since a timeout loses eve
   expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
 })
 
+test("the iOS log stream outlasts a replay leg, since a run after it ends sees no line and can't prove a bug", () => {
+  const nativeSh = readFileSync(join(import.meta.dir, 'native.sh'), 'utf8')
+  const hours = Number(/log stream .* --timeout (\d+)h/.exec(nativeSh)?.[1])
+  expect(hours * 60).toBeGreaterThan(jobs['replay-native']['timeout-minutes'] ?? 0)
+})
+
 describe('native jobs', () => {
   const maestroJobs = Object.entries(jobs).filter(([, job]) => JSON.stringify(job).includes('MAESTRO_DRIVER_STARTUP'))
 

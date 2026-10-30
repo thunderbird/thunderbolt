@@ -110,7 +110,7 @@ none. The session dir is passed as a path without links, because the Edit rule d
 backend log stay outside the session dir, since the model can write anywhere inside it.
 
 Before any session, `explore.sh canary <session> <out>` runs a short `claude-haiku-5-5` session with the same
-settings (4 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
+settings (5 turns, $0.05). It asks for a `run` with `runScript` and a Write to `/tmp/qa-canary-outside.txt`, and
 passes only when the gate log shows the hook's `allow mcp__maestro__run` (so the hook runs on MCP calls too), the
 gate's `deny run`, the hook's `deny Write`, and the file does not exist. If it fails, no session runs. It prints the session's result line and never a tool result. The CLI stays pinned to
 `@anthropic-ai/claude-code@2.1.303`, which is the version tested for the hook, the scrub and the Edit rule; a new version
@@ -247,7 +247,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    upload, 3 for an iOS run whose driver does not start in time and runs again), counted from `QA_LEG_START`, which
    the job's first step records, so the setup is counted as it ran. A run is taken to last as long as the slowest so
    far (at least 4.5 minutes), leaving out the leg's first run: it starts Maestro's driver and the app on a cold
-   device, and takes 4 to 8.5 minutes on iOS against 2 to 6 for each run after it. The flows run most severe
+   device, and takes about 4 minutes on iOS against 2 to 3 for each run after it. The flows run most severe
    first, so a leg that runs out of time leaves the least severe without runs. The control's
    other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
    is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
@@ -619,7 +619,7 @@ Traps:
 - adb drops its `adb reverse` mappings when its connection to the emulator resets. After such a reset the backend
   can get no request and the WebView stream can stop with it, so the app's requests fail
   ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
-  app. `device android` also grows the emulator's log buffers to 16 MB, so the log a replay job saves at its end
+  app. `device android` also grows the emulator's log buffers to 64 MB, so the log a replay job saves at its end
   still holds its first runs.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and so far have
@@ -656,7 +656,7 @@ Android on `ubuntu-latest` with KVM.
   with `--leg`, which goes into each video's name so merged legs never overwrite one another. A warm run takes at
   most about 3 minutes, counted as 4.5, so a native leg replays at most 24 findings (`nativeReplayCap`), most severe
   first: the control's 3 runs and each finding's 3, plus setup, wrap-up and one driver retry, take about 350 minutes
-  and fit the 360-minute job, the longest GitHub allows on its own runners, whose timeout would lose every finding.
+  and fit the 360-minute job, the longest GitHub allows on its own runners. A timeout would lose every finding.
   Extra runs, the control's and the findings', start only while every later finding's 3 base runs still fit, so the
   leg still ends inside the timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
@@ -879,8 +879,8 @@ the longest GitHub allows on its runners; 25 would need 363. At the measured pac
 
 The judge saw 30 confirmed findings, and replay deferred 48 more. Replay confirmed 30 of the 56 it ran, so a run that
 replays them all sends about 56 to the judge: + 50% is 84. A call cost $0.018 on average but is admitted on its worst
-case, $0.120 to $0.126, so 84 calls at $0.126 + 50% need $15.84, and grouping 84 findings at most $0.20 more, $0.30
-with the same margin: $16.14, rounded up to $17. The calls run in parallel: 15 took under a minute.
+case, $0.120 to $0.126, so 84 calls at $0.126 + 50% need $15.88, and grouping 84 findings at most $0.20 more, $0.30
+with the same margin: $16.18, rounded up to $17. The calls run in parallel: 15 took under a minute.
 
 Costs from local sessions with a Sonnet 5.5 explorer, an Opus 5.5 judge and fix agent, and CLI 2.1.285:
 

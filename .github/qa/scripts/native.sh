@@ -187,8 +187,8 @@ device_android() {
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
   reverse_ports "$serial"
-  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs.
-  adb -s "$serial" logcat -b main,system,crash,events -G 16M >&2 || echo "warning: could not grow the emulator's log" >&2
+  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 4 MB an hour.
+  adb -s "$serial" logcat -b main,system,crash,events -G 64M >&2 || echo "warning: could not grow the emulator's log" >&2
   # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
   # mkdir and push fail.
   for _ in $(seq 90); do
@@ -205,11 +205,11 @@ device_android() {
 }
 
 # Starts the iOS stream into <file>, which the redirect empties, and records its pid. It starts right after the
-# boot, so its 3 h limit has to outlast replay-native's 130-minute job.
+# boot, so its 7 h limit has to outlast replay-native's 360-minute job.
 start_ios_stream() {
   # A killed stream's process can outlive its wrapper; unlinking keeps it from overwriting the new stream's file.
   rm -f "$2"
-  xcrun simctl spawn "$1" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 3h > "$2" 2>&1 &
+  xcrun simctl spawn "$1" log stream --level debug --style compact --predicate 'eventMessage CONTAINS "CONSOLE"' --timeout 7h > "$2" 2>&1 &
   echo $! > "$2.pid"
 }
 

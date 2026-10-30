@@ -23,7 +23,7 @@ on:
       charters:
         description: >-
           Comma-separated charter ids (every platform), session ids (one platform), or free, e.g.
-          c4-skills-projects,c2-chat-power-user-phone,free (empty = all)
+          c4-skills-projects,c2-chat-power-user-phone,free (empty = all). Ignored when fix_from_run is set
         type: string
         default: ''
       journey:
@@ -49,7 +49,7 @@ on:
       fix_from_run:
         description: >-
           Id of an earlier run (its artifacts last 7 days) whose filed tickets to fix again. Skips explore, filing
-          and the canaries, and turns autofix on
+          and the canaries, ignores `charters`, and turns autofix on
         type: string
         default: ''
 
@@ -193,7 +193,8 @@ jobs:
       - name: Plan the legs
         id: plan
         env:
-          # A fix-only run routes every ticket of the earlier run, so it needs both native apps whatever `charters` says.
+          # A fix-only run routes every ticket of the earlier run, so it needs both native apps
+          # whatever `charters` says.
           CHARTERS: ${{ inputs.fix_from_run == '' && inputs.charters || '' }}
           JOURNEY: ${{ inputs.journey }}
           FIX_FROM_RUN: ${{ inputs.fix_from_run }}
@@ -208,7 +209,7 @@ jobs:
           fi
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
           if [ -n "$FIX_FROM_RUN" ]; then echo '[]' > "$RUNNER_TEMP/qa-canaries.json"; fi
-          # An unknown charter id fails here, with the CLI's own ::error:: line.
+          # Outside a fix-only run, an unknown charter id fails here, with the CLI's own ::error:: line.
           if ! legs=$(bun .github/qa/scripts/legs.ts --charters "$CHARTERS" --journey "$journey" \
             --canaries "$RUNNER_TEMP/qa-canaries.json"); then
             echo "$legs"

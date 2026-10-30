@@ -2136,6 +2136,32 @@ describe('judge', () => {
     expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
+  test('a judge call that fails after its retries defers only its own finding, and the rest keep their verdicts', async () => {
+    await writeCandidates({
+      confirmed: [candidate('broken'), candidate('fine')],
+      flaky: [],
+      observations: [],
+      dropped: [],
+    })
+    const fine = fakeCreate({ fine: '{"keep":true,"reason":"Sending fails."}' }, [])
+    const create: CreateMessage = async (params) => {
+      if (String(params.messages[0].content).includes('"title": "broken"')) {
+        throw new Error('429 {"type":"rate_limit_error"}\n::error::injected')
+      }
+      return fine(params)
+    }
+    const lines: string[] = []
+
+    const result = await judge(outDir, create, qaDir, (line) => lines.push(line))
+
+    expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
+    expect(result.deferred).toEqual([{ file: candidate('broken'), step: 'judge', reason: 'the judge call failed' }])
+    expect(lines).toEqual([
+      '::warning::the judge call for c2-chat-desktop/broken failed: 429 {"type":"rate_limit_error"} ::error::injected',
+    ])
+    expect((await Bun.file(join(outDir, 'verified.json')).json()).confirmed).toHaveLength(1)
+  })
+
   test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {
     await writeCandidates({
       confirmed: [candidate('huge'), candidate('small')],

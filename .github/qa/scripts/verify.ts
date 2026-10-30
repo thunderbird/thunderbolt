@@ -139,7 +139,7 @@ export const nativeRunEstimateMinutes = 4.5
 export const nativeSetupEstimateMinutes = 7.4
 export const nativeWrapUpMinutes = 2
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
-// workflow.test.ts sizes the cap without the cold first run, which adds about 5 minutes.
+// workflow.test.ts sizes the cap without the cold first run, which adds about 2 minutes.
 export const nativeReplayCap = 24
 const judgeCap = 84
 // Calls are admitted on their worst case, about seven times what one costs.
@@ -1118,18 +1118,29 @@ export const judge = async (
       deferred.push({ file: prompt.candidate, step: 'judge', reason })
     }
   }
-  const judged = await Promise.all(
-    toJudge.map(async ({ candidate, content }) => {
-      const response = await create({
+  const calls = await Promise.allSettled(
+    toJudge.map(({ content }) =>
+      create({
         model: judgeModel,
         max_tokens: judgeMaxTokens,
         system,
         output_config: { effort: 'medium', format: zodOutputFormat(verdictSchema) },
         messages: [{ role: 'user', content }],
-      })
-      return { finding: { ...candidate, judge: readVerdict(response) }, usage: response.usage }
-    }),
+      }),
+    ),
   )
+  // A call that still fails after the SDK's retries (a 429 when many run at once) costs only its own finding.
+  const judged = calls.flatMap((call, i) => {
+    const { candidate } = toJudge[i]
+    if (call.status === 'fulfilled') {
+      return [{ finding: { ...candidate, judge: readVerdict(call.value) }, usage: call.value.usage }]
+    }
+    const error = call.reason instanceof Error ? call.reason.message : String(call.reason)
+    // One line, so the message cannot start another workflow command.
+    log(`::warning::the judge call for ${findingId(candidate)} failed: ${error.replace(/\s+/g, ' ').slice(0, 300)}`)
+    deferred.push({ file: candidate, step: 'judge', reason: 'the judge call failed' })
+    return []
+  })
   const confirmed = judged.flatMap(({ finding }) => (finding.judge.keep ? [finding] : []))
   const { groups, usage } = await groupFindings(confirmed, create, judgeCeilingUsd - worstTotal, log)
   const usages = [...judged.map((call) => call.usage), usage]

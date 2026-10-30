@@ -187,7 +187,7 @@ device_android() {
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
   reverse_ports "$serial"
-  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 4 MB an hour.
+  # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 5 MB an hour.
   adb -s "$serial" logcat -b main,system,crash,events -G 64M >&2 || echo "warning: could not grow the emulator's log" >&2
   # sys.boot_completed comes before the emulated storage is mounted: until then /sdcard does not resolve, and both
   # mkdir and push fail.

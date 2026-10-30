@@ -838,7 +838,7 @@ replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge le
 call included (a call is admitted only if its worst case fits: prompt bytes, 1,600 tokens per screenshot, plus
 `max_tokens`, at Opus prices). Replay and the judge take findings most severe first (the table in `findings.ts`),
 keeping path order within a severity, so a cap that binds defers the least severe. Findings over a cap are listed
-as deferred and never filed. The app's own provider calls in real-AI sessions are not measured: watch the QA
+as deferred and never filed, and so is a finding whose judge call still fails after the SDK's retries. The app's own provider calls in real-AI sessions are not measured: watch the QA
 provider keys' dashboards.
 
 The rule: per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
@@ -854,10 +854,10 @@ turns, is left out of every peak.
 
 | Cap                              | Samples      | Highest observed       | Cap                    |
 | -------------------------------- | ------------ | ---------------------- | ---------------------- |
-| explore budget                   | 33 sessions  | $2.67 (c4, phone)      | $4.01                  |
+| explore budget                   | 32 sessions  | $2.67 (c4, phone)      | $4.01                  |
 | explore turns, web               | 18 sessions  | 368 (c4, phone)        | 552                    |
-| explore turns, native            | 15 sessions  | 199 (c4, Android)      | 299                    |
-| explore timeout                  | 33 sessions  | 41.9 min (c4, Android) | 63 min                 |
+| explore turns, native            | 14 sessions  | 199 (c4, Android)      | 299                    |
+| explore timeout                  | 32 sessions  | 41.9 min (c4, Android) | 63 min                 |
 | native canary turns              | 15 canaries  | 3                      | 5                      |
 | findings replayed per web leg    | 5 legs       | 20 (real)              | 30                     |
 | findings replayed per native leg | 4 legs       | 25 (android-real)      | 24, the job's limit    |

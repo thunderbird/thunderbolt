@@ -73,11 +73,14 @@ build.
 
 ## One Bun version everywhere
 
-Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and the `BUN_VERSION` of
-both services in `deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along
-with `BUN_VERSION` on the production backend, which is set in the Render dashboard. A
-`setup-bun` step without `bun-version` silently installs the latest release, and a Render
-service without `BUN_VERSION` runs Render's default Bun for the date it was created.
+Every `setup-bun` step, every `oven/bun` image in `deploy/docker/` and
+`.thunderbot/Dockerfile.dev`, and the `BUN_VERSION` of both services in
+`deploy/render/public-agent.yaml` pin Bun 1.4.4. Bump them together, along with `BUN_VERSION`
+on the production backend, which is set in the Render dashboard. A `setup-bun` step without
+`bun-version` reads `packageManager`, then `engines.bun`, from `package.json`, and installs the
+latest release when neither is set; the root `package.json` sets neither. A Render service without
+`BUN_VERSION` reads a `.bun-version` file at the repo root, then falls back to Render's default
+Bun for the date it was created.
 
 ## Gates that surprise people
 

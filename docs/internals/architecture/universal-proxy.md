@@ -179,11 +179,11 @@ list (logged by none). Hence:
   subprotocol token ([shared/ws-bearer.ts](../../../shared/ws-bearer.ts)).
 - **The carrier exists** because RFC 6455 requires the server to echo one offered subprotocol for
   strict clients, and echoing the _bearer_ would expose the credential on `WebSocket.protocol` to
-  page JS and response logs ([ws.ts:265-287](../../../backend/src/proxy/ws.ts#L265)).
+  page JS and response logs ([ws.ts:264-286](../../../backend/src/proxy/ws.ts#L264)).
 - **The bearer is validated in `open()`, not `beforeHandle`**, which Elysia/Bun can invoke more than
   once per upgrade and so holds only synchronous, idempotent target checks. `open()` runs once per
   accepted socket, validates through the Better Auth path REST uses, and refuses anonymous users
-  ([ws.ts:304-341](../../../backend/src/proxy/ws.ts#L304),
+  ([ws.ts:303-340](../../../backend/src/proxy/ws.ts#L303),
   [backend/src/auth/ws-bearer-auth.ts](../../../backend/src/auth/ws-bearer-auth.ts)).
 - **The whole `tbproxy.*` and `thunderbolt.*` namespace is stripped before the upstream handshake**
   ([ws.ts:86](../../../backend/src/proxy/ws.ts#L86)); caller protocols pass through so the upstream
@@ -215,9 +215,9 @@ and unchanged.
 | `1011` | Upstream connection failed or errored                                 |
 
 Otherwise a close code and reason are relayed verbatim, upstream to client and client to upstream,
-except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun 1.4's
-`WebSocket.close()` throws and would leave the other side open. A close that carried no status
-(`1005`) is relayed as `1000`, as Bun 1.3 reported it. A dropped connection (`1006`), a TLS failure
+except codes a close frame may not carry (`relayCloseCode` in `ws.ts`), on which Bun's
+`WebSocket.close()` throws and would leave the other side open. A clean close that carried no status
+(`1005`) is relayed as `1000`, a deliberate end. A dropped connection (`1006`), a TLS failure
 (`1015`), the reserved `1004` or an out-of-range code is relayed as a close frame without a status,
 which a browser reads as `1005` and may retry: `1000` would end the session for good.
 

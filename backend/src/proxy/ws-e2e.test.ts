@@ -647,8 +647,9 @@ const startRelay = async (upstreamPort: number, observability?: ObservabilityRec
 const relayProtocols = buildProtocols('wss://upstream.test/', 'relay-bearer')
 
 /**
- * A downstream client on a raw TCP socket, for what Bun's WebSocket hides: Bun 1.3 reads a close
- * frame without a status code as 1000, and only a raw socket can drop without a close frame.
+ * A downstream client on a raw TCP socket, for what a WebSocket hides: it reads whether the relay's
+ * close frame carries a status at all, not the code a WebSocket derives from it, and it can drop
+ * without a close frame.
  * `closeFrameCode` resolves with the status of the relay's close frame, or null when it has none.
  */
 const connectRawClient = async (url: string, protocols: string[]) => {
@@ -667,13 +668,23 @@ const connectRawClient = async (url: string, protocols: string[]) => {
         if (headerEnd === -1) {
           return
         }
+        const statusLine = bytes.subarray(0, bytes.indexOf('\r\n')).toString()
+        if (!statusLine.startsWith('HTTP/1.1 101')) {
+          upgraded.reject(new Error(`Upgrade refused: ${statusLine}`))
+          return
+        }
         upgraded.resolve()
         // The relay sends these tests nothing but its close frame (opcode 8): status, then reason.
+        // A server frame is unmasked and a close payload is under 126 bytes, so byte 1 is its length.
         const frame = bytes.subarray(headerEnd + 4)
-        if (frame.length < 2) {
+        if (frame.length < 2 || frame.length < 2 + (frame[1] & 0x7f)) {
           return
         }
         closeFrame.resolve((frame[1] & 0x7f) === 0 ? null : frame.readUInt16BE(2))
+      },
+      error(_socket, error) {
+        upgraded.reject(error)
+        closeFrame.reject(error)
       },
     },
   })
@@ -751,7 +762,7 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
     const client = new WebSocket(relay.url, relayProtocols)
     // `ready` crosses the relay only once its upstream socket is open, the state this close must reach.
     await nextMessageEvent(client)
-    // A bare close() reaches the relay as 1005, which a WebSocket may not send.
+    // Whatever code the bare close() reaches the relay with, the upstream must see a deliberate end.
     client.close()
 
     await waitFor(() => upstreamCloses.length > 0, { label: 'upstream close' })
@@ -781,7 +792,7 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
       websocket: { message: (ws) => ws.terminate() },
     })
     const relay = await startRelay(upstream.port ?? 0)
-    // Not awaited, as in startUpstreamServer: on Bun 1.3 this stop promise never settles and spins.
+    // Not awaited, as in startUpstreamServer: stop(true) can hang while a peer socket is half-closed.
     servers.push(relay, {
       stop: async () => {
         upstream.stop(true)

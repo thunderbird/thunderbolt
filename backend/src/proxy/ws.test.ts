@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { classifyWsCloseCode, parseTargetSubprotocol, relayCloseCode, validateWsTarget, wsCloseCodes } from './ws'
+import {
+  classifyWsCloseCode,
+  overflowsPreConnectQueue,
+  parseTargetSubprotocol,
+  relayCloseCode,
+  validateWsTarget,
+  wsCloseCodes,
+} from './ws'
 
 describe('parseTargetSubprotocol', () => {
   it('extracts target from base64url subprotocol entry', () => {
@@ -135,5 +142,19 @@ describe('relayCloseCode', () => {
   it('relays a dropped connection, a TLS failure, a reserved or an out-of-range code as no status', () => {
     const codes = [1006, 1015, 1004, 999, 1016, 2999, 5000]
     expect(codes.map(relayCloseCode)).toEqual(codes.map(() => undefined))
+  })
+})
+
+describe('overflowsPreConnectQueue', () => {
+  const queue = (messages: number, pendingBytes: number) => ({ pending: { length: messages }, pendingBytes })
+
+  it('takes a 64th message and refuses a 65th', () => {
+    expect(overflowsPreConnectQueue(queue(63, 0), 1)).toBe(false)
+    expect(overflowsPreConnectQueue(queue(64, 0), 1)).toBe(true)
+  })
+
+  it('takes a frame that fills 256 KB exactly and refuses one byte more', () => {
+    expect(overflowsPreConnectQueue(queue(1, 200 * 1024), 56 * 1024)).toBe(false)
+    expect(overflowsPreConnectQueue(queue(1, 200 * 1024), 56 * 1024 + 1)).toBe(true)
   })
 })

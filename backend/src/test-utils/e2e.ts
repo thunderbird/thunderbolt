@@ -150,8 +150,9 @@ export const createTestApp = async (
 
 /**
  * Resolve once the server answers a ping sent now. A server takes frames in order and, in this
- * process, runs its handlers before the pong reaches the client, so every frame sent before the
- * ping has been handled by then. Use it instead of a sleep to know a frame has landed.
+ * process, calls its message handler for each before the pong reaches the client, so by then the
+ * handler has run up to its first `await` for every frame sent before the ping. Work after that
+ * `await` may still be pending. Use it instead of a sleep to know a frame has been received.
  */
 export const pingRoundTrip = (ws: WebSocket): Promise<void> =>
   new Promise((resolve) => {

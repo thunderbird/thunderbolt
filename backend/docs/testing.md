@@ -126,7 +126,7 @@ Beyond `test-setup.ts` and `db.ts`, `src/test-utils/` holds:
 
 Pass `database` to `createTestApp()` when the suite binds a real `.listen()` server: the caller then owns that instance's lifecycle and the returned `cleanup` is a no-op.
 
-`e2e.ts` also exports `pingRoundTrip(ws)`, which resolves once the server has handled every frame the client sent before it. Use it instead of a sleep when a test must know a frame has landed, as the WebSocket auth-race tests do with `createGatedAuth`.
+`e2e.ts` also exports `pingRoundTrip(ws)`, which resolves once the server has run the synchronous part of its message handler, up to the first `await`, for every frame the client sent before it. Use it instead of a sleep when a test must know a frame has been received, as the WebSocket auth-race tests do with `createGatedAuth`.
 
 ## Testing settings-dependent code
 

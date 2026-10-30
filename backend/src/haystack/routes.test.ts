@@ -32,6 +32,7 @@ import { encodeWsBearer } from '@shared/ws-bearer'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
+import type { HaystackAcpDeps } from './acp-server'
 import { createHaystackRoutes } from './routes'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
@@ -110,14 +111,14 @@ const initializeFrame = (id: number) => JSON.stringify({ jsonrpc: '2.0', id, met
 
 /** Mount only the Haystack routes, with no database. The bearer check waits for `releaseAuth()`, so
  *  a test can hold `open()` mid-auth. */
-const startGatedHaystack = async () => {
+const startGatedHaystack = async (deps?: HaystackAcpDeps) => {
   const authGate = Promise.withResolvers<void>()
   const settings = createTestSettings({
     haystackBaseUrl: 'https://haystack.test',
     haystackWorkspace: 'ws-test',
     haystackPipelines: ragPipelines,
   })
-  const app = new Elysia().use(createHaystackRoutes(settings, createGatedAuth('gated-user', authGate.promise)))
+  const app = new Elysia().use(createHaystackRoutes(settings, createGatedAuth('gated-user', authGate.promise), deps))
   await new Promise<void>((resolve) => {
     app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
   })
@@ -328,6 +329,35 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     }
 
     expect((await term).code).toBe(wsCloseCodes.queueOverflow)
+  }, 15000)
+
+  it('builds no Haystack server for a client that closes before the bearer check finishes', async () => {
+    // The route reads only `fetchFn` from its deps; each HaystackAcpServer reads this once, when built.
+    let serversBuilt = 0
+    const gated = await startGatedHaystack({
+      get generateSessionId() {
+        serversBuilt++
+        return () => crypto.randomUUID()
+      },
+    })
+    cleanups.push(gated.stop)
+
+    const early = await openGatedClient(gated.url)
+    early.send(initializeFrame(1))
+    await pingRoundTrip(early)
+    const closed = observeWsTermination(early)
+    early.close()
+    await closed
+    // The server can run its close handler after the client sees the close; this upgrade lands after it.
+    const late = await openGatedClient(gated.url)
+    gated.releaseAuth()
+
+    // The reply shows the route has run on past both bearer checks.
+    const reply = nextMessage(late)
+    late.send(initializeFrame(2))
+    expect(JSON.parse(await reply).id).toBe(2)
+    expect(serversBuilt).toBe(1)
+    late.close()
   }, 15000)
 
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {

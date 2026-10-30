@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createWebFetchTool, htmlToText } from './webfetch.ts'
 import type { WebFetchDependencies, WebFetchRequest } from './webfetch.ts'
 
@@ -83,10 +87,10 @@ describe('webfetch', () => {
     ).resolves.toBe('public response')
   })
 
-  test('pins a hostname to the first resolved address and sends the original Host header', async () => {
-    const calls: Array<{ readonly url: string; readonly host: string | null }> = []
+  test('pins a hostname to the first resolved address and sends the original Host header and TLS name', async () => {
+    const calls: Array<{ readonly url: string; readonly host: string | null; readonly serverName?: string }> = []
     const fetch: WebFetchRequest = async (input, init) => {
-      calls.push({ url: String(input), host: new Headers(init?.headers).get('host') })
+      calls.push({ url: String(input), host: new Headers(init?.headers).get('host'), serverName: init?.tls?.serverName })
       return new Response('public response')
     }
 
@@ -94,7 +98,25 @@ describe('webfetch', () => {
       resolve: async () => [{ address: '93.184.216.34' }, { address: '2606:2800:220:1:248:1893:25c8:1946' }],
     })
 
-    expect(calls).toEqual([{ url: 'https://93.184.216.34/article?q=1', host: 'public.example' }])
+    expect(calls).toEqual([
+      { url: 'https://93.184.216.34/article?q=1', host: 'public.example', serverName: 'public.example' },
+    ])
+  })
+
+  test('leaves TLS options unset for a public IP literal', async () => {
+    const inits: Array<Parameters<WebFetchRequest>[1]> = []
+    const fetch: WebFetchRequest = async (_input, init) => {
+      inits.push(init)
+      return new Response('literal response')
+    }
+
+    await execute(fetch, 'https://1.1.1.1/', {
+      resolve: async () => {
+        throw new Error('an IP literal must not be resolved')
+      },
+    })
+
+    expect(inits.map((init) => init?.tls)).toEqual([undefined])
   })
 
   test('uses one DNS answer for validation and connection', async () => {
@@ -118,9 +140,9 @@ describe('webfetch', () => {
 
   test('re-pins every redirect hop with one resolution per hostname', async () => {
     const resolverCalls: string[] = []
-    const calls: Array<{ readonly url: string; readonly host: string | null }> = []
+    const calls: Array<{ readonly url: string; readonly host: string | null; readonly serverName?: string }> = []
     const fetch: WebFetchRequest = async (input, init) => {
-      calls.push({ url: String(input), host: new Headers(init?.headers).get('host') })
+      calls.push({ url: String(input), host: new Headers(init?.headers).get('host'), serverName: init?.tls?.serverName })
       return calls.length === 1
         ? new Response(null, { status: 302, headers: { location: 'https://redirect.example/final' } })
         : new Response('redirected response')
@@ -135,8 +157,8 @@ describe('webfetch', () => {
 
     expect(resolverCalls).toEqual(['origin.example', 'redirect.example'])
     expect(calls).toEqual([
-      { url: 'https://93.184.216.34/start', host: 'origin.example' },
-      { url: 'https://8.8.8.8/final', host: 'redirect.example' },
+      { url: 'https://93.184.216.34/start', host: 'origin.example', serverName: 'origin.example' },
+      { url: 'https://8.8.8.8/final', host: 'redirect.example', serverName: 'redirect.example' },
     ])
   })
 
@@ -281,6 +303,52 @@ describe('webfetch', () => {
     const output = await execute(fetch, 'https://example.com')
 
     expect(output).not.toContain('<')
+  })
+})
+
+/** Generate a throwaway self-signed cert valid only for `hostname`, so no private key is committed. */
+const generateCert = (hostname: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'webfetch-tls-'))
+  const keyPath = join(dir, 'key.pem')
+  const certPath = join(dir, 'cert.pem')
+  try {
+    execFileSync(
+      'openssl',
+      ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${hostname}`].concat([
+        '-addext',
+        `subjectAltName=DNS:${hostname}`,
+        '-keyout',
+        keyPath,
+        '-out',
+        certPath,
+      ]),
+      { stdio: 'pipe' },
+    )
+    return { key: readFileSync(keyPath, 'utf-8'), cert: readFileSync(certPath, 'utf-8') }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// A real TLS handshake, not a fetch stub: since Bun 1.4.1 SNI and certificate checks follow
+// the pinned IP unless webfetch names the original hostname.
+describe('webfetch TLS handshake', () => {
+  const hostname = 'pinned.test'
+  const { key, cert } = generateCert(hostname)
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, tls: { key, cert }, fetch: () => new Response('pinned ok') })
+  afterAll(() => server.stop(true))
+
+  test('verifies the certificate against the original hostname when connecting to the pinned IP', async () => {
+    // Route the pinned public IP to the local server and trust the test cert; SNI and
+    // certificate verification are left to whatever webfetch passes.
+    const toLocalServer: WebFetchRequest = (input, init) => {
+      const url = new URL(input)
+      url.hostname = '127.0.0.1'
+      url.port = String(server.port)
+      return globalThis.fetch(url, { ...init, tls: { ...init?.tls, ca: cert } })
+    }
+
+    expect(await execute(toLocalServer, `https://${hostname}/`)).toBe('pinned ok')
   })
 })
 

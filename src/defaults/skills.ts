@@ -116,7 +116,7 @@ Do not add a Sources or References section; inline citations are sufficient.`
  * Default skills seeded for new users on first sign-in. UUIDs are stable so
  * the reconciler can recognize them across devices and across app restarts.
  *
- * New users get Search, Research, and Weather pinned (in that order) as their
+ * New users get Search and Weather pinned (in that order) as their
  * starter chips; Daily Brief ships enabled but unpinned, and Important Emails
  * ships disabled. Additional model-facing widget contracts ship enabled and
  * unpinned. Task skills may be edited or soft-deleted; widget contracts only
@@ -172,7 +172,7 @@ export const defaultSkillResearch: Skill = {
     'Use this skill when the user wants an exhaustive, multi-source deep dive on a topic rather than a quick answer.',
   instruction: researchInstruction,
   enabled: 1,
-  pinnedOrder: 1,
+  pinnedOrder: null,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -185,7 +185,7 @@ export const defaultSkillWeather: Skill = {
   description: 'Use this skill when the user asks about the weather or wants a forecast for a location.',
   instruction: weatherForecastWidgetInstruction,
   enabled: 1,
-  pinnedOrder: 2,
+  pinnedOrder: 1,
   deletedAt: null,
   defaultHash: null,
   userId: null,
@@ -257,6 +257,20 @@ const widgetSkillIds = new Set([
 /** Whether a skill id belongs to a model-facing widget rendering contract. */
 export const isWidgetSkillId = (id: string): boolean => widgetSkillIds.has(id)
 
+const systemSkillIds = new Set([
+  defaultSkillResearch.id,
+  defaultSkillLinkPreview.id,
+  defaultSkillConnectIntegration.id,
+  defaultSkillAsk.id,
+  defaultSkillMap.id,
+])
+
+/**
+ * Whether a skill is internal: only the agent loads it, so the skills
+ * library, composer and pinned chips hide it from the user.
+ */
+export const isSystemSkillId = (id: string): boolean => systemSkillIds.has(id)
+
 export const defaultSkills: ReadonlyArray<Skill> = [
   defaultSkillDailyBrief,
   defaultSkillImportantEmails,
@@ -280,4 +294,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 9
+export const defaultSkillsVersion = 10

@@ -15,6 +15,7 @@ import {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from '@/dal'
+import { isSystemSkillId } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -42,7 +43,7 @@ const useSkillsQuery = () => {
     queryKey: skillsQueryKey,
     query: toCompilableQuery(getAllSkills(db)),
   })
-  return { skills: skills as Skill[], isLoading }
+  return { skills: (skills as Skill[]).filter((skill) => !isSystemSkillId(skill.id)), isLoading }
 }
 
 /**
@@ -90,7 +91,7 @@ export const usePinnedSkills = () => {
     queryKey: [...skillsQueryKey, 'pinned'],
     query: toCompilableQuery(getPinnedSkills(db)),
   })
-  const pinnedSkills = pinned as Skill[]
+  const pinnedSkills = (pinned as Skill[]).filter((skill) => !isSystemSkillId(skill.id))
 
   const pinnedSet = useMemo(() => new Set(pinnedSkills.map((s) => s.id)), [pinnedSkills])
 

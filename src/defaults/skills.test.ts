@@ -22,6 +22,7 @@ import {
   defaultSkillsVersion,
   defaultSkillWeather,
   hashSkill,
+  isSystemSkillId,
   isWidgetSkillId,
 } from './skills'
 
@@ -41,8 +42,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 9,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 10,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ckrbbt|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -102,11 +103,16 @@ describe('defaultSkills', () => {
     expect(names).not.toContain('document-result')
   })
 
-  it('pins exactly Search, Research, Weather (in that order) as the starter chips for new users', () => {
+  it('pins exactly Search, Weather (in that order) as the starter chips for new users', () => {
     const pinned = defaultSkills
       .filter((skill) => skill.pinnedOrder !== null)
       .sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
-    expect(pinned).toEqual([defaultSkillSearch, defaultSkillResearch, defaultSkillWeather])
+    expect(pinned).toEqual([defaultSkillSearch, defaultSkillWeather])
+  })
+
+  it('marks research and the widget contracts except weather as system skills', () => {
+    const systemNames = defaultSkills.filter((skill) => isSystemSkillId(skill.id)).map((skill) => skill.name)
+    expect(systemNames).toEqual(['research', 'link-preview', 'connect-integration', 'ask', 'map'])
   })
 
   it('identifies widget contracts by stable default id', () => {

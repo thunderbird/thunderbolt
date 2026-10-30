@@ -186,11 +186,10 @@ const deriveConnectArgs = (extras: WsExtras): WsConnectArgs | null => {
 }
 
 /**
- * The code to relay for a close observed on the other side, or undefined to close without a status
- * code. A close frame may carry only 1000-1003, 1007-1014 and 3000-4999 (RFC 6455 §7.4), and Bun
- * 1.4's WebSocket throws on any other code. A peer that sent no status (1005, or a missing 0)
- * relays as 1000, as Bun 1.3 reported it. A dropped connection (1006), a TLS failure (1015) or a
- * reserved or out-of-range code relays as no status, which a browser reads as 1005 and may retry.
+ * The code to relay for a close seen on the other side, or undefined to close with no status.
+ * Only 1000-1003, 1007-1014 and 3000-4999 may be sent (RFC 6455 §7.4); Bun's WebSocket throws on
+ * the rest. A clean close without a status (1005) relays as 1000, a deliberate end. A dropped or
+ * failed connection relays with no status, which the browser reads as 1005 and may retry.
  */
 export const relayCloseCode = (code: number): number | undefined => {
   if ((code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1014) || (code >= 3000 && code <= 4999)) {

@@ -10,8 +10,8 @@ import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classific
  *  `mock.module('node:dns')` (which leaks across files — see docs/internals/development/testing.md). */
 export type DnsLookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>
 
-// validateAndPin connects to the first address. Bun 1.4 returns IPv6 first by default (1.3 returned
-// IPv4 first), which breaks hosts without IPv6 egress.
+// validateAndPin connects to the first address; list IPv4 first so a host without IPv6 egress
+// still reaches the target.
 const defaultDnsLookup: DnsLookup = (hostname) => dnsPromises.lookup(hostname, { all: true, order: 'ipv4first' })
 
 /**

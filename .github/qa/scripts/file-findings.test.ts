@@ -609,6 +609,18 @@ describe('Linear failures', () => {
     expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
   })
 
+  test('a refused ticket takes no place under the cap, so the next bug still gets its own ticket', async () => {
+    await writeVerified(numbered(9))
+    let createsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
+    })
+    await expect(run(api.fetchFn)).rejects.toThrow('Filing failed for 1')
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(filed.map((f) => f.action)).toEqual(Array(8).fill('created'))
+  })
+
   test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {
     await writeVerified([{ area: 'security', title: 'Leaky token list', oracle: { type: 'http-5xx', evidence: 'x' } }])
     const echo = 'Variable "$input" got invalid value { title: "Leaky token list" }'

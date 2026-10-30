@@ -62,7 +62,7 @@ export type Verified = {
     gate: 'schema' | 'lint' | 'replay' | 'judge'
     reason: string
   }[]
-  /** Over a cap, so neither confirmed nor dropped. */
+  /** Not replayed or judged (over a cap, or a judge call that failed), so neither confirmed nor dropped. */
   deferred?: { file: FindingFile; step: 'replay' | 'judge'; reason: string }[]
   judge_usage?: { input_tokens: number; output_tokens: number; cost_usd: number }
   /**
@@ -954,6 +954,9 @@ const readVerdict = (response: Reply): Verdict => {
 
 const createMessage: CreateMessage = (params) => new Anthropic().messages.create(params)
 
+/** Whether an API status may pass on a later try: a timeout, a conflict, a rate limit or a server error. */
+const transientStatus = (status: number) => status >= 500 || [408, 409, 429].includes(status)
+
 const groupingPrompt = `# QA finding grouping
 
 You group the confirmed findings of one QA run of the Thunderbolt app (an AI chat client) by defect. Each finding
@@ -1067,8 +1070,11 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
  * Flaky candidates are never judged. At most `judgeCap` calls, admitted most severe first only while their worst-case
- * cost fits under `judgeCeilingUsd`; the rest are `deferred`. Then `groupFindings` groups what the judge kept, within what is
- * left of that ceiling. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
+ * cost fits under `judgeCeilingUsd`; the rest are `deferred`, and so is a finding whose call fails after the SDK's
+ * retries. Then `groupFindings` groups what the judge kept, within what is left of that ceiling. Writes
+ * `<outDir>/verified.json` and returns it, then throws when a call failed for a reason other than a lost connection,
+ * a timeout, a conflict, a rate limit or a server error, or when every call failed. Needs `ANTHROPIC_API_KEY` and
+ * nothing else.
  */
 export const judge = async (
   outDir: string,
@@ -1130,15 +1136,22 @@ export const judge = async (
     ),
   )
   // A call that still fails after the SDK's retries (a 429 when many run at once) costs only its own finding.
+  const failures: { transient: boolean }[] = []
   const judged = calls.flatMap((call, i) => {
     const { candidate } = toJudge[i]
     if (call.status === 'fulfilled') {
       return [{ finding: { ...candidate, judge: readVerdict(call.value) }, usage: call.value.usage }]
     }
-    const error = call.reason instanceof Error ? call.reason.message : String(call.reason)
+    const { reason } = call
+    // A lost connection or a timeout carries no status.
+    const transient =
+      reason instanceof Anthropic.APIConnectionError ||
+      (reason instanceof Anthropic.APIError && reason.status !== undefined && transientStatus(reason.status))
+    const error = reason instanceof Error ? reason.message : String(reason)
     // One line, so the message cannot start another workflow command.
     log(`::warning::the judge call for ${findingId(candidate)} failed: ${error.replace(/\s+/g, ' ').slice(0, 300)}`)
     deferred.push({ file: candidate, step: 'judge', reason: 'the judge call failed' })
+    failures.push({ transient })
     return []
   })
   const confirmed = judged.flatMap(({ finding }) => (finding.judge.keep ? [finding] : []))
@@ -1165,6 +1178,11 @@ export const judge = async (
     },
   }
   await Bun.write(join(outDir, 'verified.json'), JSON.stringify(verified, null, 2))
+  // A revoked key, a bad request or a drained balance fails every later run too, so the job must go red.
+  const lasting = failures.filter((failure) => !failure.transient).length
+  if (lasting > 0 || (toJudge.length > 0 && judged.length === 0)) {
+    throw new Error(`${failures.length} of ${toJudge.length} judge calls failed, ${lasting} not for a passing reason`)
+  }
   return verified
 }
 

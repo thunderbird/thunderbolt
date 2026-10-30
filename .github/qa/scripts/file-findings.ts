@@ -496,7 +496,6 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
         overflow[kind].push(entry)
         return
       }
-      opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
       const visual = f.oracle.type === 'visual'
       const names = [qaLabels.agent, qaLabels.bug, ...(f.area === 'security' ? [qaLabels.security] : [])]
@@ -518,6 +517,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
           lostAttachments: lost.length ? lost : undefined,
         }
       })
+      // Only a ticket that exists takes a place under the cap, so a refused create leaves room for the next bug.
+      opened[kind]++
     })
   }
 

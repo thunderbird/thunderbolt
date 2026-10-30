@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type Anthropic from '@anthropic-ai/sdk'
+import Anthropic from '@anthropic-ai/sdk'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -2136,30 +2136,63 @@ describe('judge', () => {
     expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
-  test('a judge call that fails after its retries defers only its own finding, and the rest keep their verdicts', async () => {
-    await writeCandidates({
-      confirmed: [candidate('broken'), candidate('fine')],
-      flaky: [],
-      observations: [],
-      dropped: [],
-    })
-    const fine = fakeCreate({ fine: '{"keep":true,"reason":"Sending fails."}' }, [])
-    const create: CreateMessage = async (params) => {
-      if (String(params.messages[0].content).includes('"title": "broken"')) {
-        throw new Error('429 {"type":"rate_limit_error"}\n::error::injected')
+  describe('a judge call that fails after its retries', () => {
+    const apiError = (status: number, message: string) =>
+      Anthropic.APIError.generate(status, undefined, message, new Headers())
+    const brokenDeferred = { file: candidate('broken'), step: 'judge' as const, reason: 'the judge call failed' }
+    /** Keeps "fine" and answers "broken" with `error`; with `failAll`, every call fails. */
+    const failing = (error: Error, failAll = false): CreateMessage => {
+      const fine = fakeCreate({ fine: '{"keep":true,"reason":"Sending fails."}' }, [])
+      return async (params) => {
+        if (failAll || String(params.messages[0].content).includes('"title": "broken"')) throw error
+        return fine(params)
       }
-      return fine(params)
     }
-    const lines: string[] = []
+    const writeBoth = () =>
+      writeCandidates({
+        confirmed: [candidate('broken'), candidate('fine')],
+        flaky: [],
+        observations: [],
+        dropped: [],
+      })
+    const written = async (): Promise<Verified> => Bun.file(join(outDir, 'verified.json')).json()
 
-    const result = await judge(outDir, create, qaDir, (line) => lines.push(line))
+    test('on a rate limit defers only its own finding, and the rest keep their verdicts', async () => {
+      await writeBoth()
+      const lines: string[] = []
 
-    expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
-    expect(result.deferred).toEqual([{ file: candidate('broken'), step: 'judge', reason: 'the judge call failed' }])
-    expect(lines).toEqual([
-      '::warning::the judge call for c2-chat-desktop/broken failed: 429 {"type":"rate_limit_error"} ::error::injected',
-    ])
-    expect((await Bun.file(join(outDir, 'verified.json')).json()).confirmed).toHaveLength(1)
+      const result = await judge(outDir, failing(apiError(429, 'rate limited\n::error::injected')), qaDir, (line) =>
+        lines.push(line),
+      )
+
+      expect(result.confirmed.map((file) => file.id)).toEqual(['fine'])
+      expect(result.deferred).toEqual([brokenDeferred])
+      expect(lines).toEqual([
+        '::warning::the judge call for c2-chat-desktop/broken failed: 429 rate limited ::error::injected',
+      ])
+      expect((await written()).confirmed).toHaveLength(1)
+    })
+
+    test('for a reason a later run cannot outlive fails the job, keeping the other verdicts', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(400, 'credit balance too low')), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('1 of 2 judge calls failed, 1 not for a passing reason')
+      expect((await written()).confirmed.map((file) => file.id)).toEqual(['fine'])
+    })
+
+    test('on every call fails the job even when each failure would pass, keeping the deferrals', async () => {
+      await writeBoth()
+
+      const run = judge(outDir, failing(apiError(429, 'rate limited'), true), qaDir, () => {})
+
+      await expect(run).rejects.toThrow('2 of 2 judge calls failed, 0 not for a passing reason')
+      expect((await written()).deferred).toEqual([
+        brokenDeferred,
+        { file: candidate('fine'), step: 'judge', reason: 'the judge call failed' },
+      ])
+    })
   })
 
   test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {

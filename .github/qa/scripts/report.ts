@@ -528,7 +528,7 @@ const findingsSection = ({ found, verified, filed }: Findings, label: string) =>
     if (deferred.length > 0) {
       out.push(
         '',
-        `### Deferred (${deferred.length}), over a cap`,
+        `### Deferred (${deferred.length}), not replayed or judged`,
         ...deferred.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.step}** — ${d.reason}`),
       )
     }

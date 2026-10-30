@@ -794,6 +794,32 @@ A test workflow triggered by `push` cannot stand in for this one: `claude-code-a
 This proves every step up to filing. The fix agent and the native verification run only on `main` (the `autofix`
 output checks `github.ref`), so the first run after the merge proves them.
 
+### Fix the tickets of an earlier run
+
+A fix-only run sends the tickets an earlier run filed through fix, verify and publish again, without exploring.
+Use it when that run's fix jobs broke. The run id is the number at the end of the run's URL
+(`/actions/runs/<run id>`):
+
+```sh
+gh workflow run qa-weekly.yml --repo thunderbird/thunderbolt --ref main -f fix_from_run=<run id> -f dry_run=false
+```
+
+- `build` checks the id first. It accepts only digits, only a scheduled or dispatched run of `qa-weekly.yml`
+  (a pull request from a fork runs workflow files of its own), and only a run whose `qa-filed` artifact has not
+  expired. Artifacts last 7 days. It then builds the frontend and both native apps from the current `main`, picks
+  no canaries and plans no explore, replay or judge leg.
+- `file` downloads that run's `qa-replay-*`, `qa-verified-weekly` and `qa-filed`. It uploads the replays again as
+  one `qa-replay-weekly` and the verified findings as `qa-verified-weekly`, so the later jobs read them from this
+  run as usual. It files nothing and routes that run's `filed.json` with the current `fix.ts route`, so routing
+  changes made since then apply. That run's `fix-plan.json` is not used.
+- `fix_from_run` turns autofix on, still only with `QA_AUTOFIX_ENABLED` and on `main`, so off `main` nothing is
+  routed. Publishing follows `live` as in every run: `QA_LINEAR_ENABLED`, `main` and `dry_run` off. With the
+  default `dry_run`, publish only logs what it would do.
+- Routing sees each ticket as the earlier run filed it. A ticket closed or canceled since then is still routed, and
+  publish comments on it. A ticket whose `qa-fix/<fp>` branch exists waits, as in every run.
+- The report lists only this run's fix sessions, under a heading that names the earlier run. A failure opens its own
+  incident, `QA weekly fix-only`, so a fix-only run that passes never closes an incident a weekly run opened.
+
 ### Repository variables
 
 The `build` job has no environment, so these must be repository variables.

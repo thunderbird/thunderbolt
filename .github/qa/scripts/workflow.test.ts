@@ -38,6 +38,7 @@ type Job = {
   permissions?: unknown
   environment?: string
   env?: Record<string, string>
+  with?: Record<string, string>
 }
 
 const workflow = join(import.meta.dir, '../../workflows/qa-weekly.yml')
@@ -650,12 +651,166 @@ describe('caches', () => {
   })
 })
 
+describe('a fix-only run', () => {
+  const repo = join(import.meta.dir, '../../..')
+  const fromRun = '${{ inputs.fix_from_run }}'
+  const replayPattern = 'qa-replay-{weekly,sync,real,ios,android,android-sync,android-real}'
+  /** A directory to put first on PATH, holding executable stubs. */
+  const stubs = (files: Record<string, string>) => {
+    const bin = mkdtempSync(join(work, 'bin-'))
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(bin, name), text, { mode: 0o755 })
+    return `${bin}:${process.env.PATH}`
+  }
+  const runStep = (job: string, name: string, cwd: string, env: Record<string, string>) =>
+    Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], { cwd, env: { PATH: process.env.PATH, ...env } })
+
+  test('takes only a run id of a scheduled or dispatched run of this workflow, before anything else runs', () => {
+    const check = steps('build')[0]
+    expect(check.name).toBe('Check the run to fix from')
+    expect(check.if).toBe('inputs.fix_from_run')
+    const args = join(work, 'gh-args')
+    // Answers the run lookup with GH_ORIGIN and the artifact lookup with GH_ARTIFACT, as the --jq filters would.
+    const gh = [
+      '#!/bin/sh',
+      'echo "$@" >> "$GH_ARGS"',
+      'case "$2" in */artifacts*) echo "$GH_ARTIFACT" ;; *) echo "$GH_ORIGIN" ;; esac',
+    ]
+    const PATH = stubs({ gh: `${gh.join('\n')}\n` })
+    const checkRun = (id: string, origin: string, artifact = 'qa-filed') => {
+      rmSync(args, { force: true })
+      const lookups = { GH_ARGS: args, GH_ORIGIN: origin, GH_ARTIFACT: artifact }
+      const env = { PATH, FIX_FROM_RUN: id, GITHUB_REPOSITORY: 'owner/repo', ...lookups }
+      return runStep('build', 'Check the run to fix from', work, env).exitCode
+    }
+    const workflowPath = '.github/workflows/qa-weekly.yml'
+
+    expect(checkRun('123', `${workflowPath} workflow_dispatch`)).toBe(0)
+    const calls = readFileSync(args, 'utf8').split('\n')
+    expect(calls[0]).toStartWith('api repos/owner/repo/actions/runs/123 ')
+    expect(calls[1]).toStartWith('api repos/owner/repo/actions/runs/123/artifacts?name=qa-filed ')
+    expect(checkRun('123', `${workflowPath} schedule`)).toBe(0)
+    expect(checkRun('123', `${workflowPath} pull_request`)).toBe(1)
+    expect(checkRun('123', '.github/workflows/ci.yml workflow_dispatch')).toBe(1)
+    // Expired, or never filed: the API lists no live qa-filed.
+    expect(checkRun('123', `${workflowPath} schedule`, '')).toBe(1)
+    for (const id of ['12a', '1 2', '123; touch pwned', '../123', '']) {
+      expect({ id, exit: checkRun(id, `${workflowPath} schedule`) }).toEqual({ id, exit: 1 })
+      expect(existsSync(args)).toBe(false)
+    }
+  })
+
+  test('plans no explore, replay, judge or canary leg, but still builds the native apps', () => {
+    const plan = (fixFromRun: string) => {
+      const temp = mkdtempSync(join(work, 'plan-'))
+      if (!fixFromRun) writeFileSync(join(temp, 'qa-canaries.json'), '[]')
+      const env = { RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'out'), FIX_FROM_RUN: fixFromRun }
+      expect(runStep('build', 'Plan the legs', repo, { ...env, CHARTERS: '', JOURNEY: '' }).exitCode).toBe(0)
+      const lines = readFileSync(join(temp, 'out'), 'utf8').trim().split('\n')
+      return Object.fromEntries(lines.map((line) => line.split(/=(.*)/s).slice(0, 2)))
+    }
+    const planned = ['legs', 'nativeLegs', 'verify', 'nativeVerify', 'judge']
+
+    const weekly = plan('')
+    for (const key of planned) expect({ key, empty: weekly[key] === '[]' }).toEqual({ key, empty: false })
+    const fixOnly = plan('123')
+    for (const key of [...planned, 'skipped']) expect({ key, value: fixOnly[key] }).toEqual({ key, value: '[]' })
+    expect(fixOnly.nativeBuilds).toBe(weekly.nativeBuilds)
+    const builds: { platform: string }[] = JSON.parse(fixOnly.nativeBuilds)
+    expect(builds.map((b) => b.platform).sort()).toEqual(['android', 'ios'])
+
+    expect(step('build', 'Pick the canaries and build them').if).toBe('${{ !inputs.fix_from_run }}')
+    expect(jobs.explore.if).toBe("needs.build.outputs.legs != '[]'")
+    expect(jobs['explore-native'].if).toContain("needs.build.outputs.nativeLegs != '[]'")
+    expect(jobs.replay.if).toContain("needs.build.outputs.verify != '[]'")
+    expect(jobs['replay-native'].if).toContain("needs.build.outputs.nativeVerify != '[]'")
+    expect(jobs.judge.if).toContain("needs.build.outputs.judge != '[]'")
+    expect(jobs['build-native'].if).toBe("needs.build.outputs.nativeBuilds != '[]'")
+  })
+
+  test("files nothing and routes the earlier run's tickets, whose artifacts later jobs find under this run", () => {
+    expect(jobs.file.if).toContain("needs.build.outputs.judge != '[]' || inputs.fix_from_run != ''")
+    expect(step('file', 'File the confirmed findings').if).toBe('${{ !inputs.fix_from_run }}')
+    const at = (match: (s: Step) => boolean) => steps('file').findIndex(match)
+    const replays = indexOf('file', 'Download the replays of the run to fix from')
+    const tickets = indexOf('file', 'Download the findings and tickets of the run to fix from')
+    for (const download of [replays, tickets]) {
+      expect(steps('file')[download].if).toBe('inputs.fix_from_run')
+      expect(steps('file')[download].with).toMatchObject({ 'run-id': fromRun, 'github-token': '${{ github.token }}' })
+    }
+    expect(steps('file')[replays].with?.pattern).toBe(replayPattern)
+    expect(new Bun.Glob(steps('file')[tickets].with?.pattern ?? '').match('qa-filed')).toBe(true)
+    expect(new Bun.Glob(steps('file')[tickets].with?.pattern ?? '').match('qa-verified-weekly')).toBe(true)
+
+    // Uploaded again before the earlier run's verified.json and filed.json reach qa-out.
+    const upload = (name: string) =>
+      at((s) => !!s.uses?.startsWith('actions/upload-artifact@') && s.with?.name === name)
+    const replayUpload = upload('qa-replay-weekly')
+    const verifiedUpload = upload('qa-verified-weekly')
+    expect(replayUpload).toBeGreaterThan(replays)
+    expect(replayUpload).toBeLessThan(tickets)
+    expect(verifiedUpload).toBeGreaterThan(tickets)
+    for (const index of [replayUpload, verifiedUpload]) expect(steps('file')[index].if).toBe('inputs.fix_from_run')
+    for (const job of ['fix', 'verify-native-run', 'verify-real', 'publish']) {
+      const downloads = steps(job).filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+      for (const s of downloads) expect({ job, runId: s.with?.['run-id'] }).toEqual({ job, runId: undefined })
+      const patterns = downloads.flatMap((s) => (s.with?.pattern?.includes('qa-replay') ? [s.with.pattern] : []))
+      expect(patterns.length).toBeGreaterThan(0)
+      const misses = patterns.filter((pattern) => !new Bun.Glob(pattern).match('qa-replay-weekly'))
+      expect({ job, misses }).toEqual({ job, misses: [] })
+    }
+    expect(
+      steps('verify-native-run').some((s) => s.with?.name === 'qa-verified-weekly'),
+      'verify-native-run reads the re-uploaded verified findings',
+    ).toBe(true)
+
+    const route = indexOf('file', 'Route fixable tickets')
+    expect(route).toBeGreaterThan(verifiedUpload)
+    expect(step('file', 'Route fixable tickets').if).toBe("needs.build.outputs.autofix == 'true'")
+    expect(step('build', 'Plan the legs').env?.AUTOFIX).toContain("inputs.fix_from_run != ''")
+  })
+
+  test('publishes only when the run is live, as on any run: main, Linear on and dry_run off', () => {
+    expect(step('build', 'Plan the legs').env?.LIVE).toBe(
+      "${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}",
+    )
+    for (const name of ['Create the GitHub App token', 'Commit as the app'])
+      expect(step('publish', name).if).toBe("needs.build.outputs.live == 'true'")
+    const liveFlag = "${{ needs.build.outputs.live == 'true' && '--live' || '' }}"
+    expect(step('publish', 'Publish a draft PR').run).toContain(liveFlag)
+  })
+
+  test("reports its own fix sessions only, never the earlier run's findings as its own", () => {
+    const earlier = ['verified.json', 'filed.json', 'scorecard.json']
+    const PATH = stubs({ bun: '#!/bin/sh\nexit 0\n' })
+    const report = (fixFromRun: string) => {
+      const dir = mkdtempSync(join(work, 'report-'))
+      mkdirSync(join(dir, 'qa-out'))
+      for (const file of earlier) writeFileSync(join(dir, 'qa-out', file), '{}')
+      const summary = join(dir, 'summary.md')
+      const env = { PATH, GITHUB_STEP_SUMMARY: summary, FIX_FROM_RUN: fixFromRun, CANARIES: '' }
+      expect(runStep('report', 'Report', dir, { ...env, LEGS: '[]', NATIVE_LEGS: '[]' }).exitCode).toBe(0)
+      return {
+        left: earlier.filter((file) => existsSync(join(dir, 'qa-out', file))),
+        summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '',
+      }
+    }
+    expect(report('')).toEqual({ left: earlier, summary: '' })
+    const fixOnly = report('123')
+    expect(fixOnly.left).toEqual([])
+    expect(fixOnly.summary).toBe('# Fix-only run: fixes the tickets of run 123, explores nothing\n')
+    expect(jobs.notify.with?.incident).toBe("${{ inputs.fix_from_run && 'QA weekly fix-only' || '' }}")
+  })
+})
+
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
+  // A fix-only run looks up the earlier run in build and reads its artifacts in file.
+  const readsOtherRuns = new Set(['build', 'file'])
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
     // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
     if (name === 'app-check') continue
-    expect({ name, permissions: job.permissions }).toEqual({ name, permissions: { contents: 'read' } })
+    const permissions = readsOtherRuns.has(name) ? { actions: 'read', contents: 'read' } : { contents: 'read' }
+    expect({ name, permissions: job.permissions }).toEqual({ name, permissions })
   }
 })
 

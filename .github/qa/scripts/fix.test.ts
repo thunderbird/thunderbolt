@@ -369,6 +369,48 @@ describe('route', () => {
     expect(plan.fixes.map((t) => t.fp)).toEqual(['fp-0', 'fp-1', 'fp-2'])
   })
 
+  test("a fix-only run routes an earlier run's filed tickets with the current code, never that run's plan", async () => {
+    const charterDir = 'c2-chat-power-user-phone'
+    const ticket = (fp: string, id: string) => ({
+      fp,
+      severity: 'High' as const,
+      charterDir,
+      issueId: `issue-${id}`,
+      identifier: `THB-${id}`,
+      url: `https://linear.example/issue/THB-${id}/title`,
+    })
+    // The shapes a live run writes: a new ticket, one over the ticket cap, and a refused finding.
+    const filed: Filed[] = [
+      { ...ticket('fp-filed', '1'), id: '1', action: 'created' },
+      { ...ticket('fp-over-cap', '2'), id: '2', action: 'rolled-up' },
+      { fp: 'fp-refused', severity: 'High', charterDir, id: '3', action: 'refused', reason: 'held back' },
+    ]
+    const confirmed: VerifiedFinding[] = filed.map(({ id }) => ({
+      charterDir,
+      id,
+      finding: finding('chat', { viewport: 'phone', repro_spec: `repro/${id}.spec.ts` }),
+      replay: { failed: 3, runs: 3 },
+      artifacts: {},
+    }))
+    const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
+    await put(join(outDir, 'filed.json'), JSON.stringify(filed))
+    await put(join(outDir, 'verified.json'), JSON.stringify(verified))
+    for (const { id } of filed) await put(join(outDir, charterDir, 'repro', `${id}.spec.ts`), spec)
+    // The earlier run's plan arrives in the same artifact as its filed.json.
+    const stale = { fixes: [{ ...ticket('fp-stale', '9'), kind: 'visual' }], verifyNative: [] }
+    await put(join(outDir, 'fix-plan.json'), JSON.stringify(stale))
+
+    const plan = await route({ outDir, live: true, run: fakeRun([]), log: () => {} })
+
+    expect(plan.fixes).toHaveLength(1)
+    expect(plan.fixes[0]).toMatchObject({
+      ...ticket('fp-filed', '1'),
+      kind: 'spec',
+      spec: join(outDir, charterDir, 'repro', '1.spec.ts'),
+    })
+    expect(JSON.parse(await readFile(join(outDir, 'fix-plan.json'), 'utf8'))).toEqual(plan)
+  })
+
   test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
     const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
     const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const

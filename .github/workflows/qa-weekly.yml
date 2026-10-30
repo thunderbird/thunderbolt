@@ -46,6 +46,12 @@ on:
         description: Only check the GitHub App credentials and permissions, run nothing else
         type: boolean
         default: false
+      fix_from_run:
+        description: >-
+          Id of an earlier run (its artifacts last 7 days) whose filed tickets to fix again. Skips explore, filing
+          and the canaries, and turns autofix on
+        type: string
+        default: ''
 
 concurrency:
   group: qa-weekly
@@ -67,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      # Looks up the run a fix-only run fixes from.
+      actions: read
       contents: read
     outputs:
       legs: ${{ steps.plan.outputs.legs }}
@@ -79,6 +87,33 @@ jobs:
       autofix: ${{ steps.plan.outputs.autofix }}
       canaries: ${{ steps.canaries.outputs.count }}
     steps:
+      # That run's artifacts reach the fix agent and publish. Only a scheduled or dispatched run of this workflow
+      # counts, because a pull request from a fork runs workflow files of its own.
+      - name: Check the run to fix from
+        if: inputs.fix_from_run
+        env:
+          FIX_FROM_RUN: ${{ inputs.fix_from_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "$FIX_FROM_RUN" =~ ^[0-9]+$ ]]; then
+            echo "::error::fix_from_run takes a run id, digits only."
+            exit 1
+          fi
+          origin=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIX_FROM_RUN" --jq '[.path, .event] | join(" ")')
+          case "$origin" in
+            '.github/workflows/qa-weekly.yml schedule' | '.github/workflows/qa-weekly.yml workflow_dispatch') ;;
+            *)
+              echo "::error::Run $FIX_FROM_RUN is not a scheduled or dispatched run of this workflow."
+              exit 1
+              ;;
+          esac
+          # A pattern download of expired artifacts finds nothing and still succeeds, so this fails before the builds.
+          if ! gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIX_FROM_RUN/artifacts?name=qa-filed" \
+            --jq '.artifacts[] | select(.expired | not) | .name' | grep -qx qa-filed; then
+            echo "::error::Run $FIX_FROM_RUN has no qa-filed artifact left. Artifacts last 7 days."
+            exit 1
+          fi
+
       - &checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,6 +162,7 @@ jobs:
       # Reverts up to two recent fixes from main; a failed canary build drops the canaries instead of failing the run.
       - name: Pick the canaries and build them
         id: canaries
+        if: ${{ !inputs.fix_from_run }}
         env:
           CANARIES: ${{ inputs.canaries }}
         run: |
@@ -148,12 +184,14 @@ jobs:
         env:
           CHARTERS: ${{ inputs.charters }}
           JOURNEY: ${{ inputs.journey }}
+          FIX_FROM_RUN: ${{ inputs.fix_from_run }}
           LIVE: ${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}
           AUTOFIX: >-
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
-            (github.event_name == 'schedule' || inputs.autofix) }}
+            (github.event_name == 'schedule' || inputs.autofix || inputs.fix_from_run != '') }}
         run: |
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
+          if [ -n "$FIX_FROM_RUN" ]; then echo '[]' > "$RUNNER_TEMP/qa-canaries.json"; fi
           # An unknown charter id fails here, with the CLI's own ::error:: line.
           if ! legs=$(bun .github/qa/scripts/legs.ts --charters "$CHARTERS" --journey "$journey" \
             --canaries "$RUNNER_TEMP/qa-canaries.json"); then
@@ -161,6 +199,11 @@ jobs:
             exit 1
           fi
           native=$(sed -n 's/^nativeLegs=//p' <<< "$legs")
+          # A fix-only run explores nothing, but still builds the native apps: a native fix's check may need the app
+          # without the patch.
+          if [ -n "$FIX_FROM_RUN" ]; then
+            legs=$(sed -E 's/^(legs|nativeLegs|verify|nativeVerify|judge|skipped)=.*/\1=[]/' <<< "$legs")
+          fi
           {
             echo "$legs"
             echo "nativeBuilds=$(jq --compact-output '[.[] | {platform, runner}] | unique' <<< "$native")"
@@ -189,7 +232,7 @@ jobs:
           name: qa-dist-onboarding
           path: qa-dist-onboarding/
           retention-days: 1
-      - if: steps.canaries.outputs.count != '0'
+      - if: steps.canaries.outputs.count != '0' && !inputs.fix_from_run
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-dist-canary
@@ -1057,13 +1100,18 @@ jobs:
             ${{ matrix.leg.out }}/canary.json
           retention-days: 7
 
+  # A fix-only run has no judge leg: this job takes an earlier run's findings and tickets instead, and routes them.
   file:
     needs: [build, judge]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.judge != '[]' }}
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success' &&
+      (needs.build.outputs.judge != '[]' || inputs.fix_from_run != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: qa-agent
     permissions:
+      # Reads the artifacts of the run a fix-only run fixes from.
+      actions: read
       contents: read
     outputs:
       plan: ${{ steps.route.outputs.plan }}
@@ -1082,12 +1130,47 @@ jobs:
           pattern: 'qa-replay-{weekly,sync,real,ios,android,android-sync,android-real}'
           path: qa-out
           merge-multiple: true
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # A fix-only run uploads the earlier run's replays and verified findings again under this run, so every later
+      # job reads them as in a weekly run. One artifact holds every leg, named to match each job's replay pattern.
+      - name: Download the replays of the run to fix from
+        if: inputs.fix_from_run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: 'qa-replay-{weekly,sync,real,ios,android,android-sync,android-real}'
+          path: qa-out
+          merge-multiple: true
+          run-id: ${{ inputs.fix_from_run }}
+          github-token: ${{ github.token }}
+      - if: inputs.fix_from_run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-replay-weekly
+          path: qa-out/
+          retention-days: 7
+      - if: ${{ !inputs.fix_from_run }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-verified-weekly
           path: qa-out
-      # With a Linear key it also writes scorecard.json, the triage precision the brake reads.
+      - name: Download the findings and tickets of the run to fix from
+        if: inputs.fix_from_run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: '{qa-verified-weekly,qa-filed}'
+          path: qa-out
+          merge-multiple: true
+          run-id: ${{ inputs.fix_from_run }}
+          github-token: ${{ github.token }}
+      - if: inputs.fix_from_run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-verified-weekly
+          path: qa-out/verified.json
+          retention-days: 7
+      # With a Linear key it also writes scorecard.json, the triage precision the brake reads. A fix-only run keeps
+      # the earlier run's filed.json, whose tickets the route step below reads with the current code.
       - name: File the confirmed findings
+        if: ${{ !inputs.fix_from_run }}
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -1772,7 +1855,13 @@ jobs:
           LEGS: ${{ needs.explore.result != 'skipped' && needs.build.outputs.legs || '[]' }}
           NATIVE_LEGS: ${{ needs.explore-native.result != 'skipped' && needs.build.outputs.nativeLegs || '[]' }}
           CANARIES: ${{ needs.build.outputs.canaries }}
+          FIX_FROM_RUN: ${{ inputs.fix_from_run }}
         run: |
+          # The findings, tickets and scorecard came from the earlier run, whose own report already lists them.
+          if [ -n "$FIX_FROM_RUN" ]; then
+            rm -f qa-out/verified.json qa-out/filed.json qa-out/scorecard.json
+            echo "# Fix-only run: fixes the tickets of run $FIX_FROM_RUN, explores nothing" >> "$GITHUB_STEP_SUMMARY"
+          fi
           # A leg without a result message (a crash, a tripwire, a timeout) still gets a session, marked error/timeout.
           jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS $NATIVE_LEGS" | while read -r out charter; do
             timed_out=()
@@ -1891,6 +1980,8 @@ jobs:
     uses: ./.github/workflows/notify-on-failure.yml
     with:
       conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+      # A fix-only run that passes must not close the incident a failed weekly run opened.
+      incident: ${{ inputs.fix_from_run && 'QA weekly fix-only' || '' }}
     secrets:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

@@ -1,5 +1,6 @@
-# No top-level preload: the compiled ./server reads this file from where it starts and would run the
-# preload from disk, where Bun >= 1.3.4 binaries cannot resolve packages. createApp loads instrumentation.
+# Preload instrumentation to ensure OpenTelemetry SDK initializes
+# before any instrumented modules are imported (when OTEL is configured)
+preload = ["./src/config/instrumentation.ts"]
 
 # Mirror the repo root's supply-chain quarantine: hold every new dependency version
 # for 7 days before it is installable, which blunts a compromised-release window.

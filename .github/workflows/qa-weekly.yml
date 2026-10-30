@@ -6,9 +6,10 @@ name: QA weekly
 #
 # Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
 # token. The replay step holds no secret at all: in the real-AI leg the provider keys sit with a backend that runs as
-# another OS user, and the job's own user loses root first. Only the build job saves caches, because it runs before
-# any untrusted code. The jobs that check a fix's patch hold no secret, except verify-real, whose provider keys go to a
-# backend from a fresh checkout that never ran the patch.
+# another OS user, and the job's own user loses root first. Only build and cache-system-image save caches, because
+# they run before any untrusted code; every other job only restores them, and setup-bun's own cache is off because
+# its save runs after the job's steps. The jobs that check a fix's patch hold no secret, except verify-real, whose
+# provider keys go to a backend from a fresh checkout that never ran the patch.
 
 on:
   schedule:
@@ -53,9 +54,9 @@ concurrency:
 permissions: {}
 
 env:
-  QA_EXPLORE_MAX_BUDGET_USD: 10
-  QA_EXPLORE_MAX_TURNS: 400
-  QA_EXPLORE_TIMEOUT_MINUTES: 60
+  QA_EXPLORE_MAX_BUDGET_USD: 4.01
+  QA_EXPLORE_MAX_TURNS: 552
+  QA_EXPLORE_TIMEOUT_MINUTES: 63
   QA_FIX_MAX_BUDGET_USD: 20
   QA_FIX_MAX_TURNS: 200
   QA_FIX_TIMEOUT_MINUTES: 60
@@ -89,6 +90,8 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.4
+          # Its post step saves ~/.bun/bin after the job's steps, which in most jobs include model-written code.
+          no-cache: true
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -114,10 +117,12 @@ jobs:
       - &install-browsers
         name: Install browsers
         timeout-minutes: 10
-        # Two installs: the repo's Playwright replays specs, the MCP (pinned in mcp.json) has its own Chromium.
+        # Two installs: the repo's Playwright replays specs, the MCP (pinned in mcp.json) has its own Chromium. An
+        # install deletes the cached browsers of every Playwright copy missing from disk, and the MCP's npx copy exists
+        # only from its own install on, so the MCP goes first or the repo's install deletes its restored Chromium.
         run: |
-          bunx playwright install chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
+          bunx playwright install chromium
 
       # Reverts up to two recent fixes from main; a failed canary build drops the canaries instead of failing the run.
       - name: Pick the canaries and build them
@@ -453,6 +458,38 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # Like build, runs before any untrusted code. One 1.9 GB download from Google per run instead of one per Android
+  # job, beside build-native rather than inside it, so the download and the save stay off the build's path.
+  cache-system-image:
+    needs: build
+    if: contains(needs.build.outputs.nativeBuilds, 'android')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - *checkout
+      - name: Look up the Android system image
+        id: system-image
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # The image native.sh installs, where ubuntu-latest keeps the SDK.
+          path: &system-image-path /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
+          key: &system-image-key qa-system-image-${{ runner.os }}-${{ runner.arch }}-android-36-google_apis-x86_64
+          lookup-only: true
+      - name: Download the Android system image
+        id: system-image-install
+        if: steps.system-image.outputs.cache-hit != 'true'
+        # A failure only leaves the Android jobs to download the image themselves.
+        continue-on-error: true
+        run: .github/qa/scripts/native.sh system-image
+      - name: Save the Android system image
+        if: steps.system-image-install.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: *system-image-path
+          key: *system-image-key
+
   # Like build, runs before any untrusted code.
   build-native:
     name: build-native ${{ matrix.target.platform }}
@@ -522,7 +559,8 @@ jobs:
   # so the key may sit in the env of the canary and session steps.
   explore-native:
     name: explore ${{ matrix.leg.charter }}
-    needs: [build, build-native]
+    # cache-system-image only orders the restore after the save; a skipped or failed fill blocks nothing.
+    needs: [build, build-native, cache-system-image]
     # A platform whose build failed fails its own legs at the download, and the other platform still explores.
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeLegs != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
@@ -555,6 +593,13 @@ jobs:
       - *restore-bun-linux
       - *install
       - *setup-java
+      - &restore-system-image
+        name: Restore the Android system image
+        if: env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: *system-image-path
+          key: *system-image-key
       - &device-tools
         name: Install Maestro and the device
         if: env.QA_NO_DEVICE != 'true'
@@ -580,9 +625,7 @@ jobs:
             fi
             printf '%s\n' "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/emulator" "$ANDROID_HOME/cmdline-tools/latest/bin" \
               >> "$GITHUB_PATH"
-            sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-            yes | "$sdkmanager" --licenses > /dev/null || true
-            "$sdkmanager" --install emulator 'system-images;android-36;google_apis;x86_64' > /dev/null
+            .github/qa/scripts/native.sh system-image
           fi
       - name: Install the second device's browser
         if: matrix.leg.postgres
@@ -826,7 +869,7 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
     # Only a ceiling: a timeout loses every finding of the leg, so verify.ts starts no run that could end after it.
-    timeout-minutes: 130
+    timeout-minutes: 360
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read
@@ -854,6 +897,7 @@ jobs:
       - *restore-bun-linux
       - *install
       - *setup-java
+      - *restore-system-image
       - *device-tools
       - name: Install the browser for c7's specs
         if: matrix.leg.postgres
@@ -903,7 +947,8 @@ jobs:
             --app "$RUNNER_TEMP/apps/plain/$QA_APP_FILE" --app-onboarding "$RUNNER_TEMP/apps/onboarding/$QA_APP_FILE" \
             --leg "$LEG"
 
-      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold a leg.
+      # Read after the replay, not streamed: an adb reset ends a stream. The log buffer is grown at boot to hold
+      # a 6-hour leg.
       - name: Save the emulator's, adb's and Maestro's logs
         if: always() && matrix.leg.platform == 'android' && !matrix.leg.real
         run: |
@@ -1058,7 +1103,9 @@ jobs:
             # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
             echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Also when filing failed: filed.json then lists the tickets that did reach Linear and the attachments lost.
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-filed
           path: |
@@ -1424,6 +1471,7 @@ jobs:
       - *restore-bun-linux
       - *install
       - *setup-java
+      - *restore-system-image
       - *device-tools
       - if: steps.patched.outcome == 'success' && matrix.check.unpatched
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1753,6 +1801,7 @@ jobs:
       - *install
       - *setup-java
       - *native-build-tools
+      - *restore-system-image
       - *device-tools
       - name: Build the control app
         env:

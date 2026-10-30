@@ -9,7 +9,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  extraRuns,
   nativeDriverStartupMinutes,
   nativeJobMinutes,
   nativeReplayCap,
@@ -153,6 +152,11 @@ describe('native explore', () => {
     expect(keyed.map(label)).toEqual(['Check the session output for secrets'])
     for (const s of keyed) expect(s.run ?? '').not.toMatch(/bun |\.github\/|explore\.sh/)
   })
+})
+
+test('filed.json is uploaded even when filing fails, so the report lists the tickets that reached Linear', () => {
+  const upload = steps('file').find((s) => s.with?.name === 'qa-filed')
+  expect(upload?.if).toBe('always()')
 })
 
 describe('fix job', () => {
@@ -356,8 +360,10 @@ describe('publish', () => {
   })
 })
 
-test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
-  const runs = 3 + nativeReplayCap * (3 + extraRuns)
+test("a native replay leg's base runs fit its timeout, since a timeout loses every finding of the leg", () => {
+  // The control's 3 runs and every finding's 3. Extra runs are left out: one starts only while the base runs of
+  // every later finding still fit the clock.
+  const runs = 3 + nativeReplayCap * 3
   const minutes =
     runs * nativeRunEstimateMinutes + nativeSetupEstimateMinutes + nativeWrapUpMinutes + nativeDriverStartupMinutes
   expect(minutes).toBeLessThan(nativeJobMinutes)
@@ -365,6 +371,12 @@ test("a native replay leg's worst case fits its timeout, since a timeout loses e
   expect(jobs['replay-native']['timeout-minutes']).toBe(nativeJobMinutes)
   // ...counted from the job's first step, so the setup before the replay step is on the clock.
   expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
+})
+
+test("the iOS log stream outlasts a replay leg, since a run after it ends sees no line and can't prove a bug", () => {
+  const nativeSh = readFileSync(join(import.meta.dir, 'native.sh'), 'utf8')
+  const hours = Number(/log stream .* --timeout (\d+)h/.exec(nativeSh)?.[1])
+  expect(hours * 60).toBeGreaterThan(jobs['replay-native']['timeout-minutes'] ?? 0)
 })
 
 describe('native jobs', () => {
@@ -466,6 +478,64 @@ describe('native jobs', () => {
         "always() && steps.tracked.outcome == 'success'",
       )
     }
+  })
+})
+
+describe('caches', () => {
+  const cacheSteps = (job: string, action: RegExp) =>
+    steps(job)
+      .filter((s) => action.test(s.uses ?? ''))
+      .map((s) => JSON.stringify({ path: s.with?.path, key: s.with?.key }))
+  const saving = /^actions\/cache(\/save)?@/
+
+  test('only build and cache-system-image save caches, and every cache another job restores is one of theirs', () => {
+    const savers = ['build', 'cache-system-image']
+    expect(Object.keys(jobs).filter((job) => cacheSteps(job, saving).length > 0)).toEqual(savers)
+    const saved = savers.flatMap((job) => cacheSteps(job, saving))
+    for (const job of Object.keys(jobs))
+      for (const restored of cacheSteps(job, /^actions\/cache\/restore@/))
+        expect({ job, restored, saved: saved.includes(restored) }).toEqual({ job, restored, saved: true })
+  })
+
+  test("setup-bun's own cache is off, since its post step would save after the job's steps", () => {
+    const setups = Object.entries(jobs).flatMap(([job, { steps = [] }]) =>
+      steps
+        .filter((s) => s.uses?.startsWith('oven-sh/setup-bun@'))
+        .map((s) => ({ job, noCache: s.with?.['no-cache'] })),
+    )
+    expect(setups.length).toBeGreaterThan(0)
+    for (const { job, noCache } of setups) expect({ job, noCache: String(noCache) }).toEqual({ job, noCache: 'true' })
+  })
+
+  test('cache-system-image caches the image native.sh installs, before untrusted code, and device jobs restore it', async () => {
+    const fill = 'cache-system-image'
+    const native = await Bun.file(join(import.meta.dir, 'native.sh')).text()
+    const image = native.match(/^android_image="(system-images;[^"$]+);\$android_abi"$/m)?.[1] ?? '?'
+    // CI's runners are x86_64.
+    expect(step(fill, 'Look up the Android system image').with?.path).toEndWith(`/${image.replaceAll(';', '/')}/x86_64`)
+    expect(jobs[fill].needs).toBe('build')
+    expect(jobs[fill].if).toBe("contains(needs.build.outputs.nativeBuilds, 'android')")
+    // The first Android job to restore waits for the save; the later ones wait on it.
+    expect(jobs['explore-native'].needs).toContain(fill)
+    const download = step(fill, 'Download the Android system image')
+    expect(download.run).toBe('.github/qa/scripts/native.sh system-image')
+    expect(download.if).toBe("steps.system-image.outputs.cache-hit != 'true'")
+    // A failed install can leave half an image, which would then reach every Android job.
+    expect(step(fill, 'Save the Android system image').if).toBe("steps.system-image-install.outcome == 'success'")
+    const deviceJobs = Object.keys(jobs).filter((job) => indexOf(job, 'Install Maestro and the device') >= 0)
+    expect(deviceJobs.length).toBeGreaterThan(0)
+    for (const job of deviceJobs) {
+      expect(step(job, 'Install Maestro and the device').run).toContain('.github/qa/scripts/native.sh system-image')
+      const restore = indexOf(job, 'Restore the Android system image')
+      expect(restore).toBe(indexOf(job, 'Install Maestro and the device') - 1)
+      expect(steps(job)[restore].if).toBe("env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'")
+    }
+  })
+
+  test("the MCP's Chromium installs before the repo's, whose install would delete it otherwise", () => {
+    const [first, second] = (step('build', 'Install browsers').run ?? '').trim().split('\n')
+    expect(first).toStartWith('npx --yes --package @playwright/mcp@')
+    expect(second).toBe('bunx playwright install chromium')
   })
 })
 

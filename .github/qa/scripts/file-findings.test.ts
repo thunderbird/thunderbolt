@@ -33,6 +33,8 @@ type Handlers = {
   /** The team's workflow states; the fake returns the ones whose type the query asks for. */
   states?: { id: string; type: string }[]
   scorecard?: { labels: { nodes: { name: string }[] } }[]
+  /** Answers an operation (`PUT` for the storage upload) with this response instead of success, when it returns one. */
+  fail?: (op: string) => Response | undefined
 }
 
 type Input = { title: string; stateId: string; labelIds: string[]; description: string; priority: number }
@@ -55,11 +57,13 @@ const fakeLinear = (handlers: Handlers = {}) => {
   const fetchFn = asFetch(async (url, init) => {
     if (String(url).includes('upload.test')) {
       ops.push({ op: 'PUT', variables: { headers: Object.fromEntries(new Headers(init?.headers)) } })
-      return new Response('', { status: 200 })
+      return handlers.fail?.('PUT') ?? new Response('', { status: 200 })
     }
     const { query, variables }: { query: string; variables: Vars } = JSON.parse(String(init?.body))
     const op = /^\s*(?:query|mutation) (\w+)/.exec(query)?.[1] ?? ''
     ops.push({ op, variables })
+    const failure = handlers.fail?.(op)
+    if (failure) return failure
     const data = (() => {
       if (op === 'Teams') return { teams: { nodes: [{ id: 't1', name: 'Thunderbolt' }] } }
       if (op === 'QaSetup') {
@@ -548,6 +552,87 @@ describe('one ticket per defect from the grouping call', () => {
   })
 })
 
+describe('Linear failures', () => {
+  const twoVisual = () =>
+    writeVerified([visualVerified(), visualVerified({ element: 'button "Back"', screenshot: 'mcp/page-2.png' })])
+  const graphqlError = (message: string, status = 400) => Response.json({ errors: [{ message }] }, { status })
+
+  test('a rejected upload files the ticket without it, logs why, and moves on to the next ticket', async () => {
+    await twoVisual()
+    let uploadsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'FileUpload' && uploadsAnswered++ === 0 ? graphqlError('File uploads are not allowed') : undefined,
+    })
+    const lines: string[] = []
+    const filed = await run(api.fetchFn, { log: (l) => lines.push(l) })
+    expect(filed.map((f) => f.action)).toEqual(['created', 'created'])
+    expect(created(api).map((input) => input.description.includes('![Screenshot]'))).toEqual([false, true])
+    const reason = 'Linear FileUpload HTTP 400: File uploads are not allowed'
+    expect(filed[0].lostAttachments).toEqual([{ kind: 'screenshot', reason }])
+    expect(filed[1].lostAttachments).toBeUndefined()
+    expect(lines).toEqual([`::warning::${filed[0].fp}: filing without the screenshot: ${reason}`])
+    expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))[0].lostAttachments).toEqual([
+      { kind: 'screenshot', reason },
+    ])
+  })
+
+  test("a failed storage upload logs storage's message, never the upload URL's signature", async () => {
+    await writeVerified([{}], 'replay/v.webm')
+    await mkdir(join(outDir, 'replay'), { recursive: true })
+    await writeFile(join(outDir, 'replay/v.webm'), 'video')
+    // The sanitizer keeps links to Linear's uploads host, so only the query strip keeps the signature out.
+    const signed = 'https://uploads.linear.app/x?X-Goog-Signature=deadbeef'
+    const xml = `<Error><Code>AccessDenied</Code><Message>Denied for ${signed}</Message></Error>`
+    const lines: string[] = []
+    const [entry] = await run(
+      fakeLinear({ fail: (op) => (op === 'PUT' ? new Response(xml, { status: 403 }) : undefined) }).fetchFn,
+      { log: (l) => lines.push(l) },
+    )
+    expect(entry).toMatchObject({ action: 'created', lostAttachments: [{ kind: 'video' }] })
+    expect(lines.join('\n')).toContain('Linear upload HTTP 403: Denied for')
+    expect(lines.join('\n')).not.toContain('deadbeef')
+  })
+
+  test('a ticket Linear will not create fails the run only after the others are filed', async () => {
+    await writeVerified(numbered(2))
+    let createsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
+    })
+    const lines: string[] = []
+    await expect(run(api.fetchFn, { log: (l) => lines.push(l) })).rejects.toThrow('Filing failed for 1')
+    expect(created(api)).toHaveLength(2)
+    expect(lines.join('\n')).toContain('Linear CreateIssue HTTP 200 GraphQL errors: Title is too long')
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
+  })
+
+  test('a refused ticket takes no place under the cap, so the next bug still gets its own ticket', async () => {
+    await writeVerified(numbered(9))
+    let createsAnswered = 0
+    const api = fakeLinear({
+      fail: (op) =>
+        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
+    })
+    await expect(run(api.fetchFn)).rejects.toThrow('Filing failed for 1')
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(filed.map((f) => f.action)).toEqual(Array(8).fill('created'))
+  })
+
+  test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {
+    await writeVerified([{ area: 'security', title: 'Leaky token list', oracle: { type: 'http-5xx', evidence: 'x' } }])
+    const echo = 'Variable "$input" got invalid value { title: "Leaky token list" }'
+    const api = fakeLinear({ fail: (op) => (op === 'CreateIssue' ? graphqlError(echo) : undefined) })
+    const lines: string[] = []
+    const error = await run(api.fetchFn, { log: (l) => lines.push(l) }).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(Error)
+    expect(lines).toEqual([expect.stringContaining('Linear CreateIssue HTTP 400')])
+    expect(`${lines.join('\n')}\n${String(error)}`).not.toContain('Leaky')
+  })
+})
+
 describe('judged priority', () => {
   test('a sign-in code field with no accessible name, judged High, files High', async () => {
     const signInCodeField: Judged = {
@@ -611,12 +696,16 @@ describe('visual findings', () => {
     expect(api.ops.find((o) => o.op === 'PUT')?.variables.headers).toMatchObject({ 'content-type': 'image/jpeg' })
   })
 
-  test('a screenshot that is not a PNG or JPEG is never uploaded', async () => {
+  test('a screenshot that is not a PNG or JPEG is never uploaded, and the ticket files without it', async () => {
     await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
     await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), '<svg onload="x()">')
     const api = fakeLinear()
-    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG, WebM or MP4 file')
+    const [entry] = await run(api.fetchFn)
     expect(uploads(api)).toEqual([])
+    expect(created(api)[0].description).not.toContain('![Screenshot]')
+    expect(entry.lostAttachments).toEqual([
+      { kind: 'screenshot', reason: 'not a PNG, JPEG, WebM or MP4 file: page-1.png' },
+    ])
   })
 
   test('a security visual finding uploads no screenshot', async () => {

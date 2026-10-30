@@ -2,11 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useReducer, useRef, type KeyboardEvent, type RefObject } from 'react'
+import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } from 'react'
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
-import { chipMarker, findSkillTokens } from './parse-skill-tokens'
+import {
+  chipMarker,
+  findSkillTokens,
+  foldPendingSigils,
+  hasPendingSigil,
+  isPendingSigil,
+  pendingSigilForKey,
+} from './parse-skill-tokens'
 import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
 
 /**
@@ -29,8 +36,8 @@ export type SlashState = { tokenStart: number; query: string }
  *
  * The token begins at the first character after the most recent whitespace
  * (space / tab / newline) before the caret, or at index 0 if none. It must
- * start with `/` or `@` to be considered a trigger token; otherwise we return
- * `null`. Both triggers open the same skill picker; selecting a skill inserts
+ * start with `/`, `@` or a pending sigil to be considered a trigger token;
+ * otherwise we return `null`. Both triggers open the same skill picker; selecting a skill inserts
  * its `/Display Title` token (normalized to the slug at send time), while
  * agent commands insert their literal `/name`. Mid-word `@` (e.g. an email
  * address) never matches because the token wouldn't *start* with the trigger.
@@ -46,7 +53,7 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   const lastWs = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n'), before.lastIndexOf('\t'))
   const tokenStart = lastWs + 1
   const token = value.slice(tokenStart, cursor)
-  if (!token.startsWith('/') && !token.startsWith('@')) {
+  if (!token.startsWith('/') && !token.startsWith('@') && !isPendingSigil(token[0])) {
     return null
   }
   // Which trigger opened the token is irrelevant downstream — selection
@@ -54,16 +61,11 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   return { tokenStart, query: token.slice(1) }
 }
 
-/** A picker opened by a swallowed `/` or `@`: the sigil is held here, not in the value. */
-type Trigger = { start: number; sigil: string }
-
-/** Put the swallowed sigil back into the value at the trigger start. */
-const restoreSigil = (value: string, trigger: Trigger): string =>
-  value.slice(0, trigger.start) + trigger.sigil + value.slice(trigger.start)
-
-/** True while the caret stays inside the trigger's query (no whitespace in it). */
-const caretInTrigger = (value: string, caret: number, trigger: Trigger): boolean =>
-  caret >= trigger.start && !/\s/.test(value.slice(trigger.start, caret))
+/** The query at the caret when a pending sigil opened its token, else null. */
+const pendingQueryAt = (value: string, caret: number): string | null => {
+  const state = getSlashState(value, caret)
+  return state && isPendingSigil(value[state.tokenStart]) ? state.query : null
+}
 
 /** True for a printable, non-space key typed with a collapsed caret right after a chip. */
 const typedAgainstChip = (
@@ -83,37 +85,22 @@ const typedAgainstChip = (
   )
 }
 
-/** Slash state plus the number of sigil characters in the value before the query. */
-type ActiveToken = SlashState & { sigilLength: 0 | 1 }
-
 /** True at the start of the input or right after whitespace. */
 const isTriggerBoundary = (value: string, caret: number): boolean => caret === 0 || /\s/.test(value[caret - 1] ?? '')
 
-/** Resolve the token at the caret: a pending trigger first, else a sigil in the value. */
-const resolveActiveToken = (value: string, cursor: number, trigger: Trigger | null): ActiveToken | null => {
-  if (trigger && caretInTrigger(value, cursor, trigger)) {
-    return { tokenStart: trigger.start, query: value.slice(trigger.start, cursor), sigilLength: 0 }
-  }
-  const state = getSlashState(value, cursor)
-  return state && { ...state, sigilLength: 1 }
-}
-
-/** Swallow a `/` or `@` keypress that starts a token. Returns the trigger it opened, or null. */
-const openTriggerFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): Trigger | null => {
-  if ((e.key !== '/' && e.key !== '@') || e.metaKey || e.ctrlKey || e.altKey) {
+/** The pending sigil for a `/` or `@` keypress that starts a token, or null. */
+const pendingSigilFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): string | null => {
+  if (e.metaKey || e.ctrlKey || e.altKey) {
     return null
   }
   const { selectionStart, selectionEnd } = e.currentTarget
   if (selectionStart !== selectionEnd || !isTriggerBoundary(value, selectionStart)) {
     return null
   }
-  e.preventDefault()
-  return { start: selectionStart, sigil: e.key }
+  return pendingSigilForKey(e.key)
 }
 
 type SlashAction =
-  | { type: 'OPEN_TRIGGER'; trigger: Trigger }
-  | { type: 'CLEAR_TRIGGER' }
   | { type: 'SET_CURSOR'; pos: number }
   | { type: 'SET_HIGHLIGHT'; idx: number }
   | { type: 'RESET_HIGHLIGHT' }
@@ -126,22 +113,16 @@ type SlashUiState = {
   /** Suppresses the popup for a specific token-start, so a re-render after
    * Esc doesn't reopen the same suggestion list until the user types more. */
   closedForToken: number | null
-  trigger: Trigger | null
 }
 
 const initialState: SlashUiState = {
   cursorPos: 0,
   highlightedIdx: 0,
   closedForToken: null,
-  trigger: null,
 }
 
 const reducer = (state: SlashUiState, action: SlashAction): SlashUiState => {
   switch (action.type) {
-    case 'OPEN_TRIGGER':
-      return { ...state, cursorPos: action.trigger.start, trigger: action.trigger, closedForToken: null }
-    case 'CLEAR_TRIGGER':
-      return state.trigger === null ? state : { ...state, trigger: null }
     case 'SET_CURSOR':
       return { ...state, cursorPos: action.pos }
     case 'SET_HIGHLIGHT':
@@ -185,20 +166,9 @@ export const useSlashCommand = ({
   enabled?: boolean
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { cursorPos, highlightedIdx, closedForToken, trigger } = state
-  // Synchronous copy for event handlers that run before the next render.
-  const triggerRef = useRef<Trigger | null>(null)
+  const { cursorPos, highlightedIdx, closedForToken } = state
 
-  const slashState = useMemo(
-    () => (enabled ? resolveActiveToken(value, cursorPos, trigger) : null),
-    [enabled, value, cursorPos, trigger],
-  )
-
-  // Drop the trigger once the caret leaves it or whitespace ends it.
-  if (trigger !== null && slashState?.sigilLength !== 0) {
-    triggerRef.current = null
-    dispatch({ type: 'CLEAR_TRIGGER' })
-  }
+  const slashState = useMemo(() => (enabled ? getSlashState(value, cursorPos) : null), [enabled, value, cursorPos])
 
   // User skills first, then the agent's external commands; each alphabetical,
   // both filtered by the in-progress query. Skills match anywhere in the
@@ -259,12 +229,26 @@ export const useSlashCommand = ({
     dispatch({ type: 'CLEAR_DISMISS' })
   }
 
+  /** Write value and selection to the textarea in one step, so a select event never sees the caret React's commit moved. */
+  const writeEdit = useCallback(
+    (next: string, start: number, end: number = start) => {
+      const textarea = inputRef.current
+      if (textarea) {
+        textarea.value = next
+        textarea.setSelectionRange(start, end)
+      }
+      setValue(next)
+      dispatch({ type: 'SET_CURSOR', pos: start })
+    },
+    [inputRef, setValue],
+  )
+
   const insertToken = useCallback(
     (token: string) => {
       if (!slashState) {
         return
       }
-      const tokenEnd = slashState.tokenStart + slashState.sigilLength + slashState.query.length
+      const tokenEnd = slashState.tokenStart + 1 + slashState.query.length
       const before = value.slice(0, slashState.tokenStart)
       const after = value.slice(tokenEnd)
       // Add a space only to keep following text from fusing with the token.
@@ -272,18 +256,10 @@ export const useSlashCommand = ({
       const insert = needsSpace ? `${token} ` : token
       const next = before + insert + after
       const newCursor = slashState.tokenStart + insert.length
-      // Update value and cursor in the same commit so the popup doesn't
-      // flicker open on a stale-cursor render between setValue and rAF.
-      triggerRef.current = null
-      dispatch({ type: 'CLEAR_TRIGGER' })
-      setValue(next)
-      dispatch({ type: 'SET_CURSOR', pos: newCursor })
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.setSelectionRange(newCursor, newCursor)
-      })
+      writeEdit(next, newCursor)
+      inputRef.current?.focus()
     },
-    [slashState, value, setValue, inputRef],
+    [slashState, value, writeEdit, inputRef],
   )
 
   const hasSuggestions = useMemo(
@@ -310,74 +286,60 @@ export const useSlashCommand = ({
     [insertToken, skillToken],
   )
 
-  /** Write the swallowed sigil back into `live` and place the caret after it. */
-  const foldTrigger = useCallback(
-    (live: string, caret: number) => {
-      const pending = triggerRef.current
-      if (!pending) {
-        return
-      }
-      triggerRef.current = null
-      dispatch({ type: 'CLEAR_TRIGGER' })
-      const pos = caret >= pending.start ? caret + 1 : caret
-      setValue(restoreSigil(live, pending))
-      dispatch({ type: 'SET_CURSOR', pos })
-      requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos))
-    },
-    [setValue, inputRef],
-  )
-
-  /** Route a textarea edit; a trigger that can no longer match gets its sigil back. */
+  /** Route a textarea edit; a pending sigil that can no longer match becomes the typed character. */
   const handleChange = useCallback(
     (next: string, caret: number) => {
-      const pending = triggerRef.current
-      const continues =
-        pending && caretInTrigger(next, caret, pending) && itemsFor(next.slice(pending.start, caret)).length > 0
-      if (pending && !continues) {
-        foldTrigger(next, caret)
+      const query = enabled ? pendingQueryAt(next, caret) : null
+      if (hasPendingSigil(next) && (query === null || itemsFor(query).length === 0)) {
+        writeEdit(foldPendingSigils(next), caret)
         return
       }
       setValue(next)
     },
-    [itemsFor, foldTrigger, setValue],
+    [enabled, itemsFor, writeEdit, setValue],
   )
 
-  /** Track the caret; leaving a pending trigger writes its sigil back. */
+  /** Track the caret; leaving a pending sigil turns it into the typed character. */
   const handleSelect = useCallback(
-    (caret: number) => {
-      const pending = triggerRef.current
+    (start: number, end: number) => {
       const live = inputRef.current?.value ?? value
-      if (pending && !caretInTrigger(live, caret, pending)) {
-        foldTrigger(live, caret)
+      if (hasPendingSigil(live) && (!enabled || pendingQueryAt(live, start) === null)) {
+        writeEdit(foldPendingSigils(live), start, end)
         return
       }
-      dispatch({ type: 'SET_CURSOR', pos: caret })
+      dispatch({ type: 'SET_CURSOR', pos: start })
     },
-    [inputRef, value, foldTrigger],
+    [enabled, inputRef, value, writeEdit],
   )
 
-  /** `value` with a pending trigger's sigil restored, for sending. */
-  const valueWithTrigger = useMemo(() => (trigger ? restoreSigil(value, trigger) : value), [value, trigger])
+  /** Close the picker for the token at the caret; a pending sigil becomes the typed character. */
+  const dismissToken = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>, tokenStart: number) => {
+      if (isPendingSigil(value[tokenStart])) {
+        writeEdit(foldPendingSigils(value), e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
+      }
+      dispatch({ type: 'DISMISS', tokenStart })
+    },
+    [value, writeEdit],
+  )
 
   /** Insert the typed key after a space so it does not fuse with the chip before it. */
   const insertSpacedChar = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       e.preventDefault()
       const caret = e.currentTarget.selectionStart
-      const pos = caret + 2
-      setValue(`${value.slice(0, caret)} ${e.key}${value.slice(caret)}`)
-      dispatch({ type: 'SET_CURSOR', pos })
-      requestAnimationFrame(() => inputRef.current?.setSelectionRange(pos, pos))
+      writeEdit(`${value.slice(0, caret)} ${e.key}${value.slice(caret)}`, caret + 2)
     },
-    [value, setValue, inputRef],
+    [value, writeEdit],
   )
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      const opened = enabled && hasSuggestions ? openTriggerFromKey(e, value) : null
-      if (opened) {
-        triggerRef.current = opened
-        dispatch({ type: 'OPEN_TRIGGER', trigger: opened })
+      const pendingSigil = enabled && hasSuggestions ? pendingSigilFromKey(e, value) : null
+      if (pendingSigil) {
+        e.preventDefault()
+        const caret = e.currentTarget.selectionStart
+        writeEdit(value.slice(0, caret) + pendingSigil + value.slice(caret), caret + 1)
         return
       }
       if (typedAgainstChip(e, value, displayNameToSlug)) {
@@ -385,13 +347,6 @@ export const useSlashCommand = ({
         return
       }
       if (!popupOpen) {
-        return
-      }
-      if (e.key === 'Backspace' && slashState?.sigilLength === 0 && slashState.query === '') {
-        // The sigil is not in the value, so cancel the trigger instead.
-        e.preventDefault()
-        triggerRef.current = null
-        dispatch({ type: 'CLEAR_TRIGGER' })
         return
       }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
@@ -408,10 +363,8 @@ export const useSlashCommand = ({
         dispatch({ type: 'SET_HIGHLIGHT', idx: Math.max(highlightedIdx - 1, 0) })
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        if (triggerRef.current) {
-          foldTrigger(value, e.currentTarget.selectionStart)
-        } else if (slashState) {
-          dispatch({ type: 'DISMISS', tokenStart: slashState.tokenStart })
+        if (slashState) {
+          dismissToken(e, slashState.tokenStart)
         }
       }
     },
@@ -426,7 +379,8 @@ export const useSlashCommand = ({
       slashState,
       displayNameToSlug,
       insertSpacedChar,
-      foldTrigger,
+      writeEdit,
+      dismissToken,
     ],
   )
 
@@ -444,6 +398,5 @@ export const useSlashCommand = ({
     handleKeyDown,
     handleChange,
     handleSelect,
-    valueWithTrigger,
   }
 }

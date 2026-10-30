@@ -7,7 +7,7 @@ import { act, renderHook } from '@testing-library/react'
 import { createRef, type KeyboardEvent } from 'react'
 
 import type { Skill } from '@/types'
-import { chipMarker } from './parse-skill-tokens'
+import { chipMarker, deleteSkillTokenAt, pendingSigilForKey } from './parse-skill-tokens'
 import { getSlashState, useSlashCommand } from './use-slash-command'
 
 const fakeSkill = (name: string, label: string | null = null): Skill => ({
@@ -309,156 +309,281 @@ describe('useSlashCommand enabled option', () => {
   })
 })
 
-describe('useSlashCommand swallowed trigger', () => {
+describe('useSlashCommand pending sigil', () => {
   const library = [fakeSkill('alpha'), fakeSkill('beta')]
-  const inputRef = createRef<HTMLTextAreaElement>()
+  const pendingSlash = pendingSigilForKey('/')!
+  const pendingAt = pendingSigilForKey('@')!
 
   /** A keydown with the textarea selection the hook reads from `currentTarget`. */
-  const triggerEvent = (key: string, caret: number, selectionEnd = caret) => {
+  const keyAt = (key: string, caret: number, selectionEnd = caret) => {
     const e = { key, shiftKey: false, preventDefault: mock(), currentTarget: { selectionStart: caret, selectionEnd } }
     return e as unknown as KeyboardEvent<HTMLTextAreaElement>
   }
 
+  /** Render the hook with a real textarea whose value follows every `setValue`. */
   const setup = (initial: string, skills = library) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = initial
+    const inputRef = createRef<HTMLTextAreaElement>() as { current: HTMLTextAreaElement | null }
+    inputRef.current = textarea
     let value = initial
     const hook = renderHook(
-      ({ v }: { v: string }) =>
+      ({ v, enabled }: { v: string; enabled: boolean }) =>
         useSlashCommand({
           value: v,
           setValue: (next) => (value = next),
           inputRef,
           library: skills,
           isEnabled: () => true,
+          enabled,
         }),
-      { initialProps: { v: initial } },
+      { initialProps: { v: initial, enabled: true } },
     )
-    return { hook, getValue: () => value }
+    const sync = () => hook.rerender({ v: value, enabled: true })
+    const press = (key: string, caret: number, selectionEnd = caret) => {
+      const event = keyAt(key, caret, selectionEnd)
+      act(() => hook.result.current.handleKeyDown(event))
+      sync()
+      return event
+    }
+    const change = (next: string, caret: number) => {
+      act(() => hook.result.current.handleChange(next, caret))
+      // The textarea's select event follows every input event.
+      act(() => hook.result.current.setCursorPos(caret))
+      sync()
+    }
+    const select = (start: number, end = start) => {
+      textarea.value = value
+      act(() => hook.result.current.handleSelect(start, end))
+      sync()
+    }
+    /** Replace the value from outside the hook, as `clearDraft` and `setInput` do. */
+    const replaceFromOutside = (next: string) => {
+      value = next
+      sync()
+    }
+    return { hook, textarea, press, change, select, replaceFromOutside, getValue: () => value }
   }
 
-  it.each(['/', '@'])('opens the picker on "%s" without writing it to the value', (key) => {
-    const { hook, getValue } = setup('')
-    const event = triggerEvent(key, 0)
-    act(() => hook.result.current.handleKeyDown(event))
+  it.each([
+    ['/', pendingSlash],
+    ['@', pendingAt],
+  ])('stores a zero-width stand-in for "%s" and opens the picker', (key, pending) => {
+    const { hook, press, getValue } = setup('')
+    const event = press(key, 0)
     expect(event.preventDefault).toHaveBeenCalled()
-    expect(getValue()).toBe('')
+    expect(getValue()).toBe(pending)
     expect(hook.result.current.popupOpen).toBe(true)
     expect(hook.result.current.popupItems).toHaveLength(2)
   })
 
   it('opens after whitespace', () => {
-    const { hook } = setup('hello ')
-    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 6)))
+    const { hook, press, getValue } = setup('hello ')
+    press('/', 6)
+    expect(getValue()).toBe(`hello ${pendingSlash}`)
     expect(hook.result.current.popupOpen).toBe(true)
   })
 
   it('leaves a mid-word "/" as a literal character', () => {
-    const { hook } = setup('and')
-    const event = triggerEvent('/', 3)
-    act(() => hook.result.current.handleKeyDown(event))
+    const { hook, press } = setup('and')
+    const event = press('/', 3)
     expect(event.preventDefault).not.toHaveBeenCalled()
     expect(hook.result.current.popupOpen).toBe(false)
   })
 
   it('leaves "/" literal when there is a selection range', () => {
-    const { hook } = setup('abc')
-    const event = triggerEvent('/', 0, 3)
-    act(() => hook.result.current.handleKeyDown(event))
-    expect(event.preventDefault).not.toHaveBeenCalled()
+    const { press } = setup('abc')
+    expect(press('/', 0, 3).preventDefault).not.toHaveBeenCalled()
   })
 
   it('leaves "/" literal when nothing could be suggested', () => {
-    const { hook } = setup('', [])
-    const event = triggerEvent('/', 0)
-    act(() => hook.result.current.handleKeyDown(event))
-    expect(event.preventDefault).not.toHaveBeenCalled()
+    const { press } = setup('', [])
+    expect(press('/', 0).preventDefault).not.toHaveBeenCalled()
   })
 
-  it('filters on text typed after the trigger and selects at the right offset', () => {
-    const { hook, getValue } = setup('')
-    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
-    hook.rerender({ v: 'al' })
-    act(() => hook.result.current.setCursorPos(2))
+  it('filters on the typed query and replaces the whole token on select', () => {
+    const { hook, press, change, getValue } = setup('')
+    press('/', 0)
+    change(`${pendingSlash}al`, 3)
     expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['alpha'])
-    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
+    press('Enter', 3)
     expect(getValue()).toBe(`${chipMarker}Alpha`)
   })
 
   it('keeps following text intact when selecting', () => {
-    const { hook, getValue } = setup('hi there')
-    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 3)))
-    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
+    const { press, getValue } = setup('hi there')
+    press('/', 3)
+    press('Enter', 4)
     expect(getValue()).toBe(`hi ${chipMarker}Alpha there`)
   })
 
-  it('closes when whitespace ends the query', () => {
-    const { hook } = setup('')
-    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
-    hook.rerender({ v: 'al ' })
-    act(() => hook.result.current.setCursorPos(3))
-    expect(hook.result.current.popupOpen).toBe(false)
-  })
-
-  it('Backspace on an empty query cancels the trigger', () => {
-    const { hook } = setup('')
-    act(() => hook.result.current.handleKeyDown(triggerEvent('/', 0)))
-    const event = keyEvent('Backspace')
-    act(() => hook.result.current.handleKeyDown(event))
-    expect(event.preventDefault).toHaveBeenCalled()
-    expect(hook.result.current.popupOpen).toBe(false)
-  })
-
-  const open = (initial = '') => {
-    const ctx = setup(initial)
-    act(() => ctx.hook.result.current.handleKeyDown(triggerEvent('/', 0)))
-    return ctx
-  }
-
   it('writes the sigil back when whitespace ends the query', () => {
-    const { hook, getValue } = open()
-    act(() => hook.result.current.handleChange('al ', 3))
+    const { hook, press, change, getValue } = setup('')
+    press('/', 0)
+    change(`${pendingSlash}al `, 4)
     expect(getValue()).toBe('/al ')
+    expect(hook.result.current.popupOpen).toBe(false)
   })
 
   it('writes the sigil back when nothing matches the query', () => {
-    const { hook, getValue } = open()
-    act(() => hook.result.current.handleChange('zz', 2))
+    const { press, change, getValue } = setup('')
+    press('/', 0)
+    change(`${pendingSlash}zz`, 3)
     expect(getValue()).toBe('/zz')
   })
 
-  it('keeps the value free of the sigil while a match remains', () => {
-    const { hook, getValue } = open()
-    act(() => hook.result.current.handleChange('al', 2))
-    expect(getValue()).toBe('al')
+  it('keeps the stand-in while a match remains', () => {
+    const { press, change, getValue } = setup('')
+    press('/', 0)
+    change(`${pendingSlash}al`, 3)
+    expect(getValue()).toBe(`${pendingSlash}al`)
   })
 
-  it('writes the sigil back on Escape', () => {
-    const { hook, getValue } = open()
-    hook.rerender({ v: 'al' })
-    act(() => hook.result.current.handleKeyDown(triggerEvent('Escape', 2)))
-    expect(getValue()).toBe('/al')
+  it('writes "@" back as "@"', () => {
+    const { press, change, getValue } = setup('ping ')
+    press('@', 5)
+    change(`ping ${pendingAt}zz`, 8)
+    expect(getValue()).toBe('ping @zz')
   })
 
-  it('exposes the value with the sigil restored while the trigger is pending', () => {
-    const { hook } = open()
-    hook.rerender({ v: 'al' })
-    expect(hook.result.current.valueWithTrigger).toBe('/al')
+  describe('Escape', () => {
+    it('restores the sigil and closes the picker with one press', () => {
+      const { hook, press, change, getValue } = setup('')
+      press('/', 0)
+      change(`${pendingSlash}al`, 3)
+      press('Escape', 3)
+      expect(getValue()).toBe('/al')
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
+
+    it('restores a bare sigil and closes the picker', () => {
+      const { hook, press, getValue } = setup('')
+      press('/', 0)
+      press('Escape', 1)
+      expect(getValue()).toBe('/')
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
+
+    it('dismisses a literal token without changing the value', () => {
+      const { hook, press, getValue } = setup('/al')
+      act(() => hook.result.current.setCursorPos(3))
+      press('Escape', 3)
+      expect(getValue()).toBe('/al')
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
   })
 
-  it('clears the trigger after a selection so a deleted chip does not reopen the picker', () => {
-    const { hook } = open()
-    hook.rerender({ v: 'al' })
-    act(() => hook.result.current.setCursorPos(2))
-    act(() => hook.result.current.handleKeyDown(keyEvent('Enter')))
-    hook.rerender({ v: '' })
+  describe('value replaced from outside the hook', () => {
+    it('closes the picker when the draft clears on send', () => {
+      const { hook, press, change, replaceFromOutside } = setup('hi ')
+      press('/', 3)
+      change(`hi ${pendingSlash}se`, 6)
+      replaceFromOutside('')
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
+
+    it('does not add a sigil to the next message', () => {
+      const { press, change, replaceFromOutside, getValue } = setup('hi ')
+      press('/', 3)
+      replaceFromOutside('')
+      change('o', 1)
+      change('ok', 2)
+      expect(getValue()).toBe('ok')
+    })
+  })
+
+  describe('Backspace', () => {
+    it('is not intercepted, so it removes the stand-in natively', () => {
+      const { hook, press, change, getValue } = setup('')
+      press('/', 0)
+      expect(press('Backspace', 1).preventDefault).not.toHaveBeenCalled()
+      change('', 0)
+      expect(getValue()).toBe('')
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
+
+    it('leaves a chip before the trigger alone', () => {
+      const chip = `${chipMarker}Alpha `
+      const { hook, press, change, getValue } = setup(chip)
+      press('/', chip.length)
+      expect(deleteSkillTokenAt(getValue(), chip.length + 1, new Map([['Alpha', 'alpha']]))).toBeNull()
+      change(chip, chip.length)
+      expect(getValue()).toBe(chip)
+      expect(hook.result.current.popupOpen).toBe(false)
+    })
+  })
+
+  describe('doubled sigils', () => {
+    it.each([
+      ['/', pendingSlash, '// TODO'],
+      ['@', pendingAt, '@@alex'],
+    ])('keeps both "%s" characters', (key, pending, typed) => {
+      const { press, change, getValue } = setup('')
+      press(key, 0)
+      expect(press(key, 1).preventDefault).not.toHaveBeenCalled()
+      change(`${pending}${typed.slice(1)}`, typed.length)
+      expect(getValue()).toBe(typed)
+    })
+  })
+
+  describe('selection', () => {
+    it('keeps both selection ends when leaving the trigger', () => {
+      const { press, change, textarea, select, getValue } = setup('hello ')
+      press('/', 6)
+      change(`hello ${pendingSlash}al`, 9)
+      select(0, 9)
+      expect(getValue()).toBe('hello /al')
+      expect(textarea.selectionStart).toBe(0)
+      expect(textarea.selectionEnd).toBe(9)
+    })
+
+    it('keeps the caret in place when the caret leaves the trigger', () => {
+      const { press, change, textarea, select, getValue } = setup('hi ')
+      press('/', 3)
+      change(`hi ${pendingSlash}al`, 6)
+      select(1)
+      expect(getValue()).toBe('hi /al')
+      expect(textarea.selectionStart).toBe(1)
+      expect(textarea.selectionEnd).toBe(1)
+    })
+
+    it('leaves the stand-in while the caret stays in the query', () => {
+      const { press, change, select, getValue } = setup('')
+      press('/', 0)
+      change(`${pendingSlash}al`, 3)
+      select(2)
+      expect(getValue()).toBe(`${pendingSlash}al`)
+    })
+  })
+
+  it('writes the sigil back when slash commands turn off', () => {
+    const { hook, press, getValue } = setup('')
+    press('/', 0)
+    hook.rerender({ v: getValue(), enabled: false })
+    expect(hook.result.current.popupOpen).toBe(false)
+    act(() => hook.result.current.handleSelect(1, 1))
+    expect(getValue()).toBe('/')
+  })
+
+  it('does not reopen the picker after deleting a selected chip', () => {
+    const { hook, press, replaceFromOutside } = setup('')
+    press('/', 0)
+    press('Enter', 1)
+    replaceFromOutside('')
     act(() => hook.result.current.setCursorPos(0))
     expect(hook.result.current.popupOpen).toBe(false)
   })
 
   it('puts a space between a chip and a character typed right after it', () => {
-    const { hook, getValue } = setup(`${chipMarker}Alpha`)
-    const event = triggerEvent('h', 6)
-    act(() => hook.result.current.handleKeyDown(event))
+    const { press, getValue } = setup(`${chipMarker}Alpha`)
+    const event = press('h', 6)
     expect(event.preventDefault).toHaveBeenCalled()
     expect(getValue()).toBe(`${chipMarker}Alpha h`)
+  })
+
+  it('leaves the caret after the character typed against a chip with no deferred write', () => {
+    const { press, textarea } = setup(`${chipMarker}Alpha`)
+    press('h', 6)
+    expect(textarea.selectionStart).toBe(8)
   })
 })

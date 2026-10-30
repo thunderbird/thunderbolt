@@ -16,7 +16,12 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { chipMarker, deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
+import {
+  chipMarker,
+  deleteSkillTokenAt,
+  foldPendingSigils,
+  normalizeSkillTokensToSlugs,
+} from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -393,7 +398,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
      * behaviour and it silently ate whatever the user had typed when an app
      * decided to propose something.
      */
-    useConsumePendingPrompt(chatThreadId, (prompt) => setInput(mergeIntoDraft(inputRef.current, prompt)))
+    useConsumePendingPrompt(chatThreadId, (prompt) =>
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
+    )
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -433,7 +440,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       handleKeyDown: handleSlashKeyDown,
       handleChange: handleSlashChange,
       handleSelect: handleSlashSelect,
-      valueWithTrigger,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -454,7 +460,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // so the token stays resolvable at send time.
         const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
         const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
+        const next = appendSlashToken(
+          foldPendingSigils(inputRef.current),
+          skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug,
+        )
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -473,11 +482,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const insertInstructionText = useCallback(
       (text: string) => {
         const ta = getTextarea()
-        const start = ta?.selectionStart ?? input.length
-        const end = ta?.selectionEnd ?? input.length
-        const needsSpace = start > 0 && input[start - 1] !== ' '
+        const current = foldPendingSigils(input)
+        const start = ta?.selectionStart ?? current.length
+        const end = ta?.selectionEnd ?? current.length
+        const needsSpace = start > 0 && current[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
-        const next = input.slice(0, start) + insert + input.slice(end)
+        const next = current.slice(0, start) + insert + current.slice(end)
         const pos = start + insert.length
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
@@ -571,8 +581,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => (minimalMode ? input : normalizeSkillTokensToSlugs(valueWithTrigger, displayNameToSlug)),
-      [minimalMode, input, valueWithTrigger, displayNameToSlug],
+      () => (minimalMode ? foldPendingSigils(input) : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      [minimalMode, input, displayNameToSlug],
     )
 
     const additionalInputTokens = useMemo(() => {
@@ -1047,7 +1057,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : null
             }
             onTextareaKeyDown={handleTextareaKeyDown}
-            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart)}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)}
             onTextareaPaste={handlePaste}
           />
           {/* Voice mode morphs the composer in-place: the overlay covers the

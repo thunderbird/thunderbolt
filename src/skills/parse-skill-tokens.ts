@@ -9,6 +9,31 @@
  */
 export const chipMarker = '\u2060'
 
+const pendingSlash = '\u2061'
+const pendingAt = '\u2062'
+
+/**
+ * Zero-width stand-in the composer stores for a `/` or `@` that opened the picker,
+ * or null for any other key. The value stays the single source of the trigger, and
+ * {@link foldPendingSigils} turns it back into the typed character without changing
+ * any offset.
+ */
+export const pendingSigilForKey = (key: string): string | null => {
+  if (key === '/') {
+    return pendingSlash
+  }
+  return key === '@' ? pendingAt : null
+}
+
+/** True for a stand-in written by {@link pendingSigilForKey}. */
+export const isPendingSigil = (char: string | undefined): boolean => char === pendingSlash || char === pendingAt
+
+/** True when `text` holds a stand-in that has not been folded back yet. */
+export const hasPendingSigil = (text: string): boolean => text.includes(pendingSlash) || text.includes(pendingAt)
+
+/** Replace stand-ins with the characters the user typed. Output length equals input length. */
+export const foldPendingSigils = (text: string): string => text.replaceAll(pendingSlash, '/').replaceAll(pendingAt, '@')
+
 /**
  * Slash-token grammar: `/` followed by one or more `[a-z0-9-_]` chars,
  * matched only when *preceded* by whitespace or start-of-input AND
@@ -175,17 +200,18 @@ export const deleteSkillTokenAt = (
  * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
  * form (`/daily-brief`). Run at send time so the composer can show human
  * titles while the model — and the stored message — only ever sees slugs.
- * Slug tokens and unrecognized text pass through untouched; stray chip
- * markers are dropped.
+ * Slug tokens and unrecognized text pass through untouched; pending sigils
+ * become the typed character and stray chip markers are dropped.
  */
 export const normalizeSkillTokensToSlugs = (text: string, displayNameToSlug: ReadonlyMap<string, string>): string => {
-  const tokens = findSkillTokens(text, displayNameToSlug)
+  const folded = foldPendingSigils(text)
+  const tokens = findSkillTokens(folded, displayNameToSlug)
   let result = ''
   let cursor = 0
   for (const { slug, start, end } of tokens) {
-    result += text.slice(cursor, start) + `/${slug}`
+    result += folded.slice(cursor, start) + `/${slug}`
     cursor = end
   }
   // A marker left behind by editing a chip must not reach the model.
-  return (result + text.slice(cursor)).replaceAll(chipMarker, '')
+  return (result + folded.slice(cursor)).replaceAll(chipMarker, '')
 }

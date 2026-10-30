@@ -20,11 +20,12 @@ import { handleSkillSaveError, skillSaveFailedMessage, useCreateSkillTracked } f
 import { initialSkillsViewState, skillsViewReducer, type LeaveIntent } from './skills-view-state'
 import { SkillsList } from './skills-list'
 import { useSkillTelemetry } from './telemetry'
-import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
+import { useEnabledSkills, useLibrarySkills, usePinnedSkills, useStickySkills } from './use-skills'
 
 export const SkillsView = () => {
   const { t } = useLingui()
-  const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const { skills: visibleSkills, allSkills, updateSkill, softDeleteSkill } = useLibrarySkills()
+  const skills = useStickySkills(visibleSkills, allSkills)
   const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
   // `pinnedSet` here to auto-unpin on disable (a disabled skill can't be

@@ -20,7 +20,7 @@ import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 
 // `@powersync/tanstack-react-query` auto-invalidates this query whenever the
 // `skills` table fires a `tablesUpdated` event (Drizzle writes through
@@ -34,6 +34,18 @@ const skillsQueryKey = ['skills']
 /** Position after the last pin in an ascending list. Stored positions can have gaps. */
 export const nextPinnedOrder = (pinned: ReadonlyArray<Pick<Skill, 'pinnedOrder'>>): number =>
   (pinned.at(-1)?.pinnedOrder ?? -1) + 1
+
+/**
+ * Rows for a mounted library view. A row stays listed once shown, so re-enabling
+ * or reverting a system skill doesn't remove it while the user is managing it.
+ */
+export const useStickySkills = (visibleSkills: Skill[], allSkills: Skill[]): Skill[] => {
+  const shownIds = useRef(new Set<string>())
+  return useMemo(() => {
+    visibleSkills.forEach((skill) => shownIds.current.add(skill.id))
+    return allSkills.filter((skill) => shownIds.current.has(skill.id))
+  }, [visibleSkills, allSkills])
+}
 
 /**
  * Read-only subscription to all non-deleted skills. Shared by

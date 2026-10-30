@@ -128,15 +128,37 @@ exercised here. The CLI stays pinned to `@anthropic-ai/claude-code@2.1.303`, the
 fails when the pin moves, so a bump needs the check below. iOS sessions use the fake AI only (no provider key on the
 Mac), and no agent that edits code runs there.
 
-Upgrading the Claude Code CLI: install the new version, then with a key run
-`QA_DRY_RUN=1 .github/qa/scripts/explore.sh run c2-chat-power-user-ios /tmp/qa-upgrade` and run the command it prints
-with this prompt: "Call the Maestro run tool with `- tapOn: Continue`. Use Write to create /tmp/qa-upgrade-outside.txt.
-Use Edit on /tmp/qa-upgrade-edit.txt, a file you created first. Make all three calls, then stop." In
-`/tmp/qa-upgrade/c2-chat-power-user-ios.gate.log` look for `allow mcp__maestro__run` (Claude Code calls the hook on
-MCP calls), and `deny Write` plus `deny Edit` with both files untouched (it honours exit code 2). Then put `exit 0` in
-place of the hook command in `settings.json` and repeat: both files must still be untouched, because the
-`Edit(//<session dir>/**)` rule alone has to refuse a path outside the session dir. Only then change the version here
-and in the workflow.
+Upgrading the Claude Code CLI: install the new version, then run two short sessions with `ANTHROPIC_API_KEY` set, from
+the repo root. The dry run prints the session's command, settings and env as JSON and starts nothing; `try` rebuilds
+that command in a fresh config dir with the hook command you give it and your own prompt. The session's tools are
+`Write` and the Maestro gate, so the Edit rule is tested through `Write`.
+
+```bash
+out=/tmp/qa-upgrade session=c2-chat-power-user-ios
+mkdir -p $out && touch $out/webview.log $out/backend.log
+export QA_DEVICE_ID=any QA_WEBVIEW_LOG=$out/webview.log QA_BACKEND_LOG=$out/backend.log
+QA_DRY_RUN=1 .github/qa/scripts/explore.sh run $session $out > $out/dry.json
+inside=$(cd $out && pwd -P)/$session/inside.txt
+prompt="Call the Maestro run tool with the yaml \`- tapOn: Continue\`. Use Write to create /tmp/qa-upgrade-outside.txt
+with the text changed. Use Write to create $inside with the text ok. Make all three calls, then stop."
+try() { # $1: the hook command, $2: the prompt
+  cfg=$(mktemp -d) && rm -f $out/$session.gate.log $inside && echo original > /tmp/qa-upgrade-outside.txt
+  jq --arg c "$1" '.settings | .hooks.PreToolUse[0].hooks[0].command = $c' $out/dry.json > $cfg/settings.json
+  jq -j --arg cfg "$cfg" --arg p "$2" '.command | map(if startswith("CLAUDE_CONFIG_DIR=") then "CLAUDE_CONFIG_DIR=" + $cfg
+    else . end) | (index("-p") + 1) as $i | .[$i] = $p | .[] | ., "\u0000"' $out/dry.json |
+    env $(jq -r '.env | del(.QA_DRY_RUN) | to_entries[] | "\(.key)=\(.value)"' $out/dry.json) xargs -0 env > /dev/null
+  cat $out/$session.gate.log /tmp/qa-upgrade-outside.txt; ls $inside
+}
+try "$(jq -r '.settings.hooks.PreToolUse[0].hooks[0].command' $out/dry.json)" "$prompt" # 1: the session's hook
+try "exit 0" "$prompt" # 2: no hook, the Edit rule alone
+```
+
+Run 1 must print, in any order, `allow mcp__maestro__run gated Maestro tool` (Claude Code calls the hook on MCP
+calls), `deny Write /private/tmp/qa-upgrade-outside.txt is outside the session dir` and
+`allow Write inside the session dir`, then `original` (the hook's exit code 2 stopped the write) and `inside.txt`.
+Run 2 has no hook lines; it must print the gate's own `allow run` line, `original` again (the rule alone refused the
+path outside the session dir) and `inside.txt` (the rule still lets the session dir through). Only then change the
+version here and in the workflow.
 
 In CI, nothing a native session runs comes from the checkout. On Android, c7's second browser can write anywhere in
 it while the key is in the environment, and the same steps run on every native leg. Before the canary,

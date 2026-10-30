@@ -2005,6 +2005,7 @@ msgstr "天気を取得中…"
 msgid "Gmail & Calendar"
 msgstr "Gmail とカレンダー"
 
+#: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/components/ui/back-button.tsx
 #: src/components/ui/header.tsx

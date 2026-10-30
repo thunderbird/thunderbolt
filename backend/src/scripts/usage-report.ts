@@ -16,9 +16,6 @@
  * window ends. For an event, set it to `0` until this report has been run, or to at least the
  * event's length plus the days until the report runs.
  *
- * The package script blanks `OTEL_EXPORTER_OTLP_ENDPOINT`, because with tracing
- * on, the bunfig.toml preload prints its banner to stdout, ahead of the report.
- *
  * It reads `DATABASE_URL` like the server does. On Render the database only
  * accepts private connections, so run it on the backend service (`render ssh`).
  */

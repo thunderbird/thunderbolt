@@ -5,7 +5,8 @@
 /**
  * OpenTelemetry instrumentation for Elysia.
  *
- * Preloaded via bunfig.toml so the SDK initializes before other modules.
+ * Loaded by createApp, not a bunfig.toml preload (see the note there). With no
+ * instrumentations registered, the SDK need not start before other modules.
  * Uses dynamic imports so OTEL packages are only loaded when configured.
  *
  * Uses process.env instead of Bun.env for consistency with the OTEL SDK

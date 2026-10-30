@@ -755,4 +755,4 @@ jobs:
           }
           PORT=8000 boot
           PORT=8001 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces boot
-          grep 'OpenTelemetry traces exporting to' server.log
+          test "$(grep -cF 'OpenTelemetry traces exporting to' server.log)" -eq 1 || { cat server.log; exit 1; }

@@ -23,6 +23,7 @@ type Step = {
   uses?: string
   run?: string
   if?: string
+  'continue-on-error'?: boolean
   shell?: string
   'working-directory'?: string
   env?: Record<string, string>
@@ -210,29 +211,21 @@ describe('fix job', () => {
       expect(args).toContain(`"Edit(${rule})"`)
   })
 
-  const collectFiles = (env: Record<string, string>, forgedMarker = false) => {
+  const collect = (env: Record<string, string>) => {
     const dir = mkdtempSync(join(work, 'collect-'))
     const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])
     git('init', '-q')
     git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
     mkdirSync(join(dir, 'qa-out/c2/repro'), { recursive: true })
     writeFileSync(join(dir, 'qa-out/c2/repro/1.spec.ts'), 'spec')
-    if (forgedMarker) {
-      mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-      writeFileSync(join(dir, 'qa-out/fix/fp1.infrastructure.md'), 'forged')
-    }
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Collect the patch').run ?? ''], {
       cwd: dir,
       env: { PATH: process.env.PATH, QA_FP: 'fp1', FIX_OUTCOME: 'success', ...env },
     })
     expect(proc.exitCode).toBe(0)
-    const read = (name: string) => {
-      const path = join(dir, 'qa-out/fix', name)
-      return existsSync(path) ? readFileSync(path, 'utf8') : undefined
-    }
-    return { diagnosis: read('fp1.diagnosis.md'), infrastructure: read('fp1.infrastructure.md') }
+    const diagnosis = join(dir, 'qa-out/fix/fp1.diagnosis.md')
+    return existsSync(diagnosis) ? readFileSync(diagnosis, 'utf8') : undefined
   }
-  const collect = (env: Record<string, string>) => collectFiles(env).diagnosis
   const spec = { SPEC: 'qa-out/c2/repro/1.spec.ts', NEEDS_REPLAY: 'true' }
 
   test('a check the task needs that did not succeed always leaves a diagnosis', () => {
@@ -243,21 +236,8 @@ describe('fix job', () => {
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
   })
 
-  test('a fix step that never started leaves the infrastructure marker, not a diagnosis', () => {
-    const skipped = collectFiles({ ...spec, FIX_OUTCOME: 'skipped', REPLAY: 'skipped' })
-    expect(skipped.diagnosis).toBeUndefined()
-    expect(skipped.infrastructure).toContain('stopped before the fix agent started')
-  })
-
-  test('a fix step that started and then failed, timed out or finished leaves no marker', () => {
-    for (const outcome of ['failure', 'cancelled', 'success'])
-      expect(collectFiles({ ...spec, FIX_OUTCOME: outcome, REPLAY: 'success' }).infrastructure).toBeUndefined()
-    expect(collectFiles({ FIX_OUTCOME: 'failure' }).diagnosis).toContain('did not finish')
-  })
-
-  test('a marker the agent left behind is removed unless the fix step never started', () => {
-    expect(collectFiles({ FIX_OUTCOME: 'failure' }, true).infrastructure).toBeUndefined()
-    expect(collectFiles({ FIX_OUTCOME: 'success' }, true).infrastructure).toBeUndefined()
+  test('a fix step that never started still leaves a diagnosis, which only the infra artifact overrides', () => {
+    expect(collect({ ...spec, FIX_OUTCOME: 'skipped', REPLAY: 'skipped' })).toContain('step outcome: skipped')
   })
 
   test('a task whose checks all succeeded, or that needs none here, gets no diagnosis', () => {
@@ -386,12 +366,7 @@ describe("CI's check of the fix job's dev stack", () => {
 
 describe('publish', () => {
   type Verdict = { passed?: boolean; failsWithout?: boolean; passesWith?: boolean }
-  const verdicts = (
-    files: Record<string, Verdict>,
-    env: Record<string, string> = {},
-    diagnosis?: string,
-    infrastructure = false,
-  ) => {
+  const verdicts = (files: Record<string, Verdict>, env: Record<string, string> = {}, diagnosis?: string) => {
     const dir = mkdtempSync(join(work, 'publish-'))
     mkdirSync(join(dir, 'qa-out/verify'), { recursive: true })
     mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
@@ -400,7 +375,6 @@ describe('publish', () => {
     for (const [path, content] of Object.entries(files))
       writeFileSync(join(dir, 'qa-out', path), JSON.stringify(content))
     if (diagnosis) writeFileSync(join(dir, 'qa-out/fix/fp1.diagnosis.md'), diagnosis)
-    if (infrastructure) writeFileSync(join(dir, 'qa-out/fix/fp1.infrastructure.md'), 'stopped')
     const proc = Bun.spawnSync(
       ['bash', '-e', '-c', step('publish', 'Require the native and real-AI checks').run ?? ''],
       {
@@ -442,26 +416,57 @@ describe('publish', () => {
     expect(verdicts({}, {}, 'gave up\n').diagnosis).toBe('gave up\n')
   })
 
-  test('writes no diagnosis for a job that died before the agent, so publish leaves the ticket alone', () => {
-    expect(verdicts({}, {}, undefined, true).diagnosis).toBeUndefined()
+  const runStep = (job: string, name: string, dir: string, env: Record<string, string>) =>
+    Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
+      cwd: dir,
+      env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
+    })
+  const infraMarker = 'qa-out/fix/fp1.infrastructure.md'
+
+  test('the infrastructure marker comes only from the artifact of a skipped Fix step, never from the agent', () => {
+    const at = (match: (s: Step) => boolean) => steps('publish').findIndex(match)
+    const fixArtifact = at((s) => s.with?.name === 'qa-fix-${{ matrix.task.fp }}')
+    const drop = indexOf('publish', 'Drop the marker the fix artifact carries')
+    const infraArtifact = at((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
+    expect(fixArtifact).toBeGreaterThan(-1)
+    expect(drop).toBeGreaterThan(fixArtifact)
+    expect(infraArtifact).toBeGreaterThan(drop)
+    // Absent in every run where the agent started, which is normal.
+    expect(steps('publish')[infraArtifact]['continue-on-error']).toBe(true)
+
+    const dir = mkdtempSync(join(work, 'drop-'))
+    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
+    writeFileSync(join(dir, infraMarker), 'forged')
+    expect(runStep('publish', 'Drop the marker the fix artifact carries', dir, {}).exitCode).toBe(0)
+    expect(existsSync(join(dir, infraMarker))).toBe(false)
   })
 
-  test('says in the run summary why the ticket was left for a later run', () => {
+  test('only a skipped Fix step records that the agent never started, in an artifact of its own', () => {
+    const record = step('fix', 'Record that the fix agent never started')
+    const upload = steps('fix').find((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
+    expect(record.if).toBe("always() && steps.fix.outcome == 'skipped'")
+    expect(upload?.if).toContain("steps.fix.outcome == 'skipped'")
+    expect(upload?.with?.path).toBe('${{ runner.temp }}/qa-infra/')
+
+    const temp = mkdtempSync(join(work, 'infra-'))
+    expect(runStep('fix', record.name ?? '', temp, { RUNNER_TEMP: temp }).exitCode).toBe(0)
+    expect(readFileSync(join(temp, 'qa-infra/fp1.infrastructure.md'), 'utf8')).toContain('before the fix agent started')
+  })
+
+  test("says in the run summary, in the workflow's own words, that a ticket was left for a later run", () => {
     const dir = mkdtempSync(join(work, 'summary-'))
     mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    const fixes = [{ fp: 'fp1', identifier: 'THB-7' }]
-    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes }))
+    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [{ fp: 'fp1', identifier: 'THB-7' }] }))
     const summary = join(dir, 'summary.md')
     const say = () =>
-      Bun.spawnSync(['bash', '-e', '-c', step('publish', 'Say when a ticket was left for a later run').run ?? ''], {
-        cwd: dir,
-        env: { PATH: process.env.PATH, QA_FP: 'fp1', GITHUB_STEP_SUMMARY: summary },
-      })
+      runStep('publish', 'Say when a ticket was left for a later run', dir, { GITHUB_STEP_SUMMARY: summary })
     expect(say().exitCode).toBe(0)
     expect(existsSync(summary)).toBe(false)
-    writeFileSync(join(dir, 'qa-out/fix/fp1.infrastructure.md'), 'Stopped before the agent.\n')
+    writeFileSync(join(dir, infraMarker), 'text the summary must not copy\n')
     expect(say().exitCode).toBe(0)
-    expect(readFileSync(summary, 'utf8')).toBe('- THB-7: Stopped before the agent.\n')
+    const line = readFileSync(summary, 'utf8')
+    expect(line).toContain('- THB-7: the fix job stopped before the fix agent started')
+    expect(line).not.toContain('must not copy')
   })
 })
 

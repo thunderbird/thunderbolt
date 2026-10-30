@@ -1319,13 +1319,9 @@ jobs:
           mkdir -p qa-out/fix
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
           diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
-          # Only this step writes the marker, after the agent's last command, so the agent cannot leave one behind.
-          rm -f "qa-out/fix/$QA_FP.infrastructure.md"
-          if [ "$FIX_OUTCOME" = skipped ]; then
-            # No session ran, so there is nothing to diagnose: publish leaves the ticket alone.
-            echo "The fix job stopped before the fix agent started, so the ticket is left unchanged for a later run." \
-              > "qa-out/fix/$QA_FP.infrastructure.md"
-          elif [ "$FIX_OUTCOME" != success ]; then
+          # When the step never started, the infra artifact tells publish to leave the ticket alone. Without it
+          # (its upload failed) this diagnosis stands.
+          if [ "$FIX_OUTCOME" != success ]; then
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
@@ -1394,6 +1390,20 @@ jobs:
           name: qa-fix-session-${{ matrix.task.fp }}
           path: qa-out/fix-*/session.json
           retention-days: 7
+      # A skipped Fix step means no agent code ran in this job, so only these two steps can say so, in an artifact
+      # of their own that publish trusts and the agent's qa-fix artifact cannot carry.
+      - name: Record that the fix agent never started
+        if: always() && steps.fix.outcome == 'skipped'
+        run: |
+          mkdir -p "$RUNNER_TEMP/qa-infra"
+          echo "The fix job stopped before the fix agent started, so the ticket is left unchanged for a later run." \
+            > "$RUNNER_TEMP/qa-infra/$QA_FP.infrastructure.md"
+      - if: always() && steps.key-scan.outcome == 'success' && steps.fix.outcome == 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-infra-${{ matrix.task.fp }}
+          path: ${{ runner.temp }}/qa-infra/
+          retention-days: 7
 
   # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run, on a fresh
   # checkout the patch never ran in.
@@ -1429,8 +1439,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           SESSION: ${{ matrix.check.session }}
         run: |
-          # Nothing to check: publish hands the ticket to a person, or leaves it for a later run.
-          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ -e "qa-out/fix/$QA_FP.infrastructure.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then exit 0; fi
+          # Nothing to check: publish hands the ticket to a person.
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then exit 0; fi
           .github/qa/scripts/native.sh verify-build "$QA_PLATFORM" "qa-out/fix/$QA_FP.patch" "$SESSION" "$RUNNER_TEMP/qa-patched"
           # Only the app: the out dir also holds the build's tauri.conf.json.
           tar -cf "$RUNNER_TEMP/qa-patched/app.tar" -C "$RUNNER_TEMP/qa-patched" "$QA_APP_FILE"
@@ -1613,6 +1623,15 @@ jobs:
         with:
           name: qa-fix-${{ matrix.task.fp }}
           path: qa-out
+      # The agent's artifact may not carry this marker. Only the artifact of the step that records a skipped Fix
+      # step is trusted, and it is absent in every other run.
+      - name: Drop the marker the fix artifact carries
+        run: rm -f "qa-out/fix/$QA_FP.infrastructure.md"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: qa-fix-infra-${{ matrix.task.fp }}
+          path: qa-out/fix
       - *download-replay
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1630,7 +1649,7 @@ jobs:
           NATIVE_VISUAL: ${{ matrix.task.kind == 'visual' && matrix.task.flow && matrix.task.platform || '' }}
         run: |
           # The fix job's own diagnosis says why; no verify ran on a patch that was never meant to be published.
-          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ -e "qa-out/fix/$QA_FP.infrastructure.md" ]; then exit 0; fi
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ]; then exit 0; fi
           fail() { echo "$1" >> "qa-out/fix/$QA_FP.diagnosis.md"; }
           for platform in $(jq --raw-output --arg fp "$QA_FP" '.verifyNative[] | select(.fp == $fp) | .platform' qa-out/fix-plan.json); do
             jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.$platform.json" > /dev/null 2>&1 ||
@@ -1678,10 +1697,10 @@ jobs:
 
       - name: Say when a ticket was left for a later run
         run: |
-          marker="qa-out/fix/$QA_FP.infrastructure.md"
-          if [ ! -e "$marker" ]; then exit 0; fi
+          if [ ! -e "qa-out/fix/$QA_FP.infrastructure.md" ]; then exit 0; fi
           ticket=$(jq --raw-output --arg fp "$QA_FP" '.fixes[] | select(.fp == $fp) | .identifier // $fp' qa-out/fix-plan.json)
-          echo "- $ticket: $(cat "$marker")" >> "$GITHUB_STEP_SUMMARY"
+          echo "- $ticket: the fix job stopped before the fix agent started, so the ticket is left for a later run." \
+            >> "$GITHUB_STEP_SUMMARY"
 
   # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get, which
   # fails if the app lacks a requested permission, and writes nothing.

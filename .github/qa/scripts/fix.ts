@@ -452,8 +452,9 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * - for a visual task, the agent's check in `fix-<fp>/repro/`, and `fix/<fp>.verify.json`, the workflow's record of
  *   running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored;
- * - `fix/<fp>.infrastructure.md`: written when the job stopped before the agent started. Nothing was diagnosed, so
- *   the ticket is left untouched for a later run and the result says why.
+ * - `fix/<fp>.infrastructure.md`: from the `qa-fix-infra-<fp>` artifact, which only a skipped Fix step uploads, so
+ *   the job stopped before the agent started. Nothing was diagnosed, so the ticket is left untouched for a later run
+ *   and the result says why. The workflow deletes any copy that came in the agent's `qa-fix-<fp>` artifact.
  * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
  * branch `qa-fix/<fp>` gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a

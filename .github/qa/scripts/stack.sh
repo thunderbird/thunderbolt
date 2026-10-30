@@ -73,8 +73,9 @@ if [ "$1" = start ]; then
       unset ANTHROPIC_API_KEY TINFOIL_API_KEY TINFOIL_ENCLAVE_URL EXA_API_KEY
     fi
     if [ "${2:-}" = dev ]; then
-      # What the dev servers write: Vite's cache, which also stages PowerSync's assets for public/@powersync, and the
-      # bundled config, in a dir both users can add files to.
+      # What the dev servers write in the checkout: Vite's cache, which also stages PowerSync's assets for
+      # public/@powersync, and the bundled config, in a dir both users can add files to. Other caches go to CACHE_DIR
+      # (see as_server).
       sudo install -d --owner "$QA_BACKEND_USER" node_modules/.vite public/@powersync
       sudo install -d --mode 1777 node_modules/.vite-temp
     fi
@@ -172,10 +173,14 @@ else
 fi
 bun_run=(bun run)
 if [ -n "${QA_BACKEND_USER:-}" ] && [ "${QA_REAL_PROVIDERS:-}" = true ]; then bun_run=(bun "--env-file=$backend_keys" run); fi
-# Runs a server, as QA_BACKEND_USER when it is set. sudo resets the environment: the server gets its settings, PATH
-# and, for a real-AI backend, the keys file `start` wrote, nothing more.
+# Runs a server, as QA_BACKEND_USER when it is set. sudo resets the environment: the server gets its settings, PATH,
+# a cache dir in its own home and, for a real-AI backend, the keys file `start` wrote, nothing more. Storybook's Vite
+# plugin writes its cache under CACHE_DIR when the config loads, else in node_modules/.cache, which belongs to the
+# job's user; in the server's own home, nothing the job's user runs later reads what the servers wrote.
 as_server() {
-  if [ -n "${QA_BACKEND_USER:-}" ]; then exec sudo --user "$QA_BACKEND_USER" --set-home -- env "PATH=$PATH" "$@"; fi
+  if [ -n "${QA_BACKEND_USER:-}" ]; then
+    exec sudo --user "$QA_BACKEND_USER" --set-home -- env "PATH=$PATH" "CACHE_DIR=/home/$QA_BACKEND_USER/.cache" "$@"
+  fi
   exec "$@"
 }
 

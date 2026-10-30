@@ -307,6 +307,58 @@ describe('fix job', () => {
   })
 })
 
+describe("CI's check of the fix job's dev stack", () => {
+  const ci = Bun.YAML.parse(readFileSync(join(import.meta.dir, '../../workflows/ci.yml'), 'utf8')) as {
+    jobs: Record<string, Job & { steps: Step[] }>
+  }
+  const check = ci.jobs.qa.steps.find((s) => s.name === 'Start the dev stack as another user')
+  const ports = JSON.parse(readFileSync(join(import.meta.dir, '../ports.json'), 'utf8')) as Record<string, number>
+
+  const runCheck = (log: string) => {
+    const dir = mkdtempSync(join(work, 'dev-check-'))
+    mkdirSync(join(dir, '.github/qa/scripts'), { recursive: true })
+    const stack = `echo "stack $*" >> "$RUNNER_TEMP/calls"\n[ "$1" = start ] && cat "$RUNNER_TEMP/log" > "$RUNNER_TEMP/qa-stack.log"\nexit 0\n`
+    writeFileSync(join(dir, '.github/qa/scripts/stack.sh'), stack, { mode: 0o755 })
+    writeFileSync(join(dir, 'bunx'), '#!/bin/sh\necho "bunx $*" >> "$RUNNER_TEMP/calls"\n', { mode: 0o755 })
+    writeFileSync(join(dir, 'log'), log)
+    const proc = Bun.spawnSync(['bash', '-e', '-c', check?.run ?? 'exit 99'], {
+      cwd: dir,
+      env: { PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: dir },
+    })
+    return { code: proc.exitCode, calls: readFileSync(join(dir, 'calls'), 'utf8').trim().split('\n') }
+  }
+
+  test("starts the dev stack as the fix job's user, loads both pages, then stops it", () => {
+    expect(check?.env?.QA_BACKEND_USER).toBe(step('fix', 'Start the stack on the working tree').env?.QA_BACKEND_USER)
+    const { code, calls } = runCheck('VITE ready\nstack ready\n')
+    expect(code).toBe(0)
+    expect(calls[0]).toBe('stack start dev')
+    expect(calls.at(-1)).toBe('stack stop')
+    for (const name of ['QA_FRONTEND_PORT', 'QA_ONBOARDING_PORT'])
+      expect(calls.some((c) => c.startsWith('bunx playwright screenshot') && c.includes(`:${ports[name]} `))).toBe(true)
+  })
+
+  test('fails on a write error in the stack log, after stopping the stack', () => {
+    for (const error of [
+      "Error: EACCES: permission denied, mkdir '/repo/node_modules/.cache/storybook'",
+      'EPERM: operation not permitted',
+      'Permission denied',
+    ]) {
+      const { code, calls } = runCheck(`${error}\nstack ready\n`)
+      expect(code).not.toBe(0)
+      expect(calls.at(-1)).toBe('stack stop')
+    }
+  })
+
+  test('runs on the changes that decide what the dev servers write', () => {
+    const filter = ci.jobs['detect-changes'].steps.find((s) => s.id === 'filter')?.with?.filters ?? ''
+    const { qa } = Bun.YAML.parse(filter) as Record<string, string[]>
+    for (const path of ['vite.config.ts', 'scripts/copy-powersync-assets.ts', 'package.json', 'bun.lock'])
+      expect(qa).toContain(path)
+    expect(ci.jobs.qa.if).toBe("needs.detect-changes.outputs.qa == 'true'")
+  })
+})
+
 describe('publish', () => {
   type Verdict = { passed?: boolean; failsWithout?: boolean; passesWith?: boolean }
   const verdicts = (files: Record<string, Verdict>, env: Record<string, string> = {}, diagnosis?: string) => {

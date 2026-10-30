@@ -1181,7 +1181,7 @@ export const judge = async (
   // A revoked key, a bad request or a drained balance fails every later run too, so the job must go red.
   const lasting = failures.filter((failure) => !failure.transient).length
   if (lasting > 0 || (toJudge.length > 0 && judged.length === 0)) {
-    throw new Error(`${failures.length} of ${toJudge.length} judge calls failed, ${lasting} not for a passing reason`)
+    throw new Error(`${failures.length} of ${toJudge.length} judge calls failed, ${lasting} for a lasting reason`)
   }
   return verified
 }

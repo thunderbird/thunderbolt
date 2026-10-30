@@ -2173,21 +2173,21 @@ describe('judge', () => {
       expect((await written()).confirmed).toHaveLength(1)
     })
 
-    test('for a reason a later run cannot outlive fails the job, keeping the other verdicts', async () => {
+    test('fails the job on an error a retry cannot fix, keeping the other verdicts', async () => {
       await writeBoth()
 
       const run = judge(outDir, failing(apiError(400, 'credit balance too low')), qaDir, () => {})
 
-      await expect(run).rejects.toThrow('1 of 2 judge calls failed, 1 not for a passing reason')
+      await expect(run).rejects.toThrow('1 of 2 judge calls failed, 1 for a lasting reason')
       expect((await written()).confirmed.map((file) => file.id)).toEqual(['fine'])
     })
 
-    test('on every call fails the job even when each failure would pass, keeping the deferrals', async () => {
+    test('fails the job when every call fails, even on rate limits, keeping the deferrals', async () => {
       await writeBoth()
 
       const run = judge(outDir, failing(apiError(429, 'rate limited'), true), qaDir, () => {})
 
-      await expect(run).rejects.toThrow('2 of 2 judge calls failed, 0 not for a passing reason')
+      await expect(run).rejects.toThrow('2 of 2 judge calls failed, 0 for a lasting reason')
       expect((await written()).deferred).toEqual([
         brokenDeferred,
         { file: candidate('fine'), step: 'judge', reason: 'the judge call failed' },

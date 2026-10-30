@@ -838,10 +838,10 @@ replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge le
 call included (a call is admitted only if its worst case fits: prompt bytes, 1,600 tokens per screenshot, plus
 `max_tokens`, at Opus prices). Replay and the judge take findings most severe first (the table in `findings.ts`),
 keeping path order within a severity, so a cap that binds defers the least severe. Findings over a cap are listed
-as deferred and never filed, and so is a finding whose judge call still fails after the SDK's retries. The judge
-job fails after writing `verified.json` when a call failed for any reason but a lost connection, a timeout, a
-conflict, a rate limit or a server error (a revoked key, a bad request, a drained balance), or when every call
-failed; the file job still files what was confirmed. The app's own provider calls in real-AI sessions are not
+as deferred and never filed, and so is a finding whose judge call still fails after the SDK's retries. A lost
+connection, a timeout, a conflict, a rate limit or a server error only defers. The judge job fails after writing
+`verified.json` when a call failed for a reason a retry cannot fix (a revoked key, a bad request, a drained
+balance), or when every call failed; the file job still files what was confirmed. The app's own provider calls in real-AI sessions are not
 measured: watch the QA provider keys' dashboards.
 
 The rule: per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,

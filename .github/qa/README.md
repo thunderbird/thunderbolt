@@ -243,11 +243,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    into the part whose failure confirms the bug. A `layout` flow whose last command is `assertVisible`
    or `assertNotVisible` is dropped at the lint gate: it would fail on every run without the line, so each of those
    runs would be rerun as inconclusive and the finding would get up to 6 tries. A native leg also keeps to its job's
-   time: a run starts only if it can end 5 minutes before replay-native's 130 minutes (2 for the sanitize and the
+   time: a run starts only if it can end 5 minutes before replay-native's 360 minutes (2 for the sanitize and the
    upload, 3 for an iOS run whose driver does not start in time and runs again), counted from `QA_LEG_START`, which
    the job's first step records, so the setup is counted as it ran. A run is taken to last as long as the slowest so
-   far (at least 4.1 minutes), leaving out the leg's first run: it starts Maestro's driver and the app on a cold
-   device, and takes about 8.5 minutes on iOS against 3 to 6 for each run after it. The control's
+   far (at least 4.5 minutes), leaving out the leg's first run: it starts Maestro's driver and the app on a cold
+   device, and takes 4 to 8.5 minutes on iOS against 2 to 6 for each run after it. The flows run most severe
+   first, so a leg that runs out of time leaves the least severe without runs. The control's
    other two runs are timed before any finding's. An extra run must also leave room for the 3 runs each later finding
    is owed. A finding left with fewer than 3 counted runs is flaky, and `replay.reason` says why. A flow that waits
    for the first screen after sign-in (`Welcome to Thunderbolt!` on the c1 build, `Ask me anything…` otherwise; three
@@ -652,12 +653,12 @@ Android on `ubuntu-latest` with KVM.
 - **replay-native**, one job per native artifact (`ios`, `android`, `android-sync`, `android-real`), with no secret:
   both builds, the device, the stack (`android-sync` serves the web build with Postgres, PowerSync and Playwright's
   Chromium for c7's specs; `android-real` the real providers), the console stream, then `verify.ts replay --native`
-  with `--leg`, which goes into each video's name so merged legs never overwrite one another. A run takes about
-  4 minutes on iOS, so a native leg replays at most 4 findings (`nativeReplayCap`): the control's
-  3 runs and up to 6 runs per finding, plus setup, wrap-up and one driver retry, take about 122 minutes and fit the
-  130-minute job, whose timeout would lose every finding. The control's own extra runs, which replace one whose iOS
-  driver never started, start only while every finding's 3 base runs still fit, so the leg still ends inside the
-  timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
+  with `--leg`, which goes into each video's name so merged legs never overwrite one another. A warm run takes at
+  most about 3 minutes, counted as 4.5, so a native leg replays at most 24 findings (`nativeReplayCap`), most severe
+  first: the control's 3 runs and each finding's 3, plus setup, wrap-up and one driver retry, take about 350 minutes
+  and fit the 360-minute job, the longest GitHub allows on its own runners, whose timeout would lose every finding.
+  Extra runs, the control's and the findings', start only while every later finding's 3 base runs still fit, so the
+  leg still ends inside the timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
   On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
@@ -830,17 +831,56 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 ## Budget calibration
 
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
-turns, timeout), and the constants at the top of `verify.ts` for the judge. The first values are generous on
-purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
-(4 on a native leg, whose runs are slow) and 15 judged, and a judge leg spends at most $2, its grouping call included (a call is admitted only if its worst case fits: prompt bytes,
-1,600 tokens per screenshot, plus `max_tokens`, at Opus prices). Findings over a cap are listed as deferred and
-never filed. The app's own provider calls in real-AI sessions are not measured: watch the QA provider keys'
-dashboards.
+turns, timeout), `explore.sh` for a native session's turns and its canary's, and the constants at the top of
+`verify.ts` for replay and the judge. Explore: $4.01 / 552 turns (299 in a native session) / 63 min. Fix: $20 /
+200 turns / 60 min, its first values, since no fix has run on GitHub yet. Per leg, at most 30 findings are
+replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge leg spends at most $17, its grouping
+call included (a call is admitted only if its worst case fits: prompt bytes, 1,600 tokens per screenshot, plus
+`max_tokens`, at Opus prices). Replay and the judge take findings most severe first (the table in `findings.ts`),
+keeping path order within a severity, so a cap that binds defers the least severe. Findings over a cap are listed
+as deferred and never filed. The app's own provider calls in real-AI sessions are not measured: watch the QA
+provider keys' dashboards.
 
 The rule: per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
-for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions.
+for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions. One
+run gives one sample per charter and platform, so the caps take the highest value. A count cap (findings replayed
+or judged) is sized from how many findings needed the step, + 50%, within what the job's timeout allows.
 Recalibrate after the first two scheduled runs and whenever a charter changes. The Anthropic workspace's monthly
 limit stays the hard ceiling.
+
+The caps come from the first full run on GitHub: every charter on all four platforms, the free session and the
+canary leg, with a Sonnet 5.5 explorer and an Opus 5.5 judge. One Android session, cut by an API error after 30
+turns, is left out of every peak.
+
+| Cap                              | Samples      | Highest observed       | Cap                    |
+| -------------------------------- | ------------ | ---------------------- | ---------------------- |
+| explore budget                   | 33 sessions  | $2.67 (c4, phone)      | $4.01                  |
+| explore turns, web               | 18 sessions  | 368 (c4, phone)        | 552                    |
+| explore turns, native            | 15 sessions  | 199 (c4, Android)      | 299                    |
+| explore timeout                  | 33 sessions  | 41.9 min (c4, Android) | 63 min                 |
+| native canary turns              | 15 canaries  | 3                      | 5                      |
+| findings replayed per web leg    | 5 legs       | 20 (real)              | 30                     |
+| findings replayed per native leg | 4 legs       | 25 (android-real)      | 24, the job's limit    |
+| a native run, once warm          | 62 runs      | about 3 min (iOS)      | counted as 4.5 min     |
+| native setup before the replay   | 4 legs       | 5.0 min                | counted as 7.4 min     |
+| judge calls per leg              | 30 confirmed | see below              | 84                     |
+| judge worst-case cost per call   | 30 calls     | $0.126                 | $17 per leg, see below |
+
+Explore cost $34.87 for the weekly sessions and $2.52 for the canary leg, and the judge $0.29. A web session took
+at most 10.5 minutes and a native one 41.9; a native explore job spent at most 12 minutes outside its session, so
+the 63-minute session fits the 90-minute job.
+
+A web finding took 19 to 43 seconds of its leg's replay, 139 on c7's leg, whose specs wait for sync: 30 findings
+fit the 45-minute job on every other leg, and c7's leg, which had 4, would reach it only past about 18. A native leg
+replayed 4 findings, deferring the rest: the iOS leg had 22 and `android-real` 25. Its setup took 4.1 to 5 minutes,
+and a finding took 3 to 4.5 runs, since an inconclusive run is replaced. At the counted 4.5 minutes a run and 7.4 of
+setup, 24 findings take 75 base runs, 337.5 minutes, and with the wrap-up and a driver retry 350 of the job's 360,
+the longest GitHub allows on its runners; 25 would need 363. At the measured pace those 25 would take about 250.
+
+The judge saw 30 confirmed findings, and replay deferred 48 more. Replay confirmed 30 of the 56 it ran, so a run that
+replays them all sends about 56 to the judge: + 50% is 84. A call cost $0.018 on average but is admitted on its worst
+case, $0.120 to $0.126, so 84 calls at $0.126 + 50% need $15.84, and grouping 84 findings at most $0.20 more, $0.30
+with the same margin: $16.14, rounded up to $17. The calls run in parallel: 15 took under a minute.
 
 Costs from local sessions with a Sonnet 5.5 explorer, an Opus 5.5 judge and fix agent, and CLI 2.1.285:
 
@@ -856,14 +896,13 @@ A full set of charters plus the canary leg cost about $7 in explore sessions. c7
 samples: c4 on the real AI, $1.72 and 283 turns in 9.2 min, plus $0.14 on the app side; the free
 session, $0.49 and $0.50 per platform plus about $0.25 on the app side for sessions and replays. With the table's
 numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That is one local
-sample per charter, so keep the initial caps until two scheduled runs have reported.
+sample per charter.
 
-The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with the same caps as a web
-session and a Haiku canary before it (4 turns, $0.05). Only c1 has been measured on GitHub: iOS $0.61 to $0.83 and 82 to 104 turns, Android $1.07 to $1.23 and 117 to 137 turns,
-10 to 22 minutes a session; each canary stayed under its $0.05 cap. The estimate is $1.50 to $2.50 per native
-charter session and $0.80 to $1.30 per free session, so $21 to $35 a week on top of the web sessions; the other
-charters are still unmeasured. The turn cap of a native session is the 400 in `explore.sh`, not
-`QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
+The native platforms add 15 sessions a week (7 on iOS, without c7; 8 on Android), each with a web session's budget
+and timeout and a Haiku canary before it (5 turns, $0.05). On GitHub an iOS session cost $0.43 to $1.42 and took 59
+to 149 turns and 11 to 39 minutes, an Android one $0.89 to $2.26, 108 to 199 turns and 12 to 42 minutes, and every
+canary took 3 turns. The 15 native sessions cost $14.67 together. The turn cap of a native session is the 299 in
+`explore.sh`, not `QA_EXPLORE_MAX_TURNS`; the budget and the timeout come from the workflow. Runner time grows too: two native builds
 per platform, and every native explore, replay and verify job boots a simulator or an emulator, on macOS runners for
 iOS.
 

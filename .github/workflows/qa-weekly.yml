@@ -54,9 +54,9 @@ concurrency:
 permissions: {}
 
 env:
-  QA_EXPLORE_MAX_BUDGET_USD: 10
-  QA_EXPLORE_MAX_TURNS: 400
-  QA_EXPLORE_TIMEOUT_MINUTES: 60
+  QA_EXPLORE_MAX_BUDGET_USD: 4.01
+  QA_EXPLORE_MAX_TURNS: 552
+  QA_EXPLORE_TIMEOUT_MINUTES: 63
   QA_FIX_MAX_BUDGET_USD: 20
   QA_FIX_MAX_TURNS: 200
   QA_FIX_TIMEOUT_MINUTES: 60
@@ -869,7 +869,7 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.nativeVerify != '[]' }}
     runs-on: ${{ matrix.leg.runner }}
     # Only a ceiling: a timeout loses every finding of the leg, so verify.ts starts no run that could end after it.
-    timeout-minutes: 130
+    timeout-minutes: 360
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read

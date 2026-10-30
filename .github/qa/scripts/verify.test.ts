@@ -17,7 +17,6 @@ import {
   judge,
   legStartOf,
   nativeJobMinutes,
-  nativeReplayCap,
   oracleOf,
   replay,
   replayEnv,
@@ -207,8 +206,8 @@ describe('replay', () => {
     expect(calls).toEqual([
       [
         controlSpec(),
-        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
         join(outDir, 'c2-chat-desktop/repro/page-noise.spec.ts'),
+        join(outDir, 'c2-chat-desktop/repro/console.spec.ts'),
       ],
     ])
     expect(titles(result.observations)).toEqual(['blank-evidence', 'no-oracle', 'noise'])
@@ -326,19 +325,25 @@ describe('replay', () => {
     expect(result.confirmed).toEqual([])
   })
 
-  test('replays at most 20 findings and defers the rest, in path order', async () => {
-    const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
+  test('replays at most 30 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeFinding({ ...makeFinding('a-wording', pageError), area: 'i18n' })
+    const ids = Array.from({ length: 30 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeFinding(makeFinding(id, pageError))
     const calls: string[][] = []
 
     const result = await replay(outDir, fakeRunner({}, calls), qaDir)
 
-    expect(calls[0]).toHaveLength(21) // the control spec and 20 findings
-    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/f20.spec.ts'))
+    expect(calls[0]).toHaveLength(31) // the control spec and 30 findings
+    expect(calls[0]).not.toContain(join(outDir, 'c2-chat-desktop/repro/a-wording.spec.ts'))
     expect(result.deferred).toEqual([
-      { file: expect.objectContaining({ id: 'f20' }), step: 'replay', reason: 'over the cap of 20 replayed findings' },
+      {
+        file: expect.objectContaining({ id: 'a-wording' }),
+        step: 'replay',
+        reason: 'over the cap of 30 replayed findings',
+      },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('f20')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
   test('a spec missing from the report is dropped, and nothing replayable means no Playwright run', async () => {
@@ -1078,8 +1083,9 @@ describe('replay of native flows', () => {
       server: [logs, logs, logs],
     })
 
-    expect(titles(result.confirmed)).toEqual(['console', 'server'])
-    expect(result.confirmed[0].replay.error).toBe(`logged during the run: ${later}`)
+    // A console error is Low, so it replays after the server error.
+    expect(titles(result.confirmed)).toEqual(['server', 'console'])
+    expect(result.confirmed[1].replay.error).toBe(`logged during the run: ${later}`)
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['quiet'])
   })
 
@@ -1124,21 +1130,33 @@ describe('replay of native flows', () => {
     expect(calls.filter((call) => call.title === 'passing')).toHaveLength(3)
   })
 
-  test('a native leg replays at most nativeReplayCap findings, so its worst case fits the job, and defers the rest', async () => {
-    const ids = Array.from({ length: nativeReplayCap + 1 }, (_, n) => `f${n}`)
+  test('a native leg replays at most 24 findings, most severe first, and defers the rest', async () => {
+    // First in path order, so only the ordering by severity puts this Low finding over the cap.
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    const ids = Array.from({ length: 24 }, (_, n) => `f${String(n).padStart(2, '0')}`)
     for (const id of ids) await writeNative(makeNative(id, assertFailed))
     const calls: FlowCall[] = []
 
     const result = await nativeReplay({}, calls)
 
-    expect(new Set(calls.map((call) => call.title))).toEqual(new Set(['stack control', ...ids.slice(0, -1)]))
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', ...ids])
     expect(result.deferred).toEqual([
       {
-        file: expect.objectContaining({ id: ids.at(-1) }),
+        file: expect.objectContaining({ id: 'a-wording' }),
         step: 'replay',
-        reason: `over the cap of ${nativeReplayCap} replayed findings`,
+        reason: 'over the cap of 24 replayed findings',
       },
     ])
+  })
+
+  test("a native leg runs its flows most severe first, so the leg's clock runs out on the least severe", async () => {
+    await writeNative({ ...makeNative('a-wording', assertFailed), area: 'i18n' })
+    await writeNative(makeNative('b-send', assertFailed))
+    const calls: FlowCall[] = []
+
+    await nativeReplay({}, calls)
+
+    expect([...new Set(calls.map((call) => call.title))]).toEqual(['stack control', 'b-send', 'a-wording'])
   })
 
   test('replay lines are compared as the gate showed them, so cleaned evidence still matches', async () => {
@@ -1955,7 +1973,7 @@ describe('judge', () => {
     expect(worstJudgeCost('s', 'u', 1) - worstJudgeCost('s', 'u', 0)).toBeCloseTo((1_600 * 4) / 1_000_000)
     // Text that fits under the ceiling with room to spare, so only the image pushes it over.
     const base = makeVisual('tight')
-    const room = (2 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
+    const room = (17 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
     const pad = room - JSON.stringify(base, null, 2).length - '<finding>\n\n</finding>'.length
     const tight = { ...base, actual: 'x'.repeat(Math.floor(pad)) }
     await writeCandidates({ confirmed: [visualCandidate(tight)], flaky: [], observations: [], dropped: [] })
@@ -1965,7 +1983,7 @@ describe('judge', () => {
 
     expect(calls).toEqual([])
     expect(result.deferred).toEqual([
-      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2091,11 +2109,16 @@ describe('judge', () => {
     expect(calls).toEqual([])
   })
 
-  test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {
-    const ids = Array.from({ length: 16 }, (_, n) => `j${String(n).padStart(2, '0')}`)
+  test('judges at most 84 candidates, most severe first, and defers the rest, keeping the replay leg deferrals', async () => {
+    // First in the replay's order, so only the ordering by severity puts this Low candidate over the cap.
+    const wording = {
+      ...candidate('a-wording'),
+      finding: { ...makeFinding('a-wording', pageError), area: 'i18n' as const },
+    }
+    const ids = Array.from({ length: 84 }, (_, n) => `j${String(n).padStart(2, '0')}`)
     const replayDeferred = { file: candidate('late'), step: 'replay' as const, reason: 'over the cap' }
     await writeCandidates({
-      confirmed: ids.map(candidate),
+      confirmed: [wording, ...ids.map(candidate)],
       flaky: [],
       observations: [],
       dropped: [],
@@ -2105,12 +2128,12 @@ describe('judge', () => {
 
     const result = await judge(outDir, fakeCreate({}, calls), qaDir)
 
-    expect(calls).toHaveLength(15)
+    expect(calls).toHaveLength(84)
     expect(result.deferred).toEqual([
       replayDeferred,
-      { file: candidate('j15'), step: 'judge', reason: 'over the cap of 15 judged findings' },
+      { file: wording, step: 'judge', reason: 'over the cap of 84 judged findings' },
     ])
-    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('j15')
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('a-wording')
   })
 
   test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {
@@ -2121,7 +2144,7 @@ describe('judge', () => {
       dropped: [],
     })
     // A byte may cost an input token, so this file alone is over the ceiling.
-    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(600_000))
+    await Bun.write(join(outDir, 'c2-chat-desktop/repro/huge.spec.ts'), 'x'.repeat(4_300_000))
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, fakeCreate({ small: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
@@ -2129,7 +2152,7 @@ describe('judge', () => {
     expect(calls).toHaveLength(1)
     expect(result.confirmed.map((file) => file.id)).toEqual(['small'])
     expect(result.deferred).toEqual([
-      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $17" },
     ])
   })
 
@@ -2198,9 +2221,9 @@ describe('judge', () => {
       observations: [],
       dropped: [],
     })
-    // Both judge calls fit under the $2 ceiling, and what they leave is less than any call's worst case.
+    // Both judge calls fit under the $17 ceiling, and what they leave is less than any call's worst case.
     for (const title of ['big', 'large']) {
-      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(220_000))
+      await Bun.write(join(outDir, `c2-chat-desktop/repro/${title}.spec.ts`), 'x'.repeat(2_100_000))
     }
     const keep = '{"keep":true,"reason":"Sending fails."}'
     const groupingCalls: Anthropic.MessageCreateParamsNonStreaming[] = []
@@ -2213,7 +2236,7 @@ describe('judge', () => {
     expect(result.confirmed).toHaveLength(2)
     expect(groupingCalls).toEqual([])
     expect(result.groups).toBeUndefined()
-    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $2; findings file grouped by fingerprint"])
+    expect(lines).toEqual(["grouping: over the judge's spend ceiling of $17; findings file grouped by fingerprint"])
   })
 })
 

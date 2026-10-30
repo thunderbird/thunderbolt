@@ -18,6 +18,7 @@ import {
   hasOracle,
   lintReproSpec,
   loadFindings,
+  mostSevereFirst,
   normalize,
   parseSession,
   platformOf,
@@ -131,17 +132,18 @@ const judgeModel = 'claude-opus-5-5'
 const judgeUsdPerMillionTokens = { input: 4, output: 20 }
 const judgeMaxTokens = 4096
 // Per-leg caps; the README's "Budget calibration" section explains them.
-const replayCap = 20
-/** Must equal replay-native's `timeout-minutes`. */
-export const nativeJobMinutes = 130
-export const nativeRunEstimateMinutes = 4.1
-export const nativeSetupEstimateMinutes = 6.5
+const replayCap = 30
+/** Must equal replay-native's `timeout-minutes`: GitHub's limit for a job on a hosted runner. */
+export const nativeJobMinutes = 360
+export const nativeRunEstimateMinutes = 4.5
+export const nativeSetupEstimateMinutes = 7.4
 export const nativeWrapUpMinutes = 2
 export const nativeDriverStartupMinutes = Number(maestroEnv().MAESTRO_DRIVER_STARTUP_TIMEOUT) / 60_000
 // workflow.test.ts sizes the cap without the cold first run, which adds about 5 minutes.
-export const nativeReplayCap = 4
-const judgeCap = 15
-const judgeCeilingUsd = 2
+export const nativeReplayCap = 24
+const judgeCap = 84
+// Calls are admitted on their worst case, about seven times what one costs.
+const judgeCeilingUsd = 17
 // Message framing and the verdict schema, on top of the prompt text.
 const judgeOverheadTokens = 1_000
 // The API scales a larger image down to about 1.15 megapixels.
@@ -564,7 +566,7 @@ export const legStartOf = (seconds: string | undefined, now = Date.now()) => {
 type Device = { runFlow: RunFlow; outDir: string; next: () => number; clock?: LegClock }
 
 /** Runs past the three that replace inconclusive ones, per finding. */
-export const extraRuns = 3
+const extraRuns = 3
 
 /**
  * A native `layout` or log-oracle run whose flow failed without showing the quoted line never reached the screen
@@ -789,7 +791,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 
 /**
  * Verify step 1: schema, oracle and spec lint, then one Playwright run replaying the surviving specs three times each,
- * up to `replayCap` findings, `nativeReplayCap` on a native leg (the rest are `deferred`). A run counts as failed only
+ * up to `replayCap` findings, `nativeReplayCap` on a native leg, most severe first (the rest are `deferred`), with a
+ * native leg's flows run in that order. A run counts as failed only
  * when it failed inside the spec's `bugStep` step. A run that failed before it is inconclusive, and since Playwright
  * runs no replacement, the finding is then flaky unless the other runs confirm it anyway. Failed 3/3 = confirmed,
  * 1 or 2 = flaky, 0 = dropped; 2/3 confirms a real-AI charter's findings, which replay against the real providers,
@@ -873,15 +876,21 @@ export const replay = async (
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
     else lintClean.push(file)
   }
-  // shortcut: the first findings in path order fill the cap, rank by severity if a capped run ever loses a bad one.
   const cap = runFlow ? nativeReplayCap : replayCap
-  const replayable = lintClean.slice(0, cap)
-  result.deferred = lintClean
+  const queue = mostSevereFirst(lintClean)
+  const replayable = queue.slice(0, cap)
+  result.deferred = queue
     .slice(cap)
     .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${cap} replayed findings` }))
 
   const specFiles = replayable.filter((file) => !flows.has(file))
-  const replayedFlows = new Map([...flows].filter(([file]) => replayable.includes(file)))
+  // In queue order: the leg's clock runs out on the last flows, so those must be the least severe.
+  const replayedFlows = new Map(
+    replayable.flatMap((file) => {
+      const flow = flows.get(file)
+      return flow ? [[file, flow] as const] : []
+    }),
+  )
   if (replayedFlows.size > 0 && !runFlow) throw new Error('findings with a repro_flow need a device: pass --native')
   const noRuns = { replay: { failed: 0, runs: 0 }, artifacts: {} }
   const outcomes = new Map<FindingFile, Outcome>()
@@ -1057,8 +1066,8 @@ type Prompt = { candidate: VerifiedFinding; content: Anthropic.MessageParam['con
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec or flow and its replay failure (a `visual` finding's screenshot instead), and `.github/qa/known-issues.md`.
- * Flaky candidates are never judged. At most `judgeCap` calls, admitted in order only while their worst-case cost fits
- * under `judgeCeilingUsd`; the rest are `deferred`. Then `groupFindings` groups what the judge kept, within what is
+ * Flaky candidates are never judged. At most `judgeCap` calls, admitted most severe first only while their worst-case
+ * cost fits under `judgeCeilingUsd`; the rest are `deferred`. Then `groupFindings` groups what the judge kept, within what is
  * left of that ceiling. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
  */
 export const judge = async (
@@ -1070,7 +1079,7 @@ export const judge = async (
   const candidates: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
   const system = `${await Bun.file(join(qaDir, 'judge.md')).text()}\n\n${await Bun.file(join(qaDir, 'known-issues.md')).text()}`
   const prompts = await Promise.all(
-    candidates.confirmed.map(async (candidate): Promise<Prompt> => {
+    mostSevereFirst(candidates.confirmed).map(async (candidate): Promise<Prompt> => {
       const finding = `<finding>\n${JSON.stringify(candidate.finding, null, 2)}\n</finding>`
       if (candidate.finding.oracle.type === 'visual') {
         const path = screenshotPath(outDir, candidate)

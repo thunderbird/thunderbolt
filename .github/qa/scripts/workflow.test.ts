@@ -9,7 +9,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  extraRuns,
   nativeDriverStartupMinutes,
   nativeJobMinutes,
   nativeReplayCap,
@@ -361,10 +360,10 @@ describe('publish', () => {
   })
 })
 
-test("a native replay leg's worst case fits its timeout, since a timeout loses every finding of the leg", () => {
-  // The control's 3 runs and every finding's 3 plus extras. The control's own extras are left out: they start only
-  // while the findings' base runs still fit the clock.
-  const runs = 3 + nativeReplayCap * (3 + extraRuns)
+test("a native replay leg's base runs fit its timeout, since a timeout loses every finding of the leg", () => {
+  // The control's 3 runs and every finding's 3. Extra runs are left out: one starts only while the base runs of
+  // every later finding still fit the clock.
+  const runs = 3 + nativeReplayCap * 3
   const minutes =
     runs * nativeRunEstimateMinutes + nativeSetupEstimateMinutes + nativeWrapUpMinutes + nativeDriverStartupMinutes
   expect(minutes).toBeLessThan(nativeJobMinutes)

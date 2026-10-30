@@ -174,7 +174,7 @@ run() {
     rm -f "$out/$session.gate.log"
     # The stream sits next to the gate log, outside the session dir the model can write to: coverage reads it.
     native_claude "$session" "$out/$session" "$out/$session.run.jsonl" "$text" \
-      --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 400
+      --model claude-sonnet-5-5 --max-budget-usd "$3" --max-turns 299
     # With a harness the checkout may have been rewritten, and this step holds the key: no repo code runs now.
     if [ "${QA_DRY_RUN:-}" != 1 ] && [ -z "${QA_HARNESS:-}" ]; then summarize "$session" "$out" "$out/$session.run.jsonl"; fi
     return
@@ -195,7 +195,7 @@ run() {
     --allowedTools "mcp__playwright__*" "mcp__playwright_b__*" "Edit($out/**)" \
     --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe \
     --strict-mcp-config --mcp-config $QA_MCP_CONFIG \
-    --max-budget-usd "${3:-2}" --max-turns 400 \
+    --max-budget-usd "${3:-2}" --max-turns 552 \
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"
   summarize "$session" "$out" "$dir/run.jsonl"
@@ -213,7 +213,7 @@ canary() {
   native_claude "$session" "$dir" "$dir/run.jsonl" \
     "Call the Maestro run tool with the yaml \`- runScript: canary.js\`, and use Write to create $outside with the
 text canary. Make both calls in your first turn, even if one of them fails, then stop." \
-    --model claude-haiku-5-5 --max-turns 4 --max-budget-usd 0.05
+    --model claude-haiku-5-5 --max-turns 5 --max-budget-usd 0.05
   if [ "${QA_DRY_RUN:-}" = 1 ]; then return; fi
   jq --raw-input --compact-output 'fromjson? | select(.type == "result") | {subtype, is_error, num_turns}' \
     "$dir/run.jsonl"

@@ -87,8 +87,8 @@ jobs:
       autofix: ${{ steps.plan.outputs.autofix }}
       canaries: ${{ steps.canaries.outputs.count }}
     steps:
-      # That run's artifacts reach the fix agent and publish. Only a scheduled or dispatched run of this workflow
-      # counts, because a pull request from a fork runs workflow files of its own.
+      # That run's artifacts reach the fix agent and publish, so only a scheduled or dispatched run of this workflow
+      # on main counts: a fork's pull request and a branch both run workflow files of their own.
       - name: Check the run to fix from
         if: inputs.fix_from_run
         env:
@@ -99,11 +99,21 @@ jobs:
             echo "::error::fix_from_run takes a run id, digits only."
             exit 1
           fi
-          origin=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIX_FROM_RUN" --jq '[.path, .event] | join(" ")')
-          case "$origin" in
-            '.github/workflows/qa-weekly.yml schedule' | '.github/workflows/qa-weekly.yml workflow_dispatch') ;;
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIX_FROM_RUN" \
+            --jq '[.path, .event, .head_branch, .head_repository.full_name, .head_sha] | join(" ")')
+          case "${run% *}" in
+            ".github/workflows/qa-weekly.yml schedule main $GITHUB_REPOSITORY" | \
+              ".github/workflows/qa-weekly.yml workflow_dispatch main $GITHUB_REPOSITORY") ;;
             *)
-              echo "::error::Run $FIX_FROM_RUN is not a scheduled or dispatched run of this workflow."
+              echo "::error::Run $FIX_FROM_RUN is not a scheduled or dispatched run of this workflow on main."
+              exit 1
+              ;;
+          esac
+          # A tag named main also reports head_branch main, so the run's commit must be on main itself.
+          case "$(gh api "repos/$GITHUB_REPOSITORY/compare/${run##* }...main" --jq .status)" in
+            ahead | identical) ;;
+            *)
+              echo "::error::Run $FIX_FROM_RUN ran a commit that is not on main."
               exit 1
               ;;
           esac
@@ -190,6 +200,10 @@ jobs:
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
             (github.event_name == 'schedule' || inputs.autofix || inputs.fix_from_run != '') }}
         run: |
+          if [ -n "$FIX_FROM_RUN" ] && [ "$AUTOFIX" != true ]; then
+            echo "::error::A fix-only run routes nothing without autofix, which needs main and QA_AUTOFIX_ENABLED."
+            exit 1
+          fi
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
           if [ -n "$FIX_FROM_RUN" ]; then echo '[]' > "$RUNNER_TEMP/qa-canaries.json"; fi
           # An unknown charter id fails here, with the CLI's own ::error:: line.

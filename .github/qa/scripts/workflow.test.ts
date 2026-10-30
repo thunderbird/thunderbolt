@@ -664,50 +664,88 @@ describe('a fix-only run', () => {
   const runStep = (job: string, name: string, cwd: string, env: Record<string, string>) =>
     Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], { cwd, env: { PATH: process.env.PATH, ...env } })
 
-  test('takes only a run id of a scheduled or dispatched run of this workflow, before anything else runs', () => {
+  test('takes only a run id of a scheduled or dispatched run of this workflow on main, before anything else', () => {
     const check = steps('build')[0]
     expect(check.name).toBe('Check the run to fix from')
     expect(check.if).toBe('inputs.fix_from_run')
     const args = join(work, 'gh-args')
-    // Answers the run lookup with GH_ORIGIN and the artifact lookup with GH_ARTIFACT, as the --jq filters would.
+    // Applies the step's own --jq filter to the API object the path asks for, so the field names are exercised.
     const gh = [
       '#!/bin/sh',
       'echo "$@" >> "$GH_ARGS"',
-      'case "$2" in */artifacts*) echo "$GH_ARTIFACT" ;; *) echo "$GH_ORIGIN" ;; esac',
+      'case "$2" in */artifacts*) json=$GH_ARTIFACTS ;; */compare/*) json=$GH_COMPARE ;; *) json=$GH_RUN ;; esac',
+      'printf %s "$json" | jq --raw-output "$4"',
     ]
     const PATH = stubs({ gh: `${gh.join('\n')}\n` })
-    const checkRun = (id: string, origin: string, artifact = 'qa-filed') => {
+    type ApiRun = {
+      path: string
+      event: string
+      head_branch: string
+      head_repository: { full_name: string }
+      head_sha: string
+    }
+    type ApiArtifacts = { artifacts: { name: string; expired: boolean }[] }
+    const mainRun: ApiRun = {
+      path: '.github/workflows/qa-weekly.yml',
+      event: 'workflow_dispatch',
+      head_branch: 'main',
+      head_repository: { full_name: 'owner/repo' },
+      head_sha: 'abc123',
+    }
+    const liveFiled: ApiArtifacts = { artifacts: [{ name: 'qa-filed', expired: false }] }
+    const checkRun = (id: string, run = mainRun, status = 'ahead', artifacts = liveFiled) => {
       rmSync(args, { force: true })
-      const lookups = { GH_ARGS: args, GH_ORIGIN: origin, GH_ARTIFACT: artifact }
+      const lookups = {
+        GH_ARGS: args,
+        GH_RUN: JSON.stringify(run),
+        GH_COMPARE: JSON.stringify({ status }),
+        GH_ARTIFACTS: JSON.stringify(artifacts),
+      }
       const env = { PATH, FIX_FROM_RUN: id, GITHUB_REPOSITORY: 'owner/repo', ...lookups }
       return runStep('build', 'Check the run to fix from', work, env).exitCode
     }
-    const workflowPath = '.github/workflows/qa-weekly.yml'
 
-    expect(checkRun('123', `${workflowPath} workflow_dispatch`)).toBe(0)
+    expect(checkRun('123')).toBe(0)
     const calls = readFileSync(args, 'utf8').split('\n')
     expect(calls[0]).toStartWith('api repos/owner/repo/actions/runs/123 ')
-    expect(calls[1]).toStartWith('api repos/owner/repo/actions/runs/123/artifacts?name=qa-filed ')
-    expect(checkRun('123', `${workflowPath} schedule`)).toBe(0)
-    expect(checkRun('123', `${workflowPath} pull_request`)).toBe(1)
-    expect(checkRun('123', '.github/workflows/ci.yml workflow_dispatch')).toBe(1)
-    // Expired, or never filed: the API lists no live qa-filed.
-    expect(checkRun('123', `${workflowPath} schedule`, '')).toBe(1)
+    expect(calls[1]).toStartWith('api repos/owner/repo/compare/abc123...main ')
+    expect(calls[2]).toStartWith('api repos/owner/repo/actions/runs/123/artifacts?name=qa-filed ')
+    expect(checkRun('123', { ...mainRun, event: 'schedule' }, 'identical')).toBe(0)
+    const refused = {
+      'a pull request': [{ ...mainRun, event: 'pull_request' }],
+      'another workflow': [{ ...mainRun, path: '.github/workflows/ci.yml' }],
+      'a dispatch on a branch': [{ ...mainRun, head_branch: 'feature' }],
+      'a fork': [{ ...mainRun, head_repository: { full_name: 'fork/repo' } }],
+      'a tag named main': [mainRun, 'diverged'],
+      'an expired qa-filed': [mainRun, 'ahead', { artifacts: [{ name: 'qa-filed', expired: true }] }],
+      'no qa-filed': [mainRun, 'ahead', { artifacts: [] }],
+    } satisfies Record<string, [ApiRun, string?, ApiArtifacts?]>
+    for (const [why, [run, status, artifacts]] of Object.entries(refused))
+      expect({ why, exit: checkRun('123', run, status, artifacts) }).toEqual({ why, exit: 1 })
     for (const id of ['12a', '1 2', '123; touch pwned', '../123', '']) {
-      expect({ id, exit: checkRun(id, `${workflowPath} schedule`) }).toEqual({ id, exit: 1 })
+      expect({ id, exit: checkRun(id) }).toEqual({ id, exit: 1 })
       expect(existsSync(args)).toBe(false)
     }
   })
 
   test('plans no explore, replay, judge or canary leg, but still builds the native apps', () => {
+    const planIn = (temp: string, fixFromRun: string, autofix: string) => {
+      const env = { RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'out'), FIX_FROM_RUN: fixFromRun, AUTOFIX: autofix }
+      return runStep('build', 'Plan the legs', repo, { ...env, CHARTERS: '', JOURNEY: '' })
+    }
     const plan = (fixFromRun: string) => {
       const temp = mkdtempSync(join(work, 'plan-'))
       if (!fixFromRun) writeFileSync(join(temp, 'qa-canaries.json'), '[]')
-      const env = { RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'out'), FIX_FROM_RUN: fixFromRun }
-      expect(runStep('build', 'Plan the legs', repo, { ...env, CHARTERS: '', JOURNEY: '' }).exitCode).toBe(0)
+      expect(planIn(temp, fixFromRun, 'true').exitCode).toBe(0)
       const lines = readFileSync(join(temp, 'out'), 'utf8').trim().split('\n')
       return Object.fromEntries(lines.map((line) => line.split(/=(.*)/s).slice(0, 2)))
     }
+    // Off main, or with QA_AUTOFIX_ENABLED unset, route would skip, so the run stops before any build.
+    const refused = planIn(mkdtempSync(join(work, 'plan-')), '123', 'false')
+    expect(refused.exitCode).toBe(1)
+    expect(refused.stdout.toString()).toContain('::error::A fix-only run routes nothing without autofix')
+    const frontendBuild = indexOf('build', 'Build the frontend (onboarding off, onboarding on)')
+    expect(indexOf('build', 'Plan the legs')).toBeLessThan(frontendBuild)
     const planned = ['legs', 'nativeLegs', 'verify', 'nativeVerify', 'judge']
 
     const weekly = plan('')

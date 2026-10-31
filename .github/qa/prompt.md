@@ -158,25 +158,26 @@ file per finding, never append; number findings 1, 2, 3…
    }
    ```
 
-   `area` is the feature that owns the broken control or message, never your charter, the flow you are in or the URL.
+   `area` is the feature that owns the broken control or message, never your charter, the flow you are in or the URL;
+   `security` is the one exception and wins over it.
    Use exactly one of these words (anything else throws the finding away):
 
-   | area         | owns                                                                                         |
-   | ------------ | -------------------------------------------------------------------------------------------- |
-   | `auth`       | sign-in, email code entry, the waitlist, sign-out, deleting the account                      |
-   | `onboarding` | the steps after sign-in: name, privacy, location, language, passkey, Connect Google, welcome |
-   | `chat`       | a chat: messages, composer, model picker, attachments, the chat list, search                 |
-   | `models`     | Settings → Models: the list, Add Model, a model's page (under `/settings`, still `models`)   |
-   | `skills`     | the Skills list and editor, slash skills (under `/settings`, still `skills`)                 |
-   | `projects`   | Projects and moving chats into them                                                          |
-   | `widgets`    | the cards in a reply: weather, map, citations, link previews, documents                      |
-   | `settings`   | every other Settings page, Preferences and Connections included                              |
-   | `data`       | export, import and Delete All Local Data                                                     |
-   | `sync`       | syncing between devices, Settings → Devices                                                  |
-   | `security`   | encryption, passkeys and the recovery key in Settings                                        |
-   | `i18n`       | missing or wrong translations, date, number and unit formats                                 |
-   | `other`      | a console or page error from a shared component (dialog, sheet, menu) that names no feature  |
-   | `layout`     | never an area, whatever the oracle                                                           |
+   | area         | owns                                                                                                                                     |
+   | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+   | `auth`       | sign-in, email code entry, the waitlist, sign-out, deleting the account                                                                  |
+   | `onboarding` | the steps after sign-in: name, privacy, location, language, passkey, Connect Google, welcome                                             |
+   | `chat`       | a chat: messages, composer, model picker, attachments, the chat list, search                                                             |
+   | `models`     | Settings → Models: the list, Add Model, a model's page (under `/settings`, still `models`)                                               |
+   | `skills`     | the Skills list and editor, slash skills (under `/settings`, still `skills`)                                                             |
+   | `projects`   | Projects and moving chats into them                                                                                                      |
+   | `widgets`    | the cards in a reply: weather, map, citations, link previews, documents                                                                  |
+   | `settings`   | every other Settings page: Preferences (with its encryption, passkey and recovery key sections) and Connections                          |
+   | `data`       | export, import and Delete All Local Data                                                                                                 |
+   | `sync`       | syncing between devices, approving a new device, Settings → Devices                                                                      |
+   | `security`   | any finding that exposes data or breaks a security property (auth bypass, leaked secret, encryption not applied, XSS), wherever it shows |
+   | `i18n`       | missing or wrong translations, date, number and unit formats                                                                             |
+   | `other`      | a console error or warning from a shared component (dialog, sheet, menu) that names no feature; a page error follows the screen it broke |
+   | `layout`     | never an area, whatever the oracle                                                                                                       |
 
    A `visual` finding has no `repro_spec` and no spec file. Instead it has three fields:
    - `element`: the affected element as `<role> "<accessible name>"`, for example `button "Continue"`.

@@ -15,11 +15,12 @@ import {
   type CreateSkillInput,
   type UpdateSkillInput,
 } from '@/dal'
+import { isHiddenSystemSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 
 // `@powersync/tanstack-react-query` auto-invalidates this query whenever the
 // `skills` table fires a `tablesUpdated` event (Drizzle writes through
@@ -29,6 +30,22 @@ import { useMemo } from 'react'
 // so the row a mutation just wrote can miss the very next render. Explicit
 // invalidation on mutation success cuts that to zero latency.
 const skillsQueryKey = ['skills']
+
+/** Position after the last pin in an ascending list. Stored positions can have gaps. */
+export const nextPinnedOrder = (pinned: ReadonlyArray<Pick<Skill, 'pinnedOrder'>>): number =>
+  (pinned.at(-1)?.pinnedOrder ?? -1) + 1
+
+/**
+ * Rows for a mounted library view. A row stays listed once shown, so re-enabling
+ * or reverting a system skill doesn't remove it while the user is managing it.
+ */
+export const useStickySkills = (visibleSkills: Skill[], allSkills: Skill[]): Skill[] => {
+  const shownIds = useRef(new Set<string>())
+  return useMemo(() => {
+    visibleSkills.forEach((skill) => shownIds.current.add(skill.id))
+    return allSkills.filter((skill) => shownIds.current.has(skill.id))
+  }, [visibleSkills, allSkills])
+}
 
 /**
  * Read-only subscription to all non-deleted skills. Shared by
@@ -42,17 +59,21 @@ const useSkillsQuery = () => {
     queryKey: skillsQueryKey,
     query: toCompilableQuery(getAllSkills(db)),
   })
-  return { skills: skills as Skill[], isLoading }
+  const allSkills = skills as Skill[]
+  const visibleSkills = useMemo(() => allSkills.filter((skill) => !isHiddenSystemSkill(skill)), [allSkills])
+  return { allSkills, visibleSkills, isLoading }
 }
 
 /**
  * Library of non-deleted skills + mutations to create / update / soft-delete.
+ * `skills` is what users browse; `allSkills` also holds hidden system skills
+ * and resolves tokens typed in the composer.
  */
 export const useLibrarySkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-  const { skills, isLoading } = useSkillsQuery()
+  const { allSkills, visibleSkills, isLoading } = useSkillsQuery()
 
   const create = useMutation({
     mutationFn: (input: CreateSkillInput) => createSkill(db, input),
@@ -68,7 +89,8 @@ export const useLibrarySkills = () => {
   })
 
   return {
-    skills,
+    skills: visibleSkills,
+    allSkills,
     isLoading,
     createSkill: create.mutateAsync,
     updateSkill: update.mutateAsync,
@@ -104,7 +126,7 @@ export const usePinnedSkills = () => {
   })
 
   /**
-   * Toggle pin state. Pins land at the next available position (current count).
+   * Toggle pin state. Pins land after the last pin.
    * Throws `PinLimitExceededError` if the cap is reached — callers should
    * surface this inline on the trigger control.
    */
@@ -112,7 +134,7 @@ export const usePinnedSkills = () => {
     if (pinnedSet.has(id)) {
       await pin.mutateAsync({ id, order: null })
     } else {
-      await pin.mutateAsync({ id, order: pinnedSkills.length })
+      await pin.mutateAsync({ id, order: nextPinnedOrder(pinnedSkills) })
     }
   }
 
@@ -133,15 +155,15 @@ export const useEnabledSkills = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: skillsQueryKey })
-  const { skills } = useSkillsQuery()
+  const { allSkills } = useSkillsQuery()
 
   const enabledById = useMemo(() => {
     const map = new Map<string, boolean>()
-    for (const skill of skills) {
+    for (const skill of allSkills) {
       map.set(skill.id, skill.enabled === 1)
     }
     return map
-  }, [skills])
+  }, [allSkills])
 
   const set = useMutation({
     mutationFn: ({ id, next }: { id: string; next: boolean }) => setSkillEnabled(db, id, next),

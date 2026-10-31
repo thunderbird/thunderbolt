@@ -23,10 +23,12 @@ import {
 } from '@shared/defaults/models'
 import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
 import {
+  defaultSkillResearch,
   defaultSkillWeather,
   defaultSkills,
   defaultSkillsVersion,
   hashSkill,
+  isHiddenSystemSkill,
   isWidgetSkillId,
 } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
@@ -38,7 +40,7 @@ import {
   reconcileDefaultsForTable,
   versionMarkerKeys,
 } from './reconcile-defaults'
-import type { Model, ModelProfile, Prompt } from '@/types'
+import type { Model, ModelProfile, Prompt, Skill } from '@/types'
 
 /** A model id no current default uses — stands in for any retired default. */
 const retiredModelId = '019af08a-9836-783d-ab56-39b9fec48af1'
@@ -1605,6 +1607,58 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     // version yet, so peers with the fuller bundle should still be able to
     // reach open canOverwrite on their next boot.
     expect(await readStoredModelsVersion()).not.toBe(defaultModelsVersion + 1)
+  })
+})
+
+describe('system skill visibility after reconciliation', () => {
+  const seedPinnedResearch = async (instruction: string) => {
+    const db = getDb()
+    await reconcileDefaults(db)
+    const shippedV9Research = { ...defaultSkillResearch, pinnedOrder: 1 }
+    await db
+      .update(skillsTable)
+      .set({ pinnedOrder: 1, instruction, defaultHash: hashSkill(shippedV9Research) })
+      .where(eq(skillsTable.id, defaultSkillResearch.id))
+    await db
+      .update(settingsTable)
+      .set({ value: String(defaultSkillsVersion - 1) })
+      .where(eq(settingsTable.key, versionMarkerKeys.skills))
+  }
+
+  const readResearch = () => getDb().select().from(skillsTable).where(eq(skillsTable.id, defaultSkillResearch.id)).get()
+
+  test('hides every system skill on a fresh install', async () => {
+    const db = getDb()
+    await reconcileDefaults(db)
+
+    const rows = (await db.select().from(skillsTable)) as Skill[]
+    expect(
+      rows
+        .filter(isHiddenSystemSkill)
+        .map((row) => row.name)
+        .sort(),
+    ).toEqual(['ask', 'connect-integration', 'link-preview', 'map', 'research'])
+  })
+
+  test('unpins and hides pristine Research on upgrade', async () => {
+    await seedPinnedResearch(defaultSkillResearch.instruction)
+
+    await reconcileDefaults(getDb())
+
+    const research = (await readResearch()) as Skill
+    expect(research.pinnedOrder).toBeNull()
+    expect(isHiddenSystemSkill(research)).toBe(true)
+  })
+
+  test('keeps edited Research pinned and visible on upgrade', async () => {
+    await seedPinnedResearch('Mine')
+
+    await reconcileDefaults(getDb())
+
+    const research = (await readResearch()) as Skill
+    expect(research.instruction).toBe('Mine')
+    expect(research.pinnedOrder).toBe(1)
+    expect(isHiddenSystemSkill(research)).toBe(false)
   })
 })
 

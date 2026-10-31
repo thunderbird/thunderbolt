@@ -6,6 +6,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 import { createRef, type KeyboardEvent } from 'react'
 
+import { defaultSkillResearch, hashSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import { getSlashState, useSlashCommand } from './use-slash-command'
 
@@ -184,6 +185,23 @@ describe('useSlashCommand selectSkill', () => {
     expect(hook.result.current.popupOpen).toBe(true)
     act(() => hook.result.current.selectSkill(fakeSkill('alpha')))
     expect(getValue()).toBe('/Alpha ')
+  })
+})
+
+describe('useSlashCommand hidden system skills', () => {
+  it('leaves hidden system skills out of the popup', () => {
+    const hidden = { ...defaultSkillResearch, defaultHash: hashSkill(defaultSkillResearch) }
+    const hook = renderHook(() =>
+      useSlashCommand({
+        value: '/',
+        setValue: () => undefined,
+        inputRef: createRef<HTMLTextAreaElement>(),
+        library: [hidden, fakeSkill('daily-brief')],
+        isEnabled: () => true,
+      }),
+    )
+    act(() => hook.result.current.setCursorPos(1))
+    expect(hook.result.current.popupItems.map((i) => i.name)).toEqual(['daily-brief'])
   })
 })
 

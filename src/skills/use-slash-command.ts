@@ -4,6 +4,7 @@
 
 import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } from 'react'
 
+import { isHiddenSystemSkill } from '@/defaults/skills'
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
 import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
@@ -136,7 +137,7 @@ export const useSlashCommand = ({
     // the agent-command comparisons below.
     const query = slashState.query.toLowerCase()
     const skillItems: SlashItem[] = library
-      .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, slashState.query))
+      .filter((s) => !isHiddenSystemSkill(s) && isEnabled(s.name) && skillMatchesQuery(s, slashState.query))
       // Slug tiebreak keeps ordering deterministic when two skills share a
       // display name (labels are free text).
       .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))

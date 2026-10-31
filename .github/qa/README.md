@@ -505,6 +505,17 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
    cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
    PR.
+
+   The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
+   web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it
+   finishes (`fix.md`, "Review your diff"). The allow rule is `Skill(simplify)`: with it, a local session on the
+   pinned CLI loaded `simplify` and refused `update-config` and `loop`, in both the scrubbed and the plain `dontAsk`
+   mode. The allow stays that one named skill: `workflow.test.ts` fails on a bare `Skill` rule or any other skill.
+   `simplify` runs in a single pass because the session has no `Agent` tool, and its `git diff` step is refused, so it
+   reads the changed files. If it fails to load, `fix.md` lists the same steps to do by hand. After a CLI bump (the
+   action pins it), repeat the local check: the skill text and the allow rule's behavior are CLI internals. After the
+   merge, the first fix session's transcript should show the `simplify` load, with no other skill.
+
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.

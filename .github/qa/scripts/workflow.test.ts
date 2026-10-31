@@ -266,6 +266,17 @@ describe('fix job', () => {
       expect(args).toContain(`"Edit(${rule})"`)
   })
 
+  test('the agent gets the Skill tool for simplify only, no agent tools and still no git', () => {
+    const args = step('fix', 'Fix').with?.claude_args ?? ''
+    const flagValue = (flag: string) => args.match(new RegExp(`${flag} "([^"]*)"`))?.[1] ?? ''
+    expect(flagValue('--tools').split(',')).toEqual(['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'Skill'])
+    // A bare `Skill` rule would allow every bundled skill, among them ones that change settings.
+    expect(flagValue('--allowedTools').match(/(?<![\w.])Skill\b\(?[^,)]*\)?/g)).toEqual(['Skill(simplify)'])
+    expect(args).not.toMatch(/(?<![\w.])(Agent|Task)\b/)
+    expect(args).toContain('--disallowedTools "Bash(git:*)"')
+    expect(flagValue('--allowedTools')).not.toContain('Bash(git')
+  })
+
   const collect = (env: Record<string, string>) => {
     const dir = mkdtempSync(join(work, 'collect-'))
     const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])

@@ -1379,8 +1379,8 @@ jobs:
             --model claude-opus-5-5
             --setting-sources user
             --permission-mode dontAsk
-            --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
+            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
               "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/tsconfig*.json)"
               "Edit(**/.husky/**)" "Edit(**/package.json)" "Edit(**/bun.lock)" "Edit(**/bun.lockb)" "Edit(**/Cargo.toml)"

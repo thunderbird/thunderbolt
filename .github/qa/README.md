@@ -109,8 +109,10 @@ write Actions cache entries in the run's scope. Code the agent wrote runs as the
 `verify-tests` and `verify-checks` are not among them. Their tests and checks run as the OS user `qa-test`, which can
 read no process of the job's user and has no sudo. The job's user loses root (`stack.sh lock`) before the patch
 lands, and the patch lands inside one `fix.ts` process that was loaded before it, so no file of the patched tree
-(`fix.ts`'s imports, `bunfig.toml`, `.env`, `stack.sh`) is ever loaded as the job's user. Every `qa-test` process is
-killed before the pass upload, whose `if:` also needs that stop to succeed.
+(`fix.ts`'s imports, `bunfig.toml`, `.env`, `stack.sh`) is ever loaded as the job's user. That process refuses a
+patch that adds or changes a symlink or submodule before it applies it, since its own writes and `chmod` would follow
+the link, and it commits with no git hooks. Every `qa-test` process is killed before the pass upload, whose `if:`
+also needs that stop to succeed.
 
 What still bounds a forged pass: publish checks the patch itself (`isDenied`, the secret scan, symlinks and
 submodules), the PR is a draft a person reviews, and nothing merges. A forged cache entry can only take a key that

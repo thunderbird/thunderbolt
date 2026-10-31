@@ -696,6 +696,9 @@ const runPrChecks = async ({
 
 type GateOptions = Omit<PrChecksOptions, 'ticket'> & { outDir: string; fp: string }
 
+/** The gate's failed check for a patch that adds or changes a symlink or submodule; no check runs on it. */
+export const noLinks = 'no symlink or submodule in the patch'
+
 /**
  * The PR checks gate. It stages the tree publish would push (`stage`) and commits it as publish does, so the checks
  * see a committed tree, as in CI, and `i18n:check`'s `git status` test sees no staged catalog. Then `runPrChecks`.
@@ -704,6 +707,10 @@ type GateOptions = Omit<PrChecksOptions, 'ticket'> & { outDir: string; fp: strin
  */
 export const runGate = async ({ outDir, fp, user, repoDir = '.', run = runCommand, ...rest }: GateOptions) => {
   const { task } = await planTask(outDir, fp)
+  // The chmod and the spec write below would follow a link the patch adds, as the job's user. publish refuses such a
+  // patch and hands its ticket to a person.
+  const files = await patchedFiles(run, resolve(outDir, 'fix', `${fp}.patch`))
+  if (files.some((f) => f.modes.some((m) => linkModes.has(m)))) return noLinks
   await stage(run, outDir, task, repoDir)
   const identity = ['-c', 'user.name=QA gate', '-c', 'user.email=qa-gate@localhost']
   await noHooksGit(run)([...identity, 'commit', '--no-verify', '--quiet', '--message', 'The tree publish would push'])
@@ -1034,7 +1041,7 @@ export const publish = async ({
 
   // Last, so a patch that also fails a check above goes to a person.
   if (!artifacts.has(`qa-pass-${fp}-checks-${attempt}`)) {
-    return leaveForLater('the PR checks gate did not pass; the verify-checks summary names a check that failed')
+    return leaveForLater('the PR checks gate did not pass')
   }
 
   const { branch } = task

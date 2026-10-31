@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as prettier from 'prettier'
@@ -21,6 +21,7 @@ import {
   regressionSpec,
   route,
   type Run,
+  noLinks,
   runGate,
   testRuns,
   whyNoSpec,
@@ -1384,7 +1385,7 @@ describe('the PR checks gate', () => {
     expect(await git(['git', 'status', '--porcelain'])).toBe('')
   }, 20_000)
 
-  // CI checks out a commit, so a staged catalog would fail the status test of `bun run i18n:check` there and not in CI.
+  // A staged catalog fails `i18n:check`'s `git status` test in the gate, but not in CI, which checks out a commit.
   test("passes i18n:check's git tests on a patch that changes a tracked catalog", async () => {
     const catalogs = {
       name: 'catalogs',
@@ -1429,12 +1430,41 @@ describe('the PR checks gate', () => {
         ...['env', 'CI=true', 'bash', '-eo', 'pipefail', '-c', 'false'],
       ],
     ])
-    // i18n:check rewrites them as that user.
+    // The catalog check rewrites the catalogs as the test user.
     for (const catalogs of ['src/locales/en', 'backend/src/emails/locales/en/messages.po'])
       expect((await stat(join(repo, catalogs))).mode & 0o002).toBe(0o002)
     await gateAs({ 'src/x.ts': 'x' })
     expect(cmds).toHaveLength(1)
   })
+
+  test('refuses a patch that turns a catalog folder into a symlink, before it writes or changes anything', async () => {
+    const outside = join(dir, 'outside')
+    await mkdir(outside, { mode: 0o755 })
+    await git(['git', 'rm', '-r', '--quiet', 'src/locales'])
+    await symlink(outside, join(repo, 'src', 'locales'))
+    await git(['git', 'add', '--all'])
+    await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
+    await git(['git', 'reset', '--quiet', '--hard'])
+    const cmds: string[][] = []
+    const exec = async (cmd: string[]) => cmds.push(cmd)
+    const failed = await runGate({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, checks, log: () => {} })
+    expect(failed).toBe(noLinks)
+    expect((await stat(outside)).mode & 0o777).toBe(0o755)
+    expect(cmds).toEqual([])
+    expect(await git(['git', 'log', '--format=%s'])).toBe('init\n')
+  })
+
+  // Lifecycle scripts point core.hooksPath at husky's folder, which a patch may change before the gate commits.
+  test('commits the tree with no git hook, whatever core.hooksPath says', async () => {
+    const marker = join(dir, 'hook-ran')
+    await put(join(dir, 'hooks', 'post-commit'), `#!/bin/sh\ntouch ${marker}\n`)
+    await chmod(join(dir, 'hooks', 'post-commit'), 0o755)
+    await git(['git', 'config', 'core.hooksPath', join(dir, 'hooks')])
+    expect(
+      (await gate({ 'src/chat.ts': `${header}\nexport const title = (text: string) => text.trim()\n` })).failed,
+    ).toBe(undefined)
+    expect(await Bun.file(marker).exists()).toBe(false)
+  }, 20_000)
 })
 
 describe('publish', () => {
@@ -1800,7 +1830,7 @@ describe('publish', () => {
     expect(runs.map((r) => r.cmd[1])).toEqual(['read-tree', 'apply', 'diff'])
     expect(calls).toEqual([])
     expect(await readFile(summary, 'utf8')).toBe(
-      '- THB-1 is left untouched for a later run: the PR checks gate did not pass; the verify-checks summary names a check that failed\n',
+      '- THB-1 is left untouched for a later run: the PR checks gate did not pass\n',
     )
   })
 

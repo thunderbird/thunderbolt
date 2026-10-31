@@ -122,9 +122,8 @@ status, or the text on screen):
   a text field or combobox, whose `txt` is its value) or the screenshot. It reports a problem
   only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A
   `[qa-layout]` line other than `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a
-  `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` is
-  the area of the screen where the problem shows (onboarding, chat, settings, ...), never `layout`: a covered
-  Continue button on onboarding is an `onboarding` finding.
+  `console-error` one, even though it is a console error. Do not measure the layout yourself. The finding's `area` follows
+  the area table below, never `layout`: a covered Continue button on onboarding is an `onboarding` finding.
 - `visual`: a screenshot shows a defect a user would notice and the probe did not report: a control covered by
   something, text cut off, elements overlapping, a broken layout. The evidence is one sentence saying what the
   screenshot shows. A problem the probe reported is a `layout` finding, never a `visual` one.
@@ -159,8 +158,25 @@ file per finding, never append; number findings 1, 2, 3…
    }
    ```
 
-   `area` is exactly one of these words (anything else throws the finding away): chat, settings, skills, projects,
-   widgets, layout, i18n, models, sync, auth, onboarding, data, security, other.
+   `area` is the feature that owns the broken control or message, never your charter, the flow you are in or the URL.
+   Use exactly one of these words (anything else throws the finding away):
+
+   | area         | owns                                                                                         |
+   | ------------ | -------------------------------------------------------------------------------------------- |
+   | `auth`       | sign-in, email code entry, the waitlist, sign-out, deleting the account                      |
+   | `onboarding` | the steps after sign-in: name, privacy, location, language, passkey, Connect Google, welcome |
+   | `chat`       | a chat: messages, composer, model picker, attachments, the chat list, search                 |
+   | `models`     | Settings → Models: the list, Add Model, a model's page (under `/settings`, still `models`)   |
+   | `skills`     | the Skills list and editor, slash skills (under `/settings`, still `skills`)                 |
+   | `projects`   | Projects and moving chats into them                                                          |
+   | `widgets`    | the cards in a reply: weather, map, citations, link previews, documents                      |
+   | `settings`   | every other Settings page, Preferences and Connections included                              |
+   | `data`       | export, import and Delete All Local Data                                                     |
+   | `sync`       | syncing between devices, Settings → Devices                                                  |
+   | `security`   | encryption, passkeys and the recovery key in Settings                                        |
+   | `i18n`       | missing or wrong translations, date, number and unit formats                                 |
+   | `other`      | a console or page error from a shared component (dialog, sheet, menu) that names no feature  |
+   | `layout`     | never an area, whatever the oracle                                                           |
 
    A `visual` finding has no `repro_spec` and no spec file. Instead it has three fields:
    - `element`: the affected element as `<role> "<accessible name>"`, for example `button "Continue"`.

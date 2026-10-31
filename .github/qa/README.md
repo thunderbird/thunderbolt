@@ -454,8 +454,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `Human Required` with the reason (for a native platform, "the flow still fails on the native platform"). A fix
    from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform, never gets a PR either: the
    fix job and `verify-native-run` start no Postgres
-   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. `preview-deploy.yml` deploys no automatic preview
-   for a PR on `qa-fix/*` or one whose description carries `reviewNotice` from `fix.ts`, which every fix PR does.
+   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview
+   deploy like any other PR.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.

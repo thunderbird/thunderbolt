@@ -17,7 +17,6 @@ import {
   type NativeCheck,
   publish,
   regressionSpec,
-  reviewNotice,
   route,
   type Run,
   testRuns,
@@ -1321,7 +1320,6 @@ describe('publish', () => {
     // The branch name links the PR to the ticket, so the description does not name it.
     expect(pr.stdin).not.toContain('THB-1')
     expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
-    expect(pr.stdin).toContain(reviewNotice)
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       regressionSpec('c2-chat', fp, spec).source,

@@ -672,8 +672,7 @@ const stoppedReasons = {
     'The fix step failed before the model first answered: setup, the CLI install or a refused request.',
 } satisfies Record<z.infer<typeof stopReason>, string>
 
-/** Every fix PR description carries this sentence, and `preview-deploy.yml` deploys no automatic preview for one. */
-export const reviewNotice =
+const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
 
 const intro = 'Draft fix by the weekly QA agent.'

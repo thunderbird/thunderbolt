@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 
 import type { SlashItem } from './use-slash-command'
 
@@ -39,9 +39,9 @@ export const SlashPopup = ({
   const listRef = useRef<HTMLUListElement>(null)
 
   // Scroll the highlighted row into view when the user arrow-keys past the
-  // visible window. Legitimate effect — DOM measurement / scroll cannot be
-  // expressed in render.
-  useEffect(() => {
+  // visible window. Layout effect so the scroll lands before paint — with a
+  // passive effect the new highlight paints clipped at the edge for a frame.
+  useLayoutEffect(() => {
     const item = listRef.current?.children[highlightedIdx] as HTMLElement | undefined
     item?.scrollIntoView({ block: 'nearest' })
   }, [highlightedIdx])
@@ -67,9 +67,13 @@ export const SlashPopup = ({
                 e.preventDefault()
                 onSelect(item)
               }}
-              onMouseEnter={() => onHover(idx)}
-              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                idx === highlightedIdx ? 'bg-accent' : 'hover:bg-accent'
+              // mousemove, not mouseenter: scrolling the list under a resting
+              // pointer fires mouseenter, which would steal the keyboard
+              // highlight mid-scroll. No CSS hover or color transition either —
+              // the highlight is the single source of truth and switches instantly.
+              onMouseMove={() => idx !== highlightedIdx && onHover(idx)}
+              className={`flex w-full cursor-pointer flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left ${
+                idx === highlightedIdx ? 'bg-accent' : ''
               }`}
             >
               <span className="flex items-center gap-1.5">

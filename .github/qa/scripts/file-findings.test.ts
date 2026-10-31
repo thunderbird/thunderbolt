@@ -32,6 +32,7 @@ type Handlers = {
   labels?: string[]
   /** The team's workflow states; the fake returns the ones whose type the query asks for. */
   states?: { id: string; type: string }[]
+  /** Served 250 a page, as the query asks, with the next page's start index as its cursor. */
   scorecard?: { labels: { nodes: { name: string }[] } }[]
   /** Answers an operation (`PUT` for the storage upload) with this response instead of success, when it returns one. */
   fail?: (op: string) => Response | undefined
@@ -46,6 +47,7 @@ type Vars = {
   label?: string
   contentType?: string
   filename?: string
+  after?: string | null
 }
 
 /** A function usable as `fetch` (adds the `preconnect` member Bun's type requires). */
@@ -79,7 +81,16 @@ const fakeLinear = (handlers: Handlers = {}) => {
       }
       if (op === 'Dedupe') return { issues: { nodes: handlers.existing?.[variables.needle ?? ''] ?? [] } }
       if (op === 'Scorecard') {
-        return { issues: { nodes: variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : [] } }
+        const all = variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : []
+        const start = Number(variables.after ?? 0)
+        const end = start + 250
+        const hasNextPage = end < all.length
+        return {
+          issues: {
+            nodes: all.slice(start, end),
+            pageInfo: { hasNextPage, endCursor: hasNextPage ? String(end) : null },
+          },
+        }
       }
       if (op === 'CreateIssue') {
         const n = ops.filter((o) => o.op === 'CreateIssue').length
@@ -831,6 +842,13 @@ describe('scorecard and precision brake', () => {
     const card = await computeScorecard(api.fetchFn, 'k')
     expect(card.labelled).toBe(7)
     expect(shouldBrake(card)).toBe(false)
+  })
+
+  test('reads every page of tickets, so a later page can pull precision under the brake', async () => {
+    const api = fakeLinear({ scorecard: tickets({ 'qa:valid': 250, 'qa:not-a-bug': 200 }) })
+    const card = await computeScorecard(api.fetchFn, 'k')
+    expect(card).toMatchObject({ counts: { valid: 250, notABug: 200 }, labelled: 450 })
+    expect(shouldBrake(card)).toBe(true)
   })
 
   test('a dry run with a key writes the scorecard once and does not brake', async () => {

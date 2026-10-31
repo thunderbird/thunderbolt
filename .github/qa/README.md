@@ -26,7 +26,8 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 
 Every confirmed finding goes to the fix agent, whatever its area, and a person reviews every draft PR. `publish`
 refuses a patch only to protect the supply chain and the verification (`isDenied` in `fix.ts`). It refuses a patch
-that touches `.github/` or `e2e/` (every repro spec and visual check imports its helpers). It refuses one that
+that touches `.github/` or `e2e/` (every repro spec and visual check imports its helpers), or `deploy/pulumi/`
+(the preview deploy runs that program from the PR's tree with AWS deploy credentials). It refuses one that
 touches, in any folder, a dependency manifest, lockfile or build-tool file (`package.json`, `bun.lock`,
 `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bunfig.toml`, `.npmrc`, `.nvmrc`,
 `.tool-versions`, `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `rust-toolchain.toml`, Gradle files and the
@@ -435,9 +436,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
    `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. With only the patch's
-   hunks for those files applied (`git apply --include`) a run must fail, and with the whole patch every run must
-   pass, all in one process. `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`,
-   through `sudo --user`, with only `PATH` from the job's environment), so a test cannot write the checkout either.
+   hunks for those files and for every file it adds applied (`git apply --include`) a run must fail, and with the
+   whole patch every run must pass, all in one process. The added files keep a test from failing only because a
+   helper, fixture or snapshot it imports is missing. `git apply` runs as the job's user, each `bun test` as
+   `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
+   write the checkout either.
    A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
    start, or that writes into the checkout: the ticket then goes to a person. When the agent gave up or left no
    patch, the job skips the check, so it shows no error and uploads no pass. A native task keeps its Maestro check

@@ -65,24 +65,39 @@ export type Scorecard = {
   precision: number | null
 }
 
+type LabelledTicket = { labels: { nodes: { name: string }[] } }
+
+/** Every `qa-agent` ticket of the last 28 days, archived ones too, read page by page from `after`. */
+const scorecardTickets = async (
+  fetchFn: typeof fetch,
+  key: string,
+  after: string | null = null,
+): Promise<LabelledTicket[]> => {
+  const { issues } = await linear<{
+    issues: { nodes: LabelledTicket[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }
+  }>(
+    fetchFn,
+    key,
+    `query Scorecard($since: DateTimeOrDuration!, $label: String!, $after: String) {
+      issues(first: 250, after: $after, includeArchived: true, filter: { labels: { some: { name: { eq: $label } } }, createdAt: { gte: $since } }) {
+        nodes { labels { nodes { name } } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`,
+    { since: '-P28D', label: qaLabels.agent, after },
+  )
+  if (!issues.pageInfo.hasNextPage) return issues.nodes
+  return [...issues.nodes, ...(await scorecardTickets(fetchFn, key, issues.pageInfo.endCursor))]
+}
+
 /**
  * Precision over the last 28 days of `qa-agent` tickets: valid / (valid + not-a-bug + env-artifact).
  * Duplicates are counted but move neither precision nor the sample (`labelled`).
  */
 export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
-  // shortcut: one page of 250 tickets covers four weekly runs of up to 62 tickets; paginate if runs file more
-  const { issues } = await linear<{ issues: { nodes: { labels: { nodes: { name: string }[] } }[] } }>(
-    fetchFn,
-    key,
-    `query Scorecard($since: DateTimeOrDuration!, $label: String!) {
-      issues(first: 250, includeArchived: true, filter: { labels: { some: { name: { eq: $label } } }, createdAt: { gte: $since } }) {
-        nodes { labels { nodes { name } } }
-      }
-    }`,
-    { since: '-P28D', label: qaLabels.agent },
-  )
+  const tickets = await scorecardTickets(fetchFn, key)
   const [valid, notABug, duplicate, envArtifact] = triageLabels.map(
-    (label) => issues.nodes.filter((issue) => issue.labels.nodes.some((l) => l.name === label)).length,
+    (label) => tickets.filter((ticket) => ticket.labels.nodes.some((l) => l.name === label)).length,
   )
   const judged = valid + notABug + envArtifact
   return {

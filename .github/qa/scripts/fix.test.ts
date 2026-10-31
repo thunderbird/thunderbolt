@@ -697,6 +697,9 @@ describe('isDenied', () => {
     'tsconfig.node.json',
     'backend/tsconfig.json',
     'src/sub/.husky/pre-commit',
+    // The preview deploy runs this program from the PR's tree with AWS deploy credentials.
+    'deploy/pulumi/index.ts',
+    'deploy/pulumi/src/alb.ts',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -1231,6 +1234,19 @@ describe('checkTests', () => {
   test('fails a test that also passes without the fix', async () => {
     await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('Renamed') })
     expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+  }, 20_000)
+
+  test('keeps the files a patch adds in the run without the fix, so a missing import proves nothing', async () => {
+    const helper = 'export const clean = (text: string) => text.trim()\n'
+    const helperOnly =
+      `import { expect, test } from 'bun:test'\nimport { clean } from './clean'\n` +
+      `test('clean', () => expect(clean(' a ')).toBe('a'))\n`
+    await patchOf({ 'src/title.ts': fixed, 'src/clean.ts': helper, 'src/title.test.ts': helperOnly })
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+
+    const usesHelper = `import { clean } from './clean'\nexport const title = (text: string) => clean(text)\n`
+    await patchOf({ 'src/title.ts': usesHelper, 'src/clean.ts': helper, 'src/title.test.ts': titleTest('  Renamed  ') })
+    expect(await check()).toEqual({ failsWithout: true, passesWith: true })
   }, 20_000)
 
   test('applies a test file whose path holds glob characters, rather than running none', async () => {

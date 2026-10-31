@@ -366,7 +366,7 @@ describe('fix job', () => {
     const replay = ({ code = 0, browsers = true } = {}) => {
       const dir = mkdtempSync(join(work, 'unpatched-'))
       if (browsers) mkdirSync(join(dir, '.cache/ms-playwright'), { recursive: true })
-      writeFileSync(join(dir, 'sudo'), `#!/bin/sh\necho "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
+      writeFileSync(join(dir, 'sudo'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
         mode: 0o755,
       })
       writeFileSync(join(dir, 'timeout'), '#!/bin/sh\nshift 2\nexec "$@"\n', { mode: 0o755 })
@@ -772,7 +772,8 @@ describe('verify-tests', () => {
     writeFileSync(count, '0')
     const script = (body: string) => `#!/bin/sh\n${body}\n`
     writeFileSync(join(dir, 'pgrep'), script(`[ "$(cat ${count})" -le ${survives} ]`), { mode: 0o755 })
-    writeFileSync(join(dir, 'sudo'), script(`echo "$@" > ${dir}/args; echo $(( $(cat ${count}) + 1 )) > ${count}`), {
+    const recordArgs = `printf '%s\\n' "$*" > ${dir}/args`
+    writeFileSync(join(dir, 'sudo'), script(`${recordArgs}; echo $(( $(cat ${count}) + 1 )) > ${count}`), {
       mode: 0o755,
     })
     writeFileSync(join(dir, 'sleep'), script('exit 0'), { mode: 0o755 })

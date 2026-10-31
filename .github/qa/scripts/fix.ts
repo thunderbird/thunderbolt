@@ -43,10 +43,11 @@ const dependencyFiles = new RegExp(
 )
 /**
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
- * `.github/`, dependency and hook files, the tool configs, and `e2e/`, whose helpers every repro spec and visual check
- * imports (`publish` adds the regression spec there itself). App code is open, because a person reviews every draft PR.
+ * `.github/`, dependency and hook files, the tool configs, `e2e/`, whose helpers every repro spec and visual check
+ * imports (`publish` adds the regression spec there itself), and `deploy/pulumi/`, which the preview deploy runs from
+ * the PR's tree with AWS deploy credentials. App code is open, because a person reviews every draft PR.
  */
-export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)
+export const isDenied = (path: string) => /^(\.github|e2e|deploy\/pulumi)\//.test(path) || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier'>
 /**
@@ -554,10 +555,10 @@ type CheckTestsOptions = {
 
 /**
  * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: they must fail with only the
- * patch's hunks for its test files applied (`failsWithout`), and pass with the whole patch (`passesWith`). Both are
- * false for a patch with no test file. One process runs both halves, so code a test leaves behind cannot swap the
- * verdict code between them. Each half takes its hunks out again, which leaves the checkout as it was. With `user`
- * the tests run as that user, so they cannot read the environment of this user's processes.
+ * patch's hunks for its test files and its added files applied (`failsWithout`), and pass with the whole patch
+ * (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
+ * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
+ * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes.
  */
 export const checkTests = async ({
   outDir,
@@ -588,12 +589,13 @@ export const checkTests = async ({
       await run(['git', 'apply', '--reverse', ...include, patch])
     }
   }
-  // Every test file the patch touches, deleted ones too: the reverse apply matches a rename by its old name. And
+  // Every test file the patch touches, deleted ones too: the reverse apply matches a rename by its old name. Every
+  // added file too, so a test cannot fail only because a helper, fixture or snapshot it imports is missing. And
   // `--include` takes a glob, so a bracket in a path must not widen or empty the match.
-  const testsOnly = files
-    .filter((f) => isUnitTest(f.path))
+  const baseline = files
+    .filter((f) => isUnitTest(f.path) || f.status === 'A')
     .map((f) => `--include=${f.path.replace(/[[\]*?\\]/g, '\\$&')}`)
-  const failsWithout = (await exitCodes(testsOnly)).some((code) => code !== 0)
+  const failsWithout = (await exitCodes(baseline)).some((code) => code !== 0)
   const passesWith = (await exitCodes([])).every((code) => code === 0)
   return { failsWithout, passesWith }
 }

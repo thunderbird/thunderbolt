@@ -67,6 +67,9 @@ jobs:
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           EVENT_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_PR_BODY: ${{ github.event.pull_request.body }}
+          # Every draft fix the weekly QA agent opens carries this sentence (reviewNotice in .github/qa/scripts/fix.ts).
+          QA_FIX_NOTICE: 'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
           EVENT_BASE_REPO: ${{ github.repository }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
@@ -97,11 +100,14 @@ jobs:
             echo "Fork PR — pull_request_target will handle this; exiting."
             exit 0
           fi
-          # Draft fixes from the weekly QA agent (qa-fix/*) are AI-written: no automatic preview with the
-          # preview secrets before a person has read them. A maintainer can still deploy one by dispatch.
-          if [ "$EVENT_NAME" = "pull_request" ] && [[ "$EVENT_HEAD_REF" == qa-fix/* ]]; then
+          # Draft fixes from the weekly QA agent are AI-written: no automatic preview with the
+          # preview secrets before a person has read them. They sit on qa-fix/* or on their Linear
+          # ticket's branch, and their description carries QA_FIX_NOTICE. A maintainer can still
+          # deploy one by dispatch.
+          if [ "$EVENT_NAME" = "pull_request" ] &&
+            { [[ "$EVENT_HEAD_REF" == qa-fix/* ]] || grep -qF -- "$QA_FIX_NOTICE" <<<"$EVENT_PR_BODY"; }; then
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "QA agent fix branch — no automatic preview; exiting."
+            echo "QA agent fix PR: no automatic preview; exiting."
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$IS_FORK" = "false" ]; then

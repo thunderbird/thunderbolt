@@ -55,10 +55,12 @@ type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: string } | { kind: 'visual' }
 /**
  * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
- * real AI providers, where the workflow verifies the fix on them too.
+ * real AI providers, where the workflow verifies the fix on them too. `branch` is the branch route checked, which
+ * publish pushes to.
  */
 export type FixTask = Ticket &
   Proof & {
+    branch: string
     charterDir: string
     platform: string
     real: boolean
@@ -119,7 +121,68 @@ const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[
   }
 }
 
-type RouteOptions = { outDir: string; live: boolean; run?: Run; log?: (line: string) => void }
+type RouteOptions = {
+  outDir: string
+  live: boolean
+  key?: string
+  fetchFn?: typeof fetch
+  run?: Run
+  log?: (line: string) => void
+}
+
+type LinearTicket = { id: string; branchName: string; state: { type: string } }
+
+/** Each ticket's suggested branch name and workflow state, in one read. Without a key there is nothing to read. */
+const linearTickets = async ({ fetchFn, key }: LinearAuth, issueIds: string[]) => {
+  if (!key || issueIds.length === 0) return new Map<string, LinearTicket>()
+  // shortcut: one page of 250 tickets; page through if a run ever files more.
+  const { issues } = await linear<{ issues: { nodes: LinearTicket[] } }>(
+    fetchFn,
+    key,
+    'query Tickets($ids: [ID!]!) { issues(first: 250, includeArchived: true, filter: { id: { in: $ids } }) { nodes { id branchName state { type } } } }',
+    { ids: issueIds },
+  )
+  return new Map(issues.nodes.map((n) => [n.id, n]))
+}
+
+const closedStates = new Set(['completed', 'canceled'])
+
+/**
+ * True when Linear's suggested branch name is safe to push to: `<prefix>/<identifier>` with an optional `-<slug>`, in
+ * lowercase letters, digits, `-` and `_`, at most 100 characters. The name comes from a model-written title, and the
+ * identifier in it is what links the PR to the ticket.
+ */
+const isSafeLinearBranch = (name: string, identifier: string) => {
+  const id = identifier.toLowerCase()
+  const slug = name.split('/')[1] ?? ''
+  return (
+    name.length <= 100 && /^[a-z0-9][a-z0-9_-]*\/[a-z0-9_-]+$/.test(name) && (slug === id || slug.startsWith(`${id}-`))
+  )
+}
+
+/**
+ * The branch a ticket's fix goes on: Linear's suggested name when it has a safe shape and git accepts it, so the merge
+ * closes the ticket, else `qa-fix/<identifier>`. A security ticket always gets the identifier-only name, because the
+ * slug of its title would announce the hole in a public branch. A ticket filed in a dry run has no identifier and keeps
+ * `qa-fix/<fp>`.
+ */
+const branchFor = async (
+  run: Run,
+  fp: string,
+  identifier: string | undefined,
+  security: boolean,
+  suggested?: string,
+) => {
+  if (!identifier) return `qa-fix/${fp}`
+  const fallback = `qa-fix/${identifier.toLowerCase()}`
+  if (security || !suggested || !isSafeLinearBranch(suggested, identifier)) return fallback
+  try {
+    await run(['git', 'check-ref-format', '--branch', suggested])
+    return suggested
+  } catch {
+    return fallback
+  }
+}
 
 /**
  * Which finding of one bug becomes its fix task, lowest first: a sync session's, so the sync refusal still holds, then
@@ -153,34 +216,93 @@ const proofOf = async (
  * Decides in code which filed tickets the fix agent attempts, and writes `fix-plan.json`.
  * Every ticket whose finding was confirmed qualifies, whatever its area or oracle, security and real-AI findings
  * included, because a person reviews every draft PR. Each ticket gets one task, however many platforms found the bug,
- * and the tasks run most severe first. A ticket is left out this week while an earlier `qa-fix/<fp>` branch still
- * exists (its draft PR is open). A task with a Maestro flow goes into `verifyNative` too, and so
+ * and the tasks run most severe first. Each task carries the branch its fix goes on (see `branchFor`). A ticket is
+ * left out, with a log line, when Linear has it completed or canceled, when an open PR of this repository sits on its
+ * branch or on the older `qa-fix/<fp>` one, or when its branch exists without one: a person may be working there. A
+ * task with a Maestro flow goes into `verifyNative` too, and so
  * does the repro flow of the same bug confirmed on another native platform: the patch must pass on each of them.
  * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent.
  */
-export const route = async ({ outDir, live, run = runCommand, log = console.log }: RouteOptions) => {
+export const route = async ({
+  outDir,
+  live,
+  key,
+  fetchFn = fetch,
+  run = runCommand,
+  log = console.log,
+}: RouteOptions) => {
   const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
   const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
-  const branches = await run(['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*'])
-  const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
   const plan: FixPlan = { fixes: [], verifyNative: [] }
   const routed = new Set<string>()
   const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
   // Every finding of one bug files with the bug's severity, so `leadRank` decides which of them leads its fix task.
   tickets.sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
+  const issueIds = [...new Set(tickets.flatMap((t) => (t.issueId ? [t.issueId] : [])))]
+  const [linearById, heads, openPrs] = await Promise.all([
+    linearTickets({ fetchFn, key: key ?? '' }, issueIds),
+    run(['git', 'ls-remote', '--heads', 'origin']),
+    // A fork's PR is left out: anyone can name a fork branch after a ticket's.
+    run([
+      'gh',
+      'pr',
+      'list',
+      '--base',
+      'main',
+      '--state',
+      'open',
+      '--limit',
+      '1000',
+      '--json',
+      'headRefName,isCrossRepository',
+      '--jq',
+      '.[] | select(.isCrossRepository | not) | .headRefName',
+    ]),
+  ])
+  const existing = new Set(heads.match(/(?<=refs\/heads\/)\S+/g))
+  const prBranches = new Set(openPrs.split('\n').filter(Boolean))
+
+  const routableBranch = async (
+    fp: string,
+    issueId: string | undefined,
+    identifier: string | undefined,
+    security: boolean,
+  ) => {
+    const ticket = identifier ?? fp
+    const linearTicket = issueId ? linearById.get(issueId) : undefined
+    if (linearTicket && closedStates.has(linearTicket.state.type)) {
+      log(`fix: ${ticket} is ${linearTicket.state.type} in Linear, so it is not routed`)
+      return undefined
+    }
+    const branch = await branchFor(run, fp, identifier, security, linearTicket?.branchName)
+    if (prBranches.has(branch) || prBranches.has(`qa-fix/${fp}`)) {
+      log(`fix: ${ticket} already has an open PR, so it is not routed`)
+      return undefined
+    }
+    if (existing.has(branch)) {
+      log(`fix: ${ticket}'s branch ${branch} exists without an open PR, so it is not routed`)
+      return undefined
+    }
+    return branch
+  }
+
+  // Every finding of one bug shares its ticket and area, so the first one decides the bug's branch.
+  const branches = new Map<string, string | undefined>()
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
-    if (pending.has(fp)) continue
     const fresh = !routed.has(fp)
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)
+    if (!branches.has(fp)) branches.set(fp, await routableBranch(fp, issueId, identifier, finding.area === 'security'))
+    const branch = branches.get(fp)
+    if (!branch) continue
     const proof = await proofOf(outDir, charterDir, fp, finding)
     if (!proof) {
       log(`fix: ${fp} has no repro on disk, so it is not routed`)
       continue
     }
     const platform = finding.viewport
-    // One fix job per bug (same fp): a second one would fight over `qa-fix/<fp>`, and `leadRank` picks which finding
+    // One fix job per bug (same fp): a second one would fight over its branch, and `leadRank` picks which finding
     // it gets. Only the other platforms' repro flows join it, since the fix agent writes a visual check for its own
     // task alone.
     const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
@@ -197,6 +319,7 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
       identifier,
       url,
       ...proof,
+      branch,
       charterDir,
       platform,
       real: realAiCharters.has(charterDir),
@@ -375,23 +498,24 @@ type PublishResult =
   | { outcome: 'human-required'; reasons: string[] }
   | { outcome: 'infrastructure'; reason: string }
 
-const reviewNotice =
+/** Every fix PR description carries this sentence, and `preview-deploy.yml` deploys no automatic preview for one. */
+export const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
+
+const intro = 'Draft fix by the weekly QA agent.'
 
 /**
  * The commit and draft PR a passing fix becomes, and the regression spec it adds: the repro spec, or for a visual
  * task the agent's check. A native task adds none, neither does an onboarding-session task (`e2e/` does not serve
- * that build) nor a real-AI task (its repro needs providers `e2e/` does not run). The repo is public and a security
- * fix's PR shows up before the fix ships, so that PR names only the ticket, never says "security", and adds no spec.
+ * that build) nor a real-AI task (its repro needs providers `e2e/` does not run). The description leaves the ticket
+ * out: the branch name links the PR to it. The repo is public and a security fix's PR shows up before the fix ships,
+ * so that PR's title names only the ticket, nothing says "security", and it adds no spec.
  */
 const draftOf = async (outDir: string, task: FixTask) => {
-  const ticket = task.identifier ?? 'its Linear ticket'
   if (task.finding.area === 'security') {
     const title = `fix: QA finding ${task.identifier ?? task.fp}`
-    // Linear's URL ends in a slug of the ticket's title.
-    const link = task.url?.replace(/(\/issue\/[^/]+)\/.*$/, '$1') ?? 'filed in a dry run'
     const body = [
-      `Draft fix by the weekly QA agent for ${ticket} (${link}).`,
+      intro,
       'The finding and its regression spec stay out of this PR. A person adds the spec in a separate commit after the fix merges.',
       reviewNotice,
     ].join('\n\n')
@@ -400,7 +524,6 @@ const draftOf = async (outDir: string, task: FixTask) => {
   const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
   // A code span, so a model-written title cannot @mention anyone.
   const findingLine = `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`
-  const intro = `Draft fix by the weekly QA agent for ${ticket} (${task.url ?? 'filed in a dry run'}).`
   if ('flow' in task) {
     // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
     const checked = `Checked on ${task.platform} with ${task.kind === 'spec' ? "the finding's Maestro flow" : "the fix agent's Maestro check"}`
@@ -447,9 +570,10 @@ const draftOf = async (outDir: string, task: FixTask) => {
  *   the job stopped before the agent started. Nothing was diagnosed, so the ticket is left untouched for a later run
  *   and the result says why. The workflow deletes any copy that came in the agent's `qa-fix-<fp>` artifact.
  * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
- * branch `qa-fix/<fp>` gets one commit under the git identity the workflow configured, is pushed with `token` (a
+ * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
- * draft PR linking the ticket, which gets the PR link as a comment.
+ * draft PR, whose link goes on the ticket as a comment. The push fails if the branch appeared on origin after route
+ * checked it, so a person's branch is never extended or overwritten.
  *
  * Guardrail: this never merges, approves, marks ready or enables auto-merge. No `gh pr merge`, `gh pr ready`,
  * `gh pr review`, and no merge or review API call. A person reviews the draft and decides.
@@ -507,7 +631,7 @@ export const publish = async ({
     )
   }
 
-  const branch = `qa-fix/${fp}`
+  const { branch } = task
   const { title, commit, body, spec } = await draftOf(outDir, task)
   if (!live) {
     log(`[dry run] would push ${branch} with:\n${commit}\n\nand open a draft PR:\n${body}`)
@@ -526,13 +650,17 @@ export const publish = async ({
   }
   await git(['commit', '--no-verify', '--quiet', '--message', commit])
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
-  await git(['push', '--no-verify', 'origin', `HEAD:refs/heads/${branch}`], {
-    env: {
-      GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+  // An empty expected value in the lease means the remote branch must not exist yet.
+  await git(
+    ['push', '--no-verify', `--force-with-lease=refs/heads/${branch}:`, 'origin', `HEAD:refs/heads/${branch}`],
+    {
+      env: {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+      },
     },
-  })
+  )
   const created = await run(
     ['gh', 'pr', 'create', '--draft', '--base', 'main', '--head', branch, '--title', title, '--body-file', '-'],
     { env: { GH_TOKEN: token ?? '' }, stdin: body },
@@ -553,7 +681,7 @@ if (import.meta.main) {
   })
   const key = Bun.env.LINEAR_API_KEY
   if (positionals[0] === 'route') {
-    await route({ outDir: values.out, live: values.live })
+    await route({ outDir: values.out, live: values.live, key })
   } else if (positionals[0] === 'publish' && values.fp) {
     const result = await publish({ outDir: values.out, fp: values.fp, live: values.live, key, token: Bun.env.GH_TOKEN })
     console.log(JSON.stringify(result, null, 2))

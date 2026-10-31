@@ -16,6 +16,7 @@ import {
   type NativeCheck,
   publish,
   regressionSpec,
+  reviewNotice,
   route,
   type Run,
 } from './fix'
@@ -142,20 +143,26 @@ describe('route', () => {
       if (id !== 'nospec-chat') await put(join(outDir, 'c2-chat', 'repro', `${id}.spec.ts`), spec)
     }
   }
-  const branches = { 'git ls-remote': `abc123\trefs/heads/qa-fix/${fp('pending-layout')}\n` }
+  const branches = { 'gh pr': `qa-fix/${fp('pending-layout')}\n` }
 
-  test('routes every confirmed ticket of any area, highest severity first, skipping pending branches', async () => {
+  test('routes every confirmed ticket of any area, highest severity first, skipping tickets with an open PR', async () => {
     await setup()
     const runs: RunCall[] = []
     const lines: string[] = []
     const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: (line) => lines.push(line) })
 
     expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro on disk, so it is not routed`)
+    expect(lines).toContain(`fix: ${fp('pending-layout')} already has an open PR, so it is not routed`)
     const routed = ['urgent-settings', 'high-skills', 'high-sync', 'high-security', 'medium-widgets', 'low-chat']
     expect(plan.fixes.map((t) => t.fp)).toEqual(routed.map(fp))
+    // Without a Linear key nothing is looked up, so every branch is the identifier-only one.
+    expect(plan.fixes.map((t) => t.branch)).toEqual(routed.map((id) => `qa-fix/thb-${id}`))
     expect(lines.at(-1)).toBe(`fix: ${routed.map(fp).join(', ')}`)
     expect(JSON.parse(await readFile(join(outDir, 'fix-plan.json'), 'utf8'))).toEqual(plan)
-    expect(runs.map((r) => r.cmd)).toEqual([['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*']])
+    expect(runs.map((r) => r.cmd.slice(0, 3))).toEqual([
+      ['git', 'ls-remote', '--heads'],
+      ['gh', 'pr', 'list'],
+    ])
   })
 
   test('gives the fix agent the sanitized ticket fields and a runnable spec path, nothing else', async () => {
@@ -434,6 +441,138 @@ describe('route', () => {
       ids.map((id) => [`fp-${id}`, 'c2-chat-power-user-desktop']),
     )
   })
+
+  describe("the ticket's branch and state in Linear", () => {
+    const linearName = 'jane/thb-42-code-entry-textbox-on-sign-in-has-no-accessible-name'
+    const fallback = 'qa-fix/thb-42'
+    type Options = {
+      area?: Area
+      branchName?: string
+      state?: string
+      /** Filed in a dry run: no Linear ticket, so no identifier and no lookup. */
+      dryRun?: boolean
+      outputs?: Record<string, string>
+      run?: Run
+    }
+    const routeTicket = async ({
+      area = 'chat',
+      branchName = linearName,
+      state = 'backlog',
+      dryRun = false,
+      outputs = {},
+      run,
+    }: Options = {}) => {
+      const ticket = { issueId: 'issue-1', identifier: 'THB-42', url: 'https://linear.example/issue/THB-42' }
+      const entry: Filed = { fp: 'fp-one', charterDir: 'c2-chat', id: '1', severity: 'High', action: 'created' }
+      const filed = [dryRun ? { ...entry, action: 'dry-run', would: 'created' } : { ...entry, ...ticket }]
+      const confirmed: VerifiedFinding[] = [
+        { charterDir: 'c2-chat', id: '1', finding: finding(area), replay: { failed: 3, runs: 3 }, artifacts: {} },
+      ]
+      const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
+      await put(join(outDir, 'filed.json'), JSON.stringify(filed))
+      await put(join(outDir, 'verified.json'), JSON.stringify(verified))
+      await put(join(outDir, 'c2-chat', 'repro', '1.spec.ts'), spec)
+      const calls: { op: string; variables: { ids: string[] } }[] = []
+      const fetchFn = asFetch(async (_url, init) => {
+        const { query, variables } = JSON.parse(String(init?.body))
+        calls.push({ op: /^query (\w+)/.exec(query)?.[1] ?? '', variables })
+        return Response.json({ data: { issues: { nodes: [{ id: 'issue-1', branchName, state: { type: state } }] } } })
+      })
+      const runs: RunCall[] = []
+      const lines: string[] = []
+      const plan = await route({
+        outDir,
+        live: !dryRun,
+        key: 'lin',
+        fetchFn,
+        run: run ?? fakeRun(runs, outputs),
+        log: (line) => lines.push(line),
+      })
+      return { plan, calls, runs, lines }
+    }
+
+    test("takes Linear's branch name, read once, when it has a safe shape and git accepts it", async () => {
+      const { plan, calls, runs } = await routeTicket()
+      expect(plan.fixes.map((t) => t.branch)).toEqual([linearName])
+      expect(calls).toEqual([{ op: 'Tickets', variables: { ids: ['issue-1'] } }])
+      expect(runs.map((r) => r.cmd)).toContainEqual(['git', 'check-ref-format', '--branch', linearName])
+    })
+
+    test.each([
+      ['uppercase', 'jane/thb-42-Code-entry'],
+      ['a second slash', 'jane/thb-42/code-entry'],
+      ['a double dot', 'jane/thb-42-code..entry'],
+      ['no identifier', 'jane/code-entry-has-no-name'],
+      ['a longer identifier', 'jane/thb-420-code-entry'],
+      ['the identifier after the slug', 'jane/code-entry-thb-42'],
+      ['more than 100 characters', `jane/thb-42-${'a'.repeat(89)}`],
+      ['a leading dash', '-jane/thb-42-code-entry'],
+      ['no prefix', 'thb-42-code-entry'],
+    ])('falls back to the identifier-only name for a Linear name with %s', async (_why, branchName) => {
+      const { plan } = await routeTicket({ branchName })
+      expect(plan.fixes.map((t) => t.branch)).toEqual([fallback])
+    })
+
+    test('falls back when git refuses a name that has the safe shape', async () => {
+      const runs: RunCall[] = []
+      const run: Run = async (cmd, opts) => {
+        if (cmd[1] === 'check-ref-format') throw new Error('git check-ref-format exited 1')
+        return fakeRun(runs)(cmd, opts)
+      }
+      const { plan } = await routeTicket({ run })
+      expect(plan.fixes.map((t) => t.branch)).toEqual([fallback])
+    })
+
+    test("a security ticket gets the identifier-only name, so its title's slug never shows in a public branch", async () => {
+      const { plan, runs } = await routeTicket({ area: 'security' })
+      expect(plan.fixes.map((t) => t.branch)).toEqual([fallback])
+      expect(runs.some((r) => r.cmd.includes('check-ref-format'))).toBe(false)
+    })
+
+    test('a ticket filed in a dry run has no identifier and keeps the fingerprint branch, without a Linear read', async () => {
+      const { plan, calls } = await routeTicket({ dryRun: true })
+      expect(plan.fixes.map((t) => t.branch)).toEqual(['qa-fix/fp-one'])
+      expect(calls).toEqual([])
+    })
+
+    test.each([
+      ["on Linear's branch", linearName],
+      ['on the older fingerprint branch', 'qa-fix/fp-one'],
+    ])('a ticket with an open PR %s is not routed', async (_where, head) => {
+      const { plan, lines } = await routeTicket({ outputs: { 'gh pr': `qa-fix/other\n${head}\n` } })
+      expect(plan.fixes).toEqual([])
+      expect(lines).toContain('fix: THB-42 already has an open PR, so it is not routed')
+    })
+
+    test("only this repository's PRs count, since anyone can name a fork's branch after a ticket", async () => {
+      // Runs route's own --jq filter over gh's JSON.
+      const routeWith = (isCrossRepository: boolean) => {
+        const prs = JSON.stringify([{ headRefName: linearName, isCrossRepository }])
+        const run: Run = async (cmd) =>
+          cmd[0] === 'gh'
+            ? Bun.spawnSync(['jq', '--raw-output', cmd[cmd.indexOf('--jq') + 1]], {
+                stdin: Buffer.from(prs),
+              }).stdout.toString()
+            : ''
+        return routeTicket({ run })
+      }
+      expect((await routeWith(true)).plan.fixes.map((t) => t.branch)).toEqual([linearName])
+      expect((await routeWith(false)).plan.fixes).toEqual([])
+    })
+
+    test('a ticket whose branch exists without an open PR is not routed, since a person may be working there', async () => {
+      const heads = `abc\trefs/heads/main\ndef\trefs/heads/${linearName}\n`
+      const { plan, lines } = await routeTicket({ outputs: { 'git ls-remote': heads } })
+      expect(plan.fixes).toEqual([])
+      expect(lines).toContain(`fix: THB-42's branch ${linearName} exists without an open PR, so it is not routed`)
+    })
+
+    test.each(['completed', 'canceled'])('a %s ticket is not routed, and the log says why', async (state) => {
+      const { plan, lines } = await routeTicket({ state })
+      expect(plan.fixes).toEqual([])
+      expect(lines).toContain(`fix: THB-42 is ${state} in Linear, so it is not routed`)
+    })
+  })
 })
 
 describe('isDenied', () => {
@@ -583,6 +722,7 @@ describe('checkPatch', () => {
   const task = (): FixTask => ({
     fp,
     severity: 'High',
+    branch: `qa-fix/${fp}`,
     charterDir: 'c2-chat',
     platform: 'desktop',
     kind: 'spec',
@@ -593,6 +733,7 @@ describe('checkPatch', () => {
   const visualTask = (): FixTask => ({
     fp,
     severity: 'High',
+    branch: `qa-fix/${fp}`,
     charterDir: 'c2-chat',
     platform: 'desktop',
     kind: 'visual',
@@ -774,6 +915,7 @@ describe('checkPatch', () => {
     const native = (): FixTask => ({
       fp,
       severity: 'High',
+      branch: `qa-fix/${fp}`,
       charterDir: 'c1-first-run-ios',
       platform: 'ios',
       kind: 'spec',
@@ -874,9 +1016,12 @@ describe('publish', () => {
   const specPath = () => join(outDir, 'c2-chat', 'repro', '1.spec.ts')
   const rawDiff = (...paths: string[]) => paths.map((p) => `:100644 100644 aaa bbb M\0${p}\0`).join('')
   const diffOutput = { 'git diff': rawDiff('src/chat.ts') }
+  const linearBranch = 'jane/thb-1-renaming-a-chat-loses-its-title'
+  const argAfter = (cmd: string[], flag: string) => cmd[cmd.indexOf(flag) + 1]
 
   type Setup = {
     ticket?: boolean
+    branch?: string
     kind?: FixTask['kind']
     url?: string
     extra?: Partial<FixTask['finding']>
@@ -888,6 +1033,7 @@ describe('publish', () => {
   }
   const setup = async ({
     ticket = true,
+    branch = ticket ? linearBranch : `qa-fix/${fp}`,
     kind = 'spec',
     url = 'https://linear.app/t/THB-1',
     extra,
@@ -899,6 +1045,7 @@ describe('publish', () => {
     const base = {
       fp,
       severity: 'High',
+      branch,
       charterDir,
       platform: 'desktop',
       real,
@@ -942,7 +1089,7 @@ describe('publish', () => {
 
     expect(result).toEqual({
       outcome: 'pr',
-      branch: 'qa-fix/ab12cd34',
+      branch: linearBranch,
       files: ['src/chat.ts'],
       spec: 'e2e/consumer-qa-ab12cd34.spec.ts',
       commit:
@@ -952,10 +1099,10 @@ describe('publish', () => {
     expect(runs.map((r) => r.cmd.slice(0, 2).join(' '))).toEqual(['git read-tree', 'git apply', 'git diff'])
     expect(runs[1].cmd).toContain('--cached')
     expect(calls).toEqual([])
-    expect(lines.join('\n')).toContain('THB-1 (https://linear.app/t/THB-1)')
+    expect(lines.join('\n')).toContain(`would push ${linearBranch}`)
   })
 
-  test('live: one commit on qa-fix/<fp>, pushed with the token, a draft PR, and the PR link on the ticket', async () => {
+  test("live: one commit on the plan's branch, pushed only if it is new, a draft PR, and its link on the ticket", async () => {
     await setup()
     const repoDir = join(dir, 'repo')
     await mkdir(join(repoDir, 'e2e'), { recursive: true })
@@ -982,16 +1129,26 @@ describe('publish', () => {
       [...noHooks, 'commit', '--no-verify'],
       [...noHooks, 'push', '--no-verify'],
     ])
+    expect(argAfter(runs[3].cmd, '--create')).toBe(linearBranch)
     const [push, pr] = runs.slice(-2)
+    expect(push.cmd.slice(5)).toEqual([
+      `--force-with-lease=refs/heads/${linearBranch}:`,
+      'origin',
+      `HEAD:refs/heads/${linearBranch}`,
+    ])
     expect(pr.cmd.slice(0, 3)).toEqual(['gh', 'pr', 'create'])
+    expect(argAfter(pr.cmd, '--head')).toBe(linearBranch)
     expect(push.cmd.join(' ')).not.toContain('app-token')
     expect(Buffer.from(push.env?.GIT_CONFIG_VALUE_0.split(' ').at(-1) ?? '', 'base64').toString()).toBe(
       'x-access-token:app-token',
     )
     expect(pr.cmd).toContain('--draft')
     expect(pr.env).toEqual({ GH_TOKEN: 'app-token' })
-    expect(pr.stdin).toContain('THB-1 (https://linear.app/t/THB-1)')
+    // The branch name links the PR to the ticket, so the description does not name it.
+    expect(pr.stdin).not.toContain('THB-1')
+    expect(pr.stdin).not.toContain('linear.app')
     expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
+    expect(pr.stdin).toContain(reviewNotice)
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       regressionSpec('c2-chat', fp, spec).source,
@@ -1018,10 +1175,9 @@ describe('publish', () => {
     })
     return { repoDir, runs, result }
   }
-  const argAfter = (cmd: string[], flag: string) => cmd[cmd.indexOf(flag) + 1]
-
   test('a security fix PR carries no finding text and no regression spec, only the ticket', async () => {
     await setup({
+      branch: 'qa-fix/thb-1',
       url: 'https://linear.app/t/issue/THB-1/search-leaks-other-users-chats',
       extra: {
         title: 'Search leaks other users chats',
@@ -1037,7 +1193,7 @@ describe('publish', () => {
 
     expect(result).toEqual({
       outcome: 'pr',
-      branch: 'qa-fix/ab12cd34',
+      branch: 'qa-fix/thb-1',
       files: ['src/chat.ts'],
       commit: 'fix: QA finding THB-1',
       prUrl: 'https://github.com/o/r/pull/9',
@@ -1047,7 +1203,7 @@ describe('publish', () => {
     const pr = runs.find((r) => r.cmd[0] === 'gh')
     const commit = runs.find((r) => r.cmd.includes('commit'))
     const published = [pr?.stdin, argAfter(pr?.cmd ?? [], '--title'), argAfter(commit?.cmd ?? [], '--message')]
-    expect(pr?.stdin).toContain('THB-1 (https://linear.app/t/issue/THB-1)')
+    expect(pr?.stdin).not.toContain('linear.app')
     // Not even the word: a public PR flagged as a security fix points at the hole before the fix ships.
     for (const text of ['leaks', 'user b', 'b@thunderbolt', 'Only my chats', 'consumer-qa-', 'security']) {
       expect(published.join('\n').toLowerCase()).not.toContain(text.toLowerCase())

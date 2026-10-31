@@ -1133,6 +1133,8 @@ jobs:
       # Reads the artifacts of the run a fix-only run fixes from.
       actions: read
       contents: read
+      # Route lists the open PRs: a ticket with one already waits.
+      pull-requests: read
     outputs:
       plan: ${{ steps.route.outputs.plan }}
       real: ${{ steps.route.outputs.real }}
@@ -1195,9 +1197,13 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+      # Route only reads Linear: each ticket's branch name and state.
       - name: Route fixable tickets
         id: route
         if: needs.build.outputs.autofix == 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
           {

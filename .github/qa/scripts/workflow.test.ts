@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
+import { reviewNotice } from './fix'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -199,6 +200,49 @@ describe('native explore', () => {
 test('filed.json is uploaded even when filing fails, so the report lists the tickets that reached Linear', () => {
   const upload = steps('file').find((s) => s.with?.name === 'qa-filed')
   expect(upload?.if).toBe('always()')
+})
+
+test("route gets the Linear key for each ticket's branch and state, and a token that lists the open PRs", () => {
+  expect(step('file', 'Route fixable tickets').env).toEqual({
+    LINEAR_API_KEY: '${{ secrets.LINEAR_API_KEY }}',
+    GH_TOKEN: '${{ github.token }}',
+  })
+})
+
+describe('preview-deploy', () => {
+  const previewWorkflow = join(import.meta.dir, '../../workflows/preview-deploy.yml')
+  const preview = Bun.YAML.parse(readFileSync(previewWorkflow, 'utf8')) as { jobs: Record<string, Job> }
+  const resolve = preview.jobs.resolve.steps?.find((s) => s.id === 'r')
+  const proceeds = (headRef: string, body: string) => {
+    const output = join(mkdtempSync(join(work, 'preview-')), 'output')
+    const env = {
+      PATH: process.env.PATH ?? '',
+      GITHUB_OUTPUT: output,
+      EVENT_NAME: 'pull_request',
+      EVENT_PR_NUMBER: '9',
+      EVENT_HEAD_SHA: 'abc',
+      EVENT_HEAD_REPO: 'o/r',
+      EVENT_BASE_REPO: 'o/r',
+      EVENT_HEAD_REF: headRef,
+      EVENT_PR_BODY: body,
+      QA_FIX_NOTICE: resolve?.env?.QA_FIX_NOTICE ?? '',
+    }
+    expect(Bun.spawnSync(['bash', '-c', resolve?.run ?? ''], { env }).exitCode).toBe(0)
+    return /^proceed=(\w+)$/m.exec(readFileSync(output, 'utf8'))?.[1]
+  }
+
+  test("matches the fix PR's sentence exactly, and reads the description only through the environment", () => {
+    expect(resolve?.env?.QA_FIX_NOTICE).toBe(reviewNotice)
+    expect(resolve?.env?.EVENT_PR_BODY).toBe('${{ github.event.pull_request.body }}')
+    expect(resolve?.run).not.toContain('${{')
+  })
+
+  test('deploys no automatic preview for a QA fix PR, on its Linear branch or on qa-fix/*', () => {
+    const body = `Draft fix by the weekly QA agent.\n\n${reviewNotice}`
+    expect(proceeds('jane/thb-42-code-entry', body)).toBe('false')
+    expect(proceeds('qa-fix/thb-42', '')).toBe('false')
+    expect(proceeds('jane/thb-42-code-entry', 'Fixes the code entry label.')).toBe('true')
+  })
 })
 
 describe('fix job', () => {
@@ -926,13 +970,17 @@ describe('a fix-only run', () => {
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
-  // A fix-only run looks up the earlier run in build and reads its artifacts in file.
-  const readsOtherRuns = new Set(['build', 'file'])
+  // A fix-only run looks up the earlier run in build and reads its artifacts in file, where route lists open PRs.
+  const permissionsOf = (name: string) => {
+    if (name === 'build') return { actions: 'read', contents: 'read' }
+    if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
+    return { contents: 'read' }
+  }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
     // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
     if (name === 'app-check') continue
-    const permissions = readsOtherRuns.has(name) ? { actions: 'read', contents: 'read' } : { contents: 'read' }
+    const permissions = permissionsOf(name)
     expect({ name, permissions: job.permissions }).toEqual({ name, permissions })
   }
 })

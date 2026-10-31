@@ -19,7 +19,7 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | Zone                     | Jobs                                                                       | Holds                                                                                                                                                       | Never holds                                                                                          |
 | ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | A: explore and verify    | `explore`, `explore-native` on Android, `replay`, `replay-native`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users)                                                                | Linear key, any write token. The replay steps hold no secret: they run model-written specs and flows |
-| B: file                  | `file`                                                                     | the Linear key                                                                                                                                              | an LLM, a browser                                                                                    |
+| B: file                  | `file`                                                                     | the Linear key (`route` only reads each ticket's branch name and state with it), a read-only token that lists open PRs                                      | an LLM, a browser                                                                                    |
 | C: fix                   | `fix`, then `publish`                                                      | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key                                                                      | `fix`: any provider key. `publish` runs no LLM and checks the patch in code                          |
 | D: native explore, macOS | `explore-native` on iOS                                                    | the QA Anthropic key, only in the `env:` of the session and secret-scan steps                                                                               | any provider key, the Linear key, any write token, an agent that edits code                          |
 | E: check a patch         | `verify-native-build`, `verify-native-run`, `verify-real`                  | nothing, except `verify-real`: QA provider keys in a backend that runs as another OS user, from a fresh checkout that serves the fix job's patched frontend | the Linear key, any write token, an LLM                                                              |
@@ -37,7 +37,8 @@ developer's machine at their next commit. It refuses the Vite, Playwright and Ty
 refuses a patch that adds or changes a symlink or submodule, or that matches a secret pattern, and a visual fix
 whose `verify.json` is not JSON or lacks a boolean field. App code of any kind, `src-tauri/` and `backend/drizzle/`
 included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
-"security": no finding text and no regression spec, which a person adds after the fix merges.
+"security": no finding text and no regression spec, which a person adds after the fix merges. Its branch is
+`qa-fix/<identifier>`, never Linear's name, whose slug comes from the ticket's title.
 
 In the fix job the dev servers reload the agent's edits outside its sandbox, so they run as the OS user `qa-dev`
 (`QA_BACKEND_USER` with `stack.sh start dev`). That user cannot write to the checkout: `stack.sh start` makes it
@@ -342,8 +343,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
    of the same bug is filed as usual. Every other Android layout kind files like any platform.
 6. **fix** (off by default, `fix.ts` and `fix.md`): one fix job per confirmed ticket, from any area, most severe
-   first. A bug found on several platforms is one ticket, so it gets one job. A ticket whose `qa-fix/<fp>` branch still exists waits
-   for a later week. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
+   first. A bug found on several platforms is one ticket, so it gets one job. The fix goes on the ticket's Linear
+   branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
+   shape `<prefix>/<identifier>-<slug>` in lowercase, with at most 100 characters, and `git check-ref-format`
+   accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links the ticket. A ticket
+   filed in a dry run has no identifier and uses `qa-fix/<fp>`. `route` logs and skips a ticket that Linear has
+   completed or canceled, a ticket with an open PR of this repository on its branch or on the older `qa-fix/<fp>`,
+   and a ticket whose branch exists without an open PR, since a person may be working there. `publish` pushes only
+   when the branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
    `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
    A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
@@ -381,11 +388,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `playwright.config.ts` does not serve the onboarding build. Neither does a real-AI web fix PR, because that config
    runs the consumer project on the fake provider. `publish` needs `passed: true` from every platform in `verifyNative`
    for the fingerprint, web tasks included, and from `verify-real` for a real-AI web task. Only then does it open a
-   draft PR on `qa-fix/<fp>`. Otherwise it writes the diagnosis (for a native platform, "the flow still fails on the
+   draft PR on the task's branch. Otherwise it writes the diagnosis (for a native platform, "the flow still fails on the
    native platform") and the ticket gets `Human Required`. A fix from a session whose charter has `postgres` in
    `legs.ts` (today c7), on any platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres
-   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. `preview-deploy.yml` deploys no preview
-   for `qa-fix/*` PRs.
+   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. `preview-deploy.yml` deploys no automatic preview
+   for a PR on `qa-fix/*` or one whose description carries `reviewNotice` from `fix.ts`, which every fix PR does.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -820,8 +827,8 @@ gh workflow run qa-weekly.yml --repo thunderbird/thunderbolt --ref main -f fix_f
 - `fix_from_run` turns autofix on, still only with `QA_AUTOFIX_ENABLED` and on `main`. Without autofix nothing
   would be routed, so the run fails in `build` before any build. Publishing follows `live` as in every run:
   `QA_LINEAR_ENABLED`, `main` and `dry_run` off. With the default `dry_run`, publish only logs what it would do.
-- Routing sees each ticket as the earlier run filed it. A ticket closed or canceled since then is still routed, and
-  publish comments on it. A ticket whose `qa-fix/<fp>` branch exists waits, as in every run.
+- Routing reads each ticket's state in Linear now, so a ticket completed or canceled since the earlier run is
+  skipped with a log line, as in every run. So is a ticket with an open PR or a branch that already exists.
 - The report lists only this run's fix sessions, under a heading that names the earlier run. A failure opens its own
   incident, `QA weekly fix-only`, so a fix-only run that passes never closes an incident a weekly run opened.
 
@@ -879,9 +886,9 @@ Team Thunderbolt needs these labels, or the filer stops and lists the missing on
 `publish` uses the existing GitHub App `thunderbolt-automation-agent`, shared with the repository's other automation
 (the factory bot), which is why the token is narrowed and why the bypass risk below matters. Its credentials are the
 two `qa-agent` secrets `QA_APP_CLIENT_ID` and `QA_APP_PRIVATE_KEY`. The job mints a token narrowed to this repository
-with Contents: write and Pull requests: write and nothing else, then pushes `qa-fix/<fp>` and opens a draft PR.
+with Contents: write and Pull requests: write and nothing else, then pushes the ticket's branch and opens a draft PR.
 PRs opened with the default `GITHUB_TOKEN` would not start CI until someone approves the run. Enable "Automatically
-delete head branches": `route` skips a fingerprint while its `qa-fix/<fp>` branch exists.
+delete head branches": `route` skips a ticket whose branch still exists without an open PR.
 
 The app must be installed on this repository with at least those two permissions. If it lacks one, the token request
 fails and `publish` stops before it pushes anything.
@@ -905,9 +912,9 @@ The log does not print permission levels. A green token step already proves them
 and `pull-requests: write`, and GitHub refuses it if the installation holds less.
 
 Narrowing limits the token's permissions on this repository, not which branches it can push to. If the app is in the
-`main` ruleset's bypass list, a token it mints could push to `main`. `publish` only ever pushes `qa-fix/<fp>`
-branches, and a person reviews every PR. Check whether the app is in the `main` ruleset's bypass list (Settings →
-Rules).
+`main` ruleset's bypass list, a token it mints could push to `main`. `publish` only ever pushes a ticket's branch
+(Linear's name or `qa-fix/<identifier>`), only when that branch does not exist yet, and a person reviews every PR.
+Check whether the app is in the `main` ruleset's bypass list (Settings → Rules).
 
 Residual risk: test code that the fix agent writes runs in the same job as the QA Anthropic key. The Anthropic
 workspace's spend limit bounds what a leaked key can cost, and auto-fix stays off unless `QA_AUTOFIX_ENABLED` is

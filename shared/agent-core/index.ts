@@ -42,8 +42,11 @@ export {
   buildAppHarness,
   removeAgentWorkspace,
   workspaceDirFor,
+  writeAgentWorkspaceFiles,
   type BuildAppHarnessOptions,
   type PiModelDescriptor,
+  type WorkspaceFile,
+  type WorkspaceWriteFailure,
 } from './build-app-harness.ts'
 export { ensureBufferPolyfill } from './ensure-buffer.ts'
 export { toPiAgentTools } from './mcp-tools.ts'

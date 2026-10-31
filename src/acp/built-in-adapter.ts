@@ -138,6 +138,8 @@ export type BuiltInAdapterOptions = {
   loadAgentCore?: () => Promise<AgentCoreModule>
   /** Shared per-send config preparation injection for adapter-level tests. */
   prepareConfig?: typeof prepareAiRequestConfig
+  /** Attachment/history preparation injection for adapter-level tests. */
+  prepareConversation?: typeof prepareBuiltInConversation
   /** Attested-client seams for adapter tests. */
   getSystemTinfoilClient?: typeof getSystemTinfoilClient
   getTinfoilClient?: typeof getTinfoilClient
@@ -763,6 +765,7 @@ const fetchViaHarness = async (
   fallback: () => Promise<Response>,
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
+  prepareConversation: typeof prepareBuiltInConversation,
   tinfoilOptions: TinfoilClientOptions,
 ): Promise<Response> => {
   const debugTraceId = context.debugTranscriptTraceId
@@ -801,7 +804,9 @@ const fetchViaHarness = async (
     config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
-  const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
+  const { history, prompt, files } = await prepareConversation(messages, skillInstructions, {
+    workspace: config.supportsTools,
+  })
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
       composeAppHarnessSystemPrompt(config),
@@ -818,6 +823,14 @@ const fetchViaHarness = async (
     buildHarnessRecord(agentCore, context, resolved, history, config),
   )
   await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
+  const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+  for (const { path, error } of failures) {
+    console.error(`Built-in agent: could not save ${path} to the workspace`, error)
+  }
+  const promptText = failures.length
+    ? `${prompt.text}\n\n[Could not save ${failures.map(({ path }) => path).join(', ')} to the workspace. Answer from the preview only, and say the full file could not be read.]`
+    : prompt.text
   context.telemetry?.endPhase('harness_build')
   const { harness } = record
   context.telemetry?.setDimensions({ engine: 'pi' })
@@ -835,7 +848,7 @@ const fetchViaHarness = async (
         const removeAppContextSupersede =
           supersededCallIds.size > 0 ? installAppContextSupersede(harness, supersededCallIds) : () => undefined
         try {
-          await harness.prompt(prompt.text, { images: prompt.images })
+          await harness.prompt(promptText, { images: prompt.images })
           await harness.waitForIdle()
         } finally {
           removeBudgetFloor()
@@ -884,6 +897,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const aiFetch = options.aiFetch ?? aiFetchStreamingResponse
   const loadAgentCore = options.loadAgentCore ?? (() => import('@shared/agent-core'))
   const prepareConfig = options.prepareConfig ?? prepareAiRequestConfig
+  const prepareConversation = options.prepareConversation ?? prepareBuiltInConversation
 
   // Per-thread harness cache, scoped to this adapter instance. The adapter is
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
@@ -919,6 +933,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
         () => fetchViaLegacyPipeline(init, context),
         loadAgentCore,
         prepareConfig,
+        prepareConversation,
         options,
       )
     }

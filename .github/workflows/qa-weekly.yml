@@ -1346,6 +1346,47 @@ jobs:
             exit 1
           fi
 
+      # Publish leaves the ticket untouched when the session never began: a step before Fix failed, or Fix failed
+      # before the model first answered (the action's setup, the CLI install, a refused first request). A step
+      # timeout counts as begun: the step ran for its whole cap, though the action had no chance to write its
+      # execution file. An action killed another way (the job's own timeout, a lost process) also leaves no file and
+      # reads as never begun, so its ticket waits for a later run; it never becomes a PR. Recorded and uploaded before
+      # any code the agent wrote runs outside its sandbox, with the key scan's cleared variables and absolute paths.
+      - name: Record whether the fix session began
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          FIX_OUTCOME: ${{ steps.fix.outcome }}
+          START: ${{ steps.prompt.outputs.start }}
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          stopped=null
+          elapsed=$(( $(/bin/date +%s) - START ))
+          if [ "$FIX_OUTCOME" = skipped ]; then
+            stopped='"setup-failed"'
+          elif [ "$FIX_OUTCOME" != success ] && [ "$elapsed" -lt $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ] &&
+            { [ ! -e "$EXECUTION_FILE" ] ||
+              /usr/bin/jq -e 'all(.[]; .type != "assistant" or .error != null)' "$EXECUTION_FILE" > /dev/null; }; then
+            stopped='"no-model-answer"'
+          fi
+          /bin/mkdir -p "$RUNNER_TEMP/qa-status"
+          /usr/bin/jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
+            > "$RUNNER_TEMP/qa-status/$QA_FP.json"
+      # Uploaded whenever the key scan passed, as the fix output is, so publish's download never misses in a normal
+      # run. Outside qa-out/, so the agent's qa-fix artifact cannot carry a copy.
+      - if: always() && steps.key-scan.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-status-${{ matrix.task.fp }}
+          path: ${{ runner.temp }}/qa-status/
+          if-no-files-found: error
+          retention-days: 7
+
       # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
       - name: Download the original spec
         if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
@@ -1496,37 +1537,6 @@ jobs:
         with:
           name: qa-fix-session-${{ matrix.task.fp }}
           path: qa-out/fix-*/session.json
-          retention-days: 7
-      # Publish leaves the ticket untouched when the session never began: a step before Fix failed, or Fix failed
-      # before the model first answered (the action's setup, the CLI install, a refused first request). The action
-      # writes its execution file when the session ends, and a step timeout kills it first, so a timed-out step
-      # counts as begun without that file.
-      - name: Record whether the fix session began
-        if: always()
-        env:
-          FIX_OUTCOME: ${{ steps.fix.outcome }}
-          START: ${{ steps.prompt.outputs.start }}
-          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
-        run: |
-          stopped=null
-          if [ "$FIX_OUTCOME" = skipped ]; then
-            stopped='"setup-failed"'
-          elif [ "$FIX_OUTCOME" != success ] && [ $(( $(date +%s) - START )) -lt $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ] &&
-            { [ ! -e "$EXECUTION_FILE" ] ||
-              jq --exit-status 'all(.[]; .type != "assistant" or .error != null)' "$EXECUTION_FILE" > /dev/null; }; then
-            stopped='"no-model-answer"'
-          fi
-          mkdir -p "$RUNNER_TEMP/qa-status"
-          jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
-            > "$RUNNER_TEMP/qa-status/$QA_FP.json"
-      # Uploaded whenever qa-fix is, so publish's download of it never misses in a normal run. Outside qa-out/, so
-      # the agent's qa-fix artifact cannot carry a copy.
-      - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qa-fix-status-${{ matrix.task.fp }}
-          path: ${{ runner.temp }}/qa-status/
-          if-no-files-found: error
           retention-days: 7
 
   # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run, on a fresh

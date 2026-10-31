@@ -507,12 +507,13 @@ type PublishResult =
   | { outcome: 'infrastructure'; reason: string }
 
 /** What the fix job wrote to `status/<fp>.json`; publish refuses a file that does not match. */
-const fixStatus = z.object({ stoppedBeforeSession: z.enum(['setup-failed', 'no-model-answer']).nullable() })
+const stopReason = z.enum(['setup-failed', 'no-model-answer'])
+const fixStatus = z.object({ stoppedBeforeSession: stopReason.nullable() })
 const stoppedReasons = {
   'setup-failed': 'The fix job failed before the fix step ran.',
   'no-model-answer':
     'The fix step failed before the model first answered: setup, the CLI install or a refused request.',
-} satisfies Record<NonNullable<z.infer<typeof fixStatus>['stoppedBeforeSession']>, string>
+} satisfies Record<z.infer<typeof stopReason>, string>
 
 /** Every fix PR description carries this sentence, and `preview-deploy.yml` deploys no automatic preview for one. */
 export const reviewNotice =
@@ -623,8 +624,10 @@ export const publish = async ({
     return { outcome: 'human-required', reasons }
   }
 
-  // Code the agent wrote can outlive its session and rewrite this file or the execution file it is derived from.
-  // At worst that leaves its own ticket untouched instead of Human Required: the file can only stop publish here.
+  // The fix job records and uploads this before any code the agent wrote runs outside its sandbox. A process the
+  // sandbox let outlive the session could still rewrite the execution file or this record before the upload (whether
+  // the sandbox blocks writes to $RUNNER_TEMP is unconfirmed). At worst its own ticket is left untouched: this file
+  // can only stop publish.
   const { stoppedBeforeSession } = fixStatus.parse(await Bun.file(join(outDir, 'status', `${fp}.json`)).json())
   if (stoppedBeforeSession) {
     const reason = stoppedReasons[stoppedBeforeSession]

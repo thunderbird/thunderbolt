@@ -1368,6 +1368,7 @@ describe('publish', () => {
     expect(lines.join('\n')).toContain('would comment on THB-1 and label it "Human Required"')
   })
 
+  // setup() records a session that began, so this is also the path of one that failed or timed out.
   test('a diagnosis means no PR: the ticket gets it as a comment and the human required label', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3, needs a product call.')
@@ -1419,19 +1420,6 @@ describe('publish', () => {
     expect(runs).toEqual([])
     expect(calls).toEqual([])
     expect(lines.join('\n')).toMatch(new RegExp(`THB-1 is left untouched for a later run: .*${why}`))
-  })
-
-  test('a session that began and then failed or timed out goes to a person', async () => {
-    await setup()
-    await put(
-      join(outDir, 'fix', `${fp}.diagnosis.md`),
-      'The fix session did not finish (step outcome: failure), so the patch is not published.\n',
-    )
-    const calls: Call[] = []
-    const result = await publishPassingPatch([], calls)
-
-    expect(result).toEqual({ outcome: 'human-required', reasons: ['the fix agent wrote a diagnosis'] })
-    expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
   })
 
   test.each([

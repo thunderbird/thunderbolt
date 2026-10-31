@@ -588,16 +588,20 @@ describe('publish', () => {
       expect(status('failure', '[{"type": "assis')).toBeNull()
     })
 
-    test('the status goes up with every fix outcome, whenever the fix output does', () => {
-      const uploadOf = (name: string) => steps('fix').find((s) => s.with?.name === name)
-      const statusUpload = uploadOf('qa-fix-status-${{ matrix.task.fp }}')
-      const record = 'Record whether the fix session began'
-      expect(step('fix', record).if).toBe('always()')
-      expect(statusUpload?.if).toBe(uploadOf('qa-fix-${{ matrix.task.fp }}')?.if)
-      expect(statusUpload?.if).not.toContain('steps.fix.')
-      expect(statusUpload?.with?.path).toBe('${{ runner.temp }}/qa-status/')
-      expect(statusUpload?.with?.['if-no-files-found']).toBe('error')
-      expect(steps('fix').indexOf(statusUpload ?? {})).toBeGreaterThan(indexOf('fix', record))
+    test('the status goes up with every fix outcome, before agent code runs outside the sandbox', () => {
+      // Fix, then the key scan (no agent code), then these two: every later step may run code the agent wrote.
+      const fix = indexOf('fix', 'Fix')
+      expect(steps('fix')[fix + 1].id).toBe('key-scan')
+      const record = steps('fix')[fix + 2]
+      const upload = steps('fix')[fix + 3]
+      expect(record.name).toBe('Record whether the fix session began')
+      expect(record.if).toBe('always()')
+      expect(record.env?.PATH).toBe('/usr/bin:/bin')
+      expect(upload.with?.name).toBe('qa-fix-status-${{ matrix.task.fp }}')
+      // The key scan's verdict only: it reads no fix outcome, and it passes in every run that uploads the fix output.
+      expect(upload.if).toBe("always() && steps.key-scan.outcome == 'success'")
+      expect(upload.with?.path).toBe('${{ runner.temp }}/qa-status/')
+      expect(upload.with?.['if-no-files-found']).toBe('error')
     })
 
     test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {

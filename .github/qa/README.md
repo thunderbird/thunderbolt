@@ -367,16 +367,18 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. A fix job that stopped before
    the fix session began diagnosed nothing. Either a step before the fix step failed (its outcome is `skipped`, and
    the fix job shows as failed, so the failure notification fires), or the fix step failed before the model first
-   answered (the action's setup, the CLI install, a refused first request). The fix job always uploads
-   `qa-fix-status-<fp>`, a small JSON file that says which of these happened, or `null` when the session began. A
-   step timeout counts as begun, because the action writes its execution file only when the session ends. `publish`
-   downloads the file into `qa-out/status/`, where the agent's `qa-fix-<fp>` cannot reach, and fails on a missing or
-   malformed one. When the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and
-   the run summary names the ticket and says it was left for a later run. Code the agent wrote can outlive its
-   session and rewrite that record, which at worst leaves its own ticket untouched instead of `Human Required`; the
-   record never leads to a PR. A session that began and then failed or timed out keeps the diagnosis and
-   `Human Required`. A fix job that uploaded no artifact at all (its key or secret scan failed, or the runner was lost)
-   fails `publish`, because nothing says whether the agent ran. `verify-native-run` and `verify-real` download the
+   answered (the action's setup, the CLI install, a refused first request). Right after the key scan, before any
+   code the agent wrote runs outside its sandbox, the fix job records which of these happened, or `null` when the
+   session began, and uploads it as `qa-fix-status-<fp>`. A step timeout counts as begun: the step ran for its whole
+   cap, though the action had no chance to write its execution file. `publish` downloads the file into
+   `qa-out/status/`, where the agent's `qa-fix-<fp>` cannot reach, and fails on a missing or malformed one. When the
+   session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names the
+   ticket and says it was left for a later run. Only a process the sandbox let outlive the session could still
+   rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is unconfirmed). At
+   worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to a PR. A session
+   that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job whose fix output was
+   not uploaded (its key or secret scan failed, or the runner was lost) fails `publish`, because nothing says whether
+   the agent ran. `verify-native-run` and `verify-real` download the
    patched app or frontend by pattern, so a fix that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
    the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
@@ -552,9 +554,9 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 Fix agent: run it in a separate checkout (it edits the working tree), with
 `.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on the frontend port, 1424 by default,
 with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding
-finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, then
-`bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
-open.
+finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, write
+`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json`, then `bun .github/qa/scripts/fix.ts publish --out qa-out
+--fp <fp>` without `--live` shows the commit and the PR it would open.
 
 Two stacks side by side. Two agents can run two stacks on one machine when each uses its own six ports. A build
 bakes the backend and fake Google URLs into the app, so a second stack needs its own builds, made with its own

@@ -80,12 +80,13 @@ which the runner keeps too (see the fix stage below). The artifact holds a marke
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
 spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
-`verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets `Human Required` with the
-reason. A missing `checks` pass is the pipeline's failure instead: publish writes nothing to GitHub or Linear and
-leaves the ticket for a later run (see the fix stage below). It counts only once every other pass is there, so a
-patch that also failed its own checks still goes to a person. Listing names cannot miss, so a normal run shows no
-error annotation for a check that did not pass. The diagnosis the fix job writes for a failed check is only the
-reason a person reads: deleting it, or writing a result file that says the check passed, opens no PR.
+`verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
+`Human Required` with the reason. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
+to GitHub or Linear and leaves the ticket for a later run (see the fix stage below). It counts only once every
+other pass is there, so a patch that also failed its own checks still goes to a person. Listing names cannot miss,
+so a normal run shows no error annotation for a check that did not pass. The diagnosis the fix job writes for a
+failed check is only the reason a person reads: deleting it, or writing a result file that says the check passed,
+opens no PR.
 
 One artifact list spans every attempt of a run, and a download by name or pattern takes the latest artifact of that
 name, so an attempt that uploaded none would read an earlier attempt's. The fix output (`qa-fix-<fp>-<run attempt>`),
@@ -404,17 +405,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    ticket Linear does not return gets the identifier-only branch and a log line. `publish` pushes only when the
    branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
    `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
-   Before the session, the fix job replays a fake-AI web task's original spec 3 times on the dev stack without any
-   patch, with the same Playwright command as the replay after the fix, before the key or any agent code is in the
-   job. When all 3 pass, another change has fixed the bug on this commit: the session is skipped, so it costs no
-   model spend, the fix status records `already-passes`, and the job uploads the pass
-   `qa-pass-<fp>-unpatched-<run attempt>` before the fix step.
-   `publish` then opens no PR and adds no label. It comments on the ticket that the repro passes on main at that
-   commit, so a person can close it, and the run summary says the same. It needs the record and the pass together:
-   a record without the pass leaves the ticket for a later run, since a process the session left behind could have
-   rewritten the record. A run that fails, even 1 of the 3, means the session runs as before. In a weekly run the
-   replay has just confirmed the bug on the same commit, so the check adds about a minute per fix job and almost
-   never fires; in a fix-only run it catches a ticket whose twin was fixed in the meantime.
+   In a fix-only run, before the session, the fix job replays a fake-AI web task's original spec 3 times on the dev
+   stack without any patch, with the same Playwright command as the replay after the fix. It catches a ticket whose
+   twin was fixed after it was filed. A weekly run skips it: its replay has just reproduced the bug on the same
+   commit, so a pass on the dev stack there would only mean the dev stack and the build differ. The spec is
+   model-written and the fix step later holds the key, so the spec runs as `qa-test` (as in `verify-tests`), a user
+   that cannot read the job user's processes, with its own output dir, and every process of that user is killed
+   before the fix step. A process that survives fails the job there, and the ticket waits for a later run. When all
+   3 runs pass, another change has fixed the bug on this commit: the session is skipped, so it costs no model spend,
+   the fix status records `already-passes`, and the job uploads the pass `qa-pass-<fp>-unpatched-<run attempt>`
+   before the fix step. `publish` then opens no PR and adds no label. It comments on the ticket that the repro passes
+   on main at that commit, so a person can close it, and the run summary says the same. It needs the record and the
+   pass together: a record without the pass leaves the ticket for a later run, since a process the session left
+   behind could have rewritten the record. Any other result means the session runs as before: a failed run, even 1
+   of the 3, a timeout, or a browser that will not start as `qa-test`. The check adds about a minute per fix job.
    A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and

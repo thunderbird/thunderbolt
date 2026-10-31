@@ -221,16 +221,18 @@ describe('fix job', () => {
     const check = indexOf('fix', "Check that no dev server runs as the job's user")
     const lock = indexOf('fix', "Take root away from the job's user")
     expect(check).toBe(start + 1)
-    expect(lock).toBe(check + 1)
+    expect(lock).toBe(indexOf('fix', 'Create the user the tests run as') + 1)
     expect(lock).toBeLessThan(indexOf('fix', 'Fix'))
     expect(step('fix', "Check that no dev server runs as the job's user").run).toContain('ss -ltnpH')
-    // After the lock, sudo is only the narrow rule that signals the dev servers' user.
+    // After the lock, sudo only acts as another user: the narrow rule that signals the dev servers' user, and the
+    // test user of the repro check before the session.
     const sudo = steps('fix')
       .slice(lock + 1)
       .flatMap((s) => (s.run ?? '').split('\n').filter((line) => line.includes('sudo')))
-    expect(sudo.map((line) => line.trim())).toEqual([
-      'if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi',
-    ])
+    expect(sudo).toContainEqual(
+      expect.stringContaining('if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi'),
+    )
+    for (const line of sudo) expect(line.replaceAll(/sudo -n -u "\$(user|QA_TEST_USER)"/g, '')).not.toContain('sudo')
   })
 
   test("a stop of another user's servers fails loudly when they keep running", () => {
@@ -299,42 +301,78 @@ describe('fix job', () => {
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
   })
 
-  test('a fake-AI web repro that passes three times before the session skips it; anything less runs it', () => {
+  describe('the repro check before the session', () => {
     const before = step('fix', 'Replay the spec before the fix')
-    const after = step('fix', 'Replay the spec on the patched code')
-    // The same tasks as the replay after the fix: a fake-AI web spec, so no real-AI, visual or native task.
-    expect(before.if).toBe('matrix.task.spec && !matrix.task.real')
-    expect(after.if).toBe(`steps.fix.outcome == 'success' && ${before.if}`)
-    // The same Playwright run, where any failed run of the three fails it; only the spec's directory differs.
-    const command = (run = '') => /bunx playwright test [^"]*/.exec(run)?.[0]
-    expect(command(before.run)).toBe(command(after.run))
-    expect(before.run).toContain('--repeat-each=3 --retries=0')
-    expect(before.id).toBe('unpatched')
-    expect(step('fix', 'Fix').if).toBe("steps.unpatched.outputs.passes != 'true'")
-    /** The step's outputs and exit code when Playwright exits with `code`. */
-    const replay = (code: number) => {
+
+    test('runs only in a fix-only run, on the tasks and with the Playwright run of the replay after the fix', () => {
+      const after = step('fix', 'Replay the spec on the patched code')
+      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug.
+      expect(before.if).toBe('inputs.fix_from_run && matrix.task.spec && !matrix.task.real')
+      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real")
+      // Any failed run of the three fails it.
+      const command = /bunx playwright test [^"]*/.exec(after.run ?? '')?.[0] ?? '?'
+      expect(command).toContain('--repeat-each=3 --retries=0')
+      expect((before.run ?? '').replaceAll(/\\\n\s*/g, '')).toContain(command)
+      expect(before.id).toBe('unpatched')
+      expect(step('fix', 'Fix').if).toBe("steps.unpatched.outputs.passes != 'true'")
+    })
+
+    /** The step's output, exit code and sudo calls, with stand-ins for sudo, timeout and Playwright. */
+    const replay = ({ code = 0, browsers = true } = {}) => {
       const dir = mkdtempSync(join(work, 'unpatched-'))
+      if (browsers) mkdirSync(join(dir, '.cache/ms-playwright'), { recursive: true })
+      writeFileSync(join(dir, 'sudo'), `#!/bin/sh\necho "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
+        mode: 0o755,
+      })
+      writeFileSync(join(dir, 'timeout'), '#!/bin/sh\nshift 2\nexec "$@"\n', { mode: 0o755 })
       writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nexit ${code}\n`, { mode: 0o755 })
       const proc = Bun.spawnSync(['bash', '-e', '-c', before.run ?? ''], {
         cwd: dir,
         env: {
           PATH: `${dir}:${process.env.PATH}`,
+          HOME: dir,
+          QA_TEST_USER: 'qa-test',
           GITHUB_OUTPUT: join(dir, 'output'),
           SPEC: 'qa-out/c2/repro/1.spec.ts',
         },
       })
-      const output = join(dir, 'output')
-      return { exitCode: proc.exitCode, output: existsSync(output) ? readFileSync(output, 'utf8') : '' }
+      const read = (name: string) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : '')
+      return { exitCode: proc.exitCode, output: read('output'), sudo: read('sudo.log') }
     }
-    expect(replay(0)).toEqual({ exitCode: 0, output: 'passes=true\n' })
-    // A failure, the usual case, sets nothing and fails nothing, so a normal run shows no error annotation.
-    expect(replay(1)).toEqual({ exitCode: 0, output: '' })
-    // On the unpatched stack after the lock, before the prompt and the session.
-    const at = (name: string) => indexOf('fix', name)
-    expect(at("Take root away from the job's user")).toBeLessThan(at('Replay the spec before the fix'))
-    expect(at('Write the file a passed check uploads')).toBeLessThan(at('Replay the spec before the fix'))
-    expect(at('Replay the spec before the fix')).toBeLessThan(at('Build the prompt'))
-    expect(at('Build the prompt')).toBeLessThan(at('Fix'))
+
+    test('passes only when all three runs pass, as the test user, with an output dir of its own', () => {
+      const passed = replay()
+      expect(passed).toMatchObject({ exitCode: 0, output: 'passes=true\n' })
+      const [mktemp, run] = passed.sudo.trim().split('\n')
+      expect(mktemp).toBe('-n -u qa-test mktemp -d')
+      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 10m env PATH=')
+      expect(run).toContain('bunx playwright test')
+      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts$/)
+    })
+
+    // The usual case sets nothing and fails nothing, so a normal run shows no error annotation, and the session runs.
+    test('a failed or timed-out run, or a browser cache it cannot read, sets nothing and fails nothing', () => {
+      expect(replay({ code: 1 })).toMatchObject({ exitCode: 0, output: '' })
+      expect(replay({ code: 124 })).toMatchObject({ exitCode: 0, output: '' })
+      expect(replay({ browsers: false })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
+    })
+
+    test('after the lock as a user created before it, whose every process is stopped before Fix', () => {
+      expect(jobs.fix.env?.QA_TEST_USER).toBe('qa-test')
+      const at = (name: string) => indexOf('fix', name)
+      const lock = at("Take root away from the job's user")
+      expect(at('Create the user the tests run as')).toBe(lock - 1)
+      expect(at('Write the file a passed check uploads')).toBeLessThan(at('Replay the spec before the fix'))
+      expect(lock).toBeLessThan(at('Replay the spec before the fix'))
+      const stop = at('Stop every process of the test user')
+      expect(stop).toBe(at('Replay the spec before the fix') + 1)
+      expect(stop).toBeLessThan(at('Build the prompt'))
+      expect(at('Build the prompt')).toBeLessThan(at('Fix'))
+      // A survivor fails the job before Fix, so its ticket waits for a later run.
+      expect(steps('fix')[stop]).toMatchObject({ id: 'stop-tests', if: 'always()' })
+      expect(steps('fix')[stop]['continue-on-error']).toBeUndefined()
+      expect(steps('fix')[stop].run).toBe(step('verify-tests', 'Stop every process of the test user').run)
+    })
   })
 
   test('the visual check runs on the patched tree first, and the steps after the baseline see the patch', () => {
@@ -520,8 +558,8 @@ describe('passes', () => {
 
   test("each check's pass is uploaded only on the outcome of the step that ran the check", () => {
     expect(passUploads).toEqual({
-      // Uploaded before Fix, so before the key or any agent code is in the job.
-      'fix unpatched': pass("steps.unpatched.outputs.passes == 'true'"),
+      // Before Fix, and only once no process of the test user that ran the check is left.
+      'fix unpatched': pass(`steps.unpatched.outputs.passes == 'true' && ${outcome('stop-tests')}`),
       'fix session': pass(fixScans + outcome('fix')),
       'fix replay': pass(fixScans + outcome('verify')),
       'fix visual': pass(fixScans + outcome('visual')),
@@ -855,13 +893,17 @@ describe('publish', () => {
 
     test('a repro that passed all three times before the fix skipped the session: it already passes', () => {
       expect(status('skipped', undefined, now(), 'true')).toBe('already-passes')
-      // The output the runner keeps, decided and its pass uploaded before the session could start.
+      expect(status('skipped', undefined, now(), 'false')).toBe('setup-failed')
+      // What the runner keeps, decided and its pass uploaded before the session could start. A survivor of the
+      // check's user fails the stop, so the job stops before Fix and the record says setup-failed.
       const record = step('fix', 'Record whether the fix session began')
-      expect(record.env?.ALREADY_PASSES).toBe('${{ steps.unpatched.outputs.passes }}')
+      expect(record.env?.ALREADY_PASSES).toBe(
+        "${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}",
+      )
       const upload = steps('fix').findIndex(
         (s) => s.with?.name === `qa-pass-\${{ matrix.task.fp }}-unpatched${attempt}`,
       )
-      expect(upload).toBe(indexOf('fix', 'Replay the spec before the fix') + 1)
+      expect(upload).toBe(indexOf('fix', 'Stop every process of the test user') + 1)
       expect(upload).toBeLessThan(indexOf('fix', 'Fix'))
     })
 

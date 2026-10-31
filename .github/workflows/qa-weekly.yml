@@ -1241,6 +1241,8 @@ jobs:
     env:
       QA_OUT: qa-out
       QA_FP: ${{ matrix.task.fp }}
+      # The repro check before the session runs as this user.
+      QA_TEST_USER: qa-test
     steps:
       - *checkout
       - *setup-bun
@@ -1280,6 +1282,19 @@ jobs:
             exit 1
           fi
           for port in 8005 1424 1425; do grep -q ":$port " <<< "$listeners"; done
+      # Needs root, so before the lock. The job's user may then run anything as the test user and nothing as root;
+      # the rule sorts after zz-qa-lock, and in sudoers the last matching rule wins.
+      - &test-user
+        name: Create the user the tests run as
+        run: |
+          sudo useradd --create-home "$QA_TEST_USER"
+          # Lets that user reach bun and the checkout without listing this user's home.
+          sudo chmod o+x "$HOME"
+          sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests"
+          # Fails the job here when that user cannot run bun or read the checkout, rather than every test later.
+          sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version
+          sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json" > /dev/null
+          sudo -n -u "$QA_TEST_USER" ls "$PWD/node_modules/.bin" > /dev/null
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
 
@@ -1290,20 +1305,42 @@ jobs:
         name: Write the file a passed check uploads
         run: echo "A passed check. The artifact's name says which." > "$RUNNER_TEMP/qa-pass.txt"
 
-      # A fake-AI web repro that passes all three times on this commit means another change fixed the bug, so no
-      # session runs and publish only comments on the ticket. Decided before the key or any agent code is in the job,
-      # in an output no later process can change; the spec passed replay's lint, which refuses the calls that start a
-      # process. A failure is the usual case in a weekly run, so it sets no output instead of failing the step.
+      # In a fix-only run, a fake-AI web repro that passes all three times on this commit means another change fixed
+      # the bug, so no session runs and publish only comments on the ticket. A weekly run's replay has just reproduced
+      # the bug on this commit, so a pass on the dev stack there would only mean dev and build differ. The spec is
+      # model-written, so it runs as the test user, which cannot read the key Fix later holds, and the stop below
+      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs.
       - name: Replay the spec before the fix
         id: unpatched
-        if: matrix.task.spec && !matrix.task.real
+        if: inputs.fix_from_run && matrix.task.spec && !matrix.task.real
         env:
           SPEC: ${{ matrix.task.spec }}
         run: |
-          if bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"; then
+          browsers="$HOME/.cache/ms-playwright"
+          # The output dir is the test user's own: qa-out/replay belongs to the job's user.
+          if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
+            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 10m \
+              env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
+              bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
+              --output "$out" "$SPEC"; then
             echo "passes=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.unpatched.outputs.passes == 'true'
+      # A process the spec left behind would otherwise outlive the check. SIGKILL, which a test cannot catch, again
+      # until none is left, so a process that forks in between is caught too. One that survives fails the job here,
+      # before Fix, and its ticket waits for a later run.
+      - &stop-test-user
+        name: Stop every process of the test user
+        id: stop-tests
+        if: always()
+        run: |
+          for _ in $(seq 50); do
+            pgrep -u "$QA_TEST_USER" > /dev/null || exit 0
+            sudo -n -u "$QA_TEST_USER" /usr/bin/kill -KILL -1 || true
+            sleep 0.2
+          done
+          echo "processes of $QA_TEST_USER still run" >&2
+          exit 1
+      - if: steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-pass-${{ matrix.task.fp }}-unpatched-${{ github.run_attempt }}
@@ -1388,7 +1425,7 @@ jobs:
         if: always()
         shell: /bin/bash --noprofile --norc -e {0}
         env:
-          ALREADY_PASSES: ${{ steps.unpatched.outputs.passes }}
+          ALREADY_PASSES: ${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           START: ${{ steps.prompt.outputs.start }}
           EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
@@ -1824,39 +1861,16 @@ jobs:
         with:
           pattern: qa-fix-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-out
-      # Needs root, so before the lock. The job's user may then run anything as the test user and nothing as root;
-      # the rule sorts after zz-qa-lock, and in sudoers the last matching rule wins.
-      - &test-user
-        name: Create the user the tests run as
-        run: |
-          sudo useradd --create-home "$QA_TEST_USER"
-          # Lets that user reach bun and the checkout without listing this user's home.
-          sudo chmod o+x "$HOME"
-          sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests"
-          # Fails the job here when that user cannot run bun or read the checkout, rather than every test later.
-          sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version
-          sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json" > /dev/null
-          sudo -n -u "$QA_TEST_USER" ls "$PWD/node_modules/.bin" > /dev/null
+      # Needs root, so before the lock (see the fix job).
+      - *test-user
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
       - name: Check that the patch's tests fail without the fix and pass with it
         id: tests
         continue-on-error: true
         run: bun .github/qa/scripts/fix.ts tests --out qa-out --fp "$QA_FP"
-      # A process a test left behind would otherwise outlive the check. SIGKILL, which a test cannot catch, again
-      # until none is left, so a process that forks in between is caught too.
-      - &stop-test-user
-        name: Stop every process of the test user
-        id: stop-tests
-        if: always()
-        run: |
-          for _ in $(seq 50); do
-            pgrep -u "$QA_TEST_USER" > /dev/null || exit 0
-            sudo -n -u "$QA_TEST_USER" /usr/bin/kill -KILL -1 || true
-            sleep 0.2
-          done
-          echo "processes of $QA_TEST_USER still run" >&2
-          exit 1
+      # A process a test left behind would otherwise outlive the check.
+      - *stop-test-user
       - if: always() && steps.tests.outcome == 'success' && steps.stop-tests.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

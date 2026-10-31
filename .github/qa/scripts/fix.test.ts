@@ -1923,6 +1923,83 @@ describe('publish', () => {
     )
   })
 
+  describe('a repro that already passes before the fix', () => {
+    const head = { 'git rev-parse': 'c0ffee12\n' }
+
+    test('live: one comment with the commit, and no PR, no label and no git write', async () => {
+      await setup()
+      await putStatus('already-passes')
+      await putPasses('unpatched')
+      const runs: RunCall[] = []
+      const calls: Call[] = []
+      const summary = join(dir, 'summary.md')
+      const result = await publish({
+        outDir,
+        fp,
+        live: true,
+        key: 'lin',
+        token: 't',
+        summary,
+        run: fakeRun(runs, head),
+        fetchFn: fakeLinear(calls),
+        log: () => {},
+      })
+
+      expect(result).toEqual({ outcome: 'already-fixed', commit: 'c0ffee12' })
+      expect(runs.map((r) => r.cmd)).toEqual([['git', 'rev-parse', 'HEAD']])
+      expect(calls.map((c) => c.op)).toEqual(['Comment'])
+      expect(calls[0].variables).toMatchObject({ issueId: 'issue-1' })
+      expect(calls[0].variables.body).toContain('passes on main at commit c0ffee12')
+      expect(calls[0].variables.body).toContain('no fix PR was opened')
+      expect(await readFile(summary, 'utf8')).toBe(
+        '- THB-1 already passes its repro on main at c0ffee12, so no fix PR was opened\n',
+      )
+    })
+
+    test('dry run: logs the comment and writes nothing', async () => {
+      await setup()
+      await putStatus('already-passes')
+      await putPasses('unpatched')
+      const calls: Call[] = []
+      const lines: string[] = []
+      const result = await publish({
+        outDir,
+        fp,
+        live: false,
+        run: fakeRun([], head),
+        fetchFn: fakeLinear(calls),
+        log: (line) => lines.push(line),
+      })
+
+      expect(result).toEqual({ outcome: 'already-fixed', commit: 'c0ffee12' })
+      expect(calls).toEqual([])
+      expect(lines.join('\n')).toContain('[dry run] would comment on THB-1:\nThe repro spec passes on main')
+    })
+
+    // The record alone may be a rewrite by a process the session left behind; only the runner uploads the pass.
+    test('without the pass of this attempt the record only leaves the ticket for a later run', async () => {
+      await setup()
+      await putStatus('already-passes')
+      for (const passes of [() => putPasses(...everyCheck), () => putPassesOf('2', 'unpatched')]) {
+        await passes()
+        const runs: RunCall[] = []
+        const calls: Call[] = []
+        const result = await publishPassingPatch(runs, calls)
+
+        expect(result).toEqual({ outcome: 'infrastructure', reason: expect.stringContaining('already passes') })
+        expect(runs).toEqual([])
+        expect(calls).toEqual([])
+      }
+    })
+
+    test('the pass without the record changes nothing: a session that began still becomes a PR', async () => {
+      await setup()
+      await putPasses(...everyCheck, 'unpatched')
+      const result = await publish({ outDir, fp, live: false, run: fakeRun([], diffOutput), log: () => {} })
+      expect(result).toMatchObject({ outcome: 'pr' })
+    })
+  })
+
   test.each([
     ['missing', undefined],
     ['not JSON', 'stopped'],

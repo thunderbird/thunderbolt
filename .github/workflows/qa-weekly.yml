@@ -1290,6 +1290,26 @@ jobs:
         name: Write the file a passed check uploads
         run: echo "A passed check. The artifact's name says which." > "$RUNNER_TEMP/qa-pass.txt"
 
+      # A fake-AI web repro that passes all three times on this commit means another change fixed the bug, so no
+      # session runs and publish only comments on the ticket. Decided before the key or any agent code is in the job,
+      # in an output no later process can change; the spec passed replay's lint, which refuses the calls that start a
+      # process. A failure is the usual case in a weekly run, so it sets no output instead of failing the step.
+      - name: Replay the spec before the fix
+        id: unpatched
+        if: matrix.task.spec && !matrix.task.real
+        env:
+          SPEC: ${{ matrix.task.spec }}
+        run: |
+          if bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"; then
+            echo "passes=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.unpatched.outputs.passes == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-unpatched-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+
       - name: Build the prompt
         id: prompt
         env:
@@ -1307,6 +1327,7 @@ jobs:
       # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
       - name: Fix
         id: fix
+        if: steps.unpatched.outputs.passes != 'true'
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
         env:
@@ -1360,12 +1381,14 @@ jobs:
       # before the model first answered (the action's setup, the CLI install, a refused first request). A step
       # timeout counts as begun: the step ran for its whole cap, though the action had no chance to write its
       # execution file. An action killed another way (the job's own timeout, a lost process) also leaves no file and
-      # reads as never begun, so its ticket waits for a later run; it never becomes a PR. Recorded and uploaded before
-      # any code the agent wrote runs outside its sandbox, with the key scan's cleared variables and absolute paths.
+      # reads as never begun, so its ticket waits for a later run; it never becomes a PR. A repro that already passed
+      # skipped the session on purpose. Recorded and uploaded before any code the agent wrote runs outside its
+      # sandbox, with the key scan's cleared variables and absolute paths.
       - name: Record whether the fix session began
         if: always()
         shell: /bin/bash --noprofile --norc -e {0}
         env:
+          ALREADY_PASSES: ${{ steps.unpatched.outputs.passes }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           START: ${{ steps.prompt.outputs.start }}
           EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
@@ -1377,7 +1400,9 @@ jobs:
         run: |
           stopped=null
           elapsed=$(( $(/bin/date +%s) - START ))
-          if [ "$FIX_OUTCOME" = skipped ]; then
+          if [ "$ALREADY_PASSES" = true ]; then
+            stopped='"already-passes"'
+          elif [ "$FIX_OUTCOME" = skipped ]; then
             stopped='"setup-failed"'
           elif [ "$FIX_OUTCOME" != success ] && [ "$elapsed" -lt $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ] &&
             { [ ! -e "$EXECUTION_FILE" ] ||

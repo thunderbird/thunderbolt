@@ -170,7 +170,11 @@ describe('secrets', () => {
     expect(keyScan).toContain('/usr/bin/grep -rqsF --exclude-dir=.git -- "$QA_KEY" .')
     expect(keyScan).not.toContain('node_modules')
     expect(step('fix', 'Fix').with?.claude_args).toContain('"Edit(.git/**)"')
-    const uploads = steps('fix').filter((s) => s.uses?.startsWith('actions/upload-artifact'))
+    // Before Fix nothing in the job has seen the key.
+    const uploads = steps('fix')
+      .slice(fix)
+      .filter((s) => s.uses?.startsWith('actions/upload-artifact'))
+    expect(uploads.length).toBeGreaterThan(0)
     for (const upload of uploads) expect(upload.if).toContain("steps.key-scan.outcome == 'success'")
   })
 })
@@ -293,6 +297,44 @@ describe('fix job', () => {
     expect(collect({ ...spec, REPLAY: 'success' })).toBeUndefined()
     expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'success' })).toBeUndefined()
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
+  })
+
+  test('a fake-AI web repro that passes three times before the session skips it; anything less runs it', () => {
+    const before = step('fix', 'Replay the spec before the fix')
+    const after = step('fix', 'Replay the spec on the patched code')
+    // The same tasks as the replay after the fix: a fake-AI web spec, so no real-AI, visual or native task.
+    expect(before.if).toBe('matrix.task.spec && !matrix.task.real')
+    expect(after.if).toBe(`steps.fix.outcome == 'success' && ${before.if}`)
+    // The same Playwright run, where any failed run of the three fails it; only the spec's directory differs.
+    const command = (run = '') => /bunx playwright test [^"]*/.exec(run)?.[0]
+    expect(command(before.run)).toBe(command(after.run))
+    expect(before.run).toContain('--repeat-each=3 --retries=0')
+    expect(before.id).toBe('unpatched')
+    expect(step('fix', 'Fix').if).toBe("steps.unpatched.outputs.passes != 'true'")
+    /** The step's outputs and exit code when Playwright exits with `code`. */
+    const replay = (code: number) => {
+      const dir = mkdtempSync(join(work, 'unpatched-'))
+      writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nexit ${code}\n`, { mode: 0o755 })
+      const proc = Bun.spawnSync(['bash', '-e', '-c', before.run ?? ''], {
+        cwd: dir,
+        env: {
+          PATH: `${dir}:${process.env.PATH}`,
+          GITHUB_OUTPUT: join(dir, 'output'),
+          SPEC: 'qa-out/c2/repro/1.spec.ts',
+        },
+      })
+      const output = join(dir, 'output')
+      return { exitCode: proc.exitCode, output: existsSync(output) ? readFileSync(output, 'utf8') : '' }
+    }
+    expect(replay(0)).toEqual({ exitCode: 0, output: 'passes=true\n' })
+    // A failure, the usual case, sets nothing and fails nothing, so a normal run shows no error annotation.
+    expect(replay(1)).toEqual({ exitCode: 0, output: '' })
+    // On the unpatched stack after the lock, before the prompt and the session.
+    const at = (name: string) => indexOf('fix', name)
+    expect(at("Take root away from the job's user")).toBeLessThan(at('Replay the spec before the fix'))
+    expect(at('Write the file a passed check uploads')).toBeLessThan(at('Replay the spec before the fix'))
+    expect(at('Replay the spec before the fix')).toBeLessThan(at('Build the prompt'))
+    expect(at('Build the prompt')).toBeLessThan(at('Fix'))
   })
 
   test('the visual check runs on the patched tree first, and the steps after the baseline see the patch', () => {
@@ -478,6 +520,8 @@ describe('passes', () => {
 
   test("each check's pass is uploaded only on the outcome of the step that ran the check", () => {
     expect(passUploads).toEqual({
+      // Uploaded before Fix, so before the key or any agent code is in the job.
+      'fix unpatched': pass("steps.unpatched.outputs.passes == 'true'"),
       'fix session': pass(fixScans + outcome('fix')),
       'fix replay': pass(fixScans + outcome('verify')),
       'fix visual': pass(fixScans + outcome('visual')),
@@ -785,13 +829,17 @@ describe('publish', () => {
     const result = { type: 'result', subtype: 'success', is_error: true }
     const init = { type: 'system', subtype: 'init' }
     const messages = (...list: object[]) => JSON.stringify(list)
-    /** The status the fix job records, given the step outcome, the execution file and the session's start. */
-    const status = (outcome: string, execution?: string, start = now()) => {
+    /**
+     * The status the fix job records, given the step outcome, the execution file, the session's start and the output
+     * of the replay before the fix.
+     */
+    const status = (outcome: string, execution?: string, start = now(), alreadyPasses = '') => {
       const temp = mkdtempSync(join(work, 'status-'))
       const executionFile = join(temp, 'claude-execution-output.json')
       if (execution !== undefined) writeFileSync(executionFile, execution)
       const proc = runStep('fix', 'Record whether the fix session began', temp, {
         RUNNER_TEMP: temp,
+        ALREADY_PASSES: alreadyPasses,
         FIX_OUTCOME: outcome,
         START: String(start),
         EXECUTION_FILE: executionFile,
@@ -803,6 +851,18 @@ describe('publish', () => {
 
     test('a step before Fix failed: the session never began', () => {
       expect(status('skipped')).toBe('setup-failed')
+    })
+
+    test('a repro that passed all three times before the fix skipped the session: it already passes', () => {
+      expect(status('skipped', undefined, now(), 'true')).toBe('already-passes')
+      // The output the runner keeps, decided and its pass uploaded before the session could start.
+      const record = step('fix', 'Record whether the fix session began')
+      expect(record.env?.ALREADY_PASSES).toBe('${{ steps.unpatched.outputs.passes }}')
+      const upload = steps('fix').findIndex(
+        (s) => s.with?.name === `qa-pass-\${{ matrix.task.fp }}-unpatched${attempt}`,
+      )
+      expect(upload).toBe(indexOf('fix', 'Replay the spec before the fix') + 1)
+      expect(upload).toBeLessThan(indexOf('fix', 'Fix'))
     })
 
     test('Fix failed before the model first answered: the session never began', () => {

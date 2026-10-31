@@ -877,15 +877,16 @@ type PublishResult =
   | { outcome: 'pr'; branch: string; files: string[]; spec?: string; commit: string; prUrl?: string }
   | { outcome: 'human-required'; reasons: string[] }
   | { outcome: 'infrastructure'; reason: string }
+  | { outcome: 'already-fixed'; commit: string }
 
 /** What the fix job wrote to `status/<fp>.json`; publish refuses a file that does not match. */
-const stopReason = z.enum(['setup-failed', 'no-model-answer'])
+const stopReason = z.enum(['setup-failed', 'no-model-answer', 'already-passes'])
 const fixStatus = z.object({ stoppedBeforeSession: stopReason.nullable() })
 const stoppedReasons = {
   'setup-failed': 'The fix job failed before the fix step ran.',
   'no-model-answer':
     'The fix step failed before the model first answered: setup, the CLI install or a refused request.',
-} satisfies Record<z.infer<typeof stopReason>, string>
+} satisfies Record<Exclude<z.infer<typeof stopReason>, 'already-passes'>, string>
 
 const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
@@ -952,7 +953,9 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  *   ignored;
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
- *   later run, and the result and the run summary say why. A missing or malformed file fails publish.
+ *   later run, and the result and the run summary say why. A missing or malformed file fails publish. One reason,
+ *   `already-passes`, means the repro passed three times on the commit before any agent code ran: with the
+ *   `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no label.
  * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
  * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
  * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
@@ -1009,8 +1012,23 @@ export const publish = async ({
   // the sandbox blocks writes to $RUNNER_TEMP is unconfirmed). At worst its own ticket is left untouched: this file
   // can only stop publish.
   const { stoppedBeforeSession } = fixStatus.parse(await Bun.file(join(outDir, 'status', `${fp}.json`)).json())
-  if (stoppedBeforeSession) return leaveForLater(stoppedReasons[stoppedBeforeSession])
   const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
+  if (stoppedBeforeSession === 'already-passes') {
+    // The pass, uploaded before the fix step, is the proof. Without it the record may be a rewrite, so it only stops.
+    if (!artifacts.has(`qa-pass-${fp}-unpatched-${attempt}`)) {
+      return leaveForLater('the fix status says the repro already passes, but the run has no pass of that replay')
+    }
+    const commit = (await run(['git', 'rev-parse', 'HEAD'], { cwd: repoDir })).trim()
+    const body =
+      `The repro spec passes on main at commit ${commit}, three runs out of three, so no fix PR was opened. ` +
+      'Another change probably fixed this bug. A person can check and close this ticket.'
+    if (!live) log(`[dry run] would comment on ${task.identifier ?? fp}:\n${body}`)
+    else await addComment(auth, issueId, body)
+    const line = `${task.identifier ?? fp} already passes its repro on main at ${commit}, so no fix PR was opened`
+    if (summary) await appendFile(summary, `- ${line}\n`)
+    return { outcome: 'already-fixed', commit }
+  }
+  if (stoppedBeforeSession) return leaveForLater(stoppedReasons[stoppedBeforeSession])
   if (!(await Bun.file(join(outDir, 'fix', `${fp}.patch`)).exists())) {
     const reason = `the fix job uploaded no output in run attempt ${attempt}`
     return handOff(

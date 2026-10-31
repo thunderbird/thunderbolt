@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { readFile, rm, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import { linear } from '../../../scripts/notify-on-failure'
@@ -375,23 +375,121 @@ export const regressionSpec = (charterDir: string, fp: string, source: string) =
     ),
 })
 
+/** One file a patch touches, with git's status letter for it (`A`, `M`, `D`, ...). */
+type PatchedFile = { path: string; status: string; modes: string[] }
+
 /**
  * Files a patch touches with their old and new git modes, rename sources included, read through a scratch index so
  * the checkout stays as is.
  */
-const patchedFiles = async (run: Run, patch: string) => {
+const patchedFiles = async (run: Run, patch: string): Promise<PatchedFile[]> => {
   const env = { GIT_INDEX_FILE: `${patch}.index` }
   try {
     await run(['git', 'read-tree', 'HEAD'], { env })
     await run(['git', 'apply', '--cached', patch], { env })
     // Per file: ":<old mode> <new mode> <old sha> <new sha> <status>\0<path>\0".
     const fields = (await run(['git', 'diff', '--cached', '--raw', '--no-renames', '-z', 'HEAD'], { env })).split('\0')
-    return fields.flatMap((field, i) =>
-      field.startsWith(':') ? [{ path: fields[i + 1], modes: field.slice(1).split(' ').slice(0, 2) }] : [],
-    )
+    return fields.flatMap((field, i) => {
+      if (!field.startsWith(':')) return []
+      const [oldMode, newMode, , , status] = field.slice(1).split(' ')
+      return [{ path: fields[i + 1], status, modes: [oldMode, newMode] }]
+    })
   } finally {
     await rm(env.GIT_INDEX_FILE, { force: true })
   }
+}
+
+/**
+ * The trees whose unit tests a patch's own tests may live in, each run from where the repo's test scripts run it, so
+ * its `bunfig.toml` preload applies. `shared/agent-core/` has its own runner; the rest of `shared/` runs from the root.
+ */
+const testTrees = [
+  { prefix: 'shared/agent-core/', cwd: 'shared/agent-core' },
+  { prefix: 'shared/', cwd: '.' },
+  { prefix: 'src/', cwd: 'src' },
+  { prefix: 'backend/', cwd: 'backend' },
+  { prefix: 'cli/', cwd: 'cli' },
+]
+
+/** The first tree of `testTrees` that holds `path`, so `shared/agent-core/` wins over `shared/`. */
+const treeOf = (path: string) => testTrees.find((tree) => path.startsWith(tree.prefix))
+/** True for a `*.test.ts` or `*.test.tsx` file in one of `testTrees`. */
+const isUnitTest = (path: string) => /\.test\.tsx?$/.test(path) && treeOf(path) !== undefined
+
+/** A `bun test` command over some of a patch's test files, and the repo-relative directory it runs from. */
+export type TestRun = { cwd: string; cmd: string[] }
+
+/**
+ * The unit test files a patch adds or changes (`*.test.ts`, `*.test.tsx` in a tree of `testTrees`; a deleted one is
+ * left out, and a renamed one counts under its new path), as one `bun test` per tree.
+ */
+export const testRuns = (files: Pick<PatchedFile, 'path' | 'status'>[]): TestRun[] => {
+  const tests = files.filter((f) => f.status !== 'D' && isUnitTest(f.path)).map((f) => f.path)
+  return testTrees.flatMap((tree) => {
+    const paths = tests.filter((path) => treeOf(path) === tree)
+    if (!paths.length) return []
+    return [
+      { cwd: tree.cwd, cmd: ['bun', 'test', '--timeout', '5000', ...paths.map((p) => `./${relative(tree.cwd, p)}`)] },
+    ]
+  })
+}
+
+const noTestReason =
+  'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`)'
+
+/** Runs a command with its output in the job log and returns its exit code. */
+const runTests = (cmd: string[], cwd: string) =>
+  Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }).exited
+
+type CheckTestsOptions = {
+  outDir: string
+  fp: string
+  repoDir?: string
+  run?: Run
+  exec?: (cmd: string[], cwd: string) => Promise<number>
+  log?: (line: string) => void
+}
+
+/**
+ * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: they must fail with only the
+ * patch's hunks for its test files applied (`failsWithout`), and pass with the whole patch (`passesWith`). Both are
+ * false for a patch with no test file. One process runs both halves, so code a test leaves behind cannot swap the
+ * verdict code between them. Each half takes its hunks out again, which leaves the checkout as it was.
+ */
+export const checkTests = async ({
+  outDir,
+  fp,
+  repoDir = '.',
+  run = runCommand,
+  exec = runTests,
+  log = console.log,
+}: CheckTestsOptions) => {
+  const patch = resolve(outDir, 'fix', `${fp}.patch`)
+  // git apply refuses an empty patch, which holds no test either.
+  const files = (await readFile(patch, 'utf8')).trim() ? await patchedFiles(run, patch) : []
+  const runs = testRuns(files)
+  if (!runs.length) {
+    log(`fix: ${noTestReason}`)
+    return { failsWithout: false, passesWith: false }
+  }
+  const exitCodes = async (include: string[]) => {
+    await run(['git', 'apply', ...include, patch])
+    try {
+      const codes: number[] = []
+      for (const { cwd, cmd } of runs) codes.push(await exec(cmd, join(repoDir, cwd)))
+      return codes
+    } finally {
+      await run(['git', 'apply', '--reverse', ...include, patch])
+    }
+  }
+  // Every test file the patch touches, deleted ones too: the reverse apply matches a rename by its old name. And
+  // `--include` takes a glob, so a bracket in a path must not widen or empty the match.
+  const testsOnly = files
+    .filter((f) => isUnitTest(f.path))
+    .map((f) => `--include=${f.path.replace(/[[\]*?\\]/g, '\\$&')}`)
+  const failsWithout = (await exitCodes(testsOnly)).some((code) => code !== 0)
+  const passesWith = (await exitCodes([])).every((code) => code === 0)
+  return { failsWithout, passesWith }
 }
 
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
@@ -399,24 +497,6 @@ const linkModes = new Set(['120000', '160000'])
 
 /** Three levels under the repo root, like a repro spec, so imports and the Playwright project match. */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
-/** `fix/<fp>.verify.json`: whether the visual check failed on the tree without the patch and passed with it. */
-const checkResult = z.object({ failsWithout: z.boolean(), passesWith: z.boolean() })
-
-const readCheckResult = (text: string): z.infer<typeof checkResult> | undefined => {
-  try {
-    return checkResult.parse(JSON.parse(text))
-  } catch {
-    return undefined
-  }
-}
-
-const checkResultProblem = (text: string) => {
-  const result = readCheckResult(text)
-  if (!result) return 'the visual check result is unreadable'
-  return result.failsWithout && result.passesWith
-    ? undefined
-    : 'the visual check did not fail without the patch and pass with it'
-}
 
 /** The replay's own allow-list check, with `${EMAIL}` as the only variable. */
 const flowProblems = (platform: string, flow: string) => {
@@ -424,7 +504,10 @@ const flowProblems = (platform: string, flow: string) => {
   return check.ok ? [] : check.problems
 }
 
-/** Problems with what the patch must make pass: an edited repro spec or flow, or an unverified visual check. */
+/**
+ * Problems with what the patch must make pass: an edited repro spec or flow, or a visual check that is missing or
+ * fails the lint. Whether the checks passed comes from `missingPasses`.
+ */
 const proofProblems = async (outDir: string, task: FixTask) => {
   if (task.kind === 'spec') {
     const [original, copy, lint, name] =
@@ -441,17 +524,57 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   if (!(await check.exists())) return ['the visual check is missing']
   const text = await check.text()
   const problems = 'flow' in task ? flowProblems(task.platform, text) : lintReproSpec(text)
-  const reasons = problems.map((problem) => `visual check: ${problem}`)
-  // Written by the workflow after it ran the check on the tree without and with the patch.
-  const verify = Bun.file(join(outDir, 'fix', `${task.fp}.verify.json`))
-  if (!(await verify.exists())) return [...reasons, 'the visual check did not fail without the patch and pass with it']
-  const problem = checkResultProblem(await verify.text())
-  return problem ? [...reasons, problem] : reasons
+  return problems.map((problem) => `visual check: ${problem}`)
 }
 
 /**
- * Why the agent's output must not become a PR (empty = it may), and the files its patch touches. `verifyNative` is
- * the trusted plan's, never anything the fix agent wrote.
+ * The reason for each check the task needs whose pass is missing. The workflow uploads `qa-pass-<fp>-<check>` only
+ * under an `if:` on the step outcomes the runner keeps, and `artifacts` lists the run's artifact names, so no file
+ * that code the agent wrote could rewrite carries a verdict.
+ */
+const missingPasses = (task: FixTask, verifyNative: NativeCheck[], unitTests: boolean, artifacts: Set<string>) => {
+  const web = !('flow' in task)
+  const checks = [
+    { check: 'session', needed: true, reason: 'the fix session did not finish' },
+    {
+      check: 'replay',
+      needed: 'spec' in task && !task.real,
+      reason: 'the repro spec did not pass three times on the patched code',
+    },
+    {
+      check: 'visual',
+      needed: web && task.kind === 'visual',
+      reason: 'the visual check did not fail three times without the patch and pass three times with it',
+    },
+    {
+      check: 'tests',
+      needed: web,
+      reason: unitTests
+        ? "the patch's unit tests did not fail without the fix and pass with it"
+        : `${noTestReason}, and every web fix needs one that fails without the fix`,
+    },
+    {
+      check: 'real',
+      needed: task.real && 'spec' in task,
+      reason:
+        'the repro spec still fails on the real AI providers. That run used the patched frontend and the backend from before the patch',
+    },
+    ...verifyNative
+      .filter((v) => v.fp === task.fp)
+      .map((v) => ({
+        check: v.platform,
+        needed: true,
+        reason: `the flow still fails on the native platform (${v.platform}). That run used the patched app and the backend from before the patch`,
+      })),
+  ]
+  return checks
+    .filter(({ check, needed }) => needed && !artifacts.has(`qa-pass-${task.fp}-${check}`))
+    .map(({ reason }) => reason)
+}
+
+/**
+ * Why the agent's output must not become a PR (empty = it may), the files its patch touches, and whether it adds or
+ * changes a unit test file. `verifyNative` is the trusted plan's, never anything the fix agent wrote.
  */
 export const checkPatch = async (run: Run, outDir: string, task: FixTask, verifyNative: NativeCheck[]) => {
   const patch = resolve(outDir, 'fix', `${task.fp}.patch`)
@@ -466,7 +589,7 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask, verify
     reasons.push('a fix found in a session that needs Postgres and PowerSync is not verified with them')
   }
   const text = await readFile(patch, 'utf8')
-  if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [] }
+  if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [], unitTests: false }
   // The patch becomes a public PR.
   if (secretPattern.test(text)) reasons.push('the patch matches a secret pattern')
   const files = await patchedFiles(run, patch)
@@ -485,6 +608,7 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask, verify
         .map((f) => `adds or changes a symlink or submodule: ${f.path}`),
     ],
     files: files.map((f) => f.path),
+    unitTests: testRuns(files).length > 0,
   }
 }
 
@@ -580,13 +704,16 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * for a visual task) from the fix job:
  * - `fix/<fp>.patch`: `git add -A && git diff --cached --binary HEAD`, taken by the workflow after the agent ran;
  * - `fix/<fp>.spec.ts` (`fix/<fp>.yaml` for a native flow): the repro as the agent left it, compared with the original;
- * - for a visual task, the agent's check in `fix-<fp>/repro/`, and `fix/<fp>.verify.json`, the workflow's record of
- *   running it without and with the patch;
- * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored;
+ * - for a visual task, the agent's check in `fix-<fp>/repro/`;
+ * - `fix/<fp>.diagnosis.md`: written when the agent gave up, or by the workflow when a check failed; any patch is then
+ *   ignored;
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
  *   later run and the result says why. A missing or malformed file fails publish.
- * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
+ * It also reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>` for every
+ * check the task needs (`missingPasses`). A missing file fails publish.
+ * A diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the `Human Required`
+ * label. Otherwise
  * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
  * draft PR, whose link goes on the ticket as a comment. The push fails if the branch appeared on origin after route
@@ -634,6 +761,7 @@ export const publish = async ({
     log(`${task.identifier ?? fp} is left untouched for a later run: ${reason}`)
     return { outcome: 'infrastructure', reason }
   }
+  const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))
   if (await diagnosis.exists()) {
     const text = await diagnosis.text()
@@ -644,7 +772,9 @@ export const publish = async ({
         : `The fix agent could not fix this and wrote a diagnosis:\n\n${sanitize(text, 6000)}`,
     )
   }
-  const { reasons, files } = await checkPatch(run, outDir, task, verifyNative)
+  const checked = await checkPatch(run, outDir, task, verifyNative)
+  const { files } = checked
+  const reasons = [...checked.reasons, ...missingPasses(task, verifyNative, checked.unitTests, artifacts)]
   if (reasons.length) {
     return handOff(
       reasons,
@@ -706,7 +836,15 @@ if (import.meta.main) {
   } else if (positionals[0] === 'publish' && values.fp) {
     const result = await publish({ outDir: values.out, fp: values.fp, live: values.live, key, token: Bun.env.GH_TOKEN })
     console.log(JSON.stringify(result, null, 2))
+  } else if (positionals[0] === 'tests' && values.fp) {
+    const result = await checkTests({ outDir: values.out, fp: values.fp })
+    console.log(JSON.stringify(result))
+    // The workflow uploads the pass on this exit code, never on anything the tests could write.
+    process.exitCode = result.failsWithout && result.passesWith ? 0 : 1
   } else {
-    throw new Error('usage: fix.ts route --out DIR [--live] | fix.ts publish --out DIR --fp FP [--live]')
+    throw new Error(
+      'usage: fix.ts route --out DIR [--live] | fix.ts publish --out DIR --fp FP [--live] | ' +
+        'fix.ts tests --out DIR --fp FP',
+    )
   }
 }

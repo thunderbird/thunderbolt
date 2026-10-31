@@ -316,7 +316,7 @@ describe('fix job', () => {
   test('a check the task needs that did not succeed always leaves a diagnosis', () => {
     for (const outcome of ['failure', 'skipped', 'cancelled', ''])
       expect(collect({ ...spec, REPLAY: outcome })).toContain('The repro spec did not pass')
-    expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not run')
+    expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not pass')
     expect(collect({ NEEDS_REAL_BUILD: 'true', REAL_BUILD: 'failure' })).toContain('did not build')
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
   })
@@ -341,8 +341,8 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // The check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false } = {}) => {
+  // By default the check always fails, as it should without the patch.
+  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -364,10 +364,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
-      env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', WITH: '3', HOME: dir },
+      env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
     })
     const read = (path: string) => (existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : undefined)
     return { code: proc.exitCode, read, stashes: git('stash', 'list').trim().split('\n').filter(Boolean).length }
@@ -382,7 +382,17 @@ describe('fix job', () => {
     expect(read('backend/index.ts')).toBe('patched')
     expect(read('backend/new.ts')).toBe('new')
     expect(stashes).toBe(0)
-    expect(JSON.parse(read('qa-out/fix/fp1.verify.json') ?? '{}')).toEqual({ failsWithout: true, passesWith: true })
+  })
+
+  test('the baseline succeeds only when the check fails every time without the patch, which its pass rests on', () => {
+    const passedWithout = baseline({ checkPasses: true })
+    expect(passedWithout.code).not.toBe(0)
+    expect(passedWithout.read('backend/index.ts')).toBe('patched')
+    const withRun = step('fix', 'Run the visual check on the patched tree')
+    expect(withRun.run).toContain('--repeat-each=3 --retries=0')
+    for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
+      expect(check['continue-on-error']).toBe(true)
+    expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
@@ -481,58 +491,99 @@ describe("CI's check of the fix job's dev stack", () => {
   })
 })
 
-describe('publish', () => {
-  type Verdict = { passed?: boolean; failsWithout?: boolean; passesWith?: boolean }
-  const verdicts = (files: Record<string, Verdict>, env: Record<string, string> = {}, diagnosis?: string) => {
-    const dir = mkdtempSync(join(work, 'publish-'))
-    mkdirSync(join(dir, 'qa-out/verify'), { recursive: true })
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    const verifyNative = ['ios', 'android'].map((platform) => ({ fp: 'fp1', platform }))
-    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [], verifyNative }))
-    for (const [path, content] of Object.entries(files))
-      writeFileSync(join(dir, 'qa-out', path), JSON.stringify(content))
-    if (diagnosis) writeFileSync(join(dir, 'qa-out/fix/fp1.diagnosis.md'), diagnosis)
-    const proc = Bun.spawnSync(
-      ['bash', '-e', '-c', step('publish', 'Require the native and real-AI checks').run ?? ''],
-      {
-        cwd: dir,
-        env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
+describe('passes', () => {
+  /** Every upload of a check's pass, as `<job> <check>`, with its `if:` and the file it uploads. */
+  const passUploads = Object.fromEntries(
+    Object.keys(jobs).flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/upload-artifact@') && s.with?.name?.startsWith('qa-pass-'))
+        .map((s) => [`${job} ${s.with?.name?.split('}}-')[1]}`, { if: s.if, path: s.with?.path }]),
+    ),
+  )
+  const outcome = (id: string) => `steps.${id}.outcome == 'success'`
+  const fixScans = `always() && ${outcome('key-scan')} && ${outcome('secret-scan')} && `
+
+  test("each check's pass is uploaded only on the outcome of the step that ran the check", () => {
+    expect(passUploads).toEqual({
+      'fix session': { if: fixScans + outcome('fix'), path: '${{ runner.temp }}/qa-pass.txt' },
+      'fix replay': { if: fixScans + outcome('verify'), path: '${{ runner.temp }}/qa-pass.txt' },
+      'fix visual': { if: fixScans + outcome('visual'), path: '${{ runner.temp }}/qa-pass.txt' },
+      // The native platform is the matrix's, so the name ends in an expression.
+      'verify-native-run ${{ matrix.check.platform }}': {
+        if: `always() && ${outcome('run')}`,
+        path: '${{ runner.temp }}/qa-pass.txt',
       },
+      'verify-real real': { if: `always() && ${outcome('replay')}`, path: '${{ runner.temp }}/qa-pass.txt' },
+      'verify-tests tests': { if: `always() && ${outcome('tests')}`, path: '${{ runner.temp }}/qa-pass.txt' },
+    })
+  })
+
+  // Under continue-on-error the outcome still says how the step ended; only the job stays green.
+  test('the replays a pass rests on fail on any failed run, and verify-tests runs the check in one process', () => {
+    expect(step('fix', 'Replay the spec on the patched code').run).toContain('--repeat-each=3 --retries=0')
+    expect(step('verify-real', 'Replay the spec on the patched frontend').run).toContain('--repeat-each=3 --retries=0')
+    const tests = step('verify-tests', "Check that the patch's tests fail without the fix and pass with it")
+    expect(tests.run).toBe('bun .github/qa/scripts/fix.ts tests --out qa-out --fp "$QA_FP"')
+    expect(tests['continue-on-error']).toBe(true)
+  })
+
+  test('each job writes the uploaded file before any code the agent wrote runs there', () => {
+    const marker = 'Write the file a passed check uploads'
+    expect(indexOf('fix', marker)).toBeLessThan(indexOf('fix', 'Fix'))
+    expect(indexOf('verify-tests', marker)).toBe(0)
+    expect(indexOf('verify-native-run', marker)).toBeLessThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
     )
-    expect(proc.exitCode).toBe(0)
-    const read = (path: string) =>
-      existsSync(join(dir, 'qa-out', path)) ? readFileSync(join(dir, 'qa-out', path), 'utf8') : undefined
-    return { diagnosis: read('fix/fp1.diagnosis.md'), verify: read('fix/fp1.verify.json') }
-  }
-  const passed = { passed: true, failsWithout: true, passesWith: true }
-
-  test('needs passed: true from every native platform of the bug', () => {
-    expect(verdicts({ 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': passed }).diagnosis).toBeUndefined()
-    const missing = verdicts({ 'verify/fp1.ios.json': passed })
-    expect(missing.diagnosis).toContain('still fails on the native platform (android)')
-    const failed = verdicts({ 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': { passed: false } })
-    expect(failed.diagnosis).toContain('(android)')
+    expect(step('fix', marker).run).toContain('"$RUNNER_TEMP/qa-pass.txt"')
   })
 
-  test('needs the real-AI verdict for a web real-AI task', () => {
-    const both = { 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': passed }
-    expect(verdicts(both, { REAL: 'true' }).diagnosis).toContain('real AI providers')
-    expect(verdicts({ ...both, 'verify/fp1.real.json': { passed: true } }, { REAL: 'true' }).diagnosis).toBeUndefined()
+  test('publish reads the passes from the names of the run artifacts, and no verdict from a file', () => {
+    const list = step('publish', "List the run's artifacts")
+    expect(list.run).toContain('actions/runs/$GITHUB_RUN_ID/artifacts')
+    expect(list.run).toContain('--paginate')
+    expect(list.run).toContain('> qa-out/artifacts.txt')
+    expect(list.env).toEqual({ GH_TOKEN: '${{ github.token }}' })
+    expect(indexOf('publish', "List the run's artifacts")).toBeLessThan(indexOf('publish', 'Publish a draft PR'))
+    const downloads = steps('publish').filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+    for (const download of downloads)
+      expect(`${download.with?.name ?? download.with?.pattern}`).not.toMatch(/qa-(pass|verify)-/)
+    expect(jobs.publish.needs).toEqual(['build', 'file', 'fix', 'verify-native-run', 'verify-real', 'verify-tests'])
+  })
+})
+
+describe('verify-tests', () => {
+  test('holds no secret, no environment and no write permission, and starts from a fresh checkout', () => {
+    const job = jobs['verify-tests']
+    expect(JSON.stringify(job)).not.toContain('secrets.')
+    expect(job.environment).toBeUndefined()
+    expect(job.permissions).toEqual({ contents: 'read' })
+    const checkout = steps('verify-tests').find((s) => s.uses?.startsWith('actions/checkout@'))
+    expect(String(checkout?.with?.['persist-credentials'])).toBe('false')
+    const download = steps('verify-tests').find((s) => s.uses?.startsWith('actions/download-artifact@'))
+    expect(download?.with).toEqual({ name: 'qa-fix-${{ matrix.task.fp }}', path: 'qa-out' })
+    expect(job.needs).toEqual(['build', 'file', 'fix'])
   })
 
-  test("a native visual task's verify.json is the native verdict, never the agent's copy", () => {
-    const forged = { 'fix/fp1.verify.json': { failsWithout: true, passesWith: true } }
-    const both = { 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': { ...passed, passesWith: false } }
-    expect(JSON.parse(verdicts({ ...forged, ...both }, { NATIVE_VISUAL: 'android' }).verify ?? '{}').passesWith).toBe(
-      false,
-    )
-    expect(verdicts({ ...forged, 'verify/fp1.ios.json': passed }, { NATIVE_VISUAL: 'android' }).verify).toBeUndefined()
+  test("checks every web task of the plan and no native one, from route's output", () => {
+    const route = step('file', 'Route fixable tickets').run ?? ''
+    const filter = /tests=\$\(jq --compact-output '([^']+)' qa-out\/fix-plan\.json\)/.exec(route)?.[1] ?? ''
+    const plan = {
+      fixes: [
+        { fp: 'web', kind: 'spec', spec: 'x' },
+        { fp: 'visual', kind: 'visual' },
+        { fp: 'ios', flow: 'f' },
+      ],
+    }
+    const proc = Bun.spawnSync(['jq', '--compact-output', filter], { stdin: Buffer.from(JSON.stringify(plan)) })
+    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'visual'])
+    expect(jobs['verify-tests'].strategy).toEqual({
+      'fail-fast': false,
+      matrix: { task: '${{ fromJSON(needs.file.outputs.tests) }}' },
+    })
   })
+})
 
-  test("leaves the fix job's own diagnosis alone", () => {
-    expect(verdicts({}, {}, 'gave up\n').diagnosis).toBe('gave up\n')
-  })
-
+describe('publish', () => {
   const runStep = (job: string, name: string, dir: string, env: Record<string, string>) =>
     Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
       cwd: dir,
@@ -617,7 +668,8 @@ describe('publish', () => {
   })
 
   test('no fix-pipeline download may miss: a missing name is an error even under continue-on-error', () => {
-    const optional = ['fix', 'verify-native-build', 'verify-native-run', 'verify-real', 'publish'].flatMap((job) =>
+    const jobNames = ['fix', 'verify-native-build', 'verify-native-run', 'verify-real', 'verify-tests', 'publish']
+    const optional = jobNames.flatMap((job) =>
       steps(job)
         .filter((s) => s.uses?.startsWith('actions/download-artifact@') && s['continue-on-error'])
         .map((s) => `${job}: ${s.with?.name ?? s.with?.pattern}`),
@@ -1059,6 +1111,8 @@ test('every job but the reusable notify call has a timeout and read-only permiss
   const permissionsOf = (name: string) => {
     if (name === 'build') return { actions: 'read', contents: 'read' }
     if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
+    // Publish lists the run's artifacts, whose names carry the checks' passes.
+    if (name === 'publish') return { actions: 'read', contents: 'read' }
     return { contents: 'read' }
   }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {

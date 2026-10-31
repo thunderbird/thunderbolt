@@ -342,7 +342,7 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos beside it. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
+# with the videos beside it. It exits non-zero when the patch does not pass, and CI uploads the pass on that. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
 # other flow is the fix agent's visual check. <original-app> is the build-native artifact of the same variant, without
 # the patch, where the flow must fail too: a visual check and a real-AI session need it.
 verify_run() {

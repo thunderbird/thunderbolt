@@ -1246,7 +1246,8 @@ if (import.meta.main) {
     })
     await Bun.write(resultFile, JSON.stringify(verdict, null, 2))
     console.log(JSON.stringify(verdict))
-    process.exit()
+    // The exit code is the verdict publish trusts: the workflow uploads the platform's pass on this step's outcome.
+    process.exit(verdict.passed ? 0 : 1)
   }
   const result =
     step === 'judge'

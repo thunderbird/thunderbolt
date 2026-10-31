@@ -10,6 +10,7 @@ import type { Filed } from './file-findings'
 import type { Area, RawFinding, Severity } from './findings'
 import {
   checkPatch,
+  checkTests,
   type FixPlan,
   type FixTask,
   isDenied,
@@ -19,6 +20,7 @@ import {
   reviewNotice,
   route,
   type Run,
+  testRuns,
 } from './fix'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -782,13 +784,27 @@ describe('checkPatch', () => {
 
   test('accepts a patch that only fixes app code, without touching the checkout', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n'))
-    expect(await checkPatch(git, outDir, task(), [])).toEqual({ reasons: [], files: ['src/chat.ts'] })
+    expect(await checkPatch(git, outDir, task(), [])).toEqual({
+      reasons: [],
+      files: ['src/chat.ts'],
+      unitTests: false,
+    })
     expect(await git(['git', 'status', '--porcelain'])).toBe('')
+  })
+
+  test('says whether the patch adds or changes a unit test, which deleting one does not', async () => {
+    await put(join(repo, 'src', 'old.test.ts'), 'old\n')
+    await git(['git', 'add', '-A'])
+    await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'test'])
+    await patchFrom(() => rm(join(repo, 'src', 'old.test.ts')))
+    expect((await checkPatch(git, outDir, task(), [])).unitTests).toBe(false)
+    await patchFrom(() => put(join(repo, 'src', 'chat.test.ts'), 'new\n'))
+    expect((await checkPatch(git, outDir, task(), [])).unitTests).toBe(true)
   })
 
   test('rejects an empty patch', async () => {
     await put(join(outDir, 'fix', `${fp}.patch`), '\n')
-    expect(await checkPatch(git, outDir, task(), [])).toEqual({ reasons: ['empty patch'], files: [] })
+    expect(await checkPatch(git, outDir, task(), [])).toEqual({ reasons: ['empty patch'], files: [], unitTests: false })
   })
 
   test('rejects a patch that adds a symlink or a submodule, even under an allowed path', async () => {
@@ -886,43 +902,21 @@ describe('checkPatch', () => {
 
   describe('a visual task', () => {
     const check = () => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
-    /** Writes `verify.json` as given, so a test can also write a broken one. */
-    const verify = (text: string) => put(join(outDir, 'fix', `${fp}.verify.json`), text)
-    const passed = '{ "failsWithout": true, "passesWith": true }'
-    const notVerified = 'the visual check did not fail without the patch and pass with it'
-    const unreadable = 'the visual check result is unreadable'
 
-    test('passes with a linted check that failed without the patch and passed with it', async () => {
+    test('passes with a linted check', async () => {
       await patchFrom(fixed)
       await put(check(), spec)
-      await verify(passed)
-      expect(await checkPatch(git, outDir, visualTask(), [])).toEqual({ reasons: [], files: ['src/chat.ts'] })
+      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([])
     })
 
     test('is rejected without a check, and with a check that fails the lint', async () => {
       await patchFrom(fixed)
-      await verify(passed)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), `${spec}process.exit(0)\n`)
       expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([
         'visual check: line 8: "process" is not allowed',
       ])
-    })
-
-    test.each([
-      ['no verify.json', undefined, notVerified],
-      ['a check that passed without the patch', '{ "failsWithout": false, "passesWith": true }', notVerified],
-      ['a check that still fails with the patch', '{ "failsWithout": true, "passesWith": false }', notVerified],
-      // Real booleans only: the workflow writes this file, so anything else is a broken record.
-      ['a verify.json with strings', '{ "failsWithout": "true", "passesWith": "true" }', unreadable],
-      ['a verify.json missing a field', '{ "failsWithout": true }', unreadable],
-      ['a verify.json that is not JSON', '{ "failsWithout": true,', unreadable],
-    ])('is rejected with %s', async (_name, result, reason) => {
-      await patchFrom(fixed)
-      await put(check(), spec)
-      if (result) await verify(result)
-      expect((await checkPatch(git, outDir, visualTask(), [])).reasons).toEqual([reason])
     })
   })
 
@@ -954,7 +948,10 @@ describe('checkPatch', () => {
 
     test('accepts a patch to src-tauri/ with the flow unedited', async () => {
       await patchFrom(() => put(join(repo, 'src-tauri', 'src', 'lib.rs'), 'fn main() {}\n'))
-      expect(await checkPatch(git, outDir, native(), [])).toEqual({ reasons: [], files: ['src-tauri/src/lib.rs'] })
+      expect(await checkPatch(git, outDir, native(), [])).toMatchObject({
+        reasons: [],
+        files: ['src-tauri/src/lib.rs'],
+      })
     })
 
     test('rejects an edited repro flow', async () => {
@@ -973,9 +970,8 @@ describe('checkPatch', () => {
       for (const reason of reasons) expect(reason).toStartWith('repro flow: commands[0]')
     })
 
-    test('a visual one needs a Maestro check inside the allow list, verified like a web check', async () => {
+    test('a visual one needs a Maestro check inside the allow list', async () => {
       await patchFrom(fixed)
-      await put(join(outDir, 'fix', `${fp}.verify.json`), '{ "failsWithout": true, "passesWith": true }')
       expect((await checkPatch(git, outDir, nativeVisual(), [])).reasons).toEqual(['the visual check is missing'])
 
       await put(check(), flow)
@@ -1026,6 +1022,124 @@ describe('checkPatch', () => {
     const { reasons } = await checkPatch(git, outDir, task(), [])
     expect(reasons).toContain('the repro spec was edited')
     expect(reasons).toContain('repro spec: line 8: "process" is not allowed')
+  })
+})
+
+describe('testRuns', () => {
+  test('runs the unit tests a patch adds, changes or renames, each from where its tree runs its tests', () => {
+    const files = [
+      { path: 'src/chat.test.tsx', status: 'A' },
+      { path: 'src/lib/title.test.ts', status: 'M' },
+      // A rename, as the raw diff without rename detection lists it.
+      { path: 'src/old-name.test.ts', status: 'D' },
+      { path: 'src/new-name.test.ts', status: 'A' },
+      { path: 'src/gone.test.ts', status: 'D' },
+      { path: 'src/chat.ts', status: 'M' },
+      { path: 'shared/i18n/locales.test.ts', status: 'M' },
+      { path: 'shared/agent-core/tools.test.ts', status: 'A' },
+      { path: 'backend/src/waitlist/routes.test.ts', status: 'M' },
+      { path: 'cli/src/acp/serve.test.ts', status: 'M' },
+      // Outside the unit test trees, or not a unit test.
+      { path: 'e2e/fake-provider.test.ts', status: 'M' },
+      { path: '.github/qa/scripts/fix.test.ts', status: 'M' },
+      { path: 'scripts/release.test.ts', status: 'A' },
+      { path: 'src/chat.spec.ts', status: 'A' },
+      { path: 'src/chat.test.js', status: 'A' },
+    ]
+    const bunTest = ['bun', 'test', '--timeout', '5000']
+    expect(testRuns(files)).toEqual([
+      { cwd: 'shared/agent-core', cmd: [...bunTest, './tools.test.ts'] },
+      { cwd: '.', cmd: [...bunTest, './shared/i18n/locales.test.ts'] },
+      { cwd: 'src', cmd: [...bunTest, './chat.test.tsx', './lib/title.test.ts', './new-name.test.ts'] },
+      { cwd: 'backend', cmd: [...bunTest, './src/waitlist/routes.test.ts'] },
+      { cwd: 'cli', cmd: [...bunTest, './src/acp/serve.test.ts'] },
+    ])
+  })
+
+  test('finds nothing to run in a patch that only deletes a test or changes no unit test', () => {
+    expect(testRuns([{ path: 'src/gone.test.ts', status: 'D' }])).toEqual([])
+    expect(testRuns([{ path: 'src-tauri/src/lib.rs', status: 'M' }])).toEqual([])
+  })
+})
+
+describe('checkTests', () => {
+  const fp = 'ab12cd34'
+  let repo: string
+  let git: Run
+  const buggy = 'export const title = (text: string) => text\n'
+  const fixed = 'export const title = (text: string) => text.trim()\n'
+  /** A test file of `title`; it fails on the buggy module when `input` has spaces around it. */
+  const titleTest = (input: string) =>
+    `import { expect, test } from 'bun:test'\nimport { title } from './title'\n` +
+    `test('title', () => expect(title(${JSON.stringify(input)})).toBe(${JSON.stringify(input.trim())}))\n`
+  const quiet = async (cmd: string[], cwd: string) =>
+    Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).exited
+
+  beforeEach(async () => {
+    repo = join(dir, 'repo')
+    git = runIn(repo)
+    await put(join(repo, 'src', 'title.ts'), buggy)
+    await put(join(repo, 'src', 'old.test.ts'), titleTest('plain'))
+    await git(['git', 'init', '--quiet'])
+    await git(['git', 'add', '-A'])
+    await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init'])
+  })
+
+  /** Writes the fix job's patch from the given files, the way the workflow collects it, and resets the checkout. */
+  const patchOf = async (files: Record<string, string>, renames: [string, string][] = []) => {
+    for (const [from, to] of renames) await git(['git', 'mv', from, to])
+    for (const [path, text] of Object.entries(files)) await put(join(repo, path), text)
+    await git(['git', 'add', '--all'])
+    await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
+    await git(['git', 'reset', '--quiet', '--hard'])
+  }
+  const check = async (exec = quiet) => {
+    const result = await checkTests({ outDir, fp, repoDir: repo, run: git, exec, log: () => {} })
+    // Each half takes its hunks out again, so the checkout ends as it started.
+    expect(await git(['git', 'status', '--porcelain'])).toBe('')
+    return result
+  }
+
+  test('passes a regression test that fails without the fix and passes with it', async () => {
+    await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') })
+    expect(await check()).toEqual({ failsWithout: true, passesWith: true })
+  }, 20_000)
+
+  test('passes a renamed test file that gains the regression case', async () => {
+    await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') }, [
+      ['src/old.test.ts', 'src/title.test.ts'],
+    ])
+    expect(await check()).toEqual({ failsWithout: true, passesWith: true })
+  }, 20_000)
+
+  test('fails a test that also passes without the fix', async () => {
+    await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('Renamed') })
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+  }, 20_000)
+
+  test('applies a test file whose path holds glob characters, rather than running none', async () => {
+    const weak = titleTest('Renamed').replace("'./title'", "'../title'")
+    await patchOf({ 'src/title.ts': fixed, 'src/[id]/title.test.ts': weak })
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+  }, 20_000)
+
+  test('fails a test that still fails with the fix', async () => {
+    await patchOf({
+      'src/title.ts': buggy.replace('text\n', 'text.trimEnd()\n'),
+      'src/title.test.ts': titleTest('  x  '),
+    })
+    expect(await check()).toEqual({ failsWithout: true, passesWith: false })
+  }, 20_000)
+
+  test('fails a patch with no unit test, and an empty patch, without running anything', async () => {
+    const runs: string[][] = []
+    const exec = async (cmd: string[]) => runs.push(cmd)
+    const none = { failsWithout: false, passesWith: false }
+    await patchOf({ 'src/title.ts': fixed })
+    expect(await check(exec)).toEqual(none)
+    await put(join(outDir, 'fix', `${fp}.patch`), '\n')
+    expect(await check(exec)).toEqual(none)
+    expect(runs).toEqual([])
   })
 })
 
@@ -1088,9 +1202,14 @@ describe('publish', () => {
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
     await put(join(outDir, 'fix', `${fp}.patch`), 'diff --git a/src/chat.ts b/src/chat.ts\n')
     await putStatus(null)
+    await putPasses(...everyCheck)
   }
   const putStatus = (stoppedBeforeSession: string | null) =>
     put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
+  const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android']
+  /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
+  const putPasses = (...checks: string[]) =>
+    put(join(outDir, 'artifacts.txt'), [`qa-fix-${fp}`, ...checks.map((c) => `qa-pass-${fp}-${c}`), ''].join('\n'))
 
   test('dry run: validates and describes the PR without writing anything', async () => {
     await setup()
@@ -1231,7 +1350,6 @@ describe('publish', () => {
     await setup({ kind: 'visual' })
     const check = `import { layoutProblems } from '../../../.github/qa/layout'\n${spec}`
     await put(join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts'), check)
-    await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
 
     const { repoDir, runs, result } = await publishLive()
 
@@ -1245,7 +1363,6 @@ describe('publish', () => {
   test('a real-AI web visual fix is never published, even when its check passed on the fake AI', async () => {
     await setup({ kind: 'visual', real: true, charterDir: 'c4-skills-projects-desktop' })
     await put(join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts'), spec)
-    await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
     const runs: RunCall[] = []
     const calls: Call[] = []
 
@@ -1467,6 +1584,128 @@ describe('publish', () => {
     expect(runs.map((r) => r.cmd[1])).toEqual(['read-tree', 'apply', 'diff'])
     expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     expect(calls[0].variables.body).toContain('- touches .github/workflows/ci.yml')
+  })
+
+  describe('the passes a task needs', () => {
+    const nativeFlow = () => join(outDir, 'c1-first-run-ios', 'repro', '1.yaml')
+    const native = (platform: string): NativeCheck => ({
+      fp,
+      platform,
+      session: 'c2-chat',
+      flow: 'f',
+      unpatched: false,
+    })
+    const reasons = {
+      session: 'the fix session did not finish',
+      replay: 'the repro spec did not pass three times on the patched code',
+      visual: 'the visual check did not fail three times without the patch and pass three times with it',
+      tests: "the patch's unit tests did not fail without the fix and pass with it",
+      real: 'the repro spec still fails on the real AI providers',
+      ios: 'the flow still fails on the native platform (ios)',
+      android: 'the flow still fails on the native platform (android)',
+    }
+    const tasks: [string, Setup, (keyof typeof reasons)[]][] = [
+      ['a web spec task', {}, ['session', 'replay', 'tests']],
+      ['a web visual task', { kind: 'visual' }, ['session', 'visual', 'tests']],
+      ['a real-AI web task', { real: true, charterDir: 'c3-models-providers-desktop' }, ['session', 'real', 'tests']],
+      [
+        'a web task also found on Android',
+        { verifyNative: [native('android')] },
+        ['session', 'replay', 'tests', 'android'],
+      ],
+      ['a native task', { flow: 'native', verifyNative: [native('ios')] }, ['session', 'ios']],
+    ]
+    const setupTask = async ({ flow, ...rest }: Setup) => {
+      await setup({ ...rest, flow: flow && nativeFlow() })
+      await put(nativeFlow(), '- launchApp\n')
+      await put(join(outDir, 'fix', `${fp}.yaml`), '- launchApp\n')
+      await put(join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts'), spec)
+    }
+    const dryRun = () =>
+      publish({
+        outDir,
+        fp,
+        live: false,
+        run: fakeRun([], { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') }),
+        log: () => {},
+      })
+
+    test.each(tasks)(
+      '%s opens a PR with only its own passes, and goes to a person without any one of them',
+      async (_, task, needed) => {
+        await setupTask(task)
+        await putPasses(...needed)
+        expect((await dryRun()).outcome).toBe('pr')
+        for (const missing of needed) {
+          await putPasses(...needed.filter((c) => c !== missing))
+          const result = await dryRun()
+          expect({ missing, result }).toMatchObject({ missing, result: { outcome: 'human-required' } })
+          expect(result.outcome === 'human-required' && result.reasons).toEqual([
+            expect.stringContaining(reasons[missing]),
+          ])
+        }
+      },
+    )
+
+    test('a pass of another fingerprint counts for nothing', async () => {
+      await setupTask({})
+      await put(
+        join(outDir, 'artifacts.txt'),
+        ['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}`).join('\n'),
+      )
+      expect(await dryRun()).toEqual({
+        outcome: 'human-required',
+        reasons: [reasons.session, reasons.replay, reasons.tests],
+      })
+    })
+
+    test('a web patch with no unit test says so', async () => {
+      await setupTask({})
+      await putPasses('session', 'replay')
+      const result = await publish({ outDir, fp, live: false, run: fakeRun([], diffOutput), log: () => {} })
+      expect(result).toEqual({
+        outcome: 'human-required',
+        reasons: [
+          'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`), and every web fix needs one that fails without the fix',
+        ],
+      })
+    })
+
+    // Code the agent wrote ran in the fix job after the checks, so it could have deleted the diagnosis the workflow
+    // wrote, or written a verify.json of its own. Neither is a pass.
+    test.each([
+      ['a failed replay whose diagnosis was deleted', {}, ['session', 'tests']],
+      ['a failed visual check with a passing verify.json', { kind: 'visual' }, ['session', 'tests']],
+    ] as const)('%s goes to a person, not a PR', async (_, task, passes) => {
+      await setupTask(task)
+      await putPasses(...passes)
+      await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
+      const runs: RunCall[] = []
+      const calls: Call[] = []
+      const result = await publish({
+        outDir,
+        fp,
+        live: true,
+        key: 'lin',
+        token: 't',
+        run: fakeRun(runs, { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') }),
+        fetchFn: fakeLinear(calls),
+        log: () => {},
+      })
+      expect(result.outcome).toBe('human-required')
+      expect(runs.some((r) => r.cmd.includes('push'))).toBe(false)
+      expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
+    })
+
+    test('a missing list of artifacts fails publish without a PR or a ticket write', async () => {
+      await setupTask({})
+      await rm(join(outDir, 'artifacts.txt'))
+      const calls: Call[] = []
+      await expect(
+        publish({ outDir, fp, live: true, key: 'lin', token: 't', run: fakeRun([]), fetchFn: fakeLinear(calls) }),
+      ).rejects.toThrow()
+      expect(calls).toEqual([])
+    })
   })
 
   test('refuses a live run without credentials, a ticket, or a routed fingerprint', async () => {

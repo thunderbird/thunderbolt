@@ -57,6 +57,8 @@ describe('model catalog policy', () => {
     it('blocks key-gated providers until an API key is present', () => {
       expect(canFetchCatalog({ provider: 'openai' })).toBe(false)
       expect(canFetchCatalog({ provider: 'openrouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'trustedrouter', apiKey: '' })).toBe(false)
+      expect(canFetchCatalog({ provider: 'trustedrouter', apiKey: 'sk-tr-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'anthropic', apiKey: 'sk-test' })).toBe(true)
       expect(canFetchCatalog({ provider: 'openai', apiKey: 'sk-test' })).toBe(true)
     })
@@ -138,6 +140,30 @@ describe('model catalog policy', () => {
       } finally {
         directFetch.mockRestore()
       }
+    })
+
+    it('loads the public TrustedRouter catalog without sending the key', async () => {
+      const proxyFetch = Object.assign(
+        mock(async (_request: RequestInfo | URL) =>
+          Response.json({
+            data: [
+              { id: 'trustedrouter/auto', architecture: { input_modalities: ['text', 'image'] } },
+              { id: 'acme/text-only', architecture: { input_modalities: ['text'] } },
+            ],
+          }),
+        ),
+        { preconnect: async () => false },
+      )
+
+      const models = await fetchModelsForProvider({ provider: 'trustedrouter', apiKey: 'sk-tr-test' }, () => proxyFetch)
+
+      const sent = new Request(proxyFetch.mock.calls[0][0])
+      expect(sent.url).toBe('https://api.trustedrouter.com/v1/models')
+      expect(sent.headers.get('Authorization')).toBeNull()
+      expect(models.map(({ id, supports_images }) => ({ id, supports_images }))).toEqual([
+        { id: 'acme/text-only', supports_images: false },
+        { id: 'trustedrouter/auto', supports_images: true },
+      ])
     })
   })
 })

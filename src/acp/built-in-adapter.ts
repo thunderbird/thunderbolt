@@ -51,6 +51,7 @@ import {
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
+import { ensureTrustedRouterVerified } from '@/ai/trustedrouter-attestation'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import {
@@ -145,6 +146,7 @@ export type BuiltInAdapterOptions = {
   evictUserTinfoilClient?: typeof evictUserTinfoilClient
   getAuthToken?: typeof getAuthToken
   isSsoMode?: typeof isSsoMode
+  ensureTrustedRouterVerified?: typeof ensureTrustedRouterVerified
 }
 
 type TinfoilClientOptions = Pick<
@@ -155,6 +157,7 @@ type TinfoilClientOptions = Pick<
   | 'evictUserTinfoilClient'
   | 'getAuthToken'
   | 'isSsoMode'
+  | 'ensureTrustedRouterVerified'
 >
 
 /** Providers the in-browser Pi harness can serve. */
@@ -163,6 +166,7 @@ const piProviders = new Set<Model['provider']>([
   'openai',
   'custom',
   'openrouter',
+  'trustedrouter',
   'thunderbolt',
   'tinfoil',
 ])
@@ -313,11 +317,11 @@ export type ResolvedPiModel = {
   readonly receiptHttpClient?: CurrentHttpClient
 }
 
-/** Time a Tinfoil client acquisition without changing its error behavior. */
-const acquireTinfoilClient = async <Client>(
-  acquire: () => Promise<Client>,
+/** Time an attestation step without changing its error behavior. */
+const timeAttestation = async <Result>(
+  acquire: () => Promise<Result>,
   telemetry: AgentAdapterContext['telemetry'],
-): Promise<Client> => {
+): Promise<Result> => {
   telemetry?.startPhase('attestation')
   try {
     return await acquire()
@@ -363,7 +367,7 @@ export const resolvePiModel = async (
   if (model.provider === 'tinfoil') {
     if (model.isSystem === 1) {
       const acquireSystemClient = options.getSystemTinfoilClient ?? getSystemTinfoilClient
-      const client = await acquireTinfoilClient(
+      const client = await timeAttestation(
         () =>
           acquireSystemClient({
             trace_id: context.telemetry?.traceId,
@@ -423,7 +427,7 @@ export const resolvePiModel = async (
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
-    const client = await acquireTinfoilClient(
+    const client = await timeAttestation(
       () =>
         acquireUserClient({
           trace_id: context.telemetry?.traceId,
@@ -491,6 +495,13 @@ export const resolvePiModel = async (
   // (which omits the Authorization header) rather than crashing the run.
   if (!connection || !connection.apiKey) {
     return null
+  }
+  if (model.provider === 'trustedrouter') {
+    // Attest before the harness runs. A failure thrown from inside the stream's
+    // fetch reaches chat only as the OpenAI SDK's generic "Connection error.",
+    // which drops the attestation/timeout kind. Requests still re-check per call.
+    const ensureVerified = options.ensureTrustedRouterVerified ?? ensureTrustedRouterVerified
+    await timeAttestation(() => ensureVerified(context.getProxyFetch()), context.telemetry)
   }
   return {
     descriptor: {

@@ -5,7 +5,8 @@ of **functions** that must work (`functions.json`), with a **charter** of steps 
 session** also plays one person's goal, with no steps, on every platform. When something breaks, the agent writes a
 finding and a Playwright spec that fails because of the bug. Plain code then checks its attempts against what the
 browser really returned, replays each spec, asks a second model whether the finding is real, and files the
-confirmed ones in Linear. A fix agent can open draft PRs for a few. The workflow never merges, approves or marks
+confirmed ones in Linear. A fix agent works on every ticket the run files and can open a draft PR for each. The
+workflow never merges, approves or marks
 anything ready.
 
 The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 UTC, and by hand with
@@ -319,7 +320,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    one area per group, and findings that share a fingerprint kept together. Only an answer that passes goes into
    `verified.json` as `groups`. A malformed answer, a failed check, an API error or too little room under the
    ceiling logs why and leaves the whole run to fingerprint grouping. Writes `verified.json`.
-5. **file** (`file-findings.ts`): grouping and dedupe, severity, ticket caps and roll-ups, secret refusal.
+5. **file** (`file-findings.ts`): grouping and dedupe, severity, secret refusal. A run files as many tickets as it
+   has bugs.
    A table keyed on area and oracle type gives each finding a starting severity. The judge's priority may move it
    one level up or down, but a console error or an overflow never goes above Medium. A missing or unknown
    priority keeps the table's value. Dry run unless `--live`. Each group in `verified.json` becomes one ticket;
@@ -339,8 +341,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    An Android `layout` finding of the `covered` kind is refused too, with its reason in the report, until the probe
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
    of the same bug is filed as usual. Every other Android layout kind files like any platform.
-6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 confirmed tickets a week, highest severity first,
-   one per fingerprint, from any area. A ticket whose `qa-fix/<fp>` branch still exists waits for a later week.
+6. **fix** (off by default, `fix.ts` and `fix.md`): one fix job per confirmed ticket, from any area, most severe
+   first. A bug found on several platforms is one ticket, so it gets one job. A ticket whose `qa-fix/<fp>` branch still exists waits
+   for a later week. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
+   `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
    A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
    A `visual` task has no spec, so the agent first writes `qa-out/fix-<fp>/repro/check.spec.ts` (the depth and

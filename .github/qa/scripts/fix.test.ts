@@ -111,7 +111,6 @@ describe('route', () => {
     { id: 'high-sync', area: 'sync', severity: 'High', action: 'created' },
     { id: 'high-security', area: 'security', severity: 'High', action: 'created' },
     { id: 'suppressed-chat', area: 'chat', severity: 'Urgent', action: 'suppressed' },
-    { id: 'rolled-chat', area: 'chat', severity: 'Urgent', action: 'rolled-up' },
     { id: 'pending-layout', area: 'layout', severity: 'Urgent', action: 'dry-run', would: 'created' },
     { id: 'nospec-chat', area: 'chat', severity: 'Urgent', action: 'created' },
     { id: 'flaky-chat', area: 'chat', severity: 'Urgent', action: 'created' },
@@ -145,14 +144,16 @@ describe('route', () => {
   }
   const branches = { 'git ls-remote': `abc123\trefs/heads/qa-fix/${fp('pending-layout')}\n` }
 
-  test('routes at most three confirmed tickets of any area, highest severity first, skipping pending branches', async () => {
+  test('routes every confirmed ticket of any area, highest severity first, skipping pending branches', async () => {
     await setup()
     const runs: RunCall[] = []
     const lines: string[] = []
     const plan = await route({ outDir, live: false, run: fakeRun(runs, branches), log: (line) => lines.push(line) })
 
     expect(lines).toContain(`fix: ${fp('nospec-chat')} has no repro on disk, so it is not routed`)
-    expect(plan.fixes.map((t) => t.fp)).toEqual([fp('urgent-settings'), fp('high-skills'), fp('high-sync')])
+    const routed = ['urgent-settings', 'high-skills', 'high-sync', 'high-security', 'medium-widgets', 'low-chat']
+    expect(plan.fixes.map((t) => t.fp)).toEqual(routed.map(fp))
+    expect(lines.at(-1)).toBe(`fix: ${routed.map(fp).join(', ')}`)
     expect(JSON.parse(await readFile(join(outDir, 'fix-plan.json'), 'utf8'))).toEqual(plan)
     expect(runs.map((r) => r.cmd)).toEqual([['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*']])
   })
@@ -359,16 +360,6 @@ describe('route', () => {
     expect(plan.fixes.map((t) => t.charterDir)).toEqual(['c7-two-devices-desktop'])
   })
 
-  test('a sync bug filed after three others of the same severity does not take their slots', async () => {
-    const sessions = ['c2-chat-power-user-desktop', 'c2-chat-power-user-phone', 'c6-settings-data-desktop']
-    await fileTickets([
-      ...sessions.map((charterDir, i) => ({ fp: `fp-${i}`, charterDir, raw: finding('chat') })),
-      { fp: 'fp-sync', charterDir: 'c7-two-devices-desktop', raw: finding('chat') },
-    ])
-    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
-    expect(plan.fixes.map((t) => t.fp)).toEqual(['fp-0', 'fp-1', 'fp-2'])
-  })
-
   test("a fix-only run routes an earlier run's filed tickets with the current code, never that run's plan", async () => {
     const charterDir = 'c2-chat-power-user-phone'
     const ticket = (fp: string, id: string) => ({
@@ -379,10 +370,11 @@ describe('route', () => {
       identifier: `THB-${id}`,
       url: `https://linear.example/issue/THB-${id}/title`,
     })
-    // The shapes a live run writes: a new ticket, one over the ticket cap, and a refused finding.
-    const filed: Filed[] = [
+    // A new ticket, a refused finding, and a `rolled-up` entry: older runs listed findings over their ticket cap
+    // on one shared ticket, which has no fix task of its own.
+    const filed = [
       { ...ticket('fp-filed', '1'), id: '1', action: 'created' },
-      { ...ticket('fp-over-cap', '2'), id: '2', action: 'rolled-up' },
+      { ...ticket('fp-rolled-up', '2'), id: '2', action: 'rolled-up' },
       { fp: 'fp-refused', severity: 'High', charterDir, id: '3', action: 'refused', reason: 'held back' },
     ]
     const confirmed: VerifiedFinding[] = filed.map(({ id }) => ({
@@ -412,18 +404,22 @@ describe('route', () => {
   })
 
   test('routes one fix per fingerprint when the same bugs were filed on desktop and phone', async () => {
-    const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
-    const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const
-    const filed: Filed[] = [
-      { ...ticket, charterDir: 'c2-chat-power-user-desktop', id: '1' },
-      { ...ticket, charterDir: 'c2-chat-power-user-phone', id: '1' },
-      { ...sync, charterDir: 'c2-chat-power-user-desktop', id: '2' },
-      { ...sync, charterDir: 'c2-chat-power-user-phone', id: '2' },
-    ]
+    const ids = ['1', '2', '3', '4', '5']
+    const filed: Filed[] = ids.flatMap((id) =>
+      ['desktop', 'phone'].map((platform) => ({
+        fp: `fp-${id}`,
+        severity: 'High' as const,
+        action: 'created' as const,
+        issueId: `i${id}`,
+        identifier: `THB-${id}`,
+        charterDir: `c2-chat-power-user-${platform}`,
+        id,
+      })),
+    )
     const confirmed: VerifiedFinding[] = filed.map(({ charterDir, id }) => ({
       charterDir,
       id,
-      finding: finding(id === '1' ? 'chat' : 'sync', { repro_spec: `repro/${id}.spec.ts` }),
+      finding: finding('chat', { repro_spec: `repro/${id}.spec.ts` }),
       replay: { failed: 3, runs: 3 },
       artifacts: {},
     }))
@@ -434,10 +430,9 @@ describe('route', () => {
 
     const plan = await route({ outDir, live: true, run: fakeRun([]), log: () => {} })
 
-    expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual([
-      ['fp-same', 'c2-chat-power-user-desktop'],
-      ['fp-sync', 'c2-chat-power-user-desktop'],
-    ])
+    expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual(
+      ids.map((id) => [`fp-${id}`, 'c2-chat-power-user-desktop']),
+    )
   })
 })
 

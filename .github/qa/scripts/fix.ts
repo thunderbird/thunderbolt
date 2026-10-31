@@ -25,7 +25,6 @@ import { checkMaestroFlow, flowVars } from './maestro-flow'
 import type { Verified } from './verify'
 
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
-const maxFixes = 3
 
 /** Manifests, lockfiles and the build-tool files that pick a registry, download or binary every build runs. */
 const dependencyFiles = new RegExp(
@@ -153,9 +152,9 @@ const proofOf = async (
 /**
  * Decides in code which filed tickets the fix agent attempts, and writes `fix-plan.json`.
  * Every ticket whose finding was confirmed qualifies, whatever its area or oracle, security and real-AI findings
- * included, because a person reviews every draft PR. It is left out this week when an earlier `qa-fix/<fp>` branch
- * still exists (its draft PR is open) or the cap is reached: at most three, highest severity first, one per
- * fingerprint however many platforms found the bug. A task with a Maestro flow goes into `verifyNative` too, and so
+ * included, because a person reviews every draft PR. Each ticket gets one task, however many platforms found the bug,
+ * and the tasks run most severe first. A ticket is left out this week while an earlier `qa-fix/<fp>` branch still
+ * exists (its draft PR is open). A task with a Maestro flow goes into `verifyNative` too, and so
  * does the repro flow of the same bug confirmed on another native platform: the patch must pass on each of them.
  * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent.
  */
@@ -167,19 +166,11 @@ export const route = async ({ outDir, live, run = runCommand, log = console.log 
   const plan: FixPlan = { fixes: [], verifyNative: [] }
   const routed = new Set<string>()
   const tickets = filed.filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
-  // Bugs keep their filed order under the cap; `leadRank` only orders the findings inside one bug.
-  const firstAt = new Map<string, number>()
-  for (const [i, { fp }] of tickets.entries()) if (!firstAt.has(fp)) firstAt.set(fp, i)
-  const at = (fp: string) => firstAt.get(fp) ?? 0
-  tickets.sort(
-    (a, b) =>
-      priority[a.severity] - priority[b.severity] ||
-      at(a.fp) - at(b.fp) ||
-      leadRank(a.charterDir) - leadRank(b.charterDir),
-  )
+  // Every finding of one bug files with the bug's severity, so `leadRank` decides which of them leads its fix task.
+  tickets.sort((a, b) => priority[a.severity] - priority[b.severity] || leadRank(a.charterDir) - leadRank(b.charterDir))
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
+    if (pending.has(fp)) continue
     const fresh = !routed.has(fp)
-    if (fresh && (plan.fixes.length === maxFixes || pending.has(fp))) continue
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
     const finding = findingSchema.parse(verified.finding)

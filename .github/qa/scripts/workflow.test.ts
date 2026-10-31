@@ -556,6 +556,15 @@ test("a native replay leg's base runs fit its timeout, since a timeout loses eve
   expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
 })
 
+test('a native fix check outlasts a driver retry and a replaced run, since a timeout leaves its ticket without a PR', () => {
+  // The slowest check: boot, install and three runs of the iOS onboarding flow, about 6 minutes a run.
+  const checkMinutes = 26
+  const runMinutes = 6
+  expect(jobs['verify-native-run']['timeout-minutes']).toBeGreaterThan(
+    checkMinutes + runMinutes + nativeDriverStartupMinutes,
+  )
+})
+
 test("the iOS log stream outlasts a replay leg, since a run after it ends sees no line and can't prove a bug", () => {
   const nativeSh = readFileSync(join(import.meta.dir, 'native.sh'), 'utf8')
   const hours = Number(/log stream .* --timeout (\d+)h/.exec(nativeSh)?.[1])

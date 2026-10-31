@@ -1559,7 +1559,7 @@ jobs:
     needs: [build, build-native, file, verify-native-build]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
     runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
-    timeout-minutes: 30
+    timeout-minutes: 60 # an iOS onboarding check takes about 26 minutes; a retried or replaced run must still fit
     permissions:
       contents: read
     strategy:

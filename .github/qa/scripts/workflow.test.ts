@@ -5,11 +5,11 @@
 // The workflow's trust boundaries, read from the resolved YAML, and the steps that gate a fix PR.
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
-import { prChecks } from './fix'
+import { isDenied, prChecks } from './fix'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -264,6 +264,19 @@ describe('fix job', () => {
     const args = step('fix', 'Fix').with?.claude_args ?? ''
     for (const rule of ['.git/**', '.github/**', 'e2e/**', '**/vite.config.*', '**/tsconfig*.json', '**/.husky/**'])
       expect(args).toContain(`"Edit(${rule})"`)
+  })
+
+  test('every directory the pipeline refuses a patch in is also closed to edits by the agent', () => {
+    const args = step('fix', 'Fix').with?.claude_args ?? ''
+    const repo = join(import.meta.dir, '../../..')
+    const dirs = readdirSync(repo, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
+    const nested = readdirSync(join(repo, 'deploy'), { withFileTypes: true }).filter((e) => e.isDirectory())
+    const closed = [...dirs.map((e) => e.name), ...nested.map((e) => `deploy/${e.name}`)].filter((dir) =>
+      isDenied(`${dir}/x`),
+    )
+    expect(closed).toEqual(expect.arrayContaining(['.github', 'e2e', 'deploy/pulumi']))
+    const hasDeny = (dir: string) => [`"Edit(${dir}/**)"`, `"Edit(**/${dir}/**)"`].some((rule) => args.includes(rule))
+    expect(closed.filter((dir) => !hasDeny(dir))).toEqual([])
   })
 
   test('the agent gets the Skill tool for simplify only, no agent tools and still no git', () => {

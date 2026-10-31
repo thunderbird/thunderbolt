@@ -435,11 +435,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks
    the test files the patch adds or changes (a deleted one is left out, a renamed one counts under its new name) and
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
-   `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. With only the patch's
-   hunks for those files and for every file it adds applied (`git apply --include`) a run must fail, and with the
-   whole patch every run must pass, all in one process. The added files keep a test from failing only because a
-   helper, fixture or snapshot it imports is missing. `git apply` runs as the job's user, each `bun test` as
-   `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
+   `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. A run must fail
+   with only the hunks for those files and for every file the patch adds applied (`git apply --include`), and with
+   the whole patch every run must pass, all in one process. The added files keep a test from failing only because a
+   helper, fixture or snapshot it imports is missing. A renamed source file counts as added, so a patch that moves
+   the buggy file and fixes it on the way has its fix in the run without it, and a person takes the ticket.
+   `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
    write the checkout either.
    A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
    start, or that writes into the checkout: the ticket then goes to a person. When the agent gave up or left no

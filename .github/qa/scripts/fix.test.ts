@@ -1249,6 +1249,12 @@ describe('checkTests', () => {
     expect(await check()).toEqual({ failsWithout: true, passesWith: true })
   }, 20_000)
 
+  test('rejects a patch that renames the buggy file and fixes it on the way, since the rename counts as added', async () => {
+    const importsText = titleTest('  Renamed  ').replace("'./title'", "'./text'")
+    await patchOf({ 'src/text.ts': fixed, 'src/title.test.ts': importsText }, [['src/title.ts', 'src/text.ts']])
+    expect(await check()).toEqual({ failsWithout: false, passesWith: true })
+  }, 20_000)
+
   test('applies a test file whose path holds glob characters, rather than running none', async () => {
     const weak = titleTest('Renamed').replace("'./title'", "'../title'")
     await patchOf({ 'src/title.ts': fixed, 'src/[id]/title.test.ts': weak })

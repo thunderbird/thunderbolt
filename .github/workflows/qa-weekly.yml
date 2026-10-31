@@ -10,6 +10,9 @@ name: QA weekly
 # they run before any untrusted code; every other job only restores them, and setup-bun's own cache is off because
 # its save runs after the job's steps. The jobs that check a fix's patch hold no secret, except verify-real, whose
 # provider keys go to a backend from a fresh checkout that never ran the patch.
+#
+# Linux jobs are pinned to ubuntu-24.04, not ubuntu-latest: the stack relies on that image's AppArmor sysctl, KVM
+# and emulator libraries, Playwright dependencies and qa-dev user. Moving to a newer image is a deliberate change.
 
 on:
   schedule:
@@ -70,7 +73,7 @@ env:
 jobs:
   build:
     if: vars.QA_AGENT_ENABLED == 'true' && !inputs.app_check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       # Looks up the run a fix-only run fixes from.
@@ -266,7 +269,7 @@ jobs:
     needs: build
     # A dispatch of native sessions only plans no web leg, and an empty matrix is an error.
     if: needs.build.outputs.legs != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
     environment: qa-agent
     permissions:
@@ -523,7 +526,7 @@ jobs:
   cache-system-image:
     needs: build
     if: contains(needs.build.outputs.nativeBuilds, 'android')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -533,7 +536,7 @@ jobs:
         id: system-image
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The image native.sh installs, where ubuntu-latest keeps the SDK.
+          # The image native.sh installs, where ubuntu-24.04 keeps the SDK.
           path: &system-image-path /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
           key: &system-image-key qa-system-image-${{ runner.os }}-${{ runner.arch }}-android-36-google_apis-x86_64
           lookup-only: true
@@ -864,7 +867,7 @@ jobs:
     name: replay ${{ matrix.leg.name }}
     needs: [build, explore]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.verify != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another
     # user's backend.
@@ -1037,7 +1040,7 @@ jobs:
     name: judge ${{ matrix.leg.name }}
     needs: [build, replay, replay-native]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.judge != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: qa-agent
     permissions:
@@ -1123,7 +1126,7 @@ jobs:
     if: >-
       ${{ !cancelled() && needs.build.result == 'success' &&
       (needs.build.outputs.judge != '[]' || inputs.fix_from_run != '') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: qa-agent
     permissions:
@@ -1217,7 +1220,7 @@ jobs:
     name: fix ${{ matrix.task.fp }}
     needs: [build, file]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90 # outer bound: the fix step's own cap plus setup
     environment: qa-agent
     permissions:
@@ -1510,7 +1513,7 @@ jobs:
     name: verify-native-build ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, file, fix]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
-    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -1555,7 +1558,7 @@ jobs:
     name: verify-native-run ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, build-native, file, verify-native-build]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
-    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -1633,7 +1636,7 @@ jobs:
     name: verify-real ${{ matrix.task.fp }}
     needs: [build, file, fix]
     if: ${{ !cancelled() && needs.file.outputs.real != '' && fromJSON(needs.file.outputs.real)[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: qa-agent
     permissions:
@@ -1697,7 +1700,7 @@ jobs:
     name: publish ${{ matrix.task.fp }}
     needs: [build, file, fix, verify-native-run, verify-real]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: qa-agent
     permissions:
@@ -1805,7 +1808,7 @@ jobs:
   # fails if the app lacks a requested permission, and writes nothing.
   app-check:
     if: github.event_name == 'workflow_dispatch' && inputs.app_check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: qa-agent
     permissions: {}
@@ -1841,7 +1844,7 @@ jobs:
       - verify-real
       - publish
     if: ${{ always() && needs.build.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: qa-agent
     permissions:
@@ -1923,7 +1926,7 @@ jobs:
       matrix:
         target:
           - { platform: ios, runner: macos-latest }
-          - { platform: android, runner: ubuntu-latest }
+          - { platform: android, runner: ubuntu-24.04 }
     env:
       QA_PLATFORM: ${{ matrix.target.platform }}
       QA_APP_FILE: ${{ matrix.target.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}

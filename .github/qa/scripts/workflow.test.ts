@@ -8,6 +8,7 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import platforms from '../platforms.json'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -39,9 +40,12 @@ type Job = {
   environment?: string
   env?: Record<string, string>
   with?: Record<string, string>
+  'runs-on'?: string
+  strategy?: unknown
 }
 
 const workflow = join(import.meta.dir, '../../workflows/qa-weekly.yml')
+const ciWorkflow = join(import.meta.dir, '../../workflows/ci.yml')
 const { jobs } = Bun.YAML.parse(readFileSync(workflow, 'utf8')) as { jobs: Record<string, Job> }
 const work = mkdtempSync(join(tmpdir(), 'qa-workflow-'))
 afterAll(() => rmSync(work, { recursive: true, force: true }))
@@ -62,6 +66,41 @@ const mentions = (job: string, needle: string) =>
       .filter(([, value]) => JSON.stringify(value).includes(needle))
       .map(([key]) => `${label(s)}:${key}`),
   )
+
+describe('runner images', () => {
+  const linuxImage = 'ubuntu-24.04'
+  /**
+   * Every runner label a job can pick: a plain `runs-on`, the results of an `a && 'x' || 'y'` expression (not the
+   * literals it compares), and matrix `runner` fields.
+   */
+  const runnerLabels = (job: Job) => {
+    const runsOn = job['runs-on'] ?? ''
+    const fromRunsOn = runsOn.includes('${{')
+      ? [...runsOn.matchAll(/(?:&&|\|\|)\s*'([^']+)'/g)].map((m) => m[1])
+      : [runsOn]
+    const fromMatrix = [...JSON.stringify(job.strategy ?? {}).matchAll(/"runner":"([^"]+)"/g)].map((m) => m[1])
+    return [...fromRunsOn, ...fromMatrix].filter(Boolean)
+  }
+
+  test('every Linux job of the QA workflow runs on the image the stack was built for', () => {
+    const picks = Object.entries(jobs).flatMap(([job, spec]) => runnerLabels(spec).map((runner) => ({ job, runner })))
+    // The extraction must see the expression and matrix forms, or the check below passes on nothing.
+    expect(picks).toContainEqual({ job: 'verify-native-run', runner: linuxImage })
+    expect(picks).toContainEqual({ job: 'native-control', runner: linuxImage })
+    expect(picks.filter(({ runner }) => runner !== 'macos-latest' && runner !== linuxImage)).toEqual([])
+  })
+
+  test("CI's qa job runs on the same image, since it starts the same dev stack", () => {
+    const { jobs: ciJobs } = Bun.YAML.parse(readFileSync(ciWorkflow, 'utf8')) as { jobs: Record<string, Job> }
+    expect(runnerLabels(ciJobs.qa)).toEqual([linuxImage])
+  })
+
+  test('every Linux runner in platforms.json is that image', () => {
+    const runners = platforms.map((p) => p.runner)
+    expect(runners).toContain(linuxImage)
+    expect(runners.filter((runner) => runner !== 'macos-latest' && runner !== linuxImage)).toEqual([])
+  })
+})
 
 describe('secrets', () => {
   test('no run: text interpolates a secret', () => {

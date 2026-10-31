@@ -680,7 +680,8 @@ run only on GitHub's runners (KVM, `x86_64`).
 
 `legs.ts` plans the native sessions into `nativeLegs` and their replay legs into `nativeVerify`, and lists the
 sessions the grid leaves out in `skipped`, which the plan step prints as notices. iOS runs on `macos-latest`,
-Android on `ubuntu-latest` with KVM.
+Android on `ubuntu-24.04` with KVM. Every Linux job is pinned to that image, never `ubuntu-latest`, because the
+stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dependencies and `qa-dev` user.
 
 - **build-native**, one job per platform of the run, before any untrusted code: `native.sh build` with onboarding
   off and on, uploaded as `qa-native-<platform>` and `qa-native-<platform>-onboarding`. Each artifact is a tar of

@@ -15,51 +15,7 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-// Mock InputOTP to avoid timer issues in tests
-// The input-otp library uses internal timers that conflict with fake timers
-mock.module('@/components/ui/input-otp', () => ({
-  InputOTP: ({
-    children,
-    value,
-    onChange,
-    onComplete,
-    disabled,
-    maxLength,
-  }: {
-    children: ReactNode
-    value?: string
-    onChange?: (value: string) => void
-    onComplete?: (value: string) => void
-    disabled?: boolean
-    maxLength?: number
-  }) => {
-    return (
-      <div data-testid="mock-otp-input" data-disabled={disabled} data-max-length={maxLength}>
-        <input
-          type="text"
-          value={value || ''}
-          onChange={(e) => {
-            const newValue = e.target.value.slice(0, maxLength || 8)
-            onChange?.(newValue)
-            if (newValue.length === (maxLength || 8)) {
-              onComplete?.(newValue)
-            }
-          }}
-          disabled={disabled}
-          data-testid="otp-input"
-        />
-        {children}
-      </div>
-    )
-  },
-  InputOTPGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  InputOTPSlot: ({ index }: { index: number }) => <div data-slot-index={index} />,
-  InputOTPSeparator: () => <span>-</span>,
-}))
-
-// Import after mock
 import { SignInModal } from './sign-in-modal'
-import { type ReactNode } from 'react'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
@@ -378,7 +334,7 @@ describe('SignInModal', () => {
 
       // Should show OTP input prompt
       expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
-      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
 
     it('shows success state after successful OTP verification', async () => {
@@ -393,8 +349,8 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
@@ -422,8 +378,8 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
@@ -446,8 +402,8 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      // Get the mocked OTP input and enter code
-      const otpInput = screen.getByTestId('otp-input')
+      // Enter the code
+      const otpInput = screen.getByRole('textbox')
       fireEvent.change(otpInput, { target: { value: '12345678' } })
 
       await act(async () => {
@@ -482,7 +438,7 @@ describe('SignInModal', () => {
       })
 
       expect(screen.getByText('Or enter the 8-digit code')).toBeInTheDocument()
-      expect(screen.getByTestId('mock-otp-input')).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
 
       const backButton = screen.getByRole('button', { name: 'Go back' })
       fireEvent.click(backButton)

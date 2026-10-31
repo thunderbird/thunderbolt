@@ -653,7 +653,8 @@ describe('verify-tests', () => {
 
 describe('verify-checks', () => {
   const at = (name: string) => indexOf('verify-checks', name)
-  const run = 'Run the PR checks on that tree'
+  const run = 'Run the PR checks on the tree publish would push'
+  const lock = "Take root away from the job's user"
 
   test('holds no secret, no environment and no write permission, and checks every task of the plan', () => {
     const job = jobs['verify-checks']
@@ -669,14 +670,16 @@ describe('verify-checks', () => {
     })
   })
 
-  test('stages the tree with the function publish commits with, then runs the checks on it as the test user', () => {
+  test('stages and checks the tree in one process, after the lock, with the checks as the test user', () => {
     expect(jobs['verify-checks'].env?.QA_TEST_USER).toBe('qa-test')
-    expect(step('verify-checks', 'Stage the tree publish would push').run).toBe(
-      'bun .github/qa/scripts/fix.ts stage --out qa-out --fp "$QA_FP"',
-    )
     const checks = step('verify-checks', run)
-    expect(checks.run).toBe('bun .github/qa/scripts/fix.ts checks --out qa-out --fp "$QA_FP"')
+    expect(checks.run).toBe('bun .github/qa/scripts/fix.ts gate --out qa-out --fp "$QA_FP"')
     expect(checks['continue-on-error']).toBe(true)
+    expect(checks.if).toBe("steps.tree.outputs.usable == 'true'")
+    // Nothing before the lock may apply the patch: a file of the patched tree loaded as the job's user could forge
+    // the pass or read the runtime token.
+    const beforeLock = steps('verify-checks').slice(0, at(lock))
+    expect(beforeLock.filter((s) => /fix\.ts|git apply|native\.sh/.test(s.run ?? '')).map(label)).toEqual([])
     // The plan and the original specs are read from after the fix output, which could otherwise shadow them.
     const downloads = steps('verify-checks')
       .filter((s) => s.uses?.startsWith('actions/download-artifact@'))
@@ -685,9 +688,9 @@ describe('verify-checks', () => {
     expect(downloads.slice(1)).toEqual([expect.stringContaining('qa-replay-'), 'qa-filed'])
     const order = [
       'Create the user the tests run as',
-      'Stage the tree publish would push',
-      'Let the test user run git and rewrite the catalogs',
-      "Take root away from the job's user",
+      'Let the test user run git in the checkout',
+      'Check that there is a tree to gate',
+      lock,
       run,
       'Stop every process of the test user',
     ].map(at)
@@ -695,7 +698,41 @@ describe('verify-checks', () => {
     expect(step('verify-checks', 'Stop every process of the test user')).toEqual(
       step('verify-tests', 'Stop every process of the test user'),
     )
-    expect(step('verify-checks', "Take root away from the job's user").run).toBe('.github/qa/scripts/stack.sh lock')
+    expect(step('verify-checks', lock).run).toBe('.github/qa/scripts/stack.sh lock')
+  })
+
+  /** The `usable` output of the step that decides whether there is a tree to gate. */
+  const usable = (files: Record<string, string>, visualWeb = false) => {
+    const dir = mkdtempSync(join(work, 'tree-'))
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(join(dir, path, '..'), { recursive: true })
+      writeFileSync(join(dir, path), text)
+    }
+    const output = join(dir, 'output')
+    const proc = Bun.spawnSync(
+      ['bash', '-e', '-c', step('verify-checks', 'Check that there is a tree to gate').run ?? ''],
+      {
+        cwd: dir,
+        env: { PATH: process.env.PATH, QA_FP: 'fp1', VISUAL_WEB: String(visualWeb), GITHUB_OUTPUT: output },
+      },
+    )
+    expect(proc.exitCode).toBe(0)
+    return readFileSync(output, 'utf8')
+  }
+
+  // publish hands these tickets to a person before it reads the pass, and a failed step would page for an agent that
+  // only gave up.
+  test('skips the gate, without failing, when there is no patch to check', () => {
+    const patch = { 'qa-out/fix/fp1.patch': 'diff --git a/src/a.ts b/src/a.ts\n' }
+    expect(usable(patch)).toBe('usable=true\n')
+    expect(usable({})).toBe('usable=false\n')
+    expect(usable({ 'qa-out/fix/fp1.patch': '' })).toBe('usable=false\n')
+    expect(usable({ ...patch, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe('usable=false\n')
+    expect(usable(patch, true)).toBe('usable=false\n')
+    expect(usable({ ...patch, 'qa-out/fix-fp1/repro/check.spec.ts': 'test' }, true)).toBe('usable=true\n')
+    expect(step('verify-checks', 'Check that there is a tree to gate').env?.VISUAL_WEB).toBe(
+      "${{ matrix.task.kind == 'visual' && !matrix.task.flow }}",
+    )
   })
 
   test("the catalog check runs on ci.yml's Node, since Lingui's CLI needs 22.19 or later", () => {
@@ -717,6 +754,12 @@ describe('verify-checks', () => {
     const workflows = [ciWorkflow, join(import.meta.dir, '../../workflows/e2e.yml')].map(
       (file) => (Bun.YAML.parse(readFileSync(file, 'utf8')) as { jobs: Record<string, Job> }).jobs,
     )
+    // `bun run check` stands in for these two: a flag added to either in ci.yml must reach the gate too.
+    const typescript = workflows[0].typescript.steps ?? []
+    expect(['Type check', 'Lint'].map((name) => typescript.find((s) => s.name === name)?.run)).toEqual([
+      'bun run tsc --noEmit',
+      'bun run lint',
+    ])
     const named = prChecks.filter((c) => c.name.includes(': '))
     expect(named.length).toBe(prChecks.length - 1)
     for (const { name, run: script } of named) {

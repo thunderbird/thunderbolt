@@ -1839,9 +1839,9 @@ jobs:
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 
-  # The PR checks of ci.yml a fix can fail, on the tree publish would push (`fix.ts stage`, the function publish
-  # commits with). A job of its own rather than steps of verify-tests: it checks native tasks too, and it keeps the
-  # tree applied, where verify-tests applies and takes back parts of the patch on its checkout.
+  # The PR checks of ci.yml a fix can fail, on the tree publish would push (`stage` in fix.ts, which publish commits
+  # with). A job of its own rather than steps of verify-tests: it checks native tasks too, and it keeps the tree
+  # applied, where verify-tests applies and takes back parts of the patch on its checkout.
   verify-checks:
     name: verify-checks ${{ matrix.task.fp }}
     needs: [build, file, fix]
@@ -1877,21 +1877,30 @@ jobs:
           name: qa-filed
           path: qa-out
       - *test-user
-      # Runs no code of the patch: git apply, and the regression spec's clean-up.
-      - name: Stage the tree publish would push
-        run: bun .github/qa/scripts/fix.ts stage --out qa-out --fp "$QA_FP"
-      # The license and catalog checks run git as the test user, and the catalog check rewrites the catalogs, which
-      # git apply may have just written with this user's umask.
-      - name: Let the test user run git and rewrite the catalogs
+      # The license and catalog checks run git as the test user.
+      - name: Let the test user run git in the checkout
+        run: sudo -n -H -u "$QA_TEST_USER" git config --global --add safe.directory "$PWD"
+      # Nothing to gate when the agent gave up or left no patch, or a visual task has no check: publish hands those
+      # tickets to a person before it looks for this job's pass.
+      - name: Check that there is a tree to gate
+        id: tree
+        env:
+          VISUAL_WEB: ${{ matrix.task.kind == 'visual' && !matrix.task.flow }}
         run: |
-          sudo -n -H -u "$QA_TEST_USER" git config --global --add safe.directory "$PWD"
-          chmod -R o+w src/locales backend/src/emails/locales
+          usable=true
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then usable=false; fi
+          if [ "$VISUAL_WEB" = true ] && [ ! -e "qa-out/fix-$QA_FP/repro/check.spec.ts" ]; then usable=false; fi
+          echo "usable=$usable" >> "$GITHUB_OUTPUT"
+      # Before the patch lands: from here on no step loads a file of the patched tree as the job's user.
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
-      - name: Run the PR checks on that tree
+      # One process, loaded before it applies the patch, stages and commits the tree publish would push and runs the
+      # checks on it as the test user.
+      - name: Run the PR checks on the tree publish would push
         id: checks
+        if: steps.tree.outputs.usable == 'true'
         continue-on-error: true
-        run: bun .github/qa/scripts/fix.ts checks --out qa-out --fp "$QA_FP"
+        run: bun .github/qa/scripts/fix.ts gate --out qa-out --fp "$QA_FP"
       - *stop-test-user
       - if: always() && steps.checks.outcome == 'success' && steps.stop-tests.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -37,8 +37,8 @@ developer's machine at their next commit. It refuses the Vite, Playwright and Ty
 refuses a patch that adds or changes a symlink or submodule, or that matches a secret pattern, and one that lacks the
 pass of a check its task needs (see "Passes" below). App code of any kind, `src-tauri/` and `backend/drizzle/`
 included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
-"security": no finding text and no regression spec, which a person adds after the fix merges. Its branch is
-`qa-fix/<identifier>`, never Linear's name, whose slug comes from the ticket's title.
+"security": no finding text and no regression spec. Its branch is `qa-fix/<identifier>`, never Linear's name,
+whose slug comes from the ticket's title.
 
 In the fix job the dev servers reload the agent's edits outside its sandbox, so they run as the OS user `qa-dev`
 (`QA_BACKEND_USER` with `stack.sh start dev`). That user cannot write to the checkout: `stack.sh start` makes it
@@ -75,17 +75,16 @@ leaves behind can rewrite or delete any file there before the upload. So no verd
 that passes uploads an artifact named `qa-pass-<fp>-<check>-<run attempt>`, under an `if:` on the outcome of the step
 that ran the check, which the runner keeps and no process of the job can change. The checks are `session` (the fix
 step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of the bug (`ios`, `android`), and
-`checks` (the PR checks). The
-artifact holds a marker file whose content nobody reads. `publish` lists the run's artifact names with the GitHub API
-(`actions: read`, into `qa-out/artifacts.txt`) and needs a pass of its own run attempt for every check the task
-needs: `session` always, `replay` for a fake-AI web spec, `visual` for a web visual check, `tests` for every web task,
-`real` for a real-AI web spec, each platform in `verifyNative` for the fingerprint, and `checks` for every task. A
-missing pass is a failure, and the ticket gets `Human Required` with the reason. A missing `checks` pass is the
-pipeline's failure instead: publish writes nothing to GitHub or Linear and leaves the ticket for a later run (see
-the fix stage below). It counts only once every other pass is there, so a patch that also failed its own checks
-still goes to a person. Listing names cannot miss, so a normal run shows no error
-annotation for a check that did not pass. The diagnosis the fix job writes for a failed check is only the reason a
-person reads: deleting it, or writing a result file that says the check passed, opens no PR.
+`checks` (the PR checks). The artifact holds a marker file whose content nobody reads. `publish` lists the run's
+artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and needs a pass of its own run
+attempt for every check the task needs: `session` always, `replay` for a fake-AI web spec, `visual` for a web visual
+check, `tests` for every web task, `real` for a real-AI web spec, each platform in `verifyNative` for the
+fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets `Human Required` with the
+reason. A missing `checks` pass is the pipeline's failure instead: publish writes nothing to GitHub or Linear and
+leaves the ticket for a later run (see the fix stage below). It counts only once every other pass is there, so a
+patch that also failed its own checks still goes to a person. Listing names cannot miss, so a normal run shows no
+error annotation for a check that did not pass. The diagnosis the fix job writes for a failed check is only the
+reason a person reads: deleting it, or writing a result file that says the check passed, opens no PR.
 
 One artifact list spans every attempt of a run, and a download by name or pattern takes the latest artifact of that
 name, so an attempt that uploaded none would read an earlier attempt's. The fix output (`qa-fix-<fp>-<run attempt>`),
@@ -108,8 +107,10 @@ write Actions cache entries in the run's scope. Code the agent wrote runs as the
 - `verify-native-run` on iOS, where the patched app is a process of the job's user.
 
 `verify-tests` and `verify-checks` are not among them. Their tests and checks run as the OS user `qa-test`, which can
-read no process of the job's user and has no sudo; the job's user loses root (`stack.sh lock`) before they run, and
-every `qa-test` process is killed before the pass upload, whose `if:` also needs that stop to succeed.
+read no process of the job's user and has no sudo. The job's user loses root (`stack.sh lock`) before the patch
+lands, and the patch lands inside one `fix.ts` process that was loaded before it, so no file of the patched tree
+(`fix.ts`'s imports, `bunfig.toml`, `.env`, `stack.sh`) is ever loaded as the job's user. Every `qa-test` process is
+killed before the pass upload, whose `if:` also needs that stop to succeed.
 
 What still bounds a forged pass: publish checks the patch itself (`isDenied`, the secret scan, symlinks and
 submodules), the PR is a draft a person reviews, and nothing merges. A forged cache entry can only take a key that
@@ -452,11 +453,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Only a failed harness sign-in is run again. Without the patch, a run that never reached the bug, by replay's rules,
    is run again and never counts as showing it. With `unpatched` (a visual check, or an Android real-AI task, which the
    keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail there
-   every time.
-   The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a
-   visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual`
-   finding and a `layout` one qualify, except an `unnamed-control` line: a missing accessible name shows in a unit
-   test. A `lost-on-reload` finding qualifies too, since the testing guide
+   every time. The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro
+   spec, or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so
+   a `visual` finding and a `layout` one qualify, except an `unnamed-control` line: a missing accessible name shows in
+   a unit test. A `lost-on-reload` finding qualifies too, since the testing guide
    (`docs/internals/development/testing.md`) sends browser storage, redirects and Better Auth callbacks to `e2e/`.
    Every other oracle (a page or console error, a 5xx, a stuck control, a failed assertion, an AI-reported failure)
    gets no spec, and the PR and commit say the unit test in the patch guards the fix. A native fix PR adds no
@@ -464,28 +464,29 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the onboarding build, nor a real-AI web fix PR, because that config runs the consumer project on the fake
    provider, nor a security fix PR. `regressionSpec` cleans a spec it adds: TypeScript's organize-imports drops the
    imports it never uses (without sorting the rest), the MPL header from `scripts/license-headers.ts` goes on top when
-   it has none, and prettier formats it with the repo's config, read before the patch lands.
-   `fix.ts stage` puts the patch and that spec into the index; publish commits what it stages, and `verify-checks`
-   (keyless, every task, native ones included) stages the same tree on a fresh checkout and runs the PR checks on it
-   with `fix.ts checks` (`prChecks`): `bun run check` (ci.yml's type check and lint, plus the e2e type check, the
+   it has none, and prettier formats it with the repo's config, read before the patch lands. `stage` in `fix.ts` puts
+   the patch and that spec into the index, and publish commits what it stages. `verify-checks` (keyless, every task,
+   native ones included) runs `fix.ts gate` on a fresh checkout, after `stack.sh lock`. That one process stages the
+   same tree, commits it as publish would (so `i18n:check`'s `git status` test sees a committed tree, as in CI), and
+   runs the PR checks on it (`prChecks`): `bun run check` (ci.yml's type check and lint, plus the e2e type check, the
    format check and the license check), e2e.yml's `bun run e2e:check-collected`, and, when the tree touches their
    paths, ci.yml's `bun run i18n:check`, `bun run test:5x`, the agent-core, backend and cli type checks, lints and 5x
-   suites, each with ci.yml's exact command over the whole tree, never only the changed files. A test that passes
-   alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
+   suites. Each runs with ci.yml's exact command over the whole tree, never only the changed files: a test that
+   passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
    `qa-test` with `CI=true`, in order, and stop at the first failure. The full Playwright suite, the builds, the
    browser and native checks, the segregated WebSocket tests (flaky by design; ci.yml retries them) and the Helm,
    miniapps, Rust, wasm and QA jobs are left out: too slow, or on paths a fix seldom touches (`verify-native-build`
-   compiles a native fix's Rust, but nothing lints it). A failed check is the
-   pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and publish's
-   summary says it was left for a later run.
-   `publish` needs a pass from every platform in `verifyNative` for
-   the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
+   compiles a native fix's Rust, but nothing lints it). The gate is skipped when the fix job left a diagnosis or no
+   patch, or a visual task has no check: publish hands those tickets to a person anyway. A failed check is the
+   pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and
+   publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`
+   for the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
    web task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
-   branch. Otherwise the ticket gets
-   `Human Required` with the reason (for a native platform, "the flow still fails on the native platform"). A fix
-   from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform, never gets a PR either: the
-   fix job and `verify-native-run` start no Postgres or PowerSync, so they cannot verify it, and its ticket gets
-   `Human Required`. A fix PR gets an automatic preview deploy like any other PR.
+   branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the flow still fails
+   on the native platform"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
+   platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
+   cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
+   PR.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -641,9 +642,10 @@ with onboarding skipped and on the onboarding port, 1425 by default, with onboar
 finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, then, on a clean
 checkout, `bun .github/qa/scripts/fix.ts tests --out qa-out --fp <fp>` runs the patch's unit tests without and with
 the fix, as `verify-tests` does (as yourself, unless `QA_TEST_USER` names another user), and leaves the checkout as it
-was. `fix.ts stage` then `fix.ts checks`, with the same arguments and `fix-plan.json` in `qa-out/`, stage the tree
-publish would push and run the PR checks on it, as `verify-checks` does; reset the checkout afterwards. Write `{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>-1` line per
-check you saw pass to `qa-out/artifacts.txt` (publish reads attempt 1 when `GITHUB_RUN_ATTEMPT` is unset), then
+was. `fix.ts gate`, with the same arguments and `fix-plan.json` in `qa-out/`, commits the tree publish would push
+and runs the PR checks on it, as `verify-checks` does; reset the checkout to the commit before it afterwards. Write
+`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>-1` line per check you
+saw pass to `qa-out/artifacts.txt` (publish reads attempt 1 when `GITHUB_RUN_ATTEMPT` is unset), then
 `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
 open.
 
@@ -1179,12 +1181,11 @@ Never run on GitHub (only locally, or read in the action's code):
   the lock's rule root was denied and `sudo --user qa-test` still worked, `qa-test` could not read the job user's
   `/proc/<pid>/environ` (the job user could), and the stop killed the detached processes it left. That kernel has
   no Yama, so `stack.sh lock` itself did not run there;
-- `verify-checks`: `fix.ts stage` and `fix.ts checks` ran on scratch repos with real git, tsc and prettier, and
-  `bun run check`, `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's
-  own user. Nothing ran as `qa-test` yet: a check that writes outside `src/locales` and
-  `backend/src/emails/locales`, or needs more than `PATH` and `CI`, would fail every task's gate. A suite with an
-  order-dependent failure on `main` fails the gate on the seeds that order it badly, and that ticket waits for a
-  later run;
+- `verify-checks`: `fix.ts gate` ran on scratch repos with real git, tsc and prettier, and `bun run check`,
+  `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. Nothing
+  ran as `qa-test` yet: a check that writes outside `src/locales` and `backend/src/emails/locales`, or needs more
+  than `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails the
+  gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
   Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.

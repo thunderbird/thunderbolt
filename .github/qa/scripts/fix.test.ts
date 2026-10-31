@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as prettier from 'prettier'
@@ -21,8 +21,7 @@ import {
   regressionSpec,
   route,
   type Run,
-  runPrChecks,
-  stage,
+  runGate,
   testRuns,
   whyNoSpec,
 } from './fix'
@@ -1339,7 +1338,10 @@ describe('the PR checks gate', () => {
       [prettierrc]: await readFile(join(import.meta.dir, '../../..', prettierrc), 'utf8'),
       'src/chat.ts': `${header}\nexport const title = (text: string) => text\n`,
       'e2e/test.ts': `${header}\nexport const test = () => {}\n`,
+      'src/locales/en/messages.po': '',
+      'backend/src/emails/locales/en/messages.po': '',
     })
+    await put(join(outDir, 'fix-plan.json'), JSON.stringify({ fixes: [task()], verifyNative: [] }))
     // A repro as the explorer writes them: an unused import, no header, not formatted.
     await put(
       join(outDir, 'c8-phone', 'repro', '1.spec.ts'),
@@ -1348,29 +1350,48 @@ describe('the PR checks gate', () => {
   })
 
   const patchOf = (files: Record<string, string>) => writePatch(repo, fp, files)
-  const gate = async (files: Record<string, string>) => {
+  const gate = async (files: Record<string, string>, gateChecks = checks) => {
     await patchOf(files)
-    await stage(git, outDir, task(), repo)
     const ran: string[] = []
     const exec = async (cmd: string[], cwd: string) => {
       ran.push(cmd.at(-1) ?? '')
       return quiet(cmd, cwd)
     }
     const summary = join(dir, 'summary.md')
-    const failed = await runPrChecks({ ticket: 'THB-1', repoDir: repo, run: git, exec, summary, checks, log: () => {} })
+    const failed = await runGate({
+      outDir,
+      fp,
+      repoDir: repo,
+      run: git,
+      exec,
+      summary,
+      checks: gateChecks,
+      log: () => {},
+    })
     const said = (await Bun.file(summary).exists()) ? await readFile(summary, 'utf8') : ''
     return { failed, ran: ran.length, said }
   }
 
-  test('passes the tree publish pushes, with the repro cleaned into a regression spec', async () => {
+  test('passes the tree publish pushes, committed, with the repro cleaned into a regression spec', async () => {
     expect(await gate({ 'src/chat.ts': `${header}\nexport const title = (text: string) => text.trim()\n` })).toEqual({
       failed: undefined,
       ran: 3,
       said: '',
     })
-    expect(await git(['git', 'diff', '--cached', '--name-only', 'HEAD'])).toBe(
+    expect(await git(['git', 'diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe(
       'e2e/consumer-qa-ab12cd34.spec.ts\nsrc/chat.ts\n',
     )
+    expect(await git(['git', 'status', '--porcelain'])).toBe('')
+  }, 20_000)
+
+  // CI checks out a commit, so a staged catalog would fail the status test of `bun run i18n:check` there and not in CI.
+  test("passes i18n:check's git tests on a patch that changes a tracked catalog", async () => {
+    const catalogs = {
+      name: 'catalogs',
+      run: 'git diff --exit-code -- src/locales && test -z "$(git status --porcelain -- src/locales)"',
+    }
+    const catalog = { 'src/locales/en/messages.po': 'msgid "Menu"\nmsgstr "Menu"\n' }
+    expect((await gate(catalog, [catalogs])).failed).toBeUndefined()
   }, 20_000)
 
   test('fails a tree with an unused import, stops there, and the summary names the ticket and the check', async () => {
@@ -1390,27 +1411,28 @@ describe('the PR checks gate', () => {
     expect((await gate({ 'src/name.ts': `${header}\nexport const name = "x";\n` })).failed).toBe('format')
   }, 20_000)
 
-  test('runs a check limited to some paths only when the tree touches one, and as the given user', async () => {
-    await patchOf({ 'backend/x.ts': 'x' })
-    await git(['git', 'apply', '--index', join(outDir, 'fix', `${fp}.patch`)])
+  test('runs a check limited to some paths only when the tree touches one, as the given user', async () => {
     const cmds: string[][] = []
     const exec = async (cmd: string[]) => {
       cmds.push(cmd)
       return 0
     }
-    const only = [checks[3]]
-    await runPrChecks({ ticket: 'THB-1', user: 'qa-test', repoDir: repo, run: git, exec, checks: only, log: () => {} })
+    const gateAs = async (files: Record<string, string>) => {
+      await patchOf(files)
+      const only = [checks[3]]
+      await runGate({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, checks: only, log: () => {} })
+    }
+    await gateAs({ 'backend/x.ts': 'x' })
     expect(cmds).toEqual([
       [
         ...['sudo', '-n', '--user', 'qa-test', '--set-home', '--', 'env', `PATH=${process.env.PATH}`],
         ...['env', 'CI=true', 'bash', '-eo', 'pipefail', '-c', 'false'],
       ],
     ])
-    await git(['git', 'reset', '--quiet', '--hard'])
-    await git(['git', 'clean', '--quiet', '-fd'])
-    await patchOf({ 'src/x.ts': 'x' })
-    await git(['git', 'apply', '--index', join(outDir, 'fix', `${fp}.patch`)])
-    await runPrChecks({ ticket: 'THB-1', repoDir: repo, run: git, exec, checks: only, log: () => {} })
+    // i18n:check rewrites them as that user.
+    for (const catalogs of ['src/locales/en', 'backend/src/emails/locales/en/messages.po'])
+      expect((await stat(join(repo, catalogs))).mode & 0o002).toBe(0o002)
+    await gateAs({ 'src/x.ts': 'x' })
     expect(cmds).toHaveLength(1)
   })
 })
@@ -1755,7 +1777,7 @@ describe('publish', () => {
     }
   })
 
-  test('a patch whose tree failed a PR check leaves the ticket and the repository alone and says so', async () => {
+  test('a patch without the PR checks pass leaves the ticket and the repository alone and says so', async () => {
     await setup()
     await putPasses(...everyCheck.filter((c) => c !== 'checks'))
     const summary = join(dir, 'summary.md')
@@ -1773,12 +1795,12 @@ describe('publish', () => {
       log: () => {},
     })
 
-    expect(result).toEqual({ outcome: 'infrastructure', reason: expect.stringContaining('failed a PR check') })
+    expect(result).toEqual({ outcome: 'infrastructure', reason: expect.stringContaining('gate did not pass') })
     // Only checkPatch's read of the patch: no branch, commit or push.
     expect(runs.map((r) => r.cmd[1])).toEqual(['read-tree', 'apply', 'diff'])
     expect(calls).toEqual([])
     expect(await readFile(summary, 'utf8')).toBe(
-      '- THB-1 is left untouched for a later run: the tree a PR would hold failed a PR check, which the verify-checks summary names\n',
+      '- THB-1 is left untouched for a later run: the PR checks gate did not pass; the verify-checks summary names a check that failed\n',
     )
   })
 

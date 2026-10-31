@@ -447,7 +447,7 @@ const noHooksGit = (run: Run) => (args: string[], opts?: Parameters<Run>[1]) =>
  * spec): the patch, and the regression spec when the task adds one. publish commits it, and the PR checks gate checks
  * it first, so both see the same tree. Returns the spec.
  */
-export const stage = async (run: Run, outDir: string, task: FixTask, repoDir = '.') => {
+const stage = async (run: Run, outDir: string, task: FixTask, repoDir: string) => {
   // Before the patch lands, so prettier never reads a config the patch wrote.
   const spec = await promotedSpec(outDir, task)
   const git = noHooksGit(run)
@@ -664,11 +664,11 @@ type PrChecksOptions = {
 }
 
 /**
- * Runs the PR checks that apply to the tree `stage` put in the index, in order, as GitHub Actions runs a step (bash,
+ * Runs the PR checks that apply to the files the last commit changed, in order, as GitHub Actions runs a step (bash,
  * `-eo pipefail`, `CI=true`), and returns the name of the first that fails, or undefined when all pass. A failure is
  * the pipeline's, not the agent's, so the summary line names only the check, never anything the agent wrote.
  */
-export const runPrChecks = async ({
+const runPrChecks = async ({
   ticket,
   user,
   repoDir = '.',
@@ -678,7 +678,7 @@ export const runPrChecks = async ({
   checks = prChecks,
   log = console.log,
 }: PrChecksOptions) => {
-  const files = (await run(['git', 'diff', '--cached', '--name-only', '-z', 'HEAD'], { cwd: repoDir }))
+  const files = (await run(['git', 'diff', '--name-only', '-z', 'HEAD~1', 'HEAD'], { cwd: repoDir }))
     .split('\0')
     .filter(Boolean)
   for (const { name, run: script, paths } of checks) {
@@ -692,6 +692,24 @@ export const runPrChecks = async ({
     return name
   }
   return undefined
+}
+
+type GateOptions = Omit<PrChecksOptions, 'ticket'> & { outDir: string; fp: string }
+
+/**
+ * The PR checks gate. It stages the tree publish would push (`stage`) and commits it as publish does, so the checks
+ * see a committed tree, as in CI, and `i18n:check`'s `git status` test sees no staged catalog. Then `runPrChecks`.
+ * Run it in a process that started before the patch landed, after the job's user lost root: the patch's code then
+ * runs only inside the checks, as `user`.
+ */
+export const runGate = async ({ outDir, fp, user, repoDir = '.', run = runCommand, ...rest }: GateOptions) => {
+  const { task } = await planTask(outDir, fp)
+  await stage(run, outDir, task, repoDir)
+  const identity = ['-c', 'user.name=QA gate', '-c', 'user.email=qa-gate@localhost']
+  await noHooksGit(run)([...identity, 'commit', '--no-verify', '--quiet', '--message', 'The tree publish would push'])
+  // i18n:check rewrites the catalogs as `user`, and git apply wrote them with this user's umask.
+  if (user) await run(['chmod', '-R', 'o+w', 'src/locales', 'backend/src/emails/locales'], { cwd: repoDir })
+  return runPrChecks({ ticket: task.identifier ?? task.fp, user, repoDir, run, ...rest })
 }
 
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
@@ -884,11 +902,9 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
   const why = whyNoSpec(task)
   if (why === 'security') {
     const title = `fix: QA finding ${task.identifier ?? task.fp}`
-    const body = [
-      intro,
-      'The finding and its regression spec stay out of this PR. A person adds the spec in a separate commit after the fix merges.',
-      reviewNotice,
-    ].join('\n\n')
+    const body = [intro, 'The finding stays out of this PR, and so does any regression spec.', reviewNotice].join(
+      '\n\n',
+    )
     return { title, commit: title, body }
   }
   const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
@@ -1018,7 +1034,7 @@ export const publish = async ({
 
   // Last, so a patch that also fails a check above goes to a person.
   if (!artifacts.has(`qa-pass-${fp}-checks-${attempt}`)) {
-    return leaveForLater('the tree a PR would hold failed a PR check, which the verify-checks summary names')
+    return leaveForLater('the PR checks gate did not pass; the verify-checks summary names a check that failed')
   }
 
   const { branch } = task
@@ -1084,12 +1100,10 @@ if (import.meta.main) {
     console.log(JSON.stringify(result))
     // The workflow uploads the pass on this exit code, never on anything the tests could write.
     process.exitCode = result.failsWithout && result.passesWith ? 0 : 1
-  } else if (positionals[0] === 'stage' && values.fp) {
-    await stage(runCommand, values.out, (await planTask(values.out, values.fp)).task)
-  } else if (positionals[0] === 'checks' && values.fp) {
-    const { task } = await planTask(values.out, values.fp)
-    const failed = await runPrChecks({
-      ticket: task.identifier ?? task.fp,
+  } else if (positionals[0] === 'gate' && values.fp) {
+    const failed = await runGate({
+      outDir: values.out,
+      fp: values.fp,
       user: Bun.env.QA_TEST_USER,
       summary: Bun.env.GITHUB_STEP_SUMMARY,
     })
@@ -1098,7 +1112,7 @@ if (import.meta.main) {
   } else {
     throw new Error(
       'usage: fix.ts route --out DIR [--live] | fix.ts publish --out DIR --fp FP [--live] | ' +
-        'fix.ts tests|stage|checks --out DIR --fp FP',
+        'fix.ts tests|gate --out DIR --fp FP',
     )
   }
 }

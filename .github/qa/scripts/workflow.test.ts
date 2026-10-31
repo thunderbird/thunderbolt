@@ -390,7 +390,7 @@ describe('fix job', () => {
       expect(passed).toMatchObject({ exitCode: 0, output: 'passes=true\n' })
       const [mktemp, run] = passed.sudo.trim().split('\n')
       expect(mktemp).toBe('-n -u qa-test mktemp -d')
-      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 10m env PATH=')
+      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 5m env PATH=')
       expect(run).toContain('bunx playwright test')
       expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts$/)
     })
@@ -694,6 +694,22 @@ describe('passes', () => {
   })
 })
 
+/** The `usable` output of a job's step that decides whether there is a patch to check. */
+const usable = (job: string, name: string, files: Record<string, string>, visualWeb = false) => {
+  const dir = mkdtempSync(join(work, 'tree-'))
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(dir, path, '..'), { recursive: true })
+    writeFileSync(join(dir, path), text)
+  }
+  const output = join(dir, 'output')
+  const proc = Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, QA_FP: 'fp1', VISUAL_WEB: String(visualWeb), GITHUB_OUTPUT: output },
+  })
+  expect(proc.exitCode).toBe(0)
+  return readFileSync(output, 'utf8')
+}
+
 describe('verify-tests', () => {
   test('holds no secret, no environment and no write permission, and starts from a fresh checkout', () => {
     const job = jobs['verify-tests']
@@ -728,6 +744,25 @@ describe('verify-tests', () => {
     expect(at("Take root away from the job's user")).toBeLessThan(at(check))
     expect(at(check)).toBeLessThan(at('Stop every process of the test user'))
     expect(step('verify-tests', 'Stop every process of the test user').if).toBe('always()')
+  })
+
+  // An agent that gave up is a normal outcome: a red check step would put an error annotation on every such ticket.
+  // The pass upload rests on the tests step's outcome, so a skipped step gives no pass and publish hands the ticket
+  // to a person.
+  test('skips the tests, without failing, when the agent gave up or left no patch', () => {
+    const patch = 'qa-out/fix/fp1.patch'
+    const found = 'Check that there is a patch to test'
+    const text = 'diff --git a/src/a.ts b/src/a.ts\n'
+    expect(usable('verify-tests', found, { [patch]: text })).toBe('usable=true\n')
+    expect(usable('verify-tests', found, {})).toBe('usable=false\n')
+    expect(usable('verify-tests', found, { [patch]: '' })).toBe('usable=false\n')
+    expect(usable('verify-tests', found, { [patch]: text, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe(
+      'usable=false\n',
+    )
+    const tests = step('verify-tests', "Check that the patch's tests fail without the fix and pass with it")
+    expect(tests.if).toBe("steps.patch.outputs.usable == 'true'")
+    expect(step('verify-tests', found).id).toBe('patch')
+    expect(indexOf('verify-tests', found)).toBeLessThan(indexOf('verify-tests', "Take root away from the job's user"))
   })
 
   /** Runs the stop step with stand-ins for pgrep and sudo: the user's processes are gone after `survives` kills. */
@@ -828,38 +863,20 @@ describe('verify-checks', () => {
     expect(step('verify-checks', lock).run).toBe('.github/qa/scripts/stack.sh lock')
   })
 
-  /** The `usable` output of the step that decides whether there is a tree to gate. */
-  const usable = (files: Record<string, string>, visualWeb = false) => {
-    const dir = mkdtempSync(join(work, 'tree-'))
-    for (const [path, text] of Object.entries(files)) {
-      mkdirSync(join(dir, path, '..'), { recursive: true })
-      writeFileSync(join(dir, path), text)
-    }
-    const output = join(dir, 'output')
-    const proc = Bun.spawnSync(
-      ['bash', '-e', '-c', step('verify-checks', 'Check that there is a tree to gate').run ?? ''],
-      {
-        cwd: dir,
-        env: { PATH: process.env.PATH, QA_FP: 'fp1', VISUAL_WEB: String(visualWeb), GITHUB_OUTPUT: output },
-      },
-    )
-    expect(proc.exitCode).toBe(0)
-    return readFileSync(output, 'utf8')
-  }
-
   // publish hands these tickets to a person before it reads the pass, and a failed step would page for an agent that
   // only gave up.
   test('skips the gate, without failing, when there is no patch to check', () => {
     const patch = { 'qa-out/fix/fp1.patch': 'diff --git a/src/a.ts b/src/a.ts\n' }
-    expect(usable(patch)).toBe('usable=true\n')
-    expect(usable({})).toBe('usable=false\n')
-    expect(usable({ 'qa-out/fix/fp1.patch': '' })).toBe('usable=false\n')
-    expect(usable({ ...patch, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe('usable=false\n')
-    expect(usable(patch, true)).toBe('usable=false\n')
-    expect(usable({ ...patch, 'qa-out/fix-fp1/repro/check.spec.ts': 'test' }, true)).toBe('usable=true\n')
-    expect(step('verify-checks', 'Check that there is a tree to gate').env?.VISUAL_WEB).toBe(
-      "${{ matrix.task.kind == 'visual' && !matrix.task.flow }}",
+    const tree = 'Check that there is a tree to gate'
+    expect(usable('verify-checks', tree, patch)).toBe('usable=true\n')
+    expect(usable('verify-checks', tree, {})).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { 'qa-out/fix/fp1.patch': '' })).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { ...patch, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, patch, true)).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { ...patch, 'qa-out/fix-fp1/repro/check.spec.ts': 'test' }, true)).toBe(
+      'usable=true\n',
     )
+    expect(step('verify-checks', tree).env?.VISUAL_WEB).toBe("${{ matrix.task.kind == 'visual' && !matrix.task.flow }}")
   })
 
   test("the catalog check runs on ci.yml's Node, since Lingui's CLI needs 22.19 or later", () => {

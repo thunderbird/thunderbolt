@@ -1319,7 +1319,7 @@ jobs:
           browsers="$HOME/.cache/ms-playwright"
           # The output dir is the test user's own: qa-out/replay belongs to the job's user.
           if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
-            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 10m \
+            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 5m \
               env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
               bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
               --output "$out" "$SPEC"; then
@@ -1453,10 +1453,10 @@ jobs:
           /bin/mkdir -p "$RUNNER_TEMP/qa-status"
           /usr/bin/jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
             > "$RUNNER_TEMP/qa-status/$QA_FP.json"
-      # Uploaded whenever the key scan passed, as the fix output is, so publish's download never misses in a normal
-      # run. Outside qa-out/, so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's
-      # checks or publish read carry the run attempt: one artifact list spans every attempt of the run, and a
-      # download by name takes the latest, so an attempt that uploaded none would get an earlier attempt's.
+      # Uploaded whenever the key scan passed, so publish's download never misses in a normal run. Outside qa-out/,
+      # so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's checks or publish read
+      # carry the run attempt: one artifact list spans every attempt of the run, and a download by name takes the
+      # latest, so an attempt that uploaded none would get an earlier attempt's.
       - if: always() && steps.key-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1867,10 +1867,19 @@ jobs:
           path: qa-out
       # Needs root, so before the lock (see the fix job).
       - *test-user
+      # An agent that gave up, or left no patch, has no tests to run. Publish hands the ticket to a person when the
+      # pass is missing, so a skipped step is the right outcome and not a red one.
+      - name: Check that there is a patch to test
+        id: patch
+        run: |
+          usable=true
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then usable=false; fi
+          echo "usable=$usable" >> "$GITHUB_OUTPUT"
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
       - name: Check that the patch's tests fail without the fix and pass with it
         id: tests
+        if: steps.patch.outputs.usable == 'true'
         continue-on-error: true
         run: bun .github/qa/scripts/fix.ts tests --out qa-out --fp "$QA_FP"
       # A process a test left behind would otherwise outlive the check.

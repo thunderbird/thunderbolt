@@ -278,7 +278,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    matches the whole line, so a line about another control of the same role never confirms the finding. Two
    controls with the same icon and no text between them still share one line, and a quote taken from text that
    changes between runs (an email the run typed, the end of an AI reply) cannot replay. An `unnamed-control`
-   finding takes its screen's area severity, as `covered` does, and an onboarding flow that stops on it gets no
+   finding takes its owning feature's area severity, as `covered` does, and an onboarding flow that stops on it gets no
    privacy step from replay, since its quote is not text the screen shows. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
@@ -439,7 +439,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    pass, all in one process. `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`,
    through `sudo --user`, with only `PATH` from the job's environment), so a test cannot write the checkout either.
    A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
-   start, or that writes into the checkout: the ticket then goes to a person. A native task keeps its Maestro check
+   start, or that writes into the checkout: the ticket then goes to a person. When the agent gave up or left no
+   patch, the job skips the check, so it shows no error and uploads no pass. A native task keeps its Maestro check
    instead. Any check a task needs that did not succeed (failed, skipped or cancelled) uploads no pass (see
    "Passes"), and the fix job's own checks also leave a diagnosis that says why. A fix job that stopped before the
    fix session began diagnosed nothing. Either a step before the fix step failed (its outcome is `skipped`, and

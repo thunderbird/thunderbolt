@@ -268,13 +268,47 @@ describe('fix job', () => {
 
   test('the agent gets the Skill tool for simplify only, no agent tools and still no git', () => {
     const args = step('fix', 'Fix').with?.claude_args ?? ''
-    const flagValue = (flag: string) => args.match(new RegExp(`${flag} "([^"]*)"`))?.[1] ?? ''
-    expect(flagValue('--tools').split(',')).toEqual(['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'Skill'])
-    // A bare `Skill` rule would allow every bundled skill, among them ones that change settings.
-    expect(flagValue('--allowedTools').match(/(?<![\w.])Skill\b\(?[^,)]*\)?/g)).toEqual(['Skill(simplify)'])
+    const flagValues = (flag: string) => [...args.matchAll(new RegExp(`${flag} "([^"]*)"`, 'g'))].map((m) => m[1])
+    expect(flagValues('--tools').join(',').split(',')).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'Edit',
+      'Write',
+      'Bash',
+      'Skill',
+    ])
+    const allowed = flagValues('--allowedTools').join(',')
+    expect(allowed.match(/(?<![\w.])Skill\b\(?[^,)]*\)?/g)).toEqual(['Skill(simplify)'])
+    expect(allowed).not.toContain('Bash(git')
     expect(args).not.toMatch(/(?<![\w.])(Agent|Task)\b/)
     expect(args).toContain('--disallowedTools "Bash(git:*)"')
-    expect(flagValue('--allowedTools')).not.toContain('Bash(git')
+  })
+
+  test('every bundled skill but simplify is denied by name, since the CLI loads some with no rule', () => {
+    const args = step('fix', 'Fix').with?.claude_args ?? ''
+    const denied = [...args.matchAll(/"Skill\(([^)]+)\)"/g)].map((m) => m[1])
+    expect(denied.sort()).toEqual([
+      'batch',
+      'claude-api',
+      'code-review',
+      'dataviz',
+      'debug',
+      'deep-research',
+      'design',
+      'design-sync',
+      'doctor',
+      'fewer-permission-prompts',
+      'loop',
+      'run',
+      'run-skill-generator',
+      'update-config',
+      'verify',
+      'workflow-authoring',
+    ])
+    // A deny outranks the allow, so denying simplify itself would lock it out.
+    expect(denied).not.toContain('simplify')
+    expect(args).not.toContain('"Skill"')
   })
 
   const collect = (env: Record<string, string>) => {

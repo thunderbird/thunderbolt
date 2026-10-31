@@ -1390,6 +1390,10 @@ jobs:
               "Edit(**/.cargo/config*)" "Edit(**/rust-toolchain*)" "Edit(**/.npmrc)" "Edit(**/.nvmrc)"
               "Edit(**/.tool-versions)" "Edit(**/package-lock.json)" "Edit(**/npm-shrinkwrap.json)" "Edit(**/yarn.lock)"
               "Edit(**/pnpm-lock.yaml)" "Edit(**/.lintstagedrc*)" "Edit(**/lint-staged.config.*)"
+              "Skill(batch)" "Skill(claude-api)" "Skill(code-review)" "Skill(dataviz)" "Skill(debug)"
+              "Skill(deep-research)" "Skill(design)" "Skill(design-sync)" "Skill(doctor)"
+              "Skill(fewer-permission-prompts)" "Skill(loop)" "Skill(run)" "Skill(run-skill-generator)"
+              "Skill(update-config)" "Skill(verify)" "Skill(workflow-authoring)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
 

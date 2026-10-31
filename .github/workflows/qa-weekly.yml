@@ -10,6 +10,9 @@ name: QA weekly
 # they run before any untrusted code; every other job only restores them, and setup-bun's own cache is off because
 # its save runs after the job's steps. The jobs that check a fix's patch hold no secret, except verify-real, whose
 # provider keys go to a backend from a fresh checkout that never ran the patch.
+#
+# Linux jobs are pinned to ubuntu-24.04, not ubuntu-latest: the stack relies on that image's AppArmor sysctl, KVM
+# and emulator libraries, Playwright dependencies and qa-dev user. Moving to a newer image is a deliberate change.
 
 on:
   schedule:
@@ -70,7 +73,7 @@ env:
 jobs:
   build:
     if: vars.QA_AGENT_ENABLED == 'true' && !inputs.app_check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       # Looks up the run a fix-only run fixes from.
@@ -266,7 +269,7 @@ jobs:
     needs: build
     # A dispatch of native sessions only plans no web leg, and an empty matrix is an error.
     if: needs.build.outputs.legs != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
     environment: qa-agent
     permissions:
@@ -523,7 +526,7 @@ jobs:
   cache-system-image:
     needs: build
     if: contains(needs.build.outputs.nativeBuilds, 'android')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -533,7 +536,7 @@ jobs:
         id: system-image
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The image native.sh installs, where ubuntu-latest keeps the SDK.
+          # The image native.sh installs, where ubuntu-24.04 keeps the SDK.
           path: &system-image-path /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
           key: &system-image-key qa-system-image-${{ runner.os }}-${{ runner.arch }}-android-36-google_apis-x86_64
           lookup-only: true
@@ -864,7 +867,7 @@ jobs:
     name: replay ${{ matrix.leg.name }}
     needs: [build, explore]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.verify != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Runs model-written specs: only real-AI legs have an environment, for keys the start step hands to another
     # user's backend.
@@ -1037,7 +1040,7 @@ jobs:
     name: judge ${{ matrix.leg.name }}
     needs: [build, replay, replay-native]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.build.outputs.judge != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: qa-agent
     permissions:
@@ -1123,16 +1126,19 @@ jobs:
     if: >-
       ${{ !cancelled() && needs.build.result == 'success' &&
       (needs.build.outputs.judge != '[]' || inputs.fix_from_run != '') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: qa-agent
     permissions:
       # Reads the artifacts of the run a fix-only run fixes from.
       actions: read
       contents: read
+      # Route lists the open PRs: a ticket with one already waits.
+      pull-requests: read
     outputs:
       plan: ${{ steps.route.outputs.plan }}
       real: ${{ steps.route.outputs.real }}
+      tests: ${{ steps.route.outputs.tests }}
     env:
       QA_OUT: qa-out
     steps:
@@ -1192,15 +1198,21 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+      # Route only reads Linear: each ticket's branch name and state.
       - name: Route fixable tickets
         id: route
         if: needs.build.outputs.autofix == 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
           {
             echo "plan=$(jq --compact-output . qa-out/fix-plan.json)"
             # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
             echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
+            # Web tasks, whose patch must carry a unit test that verify-tests sees fail without the fix.
+            echo "tests=$(jq --compact-output '[.fixes[] | select(.flow == null)]' qa-out/fix-plan.json)"
           } >> "$GITHUB_OUTPUT"
       # Also when filing failed: filed.json then lists the tickets that did reach Linear and the attachments lost.
       - if: always()
@@ -1217,7 +1229,7 @@ jobs:
     name: fix ${{ matrix.task.fp }}
     needs: [build, file]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90 # outer bound: the fix step's own cap plus setup
     environment: qa-agent
     permissions:
@@ -1229,6 +1241,8 @@ jobs:
     env:
       QA_OUT: qa-out
       QA_FP: ${{ matrix.task.fp }}
+      # The repro check before the session runs as this user.
+      QA_TEST_USER: qa-test
     steps:
       - *checkout
       - *setup-bun
@@ -1268,8 +1282,70 @@ jobs:
             exit 1
           fi
           for port in 8005 1424 1425; do grep -q ":$port " <<< "$listeners"; done
+      # Needs root, so before the lock. The job's user may then run anything as the test user and nothing as root;
+      # the rule sorts after zz-qa-lock, and in sudoers the last matching rule wins.
+      - &test-user
+        name: Create the user the tests run as
+        run: |
+          sudo useradd --create-home "$QA_TEST_USER"
+          # Lets that user reach bun and the checkout without listing this user's home.
+          sudo chmod o+x "$HOME"
+          sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests"
+          # Fails the job here when that user cannot run bun or read the checkout, rather than every test later.
+          sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version
+          sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json" > /dev/null
+          sudo -n -u "$QA_TEST_USER" ls "$PWD/node_modules/.bin" > /dev/null
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
+
+      # A passed check uploads this file as `qa-pass-<fp>-<check>-<run attempt>`, under an `if:` on the check step's
+      # outcome, which the runner keeps and no process of the job can change. Publish reads only the artifact's name,
+      # so code that rewrites this file changes nothing, and code that deletes it only loses its own pass.
+      - &pass-marker
+        name: Write the file a passed check uploads
+        run: echo "A passed check. The artifact's name says which." > "$RUNNER_TEMP/qa-pass.txt"
+
+      # In a fix-only run, a fake-AI web repro that passes all three times on this commit means another change fixed
+      # the bug, so no session runs and publish only comments on the ticket. A weekly run's replay has just reproduced
+      # the bug on this commit, so a pass on the dev stack there would only mean dev and build differ. The spec is
+      # model-written, so it runs as the test user, which cannot read the key Fix later holds, and the stop below
+      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs.
+      - name: Replay the spec before the fix
+        id: unpatched
+        if: inputs.fix_from_run && matrix.task.spec && !matrix.task.real
+        env:
+          SPEC: ${{ matrix.task.spec }}
+        run: |
+          browsers="$HOME/.cache/ms-playwright"
+          # The output dir is the test user's own: qa-out/replay belongs to the job's user.
+          if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
+            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 5m \
+              env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
+              bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
+              --output "$out" "$SPEC"; then
+            echo "passes=true" >> "$GITHUB_OUTPUT"
+          fi
+      # A process the spec left behind would otherwise outlive the check. SIGKILL, which a test cannot catch, again
+      # until none is left, so a process that forks in between is caught too. One that survives fails the job here,
+      # before Fix, and its ticket waits for a later run.
+      - &stop-test-user
+        name: Stop every process of the test user
+        id: stop-tests
+        if: always()
+        run: |
+          for _ in $(seq 50); do
+            pgrep -u "$QA_TEST_USER" > /dev/null || exit 0
+            sudo -n -u "$QA_TEST_USER" /usr/bin/kill -KILL -1 || true
+            sleep 0.2
+          done
+          echo "processes of $QA_TEST_USER still run" >&2
+          exit 1
+      - if: steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-unpatched-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
 
       - name: Build the prompt
         id: prompt
@@ -1288,6 +1364,7 @@ jobs:
       # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
       - name: Fix
         id: fix
+        if: steps.unpatched.outputs.passes != 'true'
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
         env:
@@ -1302,8 +1379,8 @@ jobs:
             --model claude-opus-5-5
             --setting-sources user
             --permission-mode dontAsk
-            --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
+            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
               "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/tsconfig*.json)"
               "Edit(**/.husky/**)" "Edit(**/package.json)" "Edit(**/bun.lock)" "Edit(**/bun.lockb)" "Edit(**/Cargo.toml)"
@@ -1313,6 +1390,10 @@ jobs:
               "Edit(**/.cargo/config*)" "Edit(**/rust-toolchain*)" "Edit(**/.npmrc)" "Edit(**/.nvmrc)"
               "Edit(**/.tool-versions)" "Edit(**/package-lock.json)" "Edit(**/npm-shrinkwrap.json)" "Edit(**/yarn.lock)"
               "Edit(**/pnpm-lock.yaml)" "Edit(**/.lintstagedrc*)" "Edit(**/lint-staged.config.*)"
+              "Skill(batch)" "Skill(claude-api)" "Skill(code-review)" "Skill(dataviz)" "Skill(debug)"
+              "Skill(deep-research)" "Skill(design)" "Skill(design-sync)" "Skill(doctor)"
+              "Skill(fewer-permission-prompts)" "Skill(loop)" "Skill(run)" "Skill(run-skill-generator)"
+              "Skill(update-config)" "Skill(verify)" "Skill(workflow-authoring)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
 
@@ -1337,6 +1418,53 @@ jobs:
             exit 1
           fi
 
+      # Publish leaves the ticket untouched when the session never began: a step before Fix failed, or Fix failed
+      # before the model first answered (the action's setup, the CLI install, a refused first request). A step
+      # timeout counts as begun: the step ran for its whole cap, though the action had no chance to write its
+      # execution file. An action killed another way (the job's own timeout, a lost process) also leaves no file and
+      # reads as never begun, so its ticket waits for a later run; it never becomes a PR. A repro that already passed
+      # skipped the session on purpose. Recorded and uploaded before any code the agent wrote runs outside its
+      # sandbox, with the key scan's cleared variables and absolute paths.
+      - name: Record whether the fix session began
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          ALREADY_PASSES: ${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}
+          FIX_OUTCOME: ${{ steps.fix.outcome }}
+          START: ${{ steps.prompt.outputs.start }}
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          stopped=null
+          elapsed=$(( $(/bin/date +%s) - START ))
+          if [ "$ALREADY_PASSES" = true ]; then
+            stopped='"already-passes"'
+          elif [ "$FIX_OUTCOME" = skipped ]; then
+            stopped='"setup-failed"'
+          elif [ "$FIX_OUTCOME" != success ] && [ "$elapsed" -lt $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ] &&
+            { [ ! -e "$EXECUTION_FILE" ] ||
+              /usr/bin/jq -e 'all(.[]; .type != "assistant" or .error != null)' "$EXECUTION_FILE" > /dev/null; }; then
+            stopped='"no-model-answer"'
+          fi
+          /bin/mkdir -p "$RUNNER_TEMP/qa-status"
+          /usr/bin/jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
+            > "$RUNNER_TEMP/qa-status/$QA_FP.json"
+      # Uploaded whenever the key scan passed, so publish's download never misses in a normal run. Outside qa-out/,
+      # so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's checks or publish read
+      # carry the run attempt: one artifact list spans every attempt of the run, and a download by name takes the
+      # latest, so an attempt that uploaded none would get an earlier attempt's.
+      - if: always() && steps.key-scan.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-status-${{ matrix.task.fp }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-status/
+          if-no-files-found: error
+          retention-days: 7
+
       # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
       - name: Download the original spec
         if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
@@ -1353,30 +1481,21 @@ jobs:
           SPEC: ${{ matrix.task.spec }}
         run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
 
-      # verify.json is deleted first and written here only, so publish never reads the agent's copy.
+      # Succeeds only when the check passes all three times. The baseline below runs only after it.
       - name: Run the visual check on the patched tree
         id: visual-with
         if: steps.fix.outcome == 'success' && matrix.task.kind == 'visual' && !matrix.task.flow
-        run: |
-          rm -f "qa-out/fix/$QA_FP.verify.json"
-          passed=0
-          for _ in 1 2 3; do
-            if bunx playwright test --config .github/qa/playwright.config.ts --retries=0 "qa-out/fix-$QA_FP/repro/check.spec.ts"; then
-              passed=$((passed + 1))
-            fi
-          done
-          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out/fix-$QA_FP/repro/check.spec.ts"
 
       - *stop-stack
 
+      # Succeeds only when the check fails all three times on the builds without the patch.
       - name: Run the visual check without the patch
         id: visual
-        if: steps.fix.outcome == 'success' && matrix.task.kind == 'visual' && !matrix.task.flow
-        env:
-          WITH: ${{ steps.visual-with.outputs.passed }}
+        if: steps.visual-with.outcome == 'success'
+        continue-on-error: true
         run: |
-          mkdir -p qa-out/fix
-          rm -f "qa-out/fix/$QA_FP.verify.json"
           # The backend serves from the working tree, so the patch is stashed (ignored qa-out*/ and qa-dist*/ stay).
           # The trap restores it for "Collect the patch", also after a failure, and pops only a stash this step made.
           stash=$(git rev-parse --quiet --verify refs/stash || true)
@@ -1391,8 +1510,7 @@ jobs:
             fi
           done
           .github/qa/scripts/stack.sh stop
-          jq --null-input --argjson without "$passed" --argjson with "$WITH" \
-            '{failsWithout: ($without == 0), passesWith: ($with == 3)}' > "qa-out/fix/$QA_FP.verify.json"
+          [ "$passed" -eq 0 ]
 
       # verify-real serves this build from a fresh checkout: the provider keys must never enter this job, whose
       # tree and tools the agent's commands could have changed.
@@ -1418,14 +1536,13 @@ jobs:
           mkdir -p qa-out/fix
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
           diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
-          # When the step never started, the infra artifact tells publish to leave the ticket alone. Without it
-          # (its upload failed) this diagnosis stands.
+          # When the session never began, the fix status tells publish to leave the ticket alone instead.
           if [ "$FIX_OUTCOME" != success ]; then
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
           elif [ -n "$NEEDS_VISUAL" ] && [ "$VISUAL" != success ]; then
-            diagnose "The visual check did not run without and with the patch (step outcome: ${VISUAL:-none})"
+            diagnose "The visual check did not pass three times with the patch and fail three times without it (baseline step outcome: ${VISUAL:-none})"
           elif [ -n "$NEEDS_REAL_BUILD" ] && [ "$REAL_BUILD" != success ]; then
             diagnose "The patched frontend for the real-AI check did not build (step outcome: ${REAL_BUILD:-none})"
           fi
@@ -1465,21 +1582,48 @@ jobs:
             echo "::error::The fix output contains a secret, so nothing is uploaded."
             exit 1
           fi
-      # Carries verify.json, which verify-native and publish read. The artifact's root is qa-out/.
+      # The patch and the agent's checks, for verify-native-build, verify-tests, verify-checks and publish. The
+      # artifact's root is qa-out/. Everything in it could have been rewritten by code the agent wrote, so no verdict
+      # travels in it.
       - if: always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-fix-${{ matrix.task.fp }}
+          name: qa-fix-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: |
             qa-out/fix/
             qa-out/fix-${{ matrix.task.fp }}/repro/*
+          retention-days: 7
+      # The passes of this job's checks (see the marker above).
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          steps.fix.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-session-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-replay-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          steps.visual.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-visual-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
       - if: >-
           always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
           matrix.task.real && matrix.task.spec
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-fix-dist-${{ matrix.task.fp }}
+          name: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-dist-fix/
           if-no-files-found: ignore
           retention-days: 1
@@ -1489,20 +1633,6 @@ jobs:
           name: qa-fix-session-${{ matrix.task.fp }}
           path: qa-out/fix-*/session.json
           retention-days: 7
-      # A skipped Fix step means no agent code ran in this job, so only these two steps can say so, in an artifact
-      # of their own that publish trusts and the agent's qa-fix artifact cannot carry.
-      - name: Record that the fix agent never started
-        if: always() && steps.fix.outcome == 'skipped'
-        run: |
-          mkdir -p "$RUNNER_TEMP/qa-infra"
-          echo "The fix job stopped before the fix agent started, so the ticket is left unchanged for a later run." \
-            > "$RUNNER_TEMP/qa-infra/$QA_FP.infrastructure.md"
-      - if: always() && steps.key-scan.outcome == 'success' && steps.fix.outcome == 'skipped'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qa-fix-infra-${{ matrix.task.fp }}
-          path: ${{ runner.temp }}/qa-infra/
-          retention-days: 7
 
   # A native fix's patch runs here, so the job holds no secret; the verdict comes from verify-native-run, on a fresh
   # checkout the patch never ran in.
@@ -1510,7 +1640,7 @@ jobs:
     name: verify-native-build ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, file, fix]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
-    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -1529,9 +1659,11 @@ jobs:
       - *install
       - *setup-java
       - *native-build-tools
+      # This attempt's fix output only, by pattern: when the fix job ran in an earlier attempt there is none, the
+      # build step below finds no patch, and publish hands the ticket to a person.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-fix-${{ matrix.check.fp }}
+          pattern: qa-fix-${{ matrix.check.fp }}-${{ github.run_attempt }}
           path: qa-out
       - name: Build the app with the patch
         env:
@@ -1545,7 +1677,7 @@ jobs:
           tar -cf "$RUNNER_TEMP/qa-patched/app.tar" -C "$RUNNER_TEMP/qa-patched" "$QA_APP_FILE"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-patched/app.tar
           if-no-files-found: ignore
           retention-days: 1
@@ -1555,8 +1687,8 @@ jobs:
     name: verify-native-run ${{ matrix.check.fp }} ${{ matrix.check.platform }}
     needs: [build, build-native, file, verify-native-build]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).verifyNative[0] != null }}
-    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    runs-on: ${{ matrix.check.platform == 'ios' && 'macos-latest' || 'ubuntu-24.04' }}
+    timeout-minutes: 60 # an iOS onboarding check takes about 26 minutes; a retried or replaced run must still fit
     permissions:
       contents: read
     strategy:
@@ -1572,15 +1704,15 @@ jobs:
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
     steps:
+      # A pattern, since a fix that failed or gave up built no app: a missing name would fail with an error.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        id: patched
-        continue-on-error: true
         with:
-          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          pattern: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apps/patched
       # No app, no verdict: the device steps below skip themselves on this flag.
-      - if: steps.patched.outcome != 'success'
-        run: echo "QA_NO_DEVICE=true" >> "$GITHUB_ENV"
+      - name: Note a missing patched app
+        run: if [ ! -f "$RUNNER_TEMP/apps/patched/app.tar" ]; then echo "QA_NO_DEVICE=true" >> "$GITHUB_ENV"; fi
+      - *pass-marker
       - *checkout
       - *setup-bun
       - *restore-bun-linux
@@ -1588,30 +1720,33 @@ jobs:
       - *setup-java
       - *restore-system-image
       - *device-tools
-      - if: steps.patched.outcome == 'success' && matrix.check.unpatched
+      - if: env.QA_NO_DEVICE != 'true' && matrix.check.unpatched
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-native-${{ matrix.check.platform }}${{ startsWith(matrix.check.session, 'c1-first-run-') && '-onboarding' || '' }}
           path: ${{ runner.temp }}/apps/original
       - *unpack-apps
       # Downloaded after the fix artifact, so the files from before the fix agent ran win.
-      - if: steps.patched.outcome == 'success'
+      - if: env.QA_NO_DEVICE != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-fix-${{ matrix.check.fp }}
+          pattern: qa-fix-${{ matrix.check.fp }}-${{ github.run_attempt }}
           path: qa-out
       - *download-replay
-      - if: steps.patched.outcome == 'success'
+      - if: env.QA_NO_DEVICE != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-verified-weekly
           path: qa-out
       - *device
       - name: Start the stack
-        if: steps.patched.outcome == 'success'
+        if: env.QA_NO_DEVICE != 'true'
         run: .github/qa/scripts/stack.sh start native
+      # Exits non-zero when the patch fails the flow, so the pass below rests on this step's outcome.
       - name: Run the flow on the patched app
-        if: steps.patched.outcome == 'success'
+        id: run
+        if: env.QA_NO_DEVICE != 'true'
+        continue-on-error: true
         env:
           FLOW: ${{ matrix.check.flow }}
           SESSION: ${{ matrix.check.session }}
@@ -1619,12 +1754,19 @@ jobs:
         run: |
           .github/qa/scripts/native.sh verify-run "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/patched/$QA_APP_FILE" \
             "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"}
-      - if: always() && steps.patched.outcome == 'success'
+      # The verdict and the videos, for a person.
+      - if: always() && env.QA_NO_DEVICE != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-verify-${{ matrix.check.fp }}-${{ matrix.check.platform }}
           path: qa-out/verify/
           if-no-files-found: ignore
+          retention-days: 7
+      - if: always() && steps.run.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 
   # Isolated like the real replay leg: a fresh checkout's backend serves the frontend the fix job built, so the
@@ -1633,7 +1775,7 @@ jobs:
     name: verify-real ${{ matrix.task.fp }}
     needs: [build, file, fix]
     if: ${{ !cancelled() && needs.file.outputs.real != '' && fromJSON(needs.file.outputs.real)[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: qa-agent
     permissions:
@@ -1653,14 +1795,13 @@ jobs:
       - *restore-browsers
       - *install-browsers
       - *download-replay
+      # A pattern, since a fix that failed or gave up built no frontend: a missing name would fail with an error.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        id: dist
-        continue-on-error: true
         with:
-          name: qa-fix-dist-${{ matrix.task.fp }}
+          pattern: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-dist-fix
       - name: Start the stack on the real providers
-        if: steps.dist.outcome == 'success'
+        if: hashFiles('qa-dist-fix/**') != ''
         env:
           QA_REAL_PROVIDERS: 'true'
           QA_BACKEND_USER: qa-backend
@@ -1670,37 +1811,166 @@ jobs:
           EXA_API_KEY: ${{ secrets.QA_EXA_API_KEY }}
         run: .github/qa/scripts/stack.sh start qa-dist-fix
       - name: Take root away from the job's user
-        if: steps.dist.outcome == 'success'
+        if: hashFiles('qa-dist-fix/**') != ''
         run: .github/qa/scripts/stack.sh lock
       - name: Replay the spec on the patched frontend
         id: replay
-        if: steps.dist.outcome == 'success'
+        if: hashFiles('qa-dist-fix/**') != ''
         continue-on-error: true
         env:
           SPEC: ${{ matrix.task.spec }}
         run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"
-      - name: Record the result
-        if: always()
-        env:
-          PASSED: ${{ steps.replay.outcome == 'success' }}
-        run: |
-          mkdir -p qa-out/verify
-          jq --null-input --argjson passed "$PASSED" '{passed: $passed}' > "qa-out/verify/$QA_FP.real.json"
-      - if: always()
+      - *pass-marker
+      - if: always() && steps.replay.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-verify-${{ matrix.task.fp }}-real
-          path: qa-out/verify/
+          name: qa-pass-${{ matrix.task.fp }}-real-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+
+  # Runs the unit tests a web patch adds or changes, which the fix agent wrote, so the job holds no secret and no
+  # environment. They must fail on a fresh checkout with only the patch's test files and pass with the whole patch.
+  # The check step succeeds only when both went that way, and the pass is uploaded on its outcome. The tests run as
+  # another OS user: the job's own user holds, in every upload step, the token that uploads artifacts and writes the
+  # Actions cache, and a process of the same user could read it in /proc.
+  verify-tests:
+    name: verify-tests ${{ matrix.task.fp }}
+    needs: [build, file, fix]
+    if: ${{ !cancelled() && needs.file.outputs.tests != '' && fromJSON(needs.file.outputs.tests)[0] != null }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15 # the cold installs take a few minutes; a few test files run in seconds, twice
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.file.outputs.tests) }}
+    env:
+      QA_FP: ${{ matrix.task.fp }}
+      # fix.ts runs each `bun test` as this user and git as the job's user.
+      QA_TEST_USER: qa-test
+    steps:
+      - *pass-marker
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - &install-cli
+        name: Install the CLI's dependencies
+        run: cd cli && bun install --frozen-lockfile
+      # This attempt's fix output only, by pattern: when the fix job ran in an earlier attempt there is none, the
+      # check fails, and publish hands the ticket to a person.
+      - &download-fix
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: qa-fix-${{ matrix.task.fp }}-${{ github.run_attempt }}
+          path: qa-out
+      # Needs root, so before the lock (see the fix job).
+      - *test-user
+      # An agent that gave up, or left no patch, has no tests to run. Publish hands the ticket to a person when the
+      # pass is missing, so a skipped step is the right outcome and not a red one.
+      - name: Check that there is a patch to test
+        id: patch
+        run: |
+          usable=true
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then usable=false; fi
+          echo "usable=$usable" >> "$GITHUB_OUTPUT"
+      - name: Take root away from the job's user
+        run: .github/qa/scripts/stack.sh lock
+      - name: Check that the patch's tests fail without the fix and pass with it
+        id: tests
+        if: steps.patch.outputs.usable == 'true'
+        continue-on-error: true
+        run: bun .github/qa/scripts/fix.ts tests --out qa-out --fp "$QA_FP"
+      # A process a test left behind would otherwise outlive the check.
+      - *stop-test-user
+      - if: always() && steps.tests.outcome == 'success' && steps.stop-tests.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+
+  # The PR checks of ci.yml a fix can fail, on the tree publish would push (`stage` in fix.ts, which publish commits
+  # with). A job of its own rather than steps of verify-tests: it checks native tasks too, and it keeps the tree
+  # applied, where verify-tests applies and takes back parts of the patch on its checkout.
+  verify-checks:
+    name: verify-checks ${{ matrix.task.fp }}
+    needs: [build, file, fix]
+    if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40 # cold installs, then bun run check, the catalogs and the 5x suites of each touched tree
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.file.outputs.plan).fixes }}
+    env:
+      QA_FP: ${{ matrix.task.fp }}
+      # fix.ts runs each check as this user and git as the job's user.
+      QA_TEST_USER: qa-test
+    steps:
+      - *pass-marker
+      - *checkout
+      # Lingui's CLI runs under Node and needs 22.19 or later, as in ci.yml.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - *install-cli
+      # The original repro specs and the plan come after the fix output, so the pre-fix files win, as in publish.
+      - *download-fix
+      - *download-replay
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-filed
+          path: qa-out
+      - *test-user
+      # The license and catalog checks run git as the test user.
+      - name: Let the test user run git in the checkout
+        run: sudo -n -H -u "$QA_TEST_USER" git config --global --add safe.directory "$PWD"
+      # Nothing to gate when the agent gave up or left no patch, or a visual task has no check: publish hands those
+      # tickets to a person before it looks for this job's pass.
+      - name: Check that there is a tree to gate
+        id: tree
+        env:
+          VISUAL_WEB: ${{ matrix.task.kind == 'visual' && !matrix.task.flow }}
+        run: |
+          usable=true
+          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ] || [ ! -s "qa-out/fix/$QA_FP.patch" ]; then usable=false; fi
+          if [ "$VISUAL_WEB" = true ] && [ ! -e "qa-out/fix-$QA_FP/repro/check.spec.ts" ]; then usable=false; fi
+          echo "usable=$usable" >> "$GITHUB_OUTPUT"
+      # Before the patch lands: from here on no step loads a file of the patched tree as the job's user.
+      - name: Take root away from the job's user
+        run: .github/qa/scripts/stack.sh lock
+      # One process, loaded before it applies the patch, stages and commits the tree publish would push and runs the
+      # checks on it as the test user.
+      - name: Run the PR checks on the tree publish would push
+        id: checks
+        if: steps.tree.outputs.usable == 'true'
+        continue-on-error: true
+        run: bun .github/qa/scripts/fix.ts gate --out qa-out --fp "$QA_FP"
+      - *stop-test-user
+      - if: always() && steps.checks.outcome == 'success' && steps.stop-tests.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-checks-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 
   publish:
     name: publish ${{ matrix.task.fp }}
-    needs: [build, file, fix, verify-native-run, verify-real]
+    needs: [build, file, fix, verify-native-run, verify-real, verify-tests, verify-checks]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: qa-agent
     permissions:
+      # Lists the run's artifacts, whose names carry the checks' passes.
+      actions: read
       contents: read
     strategy:
       fail-fast: false
@@ -1717,54 +1987,31 @@ jobs:
       # install a pre-commit hook that runs formatters over the agent's patch.
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      # The original specs and the plan are downloaded after the fix output, so the pre-fix files win.
+      # The original specs and the plan are downloaded after the fix output, so the pre-fix files win. This attempt's
+      # fix output only, as publish needs this attempt's passes: by pattern, so a fix job that ran only in an earlier
+      # attempt, or whose secret scan failed, leaves no patch, and publish hands the ticket to a person.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-fix-${{ matrix.task.fp }}
+          pattern: qa-fix-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-out
-      # The agent's artifact may not carry this marker. Only the artifact of the step that records a skipped Fix
-      # step is trusted, and it is absent in every other run.
-      - name: Drop the marker the fix artifact carries
-        run: rm -f "qa-out/fix/$QA_FP.infrastructure.md"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        continue-on-error: true
         with:
-          name: qa-fix-infra-${{ matrix.task.fp }}
-          path: qa-out/fix
+          name: qa-fix-status-${{ matrix.task.fp }}-${{ github.run_attempt }}
+          path: qa-out/status
       - *download-replay
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-filed
           path: qa-out
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: qa-verify-${{ matrix.task.fp }}-*
-          path: qa-out/verify
-          merge-multiple: true
-      # checkPatch does not read these, so this step requires them; a missing verdict fails.
-      - name: Require the native and real-AI checks
+      # Every check's pass is an artifact `qa-pass-<fp>-<check>-<run attempt>`, which its job uploads only under an
+      # `if:` on the check step's outcome, and publish needs one of this attempt for every check the task needs. It
+      # reads the names alone: no file is read, and a download of a missing name would fail with an error annotation.
+      - name: List the run's artifacts
         env:
-          REAL: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
-          NATIVE_VISUAL: ${{ matrix.task.kind == 'visual' && matrix.task.flow && matrix.task.platform || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # The fix job's own diagnosis says why; no verify ran on a patch that was never meant to be published.
-          if [ -e "qa-out/fix/$QA_FP.diagnosis.md" ]; then exit 0; fi
-          fail() { echo "$1" >> "qa-out/fix/$QA_FP.diagnosis.md"; }
-          for platform in $(jq --raw-output --arg fp "$QA_FP" '.verifyNative[] | select(.fp == $fp) | .platform' qa-out/fix-plan.json); do
-            jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.$platform.json" > /dev/null 2>&1 ||
-              fail "The flow still fails on the native platform ($platform), so the patch is not published. That run used the patched app and the backend from before the patch."
-          done
-          if [ -n "$REAL" ]; then
-            jq --exit-status '.passed == true' "qa-out/verify/$QA_FP.real.json" > /dev/null 2>&1 ||
-              fail "The repro spec still fails on the real AI providers, so the patch is not published. That run used the patched frontend and the backend from before the patch."
-          fi
-          # A native visual check's result reaches checkPatch as verify.json, never the copy the agent could write.
-          if [ -n "$NATIVE_VISUAL" ]; then
-            rm -f "qa-out/fix/$QA_FP.verify.json"
-            if [ -f "qa-out/verify/$QA_FP.$NATIVE_VISUAL.json" ]; then
-              cp "qa-out/verify/$QA_FP.$NATIVE_VISUAL.json" "qa-out/fix/$QA_FP.verify.json"
-            fi
-          fi
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --jq '.artifacts[].name' > qa-out/artifacts.txt
 
       - name: Create the GitHub App token
         id: app-token
@@ -1794,18 +2041,11 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
-      - name: Say when a ticket was left for a later run
-        run: |
-          if [ ! -e "qa-out/fix/$QA_FP.infrastructure.md" ]; then exit 0; fi
-          ticket=$(jq --raw-output --arg fp "$QA_FP" '.fixes[] | select(.fp == $fp) | .identifier // $fp' qa-out/fix-plan.json)
-          echo "- $ticket: the fix job stopped before the fix agent started, so the ticket is left for a later run." \
-            >> "$GITHUB_STEP_SUMMARY"
-
   # By hand only, before the QA is enabled, so it has no kill switch. It mints the token publish would get, which
   # fails if the app lacks a requested permission, and writes nothing.
   app-check:
     if: github.event_name == 'workflow_dispatch' && inputs.app_check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: qa-agent
     permissions: {}
@@ -1839,9 +2079,11 @@ jobs:
       - verify-native-build
       - verify-native-run
       - verify-real
+      - verify-tests
+      - verify-checks
       - publish
     if: ${{ always() && needs.build.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: qa-agent
     permissions:
@@ -1923,7 +2165,7 @@ jobs:
       matrix:
         target:
           - { platform: ios, runner: macos-latest }
-          - { platform: android, runner: ubuntu-latest }
+          - { platform: android, runner: ubuntu-24.04 }
     env:
       QA_PLATFORM: ${{ matrix.target.platform }}
       QA_APP_FILE: ${{ matrix.target.platform == 'ios' && 'Thunderbolt Dev.app' || 'app-debug.apk' }}
@@ -1987,6 +2229,8 @@ jobs:
       - verify-native-build
       - verify-native-run
       - verify-real
+      - verify-tests
+      - verify-checks
       - publish
       - report
       - native-control

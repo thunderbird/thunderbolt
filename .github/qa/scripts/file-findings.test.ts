@@ -250,73 +250,28 @@ describe('dedupe', () => {
   })
 })
 
-describe('cap and roll-up', () => {
-  test('files the 8 most severe, rolls the rest into one ticket', async () => {
-    await writeVerified([
-      ...numbered(9, { area: 'layout', oracle: { type: 'layout', evidence: 'wide' } }).map((f, i) => ({
-        ...f,
-        oracle: { type: 'layout', evidence: `wide ${'y'.repeat(i + 1)}` },
-      })),
-      { title: 'Urgent one' },
-    ])
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed[0]).toMatchObject({ severity: 'Urgent', action: 'created' })
-    expect(filed.filter((f) => f.action === 'created')).toHaveLength(8)
-    const rolled = filed.filter((f) => f.action === 'rolled-up')
-    expect(rolled).toHaveLength(2)
-    expect(new Set(rolled.map((f) => f.identifier)).size).toBe(1)
-    expect(created(api)).toHaveLength(9)
-  })
+describe('one ticket per finding, however many', () => {
+  const many = () => writeVerified([...numbered(9), ...numbered(4, { area: 'security' })])
 
-  test('a security finding over the cap still gets its own ticket, never the roll-up', async () => {
-    await writeVerified([
-      ...numbered(9),
-      { title: 'Leaky thing', area: 'security', oracle: { type: 'console-error', evidence: 'boom' } },
-    ])
+  test('a live run files every bug and every security finding as its own ticket', async () => {
+    await many()
     const api = fakeLinear()
     const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual([...Array(8).fill('created'), 'created', 'rolled-up'])
-    const [security, rollup] = created(api).slice(-2)
-    expect(security.title).toContain('Leaky thing')
-    expect(security.labelIds).toContain('l-Security')
-    expect(security.description).not.toContain(runUrl)
-    expect(rollup.title).toContain('1 more finding')
-    expect(rollup.description).not.toContain('Leaky thing')
-  })
-
-  test('security findings have their own cap of 3, then one security roll-up with fingerprints only', async () => {
-    await writeVerified(numbered(5, { area: 'security' }))
-    const api = fakeLinear()
-    const filed = await run(api.fetchFn)
-    expect(filed.map((f) => f.action)).toEqual(['created', 'created', 'created', 'rolled-up', 'rolled-up'])
+    expect(filed.map((f) => f.action)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
     const tickets = created(api)
-    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-Security'))).toBe(true)
-    const rollup = tickets[3]
-    expect(rollup.title).toBe('QA agent: 2 more security findings over the 3-ticket cap')
-    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-Security'])
-    expect(rollup.description).not.toContain(runUrl)
-    expect(rollup.description).not.toContain('Bug ')
-    expect(rollup.description).toContain(`[qa:${filed[3].fp}] High`)
+    expect(tickets.map((t) => t.title)).toEqual(filed.map((f) => expect.stringContaining(`[qa:${f.fp}]`)))
+    expect(tickets.filter((t) => t.labelIds.includes('l-Security'))).toHaveLength(4)
+    expect(new Set(filed.map((f) => f.identifier)).size).toBe(13)
   })
 
-  test('a dry-run security roll-up leaves no finding text in the log or filed.json', async () => {
-    await writeVerified(numbered(4, { area: 'security' }))
+  test('a dry run would file every bug and every security finding as its own ticket', async () => {
+    await many()
     const lines: string[] = []
     const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual(['created', 'created', 'created', 'rolled-up'])
-    const written = lines.join('\n') + (await readFile(join(outDir, 'filed.json'), 'utf8'))
-    expect(written).not.toContain('Bug ')
-    expect(written).not.toContain('Distinct failure')
-  })
-
-  test('a dry run over the cap logs the roll-up without any finding text', async () => {
-    await writeVerified(numbered(9))
-    const lines: string[] = []
-    const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
-    expect(filed.map((f) => f.would)).toEqual([...Array(8).fill('created'), 'rolled-up'])
-    expect(lines.at(-1)).toBe('[dry run] would create the roll-up "QA agent: 1 more finding over the 8-ticket cap"')
-    expect(lines.join('\n')).not.toContain('Bug ')
+    expect(filed.map((f) => f.would)).toEqual(Array(13).fill('created'))
+    expect(new Set(filed.map((f) => f.fp)).size).toBe(13)
+    expect(lines).toEqual(filed.map((f) => `[dry run] would created ${f.fp} (${f.severity})`))
   })
 })
 
@@ -607,18 +562,6 @@ describe('Linear failures', () => {
     expect(lines.join('\n')).toContain('Linear CreateIssue HTTP 200 GraphQL errors: Title is too long')
     const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
     expect(filed.map((f) => [f.action, f.identifier])).toEqual([['created', 'THB-2']])
-  })
-
-  test('a refused ticket takes no place under the cap, so the next bug still gets its own ticket', async () => {
-    await writeVerified(numbered(9))
-    let createsAnswered = 0
-    const api = fakeLinear({
-      fail: (op) =>
-        op === 'CreateIssue' && createsAnswered++ === 0 ? graphqlError('Title is too long', 200) : undefined,
-    })
-    await expect(run(api.fetchFn)).rejects.toThrow('Filing failed for 1')
-    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
-    expect(filed.map((f) => f.action)).toEqual(Array(8).fill('created'))
   })
 
   test("a refused security ticket logs only the status, never Linear's message quoting its text", async () => {

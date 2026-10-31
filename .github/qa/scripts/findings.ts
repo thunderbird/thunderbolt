@@ -10,7 +10,7 @@ import { z } from 'zod'
 import journeys from '../journeys.json'
 import platforms from '../platforms.json'
 
-const areas = [
+export const areas = [
   'chat',
   'settings',
   'skills',

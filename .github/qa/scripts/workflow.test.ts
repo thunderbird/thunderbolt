@@ -8,6 +8,8 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import platforms from '../platforms.json'
+import { prChecks } from './fix'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -39,9 +41,12 @@ type Job = {
   environment?: string
   env?: Record<string, string>
   with?: Record<string, string>
+  'runs-on'?: string
+  strategy?: unknown
 }
 
 const workflow = join(import.meta.dir, '../../workflows/qa-weekly.yml')
+const ciWorkflow = join(import.meta.dir, '../../workflows/ci.yml')
 const { jobs } = Bun.YAML.parse(readFileSync(workflow, 'utf8')) as { jobs: Record<string, Job> }
 const work = mkdtempSync(join(tmpdir(), 'qa-workflow-'))
 afterAll(() => rmSync(work, { recursive: true, force: true }))
@@ -62,6 +67,41 @@ const mentions = (job: string, needle: string) =>
       .filter(([, value]) => JSON.stringify(value).includes(needle))
       .map(([key]) => `${label(s)}:${key}`),
   )
+
+describe('runner images', () => {
+  const linuxImage = 'ubuntu-24.04'
+  /**
+   * Every runner label a job can pick: a plain `runs-on`, the results of an `a && 'x' || 'y'` expression (not the
+   * literals it compares), and matrix `runner` fields.
+   */
+  const runnerLabels = (job: Job) => {
+    const runsOn = job['runs-on'] ?? ''
+    const fromRunsOn = runsOn.includes('${{')
+      ? [...runsOn.matchAll(/(?:&&|\|\|)\s*'([^']+)'/g)].map((m) => m[1])
+      : [runsOn]
+    const fromMatrix = [...JSON.stringify(job.strategy ?? {}).matchAll(/"runner":"([^"]+)"/g)].map((m) => m[1])
+    return [...fromRunsOn, ...fromMatrix].filter(Boolean)
+  }
+
+  test('every Linux job of the QA workflow runs on the image the stack was built for', () => {
+    const picks = Object.entries(jobs).flatMap(([job, spec]) => runnerLabels(spec).map((runner) => ({ job, runner })))
+    // The extraction must see the expression and matrix forms, or the check below passes on nothing.
+    expect(picks).toContainEqual({ job: 'verify-native-run', runner: linuxImage })
+    expect(picks).toContainEqual({ job: 'native-control', runner: linuxImage })
+    expect(picks.filter(({ runner }) => runner !== 'macos-latest' && runner !== linuxImage)).toEqual([])
+  })
+
+  test("CI's qa job runs on the same image, since it starts the same dev stack", () => {
+    const { jobs: ciJobs } = Bun.YAML.parse(readFileSync(ciWorkflow, 'utf8')) as { jobs: Record<string, Job> }
+    expect(runnerLabels(ciJobs.qa)).toEqual([linuxImage])
+  })
+
+  test('every Linux runner in platforms.json is that image', () => {
+    const runners = platforms.map((p) => p.runner)
+    expect(runners).toContain(linuxImage)
+    expect(runners.filter((runner) => runner !== 'macos-latest' && runner !== linuxImage)).toEqual([])
+  })
+})
 
 describe('secrets', () => {
   test('no run: text interpolates a secret', () => {
@@ -130,7 +170,11 @@ describe('secrets', () => {
     expect(keyScan).toContain('/usr/bin/grep -rqsF --exclude-dir=.git -- "$QA_KEY" .')
     expect(keyScan).not.toContain('node_modules')
     expect(step('fix', 'Fix').with?.claude_args).toContain('"Edit(.git/**)"')
-    const uploads = steps('fix').filter((s) => s.uses?.startsWith('actions/upload-artifact'))
+    // Before Fix nothing in the job has seen the key.
+    const uploads = steps('fix')
+      .slice(fix)
+      .filter((s) => s.uses?.startsWith('actions/upload-artifact'))
+    expect(uploads.length).toBeGreaterThan(0)
     for (const upload of uploads) expect(upload.if).toContain("steps.key-scan.outcome == 'success'")
   })
 })
@@ -162,6 +206,13 @@ test('filed.json is uploaded even when filing fails, so the report lists the tic
   expect(upload?.if).toBe('always()')
 })
 
+test("route gets the Linear key for each ticket's branch and state, and a token that lists the open PRs", () => {
+  expect(step('file', 'Route fixable tickets').env).toEqual({
+    LINEAR_API_KEY: '${{ secrets.LINEAR_API_KEY }}',
+    GH_TOKEN: '${{ github.token }}',
+  })
+})
+
 describe('fix job', () => {
   test('the dev servers run as another user, checked, and the job user loses root before the agent', () => {
     const start = indexOf('fix', 'Start the stack on the working tree')
@@ -170,16 +221,18 @@ describe('fix job', () => {
     const check = indexOf('fix', "Check that no dev server runs as the job's user")
     const lock = indexOf('fix', "Take root away from the job's user")
     expect(check).toBe(start + 1)
-    expect(lock).toBe(check + 1)
+    expect(lock).toBe(indexOf('fix', 'Create the user the tests run as') + 1)
     expect(lock).toBeLessThan(indexOf('fix', 'Fix'))
     expect(step('fix', "Check that no dev server runs as the job's user").run).toContain('ss -ltnpH')
-    // After the lock, sudo is only the narrow rule that signals the dev servers' user.
+    // After the lock, sudo only acts as another user: the narrow rule that signals the dev servers' user, and the
+    // test user of the repro check before the session.
     const sudo = steps('fix')
       .slice(lock + 1)
       .flatMap((s) => (s.run ?? '').split('\n').filter((line) => line.includes('sudo')))
-    expect(sudo.map((line) => line.trim())).toEqual([
-      'if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi',
-    ])
+    expect(sudo).toContainEqual(
+      expect.stringContaining('if pgrep -u "$user" > /dev/null; then sudo -n -u "$user" /usr/bin/kill -TERM -1; fi'),
+    )
+    for (const line of sudo) expect(line.replaceAll(/sudo -n -u "\$(user|QA_TEST_USER)"/g, '')).not.toContain('sudo')
   })
 
   test("a stop of another user's servers fails loudly when they keep running", () => {
@@ -213,6 +266,51 @@ describe('fix job', () => {
       expect(args).toContain(`"Edit(${rule})"`)
   })
 
+  test('the agent gets the Skill tool for simplify only, no agent tools and still no git', () => {
+    const args = step('fix', 'Fix').with?.claude_args ?? ''
+    const flagValues = (flag: string) => [...args.matchAll(new RegExp(`${flag} "([^"]*)"`, 'g'))].map((m) => m[1])
+    expect(flagValues('--tools').join(',').split(',')).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'Edit',
+      'Write',
+      'Bash',
+      'Skill',
+    ])
+    const allowed = flagValues('--allowedTools').join(',')
+    expect(allowed.match(/(?<![\w.])Skill\b\(?[^,)]*\)?/g)).toEqual(['Skill(simplify)'])
+    expect(allowed).not.toContain('Bash(git')
+    expect(args).not.toMatch(/(?<![\w.])(Agent|Task)\b/)
+    expect(args).toContain('--disallowedTools "Bash(git:*)"')
+  })
+
+  test('every bundled skill but simplify is denied by name, since the CLI loads some with no rule', () => {
+    const args = step('fix', 'Fix').with?.claude_args ?? ''
+    const denied = [...args.matchAll(/"Skill\(([^)]+)\)"/g)].map((m) => m[1])
+    expect(denied.sort()).toEqual([
+      'batch',
+      'claude-api',
+      'code-review',
+      'dataviz',
+      'debug',
+      'deep-research',
+      'design',
+      'design-sync',
+      'doctor',
+      'fewer-permission-prompts',
+      'loop',
+      'run',
+      'run-skill-generator',
+      'update-config',
+      'verify',
+      'workflow-authoring',
+    ])
+    // A deny outranks the allow, so denying simplify itself would lock it out.
+    expect(denied).not.toContain('simplify')
+    expect(args).not.toContain('"Skill"')
+  })
+
   const collect = (env: Record<string, string>) => {
     const dir = mkdtempSync(join(work, 'collect-'))
     const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])
@@ -233,12 +331,12 @@ describe('fix job', () => {
   test('a check the task needs that did not succeed always leaves a diagnosis', () => {
     for (const outcome of ['failure', 'skipped', 'cancelled', ''])
       expect(collect({ ...spec, REPLAY: outcome })).toContain('The repro spec did not pass')
-    expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not run')
+    expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not pass')
     expect(collect({ NEEDS_REAL_BUILD: 'true', REAL_BUILD: 'failure' })).toContain('did not build')
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
   })
 
-  test('a fix step that never started still leaves a diagnosis, which only the infra artifact overrides', () => {
+  test('a fix step that never started still leaves a diagnosis, which only the fix status overrides', () => {
     expect(collect({ ...spec, FIX_OUTCOME: 'skipped', REPLAY: 'skipped' })).toContain('step outcome: skipped')
   })
 
@@ -246,6 +344,80 @@ describe('fix job', () => {
     expect(collect({ ...spec, REPLAY: 'success' })).toBeUndefined()
     expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'success' })).toBeUndefined()
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
+  })
+
+  describe('the repro check before the session', () => {
+    const before = step('fix', 'Replay the spec before the fix')
+
+    test('runs only in a fix-only run, on the tasks and with the Playwright run of the replay after the fix', () => {
+      const after = step('fix', 'Replay the spec on the patched code')
+      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug.
+      expect(before.if).toBe('inputs.fix_from_run && matrix.task.spec && !matrix.task.real')
+      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real")
+      // Any failed run of the three fails it.
+      const command = /bunx playwright test [^"]*/.exec(after.run ?? '')?.[0] ?? '?'
+      expect(command).toContain('--repeat-each=3 --retries=0')
+      expect((before.run ?? '').replaceAll(/\\\n\s*/g, '')).toContain(command)
+      expect(before.id).toBe('unpatched')
+      expect(step('fix', 'Fix').if).toBe("steps.unpatched.outputs.passes != 'true'")
+    })
+
+    /** The step's output, exit code and sudo calls, with stand-ins for sudo, timeout and Playwright. */
+    const replay = ({ code = 0, browsers = true } = {}) => {
+      const dir = mkdtempSync(join(work, 'unpatched-'))
+      if (browsers) mkdirSync(join(dir, '.cache/ms-playwright'), { recursive: true })
+      writeFileSync(join(dir, 'sudo'), `#!/bin/sh\necho "$*" >> "${dir}/sudo.log"\nshift 3\nexec "$@"\n`, {
+        mode: 0o755,
+      })
+      writeFileSync(join(dir, 'timeout'), '#!/bin/sh\nshift 2\nexec "$@"\n', { mode: 0o755 })
+      writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nexit ${code}\n`, { mode: 0o755 })
+      const proc = Bun.spawnSync(['bash', '-e', '-c', before.run ?? ''], {
+        cwd: dir,
+        env: {
+          PATH: `${dir}:${process.env.PATH}`,
+          HOME: dir,
+          QA_TEST_USER: 'qa-test',
+          GITHUB_OUTPUT: join(dir, 'output'),
+          SPEC: 'qa-out/c2/repro/1.spec.ts',
+        },
+      })
+      const read = (name: string) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : '')
+      return { exitCode: proc.exitCode, output: read('output'), sudo: read('sudo.log') }
+    }
+
+    test('passes only when all three runs pass, as the test user, with an output dir of its own', () => {
+      const passed = replay()
+      expect(passed).toMatchObject({ exitCode: 0, output: 'passes=true\n' })
+      const [mktemp, run] = passed.sudo.trim().split('\n')
+      expect(mktemp).toBe('-n -u qa-test mktemp -d')
+      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 5m env PATH=')
+      expect(run).toContain('bunx playwright test')
+      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts$/)
+    })
+
+    // The usual case sets nothing and fails nothing, so a normal run shows no error annotation, and the session runs.
+    test('a failed or timed-out run, or a browser cache it cannot read, sets nothing and fails nothing', () => {
+      expect(replay({ code: 1 })).toMatchObject({ exitCode: 0, output: '' })
+      expect(replay({ code: 124 })).toMatchObject({ exitCode: 0, output: '' })
+      expect(replay({ browsers: false })).toMatchObject({ exitCode: 0, output: '', sudo: '' })
+    })
+
+    test('after the lock as a user created before it, whose every process is stopped before Fix', () => {
+      expect(jobs.fix.env?.QA_TEST_USER).toBe('qa-test')
+      const at = (name: string) => indexOf('fix', name)
+      const lock = at("Take root away from the job's user")
+      expect(at('Create the user the tests run as')).toBe(lock - 1)
+      expect(at('Write the file a passed check uploads')).toBeLessThan(at('Replay the spec before the fix'))
+      expect(lock).toBeLessThan(at('Replay the spec before the fix'))
+      const stop = at('Stop every process of the test user')
+      expect(stop).toBe(at('Replay the spec before the fix') + 1)
+      expect(stop).toBeLessThan(at('Build the prompt'))
+      expect(at('Build the prompt')).toBeLessThan(at('Fix'))
+      // A survivor fails the job before Fix, so its ticket waits for a later run.
+      expect(steps('fix')[stop]).toMatchObject({ id: 'stop-tests', if: 'always()' })
+      expect(steps('fix')[stop]['continue-on-error']).toBeUndefined()
+      expect(steps('fix')[stop].run).toBe(step('verify-tests', 'Stop every process of the test user').run)
+    })
   })
 
   test('the visual check runs on the patched tree first, and the steps after the baseline see the patch', () => {
@@ -258,8 +430,8 @@ describe('fix job', () => {
     expect(at('Build the patched frontend for the real-AI check')).toBeLessThan(at('Collect the patch'))
   })
 
-  // The check always fails, as it should without the patch.
-  const baseline = ({ edits = true, failStart = false, stashed = false } = {}) => {
+  // By default the check always fails, as it should without the patch.
+  const baseline = ({ edits = true, failStart = false, stashed = false, checkPasses = false } = {}) => {
     const dir = mkdtempSync(join(work, 'baseline-'))
     const bin = mkdtempSync(join(work, 'bin-'))
     const git = (...args: string[]) =>
@@ -281,10 +453,10 @@ describe('fix job', () => {
       writeFileSync(join(dir, 'backend/index.ts'), 'patched')
       writeFileSync(join(dir, 'backend/new.ts'), 'new')
     }
-    writeFileSync(join(bin, 'bunx'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    writeFileSync(join(bin, 'bunx'), `#!/bin/sh\nexit ${checkPasses ? 0 : 1}\n`, { mode: 0o755 })
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Run the visual check without the patch').run ?? ''], {
       cwd: dir,
-      env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', WITH: '3', HOME: dir },
+      env: { PATH: `${bin}:${process.env.PATH}`, QA_FP: 'fp1', HOME: dir },
     })
     const read = (path: string) => (existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : undefined)
     return { code: proc.exitCode, read, stashes: git('stash', 'list').trim().split('\n').filter(Boolean).length }
@@ -299,7 +471,17 @@ describe('fix job', () => {
     expect(read('backend/index.ts')).toBe('patched')
     expect(read('backend/new.ts')).toBe('new')
     expect(stashes).toBe(0)
-    expect(JSON.parse(read('qa-out/fix/fp1.verify.json') ?? '{}')).toEqual({ failsWithout: true, passesWith: true })
+  })
+
+  test('the baseline succeeds only when the check fails every time without the patch, which its pass rests on', () => {
+    const passedWithout = baseline({ checkPasses: true })
+    expect(passedWithout.code).not.toBe(0)
+    expect(passedWithout.read('backend/index.ts')).toBe('patched')
+    const withRun = step('fix', 'Run the visual check on the patched tree')
+    expect(withRun.run).toContain('--repeat-each=3 --retries=0')
+    for (const check of [withRun, step('fix', 'Run the visual check without the patch')])
+      expect(check['continue-on-error']).toBe(true)
+    expect(step('fix', 'Run the visual check without the patch').if).toBe("steps.visual-with.outcome == 'success'")
   })
 
   test('a failed baseline still puts the patch back, and an agent that edited nothing pops no older stash', () => {
@@ -398,109 +580,490 @@ describe("CI's check of the fix job's dev stack", () => {
   })
 })
 
-describe('publish', () => {
-  type Verdict = { passed?: boolean; failsWithout?: boolean; passesWith?: boolean }
-  const verdicts = (files: Record<string, Verdict>, env: Record<string, string> = {}, diagnosis?: string) => {
-    const dir = mkdtempSync(join(work, 'publish-'))
-    mkdirSync(join(dir, 'qa-out/verify'), { recursive: true })
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    const verifyNative = ['ios', 'android'].map((platform) => ({ fp: 'fp1', platform }))
-    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [], verifyNative }))
-    for (const [path, content] of Object.entries(files))
-      writeFileSync(join(dir, 'qa-out', path), JSON.stringify(content))
-    if (diagnosis) writeFileSync(join(dir, 'qa-out/fix/fp1.diagnosis.md'), diagnosis)
+const attempt = '-${{ github.run_attempt }}'
+
+describe('passes', () => {
+  /** Every upload of a check's pass, as `<job> <check>`, with its name's run-attempt suffix, `if:` and file. */
+  const passUploads = Object.fromEntries(
+    Object.keys(jobs).flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/upload-artifact@') && s.with?.name?.startsWith('qa-pass-'))
+        .map((s) => {
+          const [, check, suffix] =
+            /^qa-pass-\$\{\{ matrix\.\w+\.fp \}\}-(.+?)(-\$\{\{ github\.run_attempt \}\})?$/.exec(
+              s.with?.name ?? '',
+            ) ?? ['', '', '']
+          return [`${job} ${check}`, { suffix, if: s.if, path: s.with?.path }]
+        }),
+    ),
+  )
+  const pass = (ifText: string) => ({ suffix: attempt, if: ifText, path: '${{ runner.temp }}/qa-pass.txt' })
+  const outcome = (id: string) => `steps.${id}.outcome == 'success'`
+  const fixScans = `always() && ${outcome('key-scan')} && ${outcome('secret-scan')} && `
+
+  test("each check's pass is uploaded only on the outcome of the step that ran the check", () => {
+    expect(passUploads).toEqual({
+      // Before Fix, and only once no process of the test user that ran the check is left.
+      'fix unpatched': pass(`steps.unpatched.outputs.passes == 'true' && ${outcome('stop-tests')}`),
+      'fix session': pass(fixScans + outcome('fix')),
+      'fix replay': pass(fixScans + outcome('verify')),
+      'fix visual': pass(fixScans + outcome('visual')),
+      // The native platform is the matrix's, so the check is an expression.
+      'verify-native-run ${{ matrix.check.platform }}': pass(`always() && ${outcome('run')}`),
+      'verify-real real': pass(`always() && ${outcome('replay')}`),
+      // Its tests ran as another user, whose every process is gone before this upload.
+      'verify-tests tests': pass(`always() && ${outcome('tests')} && ${outcome('stop-tests')}`),
+      'verify-checks checks': pass(`always() && ${outcome('checks')} && ${outcome('stop-tests')}`),
+    })
+  })
+
+  // Under continue-on-error the outcome still says how the step ended; only the job stays green.
+  test('the replays a pass rests on fail on any failed run, and verify-tests runs the check in one process', () => {
+    expect(step('fix', 'Replay the spec on the patched code').run).toContain('--repeat-each=3 --retries=0')
+    expect(step('verify-real', 'Replay the spec on the patched frontend').run).toContain('--repeat-each=3 --retries=0')
+    const tests = step('verify-tests', "Check that the patch's tests fail without the fix and pass with it")
+    expect(tests.run).toBe('bun .github/qa/scripts/fix.ts tests --out qa-out --fp "$QA_FP"')
+    expect(tests['continue-on-error']).toBe(true)
+  })
+
+  test('each job writes the uploaded file before any code the agent wrote runs there', () => {
+    const marker = 'Write the file a passed check uploads'
+    expect(indexOf('fix', marker)).toBeLessThan(indexOf('fix', 'Fix'))
+    expect(indexOf('verify-tests', marker)).toBe(0)
+    expect(indexOf('verify-checks', marker)).toBe(0)
+    expect(indexOf('verify-native-run', marker)).toBeLessThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
+    )
+    expect(step('fix', marker).run).toContain('"$RUNNER_TEMP/qa-pass.txt"')
+  })
+
+  test('publish reads the passes from the names of the run artifacts, and no verdict from a file', () => {
+    const list = step('publish', "List the run's artifacts")
+    expect(list.run).toContain('actions/runs/$GITHUB_RUN_ID/artifacts')
+    expect(list.run).toContain('--paginate')
+    expect(list.run).toContain('> qa-out/artifacts.txt')
+    expect(list.env).toEqual({ GH_TOKEN: '${{ github.token }}' })
+    expect(indexOf('publish', "List the run's artifacts")).toBeLessThan(indexOf('publish', 'Publish a draft PR'))
+    const downloads = steps('publish').filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+    for (const download of downloads)
+      expect(`${download.with?.name ?? download.with?.pattern}`).not.toMatch(/qa-(pass|verify)-/)
+    expect(jobs.publish.needs).toEqual([
+      'build',
+      'file',
+      'fix',
+      'verify-native-run',
+      'verify-real',
+      'verify-tests',
+      'verify-checks',
+    ])
+  })
+
+  // One artifact list spans every attempt of the run, and a download takes the latest of a name, so an attempt that
+  // uploaded none would read an earlier attempt's.
+  test("the fix output is read only from the reader's own run attempt, by pattern, so its absence is no error", () => {
+    const readers = ['verify-native-build', 'verify-native-run', 'verify-tests', 'verify-checks', 'publish']
+    const fixDownloads = readers.flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/download-artifact@') && /qa-fix-\$/.test(JSON.stringify(s.with)))
+        .map((s) => ({ job, with: s.with })),
+    )
+    expect(fixDownloads).toEqual(
+      readers.map((job) => ({
+        job,
+        with: {
+          pattern: `qa-fix-\${{ matrix.${job.startsWith('verify-native') ? 'check' : 'task'}.fp }}${attempt}`,
+          path: 'qa-out',
+        },
+      })),
+    )
+  })
+
+  // A pass the patched app or frontend leads to must pair with that attempt's patch.
+  test('the patched app and the patched real-AI frontend are built and read in one run attempt', () => {
+    const artifact = (job: string, action: string, prefix: string) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith(`actions/${action}-artifact@`))
+        .map((s) => s.with?.name ?? s.with?.pattern ?? '')
+        .filter((name) => name.startsWith(prefix))
+    const dist = `qa-fix-dist-\${{ matrix.task.fp }}${attempt}`
+    const patched = `qa-patched-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`
+    expect(artifact('fix', 'upload', 'qa-fix-dist-')).toEqual([dist])
+    expect(artifact('verify-real', 'download', 'qa-fix-dist-')).toEqual([dist])
+    expect(artifact('verify-native-build', 'upload', 'qa-patched-')).toEqual([patched])
+    expect(artifact('verify-native-run', 'download', 'qa-patched-')).toEqual([patched])
+  })
+})
+
+/** The `usable` output of a job's step that decides whether there is a patch to check. */
+const usable = (job: string, name: string, files: Record<string, string>, visualWeb = false) => {
+  const dir = mkdtempSync(join(work, 'tree-'))
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(dir, path, '..'), { recursive: true })
+    writeFileSync(join(dir, path), text)
+  }
+  const output = join(dir, 'output')
+  const proc = Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
+    cwd: dir,
+    env: { PATH: process.env.PATH, QA_FP: 'fp1', VISUAL_WEB: String(visualWeb), GITHUB_OUTPUT: output },
+  })
+  expect(proc.exitCode).toBe(0)
+  return readFileSync(output, 'utf8')
+}
+
+describe('verify-tests', () => {
+  test('holds no secret, no environment and no write permission, and starts from a fresh checkout', () => {
+    const job = jobs['verify-tests']
+    expect(JSON.stringify(job)).not.toContain('secrets.')
+    expect(job.environment).toBeUndefined()
+    expect(job.permissions).toEqual({ contents: 'read' })
+    const checkout = steps('verify-tests').find((s) => s.uses?.startsWith('actions/checkout@'))
+    expect(String(checkout?.with?.['persist-credentials'])).toBe('false')
+    const download = steps('verify-tests').find((s) => s.uses?.startsWith('actions/download-artifact@'))
+    expect(download?.with).toEqual({ pattern: `qa-fix-\${{ matrix.task.fp }}${attempt}`, path: 'qa-out' })
+    expect(job.needs).toEqual(['build', 'file', 'fix'])
+  })
+
+  test("the tests run as another user, with root gone, so no test process can read the job user's tokens", () => {
+    const at = (name: string) => indexOf('verify-tests', name)
+    const check = "Check that the patch's tests fail without the fix and pass with it"
+    expect(jobs['verify-tests'].env?.QA_TEST_USER).toBe('qa-test')
+    const create = step('verify-tests', 'Create the user the tests run as').run ?? ''
+    expect(create).toContain('sudo useradd --create-home "$QA_TEST_USER"')
+    // The job's user may run anything as the test user, nothing as root: in sudoers the last matching rule wins, so
+    // this rule's file must sort after the one `stack.sh lock` writes.
+    expect(create).toContain(`echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests`)
+    // A test user that cannot run bun or read the checkout fails the job here, not every test as a failed check.
+    expect(create).toContain('sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version')
+    expect(create).toContain('sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json"')
+    const stackSh = readFileSync(join(import.meta.dir, 'stack.sh'), 'utf8')
+    const lockRule = /NOPASSWD: !ALL' > \/etc\/sudoers\.d\/([\w-]+)"/.exec(stackSh)?.[1] ?? ''
+    expect(lockRule).not.toBe('')
+    expect('zz-qa-lock-tests' > lockRule).toBe(true)
+    expect(step('verify-tests', "Take root away from the job's user").run).toBe('.github/qa/scripts/stack.sh lock')
+    expect(at('Create the user the tests run as')).toBeLessThan(at("Take root away from the job's user"))
+    expect(at("Take root away from the job's user")).toBeLessThan(at(check))
+    expect(at(check)).toBeLessThan(at('Stop every process of the test user'))
+    expect(step('verify-tests', 'Stop every process of the test user').if).toBe('always()')
+  })
+
+  // An agent that gave up is a normal outcome: a red check step would put an error annotation on every such ticket.
+  // The pass upload rests on the tests step's outcome, so a skipped step gives no pass and publish hands the ticket
+  // to a person.
+  test('skips the tests, without failing, when the agent gave up or left no patch', () => {
+    const patch = 'qa-out/fix/fp1.patch'
+    const found = 'Check that there is a patch to test'
+    const text = 'diff --git a/src/a.ts b/src/a.ts\n'
+    expect(usable('verify-tests', found, { [patch]: text })).toBe('usable=true\n')
+    expect(usable('verify-tests', found, {})).toBe('usable=false\n')
+    expect(usable('verify-tests', found, { [patch]: '' })).toBe('usable=false\n')
+    expect(usable('verify-tests', found, { [patch]: text, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe(
+      'usable=false\n',
+    )
+    const tests = step('verify-tests', "Check that the patch's tests fail without the fix and pass with it")
+    expect(tests.if).toBe("steps.patch.outputs.usable == 'true'")
+    expect(step('verify-tests', found).id).toBe('patch')
+    expect(indexOf('verify-tests', found)).toBeLessThan(indexOf('verify-tests', "Take root away from the job's user"))
+  })
+
+  /** Runs the stop step with stand-ins for pgrep and sudo: the user's processes are gone after `survives` kills. */
+  const stopTests = (survives: number) => {
+    const dir = mkdtempSync(join(work, 'stop-tests-'))
+    const count = join(dir, 'kills')
+    writeFileSync(count, '0')
+    const script = (body: string) => `#!/bin/sh\n${body}\n`
+    writeFileSync(join(dir, 'pgrep'), script(`[ "$(cat ${count})" -le ${survives} ]`), { mode: 0o755 })
+    writeFileSync(join(dir, 'sudo'), script(`echo "$@" > ${dir}/args; echo $(( $(cat ${count}) + 1 )) > ${count}`), {
+      mode: 0o755,
+    })
+    writeFileSync(join(dir, 'sleep'), script('exit 0'), { mode: 0o755 })
     const proc = Bun.spawnSync(
-      ['bash', '-e', '-c', step('publish', 'Require the native and real-AI checks').run ?? ''],
+      ['bash', '-e', '-c', step('verify-tests', 'Stop every process of the test user').run ?? ''],
       {
         cwd: dir,
-        env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
+        env: { PATH: `${dir}:${process.env.PATH}`, QA_TEST_USER: 'qa-test' },
       },
     )
-    expect(proc.exitCode).toBe(0)
-    const read = (path: string) =>
-      existsSync(join(dir, 'qa-out', path)) ? readFileSync(join(dir, 'qa-out', path), 'utf8') : undefined
-    return { diagnosis: read('fix/fp1.diagnosis.md'), verify: read('fix/fp1.verify.json') }
+    const args = existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim() : ''
+    return { code: proc.exitCode, kills: Number(readFileSync(count, 'utf8')), args }
   }
-  const passed = { passed: true, failsWithout: true, passesWith: true }
 
-  test('needs passed: true from every native platform of the bug', () => {
-    expect(verdicts({ 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': passed }).diagnosis).toBeUndefined()
-    const missing = verdicts({ 'verify/fp1.ios.json': passed })
-    expect(missing.diagnosis).toContain('still fails on the native platform (android)')
-    const failed = verdicts({ 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': { passed: false } })
-    expect(failed.diagnosis).toContain('(android)')
+  test('the stop kills the test user until none of its processes is left, and fails when one survives', () => {
+    expect(stopTests(0)).toEqual({ code: 0, kills: 1, args: '-n -u qa-test /usr/bin/kill -KILL -1' })
+    // A process that forks between kills is caught by a later one.
+    expect(stopTests(2)).toMatchObject({ code: 0, kills: 3 })
+    expect(stopTests(1000)).toMatchObject({ code: 1, kills: 50 })
   })
 
-  test('needs the real-AI verdict for a web real-AI task', () => {
-    const both = { 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': passed }
-    expect(verdicts(both, { REAL: 'true' }).diagnosis).toContain('real AI providers')
-    expect(verdicts({ ...both, 'verify/fp1.real.json': { passed: true } }, { REAL: 'true' }).diagnosis).toBeUndefined()
+  test("checks every web task of the plan and no native one, from route's output", () => {
+    const route = step('file', 'Route fixable tickets').run ?? ''
+    const filter = /tests=\$\(jq --compact-output '([^']+)' qa-out\/fix-plan\.json\)/.exec(route)?.[1] ?? ''
+    const plan = {
+      fixes: [
+        { fp: 'web', kind: 'spec', spec: 'x' },
+        { fp: 'visual', kind: 'visual' },
+        { fp: 'ios', flow: 'f' },
+      ],
+    }
+    const proc = Bun.spawnSync(['jq', '--compact-output', filter], { stdin: Buffer.from(JSON.stringify(plan)) })
+    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'visual'])
+    expect(jobs['verify-tests'].strategy).toEqual({
+      'fail-fast': false,
+      matrix: { task: '${{ fromJSON(needs.file.outputs.tests) }}' },
+    })
+  })
+})
+
+describe('verify-checks', () => {
+  const at = (name: string) => indexOf('verify-checks', name)
+  const run = 'Run the PR checks on the tree publish would push'
+  const lock = "Take root away from the job's user"
+
+  test('holds no secret, no environment and no write permission, and checks every task of the plan', () => {
+    const job = jobs['verify-checks']
+    expect(JSON.stringify(job)).not.toContain('secrets.')
+    expect(job.environment).toBeUndefined()
+    expect(job.permissions).toEqual({ contents: 'read' })
+    const checkout = steps('verify-checks').find((s) => s.uses?.startsWith('actions/checkout@'))
+    expect(String(checkout?.with?.['persist-credentials'])).toBe('false')
+    expect(job.needs).toEqual(['build', 'file', 'fix'])
+    expect(job.strategy).toEqual({
+      'fail-fast': false,
+      matrix: { task: '${{ fromJSON(needs.file.outputs.plan).fixes }}' },
+    })
   })
 
-  test("a native visual task's verify.json is the native verdict, never the agent's copy", () => {
-    const forged = { 'fix/fp1.verify.json': { failsWithout: true, passesWith: true } }
-    const both = { 'verify/fp1.ios.json': passed, 'verify/fp1.android.json': { ...passed, passesWith: false } }
-    expect(JSON.parse(verdicts({ ...forged, ...both }, { NATIVE_VISUAL: 'android' }).verify ?? '{}').passesWith).toBe(
-      false,
+  test('stages and checks the tree in one process, after the lock, with the checks as the test user', () => {
+    expect(jobs['verify-checks'].env?.QA_TEST_USER).toBe('qa-test')
+    const checks = step('verify-checks', run)
+    expect(checks.run).toBe('bun .github/qa/scripts/fix.ts gate --out qa-out --fp "$QA_FP"')
+    expect(checks['continue-on-error']).toBe(true)
+    expect(checks.if).toBe("steps.tree.outputs.usable == 'true'")
+    // Nothing before the lock may apply the patch: a file of the patched tree loaded as the job's user could forge
+    // the pass or read the runtime token.
+    const beforeLock = steps('verify-checks').slice(0, at(lock))
+    expect(beforeLock.filter((s) => /fix\.ts|git apply|native\.sh/.test(s.run ?? '')).map(label)).toEqual([])
+    // The plan and the original specs are read from after the fix output, which could otherwise shadow them.
+    const downloads = steps('verify-checks')
+      .filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+      .map((s) => s.with?.name ?? s.with?.pattern)
+    expect(downloads.indexOf(`qa-fix-\${{ matrix.task.fp }}${attempt}`)).toBe(0)
+    expect(downloads.slice(1)).toEqual([expect.stringContaining('qa-replay-'), 'qa-filed'])
+    const order = [
+      'Create the user the tests run as',
+      'Let the test user run git in the checkout',
+      'Check that there is a tree to gate',
+      lock,
+      run,
+      'Stop every process of the test user',
+    ].map(at)
+    expect(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]))).toBe(true)
+    expect(step('verify-checks', 'Stop every process of the test user')).toEqual(
+      step('verify-tests', 'Stop every process of the test user'),
     )
-    expect(verdicts({ ...forged, 'verify/fp1.ios.json': passed }, { NATIVE_VISUAL: 'android' }).verify).toBeUndefined()
+    expect(step('verify-checks', lock).run).toBe('.github/qa/scripts/stack.sh lock')
   })
 
-  test("leaves the fix job's own diagnosis alone", () => {
-    expect(verdicts({}, {}, 'gave up\n').diagnosis).toBe('gave up\n')
+  // publish hands these tickets to a person before it reads the pass, and a failed step would page for an agent that
+  // only gave up.
+  test('skips the gate, without failing, when there is no patch to check', () => {
+    const patch = { 'qa-out/fix/fp1.patch': 'diff --git a/src/a.ts b/src/a.ts\n' }
+    const tree = 'Check that there is a tree to gate'
+    expect(usable('verify-checks', tree, patch)).toBe('usable=true\n')
+    expect(usable('verify-checks', tree, {})).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { 'qa-out/fix/fp1.patch': '' })).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { ...patch, 'qa-out/fix/fp1.diagnosis.md': 'gave up' })).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, patch, true)).toBe('usable=false\n')
+    expect(usable('verify-checks', tree, { ...patch, 'qa-out/fix-fp1/repro/check.spec.ts': 'test' }, true)).toBe(
+      'usable=true\n',
+    )
+    expect(step('verify-checks', tree).env?.VISUAL_WEB).toBe("${{ matrix.task.kind == 'visual' && !matrix.task.flow }}")
   })
 
+  test("the catalog check runs on ci.yml's Node, since Lingui's CLI needs 22.19 or later", () => {
+    const node = steps('verify-checks').find((s) => s.uses?.startsWith('actions/setup-node@'))
+    const ciNode = (
+      Bun.YAML.parse(readFileSync(ciWorkflow, 'utf8')) as { jobs: Record<string, Job> }
+    ).jobs.localization.steps?.find((s) => s.uses?.startsWith('actions/setup-node@'))
+    expect(node).toEqual({ uses: ciNode?.uses ?? '', with: ciNode?.with ?? {} })
+    expect(at(run)).toBeGreaterThan(steps('verify-checks').indexOf(node ?? {}))
+  })
+
+  test("runs bun run check, the collected-spec and catalog checks, and each named step with its workflow's command", () => {
+    const names = prChecks.map((c) => c.name)
+    expect(names.slice(0, 3)).toEqual([
+      'bun run check',
+      'e2e: Fail on spec files no project collects',
+      'localization: Lingui extraction check',
+    ])
+    const workflows = [ciWorkflow, join(import.meta.dir, '../../workflows/e2e.yml')].map(
+      (file) => (Bun.YAML.parse(readFileSync(file, 'utf8')) as { jobs: Record<string, Job> }).jobs,
+    )
+    // `bun run check` stands in for these two: a flag added to either in ci.yml must reach the gate too.
+    const typescript = workflows[0].typescript.steps ?? []
+    expect(['Type check', 'Lint'].map((name) => typescript.find((s) => s.name === name)?.run)).toEqual([
+      'bun run tsc --noEmit',
+      'bun run lint',
+    ])
+    const named = prChecks.filter((c) => c.name.includes(': '))
+    expect(named.length).toBe(prChecks.length - 1)
+    for (const { name, run: script } of named) {
+      const [job, stepName] = name.split(': ')
+      const source = workflows.flatMap((w) => w[job]?.steps ?? []).find((s) => s.name === stepName)
+      expect({ name, run: source?.run?.trim() }).toEqual({ name, run: script.trim() })
+    }
+  })
+})
+
+describe('publish', () => {
   const runStep = (job: string, name: string, dir: string, env: Record<string, string>) =>
     Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
       cwd: dir,
       env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
     })
-  const infraMarker = 'qa-out/fix/fp1.infrastructure.md'
+  describe('whether the fix session began', () => {
+    const timeoutMinutes = 60
+    const now = () => Math.floor(Date.now() / 1000)
+    const answered = { type: 'assistant', message: { content: [{ type: 'text', text: 'Reading the spec.' }] } }
+    // The SDK's stand-in for a refused request: an assistant message carrying `error`.
+    const refused = { type: 'assistant', error: 'rate_limit', message: { content: [{ type: 'text', text: 'API' }] } }
+    const result = { type: 'result', subtype: 'success', is_error: true }
+    const init = { type: 'system', subtype: 'init' }
+    const messages = (...list: object[]) => JSON.stringify(list)
+    /**
+     * The status the fix job records, given the step outcome, the execution file, the session's start and the output
+     * of the replay before the fix.
+     */
+    const status = (outcome: string, execution?: string, start = now(), alreadyPasses = '') => {
+      const temp = mkdtempSync(join(work, 'status-'))
+      const executionFile = join(temp, 'claude-execution-output.json')
+      if (execution !== undefined) writeFileSync(executionFile, execution)
+      const proc = runStep('fix', 'Record whether the fix session began', temp, {
+        RUNNER_TEMP: temp,
+        ALREADY_PASSES: alreadyPasses,
+        FIX_OUTCOME: outcome,
+        START: String(start),
+        EXECUTION_FILE: executionFile,
+        QA_FIX_TIMEOUT_MINUTES: String(timeoutMinutes),
+      })
+      expect(proc.exitCode).toBe(0)
+      return JSON.parse(readFileSync(join(temp, 'qa-status/fp1.json'), 'utf8')).stoppedBeforeSession
+    }
 
-  test('the infrastructure marker comes only from the artifact of a skipped Fix step, never from the agent', () => {
-    const at = (match: (s: Step) => boolean) => steps('publish').findIndex(match)
-    const fixArtifact = at((s) => s.with?.name === 'qa-fix-${{ matrix.task.fp }}')
-    const drop = indexOf('publish', 'Drop the marker the fix artifact carries')
-    const infraArtifact = at((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
-    expect(fixArtifact).toBeGreaterThan(-1)
-    expect(drop).toBeGreaterThan(fixArtifact)
-    expect(infraArtifact).toBeGreaterThan(drop)
-    // Absent in every run where the agent started, which is normal.
-    expect(steps('publish')[infraArtifact]['continue-on-error']).toBe(true)
+    test('a step before Fix failed: the session never began', () => {
+      expect(status('skipped')).toBe('setup-failed')
+    })
 
-    const dir = mkdtempSync(join(work, 'drop-'))
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    writeFileSync(join(dir, infraMarker), 'forged')
-    expect(runStep('publish', 'Drop the marker the fix artifact carries', dir, {}).exitCode).toBe(0)
-    expect(existsSync(join(dir, infraMarker))).toBe(false)
+    test('a repro that passed all three times before the fix skipped the session: it already passes', () => {
+      expect(status('skipped', undefined, now(), 'true')).toBe('already-passes')
+      expect(status('skipped', undefined, now(), 'false')).toBe('setup-failed')
+      // What the runner keeps, decided and its pass uploaded before the session could start. A survivor of the
+      // check's user fails the stop, so the job stops before Fix and the record says setup-failed.
+      const record = step('fix', 'Record whether the fix session began')
+      expect(record.env?.ALREADY_PASSES).toBe(
+        "${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}",
+      )
+      const upload = steps('fix').findIndex(
+        (s) => s.with?.name === `qa-pass-\${{ matrix.task.fp }}-unpatched${attempt}`,
+      )
+      expect(upload).toBe(indexOf('fix', 'Stop every process of the test user') + 1)
+      expect(upload).toBeLessThan(indexOf('fix', 'Fix'))
+    })
+
+    test('Fix failed before the model first answered: the session never began', () => {
+      expect(status('failure')).toBe('no-model-answer')
+      expect(status('failure', messages(init, refused, result))).toBe('no-model-answer')
+      expect(status('failure', messages())).toBe('no-model-answer')
+    })
+
+    test('a session the model answered began, however it ended', () => {
+      for (const outcome of ['failure', 'cancelled', 'success'])
+        expect(status(outcome, messages(init, answered, refused, result))).toBeNull()
+      expect(status('success')).toBeNull()
+    })
+
+    test('a timed-out session began, though the action wrote no execution file', () => {
+      expect(status('failure', undefined, now() - timeoutMinutes * 60)).toBeNull()
+      expect(status('failure', undefined, now() - timeoutMinutes * 60 + 120)).toBe('no-model-answer')
+    })
+
+    test('an unreadable execution file counts as begun, so the ticket still reaches a person', () => {
+      expect(status('failure', '[{"type": "assis')).toBeNull()
+    })
+
+    test('the status goes up with every fix outcome, before agent code runs outside the sandbox', () => {
+      // Fix, then the key scan (no agent code), then these two: every later step may run code the agent wrote.
+      const fix = indexOf('fix', 'Fix')
+      expect(steps('fix')[fix + 1].id).toBe('key-scan')
+      const record = steps('fix')[fix + 2]
+      const upload = steps('fix')[fix + 3]
+      expect(record.name).toBe('Record whether the fix session began')
+      expect(record.if).toBe('always()')
+      expect(record.env?.PATH).toBe('/usr/bin:/bin')
+      expect(upload.with?.name).toBe(`qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
+      // The key scan's verdict only: it reads no fix outcome, and it passes in every run that uploads the fix output.
+      expect(upload.if).toBe("always() && steps.key-scan.outcome == 'success'")
+      expect(upload.with?.path).toBe('${{ runner.temp }}/qa-status/')
+      expect(upload.with?.['if-no-files-found']).toBe('error')
+    })
+
+    test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {
+      const download = steps('publish').find((s) => s.with?.name === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
+      expect(download?.with?.path).toBe('qa-out/status')
+      expect(download?.['continue-on-error']).toBeUndefined()
+      // The fix artifact lands in qa-out too, so none of its paths may reach qa-out/status.
+      const fixUpload = steps('fix').find((s) => s.with?.name === `qa-fix-\${{ matrix.task.fp }}${attempt}`)
+      const paths = (fixUpload?.with?.path ?? '').split('\n').filter(Boolean)
+      expect(paths.length).toBeGreaterThan(0)
+      for (const path of paths) expect(path).toMatch(/^qa-out\/fix(-\$\{\{ matrix\.task\.fp \}\})?\//)
+    })
   })
 
-  test('only a skipped Fix step records that the agent never started, in an artifact of its own', () => {
-    const record = step('fix', 'Record that the fix agent never started')
-    const upload = steps('fix').find((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
-    expect(record.if).toBe("always() && steps.fix.outcome == 'skipped'")
-    expect(upload?.if).toContain("steps.fix.outcome == 'skipped'")
-    expect(upload?.with?.path).toBe('${{ runner.temp }}/qa-infra/')
-
-    const temp = mkdtempSync(join(work, 'infra-'))
-    expect(runStep('fix', record.name ?? '', temp, { RUNNER_TEMP: temp }).exitCode).toBe(0)
-    expect(readFileSync(join(temp, 'qa-infra/fp1.infrastructure.md'), 'utf8')).toContain('before the fix agent started')
+  test('no fix-pipeline download may miss: a missing name is an error even under continue-on-error', () => {
+    const jobNames = [
+      'fix',
+      'verify-native-build',
+      'verify-native-run',
+      'verify-real',
+      'verify-tests',
+      'verify-checks',
+      'publish',
+    ]
+    const optional = jobNames.flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/download-artifact@') && s['continue-on-error'])
+        .map((s) => `${job}: ${s.with?.name ?? s.with?.pattern}`),
+    )
+    expect(optional).toEqual([])
   })
 
-  test("says in the run summary, in the workflow's own words, that a ticket was left for a later run", () => {
-    const dir = mkdtempSync(join(work, 'summary-'))
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [{ fp: 'fp1', identifier: 'THB-7' }] }))
-    const summary = join(dir, 'summary.md')
-    const say = () =>
-      runStep('publish', 'Say when a ticket was left for a later run', dir, { GITHUB_STEP_SUMMARY: summary })
-    expect(say().exitCode).toBe(0)
-    expect(existsSync(summary)).toBe(false)
-    writeFileSync(join(dir, infraMarker), 'text the summary must not copy\n')
-    expect(say().exitCode).toBe(0)
-    const line = readFileSync(summary, 'utf8')
-    expect(line).toContain('- THB-7: the fix job stopped before the fix agent started')
-    expect(line).not.toContain('must not copy')
+  test('verify-native-run boots no device when the fix built no patched app', () => {
+    const run = (withApp: boolean) => {
+      const temp = mkdtempSync(join(work, 'patched-'))
+      mkdirSync(join(temp, 'apps/patched'), { recursive: true })
+      if (withApp) writeFileSync(join(temp, 'apps/patched/app.tar'), '')
+      const githubEnv = join(temp, 'env')
+      writeFileSync(githubEnv, '')
+      const env = { RUNNER_TEMP: temp, GITHUB_ENV: githubEnv }
+      expect(runStep('verify-native-run', 'Note a missing patched app', temp, env).exitCode).toBe(0)
+      return readFileSync(githubEnv, 'utf8')
+    }
+    expect(run(false)).toBe('QA_NO_DEVICE=true\n')
+    expect(run(true)).toBe('')
+    expect(step('verify-native-run', 'Start the stack').if).toBe("env.QA_NO_DEVICE != 'true'")
+    expect(step('verify-native-run', 'Run the flow on the patched app').if).toBe("env.QA_NO_DEVICE != 'true'")
+  })
+
+  test('verify-real replays only on a patched frontend it downloaded', () => {
+    const download = steps('verify-real').find(
+      (s) => s.with?.pattern === `qa-fix-dist-\${{ matrix.task.fp }}${attempt}`,
+    )
+    const present = `hashFiles('${download?.with?.path}/**') != ''`
+    for (const name of [
+      'Start the stack on the real providers',
+      "Take root away from the job's user",
+      'Replay the spec on the patched frontend',
+    ])
+      expect(step('verify-real', name).if).toBe(present)
   })
 })
 
@@ -515,6 +1078,15 @@ test("a native replay leg's base runs fit its timeout, since a timeout loses eve
   expect(jobs['replay-native']['timeout-minutes']).toBe(nativeJobMinutes)
   // ...counted from the job's first step, so the setup before the replay step is on the clock.
   expect(steps('replay-native')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
+})
+
+test('a native fix check outlasts a driver retry and a replaced run, since a timeout leaves its ticket without a PR', () => {
+  // The slowest check: boot, install and three runs of the iOS onboarding flow, about 6 minutes a run.
+  const checkMinutes = 26
+  const runMinutes = 6
+  expect(jobs['verify-native-run']['timeout-minutes']).toBeGreaterThan(
+    checkMinutes + runMinutes + nativeDriverStartupMinutes,
+  )
 })
 
 test("the iOS log stream outlasts a replay leg, since a run after it ends sees no line and can't prove a bug", () => {
@@ -878,13 +1450,19 @@ describe('a fix-only run', () => {
 })
 
 test('every job but the reusable notify call has a timeout and read-only permissions', () => {
-  // A fix-only run looks up the earlier run in build and reads its artifacts in file.
-  const readsOtherRuns = new Set(['build', 'file'])
+  // A fix-only run looks up the earlier run in build and reads its artifacts in file, where route lists open PRs.
+  const permissionsOf = (name: string) => {
+    if (name === 'build') return { actions: 'read', contents: 'read' }
+    if (name === 'file') return { actions: 'read', contents: 'read', 'pull-requests': 'read' }
+    // Publish lists the run's artifacts, whose names carry the checks' passes.
+    if (name === 'publish') return { actions: 'read', contents: 'read' }
+    return { contents: 'read' }
+  }
   for (const [name, job] of Object.entries(jobs).filter(([, job]) => !job.uses)) {
     expect({ name, timeout: (job['timeout-minutes'] ?? 0) > 0 }).toEqual({ name, timeout: true })
     // app-check gets its token from the app, so it asks the runner for no permissions at all (see the next test).
     if (name === 'app-check') continue
-    const permissions = readsOtherRuns.has(name) ? { actions: 'read', contents: 'read' } : { contents: 'read' }
+    const permissions = permissionsOf(name)
     expect({ name, permissions: job.permissions }).toEqual({ name, permissions })
   }
 })

@@ -37,6 +37,18 @@ describe('classifyErrorKind', () => {
       expected: 'timeout',
     },
     {
+      label: 'wrapped TrustedRouter attestation failures',
+      error: Object.assign(new Error('TrustedRouter attestation failed: AttestationVerificationError: bad'), {
+        name: 'TrustedRouterAttestationError',
+      }),
+      expected: 'attestation',
+    },
+    {
+      label: 'TrustedRouter attestation deadline errors',
+      error: Object.assign(new Error('Attestation timed out'), { name: 'TrustedRouterAttestationTimeoutError' }),
+      expected: 'timeout',
+    },
+    {
       label: 'Tinfoil key configuration transport errors',
       error: Object.assign(new Error('Key configuration mismatch'), { name: 'KeyConfigMismatchError' }),
       expected: 'provider',

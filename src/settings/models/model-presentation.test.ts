@@ -19,6 +19,14 @@ describe('provider labels', () => {
   })
 
   it('lists every provider in picker order, managed first', () => {
-    expect(providerPickerOrder).toEqual(['thunderbolt', 'tinfoil', 'openai', 'openrouter', 'anthropic', 'custom'])
+    expect(providerPickerOrder).toEqual([
+      'thunderbolt',
+      'tinfoil',
+      'openai',
+      'openrouter',
+      'trustedrouter',
+      'anthropic',
+      'custom',
+    ])
   })
 })

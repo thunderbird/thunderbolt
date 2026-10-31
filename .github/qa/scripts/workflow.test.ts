@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import platforms from '../platforms.json'
+import { prChecks } from './fix'
 import {
   nativeDriverStartupMinutes,
   nativeJobMinutes,
@@ -485,6 +486,7 @@ describe('passes', () => {
       'verify-real real': pass(`always() && ${outcome('replay')}`),
       // Its tests ran as another user, whose every process is gone before this upload.
       'verify-tests tests': pass(`always() && ${outcome('tests')} && ${outcome('stop-tests')}`),
+      'verify-checks checks': pass(`always() && ${outcome('checks')} && ${outcome('stop-tests')}`),
     })
   })
 
@@ -501,6 +503,7 @@ describe('passes', () => {
     const marker = 'Write the file a passed check uploads'
     expect(indexOf('fix', marker)).toBeLessThan(indexOf('fix', 'Fix'))
     expect(indexOf('verify-tests', marker)).toBe(0)
+    expect(indexOf('verify-checks', marker)).toBe(0)
     expect(indexOf('verify-native-run', marker)).toBeLessThan(
       indexOf('verify-native-run', 'Run the flow on the patched app'),
     )
@@ -517,13 +520,21 @@ describe('passes', () => {
     const downloads = steps('publish').filter((s) => s.uses?.startsWith('actions/download-artifact@'))
     for (const download of downloads)
       expect(`${download.with?.name ?? download.with?.pattern}`).not.toMatch(/qa-(pass|verify)-/)
-    expect(jobs.publish.needs).toEqual(['build', 'file', 'fix', 'verify-native-run', 'verify-real', 'verify-tests'])
+    expect(jobs.publish.needs).toEqual([
+      'build',
+      'file',
+      'fix',
+      'verify-native-run',
+      'verify-real',
+      'verify-tests',
+      'verify-checks',
+    ])
   })
 
   // One artifact list spans every attempt of the run, and a download takes the latest of a name, so an attempt that
   // uploaded none would read an earlier attempt's.
   test("the fix output is read only from the reader's own run attempt, by pattern, so its absence is no error", () => {
-    const readers = ['verify-native-build', 'verify-native-run', 'verify-tests', 'publish']
+    const readers = ['verify-native-build', 'verify-native-run', 'verify-tests', 'verify-checks', 'publish']
     const fixDownloads = readers.flatMap((job) =>
       steps(job)
         .filter((s) => s.uses?.startsWith('actions/download-artifact@') && /qa-fix-\$/.test(JSON.stringify(s.with)))
@@ -533,7 +544,7 @@ describe('passes', () => {
       readers.map((job) => ({
         job,
         with: {
-          pattern: `qa-fix-\${{ matrix.${job === 'verify-tests' || job === 'publish' ? 'task' : 'check'}.fp }}${attempt}`,
+          pattern: `qa-fix-\${{ matrix.${job.startsWith('verify-native') ? 'check' : 'task'}.fp }}${attempt}`,
           path: 'qa-out',
         },
       })),
@@ -640,6 +651,82 @@ describe('verify-tests', () => {
   })
 })
 
+describe('verify-checks', () => {
+  const at = (name: string) => indexOf('verify-checks', name)
+  const run = 'Run the PR checks on that tree'
+
+  test('holds no secret, no environment and no write permission, and checks every task of the plan', () => {
+    const job = jobs['verify-checks']
+    expect(JSON.stringify(job)).not.toContain('secrets.')
+    expect(job.environment).toBeUndefined()
+    expect(job.permissions).toEqual({ contents: 'read' })
+    const checkout = steps('verify-checks').find((s) => s.uses?.startsWith('actions/checkout@'))
+    expect(String(checkout?.with?.['persist-credentials'])).toBe('false')
+    expect(job.needs).toEqual(['build', 'file', 'fix'])
+    expect(job.strategy).toEqual({
+      'fail-fast': false,
+      matrix: { task: '${{ fromJSON(needs.file.outputs.plan).fixes }}' },
+    })
+  })
+
+  test('stages the tree with the function publish commits with, then runs the checks on it as the test user', () => {
+    expect(jobs['verify-checks'].env?.QA_TEST_USER).toBe('qa-test')
+    expect(step('verify-checks', 'Stage the tree publish would push').run).toBe(
+      'bun .github/qa/scripts/fix.ts stage --out qa-out --fp "$QA_FP"',
+    )
+    const checks = step('verify-checks', run)
+    expect(checks.run).toBe('bun .github/qa/scripts/fix.ts checks --out qa-out --fp "$QA_FP"')
+    expect(checks['continue-on-error']).toBe(true)
+    // The plan and the original specs are read from after the fix output, which could otherwise shadow them.
+    const downloads = steps('verify-checks')
+      .filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+      .map((s) => s.with?.name ?? s.with?.pattern)
+    expect(downloads.indexOf(`qa-fix-\${{ matrix.task.fp }}${attempt}`)).toBe(0)
+    expect(downloads.slice(1)).toEqual([expect.stringContaining('qa-replay-'), 'qa-filed'])
+    const order = [
+      'Create the user the tests run as',
+      'Stage the tree publish would push',
+      'Let the test user run git and rewrite the catalogs',
+      "Take root away from the job's user",
+      run,
+      'Stop every process of the test user',
+    ].map(at)
+    expect(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]))).toBe(true)
+    expect(step('verify-checks', 'Stop every process of the test user')).toEqual(
+      step('verify-tests', 'Stop every process of the test user'),
+    )
+    expect(step('verify-checks', "Take root away from the job's user").run).toBe('.github/qa/scripts/stack.sh lock')
+  })
+
+  test("the catalog check runs on ci.yml's Node, since Lingui's CLI needs 22.19 or later", () => {
+    const node = steps('verify-checks').find((s) => s.uses?.startsWith('actions/setup-node@'))
+    const ciNode = (
+      Bun.YAML.parse(readFileSync(ciWorkflow, 'utf8')) as { jobs: Record<string, Job> }
+    ).jobs.localization.steps?.find((s) => s.uses?.startsWith('actions/setup-node@'))
+    expect(node).toEqual({ uses: ciNode?.uses ?? '', with: ciNode?.with ?? {} })
+    expect(at(run)).toBeGreaterThan(steps('verify-checks').indexOf(node ?? {}))
+  })
+
+  test("runs bun run check, the collected-spec and catalog checks, and each named step with its workflow's command", () => {
+    const names = prChecks.map((c) => c.name)
+    expect(names.slice(0, 3)).toEqual([
+      'bun run check',
+      'e2e: Fail on spec files no project collects',
+      'localization: Lingui extraction check',
+    ])
+    const workflows = [ciWorkflow, join(import.meta.dir, '../../workflows/e2e.yml')].map(
+      (file) => (Bun.YAML.parse(readFileSync(file, 'utf8')) as { jobs: Record<string, Job> }).jobs,
+    )
+    const named = prChecks.filter((c) => c.name.includes(': '))
+    expect(named.length).toBe(prChecks.length - 1)
+    for (const { name, run: script } of named) {
+      const [job, stepName] = name.split(': ')
+      const source = workflows.flatMap((w) => w[job]?.steps ?? []).find((s) => s.name === stepName)
+      expect({ name, run: source?.run?.trim() }).toEqual({ name, run: script.trim() })
+    }
+  })
+})
+
 describe('publish', () => {
   const runStep = (job: string, name: string, dir: string, env: Record<string, string>) =>
     Bun.spawnSync(['bash', '-e', '-c', step(job, name).run ?? ''], {
@@ -725,7 +812,15 @@ describe('publish', () => {
   })
 
   test('no fix-pipeline download may miss: a missing name is an error even under continue-on-error', () => {
-    const jobNames = ['fix', 'verify-native-build', 'verify-native-run', 'verify-real', 'verify-tests', 'publish']
+    const jobNames = [
+      'fix',
+      'verify-native-build',
+      'verify-native-run',
+      'verify-real',
+      'verify-tests',
+      'verify-checks',
+      'publish',
+    ]
     const optional = jobNames.flatMap((job) =>
       steps(job)
         .filter((s) => s.uses?.startsWith('actions/download-artifact@') && s['continue-on-error'])
@@ -762,24 +857,6 @@ describe('publish', () => {
       'Replay the spec on the patched frontend',
     ])
       expect(step('verify-real', name).if).toBe(present)
-  })
-
-  test("says in the run summary, in the workflow's own words, that a ticket was left for a later run", () => {
-    const dir = mkdtempSync(join(work, 'summary-'))
-    mkdirSync(join(dir, 'qa-out/status'), { recursive: true })
-    writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [{ fp: 'fp1', identifier: 'THB-7' }] }))
-    const summary = join(dir, 'summary.md')
-    const say = (stoppedBeforeSession: string | null) => {
-      writeFileSync(join(dir, 'qa-out/status/fp1.json'), JSON.stringify({ stoppedBeforeSession }))
-      return runStep('publish', 'Say when a ticket was left for a later run', dir, { GITHUB_STEP_SUMMARY: summary })
-    }
-    expect(say(null).exitCode).toBe(0)
-    expect(existsSync(summary)).toBe(false)
-    expect(say('no-model-answer').exitCode).toBe(0)
-    const line = readFileSync(summary, 'utf8')
-    expect(line).toBe(
-      '- THB-7: the fix job stopped before the fix session began, so the ticket is left for a later run.\n',
-    )
   })
 })
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import * as prettier from 'prettier'
 import type { Filed } from './file-findings'
 import type { Area, RawFinding, Severity } from './findings'
 import {
@@ -15,11 +16,15 @@ import {
   type FixTask,
   isDenied,
   type NativeCheck,
+  type PrCheck,
   publish,
   regressionSpec,
   route,
   type Run,
+  runPrChecks,
+  stage,
   testRuns,
+  whyNoSpec,
 } from './fix'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -102,6 +107,34 @@ const put = async (path: string, text: string) => {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, text)
 }
+
+/** A git repo at `repo` whose first commit holds `files`. */
+const initRepo = async (repo: string, files: Record<string, string>) => {
+  for (const [path, text] of Object.entries(files)) await put(join(repo, path), text)
+  const git = runIn(repo)
+  await git(['git', 'init', '--quiet'])
+  await git(['git', 'add', '-A'])
+  await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init'])
+}
+
+/** Writes the fix job's patch of `files` in `repo`, the way the workflow collects it, and resets the checkout. */
+const writePatch = async (
+  repo: string,
+  fp: string,
+  files: Record<string, string>,
+  renames: [string, string][] = [],
+) => {
+  const git = runIn(repo)
+  for (const [from, to] of renames) await git(['git', 'mv', from, to])
+  for (const [path, text] of Object.entries(files)) await put(join(repo, path), text)
+  await git(['git', 'add', '--all'])
+  await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
+  await git(['git', 'reset', '--quiet', '--hard'])
+}
+
+/** Runs a command with its output thrown away and returns its exit code. */
+const quiet = async (cmd: string[], cwd: string) =>
+  Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).exited
 
 describe('route', () => {
   type Row = { id: string; area: Area; severity: Severity; action: Filed['action']; would?: Filed['action'] }
@@ -698,38 +731,135 @@ describe('isDenied', () => {
 })
 
 describe('regressionSpec', () => {
-  test('names the spec for the consumer project and imports from e2e/', () => {
-    const { path, source } = regressionSpec('c4-skills-projects', 'ab12cd34', spec)
+  /** The spec's lines after the MPL header and the blank line below it. */
+  const body = async (charterDir: string, source: string) =>
+    (await regressionSpec(charterDir, 'ab12cd34', source)).source.split('\n').slice(4).join('\n')
+  const uses = 'test.use({ viewport: { width: 1, height: 1 } })\n'
+
+  test('names the spec for the consumer project and imports from e2e/', async () => {
+    const { path, source } = await regressionSpec('c4-skills-projects', 'ab12cd34', spec)
     expect(path).toBe('e2e/consumer-qa-ab12cd34.spec.ts')
     expect(source).toContain("import { expect, test } from './test'")
     expect(source).toContain("import { loginViaEmailCode } from './helpers'")
     expect(source).not.toContain('../../../e2e')
-    expect(source.split('\n').slice(2)).toEqual(spec.split('\n').slice(2))
+    expect(source.split('\n').slice(6)).toEqual(spec.split('\n').slice(2))
   })
 
-  test('moves the layout helper import from qa-out/ to e2e/', () => {
-    const source = `import { layoutProblems } from '../../../.github/qa/layout'\n`
-    expect(regressionSpec('c8-phone', 'ab12cd34', source).source).toBe(
-      `import { layoutProblems } from '../.github/qa/layout'\n`,
+  test('moves the layout helper import from qa-out/ to e2e/', async () => {
+    const source = `import { layoutProblems } from '../../../.github/qa/layout'\nlayoutProblems()\n`
+    expect(await body('c8-phone', source)).toBe(
+      `import { layoutProblems } from '../.github/qa/layout'\nlayoutProblems()\n`,
     )
   })
 
-  test('moves the ports import from qa-out/ to e2e/, in either quote style', () => {
-    const source = `import { frontendURL } from '../../../.github/qa/ports'\nimport { stackURLs } from "../../../.github/qa/ports"\n`
-    expect(regressionSpec('c2-chat-power-user', 'ab12cd34', source).source).toBe(
-      `import { frontendURL } from '../.github/qa/ports'\nimport { stackURLs } from "../.github/qa/ports"\n`,
+  test('moves the ports import from qa-out/ to e2e/, in either quote style', async () => {
+    const source = `import { frontendURL } from '../../../.github/qa/ports'\nimport { stackURLs } from "../../../.github/qa/ports"\nstackURLs(frontendURL)\n`
+    expect(await body('c2-chat-power-user', source)).toBe(
+      `import { frontendURL } from '../.github/qa/ports'\nimport { stackURLs } from '../.github/qa/ports'\nstackURLs(frontendURL)\n`,
     )
   })
 
-  test('uses the sync prefix for the two-device charter', () => {
-    expect(regressionSpec('c7-two-devices', 'ab12cd34', spec).path).toBe('e2e/sync-qa-ab12cd34.spec.ts')
+  test('uses the sync prefix for the two-device charter', async () => {
+    expect((await regressionSpec('c7-two-devices', 'ab12cd34', spec)).path).toBe('e2e/sync-qa-ab12cd34.spec.ts')
   })
 
-  test('keeps @playwright/test when the spec imports something e2e/test.ts does not export', () => {
-    const source = `import { devices, test } from '@playwright/test'\nimport type { Page } from "@playwright/test"\n`
-    expect(regressionSpec('c8-phone', 'ab12cd34', source).source).toBe(
-      `import { devices, test } from '@playwright/test'\nimport type { Page } from "./test"\n`,
+  test('keeps @playwright/test when the spec imports something e2e/test.ts does not export', async () => {
+    const source = `import { devices, test } from '@playwright/test'\nimport type { Page } from "@playwright/test"\nconst p: Page = devices\n${uses}`
+    expect(await body('c8-phone', source)).toBe(
+      `import { devices, test } from '@playwright/test'\nimport type { Page } from './test'\nconst p: Page = devices\n${uses}`,
     )
+  })
+
+  // A promoted spec once failed the PR's lint on an unused import and had no license header.
+  test('comes out clean: the MPL header on top, no unused import, formatted as the repo formats e2e/', async () => {
+    const messy = `import { expect, test } from "@playwright/test"
+import { collectPageErrors, loginViaEmailCode } from '../../../e2e/helpers'
+import { layoutProblems } from '../../../.github/qa/layout'
+
+test('menu fits',async ({ page }) => {
+    await loginViaEmailCode(page);
+    await expect(page.getByRole("button", { name: "Menu" })).toBeVisible()
+})
+`
+    const { path, source } = await regressionSpec('c8-phone', 'ab12cd34', messy)
+    expect(source).toBe(`/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { expect, test } from './test'
+import { loginViaEmailCode } from './helpers'
+
+test('menu fits', async ({ page }) => {
+  await loginViaEmailCode(page)
+  await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible()
+})
+`)
+    const config = await prettier.resolveConfig(join(import.meta.dir, '../../..', path))
+    expect(await prettier.check(source, { ...config, filepath: path })).toBe(true)
+  })
+
+  test('keeps a header that is already there, and a side-effect import', async () => {
+    const headed = `/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import './setup'
+`
+    expect((await regressionSpec('c8-phone', 'ab12cd34', headed)).source).toBe(headed)
+  })
+})
+
+describe('whyNoSpec', () => {
+  type Extra = Partial<Pick<FixTask, 'charterDir' | 'real'>> & {
+    proof?: { kind: 'visual' } | { kind: 'spec'; flow: string }
+  }
+  const task = ({ proof, ...extra }: Extra = {}, finding: Partial<FixTask['finding']> = {}): FixTask => ({
+    fp: 'ab12cd34',
+    severity: 'High',
+    branch: 'qa-fix/ab12cd34',
+    charterDir: 'c2-chat',
+    platform: 'desktop',
+    real: false,
+    ...(proof ?? { kind: 'spec', spec: 'qa-out/c2-chat/repro/1.spec.ts' }),
+    finding: {
+      title: 'Menu',
+      area: 'chat',
+      viewport: 'desktop',
+      oracle: { type: 'layout', evidence: '[qa-layout] overflow-text button "Menu"' },
+      steps: [],
+      expected: '',
+      actual: '',
+      ...finding,
+    },
+    ...extra,
+  })
+  const oracle = (type: FixTask['finding']['oracle']['type'], evidence = 'x') => ({ oracle: { type, evidence } })
+
+  test('adds a spec for what only a real browser shows: layout, visual and data lost on a reload', () => {
+    expect(whyNoSpec(task())).toBeUndefined()
+    expect(whyNoSpec(task({ proof: { kind: 'visual' } }, oracle('visual')))).toBeUndefined()
+    expect(whyNoSpec(task({}, oracle('lost-on-reload')))).toBeUndefined()
+  })
+
+  test('leaves the rest to the unit test, a missing accessible name included', () => {
+    for (const type of [
+      'page-error',
+      'console-error',
+      'http-5xx',
+      'stuck',
+      'assert-failed',
+      'ai-reported-failure',
+    ] as const)
+      expect({ type, why: whyNoSpec(task({}, oracle(type))) }).toEqual({ type, why: 'unit' })
+    const unnamed = oracle('layout', '[qa-layout] unnamed-control button "arrow-left icon after Connect Google"')
+    expect(whyNoSpec(task({}, unnamed))).toBe('unit')
+  })
+
+  test('never adds one for a security, native, onboarding or real-AI fix, whatever the oracle', () => {
+    expect(whyNoSpec(task({}, { area: 'security' }))).toBe('security')
+    expect(whyNoSpec(task({ proof: { kind: 'spec', flow: 'f.yaml' } }))).toBe('native')
+    expect(whyNoSpec(task({ charterDir: 'c1-first-run-desktop' }))).toBe('onboarding')
+    expect(whyNoSpec(task({ real: true }))).toBe('real')
   })
 })
 
@@ -1071,27 +1201,14 @@ describe('checkTests', () => {
   const titleTest = (input: string) =>
     `import { expect, test } from 'bun:test'\nimport { title } from './title'\n` +
     `test('title', () => expect(title(${JSON.stringify(input)})).toBe(${JSON.stringify(input.trim())}))\n`
-  const quiet = async (cmd: string[], cwd: string) =>
-    Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).exited
-
   beforeEach(async () => {
     repo = join(dir, 'repo')
     git = runIn(repo)
-    await put(join(repo, 'src', 'title.ts'), buggy)
-    await put(join(repo, 'src', 'old.test.ts'), titleTest('plain'))
-    await git(['git', 'init', '--quiet'])
-    await git(['git', 'add', '-A'])
-    await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'init'])
+    await initRepo(repo, { 'src/title.ts': buggy, 'src/old.test.ts': titleTest('plain') })
   })
 
-  /** Writes the fix job's patch from the given files, the way the workflow collects it, and resets the checkout. */
-  const patchOf = async (files: Record<string, string>, renames: [string, string][] = []) => {
-    for (const [from, to] of renames) await git(['git', 'mv', from, to])
-    for (const [path, text] of Object.entries(files)) await put(join(repo, path), text)
-    await git(['git', 'add', '--all'])
-    await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
-    await git(['git', 'reset', '--quiet', '--hard'])
-  }
+  const patchOf = (files: Record<string, string>, renames: [string, string][] = []) =>
+    writePatch(repo, fp, files, renames)
   const check = async (exec = quiet) => {
     const result = await checkTests({ outDir, fp, repoDir: repo, run: git, exec, log: () => {} })
     // Each half takes its hunks out again, so the checkout ends as it started.
@@ -1173,6 +1290,131 @@ describe('checkTests', () => {
   })
 })
 
+describe('the PR checks gate', () => {
+  const fp = 'ab12cd34'
+  const header = `/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+`
+  const bin = join(import.meta.dir, '../../../node_modules/.bin')
+  // Real tools over the staged tree, as `bun run check` runs them: TypeScript's unused-import errors, the license
+  // check's test for a header, and prettier with the repo's config.
+  const checks: PrCheck[] = [
+    {
+      name: 'unused imports',
+      run: `test -z "$(${bin}/tsc --noEmit --noUnusedLocals --module esnext --moduleResolution bundler $(git ls-files '*.ts') | grep -E 'TS(6133|6192)')"`,
+    },
+    { name: 'license', run: `test -z "$(git ls-files '*.ts' | xargs grep -L 'mozilla.org/MPL')"` },
+    { name: 'format', run: `${bin}/prettier --check $(git ls-files '*.ts')` },
+    { name: 'backend only', run: 'false', paths: ['backend/'] },
+  ]
+  let repo: string
+  let git: Run
+  const task = (): FixTask => ({
+    fp,
+    severity: 'High',
+    branch: 'qa-fix/thb-1',
+    identifier: 'THB-1',
+    charterDir: 'c8-phone',
+    platform: 'phone',
+    real: false,
+    kind: 'spec',
+    spec: join(outDir, 'c8-phone', 'repro', '1.spec.ts'),
+    finding: {
+      title: 'Menu overflows',
+      area: 'chat',
+      viewport: 'phone',
+      oracle: { type: 'layout', evidence: '[qa-layout] overflow-page' },
+      steps: [],
+      expected: '',
+      actual: '',
+    },
+  })
+
+  beforeEach(async () => {
+    repo = join(dir, 'repo')
+    git = runIn(repo)
+    const prettierrc = '.prettierrc.json'
+    await initRepo(repo, {
+      [prettierrc]: await readFile(join(import.meta.dir, '../../..', prettierrc), 'utf8'),
+      'src/chat.ts': `${header}\nexport const title = (text: string) => text\n`,
+      'e2e/test.ts': `${header}\nexport const test = () => {}\n`,
+    })
+    // A repro as the explorer writes them: an unused import, no header, not formatted.
+    await put(
+      join(outDir, 'c8-phone', 'repro', '1.spec.ts'),
+      `import { test } from "@playwright/test"\nimport { loginViaEmailCode } from '../../../e2e/helpers'\n\ntest('menu', async () => {})\n`,
+    )
+  })
+
+  const patchOf = (files: Record<string, string>) => writePatch(repo, fp, files)
+  const gate = async (files: Record<string, string>) => {
+    await patchOf(files)
+    await stage(git, outDir, task(), repo)
+    const ran: string[] = []
+    const exec = async (cmd: string[], cwd: string) => {
+      ran.push(cmd.at(-1) ?? '')
+      return quiet(cmd, cwd)
+    }
+    const summary = join(dir, 'summary.md')
+    const failed = await runPrChecks({ ticket: 'THB-1', repoDir: repo, run: git, exec, summary, checks, log: () => {} })
+    const said = (await Bun.file(summary).exists()) ? await readFile(summary, 'utf8') : ''
+    return { failed, ran: ran.length, said }
+  }
+
+  test('passes the tree publish pushes, with the repro cleaned into a regression spec', async () => {
+    expect(await gate({ 'src/chat.ts': `${header}\nexport const title = (text: string) => text.trim()\n` })).toEqual({
+      failed: undefined,
+      ran: 3,
+      said: '',
+    })
+    expect(await git(['git', 'diff', '--cached', '--name-only', 'HEAD'])).toBe(
+      'e2e/consumer-qa-ab12cd34.spec.ts\nsrc/chat.ts\n',
+    )
+  }, 20_000)
+
+  test('fails a tree with an unused import, stops there, and the summary names the ticket and the check', async () => {
+    const unused = `${header}\nimport { title } from './chat'\n\nexport const name = 'x'\n`
+    expect(await gate({ 'src/name.ts': unused })).toEqual({
+      failed: 'unused imports',
+      ran: 1,
+      said: '- THB-1: the tree publish would push fails `unused imports`, so it opens no PR and leaves the ticket for a later run.\n',
+    })
+  }, 20_000)
+
+  test('fails a tree with a file that lacks the license header', async () => {
+    expect((await gate({ 'src/name.ts': "export const name = 'x'\n" })).failed).toBe('license')
+  }, 20_000)
+
+  test('fails a tree that is not formatted', async () => {
+    expect((await gate({ 'src/name.ts': `${header}\nexport const name = "x";\n` })).failed).toBe('format')
+  }, 20_000)
+
+  test('runs a check limited to some paths only when the tree touches one, and as the given user', async () => {
+    await patchOf({ 'backend/x.ts': 'x' })
+    await git(['git', 'apply', '--index', join(outDir, 'fix', `${fp}.patch`)])
+    const cmds: string[][] = []
+    const exec = async (cmd: string[]) => {
+      cmds.push(cmd)
+      return 0
+    }
+    const only = [checks[3]]
+    await runPrChecks({ ticket: 'THB-1', user: 'qa-test', repoDir: repo, run: git, exec, checks: only, log: () => {} })
+    expect(cmds).toEqual([
+      [
+        ...['sudo', '-n', '--user', 'qa-test', '--set-home', '--', 'env', `PATH=${process.env.PATH}`],
+        ...['env', 'CI=true', 'bash', '-eo', 'pipefail', '-c', 'false'],
+      ],
+    ])
+    await git(['git', 'reset', '--quiet', '--hard'])
+    await git(['git', 'clean', '--quiet', '-fd'])
+    await patchOf({ 'src/x.ts': 'x' })
+    await git(['git', 'apply', '--index', join(outDir, 'fix', `${fp}.patch`)])
+    await runPrChecks({ ticket: 'THB-1', repoDir: repo, run: git, exec, checks: only, log: () => {} })
+    expect(cmds).toHaveLength(1)
+  })
+})
+
 describe('publish', () => {
   const fp = 'ab12cd34'
   const specPath = () => join(outDir, 'c2-chat', 'repro', '1.spec.ts')
@@ -1213,7 +1455,7 @@ describe('publish', () => {
         title: 'Renaming a chat\nloses its title',
         area: 'chat',
         viewport: 'desktop',
-        oracle: { type: 'assert-failed', evidence: 'expected Renamed' },
+        oracle: { type: 'lost-on-reload', evidence: 'Untitled after a reload' },
         steps: ['Rename a chat'],
         expected: 'Renamed',
         actual: 'Untitled',
@@ -1236,7 +1478,7 @@ describe('publish', () => {
   }
   const putStatus = (stoppedBeforeSession: string | null) =>
     put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
-  const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android']
+  const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
   /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
   const putPasses = (...checks: string[]) => putPassesOf('1', ...checks)
   /** The same, as uploaded in run attempt `attempt`. */
@@ -1322,7 +1564,7 @@ describe('publish', () => {
     expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
-      regressionSpec('c2-chat', fp, spec).source,
+      (await regressionSpec('c2-chat', fp, spec)).source,
     )
     expect(calls).toEqual([
       { op: 'Comment', variables: { issueId: 'issue-1', body: 'Draft fix PR: https://github.com/o/r/pull/9' } },
@@ -1389,7 +1631,7 @@ describe('publish', () => {
 
     expect(result).toMatchObject({ outcome: 'pr', spec: 'e2e/consumer-qa-ab12cd34.spec.ts' })
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
-      regressionSpec('c2-chat', fp, check).source,
+      (await regressionSpec('c2-chat', fp, check)).source,
     )
     expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
   })
@@ -1498,6 +1740,58 @@ describe('publish', () => {
     expect(runs.at(-1)?.stdin).toContain('runs on the fake provider')
   })
 
+  test('a fix a unit test can show adds no spec, and its PR says the unit test guards it', async () => {
+    await setup({ extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } })
+
+    const { repoDir, runs, result } = await publishLive()
+
+    expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
+    expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
+    expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
+    const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
+    for (const text of [runs.at(-1)?.stdin ?? '', commit]) {
+      expect(text).toContain('The unit test in this patch guards the fix.')
+      expect(text).not.toMatch(/is added as|Keeps .* as the regression test|e2e\/consumer-qa-/)
+    }
+  })
+
+  test('a patch whose tree failed a PR check leaves the ticket and the repository alone and says so', async () => {
+    await setup()
+    await putPasses(...everyCheck.filter((c) => c !== 'checks'))
+    const summary = join(dir, 'summary.md')
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+    const result = await publish({
+      outDir,
+      fp,
+      live: true,
+      key: 'lin',
+      token: 't',
+      summary,
+      run: fakeRun(runs, diffOutput),
+      fetchFn: fakeLinear(calls),
+      log: () => {},
+    })
+
+    expect(result).toEqual({ outcome: 'infrastructure', reason: expect.stringContaining('failed a PR check') })
+    // Only checkPatch's read of the patch: no branch, commit or push.
+    expect(runs.map((r) => r.cmd[1])).toEqual(['read-tree', 'apply', 'diff'])
+    expect(calls).toEqual([])
+    expect(await readFile(summary, 'utf8')).toBe(
+      '- THB-1 is left untouched for a later run: the tree a PR would hold failed a PR check, which the verify-checks summary names\n',
+    )
+  })
+
+  test('unit tests that did not fail without the fix send the ticket to a person, even past a failed PR check', async () => {
+    await setup()
+    await putPasses('session', 'replay')
+    const run = fakeRun([], { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') })
+    expect(await publish({ outDir, fp, live: false, run, log: () => {} })).toEqual({
+      outcome: 'human-required',
+      reasons: ["the patch's unit tests did not fail without the fix and pass with it"],
+    })
+  })
+
   test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3.')
@@ -1551,6 +1845,7 @@ describe('publish', () => {
       live: true,
       key: 'lin',
       token: 't',
+      summary: join(dir, 'summary.md'),
       run: fakeRun(runs, diffOutput),
       fetchFn: fakeLinear(calls),
       log,
@@ -1571,6 +1866,9 @@ describe('publish', () => {
     expect(runs).toEqual([])
     expect(calls).toEqual([])
     expect(lines.join('\n')).toMatch(new RegExp(`THB-1 is left untouched for a later run: .*${why}`))
+    expect(await readFile(join(dir, 'summary.md'), 'utf8')).toMatch(
+      new RegExp(`^- THB-1 is left untouched for a later run: .*${why}.*\\n$`),
+    )
   })
 
   test.each([
@@ -1668,10 +1966,10 @@ describe('publish', () => {
       '%s opens a PR with only its own passes, and goes to a person without any one of them',
       async (_, task, needed) => {
         await setupTask(task)
-        await putPasses(...needed)
+        await putPasses(...needed, 'checks')
         expect((await dryRun()).outcome).toBe('pr')
         for (const missing of needed) {
-          await putPasses(...needed.filter((c) => c !== missing))
+          await putPasses(...needed.filter((c) => c !== missing), 'checks')
           const result = await dryRun()
           expect({ missing, result }).toMatchObject({ missing, result: { outcome: 'human-required' } })
           expect(result.outcome === 'human-required' && result.reasons).toEqual([
@@ -1697,7 +1995,7 @@ describe('publish', () => {
     // passes.
     test('only the passes of the attempt whose patch publish read count', async () => {
       await setupTask({})
-      await putPassesOf('1', 'session', 'replay', 'tests')
+      await putPassesOf('1', 'session', 'replay', 'tests', 'checks')
       const inAttempt = (attempt: string) =>
         publish({
           outDir,

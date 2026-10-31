@@ -1388,8 +1388,9 @@ jobs:
           /usr/bin/jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
             > "$RUNNER_TEMP/qa-status/$QA_FP.json"
       # Uploaded whenever the key scan passed, as the fix output is, so publish's download never misses in a normal
-      # run. Outside qa-out/, so the agent's qa-fix artifact cannot carry a copy. This and every fix-pipeline artifact
-      # publish reads carry the run attempt, since artifact names are unique per run and a re-run would collide.
+      # run. Outside qa-out/, so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's
+      # checks or publish read carry the run attempt: one artifact list spans every attempt of the run, and a
+      # download by name takes the latest, so an attempt that uploaded none would get an earlier attempt's.
       - if: always() && steps.key-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1555,7 +1556,7 @@ jobs:
           matrix.task.real && matrix.task.spec
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-fix-dist-${{ matrix.task.fp }}
+          name: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-dist-fix/
           if-no-files-found: ignore
           retention-days: 1
@@ -1609,7 +1610,7 @@ jobs:
           tar -cf "$RUNNER_TEMP/qa-patched/app.tar" -C "$RUNNER_TEMP/qa-patched" "$QA_APP_FILE"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          name: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-patched/app.tar
           if-no-files-found: ignore
           retention-days: 1
@@ -1639,7 +1640,7 @@ jobs:
       # A pattern, since a fix that failed or gave up built no app: a missing name would fail with an error.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}
+          pattern: qa-patched-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apps/patched
       # No app, no verdict: the device steps below skip themselves on this flag.
       - name: Note a missing patched app
@@ -1730,7 +1731,7 @@ jobs:
       # A pattern, since a fix that failed or gave up built no frontend: a missing name would fail with an error.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: qa-fix-dist-${{ matrix.task.fp }}
+          pattern: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-dist-fix
       - name: Start the stack on the real providers
         if: hashFiles('qa-dist-fix/**') != ''
@@ -1803,6 +1804,10 @@ jobs:
           # Lets that user reach bun and the checkout without listing this user's home.
           sudo chmod o+x "$HOME"
           sudo sh -c "umask 0337 && echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests"
+          # Fails the job here when that user cannot run bun or read the checkout, rather than every test later.
+          sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version
+          sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json" > /dev/null
+          sudo -n -u "$QA_TEST_USER" ls "$PWD/node_modules/.bin" > /dev/null
       - name: Take root away from the job's user
         run: .github/qa/scripts/stack.sh lock
       - name: Check that the patch's tests fail without the fix and pass with it

@@ -1693,8 +1693,8 @@ describe('publish', () => {
       })
     })
 
-    // Artifact names are unique per run, not per attempt, so a re-run must not pair one attempt's patch with
-    // another's passes.
+    // One artifact list spans every attempt of the run, so a re-run must not pair one attempt's patch with another's
+    // passes.
     test('only the passes of the attempt whose patch publish read count', async () => {
       await setupTask({})
       await putPassesOf('1', 'session', 'replay', 'tests')

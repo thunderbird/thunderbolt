@@ -520,7 +520,8 @@ describe('passes', () => {
     expect(jobs.publish.needs).toEqual(['build', 'file', 'fix', 'verify-native-run', 'verify-real', 'verify-tests'])
   })
 
-  // Artifact names are unique per run, so a re-run would collide with, or pair up with, an earlier attempt's.
+  // One artifact list spans every attempt of the run, and a download takes the latest of a name, so an attempt that
+  // uploaded none would read an earlier attempt's.
   test("the fix output is read only from the reader's own run attempt, by pattern, so its absence is no error", () => {
     const readers = ['verify-native-build', 'verify-native-run', 'verify-tests', 'publish']
     const fixDownloads = readers.flatMap((job) =>
@@ -537,6 +538,21 @@ describe('passes', () => {
         },
       })),
     )
+  })
+
+  // A pass the patched app or frontend leads to must pair with that attempt's patch.
+  test('the patched app and the patched real-AI frontend are built and read in one run attempt', () => {
+    const artifact = (job: string, action: string, prefix: string) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith(`actions/${action}-artifact@`))
+        .map((s) => s.with?.name ?? s.with?.pattern ?? '')
+        .filter((name) => name.startsWith(prefix))
+    const dist = `qa-fix-dist-\${{ matrix.task.fp }}${attempt}`
+    const patched = `qa-patched-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`
+    expect(artifact('fix', 'upload', 'qa-fix-dist-')).toEqual([dist])
+    expect(artifact('verify-real', 'download', 'qa-fix-dist-')).toEqual([dist])
+    expect(artifact('verify-native-build', 'upload', 'qa-patched-')).toEqual([patched])
+    expect(artifact('verify-native-run', 'download', 'qa-patched-')).toEqual([patched])
   })
 })
 
@@ -562,6 +578,9 @@ describe('verify-tests', () => {
     // The job's user may run anything as the test user, nothing as root: in sudoers the last matching rule wins, so
     // this rule's file must sort after the one `stack.sh lock` writes.
     expect(create).toContain(`echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests`)
+    // A test user that cannot run bun or read the checkout fails the job here, not every test as a failed check.
+    expect(create).toContain('sudo -n -u "$QA_TEST_USER" env "PATH=$PATH" bun --version')
+    expect(create).toContain('sudo -n -u "$QA_TEST_USER" cat "$PWD/package.json"')
     const stackSh = readFileSync(join(import.meta.dir, 'stack.sh'), 'utf8')
     const lockRule = /NOPASSWD: !ALL' > \/etc\/sudoers\.d\/([\w-]+)"/.exec(stackSh)?.[1] ?? ''
     expect(lockRule).not.toBe('')
@@ -733,7 +752,9 @@ describe('publish', () => {
   })
 
   test('verify-real replays only on a patched frontend it downloaded', () => {
-    const download = steps('verify-real').find((s) => s.with?.pattern === 'qa-fix-dist-${{ matrix.task.fp }}')
+    const download = steps('verify-real').find(
+      (s) => s.with?.pattern === `qa-fix-dist-\${{ matrix.task.fp }}${attempt}`,
+    )
     const present = `hashFiles('${download?.with?.path}/**') != ''`
     for (const name of [
       'Start the stack on the real providers',

@@ -83,10 +83,13 @@ and the ticket gets `Human Required` with the reason. Listing names cannot miss,
 annotation for a check that did not pass. The diagnosis the fix job writes for a failed check is only the reason a
 person reads: deleting it, or writing a result file that says the check passed, opens no PR.
 
-Artifact names are unique per run, not per attempt, so the fix output (`qa-fix-<fp>-<run attempt>`), its status and
-every pass carry the attempt, and each job reads only the fix output of its own attempt, by pattern. A partial re-run
-therefore never pairs one attempt's patch with another's passes: a job that reads no fix output of its attempt hands
-the ticket to a person, and publish fails when the status of its attempt is missing. Re-run all jobs to retry a fix.
+One artifact list spans every attempt of a run, and a download by name or pattern takes the latest artifact of that
+name, so an attempt that uploaded none would read an earlier attempt's. The fix output (`qa-fix-<fp>-<run attempt>`),
+its status, the patched native app (`qa-patched-<fp>-<platform>-<run attempt>`), the patched real-AI frontend
+(`qa-fix-dist-<fp>-<run attempt>`) and every pass therefore carry the attempt, and each job reads only its own
+attempt's. A re-run never pairs one attempt's patch with another's build or passes: a job that finds nothing of its
+attempt hands the ticket to a person, and publish fails when the status of its attempt is missing. Re-run all jobs to
+retry a fix, which runs every fix session again.
 
 The passes keep keys away from the patch; they are not proof against a patch built to cheat. Every upload step's
 process holds the runtime token (`ACTIONS_RUNTIME_TOKEN`), and any process of the job's user can read it in that
@@ -423,16 +426,15 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session began, and uploads it as `qa-fix-status-<fp>-<run attempt>`. A step timeout counts as begun: the step ran
    for its whole cap, though the action had no chance to write its execution file. `publish` downloads the file into
    `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a missing or malformed
-   one. When the
-   session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names the
-   ticket and says it was left for a later run. Only a process the sandbox let outlive the session could still
-   rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is unconfirmed). At
-   worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to a PR. A session
-   that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that uploaded no
-   status (its key scan failed, or the runner was lost) fails `publish`, because nothing says whether the agent ran.
-   One whose secret scan failed uploaded its status but no fix output, and its ticket gets `Human Required`.
-   `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix that built none
-   shows no error there either.
+   one. When the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run
+   summary names the ticket and says it was left for a later run. Only a process the sandbox let outlive the session
+   could still rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is
+   unconfirmed). At worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to
+   a PR. A session that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that
+   uploaded no status (its key scan failed, or the runner was lost) fails `publish`, because nothing says whether the
+   agent ran. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
+   `Human Required`. `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix
+   that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
    the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
    task's check is the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the
@@ -453,9 +455,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    web task (see "Passes"). Only then does it open a draft PR on the task's branch. Otherwise the ticket gets
    `Human Required` with the reason (for a native platform, "the flow still fails on the native platform"). A fix
    from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform, never gets a PR either: the
-   fix job and `verify-native-run` start no Postgres
-   or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview
-   deploy like any other PR.
+   fix job and `verify-native-run` start no Postgres or PowerSync, so they cannot verify it, and its ticket gets
+   `Human Required`. A fix PR gets an automatic preview deploy like any other PR.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.

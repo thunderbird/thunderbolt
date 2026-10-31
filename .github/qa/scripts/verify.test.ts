@@ -16,6 +16,7 @@ import {
   groupFindings,
   judge,
   legStartOf,
+  nativeExitCode,
   nativeJobMinutes,
   oracleOf,
   replay,
@@ -1641,6 +1642,22 @@ describe('native fix verification', () => {
       return { passed: false, signInFailed: at === 'first', error, layout: [], logs: [] }
     }
   }
+
+  // The platform's pass rests on this exit code, so a verdict that fails either half must exit non-zero.
+  test('the command exits 0 only for a patch that passed with it and, when checked, failed without it', async () => {
+    const steps = { ...base, flow: '- launchApp\n- assertVisible: What should we call you?\n' }
+    const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
+    const bugShown = failsAt('What should we call you?')
+    const fixed = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('nothing'), original: bugShown })
+    const stillBroken = await verifyNativeFix({ ...steps, oracle: asserted, patched: bugShown })
+    const neverBroken = await verifyNativeFix({
+      ...steps,
+      oracle: asserted,
+      patched: failsAt('nothing'),
+      original: failsAt('nothing'),
+    })
+    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 1, 1])
+  })
 
   test('passes only when no patched run shows the bug: the quoted probe line, or the flow failing', async () => {
     const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })

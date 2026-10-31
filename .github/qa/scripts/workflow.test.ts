@@ -491,30 +491,37 @@ describe("CI's check of the fix job's dev stack", () => {
   })
 })
 
+const attempt = '-${{ github.run_attempt }}'
+
 describe('passes', () => {
-  /** Every upload of a check's pass, as `<job> <check>`, with its `if:` and the file it uploads. */
+  /** Every upload of a check's pass, as `<job> <check>`, with its name's run-attempt suffix, `if:` and file. */
   const passUploads = Object.fromEntries(
     Object.keys(jobs).flatMap((job) =>
       steps(job)
         .filter((s) => s.uses?.startsWith('actions/upload-artifact@') && s.with?.name?.startsWith('qa-pass-'))
-        .map((s) => [`${job} ${s.with?.name?.split('}}-')[1]}`, { if: s.if, path: s.with?.path }]),
+        .map((s) => {
+          const [, check, suffix] =
+            /^qa-pass-\$\{\{ matrix\.\w+\.fp \}\}-(.+?)(-\$\{\{ github\.run_attempt \}\})?$/.exec(
+              s.with?.name ?? '',
+            ) ?? ['', '', '']
+          return [`${job} ${check}`, { suffix, if: s.if, path: s.with?.path }]
+        }),
     ),
   )
+  const pass = (ifText: string) => ({ suffix: attempt, if: ifText, path: '${{ runner.temp }}/qa-pass.txt' })
   const outcome = (id: string) => `steps.${id}.outcome == 'success'`
   const fixScans = `always() && ${outcome('key-scan')} && ${outcome('secret-scan')} && `
 
   test("each check's pass is uploaded only on the outcome of the step that ran the check", () => {
     expect(passUploads).toEqual({
-      'fix session': { if: fixScans + outcome('fix'), path: '${{ runner.temp }}/qa-pass.txt' },
-      'fix replay': { if: fixScans + outcome('verify'), path: '${{ runner.temp }}/qa-pass.txt' },
-      'fix visual': { if: fixScans + outcome('visual'), path: '${{ runner.temp }}/qa-pass.txt' },
-      // The native platform is the matrix's, so the name ends in an expression.
-      'verify-native-run ${{ matrix.check.platform }}': {
-        if: `always() && ${outcome('run')}`,
-        path: '${{ runner.temp }}/qa-pass.txt',
-      },
-      'verify-real real': { if: `always() && ${outcome('replay')}`, path: '${{ runner.temp }}/qa-pass.txt' },
-      'verify-tests tests': { if: `always() && ${outcome('tests')}`, path: '${{ runner.temp }}/qa-pass.txt' },
+      'fix session': pass(fixScans + outcome('fix')),
+      'fix replay': pass(fixScans + outcome('verify')),
+      'fix visual': pass(fixScans + outcome('visual')),
+      // The native platform is the matrix's, so the check is an expression.
+      'verify-native-run ${{ matrix.check.platform }}': pass(`always() && ${outcome('run')}`),
+      'verify-real real': pass(`always() && ${outcome('replay')}`),
+      // Its tests ran as another user, whose every process is gone before this upload.
+      'verify-tests tests': pass(`always() && ${outcome('tests')} && ${outcome('stop-tests')}`),
     })
   })
 
@@ -549,6 +556,25 @@ describe('passes', () => {
       expect(`${download.with?.name ?? download.with?.pattern}`).not.toMatch(/qa-(pass|verify)-/)
     expect(jobs.publish.needs).toEqual(['build', 'file', 'fix', 'verify-native-run', 'verify-real', 'verify-tests'])
   })
+
+  // Artifact names are unique per run, so a re-run would collide with, or pair up with, an earlier attempt's.
+  test("the fix output is read only from the reader's own run attempt, by pattern, so its absence is no error", () => {
+    const readers = ['verify-native-build', 'verify-native-run', 'verify-tests', 'publish']
+    const fixDownloads = readers.flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/download-artifact@') && /qa-fix-\$/.test(JSON.stringify(s.with)))
+        .map((s) => ({ job, with: s.with })),
+    )
+    expect(fixDownloads).toEqual(
+      readers.map((job) => ({
+        job,
+        with: {
+          pattern: `qa-fix-\${{ matrix.${job === 'verify-tests' || job === 'publish' ? 'task' : 'check'}.fp }}${attempt}`,
+          path: 'qa-out',
+        },
+      })),
+    )
+  })
 })
 
 describe('verify-tests', () => {
@@ -560,8 +586,57 @@ describe('verify-tests', () => {
     const checkout = steps('verify-tests').find((s) => s.uses?.startsWith('actions/checkout@'))
     expect(String(checkout?.with?.['persist-credentials'])).toBe('false')
     const download = steps('verify-tests').find((s) => s.uses?.startsWith('actions/download-artifact@'))
-    expect(download?.with).toEqual({ name: 'qa-fix-${{ matrix.task.fp }}', path: 'qa-out' })
+    expect(download?.with).toEqual({ pattern: `qa-fix-\${{ matrix.task.fp }}${attempt}`, path: 'qa-out' })
     expect(job.needs).toEqual(['build', 'file', 'fix'])
+  })
+
+  test("the tests run as another user, with root gone, so no test process can read the job user's tokens", () => {
+    const at = (name: string) => indexOf('verify-tests', name)
+    const check = "Check that the patch's tests fail without the fix and pass with it"
+    expect(jobs['verify-tests'].env?.QA_TEST_USER).toBe('qa-test')
+    const create = step('verify-tests', 'Create the user the tests run as').run ?? ''
+    expect(create).toContain('sudo useradd --create-home "$QA_TEST_USER"')
+    // The job's user may run anything as the test user, nothing as root: in sudoers the last matching rule wins, so
+    // this rule's file must sort after the one `stack.sh lock` writes.
+    expect(create).toContain(`echo '$(id -un) ALL=($QA_TEST_USER) NOPASSWD: ALL' > /etc/sudoers.d/zz-qa-lock-tests`)
+    const stackSh = readFileSync(join(import.meta.dir, 'stack.sh'), 'utf8')
+    const lockRule = /NOPASSWD: !ALL' > \/etc\/sudoers\.d\/([\w-]+)"/.exec(stackSh)?.[1] ?? ''
+    expect(lockRule).not.toBe('')
+    expect('zz-qa-lock-tests' > lockRule).toBe(true)
+    expect(step('verify-tests', "Take root away from the job's user").run).toBe('.github/qa/scripts/stack.sh lock')
+    expect(at('Create the user the tests run as')).toBeLessThan(at("Take root away from the job's user"))
+    expect(at("Take root away from the job's user")).toBeLessThan(at(check))
+    expect(at(check)).toBeLessThan(at('Stop every process of the test user'))
+    expect(step('verify-tests', 'Stop every process of the test user').if).toBe('always()')
+  })
+
+  /** Runs the stop step with stand-ins for pgrep and sudo: the user's processes are gone after `survives` kills. */
+  const stopTests = (survives: number) => {
+    const dir = mkdtempSync(join(work, 'stop-tests-'))
+    const count = join(dir, 'kills')
+    writeFileSync(count, '0')
+    const script = (body: string) => `#!/bin/sh\n${body}\n`
+    writeFileSync(join(dir, 'pgrep'), script(`[ "$(cat ${count})" -le ${survives} ]`), { mode: 0o755 })
+    writeFileSync(join(dir, 'sudo'), script(`echo "$@" > ${dir}/args; echo $(( $(cat ${count}) + 1 )) > ${count}`), {
+      mode: 0o755,
+    })
+    writeFileSync(join(dir, 'sleep'), script('exit 0'), { mode: 0o755 })
+    const proc = Bun.spawnSync(
+      ['bash', '-e', '-c', step('verify-tests', 'Stop every process of the test user').run ?? ''],
+      {
+        cwd: dir,
+        env: { PATH: `${dir}:${process.env.PATH}`, QA_TEST_USER: 'qa-test' },
+      },
+    )
+    const args = existsSync(join(dir, 'args')) ? readFileSync(join(dir, 'args'), 'utf8').trim() : ''
+    return { code: proc.exitCode, kills: Number(readFileSync(count, 'utf8')), args }
+  }
+
+  test('the stop kills the test user until none of its processes is left, and fails when one survives', () => {
+    expect(stopTests(0)).toEqual({ code: 0, kills: 1, args: '-n -u qa-test /usr/bin/kill -KILL -1' })
+    // A process that forks between kills is caught by a later one.
+    expect(stopTests(2)).toMatchObject({ code: 0, kills: 3 })
+    expect(stopTests(1000)).toMatchObject({ code: 1, kills: 50 })
   })
 
   test("checks every web task of the plan and no native one, from route's output", () => {
@@ -648,7 +723,7 @@ describe('publish', () => {
       expect(record.name).toBe('Record whether the fix session began')
       expect(record.if).toBe('always()')
       expect(record.env?.PATH).toBe('/usr/bin:/bin')
-      expect(upload.with?.name).toBe('qa-fix-status-${{ matrix.task.fp }}')
+      expect(upload.with?.name).toBe(`qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
       // The key scan's verdict only: it reads no fix outcome, and it passes in every run that uploads the fix output.
       expect(upload.if).toBe("always() && steps.key-scan.outcome == 'success'")
       expect(upload.with?.path).toBe('${{ runner.temp }}/qa-status/')
@@ -656,11 +731,11 @@ describe('publish', () => {
     })
 
     test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {
-      const download = steps('publish').find((s) => s.with?.name === 'qa-fix-status-${{ matrix.task.fp }}')
+      const download = steps('publish').find((s) => s.with?.name === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
       expect(download?.with?.path).toBe('qa-out/status')
       expect(download?.['continue-on-error']).toBeUndefined()
       // The fix artifact lands in qa-out too, so none of its paths may reach qa-out/status.
-      const fixUpload = steps('fix').find((s) => s.with?.name === 'qa-fix-${{ matrix.task.fp }}')
+      const fixUpload = steps('fix').find((s) => s.with?.name === `qa-fix-\${{ matrix.task.fp }}${attempt}`)
       const paths = (fixUpload?.with?.path ?? '').split('\n').filter(Boolean)
       expect(paths.length).toBeGreaterThan(0)
       for (const path of paths) expect(path).toMatch(/^qa-out\/fix(-\$\{\{ matrix\.task\.fp \}\})?\//)

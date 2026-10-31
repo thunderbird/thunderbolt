@@ -441,9 +441,27 @@ const noTestReason =
 const runTests = (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }).exited
 
+/**
+ * `cmd` run as the OS user `user` through sudo, which resets the environment: the command gets `path` as its PATH and
+ * that user's home, nothing else of the caller's environment.
+ */
+const asUser = (user: string, path: string, cmd: string[]) => [
+  'sudo',
+  '-n',
+  '--user',
+  user,
+  '--set-home',
+  '--',
+  'env',
+  `PATH=${path}`,
+  ...cmd,
+]
+
 type CheckTestsOptions = {
   outDir: string
   fp: string
+  /** Runs the tests as this OS user (see `asUser`), while git runs as the caller. */
+  user?: string
   repoDir?: string
   run?: Run
   exec?: (cmd: string[], cwd: string) => Promise<number>
@@ -454,11 +472,13 @@ type CheckTestsOptions = {
  * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: they must fail with only the
  * patch's hunks for its test files applied (`failsWithout`), and pass with the whole patch (`passesWith`). Both are
  * false for a patch with no test file. One process runs both halves, so code a test leaves behind cannot swap the
- * verdict code between them. Each half takes its hunks out again, which leaves the checkout as it was.
+ * verdict code between them. Each half takes its hunks out again, which leaves the checkout as it was. With `user`
+ * the tests run as that user, so they cannot read the environment of this user's processes.
  */
 export const checkTests = async ({
   outDir,
   fp,
+  user,
   repoDir = '.',
   run = runCommand,
   exec = runTests,
@@ -476,7 +496,9 @@ export const checkTests = async ({
     await run(['git', 'apply', ...include, patch])
     try {
       const codes: number[] = []
-      for (const { cwd, cmd } of runs) codes.push(await exec(cmd, join(repoDir, cwd)))
+      for (const { cwd, cmd } of runs) {
+        codes.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
+      }
       return codes
     } finally {
       await run(['git', 'apply', '--reverse', ...include, patch])
@@ -527,12 +549,21 @@ const proofProblems = async (outDir: string, task: FixTask) => {
   return problems.map((problem) => `visual check: ${problem}`)
 }
 
+type PassesOptions = {
+  task: FixTask
+  verifyNative: NativeCheck[]
+  unitTests: boolean
+  artifacts: Set<string>
+  attempt: string
+}
+
 /**
- * The reason for each check the task needs whose pass is missing. The workflow uploads `qa-pass-<fp>-<check>` only
- * under an `if:` on the step outcomes the runner keeps, and `artifacts` lists the run's artifact names, so no file
- * that code the agent wrote could rewrite carries a verdict.
+ * The reason for each check the task needs whose pass is missing. The workflow uploads
+ * `qa-pass-<fp>-<check>-<run attempt>` only under an `if:` on the step outcomes the runner keeps, and `artifacts` lists
+ * the run's artifact names, so no file that code the agent wrote could rewrite carries a verdict. Only passes of
+ * `attempt`, the one whose patch publish read, count: artifacts of every attempt of the run share one list.
  */
-const missingPasses = (task: FixTask, verifyNative: NativeCheck[], unitTests: boolean, artifacts: Set<string>) => {
+const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt }: PassesOptions) => {
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
@@ -568,7 +599,7 @@ const missingPasses = (task: FixTask, verifyNative: NativeCheck[], unitTests: bo
       })),
   ]
   return checks
-    .filter(({ check, needed }) => needed && !artifacts.has(`qa-pass-${task.fp}-${check}`))
+    .filter(({ check, needed }) => needed && !artifacts.has(`qa-pass-${task.fp}-${check}-${attempt}`))
     .map(({ reason }) => reason)
 }
 
@@ -620,6 +651,8 @@ type PublishOptions = {
   live: boolean
   key?: string
   token?: string
+  /** The run attempt (`GITHUB_RUN_ATTEMPT`) whose fix output and passes publish reads. */
+  attempt?: string
   repoDir?: string
   run?: Run
   fetchFn?: typeof fetch
@@ -710,10 +743,11 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
  *   later run and the result says why. A missing or malformed file fails publish.
- * It also reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>` for every
- * check the task needs (`missingPasses`). A missing file fails publish.
- * A diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the `Human Required`
- * label. Otherwise
+ * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
+ * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
+ * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
+ * A missing patch, a diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the
+ * `Human Required` label. Otherwise
  * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
  * draft PR, whose link goes on the ticket as a comment. The push fails if the branch appeared on origin after route
@@ -728,6 +762,7 @@ export const publish = async ({
   live,
   key,
   token,
+  attempt = '1',
   repoDir = '.',
   run = runCommand,
   fetchFn = fetch,
@@ -762,6 +797,13 @@ export const publish = async ({
     return { outcome: 'infrastructure', reason }
   }
   const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
+  if (!(await Bun.file(join(outDir, 'fix', `${fp}.patch`)).exists())) {
+    const reason = `the fix job uploaded no output in run attempt ${attempt}`
+    return handOff(
+      [reason],
+      `There is no PR: ${reason}. Its secret scan failed, or it ran only in an earlier attempt of the run.`,
+    )
+  }
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))
   if (await diagnosis.exists()) {
     const text = await diagnosis.text()
@@ -774,7 +816,8 @@ export const publish = async ({
   }
   const checked = await checkPatch(run, outDir, task, verifyNative)
   const { files } = checked
-  const reasons = [...checked.reasons, ...missingPasses(task, verifyNative, checked.unitTests, artifacts)]
+  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt }
+  const reasons = [...checked.reasons, ...missingPasses(passes)]
   if (reasons.length) {
     return handOff(
       reasons,
@@ -834,10 +877,17 @@ if (import.meta.main) {
   if (positionals[0] === 'route') {
     await route({ outDir: values.out, live: values.live, key })
   } else if (positionals[0] === 'publish' && values.fp) {
-    const result = await publish({ outDir: values.out, fp: values.fp, live: values.live, key, token: Bun.env.GH_TOKEN })
+    const result = await publish({
+      outDir: values.out,
+      fp: values.fp,
+      live: values.live,
+      key,
+      token: Bun.env.GH_TOKEN,
+      attempt: Bun.env.GITHUB_RUN_ATTEMPT,
+    })
     console.log(JSON.stringify(result, null, 2))
   } else if (positionals[0] === 'tests' && values.fp) {
-    const result = await checkTests({ outDir: values.out, fp: values.fp })
+    const result = await checkTests({ outDir: values.out, fp: values.fp, user: Bun.env.QA_TEST_USER })
     console.log(JSON.stringify(result))
     // The workflow uploads the pass on this exit code, never on anything the tests could write.
     process.exitCode = result.failsWithout && result.passesWith ? 0 : 1

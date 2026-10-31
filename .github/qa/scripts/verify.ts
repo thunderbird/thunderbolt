@@ -679,6 +679,12 @@ export type NativeVerify = {
   passesWith?: boolean
 }
 
+/**
+ * The exit code of `verify.ts fix-native`, and so the native verdict publish trusts: the workflow uploads the
+ * platform's pass on that step's outcome, never on the result file the patched app could rewrite.
+ */
+export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed'>) => (verdict.passed ? 0 : 1)
+
 /** The fix agent's visual check has no finding, so only its own Maestro assertions fail a run. */
 const checkFailure = (run: FlowRun) =>
   run.passed || run.error?.includes(driverTimeout) ? undefined : (run.error ?? 'the flow failed')
@@ -1246,8 +1252,7 @@ if (import.meta.main) {
     })
     await Bun.write(resultFile, JSON.stringify(verdict, null, 2))
     console.log(JSON.stringify(verdict))
-    // The exit code is the verdict publish trusts: the workflow uploads the platform's pass on this step's outcome.
-    process.exit(verdict.passed ? 0 : 1)
+    process.exit(nativeExitCode(verdict))
   }
   const result =
     step === 'judge'

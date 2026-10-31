@@ -65,34 +65,56 @@ verdict there. A real-AI web fix is checked in `verify-real`: a fresh checkout s
 `real` replay leg and serves the patched frontend, which the fix job built. Both jobs run the backend from before the
 patch, so `publish` refuses a patch that touches `backend/` or `shared/` when either job checks the bug, and the
 ticket goes to a person. `verify-tests` runs the unit tests a web patch adds or changes, which the agent wrote, on a
-fresh checkout with no secret, no environment and only `contents: read` (see the fix stage below).
+fresh checkout with no secret, no environment and only `contents: read`, as another OS user (see the fix stage
+below).
 
 ### Passes
 
 Code the agent wrote runs in the fix job after the session (the visual check, the real-AI build), and a process it
 leaves behind can rewrite or delete any file there before the upload. So no verdict travels in a file. Each check
-that passes uploads an artifact named `qa-pass-<fp>-<check>`, under an `if:` on the outcome of the step that ran the
-check, which the runner keeps and no process of the job can change. The checks are `session` (the fix step
-succeeded), `replay`, `visual`, `tests`, `real`, and one per native platform of the bug (`ios`, `android`). The
+that passes uploads an artifact named `qa-pass-<fp>-<check>-<run attempt>`, under an `if:` on the outcome of the step
+that ran the check, which the runner keeps and no process of the job can change. The checks are `session` (the fix
+step succeeded), `replay`, `visual`, `tests`, `real`, and one per native platform of the bug (`ios`, `android`). The
 artifact holds a marker file whose content nobody reads. `publish` lists the run's artifact names with the GitHub API
-(`actions: read`, into `qa-out/artifacts.txt`) and needs a pass for every check the task needs: `session` always,
-`replay` for a fake-AI web spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI
-web spec, and each platform in `verifyNative` for the fingerprint. A missing pass is a failure, and the ticket gets
-`Human Required` with the reason. Listing names cannot miss, so a normal run shows no error annotation for a check
-that did not pass. The diagnosis the fix job writes for a failed check is only the reason a person reads: deleting
-it, or writing a passing `verify.json`, opens no PR.
+(`actions: read`, into `qa-out/artifacts.txt`) and needs a pass of its own run attempt for every check the task
+needs: `session` always, `replay` for a fake-AI web spec, `visual` for a web visual check, `tests` for every web task,
+`real` for a real-AI web spec, and each platform in `verifyNative` for the fingerprint. A missing pass is a failure,
+and the ticket gets `Human Required` with the reason. Listing names cannot miss, so a normal run shows no error
+annotation for a check that did not pass. The diagnosis the fix job writes for a failed check is only the reason a
+person reads: deleting it, or writing a result file that says the check passed, opens no PR.
 
-The passes keep keys away from the patch; they are not proof against a patch built to cheat. The patched build in
-`verify-native-build` runs with sudo, and on iOS the patched app is a process of the job's user. A process of the
-job's user can probably read the runtime token in an upload step's environment and upload an artifact of its own
-(unconfirmed), so code the agent wrote could forge a pass in the fix job and in `verify-tests`. The agent also writes the unit tests that
-`verify-tests` runs, and its tests and `node_modules` decide what the checks see. The most a forged pass does is open
-a draft PR, which a person reviews.
+Artifact names are unique per run, not per attempt, so the fix output (`qa-fix-<fp>-<run attempt>`), its status and
+every pass carry the attempt, and each job reads only the fix output of its own attempt, by pattern. A partial re-run
+therefore never pairs one attempt's patch with another's passes: a job that reads no fix output of its attempt hands
+the ticket to a person, and publish fails when the status of its attempt is missing. Re-run all jobs to retry a fix.
+
+The passes keep keys away from the patch; they are not proof against a patch built to cheat. Every upload step's
+process holds the runtime token (`ACTIONS_RUNTIME_TOKEN`), and any process of the job's user can read it in that
+process's `/proc/<pid>/environ`: Yama restricts attaching only. The runner kills a job's leftover processes only when
+the job ends, so a process that code the agent wrote leaves behind can wait for an upload step and take the token.
+With it, it can upload an artifact of any name in the run, a pass of any check for any fingerprint included, and
+write Actions cache entries in the run's scope. Code the agent wrote runs as the job's user in these places:
+
+- the fix job after the session: the visual check, the real-AI build, and every later `bun` step, since the agent
+  can edit `node_modules`;
+- `verify-native-build`, whose patched build also has sudo;
+- `verify-native-run` on iOS, where the patched app is a process of the job's user.
+
+`verify-tests` is not one of them. Its tests run as the OS user `qa-test`, which can read no process of the job's user
+and has no sudo; the job's user loses root (`stack.sh lock`) before the tests run, and every `qa-test` process is
+killed before the pass upload, whose `if:` also needs that stop to succeed.
+
+What still bounds a forged pass: publish checks the patch itself (`isDenied`, the secret scan, symlinks and
+submodules), the PR is a draft a person reviews, and nothing merges. A forged cache entry can only take a key that
+holds no entry: a key already saved cannot be overwritten. Trusted jobs restore by exact key, so a later run reads it
+only when its key matches, which a forger can arrange for a lockfile change that is public before it merges, or for
+the fixed Android system image key once the cache has evicted that entry. The agent also writes the unit tests that
+`verify-tests` runs, and its tests decide what that check sees.
 
 Only `build` and `cache-system-image` save caches, because they run before any untrusted code. Every other job only
-restores them with `actions/cache/restore`, `native-control` included, so code a model wrote never fills a cache a
-later run trusts. `setup-bun` runs with `no-cache: true`: its own cache save is a post step, after the job's steps,
-which in most jobs include model-written code.
+restores them with `actions/cache/restore`, `native-control` included, so no job saves a cache after code a model
+wrote ran (the forged cache entry above is the exception). `setup-bun` runs with `no-cache: true`: its own cache save
+is a post step, after the job's steps, which in most jobs include model-written code.
 The judge runs in a fresh job, because the replayed specs may have changed files in the replay job's checkout.
 
 The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
@@ -388,25 +410,29 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    runs `bun test --timeout 5000` over them from each tree's own directory (`src/`, `backend/`, `cli/`,
    `shared/agent-core/`, and the root for the rest of `shared/`), as the repo's test scripts do. With only the patch's
    hunks for those files applied (`git apply --include`) a run must fail, and with the whole patch every run must
-   pass, all in one process. A patch with no such file fails, and so does a test that needs Postgres or another
-   service the job does not start: the ticket then goes to a person. A native task keeps its Maestro check instead.
-   Any check a task needs that did not succeed (failed, skipped or cancelled) uploads no pass (see "Passes"), and
-   the fix job's own checks also leave a diagnosis that says why. A fix job that stopped before
-   the fix session began diagnosed nothing. Either a step before the fix step failed (its outcome is `skipped`, and
+   pass, all in one process. `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`,
+   through `sudo --user`, with only `PATH` from the job's environment), so a test cannot write the checkout either.
+   A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
+   start, or that writes into the checkout: the ticket then goes to a person. A native task keeps its Maestro check
+   instead. Any check a task needs that did not succeed (failed, skipped or cancelled) uploads no pass (see
+   "Passes"), and the fix job's own checks also leave a diagnosis that says why. A fix job that stopped before the
+   fix session began diagnosed nothing. Either a step before the fix step failed (its outcome is `skipped`, and
    the fix job shows as failed, so the failure notification fires), or the fix step failed before the model first
    answered (the action's setup, the CLI install, a refused first request). Right after the key scan, before any
    code the agent wrote runs outside its sandbox, the fix job records which of these happened, or `null` when the
-   session began, and uploads it as `qa-fix-status-<fp>`. A step timeout counts as begun: the step ran for its whole
-   cap, though the action had no chance to write its execution file. `publish` downloads the file into
-   `qa-out/status/`, where the agent's `qa-fix-<fp>` cannot reach, and fails on a missing or malformed one. When the
+   session began, and uploads it as `qa-fix-status-<fp>-<run attempt>`. A step timeout counts as begun: the step ran
+   for its whole cap, though the action had no chance to write its execution file. `publish` downloads the file into
+   `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a missing or malformed
+   one. When the
    session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names the
    ticket and says it was left for a later run. Only a process the sandbox let outlive the session could still
    rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is unconfirmed). At
    worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to a PR. A session
-   that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job whose fix output was
-   not uploaded (its key or secret scan failed, or the runner was lost) fails `publish`, because nothing says whether
-   the agent ran. `verify-native-run` and `verify-real` download the
-   patched app or frontend by pattern, so a fix that built none shows no error there either.
+   that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that uploaded no
+   status (its key scan failed, or the runner was lost) fails `publish`, because nothing says whether the agent ran.
+   One whose secret scan failed uploaded its status but no fix output, and its ticket gets `Human Required`.
+   `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix that built none
+   shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
    the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
    task's check is the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the
@@ -425,8 +451,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    runs the consumer project on the fake provider. `publish` needs a pass from every platform in `verifyNative` for
    the fingerprint, web tasks included, from `verify-real` for a real-AI web task, and from `verify-tests` for every
    web task (see "Passes"). Only then does it open a draft PR on the task's branch. Otherwise the ticket gets
-   `Human Required` with the reason (for a native platform, "the flow still fails on the native platform"). A fix from a session whose charter has `postgres` in
-   `legs.ts` (today c7), on any platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres
+   `Human Required` with the reason (for a native platform, "the flow still fails on the native platform"). A fix
+   from a session whose charter has `postgres` in `legs.ts` (today c7), on any platform, never gets a PR either: the
+   fix job and `verify-native-run` start no Postgres
    or PowerSync, so they cannot verify it, and its ticket gets `Human Required`. `preview-deploy.yml` deploys no automatic preview
    for a PR on `qa-fix/*` or one whose description carries `reviewNotice` from `fix.ts`, which every fix PR does.
 7. **report** (`report.ts summary`): the job summary.
@@ -583,8 +610,9 @@ Fix agent: run it in a separate checkout (it edits the working tree), with
 with onboarding skipped and on the onboarding port, 1425 by default, with onboarding on, so a fix for an onboarding
 finding can be verified) and the flags of the `fix` job. Collect the patch like the workflow does, then, on a clean
 checkout, `bun .github/qa/scripts/fix.ts tests --out qa-out --fp <fp>` runs the patch's unit tests without and with
-the fix, as `verify-tests` does, and leaves the checkout as it was. Write `{"stoppedBeforeSession": null}` to
-`qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>` line per check you saw pass to `qa-out/artifacts.txt`, then
+the fix, as `verify-tests` does (as yourself, unless `QA_TEST_USER` names another user), and leaves the checkout as it
+was. Write `{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>-1` line per
+check you saw pass to `qa-out/artifacts.txt` (publish reads attempt 1 when `GITHUB_RUN_ATTEMPT` is unset), then
 `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
 open.
 
@@ -1115,7 +1143,11 @@ Never run on GitHub (only locally, or read in the action's code):
 - the fix agent's `Edit(**)` rule with its deny list, the two `bun db generate` rules, and the visual check's runs in
   the fix job;
 - `verify-tests` and the passes: the `qa-pass-*` uploads under their `if:`, and `publish` listing them through the
-  API with `actions: read` (`fix.ts tests` ran locally on a scratch repo only);
+  API with `actions: read`, and the run attempt in their names on a re-run. `fix.ts tests` ran locally on a scratch
+  repo. The test user ran in an Ubuntu 24.04 container on Docker Desktop, as a user with passwordless sudo: after
+  the lock's rule root was denied and `sudo --user qa-test` still worked, `qa-test` could not read the job user's
+  `/proc/<pid>/environ` (the job user could), and the stop killed the detached processes it left. That kernel has
+  no Yama, so `stack.sh lock` itself did not run there;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
   Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.

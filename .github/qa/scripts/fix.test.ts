@@ -1131,6 +1131,37 @@ describe('checkTests', () => {
     expect(await check()).toEqual({ failsWithout: true, passesWith: false })
   }, 20_000)
 
+  test('runs the tests as the given user, with only PATH from this environment, and git as this user', async () => {
+    const cmds: string[][] = []
+    const exec = async (cmd: string[]) => {
+      cmds.push(cmd)
+      return cmds.length === 1 ? 1 : 0
+    }
+    await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') })
+    const gitCalls: string[][] = []
+    const recordingGit: Run = async (cmd, opts) => {
+      gitCalls.push(cmd)
+      return git(cmd, opts)
+    }
+    const result = await checkTests({
+      outDir,
+      fp,
+      user: 'qa-test',
+      repoDir: repo,
+      run: recordingGit,
+      exec,
+      log: () => {},
+    })
+    expect(result).toEqual({ failsWithout: true, passesWith: true })
+    const asTestUser = ['sudo', '-n', '--user', 'qa-test', '--set-home', '--', 'env', `PATH=${process.env.PATH}`]
+    const bunTest = ['bun', 'test', '--timeout', '5000', './title.test.ts']
+    expect(cmds).toEqual([
+      [...asTestUser, ...bunTest],
+      [...asTestUser, ...bunTest],
+    ])
+    expect(gitCalls.every((cmd) => cmd[0] === 'git')).toBe(true)
+  })
+
   test('fails a patch with no unit test, and an empty patch, without running anything', async () => {
     const runs: string[][] = []
     const exec = async (cmd: string[]) => runs.push(cmd)
@@ -1208,8 +1239,13 @@ describe('publish', () => {
     put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
   const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android']
   /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
-  const putPasses = (...checks: string[]) =>
-    put(join(outDir, 'artifacts.txt'), [`qa-fix-${fp}`, ...checks.map((c) => `qa-pass-${fp}-${c}`), ''].join('\n'))
+  const putPasses = (...checks: string[]) => putPassesOf('1', ...checks)
+  /** The same, as uploaded in run attempt `attempt`. */
+  const putPassesOf = (attempt: string, ...checks: string[]) =>
+    put(
+      join(outDir, 'artifacts.txt'),
+      [`qa-fix-${fp}-${attempt}`, ...checks.map((c) => `qa-pass-${fp}-${c}-${attempt}`), ''].join('\n'),
+    )
 
   test('dry run: validates and describes the PR without writing anything', async () => {
     await setup()
@@ -1651,12 +1687,57 @@ describe('publish', () => {
       await setupTask({})
       await put(
         join(outDir, 'artifacts.txt'),
-        ['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}`).join('\n'),
+        ['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`).join('\n'),
       )
       expect(await dryRun()).toEqual({
         outcome: 'human-required',
         reasons: [reasons.session, reasons.replay, reasons.tests],
       })
+    })
+
+    // Artifact names are unique per run, not per attempt, so a re-run must not pair one attempt's patch with
+    // another's passes.
+    test('only the passes of the attempt whose patch publish read count', async () => {
+      await setupTask({})
+      await putPassesOf('1', 'session', 'replay', 'tests')
+      const inAttempt = (attempt: string) =>
+        publish({
+          outDir,
+          fp,
+          live: false,
+          attempt,
+          run: fakeRun([], { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') }),
+          log: () => {},
+        })
+      expect((await inAttempt('1')).outcome).toBe('pr')
+      expect(await inAttempt('2')).toEqual({
+        outcome: 'human-required',
+        reasons: [reasons.session, reasons.replay, reasons.tests],
+      })
+    })
+
+    test('a patch missing from this attempt goes to a person, not a PR', async () => {
+      await setupTask({})
+      await rm(join(outDir, 'fix', `${fp}.patch`))
+      const runs: RunCall[] = []
+      const calls: Call[] = []
+      const result = await publish({
+        outDir,
+        fp,
+        live: true,
+        key: 'lin',
+        token: 't',
+        attempt: '2',
+        run: fakeRun(runs),
+        fetchFn: fakeLinear(calls),
+        log: () => {},
+      })
+      expect(result).toEqual({
+        outcome: 'human-required',
+        reasons: ['the fix job uploaded no output in run attempt 2'],
+      })
+      expect(runs).toEqual([])
+      expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     })
 
     test('a web patch with no unit test says so', async () => {
@@ -1672,14 +1753,14 @@ describe('publish', () => {
     })
 
     // Code the agent wrote ran in the fix job after the checks, so it could have deleted the diagnosis the workflow
-    // wrote, or written a verify.json of its own. Neither is a pass.
+    // wrote, or written a result file of its own saying the check passed. Neither is a pass.
     test.each([
       ['a failed replay whose diagnosis was deleted', {}, ['session', 'tests']],
-      ['a failed visual check with a passing verify.json', { kind: 'visual' }, ['session', 'tests']],
+      ['a failed visual check with a passing result file in the fix output', { kind: 'visual' }, ['session', 'tests']],
     ] as const)('%s goes to a person, not a PR', async (_, task, passes) => {
       await setupTask(task)
       await putPasses(...passes)
-      await put(join(outDir, 'fix', `${fp}.verify.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
+      await put(join(outDir, 'fix', `${fp}.result.json`), JSON.stringify({ failsWithout: true, passesWith: true }))
       const runs: RunCall[] = []
       const calls: Call[] = []
       const result = await publish({

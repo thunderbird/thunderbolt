@@ -506,6 +506,14 @@ type PublishResult =
   | { outcome: 'human-required'; reasons: string[] }
   | { outcome: 'infrastructure'; reason: string }
 
+/** What the fix job wrote to `status/<fp>.json`; publish refuses a file that does not match. */
+const fixStatus = z.object({ stoppedBeforeSession: z.enum(['setup-failed', 'no-model-answer']).nullable() })
+const stoppedReasons = {
+  'setup-failed': 'The fix job failed before the fix step ran.',
+  'no-model-answer':
+    'The fix step failed before the model first answered: setup, the CLI install or a refused request.',
+} satisfies Record<NonNullable<z.infer<typeof fixStatus>['stoppedBeforeSession']>, string>
+
 /** Every fix PR description carries this sentence, and `preview-deploy.yml` deploys no automatic preview for one. */
 export const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
@@ -574,9 +582,9 @@ const draftOf = async (outDir: string, task: FixTask) => {
  * - for a visual task, the agent's check in `fix-<fp>/repro/`, and `fix/<fp>.verify.json`, the workflow's record of
  *   running it without and with the patch;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored;
- * - `fix/<fp>.infrastructure.md`: from the `qa-fix-infra-<fp>` artifact, which only a skipped Fix step uploads, so
- *   the job stopped before the agent started. Nothing was diagnosed, so the ticket is left untouched for a later run
- *   and the result says why. The workflow deletes any copy that came in the agent's `qa-fix-<fp>` artifact.
+ * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
+ *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
+ *   later run and the result says why. A missing or malformed file fails publish.
  * A diagnosis or a rejected patch means no PR: the ticket gets a comment and the `Human Required` label. Otherwise
  * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
  * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
@@ -615,10 +623,12 @@ export const publish = async ({
     return { outcome: 'human-required', reasons }
   }
 
-  const infrastructure = Bun.file(join(outDir, 'fix', `${fp}.infrastructure.md`))
-  if (await infrastructure.exists()) {
-    const reason = oneLine(sanitize(await infrastructure.text(), 300))
-    log(`${task.identifier ?? fp} is left untouched: ${reason}`)
+  // Code the agent wrote can outlive its session and rewrite this file or the execution file it is derived from.
+  // At worst that leaves its own ticket untouched instead of Human Required: the file can only stop publish here.
+  const { stoppedBeforeSession } = fixStatus.parse(await Bun.file(join(outDir, 'status', `${fp}.json`)).json())
+  if (stoppedBeforeSession) {
+    const reason = stoppedReasons[stoppedBeforeSession]
+    log(`${task.identifier ?? fp} is left untouched for a later run: ${reason}`)
     return { outcome: 'infrastructure', reason }
   }
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))

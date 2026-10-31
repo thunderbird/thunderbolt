@@ -321,7 +321,7 @@ describe('fix job', () => {
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
   })
 
-  test('a fix step that never started still leaves a diagnosis, which only the infra artifact overrides', () => {
+  test('a fix step that never started still leaves a diagnosis, which only the fix status overrides', () => {
     expect(collect({ ...spec, FIX_OUTCOME: 'skipped', REPLAY: 'skipped' })).toContain('step outcome: skipped')
   })
 
@@ -538,52 +538,133 @@ describe('publish', () => {
       cwd: dir,
       env: { PATH: process.env.PATH, QA_FP: 'fp1', ...env },
     })
-  const infraMarker = 'qa-out/fix/fp1.infrastructure.md'
+  describe('whether the fix session began', () => {
+    const timeoutMinutes = 60
+    const now = () => Math.floor(Date.now() / 1000)
+    const answered = { type: 'assistant', message: { content: [{ type: 'text', text: 'Reading the spec.' }] } }
+    // The SDK's stand-in for a refused request: an assistant message carrying `error`.
+    const refused = { type: 'assistant', error: 'rate_limit', message: { content: [{ type: 'text', text: 'API' }] } }
+    const result = { type: 'result', subtype: 'success', is_error: true }
+    const init = { type: 'system', subtype: 'init' }
+    const messages = (...list: object[]) => JSON.stringify(list)
+    /** The status the fix job records, given the step outcome, the execution file and the session's start. */
+    const status = (outcome: string, execution?: string, start = now()) => {
+      const temp = mkdtempSync(join(work, 'status-'))
+      const executionFile = join(temp, 'claude-execution-output.json')
+      if (execution !== undefined) writeFileSync(executionFile, execution)
+      const proc = runStep('fix', 'Record whether the fix session began', temp, {
+        RUNNER_TEMP: temp,
+        FIX_OUTCOME: outcome,
+        START: String(start),
+        EXECUTION_FILE: executionFile,
+        QA_FIX_TIMEOUT_MINUTES: String(timeoutMinutes),
+      })
+      expect(proc.exitCode).toBe(0)
+      return JSON.parse(readFileSync(join(temp, 'qa-status/fp1.json'), 'utf8')).stoppedBeforeSession
+    }
 
-  test('the infrastructure marker comes only from the artifact of a skipped Fix step, never from the agent', () => {
-    const at = (match: (s: Step) => boolean) => steps('publish').findIndex(match)
-    const fixArtifact = at((s) => s.with?.name === 'qa-fix-${{ matrix.task.fp }}')
-    const drop = indexOf('publish', 'Drop the marker the fix artifact carries')
-    const infraArtifact = at((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
-    expect(fixArtifact).toBeGreaterThan(-1)
-    expect(drop).toBeGreaterThan(fixArtifact)
-    expect(infraArtifact).toBeGreaterThan(drop)
-    // Absent in every run where the agent started, which is normal.
-    expect(steps('publish')[infraArtifact]['continue-on-error']).toBe(true)
+    test('a step before Fix failed: the session never began', () => {
+      expect(status('skipped')).toBe('setup-failed')
+    })
 
-    const dir = mkdtempSync(join(work, 'drop-'))
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
-    writeFileSync(join(dir, infraMarker), 'forged')
-    expect(runStep('publish', 'Drop the marker the fix artifact carries', dir, {}).exitCode).toBe(0)
-    expect(existsSync(join(dir, infraMarker))).toBe(false)
+    test('Fix failed before the model first answered: the session never began', () => {
+      expect(status('failure')).toBe('no-model-answer')
+      expect(status('failure', messages(init, refused, result))).toBe('no-model-answer')
+      expect(status('failure', messages())).toBe('no-model-answer')
+    })
+
+    test('a session the model answered began, however it ended', () => {
+      for (const outcome of ['failure', 'cancelled', 'success'])
+        expect(status(outcome, messages(init, answered, refused, result))).toBeNull()
+      expect(status('success')).toBeNull()
+    })
+
+    test('a timed-out session began, though the action wrote no execution file', () => {
+      expect(status('failure', undefined, now() - timeoutMinutes * 60)).toBeNull()
+      expect(status('failure', undefined, now() - timeoutMinutes * 60 + 120)).toBe('no-model-answer')
+    })
+
+    test('an unreadable execution file counts as begun, so the ticket still reaches a person', () => {
+      expect(status('failure', '[{"type": "assis')).toBeNull()
+    })
+
+    test('the status goes up with every fix outcome, whenever the fix output does', () => {
+      const uploadOf = (name: string) => steps('fix').find((s) => s.with?.name === name)
+      const statusUpload = uploadOf('qa-fix-status-${{ matrix.task.fp }}')
+      const record = 'Record whether the fix session began'
+      expect(step('fix', record).if).toBe('always()')
+      expect(statusUpload?.if).toBe(uploadOf('qa-fix-${{ matrix.task.fp }}')?.if)
+      expect(statusUpload?.if).not.toContain('steps.fix.')
+      expect(statusUpload?.with?.path).toBe('${{ runner.temp }}/qa-status/')
+      expect(statusUpload?.with?.['if-no-files-found']).toBe('error')
+      expect(steps('fix').indexOf(statusUpload ?? {})).toBeGreaterThan(indexOf('fix', record))
+    })
+
+    test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {
+      const download = steps('publish').find((s) => s.with?.name === 'qa-fix-status-${{ matrix.task.fp }}')
+      expect(download?.with?.path).toBe('qa-out/status')
+      expect(download?.['continue-on-error']).toBeUndefined()
+      // The fix artifact lands in qa-out too, so none of its paths may reach qa-out/status.
+      const fixUpload = steps('fix').find((s) => s.with?.name === 'qa-fix-${{ matrix.task.fp }}')
+      const paths = (fixUpload?.with?.path ?? '').split('\n').filter(Boolean)
+      expect(paths.length).toBeGreaterThan(0)
+      for (const path of paths) expect(path).toMatch(/^qa-out\/fix(-\$\{\{ matrix\.task\.fp \}\})?\//)
+    })
   })
 
-  test('only a skipped Fix step records that the agent never started, in an artifact of its own', () => {
-    const record = step('fix', 'Record that the fix agent never started')
-    const upload = steps('fix').find((s) => s.with?.name === 'qa-fix-infra-${{ matrix.task.fp }}')
-    expect(record.if).toBe("always() && steps.fix.outcome == 'skipped'")
-    expect(upload?.if).toContain("steps.fix.outcome == 'skipped'")
-    expect(upload?.with?.path).toBe('${{ runner.temp }}/qa-infra/')
+  test('no fix-pipeline download may miss: a missing name is an error even under continue-on-error', () => {
+    const optional = ['fix', 'verify-native-build', 'verify-native-run', 'verify-real', 'publish'].flatMap((job) =>
+      steps(job)
+        .filter((s) => s.uses?.startsWith('actions/download-artifact@') && s['continue-on-error'])
+        .map((s) => `${job}: ${s.with?.name ?? s.with?.pattern}`),
+    )
+    expect(optional).toEqual([])
+  })
 
-    const temp = mkdtempSync(join(work, 'infra-'))
-    expect(runStep('fix', record.name ?? '', temp, { RUNNER_TEMP: temp }).exitCode).toBe(0)
-    expect(readFileSync(join(temp, 'qa-infra/fp1.infrastructure.md'), 'utf8')).toContain('before the fix agent started')
+  test('verify-native-run boots no device when the fix built no patched app', () => {
+    const run = (withApp: boolean) => {
+      const temp = mkdtempSync(join(work, 'patched-'))
+      mkdirSync(join(temp, 'apps/patched'), { recursive: true })
+      if (withApp) writeFileSync(join(temp, 'apps/patched/app.tar'), '')
+      const githubEnv = join(temp, 'env')
+      writeFileSync(githubEnv, '')
+      const env = { RUNNER_TEMP: temp, GITHUB_ENV: githubEnv }
+      expect(runStep('verify-native-run', 'Note a missing patched app', temp, env).exitCode).toBe(0)
+      return readFileSync(githubEnv, 'utf8')
+    }
+    expect(run(false)).toBe('QA_NO_DEVICE=true\n')
+    expect(run(true)).toBe('')
+    expect(step('verify-native-run', 'Start the stack').if).toBe("env.QA_NO_DEVICE != 'true'")
+    expect(step('verify-native-run', 'Run the flow on the patched app').if).toBe("env.QA_NO_DEVICE != 'true'")
+  })
+
+  test('verify-real replays only on a patched frontend it downloaded', () => {
+    const download = steps('verify-real').find((s) => s.with?.pattern === 'qa-fix-dist-${{ matrix.task.fp }}')
+    const present = `hashFiles('${download?.with?.path}/**') != ''`
+    for (const name of [
+      'Start the stack on the real providers',
+      "Take root away from the job's user",
+      'Replay the spec on the patched frontend',
+    ])
+      expect(step('verify-real', name).if).toBe(present)
   })
 
   test("says in the run summary, in the workflow's own words, that a ticket was left for a later run", () => {
     const dir = mkdtempSync(join(work, 'summary-'))
-    mkdirSync(join(dir, 'qa-out/fix'), { recursive: true })
+    mkdirSync(join(dir, 'qa-out/status'), { recursive: true })
     writeFileSync(join(dir, 'qa-out/fix-plan.json'), JSON.stringify({ fixes: [{ fp: 'fp1', identifier: 'THB-7' }] }))
     const summary = join(dir, 'summary.md')
-    const say = () =>
-      runStep('publish', 'Say when a ticket was left for a later run', dir, { GITHUB_STEP_SUMMARY: summary })
-    expect(say().exitCode).toBe(0)
+    const say = (stoppedBeforeSession: string | null) => {
+      writeFileSync(join(dir, 'qa-out/status/fp1.json'), JSON.stringify({ stoppedBeforeSession }))
+      return runStep('publish', 'Say when a ticket was left for a later run', dir, { GITHUB_STEP_SUMMARY: summary })
+    }
+    expect(say(null).exitCode).toBe(0)
     expect(existsSync(summary)).toBe(false)
-    writeFileSync(join(dir, infraMarker), 'text the summary must not copy\n')
-    expect(say().exitCode).toBe(0)
+    expect(say('no-model-answer').exitCode).toBe(0)
     const line = readFileSync(summary, 'utf8')
-    expect(line).toContain('- THB-7: the fix job stopped before the fix agent started')
-    expect(line).not.toContain('must not copy')
+    expect(line).toBe(
+      '- THB-7: the fix job stopped before the fix session began, so the ticket is left for a later run.\n',
+    )
   })
 })
 

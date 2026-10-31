@@ -364,15 +364,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks. Any check
-   a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. A fix job that dies before the
-   fix step starts (setup or the stack start failed, so the step's outcome is `skipped`) diagnosed nothing: a step that
-   only a skipped Fix step triggers uploads `qa-fix-infra-<fp>` with `fix/<fp>.infrastructure.md`, `publish` trusts
-   that artifact alone (it deletes a marker that came inside the agent's `qa-fix-<fp>`), touches neither Linear nor
-   GitHub and still succeeds, and the run summary names the ticket and says it was left for a later run. If that
-   upload itself fails, the diagnosis the fix job also writes stands and the ticket gets `Human Required`. The fix job
-   itself shows as failed, so the failure notification fires. A fix step that started and then failed or timed out
-   keeps the diagnosis and `Human Required`. A fix job that uploaded no artifact at all (its key or secret scan
-   failed, or the runner was lost) fails `publish`, because nothing says whether the agent ran.
+   a task needs that did not succeed (failed, skipped or cancelled) leaves a diagnosis. A fix job that stopped before
+   the fix session began diagnosed nothing. Either a step before the fix step failed (its outcome is `skipped`, and
+   the fix job shows as failed, so the failure notification fires), or the fix step failed before the model first
+   answered (the action's setup, the CLI install, a refused first request). The fix job always uploads
+   `qa-fix-status-<fp>`, a small JSON file that says which of these happened, or `null` when the session began. A
+   step timeout counts as begun, because the action writes its execution file only when the session ends. `publish`
+   downloads the file into `qa-out/status/`, where the agent's `qa-fix-<fp>` cannot reach, and fails on a missing or
+   malformed one. When the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and
+   the run summary names the ticket and says it was left for a later run. Code the agent wrote can outlive its
+   session and rewrite that record, which at worst leaves its own ticket untouched instead of `Human Required`; the
+   record never leads to a PR. A session that began and then failed or timed out keeps the diagnosis and
+   `Human Required`. A fix job that uploaded no artifact at all (its key or secret scan failed, or the runner was lost)
+   fails `publish`, because nothing says whether the agent ran. `verify-native-run` and `verify-real` download the
+   patched app or frontend by pattern, so a fix that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
    the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
    task's check is the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the

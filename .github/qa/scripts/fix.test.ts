@@ -1087,7 +1087,10 @@ describe('publish', () => {
     await put(specPath(), spec)
     await put(join(outDir, 'fix', `${fp}.spec.ts`), spec)
     await put(join(outDir, 'fix', `${fp}.patch`), 'diff --git a/src/chat.ts b/src/chat.ts\n')
+    await putStatus(null)
   }
+  const putStatus = (stoppedBeforeSession: string | null) =>
+    put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
 
   test('dry run: validates and describes the PR without writing anything', async () => {
     await setup()
@@ -1388,14 +1391,9 @@ describe('publish', () => {
     expect(calls.find((c) => c.op === 'Label')?.variables.name).toBe('Human Required')
   })
 
-  test('a job that died before the agent started leaves the ticket and the repository alone', async () => {
-    await setup()
-    const reason = 'The fix job stopped before the fix agent started.'
-    await put(join(outDir, 'fix', `${fp}.infrastructure.md`), `${reason}\n`)
-    const runs: RunCall[] = []
-    const calls: Call[] = []
-    const lines: string[] = []
-    const result = await publish({
+  // The patch would pass every check, so only the status stands between it and a PR.
+  const publishPassingPatch = (runs: RunCall[], calls: Call[], log: (line: string) => void = () => {}) =>
+    publish({
       outDir,
       fp,
       live: true,
@@ -1403,13 +1401,55 @@ describe('publish', () => {
       token: 't',
       run: fakeRun(runs, diffOutput),
       fetchFn: fakeLinear(calls),
-      log: (line) => lines.push(line),
+      log,
     })
 
-    expect(result).toEqual({ outcome: 'infrastructure', reason })
+  test.each([
+    ['setup-failed', 'before the fix step ran'],
+    ['no-model-answer', 'before the model first answered'],
+  ])('a job stopped before the session (%s) leaves the ticket and the repository alone', async (stopped, why) => {
+    await setup()
+    await putStatus(stopped)
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+    const lines: string[] = []
+    const result = await publishPassingPatch(runs, calls, (line) => lines.push(line))
+
+    expect(result).toEqual({ outcome: 'infrastructure', reason: expect.stringContaining(why) })
     expect(runs).toEqual([])
     expect(calls).toEqual([])
-    expect(lines.join('\n')).toContain(reason)
+    expect(lines.join('\n')).toMatch(new RegExp(`THB-1 is left untouched for a later run: .*${why}`))
+  })
+
+  test('a session that began and then failed or timed out goes to a person', async () => {
+    await setup()
+    await put(
+      join(outDir, 'fix', `${fp}.diagnosis.md`),
+      'The fix session did not finish (step outcome: failure), so the patch is not published.\n',
+    )
+    const calls: Call[] = []
+    const result = await publishPassingPatch([], calls)
+
+    expect(result).toEqual({ outcome: 'human-required', reasons: ['the fix agent wrote a diagnosis'] })
+    expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
+  })
+
+  test.each([
+    ['missing', undefined],
+    ['not JSON', 'stopped'],
+    ['without the field', '{}'],
+    ['an unknown reason', '{"stoppedBeforeSession":"repo-on-fire"}'],
+    ['a boolean', '{"stoppedBeforeSession":false}'],
+  ])('a status file that is %s fails publish without a PR or a ticket write', async (_, text) => {
+    await setup()
+    await rm(join(outDir, 'status', `${fp}.json`))
+    if (text !== undefined) await put(join(outDir, 'status', `${fp}.json`), text)
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+
+    await expect(publishPassingPatch(runs, calls)).rejects.toThrow()
+    expect(runs).toEqual([])
+    expect(calls).toEqual([])
   })
 
   test('never posts a diagnosis that matches a secret pattern', async () => {

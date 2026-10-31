@@ -46,7 +46,7 @@ const dependencyFiles = new RegExp(
  */
 export const isDenied = (path: string) => /^(\.github|e2e)\//.test(path) || dependencyFiles.test(path)
 
-type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
+type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier'>
 /**
  * What the fix agent must make pass. A `visual` task has no repro, so the agent writes its own check, which the
  * workflow runs without and with the patch: `check.spec.ts` on the web, `check.yaml` (named as the task's `flow`) on
@@ -160,6 +160,10 @@ const isSafeLinearBranch = (name: string, identifier: string) => {
   )
 }
 
+/** True when `ref` names the ticket the way Linear links a branch: the identifier as a whole `-` or `/` token. */
+const namesTicket = (ref: string, identifier: string) =>
+  new RegExp(`(^|[/-])${identifier.toLowerCase()}($|[/-])`).test(ref.toLowerCase())
+
 /**
  * The branch a ticket's fix goes on: Linear's suggested name when it has a safe shape and git accepts it, so the merge
  * closes the ticket, else `qa-fix/<identifier>`. A security ticket always gets the identifier-only name, because the
@@ -270,12 +274,17 @@ export const route = async ({
   ) => {
     const ticket = identifier ?? fp
     const linearTicket = issueId ? linearById.get(issueId) : undefined
+    if (key && issueId && !linearTicket) {
+      log(`fix: Linear did not return ${ticket}, so its state is not checked and it gets the identifier-only branch`)
+    }
     if (linearTicket && closedStates.has(linearTicket.state.type)) {
       log(`fix: ${ticket} is ${linearTicket.state.type} in Linear, so it is not routed`)
       return undefined
     }
     const branch = await branchFor(run, fp, identifier, security, linearTicket?.branchName)
-    if (prBranches.has(branch) || prBranches.has(`qa-fix/${fp}`)) {
+    // A teammate's PR on their own branch for the ticket counts too, and both of the bot's names carry the identifier.
+    const ticketPr = identifier !== undefined && [...prBranches].some((ref) => namesTicket(ref, identifier))
+    if (ticketPr || prBranches.has(`qa-fix/${fp}`)) {
       log(`fix: ${ticket} already has an open PR, so it is not routed`)
       return undefined
     }
@@ -288,7 +297,7 @@ export const route = async ({
 
   // Every finding of one bug shares its ticket and area, so the first one decides the bug's branch.
   const branches = new Map<string, string | undefined>()
-  for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
+  for (const { fp, severity, issueId, identifier, charterDir, id } of tickets) {
     const fresh = !routed.has(fp)
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
@@ -317,7 +326,6 @@ export const route = async ({
       severity,
       issueId,
       identifier,
-      url,
       ...proof,
       branch,
       charterDir,

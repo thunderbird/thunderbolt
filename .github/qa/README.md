@@ -345,12 +345,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 6. **fix** (off by default, `fix.ts` and `fix.md`): one fix job per confirmed ticket, from any area, most severe
    first. A bug found on several platforms is one ticket, so it gets one job. The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
-   shape `<prefix>/<identifier>-<slug>` in lowercase, with at most 100 characters, and `git check-ref-format`
-   accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links the ticket. A ticket
-   filed in a dry run has no identifier and uses `qa-fix/<fp>`. `route` logs and skips a ticket that Linear has
-   completed or canceled, a ticket with an open PR of this repository on its branch or on the older `qa-fix/<fp>`,
-   and a ticket whose branch exists without an open PR, since a person may be working there. `publish` pushes only
-   when the branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
+   shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
+   `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links
+   the ticket. A ticket filed in a dry run has no identifier and uses `qa-fix/<fp>`. `route` logs and skips a ticket
+   that Linear has completed or canceled, a ticket with an open PR of this repository on the older `qa-fix/<fp>` or
+   on any branch that holds its identifier as a whole `-` or `/` token (Linear's own linking rule, so a teammate's
+   branch counts), and a ticket whose branch exists without an open PR, since the key owner may be working there. A
+   ticket Linear does not return gets the identifier-only branch and a log line. `publish` pushes only when the
+   branch does not exist yet. Each stage waits for its whole matrix, so with about 20 tickets the time from `file` to the last
    `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
    A `spec` task's original spec must pass 3 times on the patch; a run that fails anywhere, even before its
    `bug check` step, keeps the patch unpublished, since a patch that breaks the way to the bug proves no fix.
@@ -519,7 +521,7 @@ Then the rest of the pipeline:
 bun .github/qa/scripts/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
 bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run; LINEAR_API_KEY adds dedupe and scorecard.json
-bun .github/qa/scripts/fix.ts route --out qa-out
+bun .github/qa/scripts/fix.ts route --out qa-out       # lists open PRs, so `gh` must be signed in here
 bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.md
 ```
 

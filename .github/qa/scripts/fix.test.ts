@@ -375,7 +375,6 @@ describe('route', () => {
       charterDir,
       issueId: `issue-${id}`,
       identifier: `THB-${id}`,
-      url: `https://linear.example/issue/THB-${id}/title`,
     })
     // A new ticket, a refused finding, and a `rolled-up` entry: older runs listed findings over their ticket cap
     // on one shared ticket, which has no fix task of its own.
@@ -451,6 +450,8 @@ describe('route', () => {
       state?: string
       /** Filed in a dry run: no Linear ticket, so no identifier and no lookup. */
       dryRun?: boolean
+      /** False when Linear's answer leaves the ticket out, as for a deleted one. */
+      returned?: boolean
       outputs?: Record<string, string>
       run?: Run
     }
@@ -459,10 +460,11 @@ describe('route', () => {
       branchName = linearName,
       state = 'backlog',
       dryRun = false,
+      returned = true,
       outputs = {},
       run,
     }: Options = {}) => {
-      const ticket = { issueId: 'issue-1', identifier: 'THB-42', url: 'https://linear.example/issue/THB-42' }
+      const ticket = { issueId: 'issue-1', identifier: 'THB-42' }
       const entry: Filed = { fp: 'fp-one', charterDir: 'c2-chat', id: '1', severity: 'High', action: 'created' }
       const filed = [dryRun ? { ...entry, action: 'dry-run', would: 'created' } : { ...entry, ...ticket }]
       const confirmed: VerifiedFinding[] = [
@@ -476,7 +478,8 @@ describe('route', () => {
       const fetchFn = asFetch(async (_url, init) => {
         const { query, variables } = JSON.parse(String(init?.body))
         calls.push({ op: /^query (\w+)/.exec(query)?.[1] ?? '', variables })
-        return Response.json({ data: { issues: { nodes: [{ id: 'issue-1', branchName, state: { type: state } }] } } })
+        const nodes = returned ? [{ id: 'issue-1', branchName, state: { type: state } }] : []
+        return Response.json({ data: { issues: { nodes } } })
       })
       const runs: RunCall[] = []
       const lines: string[] = []
@@ -538,10 +541,25 @@ describe('route', () => {
     test.each([
       ["on Linear's branch", linearName],
       ['on the older fingerprint branch', 'qa-fix/fp-one'],
+      ["on a teammate's branch, whose prefix differs from the key owner's", 'joe/thb-42-fix-label'],
+      ['on a branch that starts with the identifier in capitals', 'THB-42/fix-label'],
     ])('a ticket with an open PR %s is not routed', async (_where, head) => {
       const { plan, lines } = await routeTicket({ outputs: { 'gh pr': `qa-fix/other\n${head}\n` } })
       expect(plan.fixes).toEqual([])
       expect(lines).toContain('fix: THB-42 already has an open PR, so it is not routed')
+    })
+
+    test('an open PR whose branch holds the identifier only inside a longer token does not hold the ticket back', async () => {
+      const { plan } = await routeTicket({ outputs: { 'gh pr': 'joe/thb-420-fix-label\njoe/xthb-42-fix\n' } })
+      expect(plan.fixes.map((t) => t.branch)).toEqual([linearName])
+    })
+
+    test('a ticket Linear does not return is routed on the identifier-only branch, and the log says so', async () => {
+      const { plan, lines } = await routeTicket({ returned: false })
+      expect(plan.fixes.map((t) => t.branch)).toEqual([fallback])
+      expect(lines).toContain(
+        'fix: Linear did not return THB-42, so its state is not checked and it gets the identifier-only branch',
+      )
     })
 
     test("only this repository's PRs count, since anyone can name a fork's branch after a ticket", async () => {
@@ -1023,7 +1041,6 @@ describe('publish', () => {
     ticket?: boolean
     branch?: string
     kind?: FixTask['kind']
-    url?: string
     extra?: Partial<FixTask['finding']>
     /** A native task's flow: the task carries it instead of a spec. */
     flow?: string
@@ -1035,7 +1052,6 @@ describe('publish', () => {
     ticket = true,
     branch = ticket ? linearBranch : `qa-fix/${fp}`,
     kind = 'spec',
-    url = 'https://linear.app/t/THB-1',
     extra,
     flow,
     charterDir = 'c2-chat',
@@ -1065,7 +1081,7 @@ describe('publish', () => {
       return kind === 'visual' ? { kind } : { kind, spec: specPath() }
     }
     const task: FixTask = { ...base, ...proof() }
-    const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1', url }
+    const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1' }
     const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
     await put(specPath(), spec)
@@ -1146,7 +1162,6 @@ describe('publish', () => {
     expect(pr.env).toEqual({ GH_TOKEN: 'app-token' })
     // The branch name links the PR to the ticket, so the description does not name it.
     expect(pr.stdin).not.toContain('THB-1')
-    expect(pr.stdin).not.toContain('linear.app')
     expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
     expect(pr.stdin).toContain(reviewNotice)
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
@@ -1178,7 +1193,6 @@ describe('publish', () => {
   test('a security fix PR carries no finding text and no regression spec, only the ticket', async () => {
     await setup({
       branch: 'qa-fix/thb-1',
-      url: 'https://linear.app/t/issue/THB-1/search-leaks-other-users-chats',
       extra: {
         title: 'Search leaks other users chats',
         area: 'security',
@@ -1203,7 +1217,7 @@ describe('publish', () => {
     const pr = runs.find((r) => r.cmd[0] === 'gh')
     const commit = runs.find((r) => r.cmd.includes('commit'))
     const published = [pr?.stdin, argAfter(pr?.cmd ?? [], '--title'), argAfter(commit?.cmd ?? [], '--message')]
-    expect(pr?.stdin).not.toContain('linear.app')
+    expect(pr?.stdin).not.toContain('THB-1')
     // Not even the word: a public PR flagged as a security fix points at the hole before the fix ships.
     for (const text of ['leaks', 'user b', 'b@thunderbolt', 'Only my chats', 'consumer-qa-', 'security']) {
       expect(published.join('\n').toLowerCase()).not.toContain(text.toLowerCase())

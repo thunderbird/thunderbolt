@@ -376,27 +376,44 @@ const greetings = [
     /msg`([^`]+)`/g,
   ),
 ].map((match) => match[1])
-const timedWait = z.object({ extendedWaitUntil: z.looseObject({}) })
+const replyFirstWord = fakeProviderReply.split(' ')[0]
 
 /**
  * Waits and assertions that cannot hold on another run, rewritten to ones that do. The chat greeting changes with the
  * hour, so it becomes the chat's landing text. Maestro matches a text against the element's whole text, so the start
- * of the fake provider's reply becomes the whole reply.
+ * of the fake provider's reply, past its first word, becomes the whole reply.
  */
 const steadyTextOf = (text: string) => {
   if (greetings.includes(text)) return chatLanding
-  if (text && text !== fakeProviderReply && fakeProviderReply.startsWith(text)) return fakeProviderReply
+  if (text.length > replyFirstWord.length && text !== fakeProviderReply && fakeProviderReply.startsWith(text)) {
+    return fakeProviderReply
+  }
   return undefined
 }
-const steadyCommands = z.array(
-  z.unknown().transform((command) => {
-    const text = awaitedText.safeParse(command).data
-    const steady = text === undefined ? undefined : steadyTextOf(text)
-    if (steady === undefined) return command
-    const wait = timedWait.safeParse(command).data
-    return wait ? { extendedWaitUntil: { ...wait.extendedWaitUntil, visible: steady } } : { assertVisible: steady }
-  }),
-)
+/** A selector's text, and the same selector with another text: only the text changes, so `width` still narrows it. */
+const textSelector = z.union([
+  z.string().transform((text) => ({ text, withText: (to: string) => to })),
+  z.looseObject({ text: z.string() }).transform((selector) => ({
+    text: selector.text,
+    withText: (to: string) => ({ ...selector, text: to }),
+  })),
+])
+type TextSelector = z.infer<typeof textSelector>
+const waitOn = z.object({ extendedWaitUntil: z.looseObject({ visible: textSelector }) })
+const assertOn = z.object({ assertVisible: textSelector })
+const typedText = z.object({ inputText: shownText }).transform((c) => c.inputText)
+const steadyCommands = commandList.transform((commands) => {
+  // A text the flow types shows on the screen as typed, so it is left as the flow wrote it.
+  const typed = new Set(commands.flatMap((command) => typedText.safeParse(command).data ?? []))
+  const steady = ({ text, withText }: TextSelector) => withText(typed.has(text) ? text : (steadyTextOf(text) ?? text))
+  return commands.map((command) => {
+    const wait = waitOn.safeParse(command).data
+    if (wait)
+      return { extendedWaitUntil: { ...wait.extendedWaitUntil, visible: steady(wait.extendedWaitUntil.visible) } }
+    const assert = assertOn.safeParse(command).data
+    return assert ? { assertVisible: steady(assert.assertVisible) } : command
+  })
+})
 
 /** The commands of a flow `checkMaestroFlow` serialized, after its header. */
 const commandsOf = (yaml: string) => commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
@@ -701,7 +718,7 @@ export type NativeVerify = {
   runs: number
   failed: number
   passed: boolean
-  /** Neither app failed on three runs that reached the screen, and too few did to pass: it says nothing either way. */
+  /** No run that reached the screen failed the patch or the check, and too few reached it to pass. */
   inconclusive: boolean
   error?: string
   failsWithout?: boolean
@@ -710,11 +727,11 @@ export type NativeVerify = {
 
 /**
  * The exit code of `verify.ts fix-native`, and so the native verdict publish trusts: the workflow uploads the
- * platform's pass on that step's outcome (0), and its inconclusive marker on that step's own record of a 2, never on
- * the result file the patched app could rewrite.
+ * platform's pass on that step's outcome (0), and its inconclusive marker on that step's own record of a 3, never on
+ * the result file the patched app could rewrite. Not 2, which `native.sh`'s `die` uses for its own errors.
  */
 export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed' | 'inconclusive'>) =>
-  verdict.passed ? 0 : verdict.inconclusive ? 2 : 1
+  verdict.passed ? 0 : verdict.inconclusive ? 3 : 1
 
 /** The fix agent's visual check has no finding, so only its own Maestro assertions fail a run. */
 const checkFailure = (run: FlowRun) =>
@@ -735,8 +752,8 @@ type Oracle = FindingFile['finding']['oracle']
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`); `passed` then needs both. A visual check needs `original`, and so does a real-AI session, which
  * is verified here on the fake AI: its flow must fail without the patch to prove anything.
- * A verdict that is not a pass is `inconclusive` unless an app failed on three runs that reached the screen: the
- * patched app showed the bug, or the unpatched one did not.
+ * A verdict that is not a pass is `inconclusive` unless a run that reached the screen failed it: the patched app
+ * showed the bug, or the unpatched one passed the fix agent's visual check.
  */
 export const verifyNativeFix = async (
   opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
@@ -766,13 +783,13 @@ export const verifyNativeFix = async (
   // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
   const passesWith = failed === 0 && runs === 3
   const result = { fp, platform, runs, failed, passed: passesWith, error: error ?? reason }
-  if (!original) return { ...result, inconclusive: runs < 3 }
+  if (!original) return { ...result, inconclusive: !passesWith && failed === 0 }
   const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug, unseen)
   const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
   const passed = failsWithout && passesWith
-  const failsPatched = runs === 3 && failed > 0
-  const passesUnpatched = unpatched.replay.runs === 3 && !failsWithout
-  const inconclusive = !passed && !failsPatched && !passesUnpatched
+  // A real-AI repro flow may simply not show its bug on the fake AI; only the agent's own check can be wrong.
+  const checkPassesUnpatched = oracle === undefined && unpatched.replay.failed < unpatched.replay.runs
+  const inconclusive = !passed && failed === 0 && !checkPassesUnpatched
   return { ...result, failsWithout, passesWith, passed, inconclusive }
 }
 

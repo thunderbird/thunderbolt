@@ -1677,7 +1677,8 @@ describe('native fix verification', () => {
       patched: failsAt('nothing'),
       original: failsAt('nothing'),
     })
-    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 1, 1])
+    // A repro flow that shows nothing without the patch cannot judge it, so that one is inconclusive.
+    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 1, 3])
   })
 
   test('passes only when no patched run shows the bug, and replaces a run that never reached the screen', async () => {
@@ -1707,7 +1708,7 @@ describe('native fix verification', () => {
     // Every run stopping on the way leaves no counted run: no pass, and no failure either.
     const blocked = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue') })
     expect(blocked).toMatchObject({ runs: 0, passed: false, inconclusive: true })
-    expect(nativeExitCode(blocked)).toBe(2)
+    expect(nativeExitCode(blocked)).toBe(3)
     const early = await verifyNativeFix({
       ...steps,
       oracle: asserted,
@@ -1761,25 +1762,31 @@ describe('native fix verification', () => {
   })
 
   // Only a verdict an app earned on three runs that reached the screen may send the ticket to a person.
-  test('a check is inconclusive unless an app failed it on three runs that reached the screen', async () => {
+  test('a check is inconclusive unless a run that reached the screen failed it', async () => {
     const steps = { ...base, flow: '- launchApp\n- tapOn: Skip\n- assertVisible: Where are you located?\n' }
     const blocked = failsAt('Skip')
     const shown = failsAt('Where are you located?')
     const clean = failsAt('nothing')
+    const stopped = { passed: false, signInFailed: true, error: 'Element not found: Skip' }
+    const onceShown = device([...Array(5).fill(stopped), failed])
     const verdicts = await Promise.all(
       [
-        // The patched app reached the screen three times and the defect still shows: a real failure.
+        // The patched app reached the screen and the defect still shows: a real failure.
         { patched: shown, original: shown },
-        // Without the patch the flow reached the screen three times and passed: the check proves nothing.
+        // Once is enough, even when the other runs never got there.
+        { patched: onceShown, original: shown },
+        // Without the patch the agent's check reached the screen and passed: the check proves nothing.
         { patched: clean, original: clean },
+        { patched: clean, original: failsAt('Skip', 5) },
         // Neither app ever got past the step before the screen.
         { patched: blocked, original: blocked },
         { patched: clean, original: blocked },
         { patched: blocked, original: shown },
       ].map((apps) => verifyNativeFix({ ...steps, ...apps })),
     )
-    expect(verdicts.map(({ inconclusive }) => inconclusive)).toEqual([false, false, true, true, true])
-    expect(verdicts.map(nativeExitCode)).toEqual([1, 1, 2, 2, 2])
+    expect(verdicts.map(({ runs, failed }) => [runs, failed])).toContainEqual([1, 1])
+    expect(verdicts.map(({ inconclusive }) => inconclusive)).toEqual([false, false, false, false, true, true, true])
+    expect(verdicts.map(nativeExitCode)).toEqual([1, 1, 1, 1, 3, 3, 3])
   })
 
   test('a real-AI session must also fail without the patch, since it is checked on the fake AI', async () => {
@@ -1794,7 +1801,8 @@ describe('native fix verification', () => {
       patched: device([]),
       original: device([]),
     })
-    expect(noBugOnFakeAi).toMatchObject({ failsWithout: false, passesWith: true, passed: false })
+    // The fake AI may not show a real-AI bug, which says nothing against the patch.
+    expect(noBugOnFakeAi).toMatchObject({ failsWithout: false, passesWith: true, passed: false, inconclusive: true })
     const fixed = await verifyNativeFix({
       ...real,
       oracle: asserted,
@@ -1881,7 +1889,12 @@ describe('native fix verification', () => {
       '- tapOn: Ask me anything…',
       '- extendedWaitUntil: {visible: Hello from the fake provider, timeout: 20000}',
       '- assertVisible: Hello from the fake provider',
-      '- assertVisible: {text: Hello}',
+      '- assertVisible: {text: Hello from the, width: 872, tolerance: 30, index: 1}',
+      '- extendedWaitUntil: {visible: {text: Hello from, below: Choose model}, timeout: 5000}',
+      // A message the flow sends shows as typed, and one word is no sign of the reply.
+      '- inputText: Hello from the fake',
+      '- assertVisible: Hello from the fake',
+      '- assertVisible: Hello',
       '- assertVisible: fake provider',
       '- assertVisible: Hello from the fake provider, one word at a time.',
     ].join('\n')
@@ -1902,7 +1915,11 @@ describe('native fix verification', () => {
       { tapOn: 'Ask me anything…' },
       { extendedWaitUntil: { visible: reply, timeout: 20000 } },
       { assertVisible: reply },
-      { assertVisible: reply },
+      { assertVisible: { text: reply, width: 872, tolerance: 30, index: 1 } },
+      { extendedWaitUntil: { visible: { text: reply, below: 'Choose model' }, timeout: 5000 } },
+      { inputText: 'Hello from the fake' },
+      { assertVisible: 'Hello from the fake' },
+      { assertVisible: 'Hello' },
       { assertVisible: 'fake provider' },
       { assertVisible: reply },
     ])

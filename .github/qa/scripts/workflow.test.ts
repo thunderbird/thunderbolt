@@ -1229,14 +1229,37 @@ describe('native jobs', () => {
       )
       return { code: proc.exitCode, output: readFileSync(output, 'utf8') }
     }
-    expect([0, 1, 2].map(runWith)).toEqual([
+    // 2 is native.sh's own `die`, a failure.
+    expect([0, 1, 2, 3].map(runWith)).toEqual([
       { code: 0, output: '' },
       { code: 1, output: '' },
-      { code: 2, output: 'inconclusive=true\n' },
+      { code: 2, output: '' },
+      { code: 3, output: 'inconclusive=true\n' },
     ])
     const marker = steps('verify-native-run').find((s) => s.with?.name?.startsWith('qa-inconclusive-'))
     expect(marker?.if).toBe("always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'")
     expect(marker?.with?.name).toBe(`qa-inconclusive-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`)
+  })
+
+  /** The index of the verify-native-run upload whose artifact name starts with `prefix`. */
+  const uploadOf = (prefix: string) => steps('verify-native-run').findIndex((s) => s.with?.name?.startsWith(prefix))
+
+  test("the fix check's started marker goes up once the pipeline's steps passed, before any patched app opens", () => {
+    const started = steps('verify-native-run')[uploadOf('qa-native-started-')]
+    expect(started.with?.name).toBe(`qa-native-started-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`)
+    // No status function, so it runs only when every step before it succeeded.
+    expect(started.if).toBe("env.QA_NO_DEVICE != 'true'")
+    expect(uploadOf('qa-native-started-')).toBeGreaterThan(indexOf('verify-native-run', 'Boot the device'))
+    expect(uploadOf('qa-native-started-')).toBeGreaterThan(indexOf('verify-native-run', 'Start the stack'))
+    expect(uploadOf('qa-native-started-')).toBeLessThan(
+      indexOf('verify-native-run', "Start Maestro's driver on the emulator"),
+    )
+  })
+
+  test("the fix check's verdict goes up straight after its run, before the logs", () => {
+    const run = indexOf('verify-native-run', 'Run the flow on the patched app')
+    expect([uploadOf('qa-pass-'), uploadOf('qa-inconclusive-')].toSorted((a, b) => a - b)).toEqual([run + 1, run + 2])
+    expect(uploadOf('qa-verify-')).toBeGreaterThan(run + 2)
   })
 
   test("iOS's console stream starts right after the boot, before the app installs and the stack starts", () => {

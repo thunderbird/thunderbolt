@@ -342,8 +342,8 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos and the WebView log beside it. It exits 0 when the patch passes, 2 when too few runs reached the
-# screen to tell, and 1 otherwise; CI uploads the pass, or the inconclusive marker, on that. A
+# with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when too few runs reached the
+# screen to tell, and non-zero otherwise; CI uploads the pass, or the inconclusive marker, on that. A
 # finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any other flow is the fix
 # agent's visual check. <original-app> is the build-native artifact of the same variant, without the patch, where the
 # flow must fail too: a visual check and a real-AI session need it.
@@ -355,7 +355,9 @@ verify_run() {
   # shellcheck disable=SC2064 # the path is fixed by now
   trap "stop_logs '$log'" EXIT
   logs "$platform" "$device" "$log"
-  [ "$platform" != ios ] || wait_logs "$device" "$log"
+  # A stream that never attached fails before the patched app runs, which says nothing about the patch: verify.ts's
+  # inconclusive code. A subshell, since `die` exits the shell it runs in.
+  [ "$platform" != ios ] || (wait_logs "$device" "$log") || exit 3
   name=$(basename "$result")
   QA_WEBVIEW_LOG="$log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
     --native "$platform" --device "$device" --app "$app" --fp "${name%%.*}" --flow "$flow" \

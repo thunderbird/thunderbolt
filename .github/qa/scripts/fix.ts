@@ -793,8 +793,29 @@ type PassesOptions = {
   unitTests: boolean
   artifacts: Set<string>
   attempt: string
-  /** The platforms whose native check was inconclusive, which only leave the ticket for later. */
-  inconclusive: string[]
+  /** The native checks that say nothing about the patch (`uncheckedNative`), which only leave the ticket for later. */
+  unchecked: { platform: string }[]
+}
+
+/**
+ * The native checks of `fp` without a pass that say nothing about the patch, each with why. Either the run step
+ * marked its verdict inconclusive, or a patched app was built and the job stopped before the run began, at the device,
+ * the stack or the runner, all the pipeline's. No patched app means the patch did not build, which stays a failure.
+ * Every name is an artifact the workflow uploads only on runner outcomes, like the passes.
+ */
+const uncheckedNative = (fp: string, verifyNative: NativeCheck[], artifacts: Set<string>, attempt: string) => {
+  const has = (kind: string, platform: string) => artifacts.has(`qa-${kind}-${fp}-${platform}-${attempt}`)
+  return verifyNative.flatMap(({ fp: checked, platform }) => {
+    if (checked !== fp || has('pass', platform)) return []
+    if (has('inconclusive', platform)) {
+      const reason = `the native check on ${platform} reached the screen in too few runs to tell whether the patch works`
+      return [{ platform, reason }]
+    }
+    if (has('patched', platform) && !has('native-started', platform)) {
+      return [{ platform, reason: `the native check on ${platform} stopped before its run began` }]
+    }
+    return []
+  })
 }
 
 /**
@@ -803,7 +824,7 @@ type PassesOptions = {
  * the run's artifact names, so no file that code the agent wrote could rewrite carries a verdict. Only passes of
  * `attempt`, the one whose patch publish read, count: artifacts of every attempt of the run share one list.
  */
-const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, inconclusive }: PassesOptions) => {
+const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unchecked }: PassesOptions) => {
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
@@ -834,7 +855,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, inco
       .filter((v) => v.fp === task.fp)
       .map((v) => ({
         check: v.platform,
-        needed: !inconclusive.includes(v.platform),
+        needed: !unchecked.some(({ platform }) => platform === v.platform),
         reason: `the flow still fails on the native platform (${v.platform}). That run used the patched app and the backend from before the patch`,
       })),
   ]
@@ -995,9 +1016,10 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
  * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
  * A missing patch, a diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the
- * `Human Required` label. A native check whose pass is missing but whose `qa-inconclusive-<fp>-<platform>-<attempt>`
- * marker is listed reached the screen in too few runs to tell: with no other reason, the ticket is left untouched
- * for a later run. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
+ * `Human Required` label. A native check without a pass that says nothing about the patch (`uncheckedNative`: its
+ * `qa-inconclusive-<fp>-<platform>-<attempt>` marker is listed, or its patched app is and its
+ * `qa-native-started-<fp>-<platform>-<attempt>` marker is not) leaves the ticket untouched for a later run when no
+ * other reason stands against the patch. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
  * when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run, like a fix job that
  * stopped before its session. Otherwise
  * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
@@ -1091,10 +1113,8 @@ export const publish = async ({
   }
   const checked = await checkPatch(run, outDir, task, verifyNative)
   const { files } = checked
-  const inconclusive = verifyNative
-    .filter((v) => v.fp === fp && artifacts.has(`qa-inconclusive-${fp}-${v.platform}-${attempt}`))
-    .map((v) => v.platform)
-  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt, inconclusive }
+  const unchecked = uncheckedNative(fp, verifyNative, artifacts, attempt)
+  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt, unchecked }
   const reasons = [...checked.reasons, ...missingPasses(passes)]
   if (reasons.length) {
     return handOff(
@@ -1102,11 +1122,7 @@ export const publish = async ({
       `The fix agent's patch was rejected, so there is no PR:\n\n${reasons.map((r) => `- ${sanitize(r, 300)}`).join('\n')}`,
     )
   }
-  if (inconclusive.length) {
-    return leaveForLater(
-      `the native check on ${inconclusive.join(' and ')} reached the screen in too few runs to tell whether the patch works`,
-    )
-  }
+  if (unchecked.length) return leaveForLater(unchecked.map(({ reason }) => reason).join('; '))
 
   // Last, so a patch that also fails a check above goes to a person.
   if (!artifacts.has(`qa-pass-${fp}-checks-${attempt}`)) {

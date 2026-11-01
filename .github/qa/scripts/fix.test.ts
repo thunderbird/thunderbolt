@@ -2337,6 +2337,37 @@ describe('publish', () => {
       })
     })
 
+    describe('a native check whose job stopped before its run', () => {
+      const nativeTask = { flow: 'native', verifyNative: [native('ios')] }
+      const listed = (...names: string[]) =>
+        put(
+          join(outDir, 'artifacts.txt'),
+          [`qa-fix-status-${fp}-1`, `qa-pass-${fp}-session-1`, `qa-pass-${fp}-checks-1`, ...names, ''].join('\n'),
+        )
+
+      test('leaves the ticket untouched when a patched app was built but the run never started', async () => {
+        await setupTask(nativeTask)
+        await listed(`qa-patched-${fp}-ios-1`)
+        expect(await dryRun()).toEqual({
+          outcome: 'infrastructure',
+          reason: 'the native check on ios stopped before its run began',
+        })
+      })
+
+      test('sends it to a person when the run started and gave no verdict, or no patched app was built', async () => {
+        await setupTask(nativeTask)
+        for (const names of [
+          [`qa-patched-${fp}-ios-1`, `qa-native-started-${fp}-ios-1`],
+          [],
+          [`qa-patched-${fp}-ios-2`],
+        ]) {
+          await listed(...names)
+          const result = await dryRun()
+          expect({ names, outcome: result.outcome }).toEqual({ names, outcome: 'human-required' })
+        }
+      })
+    })
+
     test('a pass of another fingerprint counts for nothing', async () => {
       await setupTask({})
       await put(

@@ -83,8 +83,9 @@ needs a pass of its own run attempt for every check the task needs: `session` al
 spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's whose run step marked its verdict inconclusive
-(`qa-inconclusive-<fp>-<platform>-<run attempt>`, see the fix stage below), which only leaves the ticket for a later
-run. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
+(`qa-inconclusive-<fp>-<platform>-<run attempt>`) or whose job stopped before its run started (no
+`qa-native-started-<fp>-<platform>-<run attempt>` beside a patched app, see the fix stage below), which only leaves
+the ticket for a later run. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
 to GitHub or Linear and leaves the ticket for a later run (see the fix stage below). It counts only once every
 other pass is there, so a patch that also failed its own checks still goes to a person. Listing names cannot miss,
 so a normal run shows no error annotation for a check that did not pass. The diagnosis the fix job writes for a
@@ -321,9 +322,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    its session is dropped at the schema gate, and every other finding takes its session's platform as its
    `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable. Before it runs, a wait or
    assertion on a text that cannot hold on another run is rewritten: the chat's greeting (`getGreeting`, which
-   changes with the hour) becomes `Ask me anything…`, and the start of the fake provider's reply becomes the whole
-   reply, since Maestro matches a text against the element's whole text. The fix check runs flows through the same
-   rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
+   changes with the hour) becomes `Ask me anything…`, and the start of the fake provider's reply, past its first
+   word, becomes the whole reply, since Maestro matches a text against the element's whole text. Only the selector's
+   text changes, so its `width` or `below` still holds, and a text the flow itself types is left alone. The fix
+   check runs flows through the same rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
    onboarding build for c1, the plain one otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3
    times first on the plain build; one failure marks the stack unhealthy and no flow runs. A control run whose iOS driver did not
    start, even on its retry, is inconclusive and replaced like a finding's run, up to 3 extra runs; a control left with fewer than 3
@@ -484,12 +486,18 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    a layout or log oracle reads the WebView log (a dead stream), shows nothing about the patch and is run again, up
    to 3 extra runs; the same holds without the patch. With `unpatched` (a visual check, or an Android real-AI task,
    which the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must
-   fail there every time. The verdict is a pass, a failure when an app failed on 3 runs that reached the screen (the
-   patched one showed the bug, or the unpatched one did not), or else inconclusive. `verify.ts fix-native` exits 0,
-   1 or 2 for these; the run step records a 2 in its own output, and the job uploads
-   `qa-inconclusive-<fp>-<platform>-<run attempt>` on that and the step's failed outcome. `publish` then leaves the
-   ticket untouched for a later run when nothing else stands against the patch, so a stream that died or a flow that
-   cannot reach the screen never earns `Human Required`. The job also keeps the WebView log and Maestro's per-step
+   fail there every time. The verdict is a pass, a failure when a run that reached the screen failed it (the patched
+   app showed the bug, or the unpatched one passed the fix agent's visual check), or else inconclusive. A real-AI
+   repro flow that shows nothing on the fake AI without the patch is inconclusive too: it cannot judge the patch.
+   `verify.ts fix-native` exits 0, 1 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
+   never attaches; any other error of `native.sh` exits 2, a failure. The run step records a 3 in its own output, and
+   the job uploads `qa-inconclusive-<fp>-<platform>-<run attempt>` on that and the step's failed outcome, straight
+   after the run, before the logs. Before any patched app opens, once the device and the stack are up, the job
+   uploads `qa-native-started-<fp>-<platform>-<run attempt>`. `publish` leaves the ticket untouched for a later run
+   when nothing else stands against the patch and a native check is inconclusive, or its patched app was built but
+   the job never got as far as that marker (a boot, the stack or the runner failed). A stream that died or a flow
+   that cannot reach the screen never earns `Human Required`; a run that started and gave no verdict, or a patch
+   that built no app, still does. The job also keeps the WebView log and Maestro's per-step
    output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the verdict in
    `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro
    spec, or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so

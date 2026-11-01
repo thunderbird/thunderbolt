@@ -48,8 +48,8 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
   const bin = mkdtempSync(join(work, 'bin-'))
   const args = join(bin, 'bun-args')
   writeFileSync(join(bin, 'xcrun'), "#!/bin/bash\necho 'Filtering the log data'\nsleep 3\n")
-  // Exits 2, an inconclusive verdict, which the workflow tells apart from a failure.
-  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" "$QA_WEBVIEW_LOG" > '${args}'\nexit 2\n`)
+  // Exits 3, an inconclusive verdict, which the workflow tells apart from a failure.
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" "$QA_WEBVIEW_LOG" > '${args}'\nexit 3\n`)
   for (const tool of ['xcrun', 'bun']) chmodSync(join(bin, tool), 0o755)
   const result = join(work, 'out', 'ab12cd34.ios.verify.json')
   const proc = Bun.spawnSync(
@@ -68,7 +68,7 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
     { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' } },
   )
   expect(proc.stderr.toString()).toBe('')
-  expect(proc.exitCode).toBe(2)
+  expect(proc.exitCode).toBe(3)
   const passed = readFileSync(args, 'utf8').trim().split('\n')
   const after = (flag: string) => passed[passed.indexOf(flag) + 1]
   expect(passed.slice(0, 2)).toEqual(['.github/qa/scripts/verify.ts', 'fix-native'])
@@ -83,6 +83,30 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
   const webviewLog = join(work, 'out', 'ab12cd34.ios.verify.webview.log')
   expect(passed.at(-1)).toBe(webviewLog)
   expect(readFileSync(webviewLog, 'utf8')).toContain('Filtering the log data')
+})
+
+// The pipeline's failure before the patched app runs, so the workflow must read it as inconclusive, and every other
+// `die` (2) as a failure.
+test('verify-run exits with the inconclusive code when the iOS stream never attaches, before verify.ts runs', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const ran = join(bin, 'bun-ran')
+  writeFileSync(join(bin, 'xcrun'), '#!/bin/bash\nexec /bin/sleep 30\n')
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\ntouch '${ran}'\n`)
+  // The first call stamps the stream's start, every later one is long past its budget; the waits do not wait.
+  const clock = join(bin, 'clock')
+  writeFileSync(join(bin, 'date'), `#!/bin/bash\n[ -f '${clock}' ] && echo 1000 || { touch '${clock}'; echo 0; }\n`)
+  writeFileSync(join(bin, 'sleep'), '#!/bin/sh\n')
+  for (const tool of ['xcrun', 'bun', 'date', 'sleep']) chmodSync(join(bin, tool), 0o755)
+  const result = join(work, 'never', 'ab12cd34.ios.json')
+  const args = ['verify-run', 'ios', 'UDID-1', '/apps/patched.app', 'qa-out/s/repro/1.yaml', 's', result]
+  const proc = Bun.spawnSync(['bash', native, ...args], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' },
+  })
+
+  expect(proc.stderr.toString()).toContain('the log stream never attached')
+  expect(proc.exitCode).toBe(3)
+  expect(existsSync(ran)).toBe(false)
+  expect(Bun.spawnSync(['pgrep', '-f', `${bin}/xcrun`]).stdout.toString()).toBe('')
 })
 
 test('device android waits for /sdcard, pushes each fixture alone and only warns when a push is refused', () => {

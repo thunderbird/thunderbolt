@@ -793,6 +793,8 @@ type PassesOptions = {
   unitTests: boolean
   artifacts: Set<string>
   attempt: string
+  /** The platforms whose native check was inconclusive, which only leave the ticket for later. */
+  inconclusive: string[]
 }
 
 /**
@@ -801,7 +803,7 @@ type PassesOptions = {
  * the run's artifact names, so no file that code the agent wrote could rewrite carries a verdict. Only passes of
  * `attempt`, the one whose patch publish read, count: artifacts of every attempt of the run share one list.
  */
-const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt }: PassesOptions) => {
+const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, inconclusive }: PassesOptions) => {
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
@@ -832,7 +834,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt }: Pa
       .filter((v) => v.fp === task.fp)
       .map((v) => ({
         check: v.platform,
-        needed: true,
+        needed: !inconclusive.includes(v.platform),
         reason: `the flow still fails on the native platform (${v.platform}). That run used the patched app and the backend from before the patch`,
       })),
   ]
@@ -993,7 +995,9 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
  * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
  * A missing patch, a diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the
- * `Human Required` label. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
+ * `Human Required` label. A native check whose pass is missing but whose `qa-inconclusive-<fp>-<platform>-<attempt>`
+ * marker is listed reached the screen in too few runs to tell: with no other reason, the ticket is left untouched
+ * for a later run. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
  * when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run, like a fix job that
  * stopped before its session. Otherwise
  * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
@@ -1087,12 +1091,20 @@ export const publish = async ({
   }
   const checked = await checkPatch(run, outDir, task, verifyNative)
   const { files } = checked
-  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt }
+  const inconclusive = verifyNative
+    .filter((v) => v.fp === fp && artifacts.has(`qa-inconclusive-${fp}-${v.platform}-${attempt}`))
+    .map((v) => v.platform)
+  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt, inconclusive }
   const reasons = [...checked.reasons, ...missingPasses(passes)]
   if (reasons.length) {
     return handOff(
       reasons,
       `The fix agent's patch was rejected, so there is no PR:\n\n${reasons.map((r) => `- ${sanitize(r, 300)}`).join('\n')}`,
+    )
+  }
+  if (inconclusive.length) {
+    return leaveForLater(
+      `the native check on ${inconclusive.join(' and ')} reached the screen in too few runs to tell whether the patch works`,
     )
   }
 

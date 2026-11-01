@@ -884,6 +884,27 @@ describe('replay of native flows', () => {
     ])
   })
 
+  test('replay waits for the chat landing text where a flow waited for the greeting it saw', async () => {
+    // Recorded in the evening, replayed in the small hours, when the greeting reads "Up late?".
+    const recorded =
+      '- launchApp\n- extendedWaitUntil: {visible: Good evening, timeout: 120000}\n- tapOn: Toggle Sidebar\n'
+    await writeNative(makeNative('evening', layout), recorded)
+    const sent: { yaml: string; signIn?: string }[] = []
+    const record: RunFlow = async (yaml, _outDir, _run, _session, signIn) => {
+      sent.push({ yaml, signIn })
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+
+    await replay(outDir, fakeRunner({}, []), qaDir, record)
+
+    const finding = sent.filter(({ yaml }) => yaml.includes('Toggle Sidebar'))
+    expect(finding).toHaveLength(3)
+    // The landing text is the first screen after sign-in, so the harness signs the flow in.
+    expect(finding[0].signIn).toContain('inputText: "12345678"')
+    expect(finding[0].yaml).toContain('visible: Ask me anything…')
+    expect(JSON.stringify(sent)).not.toContain('Good evening')
+  })
+
   test('a native layout finding confirms at 2/3 failures and is flaky at 1/3, other native oracles still need 3/3', async () => {
     const onboarding = 'c1-first-run-ios'
     const title = 'Name field on onboarding is cut off when the keyboard opens'
@@ -1659,38 +1680,34 @@ describe('native fix verification', () => {
     expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 1, 1])
   })
 
-  test('passes only when no patched run shows the bug: the quoted probe line, or the flow failing', async () => {
+  test('passes only when no patched run shows the bug, and replaces a run that never reached the screen', async () => {
     const clean = await verifyNativeFix({ ...base, oracle: layout, patched: device([]) })
-    expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true })
+    expect(clean).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true, inconclusive: false })
 
     const seen = { layout: ['[qa-layout] ready', nameLine] }
     expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, seen]) })).toMatchObject({
       failed: 1,
       passed: false,
+      inconclusive: false,
       error: `the layout probe logged ${nameLine}`,
     })
-    // A layout flow that failed without the line never reached the screen, which still fails the patch.
-    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([failed]) })).toMatchObject({
-      failed: 1,
-      passed: false,
-      error: failed.error,
-    })
+    // A layout flow that failed without the line never reached the screen, so it shows nothing about the patch.
+    const runs: number[] = []
+    const replaced = await verifyNativeFix({ ...base, oracle: layout, patched: device([failed], runs) })
+    expect(replaced).toMatchObject({ runs: 3, failed: 0, passed: true })
+    expect(runs).toEqual([1, 2, 3, 4])
   })
 
-  test('a failure-oracle flow failing before its last command fails the patch, but never shows the bug without it', async () => {
+  test('a failure-oracle flow failing before its last command is replaced, and never shows the bug without it', async () => {
     const asserted = { type: 'assert-failed', evidence: 'the name step never shows' }
     const steps = { ...base, flow: '- launchApp\n- tapOn: Continue\n- assertVisible: What should we call you?\n' }
 
-    // A fix must leave the whole way to the bug working: one early failure blocks it, and is not run again.
-    const broken = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
-    expect(broken).toEqual({
-      fp: 'ab12cd34',
-      platform: 'ios',
-      runs: 3,
-      failed: 1,
-      passed: false,
-      error: 'Element not found: Continue',
-    })
+    const replaced = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue', 1) })
+    expect(replaced).toEqual({ fp: 'ab12cd34', platform: 'ios', runs: 3, failed: 0, passed: true, inconclusive: false })
+    // Every run stopping on the way leaves no counted run: no pass, and no failure either.
+    const blocked = await verifyNativeFix({ ...steps, oracle: asserted, patched: failsAt('Continue') })
+    expect(blocked).toMatchObject({ runs: 0, passed: false, inconclusive: true })
+    expect(nativeExitCode(blocked)).toBe(2)
     const early = await verifyNativeFix({
       ...steps,
       oracle: asserted,
@@ -1712,24 +1729,57 @@ describe('native fix verification', () => {
     expect(reran).toMatchObject({ failsWithout: true, passed: true })
   })
 
-  test('a driver that never starts fails the run after its one retry, so a dead device never passes a patch', async () => {
-    const runs: number[] = []
-    const result = await verifyNativeFix({ ...base, oracle: layout, patched: device([timeout, timeout], runs) })
-    expect(result).toMatchObject({ runs: 3, failed: 1, passed: false })
-    expect(runs).toEqual([1, 2, 3, 4])
+  test('a driver that never starts, even on its retry, leaves the verdict inconclusive and never passes', async () => {
+    const asserted = { type: 'assert-failed', evidence: 'never shows' }
+    for (const oracle of [layout, asserted]) {
+      const runs: number[] = []
+      const dead = await verifyNativeFix({ ...base, oracle, patched: device(Array(12).fill(timeout), runs) })
+      expect({ type: oracle.type, ...dead }).toMatchObject({ type: oracle.type, runs: 0, inconclusive: true })
+      expect(dead.passed).toBe(false)
+      expect(runs).toHaveLength(12)
+    }
   })
 
-  test('a layout verdict needs the probe ready in every patched run: a silent probe proves nothing', async () => {
+  test('a patched run without the probe ready line is replaced, and too many of them are inconclusive', async () => {
     const silent = { layout: [] }
-    expect(await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, silent]) })).toMatchObject({
-      failed: 1,
+    const runs: number[] = []
+    const replaced = await verifyNativeFix({ ...base, oracle: layout, patched: device([{}, silent], runs) })
+    expect(replaced).toMatchObject({ runs: 3, failed: 0, passed: true })
+    expect(runs).toEqual([1, 2, 3, 4])
+    // A dead stream shows no bug either, so it is no pass and no failure.
+    const dead = await verifyNativeFix({ ...base, oracle: layout, patched: device(Array(6).fill(silent)) })
+    expect(dead).toMatchObject({
+      runs: 0,
       passed: false,
-      error: 'the layout probe never reported ready',
+      inconclusive: true,
+      error: 'only 0 of 3 runs reached the screen',
     })
     // An assertion oracle is proven by the flow itself.
     const asserted = { type: 'assert-failed', evidence: 'never shows' }
     const passed = await verifyNativeFix({ ...base, oracle: asserted, patched: device([silent, silent, silent]) })
     expect(passed).toMatchObject({ failed: 0, passed: true })
+  })
+
+  // Only a verdict an app earned on three runs that reached the screen may send the ticket to a person.
+  test('a check is inconclusive unless an app failed it on three runs that reached the screen', async () => {
+    const steps = { ...base, flow: '- launchApp\n- tapOn: Skip\n- assertVisible: Where are you located?\n' }
+    const blocked = failsAt('Skip')
+    const shown = failsAt('Where are you located?')
+    const clean = failsAt('nothing')
+    const verdicts = await Promise.all(
+      [
+        // The patched app reached the screen three times and the defect still shows: a real failure.
+        { patched: shown, original: shown },
+        // Without the patch the flow reached the screen three times and passed: the check proves nothing.
+        { patched: clean, original: clean },
+        // Neither app ever got past the step before the screen.
+        { patched: blocked, original: blocked },
+        { patched: clean, original: blocked },
+        { patched: blocked, original: shown },
+      ].map((apps) => verifyNativeFix({ ...steps, ...apps })),
+    )
+    expect(verdicts.map(({ inconclusive }) => inconclusive)).toEqual([false, false, true, true, true])
+    expect(verdicts.map(nativeExitCode)).toEqual([1, 1, 2, 2, 2])
   })
 
   test('a real-AI session must also fail without the patch, since it is checked on the fake AI', async () => {
@@ -1771,6 +1821,7 @@ describe('native fix verification', () => {
       runs: 3,
       failed: 0,
       passed: true,
+      inconclusive: false,
       failsWithout: true,
       passesWith: true,
     })
@@ -1802,12 +1853,13 @@ describe('native fix verification', () => {
     }
     const shown = await verifyNativeFix({ ...steps, patched: failsAt('nothing'), original: failsAt('Sync is on') })
     expect(shown).toMatchObject({ failsWithout: true, passesWith: true, passed: true })
-    const brokenSetup = await verifyNativeFix({
+    // With the patch too, a run that stopped on the way says nothing and is replaced.
+    const flakySetup = await verifyNativeFix({
       ...steps,
       patched: failsAt('Devices', 1),
       original: failsAt('Sync is on'),
     })
-    expect(brokenSetup).toMatchObject({ failed: 1, passesWith: false, passed: false })
+    expect(flakySetup).toMatchObject({ runs: 3, failed: 0, passesWith: true, passed: true })
 
     const runs: number[] = []
     const tapLast = verifyNativeFix({
@@ -1818,6 +1870,42 @@ describe('native fix verification', () => {
     })
     await expect(tapLast).rejects.toThrow('must end on assertVisible or assertNotVisible')
     expect(runs).toEqual([])
+  })
+
+  test('a wait for the greeting or for the start of the fake reply becomes one that holds on every run', async () => {
+    // Steps of real repro flows: one recorded in the evening, one asserting the first words of the reply.
+    const flow = [
+      "- inputText: '12345678'",
+      '- extendedWaitUntil: {visible: Good evening, timeout: 120000}',
+      '- assertVisible: Up late?',
+      '- tapOn: Ask me anything…',
+      '- extendedWaitUntil: {visible: Hello from the fake provider, timeout: 20000}',
+      '- assertVisible: Hello from the fake provider',
+      '- assertVisible: {text: Hello}',
+      '- assertVisible: fake provider',
+      '- assertVisible: Hello from the fake provider, one word at a time.',
+    ].join('\n')
+    const sent: string[] = []
+    const record: RunFlow = async (yaml) => {
+      sent.push(yaml)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+    const oracle = { type: 'console-error', evidence: 'CONSOLE ERROR Chat error: Error: 404 "Not Found"' }
+
+    await verifyNativeFix({ ...base, session: 'c2-chat-power-user-ios', flow, oracle, patched: record })
+
+    const reply = 'Hello from the fake provider, one word at a time.'
+    expect(Bun.YAML.parse(sent[0].split('\n---\n')[1])).toEqual([
+      { inputText: '12345678' },
+      { extendedWaitUntil: { visible: 'Ask me anything…', timeout: 120000 } },
+      { assertVisible: 'Ask me anything…' },
+      { tapOn: 'Ask me anything…' },
+      { extendedWaitUntil: { visible: reply, timeout: 20000 } },
+      { assertVisible: reply },
+      { assertVisible: reply },
+      { assertVisible: 'fake provider' },
+      { assertVisible: reply },
+    ])
   })
 
   test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {

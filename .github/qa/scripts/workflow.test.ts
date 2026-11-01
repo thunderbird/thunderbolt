@@ -1182,11 +1182,61 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
-  test("Android's replay starts Maestro's driver once, before the console stream that a reset there would end", () => {
+  test("Android's replay and fix check start Maestro's driver once, before the console stream a reset would end", () => {
     const warmUp = "Start Maestro's driver on the emulator"
-    expect(step('replay-native', warmUp).if).toBe("matrix.leg.platform == 'android'")
+    expect(step('verify-native-run', warmUp)).toEqual(step('replay-native', warmUp))
+    expect(step('replay-native', warmUp).if).toBe("env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'")
     expect(indexOf('replay-native', warmUp)).toBeGreaterThan(indexOf('replay-native', 'Boot the device'))
     expect(indexOf('replay-native', warmUp)).toBeLessThan(indexOf('replay-native', 'Stream the WebView console'))
+    // verify-native-run's stream starts inside the run step.
+    expect(indexOf('verify-native-run', warmUp)).toBeGreaterThan(indexOf('verify-native-run', 'Boot the device'))
+    expect(indexOf('verify-native-run', warmUp)).toBeLessThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
+    )
+  })
+
+  test("the fix check's verdict artifact holds Maestro's per-step output and the WebView log", () => {
+    const keep = "Keep Maestro's output with the verdict"
+    expect(step('verify-native-run', keep)).toMatchObject({
+      if: "always() && env.QA_NO_DEVICE != 'true'",
+      run: 'cp -R ~/.maestro/tests qa-out/verify/maestro || true',
+    })
+    const upload = steps('verify-native-run').findIndex((s) => s.with?.name?.startsWith('qa-verify-'))
+    expect(steps('verify-native-run')[upload].with?.path).toBe('qa-out/verify/')
+    expect(indexOf('verify-native-run', keep)).toBe(upload - 1)
+    expect(indexOf('verify-native-run', keep)).toBeGreaterThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
+    )
+    // native.sh verify-run writes the stream's log beside the result, inside that folder.
+    expect(step('verify-native-run', 'Run the flow on the patched app').run).toContain(
+      '"qa-out/verify/$QA_FP.$QA_PLATFORM.json"',
+    )
+  })
+
+  test("the fix check's run step records an inconclusive verdict, and a marker is uploaded only on it", () => {
+    const runWith = (code: number) => {
+      const temp = mkdtempSync(join(work, 'verify-run-'))
+      mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
+      writeFileSync(join(temp, '.github/qa/scripts/native.sh'), `#!/bin/bash\nexit ${code}\n`, { mode: 0o755 })
+      const output = join(temp, 'output')
+      writeFileSync(output, '')
+      const proc = Bun.spawnSync(
+        ['bash', '-e', '-c', step('verify-native-run', 'Run the flow on the patched app').run ?? ''],
+        {
+          cwd: temp,
+          env: { PATH: process.env.PATH, RUNNER_TEMP: temp, GITHUB_OUTPUT: output, QA_FP: 'fp1' },
+        },
+      )
+      return { code: proc.exitCode, output: readFileSync(output, 'utf8') }
+    }
+    expect([0, 1, 2].map(runWith)).toEqual([
+      { code: 0, output: '' },
+      { code: 1, output: '' },
+      { code: 2, output: 'inconclusive=true\n' },
+    ])
+    const marker = steps('verify-native-run').find((s) => s.with?.name?.startsWith('qa-inconclusive-'))
+    expect(marker?.if).toBe("always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'")
+    expect(marker?.with?.name).toBe(`qa-inconclusive-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`)
   })
 
   test("iOS's console stream starts right after the boot, before the app installs and the stack starts", () => {

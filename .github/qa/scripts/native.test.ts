@@ -48,7 +48,8 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
   const bin = mkdtempSync(join(work, 'bin-'))
   const args = join(bin, 'bun-args')
   writeFileSync(join(bin, 'xcrun'), "#!/bin/bash\necho 'Filtering the log data'\nsleep 3\n")
-  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" > '${args}'\n`)
+  // Exits 2, an inconclusive verdict, which the workflow tells apart from a failure.
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" "$QA_WEBVIEW_LOG" > '${args}'\nexit 2\n`)
   for (const tool of ['xcrun', 'bun']) chmodSync(join(bin, tool), 0o755)
   const result = join(work, 'out', 'ab12cd34.ios.verify.json')
   const proc = Bun.spawnSync(
@@ -67,7 +68,7 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
     { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' } },
   )
   expect(proc.stderr.toString()).toBe('')
-  expect(proc.exitCode).toBe(0)
+  expect(proc.exitCode).toBe(2)
   const passed = readFileSync(args, 'utf8').trim().split('\n')
   const after = (flag: string) => passed[passed.indexOf(flag) + 1]
   expect(passed.slice(0, 2)).toEqual(['.github/qa/scripts/verify.ts', 'fix-native'])
@@ -78,6 +79,10 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
     result,
   ])
   expect(Bun.spawnSync(['pgrep', '-f', `${bin}/xcrun`]).stdout.toString()).toBe('')
+  // The stream's log stays beside the result, which the workflow uploads, so a dead stream shows.
+  const webviewLog = join(work, 'out', 'ab12cd34.ios.verify.webview.log')
+  expect(passed.at(-1)).toBe(webviewLog)
+  expect(readFileSync(webviewLog, 'utf8')).toContain('Filtering the log data')
 })
 
 test('device android waits for /sdcard, pushes each fixture alone and only warns when a push is refused', () => {

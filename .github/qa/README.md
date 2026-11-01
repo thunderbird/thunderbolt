@@ -82,7 +82,9 @@ which the runner keeps too (see the fix stage below). The artifact holds a marke
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
 spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
-`Human Required` with the reason. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
+`Human Required` with the reason, except a native platform's whose run step marked its verdict inconclusive
+(`qa-inconclusive-<fp>-<platform>-<run attempt>`, see the fix stage below), which only leaves the ticket for a later
+run. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
 to GitHub or Linear and leaves the ticket for a later run (see the fix stage below). It counts only once every
 other pass is there, so a patch that also failed its own checks still goes to a person. Listing names cannot miss,
 so a normal run shows no error annotation for a check that did not pass. The diagnosis the fix job writes for a
@@ -317,8 +319,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
    session dir decides which, never the finding's own `charter` or `viewport`: a finding whose repro does not fit
    its session is dropped at the schema gate, and every other finding takes its session's platform as its
-   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and
-   `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
+   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable. Before it runs, a wait or
+   assertion on a text that cannot hold on another run is rewritten: the chat's greeting (`getGreeting`, which
+   changes with the hour) becomes `Ask me anything…`, and the start of the fake provider's reply becomes the whole
+   reply, since Maestro matches a text against the element's whole text. The fix check runs flows through the same
+   rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
    onboarding build for c1, the plain one otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3
    times first on the plain build; one failure marks the stack unhealthy and no flow runs. A control run whose iOS driver did not
    start, even on its retry, is inconclusive and replaced like a finding's run, up to 3 extra runs; a control left with fewer than 3
@@ -474,12 +479,19 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `fix-plan.json`'s `verifyNative` lists each native task's flow and the repro flows of the same bug on other native
    platforms. `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
    `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow three
-   times on it with no key; a layout or log oracle also needs the probe's ready line in every run. A patched run that
-   fails anywhere, before the bug's assertion too, fails the patch: a fix must leave the whole way to the bug working.
-   Only a failed harness sign-in is run again. Without the patch, a run that never reached the bug, by replay's rules,
-   is run again and never counts as showing it. With `unpatched` (a visual check, or an Android real-AI task, which the
-   keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail there
-   every time. The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro
+   times on it with no key, split as replay splits it. A patched run fails only when it shows the bug. A run that
+   never reached the screen by replay's rules, whose driver never started, or that lacks the probe's ready line when
+   a layout or log oracle reads the WebView log (a dead stream), shows nothing about the patch and is run again, up
+   to 3 extra runs; the same holds without the patch. With `unpatched` (a visual check, or an Android real-AI task,
+   which the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must
+   fail there every time. The verdict is a pass, a failure when an app failed on 3 runs that reached the screen (the
+   patched one showed the bug, or the unpatched one did not), or else inconclusive. `verify.ts fix-native` exits 0,
+   1 or 2 for these; the run step records a 2 in its own output, and the job uploads
+   `qa-inconclusive-<fp>-<platform>-<run attempt>` on that and the step's failed outcome. `publish` then leaves the
+   ticket untouched for a later run when nothing else stands against the patch, so a stream that died or a flow that
+   cannot reach the screen never earns `Human Required`. The job also keeps the WebView log and Maestro's per-step
+   output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the verdict in
+   `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro
    spec, or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so
    a `visual` finding and a `layout` one qualify, except an `unnamed-control` line: a missing accessible name shows in
    a unit test. A `lost-on-reload` finding qualifies too, since the testing guide
@@ -871,8 +883,8 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   leg still ends inside the timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
-  On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
-  and runs `launchApp`: Maestro starts its driver inside a session's first `launchApp`, and the first session on a
+  On Android, before the console stream starts, one Maestro session that counts for nothing installs one of the
+  job's builds and runs `launchApp` (`verify-native-run` runs the same step): Maestro starts its driver inside a session's first `launchApp`, and the first session on a
   fresh emulator can fail there with no reason given. If the Maestro session fails, that is only a
   warning (a failing install in the same step still fails the job), its time counts in the leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android

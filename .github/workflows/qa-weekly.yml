@@ -986,15 +986,18 @@ jobs:
       - *device
       - *logs-ios
       # Maestro starts its driver in a session's first launchApp, which can fail on a fresh emulator with no reason
-      # given; one uncounted session absorbs that before the counted runs.
-      - name: Start Maestro's driver on the emulator
-        if: matrix.leg.platform == 'android'
+      # given; one uncounted session absorbs that before the counted runs. Any of the job's apps will do: every
+      # counted run installs its own.
+      - &warm-up-maestro
+        name: Start Maestro's driver on the emulator
+        if: env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'
         run: |
-          .github/qa/scripts/native.sh install android "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/plain/$QA_APP_FILE"
+          apps=("$RUNNER_TEMP"/apps/*/"$QA_APP_FILE")
+          .github/qa/scripts/native.sh install android "$QA_DEVICE_ID" "${apps[0]}"
           app_id=$(jq -r '.[] | select(.id == "android") | .appId' .github/qa/platforms.json)
           printf 'appId: %s\n---\n- launchApp\n' "$app_id" > "$RUNNER_TEMP/qa-warm-up.yaml"
           maestro --udid "$QA_DEVICE_ID" test "$RUNNER_TEMP/qa-warm-up.yaml" ||
-            echo "::warning::Maestro's first session on the emulator failed; the replay's counted runs come after it"
+            echo "::warning::Maestro's first session on the emulator failed; the counted runs come after it"
       - *start-native-stack
       - *lock
       - *logs-android
@@ -1739,10 +1742,12 @@ jobs:
           name: qa-verified-weekly
           path: qa-out
       - *device
+      - *warm-up-maestro
       - name: Start the stack
         if: env.QA_NO_DEVICE != 'true'
         run: .github/qa/scripts/stack.sh start native
-      # Exits non-zero when the patch fails the flow, so the pass below rests on this step's outcome.
+      # Exits 0 when the patch passes, 2 when too few runs reached the screen to tell, and 1 when it fails. The pass
+      # below rests on this step's outcome, and the inconclusive marker on the code this step's shell records.
       - name: Run the flow on the patched app
         id: run
         if: env.QA_NO_DEVICE != 'true'
@@ -1752,9 +1757,17 @@ jobs:
           SESSION: ${{ matrix.check.session }}
           ORIGINAL: ${{ matrix.check.unpatched && format('{0}/apps/original/{1}', runner.temp, env.QA_APP_FILE) || '' }}
         run: |
+          code=0
           .github/qa/scripts/native.sh verify-run "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/patched/$QA_APP_FILE" \
-            "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"}
-      # The verdict and the videos, for a person.
+            "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"} || code=$?
+          if [ "$code" -eq 2 ]; then echo "inconclusive=true" >> "$GITHUB_OUTPUT"; fi
+          exit "$code"
+      # Each step's screen tree and screenshot, so a system dialog over the app or a dead stream shows. The job holds
+      # no secret for it to leak.
+      - name: Keep Maestro's output with the verdict
+        if: always() && env.QA_NO_DEVICE != 'true'
+        run: cp -R ~/.maestro/tests qa-out/verify/maestro || true
+      # The verdict, the videos and the logs, for a person.
       - if: always() && env.QA_NO_DEVICE != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1766,6 +1779,14 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-pass-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      # Publish leaves the ticket untouched for a later run on this marker, where a missing pass alone hands it to a
+      # person.
+      - if: always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-inconclusive-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 

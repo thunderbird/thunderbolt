@@ -2295,6 +2295,48 @@ describe('publish', () => {
       },
     )
 
+    describe('a native check too few of whose runs reached the screen', () => {
+      const nativeTask = { flow: 'native', verifyNative: [native('ios'), native('android')] }
+      const listed = (...names: string[]) =>
+        put(join(outDir, 'artifacts.txt'), [`qa-fix-status-${fp}-1`, ...names, ''].join('\n'))
+      const pass = (check: string) => `qa-pass-${fp}-${check}-1`
+
+      test('leaves the ticket untouched and says why, with no other reason against the patch', async () => {
+        await setupTask(nativeTask)
+        await listed(pass('session'), pass('android'), pass('checks'), `qa-inconclusive-${fp}-ios-1`)
+        const summary = join(dir, 'summary.md')
+        const calls: Call[] = []
+        const result = await publish({
+          outDir,
+          fp,
+          live: true,
+          key: 'lin',
+          token: 't',
+          summary,
+          run: fakeRun([], diffOutput),
+          fetchFn: fakeLinear(calls),
+          log: () => {},
+        })
+
+        const why = 'the native check on ios reached the screen in too few runs to tell whether the patch works'
+        expect(result).toEqual({ outcome: 'infrastructure', reason: why })
+        expect(calls).toEqual([])
+        expect(await readFile(summary, 'utf8')).toBe(`- THB-1 is left untouched for a later run: ${why}\n`)
+      })
+
+      test('still sends the ticket to a person for any other reason, and only in its own attempt', async () => {
+        await setupTask(nativeTask)
+        await listed(pass('android'), pass('checks'), `qa-inconclusive-${fp}-ios-1`)
+        expect(await dryRun()).toEqual({ outcome: 'human-required', reasons: [reasons.session] })
+
+        await listed(pass('session'), pass('android'), pass('checks'), `qa-inconclusive-${fp}-ios-2`)
+        const otherAttempt = await dryRun()
+        expect(otherAttempt.outcome === 'human-required' && otherAttempt.reasons).toEqual([
+          expect.stringContaining(reasons.ios),
+        ])
+      })
+    })
+
     test('a pass of another fingerprint counts for nothing', async () => {
       await setupTask({})
       await put(

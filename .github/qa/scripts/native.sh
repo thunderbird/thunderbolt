@@ -342,21 +342,22 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos beside it. It exits non-zero when the patch does not pass, and CI uploads the pass on that. A
+# with the videos and the WebView log beside it. It exits 0 when the patch passes, 2 when too few runs reached the
+# screen to tell, and 1 otherwise; CI uploads the pass, or the inconclusive marker, on that. A
 # finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any other flow is the fix
 # agent's visual check. <original-app> is the build-native artifact of the same variant, without the patch, where the
 # flow must fail too: a visual check and a real-AI session need it.
 verify_run() {
-  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} work name
+  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} log name
   : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
-  work=$(mktemp -d)
-  # shellcheck disable=SC2064 # the path is fixed by now
-  trap "stop_logs '$work/webview.log'; rm -rf '$work'" EXIT
-  logs "$platform" "$device" "$work/webview.log"
-  [ "$platform" != ios ] || wait_logs "$device" "$work/webview.log"
   mkdir -p "$(dirname "$result")"
+  log="${result%.json}.webview.log"
+  # shellcheck disable=SC2064 # the path is fixed by now
+  trap "stop_logs '$log'" EXIT
+  logs "$platform" "$device" "$log"
+  [ "$platform" != ios ] || wait_logs "$device" "$log"
   name=$(basename "$result")
-  QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
+  QA_WEBVIEW_LOG="$log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
     --native "$platform" --device "$device" --app "$app" --fp "${name%%.*}" --flow "$flow" \
     --session "$session" --result "$result" ${original:+--original "$original"}
 }

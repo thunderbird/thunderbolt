@@ -150,6 +150,19 @@ system_image() {
   "$sdkmanager" --install emulator "$android_image" > /dev/null
 }
 
+# A system error dialog ("System UI isn't responding") covers the app and hides its screen from Maestro. The setting
+# stops system_server from showing any new ANR or crash dialog; the broadcast closes one already on screen, which
+# the setting alone leaves in place (the dialogs listen for it, and the shell may send it), so a refusal only warns.
+# An app that stops responding is killed instead of asked to wait, so a hang shows as the app disappearing.
+hide_error_dialogs() {
+  local serial=$1
+  adb -s "$serial" shell settings put global hide_error_dialogs 1
+  adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null ||
+    echo "warning: could not close a system dialog already on screen" >&2
+  [ "$(adb -s "$serial" shell settings get global hide_error_dialogs | tr -d '\r')" = 1 ] ||
+    die "the emulator ignored hide_error_dialogs, so a system error dialog can cover the app during a flow"
+}
+
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
   mkdir -p "$ANDROID_AVD_HOME"
@@ -186,6 +199,7 @@ device_android() {
     sleep 2
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
+  hide_error_dialogs "$serial"
   reverse_ports "$serial"
   # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 5 MB an hour.
   adb -s "$serial" logcat -b main,system,crash,events -G 64M >&2 || echo "warning: could not grow the emulator's log" >&2
@@ -342,21 +356,24 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos beside it. It exits non-zero when the patch does not pass, and CI uploads the pass on that. A
-# finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any other flow is the fix
-# agent's visual check. <original-app> is the build-native artifact of the same variant, without the patch, where the
-# flow must fail too: a visual check and a real-AI session need it.
+# with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when the check could not tell
+# whether it works, 4 when it fails, and 2 on its own errors; CI uploads the pass, the inconclusive marker or the
+# failure marker on that. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
+# other flow is the fix agent's visual check. <original-app> is the build-native artifact of the same variant, without
+# the patch, where the flow must fail too: a visual check and a real-AI session need it.
 verify_run() {
-  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} work name
+  local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} log name
   : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"
-  work=$(mktemp -d)
-  # shellcheck disable=SC2064 # the path is fixed by now
-  trap "stop_logs '$work/webview.log'; rm -rf '$work'" EXIT
-  logs "$platform" "$device" "$work/webview.log"
-  [ "$platform" != ios ] || wait_logs "$device" "$work/webview.log"
   mkdir -p "$(dirname "$result")"
+  log="${result%.json}.webview.log"
+  # shellcheck disable=SC2064 # the path is fixed by now
+  trap "stop_logs '$log'" EXIT
+  logs "$platform" "$device" "$log"
+  # A stream that never attached fails before the patched app runs, which says nothing about the patch: verify.ts's
+  # inconclusive code. A subshell, since `die` exits the shell it runs in.
+  [ "$platform" != ios ] || (wait_logs "$device" "$log") || exit 3
   name=$(basename "$result")
-  QA_WEBVIEW_LOG="$work/webview.log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
+  QA_WEBVIEW_LOG="$log" bun .github/qa/scripts/verify.ts fix-native --out "$(dirname "$result")" \
     --native "$platform" --device "$device" --app "$app" --fp "${name%%.*}" --flow "$flow" \
     --session "$session" --result "$result" ${original:+--original "$original"}
 }

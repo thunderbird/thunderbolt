@@ -22,7 +22,7 @@ const noPorts = {
 }
 
 /** `/sdcard` resolves only from the second check on, and Android 16 refuses the push of sample.png. */
-const fakeAdb = () => {
+const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const calls = join(bin, 'calls.log')
   const script = `#!/bin/bash
@@ -34,6 +34,12 @@ case "$*" in
     [ -f '${bin}/mounted' ] && exit 0
     touch '${bin}/mounted'
     exit 1 ;;
+  *"settings put global hide_error_dialogs 1")
+    ${ignoresSettings ? 'exit 0' : `touch '${bin}/hidden'`} ;;
+  *"settings get global hide_error_dialogs")
+    [ -f '${bin}/hidden' ] && echo 1 || echo null ;;
+  *"am broadcast "*)
+    ${refusesBroadcast ? 'echo "java.lang.SecurityException: permission denied" >&2; exit 1' : 'exit 0'} ;;
   *"push "*sample.png*) echo "adb: error: failed to copy: Operation not permitted" >&2; exit 1 ;;
 esac
 exit 0
@@ -48,7 +54,8 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
   const bin = mkdtempSync(join(work, 'bin-'))
   const args = join(bin, 'bun-args')
   writeFileSync(join(bin, 'xcrun'), "#!/bin/bash\necho 'Filtering the log data'\nsleep 3\n")
-  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" > '${args}'\n`)
+  // Exits 3, an inconclusive verdict, which the workflow tells apart from a failure.
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\nprintf '%s\\n' "$@" "$QA_WEBVIEW_LOG" > '${args}'\nexit 3\n`)
   for (const tool of ['xcrun', 'bun']) chmodSync(join(bin, tool), 0o755)
   const result = join(work, 'out', 'ab12cd34.ios.verify.json')
   const proc = Bun.spawnSync(
@@ -67,7 +74,7 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
     { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' } },
   )
   expect(proc.stderr.toString()).toBe('')
-  expect(proc.exitCode).toBe(0)
+  expect(proc.exitCode).toBe(3)
   const passed = readFileSync(args, 'utf8').trim().split('\n')
   const after = (flag: string) => passed[passed.indexOf(flag) + 1]
   expect(passed.slice(0, 2)).toEqual(['.github/qa/scripts/verify.ts', 'fix-native'])
@@ -77,6 +84,34 @@ test('verify-run hands verify.ts the app, the fp from the result name and the or
     '/apps/original.app',
     result,
   ])
+  expect(Bun.spawnSync(['pgrep', '-f', `${bin}/xcrun`]).stdout.toString()).toBe('')
+  // The stream's log stays beside the result, which the workflow uploads, so a dead stream shows.
+  const webviewLog = join(work, 'out', 'ab12cd34.ios.verify.webview.log')
+  expect(passed.at(-1)).toBe(webviewLog)
+  expect(readFileSync(webviewLog, 'utf8')).toContain('Filtering the log data')
+})
+
+// The pipeline's failure before the patched app runs, so the workflow must read it as inconclusive, and every other
+// `die` (2) as a failure.
+test('verify-run exits with the inconclusive code when the iOS stream never attaches, before verify.ts runs', () => {
+  const bin = mkdtempSync(join(work, 'bin-'))
+  const ran = join(bin, 'bun-ran')
+  writeFileSync(join(bin, 'xcrun'), '#!/bin/bash\nexec /bin/sleep 30\n')
+  writeFileSync(join(bin, 'bun'), `#!/bin/bash\ntouch '${ran}'\n`)
+  // The first call stamps the stream's start, every later one is long past its budget; the waits do not wait.
+  const clock = join(bin, 'clock')
+  writeFileSync(join(bin, 'date'), `#!/bin/bash\n[ -f '${clock}' ] && echo 1000 || { touch '${clock}'; echo 0; }\n`)
+  writeFileSync(join(bin, 'sleep'), '#!/bin/sh\n')
+  for (const tool of ['xcrun', 'bun', 'date', 'sleep']) chmodSync(join(bin, tool), 0o755)
+  const result = join(work, 'never', 'ab12cd34.ios.json')
+  const args = ['verify-run', 'ios', 'UDID-1', '/apps/patched.app', 'qa-out/s/repro/1.yaml', 's', result]
+  const proc = Bun.spawnSync(['bash', native, ...args], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, QA_BACKEND_LOG: '/dev/null' },
+  })
+
+  expect(proc.stderr.toString()).toContain('the log stream never attached')
+  expect(proc.exitCode).toBe(3)
+  expect(existsSync(ran)).toBe(false)
   expect(Bun.spawnSync(['pgrep', '-f', `${bin}/xcrun`]).stdout.toString()).toBe('')
 })
 
@@ -97,6 +132,43 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(at(/ push /)).toBeGreaterThan(at(/mkdir -p \/sdcard\/Download/))
   // c7's PowerSync too, so the app on the emulator can sync.
   expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
+})
+
+test('device android hides system error dialogs and closes a showing one before it maps ports or pushes files', () => {
+  const { env, calls } = fakeAdb()
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8').trim().split('\n')
+  const at = (text: string) => log.findIndex((line) => line.endsWith(text))
+  const put = at('settings put global hide_error_dialogs 1')
+
+  expect(proc.exitCode).toBe(0)
+  const readBack = at('settings get global hide_error_dialogs')
+  expect(put).toBeGreaterThan(at('getprop sys.boot_completed'))
+  expect(at('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')).toBeGreaterThan(put)
+  expect(readBack).toBeGreaterThan(put)
+  expect(readBack).toBeLessThan(log.findIndex((line) => line.includes(' reverse ')))
+})
+
+test('device android goes on with a warning when the system refuses the dialog-closing broadcast', () => {
+  const { env, calls } = fakeAdb({ refusesBroadcast: true })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8')
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stderr.toString()).toContain('could not close a system dialog')
+  expect(log).toContain('settings get global hide_error_dialogs')
+  expect(log).toContain(' reverse ')
+})
+
+test('device android fails when the emulator does not keep hide_error_dialogs, before anything else runs on it', () => {
+  const { env, calls } = fakeAdb({ ignoresSettings: true })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8')
+
+  expect(proc.exitCode).not.toBe(0)
+  expect(proc.stderr.toString()).toContain('ignored hide_error_dialogs')
+  expect(log).not.toContain(' reverse ')
+  expect(log).not.toContain(' push ')
 })
 
 test('device android reverses the stack ports it is configured with', () => {

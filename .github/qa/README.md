@@ -82,10 +82,13 @@ which the runner keeps too (see the fix stage below). The artifact holds a marke
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
 spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
-`Human Required` with the reason. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
-to GitHub or Linear and leaves the ticket for a later run (see the fix stage below). It counts only once every
-other pass is there, so a patch that also failed its own checks still goes to a person. Listing names cannot miss,
-so a normal run shows no error annotation for a check that did not pass. The diagnosis the fix job writes for a
+`Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
+app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
+below). Any other missing native pass only leaves the ticket for a later run. A missing `checks` pass is the
+pipeline's failure instead: publish writes nothing to GitHub or Linear and leaves the ticket for a later run (see
+the fix stage below). It counts only once every other pass is there, so a patch that also failed its own checks
+still goes to a person. Listing names cannot miss, so a normal run shows no error annotation for a check that did
+not pass. The diagnosis the fix job writes for a
 failed check is only the reason a person reads: deleting it, or writing a result file that says the check passed,
 opens no PR.
 
@@ -94,8 +97,8 @@ name, so an attempt that uploaded none would read an earlier attempt's. The fix 
 its status, the patched native app (`qa-patched-<fp>-<platform>-<run attempt>`), the patched real-AI frontend
 (`qa-fix-dist-<fp>-<run attempt>`) and every pass therefore carry the attempt, and each job reads only its own
 attempt's. A re-run never pairs one attempt's patch with another's build or passes: a job that finds nothing of its
-attempt hands the ticket to a person, and publish fails when the status of its attempt is missing. Re-run all jobs to
-retry a fix, which runs every fix session again.
+attempt hands the ticket to a person, and publish leaves the ticket untouched when its attempt has no fix status.
+Re-run all jobs to retry a fix, which runs every fix session again.
 
 The passes keep keys away from the patch; they are not proof against a patch built to cheat. Every upload step's
 process holds the runtime token (`ACTIONS_RUNTIME_TOKEN`), and any process of the job's user can read it in that
@@ -317,15 +320,20 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    (`repro_flow`, `repro/<n>.yaml`) instead of a spec, except c7 on Android, whose browser-side bugs keep a spec. The
    session dir decides which, never the finding's own `charter` or `viewport`: a finding whose repro does not fit
    its session is dropped at the schema gate, and every other finding takes its session's platform as its
-   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable, and
-   `verify.ts replay --native` runs it 3 times through `replay-native.ts`, each time on a fresh install (the
-   onboarding build for c1, the plain one otherwise), with a video under `<out>/videos/`. `control/stack.yaml` runs 3
-   times first on the plain build; one failure marks the stack unhealthy and no flow runs. A control run whose iOS driver did not
-   start, even on its retry, is inconclusive and replaced like a finding's run, up to 3 extra runs; a control left with fewer than 3
-   counted runs also marks the stack unhealthy. On Android the install also maps the stack's ports into the
-   emulator again and warms the app up (as `native.sh install` does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's
-   `unnamed-control` lines and, on Android, its `behind-keyboard` line; a screen the run only passed through, like
-   the privacy step the harness clicks through, adds no tree line.
+   `viewport`. The flow passes the gate's allow list with `${EMAIL}` as its only variable. Before it runs, a wait or
+   assertion on a text that cannot hold on another run is rewritten: the chat's greeting (`getGreeting`, which
+   changes with the hour) becomes `Ask me anything…`, and the start of the fake provider's reply, past its first
+   word, becomes the whole reply, since Maestro matches a text against the element's whole text. Only the selector's
+   text changes, so its `width` or `below` still holds, and a text the flow itself types is left alone. The fix
+   check runs flows through the same rewrite. `verify.ts replay --native` runs it 3 times through `replay-native.ts`,
+   each time on a fresh install (the onboarding build for c1, the plain one otherwise), with a video under
+   `<out>/videos/`. `control/stack.yaml` runs 3 times first on the plain build; one failure marks the stack unhealthy
+   and no flow runs. A control run whose iOS driver did not start, even on its retry, is inconclusive and replaced like
+   a finding's run, up to 3 extra runs; a control left with fewer than 3 counted runs also marks the stack unhealthy. On
+   Android the install also maps the stack's ports into the emulator again and warms the app up (as `native.sh install`
+   does). Each run ends with one `maestro hierarchy` of the screen it stopped on, for the tree's `unnamed-control` lines
+   and, on Android, its `behind-keyboard` line; a screen the run only passed through, like the privacy step the harness
+   clicks through, adds no tree line.
    A `layout` run fails when the probe (or a tree rule) logs the quoted `[qa-layout]` line during it, a `console-error`, `page-error` or `http-5xx` run when a new WebView or backend log
    line holds the evidence (cut at the console mark and normalized like the fingerprint), any other run when the flow
    fails. Both sides are compared as the gate showed them to the explorer (`cleanLogLine` in `sanitize.ts`: secrets
@@ -441,7 +449,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    helper, fixture or snapshot it imports is missing. A renamed source file counts as added, so a patch that moves
    the buggy file and fixes it on the way has its fix in the run without it, and a person takes the ticket.
    `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
-   write the checkout either.
+   write the checkout either. Each run gets `CI=true`, as in CI, and after each `git apply` the snapshot files are
+   opened to `qa-test` as in `verify-checks` (below).
    A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
    start, or that writes into the checkout: the ticket then goes to a person. When the agent gave up or left no
    patch, the job skips the check, so it shows no error and uploads no pass. A native task keeps its Maestro check
@@ -453,16 +462,18 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    code the agent wrote runs outside its sandbox, the fix job records which of these happened, or `null` when the
    session began, and uploads it as `qa-fix-status-<fp>-<run attempt>`. A step timeout counts as begun: the step ran
    for its whole cap, though the action had no chance to write its execution file. `publish` downloads the file into
-   `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a missing or malformed
-   one. When the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run
-   summary names the ticket and says it was left for a later run. Only a process the sandbox let outlive the session
-   could still rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is
-   unconfirmed). At worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to
-   a PR. A session that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that
-   uploaded no status (its key scan failed, or the runner was lost) fails `publish`, because nothing says whether the
-   agent ran. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
-   `Human Required`. `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix
-   that built none shows no error there either.
+   `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a malformed one. When
+   the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names
+   the ticket and says it was left for a later run. Only a process the sandbox let outlive the session could still
+   rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is unconfirmed). At worst
+   that leaves its own ticket untouched instead of `Human Required`; the record never leads to a PR. A session that
+   began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that uploaded no status died
+   before it recorded anything (the runner was lost or shut down), its key scan failed, or it did not run in that
+   attempt. Nothing says whether the agent ran, so `publish` treats it like a session that never began: no PR, no Linear
+   write, and a summary line naming the ticket. It decides from the run's artifact list and downloads the status by
+   pattern, which finds nothing without an error, so that run shows no error annotation in `publish`. One whose secret
+   scan failed uploaded its status but no fix output, and its ticket gets `Human Required`. `verify-native-run` and
+   `verify-real` download the patched app or frontend by pattern, so a fix that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
    the bug on the web at phone size in `qa-out/fix-<fp>/repro/web.spec.ts` when it shows there), and a native visual
    task's check is the Maestro flow `qa-out/fix-<fp>/repro/check.yaml`, which must end on an assertion. Without the
@@ -471,16 +482,34 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `fix-plan.json`'s `verifyNative` lists each native task's flow and the repro flows of the same bug on other native
    platforms. `native.sh verify-build` (job `verify-native-build`) builds the patched app in a temporary worktree, and
    `native.sh verify-run` (job `verify-native-run`), from a checkout the patched build never ran in, runs the flow three
-   times on it with no key; a layout or log oracle also needs the probe's ready line in every run. A patched run that
-   fails anywhere, before the bug's assertion too, fails the patch: a fix must leave the whole way to the bug working.
-   Only a failed harness sign-in is run again. Without the patch, a run that never reached the bug, by replay's rules,
-   is run again and never counts as showing it. With `unpatched` (a visual check, or an Android real-AI task, which the
-   keyless run can only check on the fake AI) the flow also runs on the build without the patch and must fail there
-   every time. The unit test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro
-   spec, or a visual task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so
-   a `visual` finding and a `layout` one qualify, except an `unnamed-control` line: a missing accessible name shows in
-   a unit test. A `lost-on-reload` finding qualifies too, since the testing guide
-   (`docs/internals/development/testing.md`) sends browser storage, redirects and Better Auth callbacks to `e2e/`.
+   times on it with no key, split as replay splits it. A patched run fails only when it shows the bug. A run that
+   never reached the screen by replay's rules, whose driver never started, or that lacks the probe's ready line when
+   a layout or log oracle reads the WebView log (a dead stream), shows nothing about the patch and is run again, up
+   to 3 extra runs; the same holds without the patch. With `unpatched` (a visual check, or an Android real-AI task,
+   which the keyless run can only check on the fake AI) the flow also runs on the build without the patch and must
+   fail there every time. The verdict is a pass, a failure when a run that reached the screen failed it (the patched
+   app showed the bug, or the unpatched one passed the fix agent's visual check), or else inconclusive. A real-AI
+   repro flow that shows nothing on the fake AI without the patch is inconclusive too: it cannot judge the patch.
+   `verify.ts fix-native` exits 0, 4 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
+   never attaches; any other error of `native.sh` exits 2. The run step stops a run still going 52 minutes into the
+   job and counts it as a 3, so the verdict and the logs still go up before the job's 60-minute timeout. It records a
+   4 or a 3 in its own output (a crash of Bun exits 1 and is recorded as neither), and on that and the step's failed
+   outcome the job uploads `qa-native-failed-<fp>-<platform>-<run attempt>` or
+   `qa-inconclusive-<fp>-<platform>-<run attempt>`, straight
+   after the run, before the logs. Before any patched app opens, once the device and the stack are up, the job
+   uploads `qa-native-started-<fp>-<platform>-<run attempt>`, which only names the reason in the run summary. A
+   native check without a pass sends the ticket to a person only when its patch built no app or the failure marker
+   is there. Otherwise, when nothing else stands against the patch, `publish` leaves the ticket untouched for a later
+   run: the check was inconclusive, the job stopped before the run began (a boot, the stack or the runner failed), or
+   the run began and never gave a verdict (the job timed out, the runner died, or `native.sh` failed on its own). A
+   stream that died or a flow that cannot reach the screen never earns `Human Required`. The job also keeps the
+   WebView log and Maestro's per-step output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the
+   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit
+   test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a visual
+   task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
+   qualify, except an `unnamed-control` line: a missing accessible name shows in a unit test. A `lost-on-reload` finding
+   qualifies too, since the testing guide (`docs/internals/development/testing.md`) sends browser storage, redirects and
+   Better Auth callbacks to `e2e/`.
    Every other oracle (a page or console error, a 5xx, a stuck control, a failed assertion, an AI-reported failure)
    gets no spec, and the PR and commit say the unit test in the patch guards the fix. A native fix PR adds no
    regression spec. Neither does a fix PR from a c1 session, because the root `playwright.config.ts` does not serve
@@ -496,7 +525,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    paths, ci.yml's `bun run i18n:check`, `bun run test:5x`, the agent-core, backend and cli type checks, lints and 5x
    suites. Each runs with ci.yml's exact command over the whole tree, never only the changed files: a test that
    passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
-   `qa-test` with `CI=true`, in order, and stop at the first failure. The full Playwright suite, the builds, the
+   `qa-test` with `CI=true`, in order, and stop at the first failure. `qa-test` can write only two things in the
+   checkout, both opened with `chmod o+w` after the commit: the catalog folders, which `i18n:check` rewrites, and
+   every `__snapshots__/*.snap` file, which Bun opens for writing even when every snapshot in it matches. The
+   `__snapshots__` folders stay closed. With `CI=true` Bun never adds a snapshot, so a missing one fails as in CI, and
+   a `qa-test` that could replace a `.snap` with a symlink would point verify-tests' second `chmod` at any file of
+   the job's user. The other checks write nothing in the checkout, and a test that needs a scratch file writes it
+   under the OS temp dir (`post-pr-metrics.test.js` takes its baseline folder as a parameter for this). A new test
+   that writes into the checkout fails the gate for every task. The full Playwright suite, the builds, the
    browser and native checks, the segregated WebSocket tests (flaky by design; ci.yml retries them) and the Helm,
    miniapps, Rust, wasm and QA jobs are left out: too slow, or on paths a fix seldom touches (`verify-native-build`
    compiles a native fix's Rust, but nothing lints it). The gate is skipped when the fix job left a diagnosis or no
@@ -505,8 +541,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`
    for the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
    web task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
-   branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the flow still fails
-   on the native platform"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
+   branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the patch did not build
+   on the native platform, or the flow still fails there"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
    platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
    cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
    PR.
@@ -680,8 +716,9 @@ checkout, `bun .github/qa/scripts/fix.ts tests --out qa-out --fp <fp>` runs the 
 the fix, as `verify-tests` does (as yourself, unless `QA_TEST_USER` names another user), and leaves the checkout as it
 was. `fix.ts gate`, with the same arguments and `fix-plan.json` in `qa-out/`, commits the tree publish would push
 and runs the PR checks on it, as `verify-checks` does; reset the checkout to the commit before it afterwards. Write
-`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>-1` line per check you
-saw pass to `qa-out/artifacts.txt` (publish reads attempt 1 when `GITHUB_RUN_ATTEMPT` is unset), then
+`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json`, and to `qa-out/artifacts.txt` a
+`qa-fix-status-<fp>-1` line and one `qa-pass-<fp>-<check>-1` line per check you saw pass (publish reads attempt 1
+when `GITHUB_RUN_ATTEMPT` is unset), then
 `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
 open.
 
@@ -819,6 +856,14 @@ Traps:
   ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
   app. `device android` also grows the emulator's log buffers to 64 MB, so the log a replay job saves at its end
   still holds its first runs.
+- A system error dialog such as "System UI isn't responding" covers the app and hides its screen from Maestro, so a
+  flow fails on an assert that the app would pass. Right after boot, `device android` sets the global setting
+  `hide_error_dialogs` to 1, which stops Android from showing any new ANR or crash dialog, and broadcasts
+  `CLOSE_SYSTEM_DIALOGS` to close one already on screen (the setting does not touch a dialog that is up); if the system
+  refuses the broadcast, the step prints a warning and goes on. It then reads the setting back and fails the step if it
+  is not 1, so an image that ignores it fails at the boot instead of as flaky flows. The trade-off: the setting also
+  hides the app's own crash dialog, so an app crash shows in the logs and as the flow's failure, not as a dialog on
+  the video. An app that stops responding is killed instead of asked to wait, so a hang shows as the app disappearing.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and so far have
 run only on GitHub's runners (KVM, `x86_64`).
@@ -860,10 +905,11 @@ stack depends on its AppArmor sysctl, KVM and emulator libraries, Playwright dep
   leg still ends inside the timeout and a later finding keeps its base runs. Every native leg shares that timeout, and the job ends
   when its runs do. Runs can be slower than that, and Android's setup differs from iOS's, so the job's first step
   records `QA_LEG_START` and `verify.ts` starts no run that might end after the timeout: see the replay step above.
-  On Android, before the console stream starts, one Maestro session that counts for nothing installs the plain build
-  and runs `launchApp`: Maestro starts its driver inside a session's first `launchApp`, and the first session on a
-  fresh emulator can fail there with no reason given. If the Maestro session fails, that is only a
-  warning (a failing install in the same step still fails the job), its time counts in the leg's setup, and every counted run installs the app again.
+  On Android, before the console stream starts, one Maestro session that counts for nothing installs one of the job's
+  builds and runs `launchApp` (`verify-native-run` runs the same step): Maestro starts its driver inside a session's
+  first `launchApp`, and the first session on a fresh emulator can fail there with no reason given. If the Maestro
+  session fails, that is only a warning (a failing install in the same step still fails the job), its time counts in the
+  leg's setup, and every counted run installs the app again.
   When the replay fails, the job uploads the stack's and the WebView's logs as `qa-logs-replay-<leg>`. On Android
   it does so after every replay and adds the emulator's log (`qa-logcat.log`, read with `logcat -d` once the replay
   is over, since a reset of adb's connection ends a stream), the adb server's log (`qa-adb.log`) and Maestro's debug
@@ -1218,10 +1264,14 @@ Never run on GitHub (only locally, or read in the action's code):
   `/proc/<pid>/environ` (the job user could), and the stop killed the detached processes it left. That kernel has
   no Yama, so `stack.sh lock` itself did not run there;
 - `verify-checks`: `fix.ts gate` ran on scratch repos with real git, tsc and prettier, and `bun run check`,
-  `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. Nothing
-  ran as `qa-test` yet: a check that writes outside `src/locales` and `backend/src/emails/locales`, or needs more
-  than `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails the
-  gate on the seeds that order it badly, and that ticket waits for a later run;
+  `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. On
+  GitHub, as `qa-test`, those three passed and `bun run test:5x` failed on its snapshot tests. With the `.snap`
+  files opened and `post-pr-metrics.test.js` writing under the temp dir, the full gate (`fix.ts gate` on a patch
+  touching `src/`, `shared/`, `backend/` and `cli/`, then every `prChecks` command) passed as `qa-test` in an
+  Ubuntu 24.04 container with Bun 1.4.4. CI's `qa` job runs a snapshot test as a second user through `checkTests` and
+  `runGate`. No weekly run has passed the gate on GitHub yet. A check that writes anywhere else in the checkout, or
+  needs more than `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails
+  the gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because
   Storybook's cache sat under `node_modules/.cache`, so the `qa` job in `ci.yml` now checks the start as `qa-dev`.

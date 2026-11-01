@@ -13,7 +13,8 @@ missing.
 - `mcp__maestro__run` runs Maestro commands on the app. Its only argument is `yaml`, a list of commands. Tap, type,
   scroll, wait and reload with it. Its result ends with the layout lines (below).
 - `mcp__maestro__inspect_screen` returns the screen as a tree of elements with their text and bounds, then the layout
-  lines. Copy the text for a selector from it, exactly as it appears.
+  lines. Copy the text for a selector from it, exactly as it appears. A text selector must equal the element's whole
+  text: the start of a longer text, such as the first words of a chat reply, never matches.
 - `mcp__maestro__take_screenshot` returns a screenshot and the path of the file it saved.
 - `mcp__maestro__cheat_sheet` lists Maestro's commands. `run` refuses some of them (see the rules below).
 - `mcp__maestro__read_logs` returns what was logged since your last call: the app's console (`webview:` lines) and
@@ -102,6 +103,8 @@ missing.
   Then wait for the first screen after sign-in, which depends on your session's build:
   - a `c1-first-run` session (onboarding on): `- extendedWaitUntil: {visible: Welcome to Thunderbolt!, timeout: 120000}`
   - any other session: `- extendedWaitUntil: {visible: Ask me anything…, timeout: 120000}`
+
+  Never wait for the chat's greeting ("Good evening" and the like): it changes with the hour.
 
   On a fresh install the c1 build opens onboarding on the privacy step. When your flow next waits for a text that
   screen does not show, or ends there for a layout finding about an element it does not show, the replay ticks the

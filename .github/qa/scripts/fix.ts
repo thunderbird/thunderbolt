@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { existsSync } from 'node:fs'
 import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -530,7 +531,7 @@ const runTests = (cmd: string[], cwd: string) =>
  * `cmd` run as the OS user `user` through sudo, which resets the environment: the command gets `path` as its PATH and
  * that user's home, nothing else of the caller's environment.
  */
-const asUser = (user: string, path: string, cmd: string[]) => [
+export const asUser = (user: string, path: string, cmd: string[]) => [
   'sudo',
   '-n',
   '--user',
@@ -558,7 +559,8 @@ type CheckTestsOptions = {
  * patch's hunks for its test files and its added files applied (`failsWithout`), and pass with the whole patch
  * (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
  * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
- * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes.
+ * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes, and
+ * only the snapshot files are opened to it. A patch that adds or changes a symlink or submodule runs no test.
  */
 export const checkTests = async ({
   outDir,
@@ -572,6 +574,10 @@ export const checkTests = async ({
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
   // git apply refuses an empty patch, which holds no test either.
   const files = (await readFile(patch, 'utf8')).trim() ? await patchedFiles(run, patch) : []
+  if (files.some(isLink)) {
+    log(`fix: the tests did not run: ${noLinks}`)
+    return { failsWithout: false, passesWith: false }
+  }
   const runs = testRuns(files)
   if (!runs.length) {
     log(`fix: ${noTestReason}`)
@@ -580,8 +586,11 @@ export const checkTests = async ({
   const exitCodes = async (include: string[]) => {
     await run(['git', 'apply', ...include, patch])
     try {
+      if (user) await openSnapshots(run, repoDir)
       const codes: number[] = []
-      for (const { cwd, cmd } of runs) {
+      for (const { cwd, cmd: bunTest } of runs) {
+        // As in CI, where Bun fails on a missing snapshot instead of writing it. sudo drops the variable.
+        const cmd = ['env', 'CI=true', ...bunTest]
         codes.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
       }
       return codes
@@ -712,17 +721,39 @@ export const runGate = async ({ outDir, fp, user, repoDir = '.', run = runComman
   // The chmod and the spec write below would follow a link the patch adds, as the job's user. publish refuses such a
   // patch and hands its ticket to a person.
   const files = await patchedFiles(run, resolve(outDir, 'fix', `${fp}.patch`))
-  if (files.some((f) => f.modes.some((m) => linkModes.has(m)))) return noLinks
+  if (files.some(isLink)) return noLinks
   await stage(run, outDir, task, repoDir)
   const identity = ['-c', 'user.name=QA gate', '-c', 'user.email=qa-gate@localhost']
   await noHooksGit(run)([...identity, 'commit', '--no-verify', '--quiet', '--message', 'The tree publish would push'])
-  // i18n:check rewrites the catalogs as `user`, and git apply wrote them with this user's umask.
-  if (user) await run(['chmod', '-R', 'o+w', 'src/locales', 'backend/src/emails/locales'], { cwd: repoDir })
+  if (user) {
+    // i18n:check rewrites the catalogs as `user`, and git apply wrote them with this user's umask.
+    await run(['chmod', '-R', 'o+w', 'src/locales', 'backend/src/emails/locales'], { cwd: repoDir })
+    await openSnapshots(run, repoDir)
+  }
   return runPrChecks({ ticket: task.identifier ?? task.fp, user, repoDir, run, ...rest })
 }
 
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
+
+/** Whether a patch makes `file` a symlink or submodule, or changes one. */
+const isLink = (file: PatchedFile) => file.modes.some((m) => linkModes.has(m))
+
+/**
+ * Lets other users write the snapshot files in the checkout, which git wrote with this user's umask. Bun opens a test
+ * file's `.snap` for writing even when every snapshot in it matches, and fails the test when it cannot. Their folders
+ * stay closed: with `CI=true` Bun never adds a snapshot, so a missing one fails as it does in CI, and a user who could
+ * swap a `.snap` for a symlink would point verify-tests' second chmod at any file of this user.
+ */
+const openSnapshots = async (run: Run, repoDir: string) => {
+  const pathspec = '*/__snapshots__/*.snap'
+  const listed = await run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', pathspec], {
+    cwd: repoDir,
+  })
+  // A snapshot the patch deletes stays in the index of a checkout that git apply changed.
+  const files = listed.split('\0').filter((file) => file && existsSync(join(repoDir, file)))
+  if (files.length) await run(['chmod', '--', 'o+w', ...files], { cwd: repoDir })
+}
 
 /** Three levels under the repo root, like a repro spec, so imports and the Playwright project match. */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
@@ -762,6 +793,32 @@ type PassesOptions = {
   unitTests: boolean
   artifacts: Set<string>
   attempt: string
+  /** The native checks that say nothing about the patch (`uncheckedNative`), which only leave the ticket for later. */
+  unchecked: { platform: string }[]
+}
+
+/**
+ * The native checks of `fp` without a pass that say nothing about the patch, each with why. Only two verdicts count
+ * against the patch: no patched app, which means the patch did not build, and the run step's failure marker. Any
+ * other check without a pass stopped in the pipeline's hands: the run step marked its verdict inconclusive, the job
+ * stopped before the run began (at the device, the stack or the runner), or the run began and never finished (the
+ * job timed out or the runner died). Every name is an artifact the workflow uploads only on runner outcomes, like the
+ * passes.
+ */
+const uncheckedNative = (fp: string, verifyNative: NativeCheck[], artifacts: Set<string>, attempt: string) => {
+  const has = (kind: string, platform: string) => artifacts.has(`qa-${kind}-${fp}-${platform}-${attempt}`)
+  return verifyNative.flatMap(({ fp: checked, platform }) => {
+    if (checked !== fp || has('pass', platform) || has('native-failed', platform)) return []
+    if (has('inconclusive', platform)) {
+      const reason = `the native check on ${platform} could not tell whether the patch works`
+      return [{ platform, reason }]
+    }
+    if (!has('patched', platform)) return []
+    if (!has('native-started', platform)) {
+      return [{ platform, reason: `the native check on ${platform} stopped before its run began` }]
+    }
+    return [{ platform, reason: `the native check on ${platform} stopped before its run gave a verdict` }]
+  })
 }
 
 /**
@@ -770,7 +827,7 @@ type PassesOptions = {
  * the run's artifact names, so no file that code the agent wrote could rewrite carries a verdict. Only passes of
  * `attempt`, the one whose patch publish read, count: artifacts of every attempt of the run share one list.
  */
-const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt }: PassesOptions) => {
+const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unchecked }: PassesOptions) => {
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
@@ -801,8 +858,8 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt }: Pa
       .filter((v) => v.fp === task.fp)
       .map((v) => ({
         check: v.platform,
-        needed: true,
-        reason: `the flow still fails on the native platform (${v.platform}). That run used the patched app and the backend from before the patch`,
+        needed: !unchecked.some(({ platform }) => platform === v.platform),
+        reason: `the patch did not build on the native platform (${v.platform}), or the flow still fails there. A run, if one happened, used the patched app and the backend from before the patch`,
       })),
   ]
   return checks
@@ -841,9 +898,7 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask, verify
       ...files
         .filter((f) => baseBackend && /^(backend|shared)\//.test(f.path))
         .map((f) => `touches ${f.path}, but the verification ran on the backend from before the patch`),
-      ...files
-        .filter((f) => f.modes.some((m) => linkModes.has(m)))
-        .map((f) => `adds or changes a symlink or submodule: ${f.path}`),
+      ...files.filter(isLink).map((f) => `adds or changes a symlink or submodule: ${f.path}`),
     ],
     files: files.map((f) => f.path),
     unitTests: testRuns(files).length > 0,
@@ -955,20 +1010,26 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  *   ignored;
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
- *   later run, and the result and the run summary say why. A missing or malformed file fails publish. One reason,
- *   `already-passes`, means the repro passed three times on the commit before any agent code ran: with the
- *   `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no label.
+ *   later run, and the result and the run summary say why. When `artifacts.txt` lists no status of `attempt`, the
+ *   job died before it recorded anything (a lost runner), its key scan failed, or it did not run in that attempt,
+ *   and the ticket is left untouched the same way. A malformed file, or a listed status whose file is missing, fails
+ *   publish. One reason, `already-passes`, means the repro passed three times on the commit before any agent code
+ *   ran: with the `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no
+ *   label.
  * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
  * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
  * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
  * A missing patch, a diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the
- * `Human Required` label. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
- * when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run, like a fix job that
- * stopped before its session. Otherwise
- * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
- * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
- * draft PR, whose link goes on the ticket as a comment. The push fails if the branch appeared on origin after route
- * checked it, so a person's branch is never extended or overwritten.
+ * `Human Required` label. A native check without a pass that says nothing about the patch (`uncheckedNative`: its
+ * `qa-inconclusive-<fp>-<platform>-<attempt>` marker is listed, or its patched app is and its
+ * `qa-native-failed-<fp>-<platform>-<attempt>` marker is not) leaves the ticket untouched for a later run when no
+ * other reason stands against the patch. A patch that passed all that but lacks the `checks` pass, which the PR
+ * checks gate uploads when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run,
+ * like a fix job that stopped before its session. Otherwise the task's branch gets one commit under the git identity
+ * the workflow configured, is pushed with `token` (a GitHub App token; check out with `persist-credentials: false`
+ * so no second auth header competes), and becomes a draft PR, whose link goes on the ticket as a comment. The push
+ * fails if the branch appeared on origin after route checked it, so a person's branch is never extended or
+ * overwritten.
  *
  * Guardrail: this never merges, approves, marks ready or enables auto-merge. No `gh pr merge`, `gh pr ready`,
  * `gh pr review`, and no merge or review API call. A person reviews the draft and decides.
@@ -1009,12 +1070,18 @@ export const publish = async ({
     return { outcome: 'infrastructure', reason }
   }
 
+  const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
+  if (!artifacts.has(`qa-fix-status-${fp}-${attempt}`)) {
+    return leaveForLater(
+      `the run has no fix status from attempt ${attempt}: the fix job died before it recorded anything, ` +
+        'or it did not run in this attempt',
+    )
+  }
   // The fix job records and uploads this before any code the agent wrote runs outside its sandbox. A process the
   // sandbox let outlive the session could still rewrite the execution file or this record before the upload (whether
   // the sandbox blocks writes to $RUNNER_TEMP is unconfirmed). At worst its own ticket is left untouched: this file
   // can only stop publish.
   const { stoppedBeforeSession } = fixStatus.parse(await Bun.file(join(outDir, 'status', `${fp}.json`)).json())
-  const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
   if (stoppedBeforeSession === 'already-passes') {
     // The pass, uploaded before the fix step, is the proof. Without it the record may be a rewrite, so it only stops.
     if (!artifacts.has(`qa-pass-${fp}-unpatched-${attempt}`)) {
@@ -1035,7 +1102,7 @@ export const publish = async ({
     const reason = `the fix job uploaded no output in run attempt ${attempt}`
     return handOff(
       [reason],
-      `There is no PR: ${reason}. Its secret scan failed, or it ran only in an earlier attempt of the run.`,
+      `There is no PR: ${reason}. Its secret scan failed, or the job stopped after it recorded its status.`,
     )
   }
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))
@@ -1050,7 +1117,8 @@ export const publish = async ({
   }
   const checked = await checkPatch(run, outDir, task, verifyNative)
   const { files } = checked
-  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt }
+  const unchecked = uncheckedNative(fp, verifyNative, artifacts, attempt)
+  const passes = { task, verifyNative, unitTests: checked.unitTests, artifacts, attempt, unchecked }
   const reasons = [...checked.reasons, ...missingPasses(passes)]
   if (reasons.length) {
     return handOff(
@@ -1058,6 +1126,7 @@ export const publish = async ({
       `The fix agent's patch was rejected, so there is no PR:\n\n${reasons.map((r) => `- ${sanitize(r, 300)}`).join('\n')}`,
     )
   }
+  if (unchecked.length) return leaveForLater(unchecked.map(({ reason }) => reason).join('; '))
 
   // Last, so a patch that also fails a check above goes to a person.
   if (!artifacts.has(`qa-pass-${fp}-checks-${attempt}`)) {

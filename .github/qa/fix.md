@@ -78,8 +78,10 @@ repro spec (see "A visual task"), and run it with
 In a `visual` task the `flow` path is the check you write before you change any code: a Maestro flow that fails
 because of the defect, through its own `assertVisible` or `assertNotVisible`: nothing else counts, layout probe lines
 included. End the check on that assertion. A step before it that fails proves nothing, and a check that ends on any
-other command is refused. Start it like the repro flows: `launchApp`, then sign in with `${EMAIL}` and the code
-`12345678`. Keep to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the
+other command is refused. Copy its steps up to the defect's screen from a repro flow of the same session
+(`qa-out/<charterDir>/repro/*.yaml`, which ran on the device), and change only the last assertion. Those flows
+start with `launchApp`, then sign in with `${EMAIL}` and the code `12345678`. Run `hideKeyboard` before you tap a
+control the keyboard may cover, such as a Skip or Continue button below a text field. Keep to plain commands (`tapOn`, `inputText`, `scroll`, `assertVisible`, `extendedWaitUntil` and the
 like) with literal text: the Maestro allow list refuses scripts, `env`, `clearState`, links and any variable other
 than `${EMAIL}`, and a refused check means no PR. You cannot run it here.
 

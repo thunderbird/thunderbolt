@@ -531,7 +531,7 @@ const runTests = (cmd: string[], cwd: string) =>
  * `cmd` run as the OS user `user` through sudo, which resets the environment: the command gets `path` as its PATH and
  * that user's home, nothing else of the caller's environment.
  */
-const asUser = (user: string, path: string, cmd: string[]) => [
+export const asUser = (user: string, path: string, cmd: string[]) => [
   'sudo',
   '-n',
   '--user',
@@ -743,7 +743,7 @@ const isLink = (file: PatchedFile) => file.modes.some((m) => linkModes.has(m))
  * Lets other users write the snapshot files in the checkout, which git wrote with this user's umask. Bun opens a test
  * file's `.snap` for writing even when every snapshot in it matches, and fails the test when it cannot. Their folders
  * stay closed: with `CI=true` Bun never adds a snapshot, so a missing one fails as it does in CI, and a user who could
- * swap a `.snap` for a symlink would point the next chmod at any file of this user.
+ * swap a `.snap` for a symlink would point verify-tests' second chmod at any file of this user.
  */
 const openSnapshots = async (run: Run, repoDir: string) => {
   const pathspec = '*/__snapshots__/*.snap'

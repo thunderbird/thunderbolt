@@ -10,6 +10,7 @@ import * as prettier from 'prettier'
 import type { Filed } from './file-findings'
 import type { Area, RawFinding, Severity } from './findings'
 import {
+  asUser,
   checkPatch,
   checkTests,
   type FixPlan,
@@ -1396,8 +1397,8 @@ describe('checkTests', () => {
         'src/card.test.ts': snapshotTest,
         'src/__snapshots__/card.test.ts.snap': snapshotOf({ 'title 1': '  a  ', 'title 2': ' b ' }),
       })
-      const asUser = ['sudo', '-n', '--user', user, '--set-home', '--', 'env', `PATH=${process.env.PATH}`, 'CI=true']
-      const before = Bun.spawnSync([...asUser, 'bun', 'test', './card.test.ts'], { cwd: join(repo, 'src') })
+      const bunTest = asUser(user, process.env.PATH ?? '', ['env', 'CI=true', 'bun', 'test', './card.test.ts'])
+      const before = Bun.spawnSync(bunTest, { cwd: join(repo, 'src') })
       expect(before.exitCode).not.toBe(0)
       expect(before.stderr.toString()).toContain('Failed to open snapshot file')
 

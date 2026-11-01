@@ -501,9 +501,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    checkout, both opened with `chmod o+w` after the commit: the catalog folders, which `i18n:check` rewrites, and
    every `__snapshots__/*.snap` file, which Bun opens for writing even when every snapshot in it matches. The
    `__snapshots__` folders stay closed. With `CI=true` Bun never adds a snapshot, so a missing one fails as in CI, and
-   a `qa-test` that could replace a `.snap` with a symlink would point the job user's next `chmod` at any file of
-   that user. The type checks, lints, the format and license checks and the collected-spec check write nothing in
-   the checkout. The full Playwright suite, the builds, the
+   a `qa-test` that could replace a `.snap` with a symlink would point verify-tests' second `chmod` at any file of
+   the job's user. The other checks write nothing in the checkout, and a test that needs a scratch file writes it
+   under the OS temp dir (`post-pr-metrics.test.js` takes its baseline folder as a parameter for this). A new test
+   that writes into the checkout fails the gate for every task. The full Playwright suite, the builds, the
    browser and native checks, the segregated WebSocket tests (flaky by design; ci.yml retries them) and the Helm,
    miniapps, Rust, wasm and QA jobs are left out: too slow, or on paths a fix seldom touches (`verify-native-build`
    compiles a native fix's Rust, but nothing lints it). The gate is skipped when the fix job left a diagnosis or no
@@ -1226,10 +1227,13 @@ Never run on GitHub (only locally, or read in the action's code):
   no Yama, so `stack.sh lock` itself did not run there;
 - `verify-checks`: `fix.ts gate` ran on scratch repos with real git, tsc and prettier, and `bun run check`,
   `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. On
-  GitHub, as `qa-test`, those three passed and `bun run test:5x` failed on every snapshot test until the gate opened
-  the `.snap` files. CI's `qa` job runs a snapshot test as a second user through `checkTests` and `runGate`, and
-  fails if the user cannot write the file. A check that writes anywhere else in the checkout, or needs more than
-  `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails the
+  GitHub, as `qa-test`, those three passed and `bun run test:5x` failed on its snapshot tests. With the `.snap`
+  files opened and `post-pr-metrics.test.js` writing under the temp dir, the full gate (`fix.ts gate` on a patch
+  touching `src/`, `shared/`, `backend/` and `cli/`, then every `prChecks` command) passed as `qa-test` in an
+  Ubuntu 24.04 container with Bun 1.4.4. CI's `qa` job runs a snapshot test as a second user through `checkTests`
+  and `runGate`. No weekly run has passed the gate on GitHub yet. A check that writes anywhere else in the
+  checkout, or needs more than `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent
+  failure on `main` fails the
   gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because

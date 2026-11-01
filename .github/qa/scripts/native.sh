@@ -357,10 +357,10 @@ verify_build() {
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
 # with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when the check could not tell
-# whether it works, and non-zero otherwise; CI uploads the pass, or the inconclusive marker, on that. A
-# finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any other flow is the fix
-# agent's visual check. <original-app> is the build-native artifact of the same variant, without the patch, where the
-# flow must fail too: a visual check and a real-AI session need it.
+# whether it works, 1 when it fails, and 2 on its own errors; CI uploads the pass, the inconclusive marker or the
+# failure marker on that. A finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any
+# other flow is the fix agent's visual check. <original-app> is the build-native artifact of the same variant, without
+# the patch, where the flow must fail too: a visual check and a real-AI session need it.
 verify_run() {
   local platform=$1 device=$2 app=$3 flow=$4 session=$5 result=$6 original=${7:-} log name
   : "${QA_BACKEND_LOG:?must name the log of the stack, for the http-5xx oracle}"

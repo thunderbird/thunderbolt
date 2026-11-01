@@ -1925,6 +1925,56 @@ describe('native fix verification', () => {
     ])
   })
 
+  test('the waits and typed text inside retry, repeat and runFlow blocks count as the ones at the top', async () => {
+    const flow = [
+      '- retry:',
+      '    maxRetries: 2',
+      '    commands:',
+      '      - extendedWaitUntil: {visible: Good evening, timeout: 120000}',
+      '- repeat:',
+      '    times: 2',
+      '    commands:',
+      '      - runFlow:',
+      '          when: {visible: Choose model}',
+      '          commands:',
+      '            - inputText: Hello from the fake',
+      '            - assertVisible: {text: Hello from the, width: 872}',
+      '- assertVisible: Hello from the fake',
+    ].join('\n')
+    const sent: string[] = []
+    const record: RunFlow = async (yaml) => {
+      sent.push(yaml)
+      return { passed: true, layout: ['[qa-layout] ready'], logs: [] }
+    }
+    const oracle = { type: 'console-error', evidence: 'CONSOLE ERROR Chat error: Error: 404 "Not Found"' }
+
+    await verifyNativeFix({ ...base, session: 'c2-chat-power-user-ios', flow, oracle, patched: record })
+
+    const reply = 'Hello from the fake provider, one word at a time.'
+    expect(Bun.YAML.parse(sent[0].split('\n---\n')[1])).toEqual([
+      {
+        retry: {
+          maxRetries: 2,
+          commands: [{ extendedWaitUntil: { visible: 'Ask me anything…', timeout: 120000 } }],
+        },
+      },
+      {
+        repeat: {
+          times: 2,
+          commands: [
+            {
+              runFlow: {
+                when: { visible: 'Choose model' },
+                commands: [{ inputText: 'Hello from the fake' }, { assertVisible: { text: reply, width: 872 } }],
+              },
+            },
+          ],
+        },
+      },
+      { assertVisible: 'Hello from the fake' },
+    ])
+  })
+
   test('a repro flow that skips the sign-in code is signed in by the harness, as replay ran it', async () => {
     const runs: { flow: string; signIn?: string }[] = []
     const record: RunFlow = async (flow, _outDir, _run, _session, signIn) => {

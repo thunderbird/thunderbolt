@@ -82,13 +82,13 @@ which the runner keeps too (see the fix stage below). The artifact holds a marke
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
 spec, `visual` for a web visual check, `tests` for every web task, `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
-`Human Required` with the reason, except a native platform's whose run step marked its verdict inconclusive
-(`qa-inconclusive-<fp>-<platform>-<run attempt>`) or whose job stopped before its run started (no
-`qa-native-started-<fp>-<platform>-<run attempt>` beside a patched app, see the fix stage below), which only leaves
-the ticket for a later run. A missing `checks` pass is the pipeline's failure instead: publish writes nothing
-to GitHub or Linear and leaves the ticket for a later run (see the fix stage below). It counts only once every
-other pass is there, so a patch that also failed its own checks still goes to a person. Listing names cannot miss,
-so a normal run shows no error annotation for a check that did not pass. The diagnosis the fix job writes for a
+`Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
+app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
+below). Any other missing native pass only leaves the ticket for a later run. A missing `checks` pass is the
+pipeline's failure instead: publish writes nothing to GitHub or Linear and leaves the ticket for a later run (see
+the fix stage below). It counts only once every other pass is there, so a patch that also failed its own checks
+still goes to a person. Listing names cannot miss, so a normal run shows no error annotation for a check that did
+not pass. The diagnosis the fix job writes for a
 failed check is only the reason a person reads: deleting it, or writing a result file that says the check passed,
 opens no PR.
 
@@ -491,18 +491,21 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    app showed the bug, or the unpatched one passed the fix agent's visual check), or else inconclusive. A real-AI
    repro flow that shows nothing on the fake AI without the patch is inconclusive too: it cannot judge the patch.
    `verify.ts fix-native` exits 0, 1 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
-   never attaches; any other error of `native.sh` exits 2, a failure. The run step records a 3 in its own output, and
-   the job uploads `qa-inconclusive-<fp>-<platform>-<run attempt>` on that and the step's failed outcome, straight
+   never attaches; any other error of `native.sh` exits 2. The run step stops a run still going 52 minutes into the
+   job and counts it as a 3, so the verdict and the logs still go up before the job's 60-minute timeout. It records a
+   1 or a 3 in its own output, and on that and the step's failed outcome the job uploads
+   `qa-native-failed-<fp>-<platform>-<run attempt>` or `qa-inconclusive-<fp>-<platform>-<run attempt>`, straight
    after the run, before the logs. Before any patched app opens, once the device and the stack are up, the job
-   uploads `qa-native-started-<fp>-<platform>-<run attempt>`. `publish` leaves the ticket untouched for a later run
-   when nothing else stands against the patch and a native check is inconclusive, or its patched app was built but
-   the job never got as far as that marker (a boot, the stack or the runner failed). A stream that died or a flow
-   that cannot reach the screen never earns `Human Required`; a run that started and gave no verdict, or a patch
-   that built no app, still does. The job also keeps the WebView log and Maestro's per-step
-   output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the verdict in
-   `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit test is a web
-   fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a visual task's check, to
-   `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
+   uploads `qa-native-started-<fp>-<platform>-<run attempt>`, which only names the reason in the run summary. A
+   native check without a pass sends the ticket to a person only when its patch built no app or the failure marker
+   is there. Otherwise, when nothing else stands against the patch, `publish` leaves the ticket untouched for a later
+   run: the check was inconclusive, the job stopped before the run began (a boot, the stack or the runner failed), or
+   the run began and never gave a verdict (the job timed out, the runner died, or `native.sh` failed on its own). A
+   stream that died or a flow that cannot reach the screen never earns `Human Required`. The job also keeps the
+   WebView log and Maestro's per-step output (`~/.maestro/tests`, a screen tree and screenshot per step) beside the
+   verdict in `qa-verify-<fp>-<platform>`, so a dead stream or a system dialog over the app shows there. The unit
+   test is a web fix's regression guard. A rule in code (`whyNoSpec` in `fix.ts`) adds the repro spec, or a visual
+   task's check, to `e2e/` only for a bug a unit test cannot show. happy-dom computes no layout, so a `visual` finding and a `layout` one
    qualify, except an `unnamed-control` line: a missing accessible name shows in a unit test. A `lost-on-reload` finding
    qualifies too, since the testing guide (`docs/internals/development/testing.md`) sends browser storage, redirects and
    Better Auth callbacks to `e2e/`.

@@ -798,23 +798,26 @@ type PassesOptions = {
 }
 
 /**
- * The native checks of `fp` without a pass that say nothing about the patch, each with why. Either the run step
- * marked its verdict inconclusive, or a patched app was built and the job stopped before the run began, at the device,
- * the stack or the runner, all the pipeline's. No patched app means the patch did not build, which stays a failure.
- * Every name is an artifact the workflow uploads only on runner outcomes, like the passes.
+ * The native checks of `fp` without a pass that say nothing about the patch, each with why. Only two verdicts count
+ * against the patch: no patched app, which means the patch did not build, and the run step's failure marker. Any
+ * other check without a pass stopped in the pipeline's hands: the run step marked its verdict inconclusive, the job
+ * stopped before the run began (at the device, the stack or the runner), or the run began and never finished (the
+ * job timed out or the runner died). Every name is an artifact the workflow uploads only on runner outcomes, like the
+ * passes.
  */
 const uncheckedNative = (fp: string, verifyNative: NativeCheck[], artifacts: Set<string>, attempt: string) => {
   const has = (kind: string, platform: string) => artifacts.has(`qa-${kind}-${fp}-${platform}-${attempt}`)
   return verifyNative.flatMap(({ fp: checked, platform }) => {
-    if (checked !== fp || has('pass', platform)) return []
+    if (checked !== fp || has('pass', platform) || has('native-failed', platform)) return []
     if (has('inconclusive', platform)) {
       const reason = `the native check on ${platform} could not tell whether the patch works`
       return [{ platform, reason }]
     }
-    if (has('patched', platform) && !has('native-started', platform)) {
+    if (!has('patched', platform)) return []
+    if (!has('native-started', platform)) {
       return [{ platform, reason: `the native check on ${platform} stopped before its run began` }]
     }
-    return []
+    return [{ platform, reason: `the native check on ${platform} stopped before its run gave a verdict` }]
   })
 }
 
@@ -1019,7 +1022,7 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  * A missing patch, a diagnosis, a rejected patch or a missing pass means no PR: the ticket gets a comment and the
  * `Human Required` label. A native check without a pass that says nothing about the patch (`uncheckedNative`: its
  * `qa-inconclusive-<fp>-<platform>-<attempt>` marker is listed, or its patched app is and its
- * `qa-native-started-<fp>-<platform>-<attempt>` marker is not) leaves the ticket untouched for a later run when no
+ * `qa-native-failed-<fp>-<platform>-<attempt>` marker is not) leaves the ticket untouched for a later run when no
  * other reason stands against the patch. A patch that passed all that but lacks the `checks` pass, which the PR
  * checks gate uploads when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run,
  * like a fix job that stopped before its session. Otherwise the task's branch gets one commit under the git identity

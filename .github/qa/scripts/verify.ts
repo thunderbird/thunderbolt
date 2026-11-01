@@ -402,17 +402,32 @@ type TextSelector = z.infer<typeof textSelector>
 const waitOn = z.object({ extendedWaitUntil: z.looseObject({ visible: textSelector }) })
 const assertOn = z.object({ assertVisible: textSelector })
 const typedText = z.object({ inputText: shownText }).transform((c) => c.inputText)
+const blockOptions = z.looseObject({ commands: commandList })
+/** The blocks `checkMaestroFlow` lets a flow nest commands in, as their name and options. */
+const commandBlock = z
+  .union([z.object({ retry: blockOptions }), z.object({ repeat: blockOptions }), z.object({ runFlow: blockOptions })])
+  .transform((command) => Object.entries(command)[0])
+/** Every command of a flow, those inside its blocks included. */
+const allCommands = (commands: unknown[]): unknown[] =>
+  commands.flatMap((command) => {
+    const [, options] = commandBlock.safeParse(command).data ?? []
+    return [command, ...(options ? allCommands(options.commands) : [])]
+  })
 const steadyCommands = commandList.transform((commands) => {
   // A text the flow types shows on the screen as typed, so it is left as the flow wrote it.
-  const typed = new Set(commands.flatMap((command) => typedText.safeParse(command).data ?? []))
+  const typed = new Set(allCommands(commands).flatMap((command) => typedText.safeParse(command).data ?? []))
   const steady = ({ text, withText }: TextSelector) => withText(typed.has(text) ? text : (steadyTextOf(text) ?? text))
-  return commands.map((command) => {
-    const wait = waitOn.safeParse(command).data
-    if (wait)
-      return { extendedWaitUntil: { ...wait.extendedWaitUntil, visible: steady(wait.extendedWaitUntil.visible) } }
-    const assert = assertOn.safeParse(command).data
-    return assert ? { assertVisible: steady(assert.assertVisible) } : command
-  })
+  const rewrite = (list: unknown[]): unknown[] =>
+    list.map((command) => {
+      const [name, options] = commandBlock.safeParse(command).data ?? []
+      if (name && options) return { [name]: { ...options, commands: rewrite(options.commands) } }
+      const wait = waitOn.safeParse(command).data
+      if (wait)
+        return { extendedWaitUntil: { ...wait.extendedWaitUntil, visible: steady(wait.extendedWaitUntil.visible) } }
+      const assert = assertOn.safeParse(command).data
+      return assert ? { assertVisible: steady(assert.assertVisible) } : command
+    })
+  return rewrite(commands)
 })
 
 /** The commands of a flow `checkMaestroFlow` serialized, after its header. */
@@ -727,8 +742,9 @@ export type NativeVerify = {
 
 /**
  * The exit code of `verify.ts fix-native`, and so the native verdict publish trusts: the workflow uploads the
- * platform's pass on that step's outcome (0), and its inconclusive marker on that step's own record of a 3, never on
- * the result file the patched app could rewrite. Not 2, which `native.sh`'s `die` uses for its own errors.
+ * platform's pass on that step's outcome (0), and its failure or inconclusive marker on that step's own record of a 1
+ * or a 3, never on the result file the patched app could rewrite. Not 2, which `native.sh`'s `die` uses for its own
+ * errors.
  */
 export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed' | 'inconclusive'>) =>
   verdict.passed ? 0 : verdict.inconclusive ? 3 : 1

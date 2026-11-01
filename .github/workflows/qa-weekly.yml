@@ -952,7 +952,8 @@ jobs:
       POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
     steps:
       # The timeout counts from the job's start, so the replay's clock does too (verify.ts `legClock`).
-      - name: Record the leg's start
+      - &record-start
+        name: Record the leg's start
         run: echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"
       - *checkout
       - *setup-bun
@@ -1707,6 +1708,8 @@ jobs:
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '180000'
     steps:
+      # The run step's deadline counts from here.
+      - *record-start
       # A pattern, since a fix that failed or gave up built no app: a missing name would fail with an error.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1754,8 +1757,10 @@ jobs:
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
       - *warm-up-maestro
-      # Exits 0 when the patch passes, 3 when too few runs reached the screen to tell, and non-zero when it fails. The
-      # pass below rests on this step's outcome, and the inconclusive marker on the code this step's shell records.
+      # Exits 0 when the patch passes, 3 when too few runs reached the screen to tell, 1 when it fails, and anything
+      # else on the pipeline's own errors. The pass below rests on this step's outcome, and the inconclusive and
+      # failure markers on the code this step's shell records. A run still going 52 minutes into the job is stopped
+      # and counts as inconclusive, so its marker and the logs still go up before the job's 60-minute timeout.
       - name: Run the flow on the patched app
         id: run
         if: env.QA_NO_DEVICE != 'true'
@@ -1766,9 +1771,24 @@ jobs:
           ORIGINAL: ${{ matrix.check.unpatched && format('{0}/apps/original/{1}', runner.temp, env.QA_APP_FILE) || '' }}
         run: |
           code=0
+          # macOS has no timeout(1). Job control gives the run its own process group, so the deadline stops all of it.
+          set -m
           .github/qa/scripts/native.sh verify-run "$QA_PLATFORM" "$QA_DEVICE_ID" "$RUNNER_TEMP/apps/patched/$QA_APP_FILE" \
-            "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"} || code=$?
-          if [ "$code" -eq 3 ]; then echo "inconclusive=true" >> "$GITHUB_OUTPUT"; fi
+            "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"} &
+          run=$!
+          # Kept off the step's output: the group kill below can miss a sleep caught mid-fork, which must hold no pipe.
+          { sleep $(( QA_LEG_START + 52 * 60 - $(date +%s) )) && kill -TERM -- "-$run"; } < /dev/null > /dev/null 2>&1 &
+          deadline=$!
+          wait "$run" || code=$?
+          # The deadline's group is gone only once it has stopped the run.
+          if ! kill -- "-$deadline" 2> /dev/null; then
+            echo "::warning::The run was stopped at its deadline, so it counts as inconclusive"
+            code=3
+          fi
+          case $code in
+            1) echo "failed=true" >> "$GITHUB_OUTPUT" ;;
+            3) echo "inconclusive=true" >> "$GITHUB_OUTPUT" ;;
+          esac
           exit "$code"
       # The verdict's uploads come first, so a slow upload of the logs near the timeout cannot lose them.
       - if: always() && steps.run.outcome == 'success'
@@ -1777,12 +1797,19 @@ jobs:
           name: qa-pass-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
-      # Publish leaves the ticket untouched for a later run on this marker, where a missing pass alone hands it to a
-      # person.
+      # Publish leaves the ticket untouched for a later run on this marker.
       - if: always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-inconclusive-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      # Publish hands a ticket whose patched app was built to a person only on this marker. A run that never finished
+      # uploads none of the three, and its ticket is left for a later run.
+      - if: always() && steps.run.outcome == 'failure' && steps.run.outputs.failed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-native-failed-${{ matrix.check.fp }}-${{ matrix.check.platform }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
       # Each step's screen tree and screenshot, so a system dialog over the app or a dead stream shows. The job holds

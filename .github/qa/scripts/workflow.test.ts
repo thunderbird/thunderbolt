@@ -1213,32 +1213,66 @@ describe('native jobs', () => {
     )
   })
 
-  test("the fix check's run step records an inconclusive verdict, and a marker is uploaded only on it", () => {
-    const runWith = (code: number) => {
-      const temp = mkdtempSync(join(work, 'verify-run-'))
-      mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
-      writeFileSync(join(temp, '.github/qa/scripts/native.sh'), `#!/bin/bash\nexit ${code}\n`, { mode: 0o755 })
-      const output = join(temp, 'output')
-      writeFileSync(output, '')
-      const proc = Bun.spawnSync(
-        ['bash', '-e', '-c', step('verify-native-run', 'Run the flow on the patched app').run ?? ''],
-        {
-          cwd: temp,
-          env: { PATH: process.env.PATH, RUNNER_TEMP: temp, GITHUB_OUTPUT: output, QA_FP: 'fp1' },
+  /** Runs the fix check's run step with `native.sh` replaced by `script`, the job having started `startedAgo` s ago. */
+  const runStepWith = (script: string, startedAgo = 0) => {
+    const temp = mkdtempSync(join(work, 'verify-run-'))
+    mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
+    // A real run takes minutes, so the deadline is asleep, and dies whole, by the time the run ends.
+    writeFileSync(join(temp, '.github/qa/scripts/native.sh'), `#!/bin/bash\nsleep 0.2\n${script}\n`, { mode: 0o755 })
+    const output = join(temp, 'output')
+    writeFileSync(output, '')
+    const proc = Bun.spawnSync(
+      ['bash', '-e', '-c', step('verify-native-run', 'Run the flow on the patched app').run ?? ''],
+      {
+        cwd: temp,
+        env: {
+          PATH: process.env.PATH,
+          RUNNER_TEMP: temp,
+          GITHUB_OUTPUT: output,
+          QA_FP: 'fp1',
+          QA_LEG_START: String(Math.floor(Date.now() / 1000) - startedAgo),
         },
-      )
-      return { code: proc.exitCode, output: readFileSync(output, 'utf8') }
-    }
-    // 2 is native.sh's own `die`, a failure.
-    expect([0, 1, 2, 3].map(runWith)).toEqual([
+      },
+    )
+    return { code: proc.exitCode, output: readFileSync(output, 'utf8'), dir: temp }
+  }
+
+  test("the fix check's run step records a failed or inconclusive verdict, and each marker needs its own", () => {
+    // 2 is native.sh's own `die`, the pipeline's.
+    expect(
+      [0, 1, 2, 3].map((code) => runStepWith(`exit ${code}`)).map(({ code, output }) => ({ code, output })),
+    ).toEqual([
       { code: 0, output: '' },
-      { code: 1, output: '' },
+      { code: 1, output: 'failed=true\n' },
       { code: 2, output: '' },
       { code: 3, output: 'inconclusive=true\n' },
     ])
-    const marker = steps('verify-native-run').find((s) => s.with?.name?.startsWith('qa-inconclusive-'))
-    expect(marker?.if).toBe("always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'")
-    expect(marker?.with?.name).toBe(`qa-inconclusive-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`)
+    const markerOf = (prefix: string) => steps('verify-native-run').find((s) => s.with?.name?.startsWith(prefix))
+    expect(markerOf('qa-inconclusive-')?.if).toBe(
+      "always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'",
+    )
+    expect(markerOf('qa-inconclusive-')?.with?.name).toBe(
+      `qa-inconclusive-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`,
+    )
+    expect(markerOf('qa-native-failed-')?.if).toBe(
+      "always() && steps.run.outcome == 'failure' && steps.run.outputs.failed == 'true'",
+    )
+    expect(markerOf('qa-native-failed-')?.with?.name).toBe(
+      `qa-native-failed-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`,
+    )
+  })
+
+  test("the fix check's run stops, every process of it, 52 minutes into the job, and counts as inconclusive", () => {
+    // The deadline counts from the job's first step, so the setup before the run is on the clock.
+    expect(steps('verify-native-run')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
+    const started = Date.now()
+    const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait', 52 * 60 - 1)
+    expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
+    expect(Date.now() - started).toBeLessThan(4000)
+    const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
+    expect(() => process.kill(child, 0)).toThrow()
+    // A run that ends in time keeps its own verdict, the deadline long ahead of it.
+    expect(runStepWith('exit 0', 52 * 60 - 30).code).toBe(0)
   })
 
   /** The index of the verify-native-run upload whose artifact name starts with `prefix`. */
@@ -1258,8 +1292,9 @@ describe('native jobs', () => {
 
   test("the fix check's verdict goes up straight after its run, before the logs", () => {
     const run = indexOf('verify-native-run', 'Run the flow on the patched app')
-    expect([uploadOf('qa-pass-'), uploadOf('qa-inconclusive-')].toSorted((a, b) => a - b)).toEqual([run + 1, run + 2])
-    expect(uploadOf('qa-verify-')).toBeGreaterThan(run + 2)
+    const verdicts = [uploadOf('qa-pass-'), uploadOf('qa-inconclusive-'), uploadOf('qa-native-failed-')]
+    expect(verdicts.toSorted((a, b) => a - b)).toEqual([run + 1, run + 2, run + 3])
+    expect(uploadOf('qa-verify-')).toBeGreaterThan(run + 3)
   })
 
   test("iOS's console stream starts right after the boot, before the app installs and the stack starts", () => {

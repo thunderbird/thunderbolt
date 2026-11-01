@@ -2337,7 +2337,7 @@ describe('publish', () => {
       })
     })
 
-    describe('a native check whose job stopped before its run', () => {
+    describe('a native check whose job stopped before its verdict', () => {
       const nativeTask = { flow: 'native', verifyNative: [native('ios')] }
       const listed = (...names: string[]) =>
         put(
@@ -2354,17 +2354,26 @@ describe('publish', () => {
         })
       })
 
-      test('sends it to a person when the run started and gave no verdict, or no patched app was built', async () => {
+      test('leaves it untouched when the run started and never gave a verdict, as on a timeout', async () => {
         await setupTask(nativeTask)
-        for (const names of [
-          [`qa-patched-${fp}-ios-1`, `qa-native-started-${fp}-ios-1`],
-          [],
-          [`qa-patched-${fp}-ios-2`],
-        ]) {
+        await listed(`qa-patched-${fp}-ios-1`, `qa-native-started-${fp}-ios-1`)
+        expect(await dryRun()).toEqual({
+          outcome: 'infrastructure',
+          reason: 'the native check on ios stopped before its run gave a verdict',
+        })
+      })
+
+      test('sends it to a person when the run failed, or no patched app was built', async () => {
+        await setupTask(nativeTask)
+        const started = [`qa-patched-${fp}-ios-1`, `qa-native-started-${fp}-ios-1`]
+        for (const names of [[...started, `qa-native-failed-${fp}-ios-1`], [], [`qa-patched-${fp}-ios-2`]]) {
           await listed(...names)
           const result = await dryRun()
-          expect({ names, outcome: result.outcome }).toEqual({ names, outcome: 'human-required' })
+          expect({ names, result }).toMatchObject({ names, result: { outcome: 'human-required' } })
         }
+        // Another attempt's failure says nothing about this one.
+        await listed(...started, `qa-native-failed-${fp}-ios-2`)
+        expect((await dryRun()).outcome).toBe('infrastructure')
       })
     })
 

@@ -984,7 +984,9 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  *   ignored;
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
- *   later run, and the result and the run summary say why. A missing or malformed file fails publish. One reason,
+ *   later run, and the result and the run summary say why. When `artifacts.txt` lists no status of `attempt`, the
+ *   job died before it recorded anything (a lost runner) or its key scan failed, and the ticket is left untouched
+ *   the same way. A malformed file, or a listed status whose file is missing, fails publish. One reason,
  *   `already-passes`, means the repro passed three times on the commit before any agent code ran: with the
  *   `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no label.
  * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
@@ -1038,12 +1040,17 @@ export const publish = async ({
     return { outcome: 'infrastructure', reason }
   }
 
+  const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
+  if (!artifacts.has(`qa-fix-status-${fp}-${attempt}`)) {
+    return leaveForLater(
+      `the fix job uploaded no fix status in run attempt ${attempt}, so it ended before it recorded anything`,
+    )
+  }
   // The fix job records and uploads this before any code the agent wrote runs outside its sandbox. A process the
   // sandbox let outlive the session could still rewrite the execution file or this record before the upload (whether
   // the sandbox blocks writes to $RUNNER_TEMP is unconfirmed). At worst its own ticket is left untouched: this file
   // can only stop publish.
   const { stoppedBeforeSession } = fixStatus.parse(await Bun.file(join(outDir, 'status', `${fp}.json`)).json())
-  const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
   if (stoppedBeforeSession === 'already-passes') {
     // The pass, uploaded before the fix step, is the proof. Without it the record may be a rewrite, so it only stops.
     if (!artifacts.has(`qa-pass-${fp}-unpatched-${attempt}`)) {
@@ -1064,7 +1071,7 @@ export const publish = async ({
     const reason = `the fix job uploaded no output in run attempt ${attempt}`
     return handOff(
       [reason],
-      `There is no PR: ${reason}. Its secret scan failed, or it ran only in an earlier attempt of the run.`,
+      `There is no PR: ${reason}. Its secret scan failed, or the job stopped after it recorded its status.`,
     )
   }
   const diagnosis = Bun.file(join(outDir, 'fix', `${fp}.diagnosis.md`))

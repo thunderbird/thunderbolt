@@ -1453,9 +1453,9 @@ jobs:
           /bin/mkdir -p "$RUNNER_TEMP/qa-status"
           /usr/bin/jq --null-input --argjson stopped "$stopped" '{stoppedBeforeSession: $stopped}' \
             > "$RUNNER_TEMP/qa-status/$QA_FP.json"
-      # Uploaded whenever the key scan passed, so publish's download never misses in a normal run. Outside qa-out/,
-      # so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's checks or publish read
-      # carry the run attempt: one artifact list spans every attempt of the run, and a download by name takes the
+      # Uploaded whenever the key scan passed, so publish finds none only after a lost job or a leaked key. Outside
+      # qa-out/, so the agent's qa-fix artifact cannot carry a copy. This and every artifact a fix's checks or publish
+      # read carry the run attempt: one artifact list spans every attempt of the run, and a download by name takes the
       # latest, so an attempt that uploaded none would get an earlier attempt's.
       - if: always() && steps.key-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1988,15 +1988,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
       # The original specs and the plan are downloaded after the fix output, so the pre-fix files win. This attempt's
-      # fix output only, as publish needs this attempt's passes: by pattern, so a fix job that ran only in an earlier
-      # attempt, or whose secret scan failed, leaves no patch, and publish hands the ticket to a person.
+      # fix output only, as publish needs this attempt's passes: by pattern, so a fix job whose secret scan failed
+      # leaves no patch, and publish hands the ticket to a person.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: qa-fix-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-out
+      # By pattern too: a fix job that died before its upload leaves none, and publish, which reads the artifact list,
+      # leaves that ticket untouched.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-fix-status-${{ matrix.task.fp }}-${{ github.run_attempt }}
+          pattern: qa-fix-status-${{ matrix.task.fp }}-${{ github.run_attempt }}
           path: qa-out/status
       - *download-replay
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

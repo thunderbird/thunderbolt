@@ -1686,11 +1686,17 @@ describe('publish', () => {
   const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
   /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
   const putPasses = (...checks: string[]) => putPassesOf('1', ...checks)
-  /** The same, as uploaded in run attempt `attempt`. */
+  /** The same, as uploaded in run attempt `attempt`, by a fix job that recorded its status in attempts 1 and 2. */
   const putPassesOf = (attempt: string, ...checks: string[]) =>
     put(
       join(outDir, 'artifacts.txt'),
-      [`qa-fix-${fp}-${attempt}`, ...checks.map((c) => `qa-pass-${fp}-${c}-${attempt}`), ''].join('\n'),
+      [
+        `qa-fix-${fp}-${attempt}`,
+        `qa-fix-status-${fp}-1`,
+        `qa-fix-status-${fp}-2`,
+        ...checks.map((c) => `qa-pass-${fp}-${c}-${attempt}`),
+        '',
+      ].join('\n'),
     )
 
   test('dry run: validates and describes the PR without writing anything', async () => {
@@ -2076,6 +2082,24 @@ describe('publish', () => {
     )
   })
 
+  // A lost runner uploads nothing. The list decides, so a status file on disk or another attempt's status opens no PR.
+  test('a fix job that uploaded no status in this attempt leaves the ticket and the repository alone', async () => {
+    await setup()
+    const passes = everyCheck.map((c) => `qa-pass-${fp}-${c}-1`)
+    await put(join(outDir, 'artifacts.txt'), [`qa-fix-${fp}-1`, `qa-fix-status-${fp}-2`, ...passes].join('\n'))
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+    const result = await publishPassingPatch(runs, calls)
+
+    const reason = 'the fix job uploaded no fix status in run attempt 1, so it ended before it recorded anything'
+    expect(result).toEqual({ outcome: 'infrastructure', reason })
+    expect(runs).toEqual([])
+    expect(calls).toEqual([])
+    expect(await readFile(join(dir, 'summary.md'), 'utf8')).toBe(
+      `- THB-1 is left untouched for a later run: ${reason}\n`,
+    )
+  })
+
   describe('a repro that already passes before the fix', () => {
     const head = { 'git rev-parse': 'c0ffee12\n' }
 
@@ -2154,7 +2178,7 @@ describe('publish', () => {
   })
 
   test.each([
-    ['missing', undefined],
+    ['missing though its artifact is listed', undefined],
     ['not JSON', 'stopped'],
     ['without the field', '{}'],
     ['an unknown reason', '{"stoppedBeforeSession":"repo-on-fire"}'],
@@ -2265,7 +2289,7 @@ describe('publish', () => {
       await setupTask({})
       await put(
         join(outDir, 'artifacts.txt'),
-        ['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`).join('\n'),
+        [`qa-fix-status-${fp}-1`, ...['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`)].join('\n'),
       )
       expect(await dryRun()).toEqual({
         outcome: 'human-required',

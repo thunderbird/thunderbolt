@@ -94,8 +94,8 @@ name, so an attempt that uploaded none would read an earlier attempt's. The fix 
 its status, the patched native app (`qa-patched-<fp>-<platform>-<run attempt>`), the patched real-AI frontend
 (`qa-fix-dist-<fp>-<run attempt>`) and every pass therefore carry the attempt, and each job reads only its own
 attempt's. A re-run never pairs one attempt's patch with another's build or passes: a job that finds nothing of its
-attempt hands the ticket to a person, and publish fails when the status of its attempt is missing. Re-run all jobs to
-retry a fix, which runs every fix session again.
+attempt hands the ticket to a person, and publish leaves the ticket untouched when its attempt has no fix status.
+Re-run all jobs to retry a fix, which runs every fix session again.
 
 The passes keep keys away from the patch; they are not proof against a patch built to cheat. Every upload step's
 process holds the runtime token (`ACTIONS_RUNTIME_TOKEN`), and any process of the job's user can read it in that
@@ -454,14 +454,17 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    code the agent wrote runs outside its sandbox, the fix job records which of these happened, or `null` when the
    session began, and uploads it as `qa-fix-status-<fp>-<run attempt>`. A step timeout counts as begun: the step ran
    for its whole cap, though the action had no chance to write its execution file. `publish` downloads the file into
-   `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a missing or malformed
-   one. When the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run
-   summary names the ticket and says it was left for a later run. Only a process the sandbox let outlive the session
+   `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a malformed one. When
+   the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names
+   the ticket and says it was left for a later run. Only a process the sandbox let outlive the session
    could still rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is
    unconfirmed). At worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to
    a PR. A session that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that
-   uploaded no status (its key scan failed, or the runner was lost) fails `publish`, because nothing says whether the
-   agent ran. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
+   uploaded no status died before it recorded anything (the runner was lost or shut down), or its key scan failed.
+   Nothing says whether the agent ran, so `publish` treats it like a session that never began: no PR, no Linear
+   write, and a summary line naming the ticket. It decides from the run's artifact list and
+   downloads the status by pattern, which finds nothing without an error, so that run shows no error annotation in
+   `publish`. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
    `Human Required`. `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix
    that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing
@@ -688,8 +691,9 @@ checkout, `bun .github/qa/scripts/fix.ts tests --out qa-out --fp <fp>` runs the 
 the fix, as `verify-tests` does (as yourself, unless `QA_TEST_USER` names another user), and leaves the checkout as it
 was. `fix.ts gate`, with the same arguments and `fix-plan.json` in `qa-out/`, commits the tree publish would push
 and runs the PR checks on it, as `verify-checks` does; reset the checkout to the commit before it afterwards. Write
-`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json` and one `qa-pass-<fp>-<check>-1` line per check you
-saw pass to `qa-out/artifacts.txt` (publish reads attempt 1 when `GITHUB_RUN_ATTEMPT` is unset), then
+`{"stoppedBeforeSession": null}` to `qa-out/status/<fp>.json`, and to `qa-out/artifacts.txt` a
+`qa-fix-status-<fp>-1` line and one `qa-pass-<fp>-<check>-1` line per check you saw pass (publish reads attempt 1
+when `GITHUB_RUN_ATTEMPT` is unset), then
 `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would
 open.
 

@@ -1030,7 +1030,9 @@ describe('publish', () => {
     })
 
     test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {
-      const download = steps('publish').find((s) => s.with?.name === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
+      const download = steps('publish').find(
+        (s) => s.with?.pattern === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`,
+      )
       expect(download?.with?.path).toBe('qa-out/status')
       expect(download?.['continue-on-error']).toBeUndefined()
       // The fix artifact lands in qa-out too, so none of its paths may reach qa-out/status.
@@ -1038,6 +1040,13 @@ describe('publish', () => {
       const paths = (fixUpload?.with?.path ?? '').split('\n').filter(Boolean)
       expect(paths.length).toBeGreaterThan(0)
       for (const path of paths) expect(path).toMatch(/^qa-out\/fix(-\$\{\{ matrix\.task\.fp \}\})?\//)
+    })
+
+    // A download by name fails with an error annotation when the artifact is missing; a pattern that matches nothing
+    // succeeds. Only the file job's qa-filed, which every publish matrix entry comes from, is read by name.
+    test('no download in publish can fail when the fix job died before it uploaded anything', () => {
+      const downloads = steps('publish').filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+      expect(downloads.flatMap((s) => s.with?.name ?? [])).toEqual(['qa-filed'])
     })
   })
 

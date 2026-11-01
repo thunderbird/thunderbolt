@@ -1678,7 +1678,7 @@ describe('native fix verification', () => {
       original: failsAt('nothing'),
     })
     // A repro flow that shows nothing without the patch cannot judge it, so that one is inconclusive.
-    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 1, 3])
+    expect([fixed, stillBroken, neverBroken].map(nativeExitCode)).toEqual([0, 4, 3])
   })
 
   test('passes only when no patched run shows the bug, and replaces a run that never reached the screen', async () => {
@@ -1786,7 +1786,7 @@ describe('native fix verification', () => {
     )
     expect(verdicts.map(({ runs, failed }) => [runs, failed])).toContainEqual([1, 1])
     expect(verdicts.map(({ inconclusive }) => inconclusive)).toEqual([false, false, false, false, true, true, true])
-    expect(verdicts.map(nativeExitCode)).toEqual([1, 1, 1, 1, 3, 3, 3])
+    expect(verdicts.map(nativeExitCode)).toEqual([4, 4, 4, 4, 3, 3, 3])
   })
 
   test('a real-AI session must also fail without the patch, since it is checked on the fake AI', async () => {

@@ -1219,6 +1219,11 @@ describe('native jobs', () => {
     mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
     // A real run takes minutes, so the deadline is asleep, and dies whole, by the time the run ends.
     writeFileSync(join(temp, '.github/qa/scripts/native.sh'), `#!/bin/bash\nsleep 0.2\n${script}\n`, { mode: 0o755 })
+    // GNU sleep rejects a negative duration, where macOS treats it as zero.
+    mkdirSync(join(temp, 'bin'))
+    writeFileSync(join(temp, 'bin/sleep'), '#!/bin/bash\n[[ $1 == -* ]] && exit 1\nexec /bin/sleep "$@"\n', {
+      mode: 0o755,
+    })
     const output = join(temp, 'output')
     writeFileSync(output, '')
     const proc = Bun.spawnSync(
@@ -1226,7 +1231,7 @@ describe('native jobs', () => {
       {
         cwd: temp,
         env: {
-          PATH: process.env.PATH,
+          PATH: `${join(temp, 'bin')}:${process.env.PATH}`,
           RUNNER_TEMP: temp,
           GITHUB_OUTPUT: output,
           QA_FP: 'fp1',
@@ -1238,14 +1243,15 @@ describe('native jobs', () => {
   }
 
   test("the fix check's run step records a failed or inconclusive verdict, and each marker needs its own", () => {
-    // 2 is native.sh's own `die`, the pipeline's.
+    // 1 is a crash of Bun and 2 is native.sh's own `die`, both the pipeline's, so neither marks a verdict.
     expect(
-      [0, 1, 2, 3].map((code) => runStepWith(`exit ${code}`)).map(({ code, output }) => ({ code, output })),
+      [0, 1, 2, 3, 4].map((code) => runStepWith(`exit ${code}`)).map(({ code, output }) => ({ code, output })),
     ).toEqual([
       { code: 0, output: '' },
-      { code: 1, output: 'failed=true\n' },
+      { code: 1, output: '' },
       { code: 2, output: '' },
       { code: 3, output: 'inconclusive=true\n' },
+      { code: 4, output: 'failed=true\n' },
     ])
     const markerOf = (prefix: string) => steps('verify-native-run').find((s) => s.with?.name?.startsWith(prefix))
     expect(markerOf('qa-inconclusive-')?.if).toBe(
@@ -1265,14 +1271,24 @@ describe('native jobs', () => {
   test("the fix check's run stops, every process of it, 52 minutes into the job, and counts as inconclusive", () => {
     // The deadline counts from the job's first step, so the setup before the run is on the clock.
     expect(steps('verify-native-run')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
-    const started = Date.now()
+    const started = performance.now()
     const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait', 52 * 60 - 1)
     expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
-    expect(Date.now() - started).toBeLessThan(4000)
+    expect(performance.now() - started).toBeLessThan(4000)
     const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
     expect(() => process.kill(child, 0)).toThrow()
     // A run that ends in time keeps its own verdict, the deadline long ahead of it.
     expect(runStepWith('exit 0', 52 * 60 - 30).code).toBe(0)
+  })
+
+  test("the fix check's run stops at once when the deadline has already passed", () => {
+    // performance.now, since Date.now stays frozen while a synchronous spawn blocks the test.
+    const started = performance.now()
+    // Left to finish, this run would exit 0 after 30 s.
+    const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait\nexit 0', 52 * 60 + 5)
+    expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
+    expect(performance.now() - started).toBeLessThan(4000)
+    expect(() => process.kill(Number(readFileSync(join(dir, 'child.pid'), 'utf8')), 0)).toThrow()
   })
 
   /** The index of the verify-native-run upload whose artifact name starts with `prefix`. */

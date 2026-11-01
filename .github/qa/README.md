@@ -490,11 +490,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    fail there every time. The verdict is a pass, a failure when a run that reached the screen failed it (the patched
    app showed the bug, or the unpatched one passed the fix agent's visual check), or else inconclusive. A real-AI
    repro flow that shows nothing on the fake AI without the patch is inconclusive too: it cannot judge the patch.
-   `verify.ts fix-native` exits 0, 1 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
+   `verify.ts fix-native` exits 0, 4 or 3 for these, and `native.sh verify-run` exits 3 as well when the iOS stream
    never attaches; any other error of `native.sh` exits 2. The run step stops a run still going 52 minutes into the
    job and counts it as a 3, so the verdict and the logs still go up before the job's 60-minute timeout. It records a
-   1 or a 3 in its own output, and on that and the step's failed outcome the job uploads
-   `qa-native-failed-<fp>-<platform>-<run attempt>` or `qa-inconclusive-<fp>-<platform>-<run attempt>`, straight
+   4 or a 3 in its own output (a crash of Bun exits 1 and is recorded as neither), and on that and the step's failed
+   outcome the job uploads `qa-native-failed-<fp>-<platform>-<run attempt>` or
+   `qa-inconclusive-<fp>-<platform>-<run attempt>`, straight
    after the run, before the logs. Before any patched app opens, once the device and the stack are up, the job
    uploads `qa-native-started-<fp>-<platform>-<run attempt>`, which only names the reason in the run summary. A
    native check without a pass sends the ticket to a person only when its patch built no app or the failure marker

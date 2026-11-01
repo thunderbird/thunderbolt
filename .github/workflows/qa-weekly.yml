@@ -1757,10 +1757,11 @@ jobs:
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
       - *warm-up-maestro
-      # Exits 0 when the patch passes, 3 when too few runs reached the screen to tell, 1 when it fails, and anything
-      # else on the pipeline's own errors. The pass below rests on this step's outcome, and the inconclusive and
-      # failure markers on the code this step's shell records. A run still going 52 minutes into the job is stopped
-      # and counts as inconclusive, so its marker and the logs still go up before the job's 60-minute timeout.
+      # Exits 0 when the patch passes, 3 when too few runs reached the screen to tell, 4 when it fails, and anything
+      # else on the pipeline's own errors (a crash of Bun is 1). The pass below rests on this step's outcome, and the
+      # inconclusive and failure markers on the code this step's shell records. A run still going 52 minutes into
+      # the job is stopped and counts as inconclusive, so its marker and the logs still go up before the job's
+      # 60-minute timeout.
       - name: Run the flow on the patched app
         id: run
         if: env.QA_NO_DEVICE != 'true'
@@ -1777,7 +1778,8 @@ jobs:
             "$FLOW" "$SESSION" "qa-out/verify/$QA_FP.$QA_PLATFORM.json" ${ORIGINAL:+"$ORIGINAL"} &
           run=$!
           # Kept off the step's output: the group kill below can miss a sleep caught mid-fork, which must hold no pipe.
-          { sleep $(( QA_LEG_START + 52 * 60 - $(date +%s) )) && kill -TERM -- "-$run"; } < /dev/null > /dev/null 2>&1 &
+          left=$(( QA_LEG_START + 52 * 60 - $(date +%s) ))
+          { sleep $(( left > 0 ? left : 0 )) && kill -TERM -- "-$run"; } < /dev/null > /dev/null 2>&1 &
           deadline=$!
           wait "$run" || code=$?
           # The deadline's group is gone only once it has stopped the run.
@@ -1786,7 +1788,7 @@ jobs:
             code=3
           fi
           case $code in
-            1) echo "failed=true" >> "$GITHUB_OUTPUT" ;;
+            4) echo "failed=true" >> "$GITHUB_OUTPUT" ;;
             3) echo "inconclusive=true" >> "$GITHUB_OUTPUT" ;;
           esac
           exit "$code"

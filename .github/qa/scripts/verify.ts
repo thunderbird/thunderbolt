@@ -742,12 +742,12 @@ export type NativeVerify = {
 
 /**
  * The exit code of `verify.ts fix-native`, and so the native verdict publish trusts: the workflow uploads the
- * platform's pass on that step's outcome (0), and its failure or inconclusive marker on that step's own record of a 1
- * or a 3, never on the result file the patched app could rewrite. Not 2, which `native.sh`'s `die` uses for its own
- * errors.
+ * platform's pass on that step's outcome (0), and its failure or inconclusive marker on that step's own record of a 4
+ * or a 3, never on the result file the patched app could rewrite. A genuine failure is 4 because nothing else
+ * produces it: a crash of Bun exits 1, and `native.sh`'s `die` exits 2.
  */
 export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed' | 'inconclusive'>) =>
-  verdict.passed ? 0 : verdict.inconclusive ? 3 : 1
+  verdict.passed ? 0 : verdict.inconclusive ? 3 : 4
 
 /** The fix agent's visual check has no finding, so only its own Maestro assertions fail a run. */
 const checkFailure = (run: FlowRun) =>

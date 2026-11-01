@@ -591,6 +591,15 @@ describe("CI's check of the fix job's dev stack", () => {
       expect(qa).toContain(path)
     expect(ci.jobs.qa.if).toBe("needs.detect-changes.outputs.qa == 'true'")
   })
+
+  // Without the user, fix.test.ts skips the snapshot tests it runs as another user.
+  test('creates the user the QA tests run snapshot tests as, before they run', () => {
+    const at = (name: string) => ci.jobs.qa.steps.findIndex((s) => s.name === name)
+    const create = 'Create the user the QA tests run snapshot tests as'
+    expect(ci.jobs.qa.env?.QA_TEST_USER).toBe('qa-test')
+    expect(ci.jobs.qa.steps[at(create)]?.run).toContain('sudo useradd --create-home "$QA_TEST_USER"')
+    expect(at(create)).toBeLessThan(at('Run QA tests (5x)'))
+  })
 })
 
 const attempt = '-${{ github.run_attempt }}'

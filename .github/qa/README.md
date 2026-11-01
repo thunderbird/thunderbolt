@@ -441,7 +441,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    helper, fixture or snapshot it imports is missing. A renamed source file counts as added, so a patch that moves
    the buggy file and fixes it on the way has its fix in the run without it, and a person takes the ticket.
    `git apply` runs as the job's user, each `bun test` as `qa-test` (`QA_TEST_USER`, through `sudo --user`, with only `PATH` from the job's environment), so a test cannot
-   write the checkout either.
+   write the checkout either. Each run gets `CI=true`, as in CI, and after each `git apply` the snapshot files are
+   opened to `qa-test` as in `verify-checks` (below).
    A patch with no such file fails, and so does a test that needs Postgres or another service the job does not
    start, or that writes into the checkout: the ticket then goes to a person. When the agent gave up or left no
    patch, the job skips the check, so it shows no error and uploads no pass. A native task keeps its Maestro check
@@ -496,7 +497,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    paths, ci.yml's `bun run i18n:check`, `bun run test:5x`, the agent-core, backend and cli type checks, lints and 5x
    suites. Each runs with ci.yml's exact command over the whole tree, never only the changed files: a test that
    passes alone can fail there, when another file's `mock.module` leaks into it in one Bun process. The checks run as
-   `qa-test` with `CI=true`, in order, and stop at the first failure. The full Playwright suite, the builds, the
+   `qa-test` with `CI=true`, in order, and stop at the first failure. `qa-test` can write only two things in the
+   checkout, both opened with `chmod o+w` after the commit: the catalog folders, which `i18n:check` rewrites, and
+   every `__snapshots__/*.snap` file, which Bun opens for writing even when every snapshot in it matches. The
+   `__snapshots__` folders stay closed. With `CI=true` Bun never adds a snapshot, so a missing one fails as in CI, and
+   a `qa-test` that could replace a `.snap` with a symlink would point the job user's next `chmod` at any file of
+   that user. The type checks, lints, the format and license checks and the collected-spec check write nothing in
+   the checkout. The full Playwright suite, the builds, the
    browser and native checks, the segregated WebSocket tests (flaky by design; ci.yml retries them) and the Helm,
    miniapps, Rust, wasm and QA jobs are left out: too slow, or on paths a fix seldom touches (`verify-native-build`
    compiles a native fix's Rust, but nothing lints it). The gate is skipped when the fix job left a diagnosis or no
@@ -1218,9 +1225,11 @@ Never run on GitHub (only locally, or read in the action's code):
   `/proc/<pid>/environ` (the job user could), and the stop killed the detached processes it left. That kernel has
   no Yama, so `stack.sh lock` itself did not run there;
 - `verify-checks`: `fix.ts gate` ran on scratch repos with real git, tsc and prettier, and `bun run check`,
-  `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. Nothing
-  ran as `qa-test` yet: a check that writes outside `src/locales` and `backend/src/emails/locales`, or needs more
-  than `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails the
+  `bun run e2e:check-collected` and `bun run i18n:check` passed on the branch as the developer's own user. On
+  GitHub, as `qa-test`, those three passed and `bun run test:5x` failed on every snapshot test until the gate opened
+  the `.snap` files. CI's `qa` job runs a snapshot test as a second user through `checkTests` and `runGate`, and
+  fails if the user cannot write the file. A check that writes anywhere else in the checkout, or needs more than
+  `PATH` and `CI`, would fail every task's gate. A suite with an order-dependent failure on `main` fails the
   gate on the seeds that order it badly, and that ticket waits for a later run;
 - the narrow `sudo` stop of the `qa-backend` backend in the real-AI legs. That copy also proved the `ss` port check, the
   lock and the stop of the fix job's dev stack as `qa-dev`. Its start failed in the first fix jobs on GitHub because

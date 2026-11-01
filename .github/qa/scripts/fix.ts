@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { existsSync } from 'node:fs'
 import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -558,7 +559,8 @@ type CheckTestsOptions = {
  * patch's hunks for its test files and its added files applied (`failsWithout`), and pass with the whole patch
  * (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
  * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
- * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes.
+ * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes, and
+ * only the snapshot files are opened to it. A patch that adds or changes a symlink or submodule runs no test.
  */
 export const checkTests = async ({
   outDir,
@@ -572,6 +574,10 @@ export const checkTests = async ({
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
   // git apply refuses an empty patch, which holds no test either.
   const files = (await readFile(patch, 'utf8')).trim() ? await patchedFiles(run, patch) : []
+  if (files.some(isLink)) {
+    log(`fix: the tests did not run: ${noLinks}`)
+    return { failsWithout: false, passesWith: false }
+  }
   const runs = testRuns(files)
   if (!runs.length) {
     log(`fix: ${noTestReason}`)
@@ -580,8 +586,11 @@ export const checkTests = async ({
   const exitCodes = async (include: string[]) => {
     await run(['git', 'apply', ...include, patch])
     try {
+      if (user) await openSnapshots(run, repoDir)
       const codes: number[] = []
-      for (const { cwd, cmd } of runs) {
+      for (const { cwd, cmd: bunTest } of runs) {
+        // As in CI, where Bun fails on a missing snapshot instead of writing it. sudo drops the variable.
+        const cmd = ['env', 'CI=true', ...bunTest]
         codes.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
       }
       return codes
@@ -712,17 +721,39 @@ export const runGate = async ({ outDir, fp, user, repoDir = '.', run = runComman
   // The chmod and the spec write below would follow a link the patch adds, as the job's user. publish refuses such a
   // patch and hands its ticket to a person.
   const files = await patchedFiles(run, resolve(outDir, 'fix', `${fp}.patch`))
-  if (files.some((f) => f.modes.some((m) => linkModes.has(m)))) return noLinks
+  if (files.some(isLink)) return noLinks
   await stage(run, outDir, task, repoDir)
   const identity = ['-c', 'user.name=QA gate', '-c', 'user.email=qa-gate@localhost']
   await noHooksGit(run)([...identity, 'commit', '--no-verify', '--quiet', '--message', 'The tree publish would push'])
-  // i18n:check rewrites the catalogs as `user`, and git apply wrote them with this user's umask.
-  if (user) await run(['chmod', '-R', 'o+w', 'src/locales', 'backend/src/emails/locales'], { cwd: repoDir })
+  if (user) {
+    // i18n:check rewrites the catalogs as `user`, and git apply wrote them with this user's umask.
+    await run(['chmod', '-R', 'o+w', 'src/locales', 'backend/src/emails/locales'], { cwd: repoDir })
+    await openSnapshots(run, repoDir)
+  }
   return runPrChecks({ ticket: task.identifier ?? task.fp, user, repoDir, run, ...rest })
 }
 
 /** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
 const linkModes = new Set(['120000', '160000'])
+
+/** Whether a patch makes `file` a symlink or submodule, or changes one. */
+const isLink = (file: PatchedFile) => file.modes.some((m) => linkModes.has(m))
+
+/**
+ * Lets other users write the snapshot files in the checkout, which git wrote with this user's umask. Bun opens a test
+ * file's `.snap` for writing even when every snapshot in it matches, and fails the test when it cannot. Their folders
+ * stay closed: with `CI=true` Bun never adds a snapshot, so a missing one fails as it does in CI, and a user who could
+ * swap a `.snap` for a symlink would point the next chmod at any file of this user.
+ */
+const openSnapshots = async (run: Run, repoDir: string) => {
+  const pathspec = '*/__snapshots__/*.snap'
+  const listed = await run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', pathspec], {
+    cwd: repoDir,
+  })
+  // A snapshot the patch deletes stays in the index of a checkout that git apply changed.
+  const files = listed.split('\0').filter((file) => file && existsSync(join(repoDir, file)))
+  if (files.length) await run(['chmod', '--', 'o+w', ...files], { cwd: repoDir })
+}
 
 /** Three levels under the repo root, like a repro spec, so imports and the Playwright project match. */
 const checkPath = (outDir: string, fp: string) => join(outDir, `fix-${fp}`, 'repro', 'check.spec.ts')
@@ -841,9 +872,7 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask, verify
       ...files
         .filter((f) => baseBackend && /^(backend|shared)\//.test(f.path))
         .map((f) => `touches ${f.path}, but the verification ran on the backend from before the patch`),
-      ...files
-        .filter((f) => f.modes.some((m) => linkModes.has(m)))
-        .map((f) => `adds or changes a symlink or submodule: ${f.path}`),
+      ...files.filter(isLink).map((f) => `adds or changes a symlink or submodule: ${f.path}`),
     ],
     files: files.map((f) => f.path),
     unitTests: testRuns(files).length > 0,

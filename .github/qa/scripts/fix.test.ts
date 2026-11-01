@@ -132,6 +132,16 @@ const writePatch = async (
   await git(['git', 'reset', '--quiet', '--hard'])
 }
 
+/** A Bun snapshot file holding `values`, keyed by snapshot name. */
+const snapshotOf = (values: Record<string, string>) =>
+  '// Bun Snapshot v1, https://bun.sh/docs/test/snapshots\n' +
+  Object.entries(values)
+    .map(([name, value]) => `\nexports[\`${name}\`] = \`${JSON.stringify(value)}\`;\n`)
+    .join('')
+
+/** A second OS user this one may sudo to without a password, which CI's qa job creates. */
+const testUser = Bun.env.QA_TEST_USER
+
 /** Runs a command with its output thrown away and returns its exit code. */
 const quiet = async (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).exited
@@ -1292,7 +1302,7 @@ describe('checkTests', () => {
     })
     expect(result).toEqual({ failsWithout: true, passesWith: true })
     const asTestUser = ['sudo', '-n', '--user', 'qa-test', '--set-home', '--', 'env', `PATH=${process.env.PATH}`]
-    const bunTest = ['bun', 'test', '--timeout', '5000', './title.test.ts']
+    const bunTest = ['env', 'CI=true', 'bun', 'test', '--timeout', '5000', './title.test.ts']
     expect(cmds).toEqual([
       [...asTestUser, ...bunTest],
       [...asTestUser, ...bunTest],
@@ -1310,6 +1320,97 @@ describe('checkTests', () => {
     expect(await check(exec)).toEqual(none)
     expect(runs).toEqual([])
   })
+
+  const snapshotTest =
+    `import { expect, test } from 'bun:test'\nimport { title } from './title'\n` +
+    `test('title', () => {\n  expect(title('  a  ')).toMatchSnapshot()\n  expect(title(' b ')).toMatchSnapshot()\n})\n`
+  const snapshotPath = 'src/__snapshots__/title.test.ts.snap'
+  /** Commits `files` on top of the scratch repo's first commit. */
+  const commit = async (files: Record<string, string>) => {
+    for (const [path, text] of Object.entries(files)) await put(join(repo, path), text)
+    await git(['git', 'add', '--all'])
+    await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'more'])
+  }
+
+  test('fails a test whose snapshot the patch left out, as CI does, though sudo drops CI from the environment', async () => {
+    await patchOf({
+      'src/title.ts': fixed,
+      'src/title.test.ts': snapshotTest,
+      [snapshotPath]: snapshotOf({ 'title 1': 'a' }),
+    })
+    const resetEnv = (cmd: string[], cwd: string) =>
+      Bun.spawn(cmd, {
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        stdin: 'ignore',
+        stdout: 'ignore',
+        stderr: 'ignore',
+      }).exited
+    expect(await check(resetEnv)).toEqual({ failsWithout: true, passesWith: false })
+  }, 20_000)
+
+  test('opens the snapshot files to the test user in both halves, past one the patch deletes', async () => {
+    const old = 'src/__snapshots__/old.test.ts.snap'
+    // Unlike the added snapshot, so git sees a delete and an add rather than a rename.
+    await commit({ [old]: snapshotOf({ 'old 1': 'a value no other snapshot here holds, '.repeat(5) }) })
+    await git(['git', 'rm', '--quiet', old])
+    await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': snapshotTest, [snapshotPath]: snapshotOf({}) })
+    const modes: number[] = []
+    const exec = async () => {
+      modes.push((await stat(join(repo, snapshotPath))).mode & 0o777)
+      return modes.length === 1 ? 1 : 0
+    }
+    const result = await checkTests({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, log: () => {} })
+    expect(result).toEqual({ failsWithout: true, passesWith: true })
+    // Writable by others, never executable: Bun only reads and rewrites the file.
+    expect(modes).toEqual([0o646, 0o646])
+    expect((await stat(join(repo, 'src/__snapshots__'))).mode & 0o002).toBe(0)
+  }, 20_000)
+
+  test('runs no test on a patch that adds a symlink, before it changes any mode', async () => {
+    const outside = join(dir, 'outside.snap')
+    await writeFile(outside, '', { mode: 0o644 })
+    await put(join(repo, 'src/title.ts'), fixed)
+    await put(join(repo, 'src/title.test.ts'), snapshotTest)
+    await mkdir(join(repo, 'src/__snapshots__'))
+    await symlink(outside, join(repo, snapshotPath))
+    await git(['git', 'add', '--all'])
+    await put(join(outDir, 'fix', `${fp}.patch`), await git(['git', 'diff', '--cached', '--binary', 'HEAD']))
+    await git(['git', 'reset', '--quiet', '--hard'])
+    const runs: string[][] = []
+    const exec = async (cmd: string[]) => runs.push(cmd)
+    const result = await checkTests({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, log: () => {} })
+    expect(result).toEqual({ failsWithout: false, passesWith: false })
+    expect(runs).toEqual([])
+    expect((await stat(outside)).mode & 0o777).toBe(0o644)
+  })
+
+  test.skipIf(!testUser)(
+    "runs a patch's snapshot test as another user, who cannot write the file before",
+    async () => {
+      const user = testUser ?? ''
+      // mkdtemp made the scratch folder private to this user.
+      await chmod(dir, 0o755)
+      // A committed snapshot that matches still fails: Bun opens the file for writing.
+      await commit({
+        'src/card.test.ts': snapshotTest,
+        'src/__snapshots__/card.test.ts.snap': snapshotOf({ 'title 1': '  a  ', 'title 2': ' b ' }),
+      })
+      const asUser = ['sudo', '-n', '--user', user, '--set-home', '--', 'env', `PATH=${process.env.PATH}`, 'CI=true']
+      const before = Bun.spawnSync([...asUser, 'bun', 'test', './card.test.ts'], { cwd: join(repo, 'src') })
+      expect(before.exitCode).not.toBe(0)
+      expect(before.stderr.toString()).toContain('Failed to open snapshot file')
+
+      await patchOf({
+        'src/title.ts': fixed,
+        'src/title.test.ts': snapshotTest,
+        [snapshotPath]: snapshotOf({ 'title 1': 'a', 'title 2': 'b' }),
+      })
+      const result = await checkTests({ outDir, fp, user, repoDir: repo, run: git, exec: quiet, log: () => {} })
+      expect(result).toEqual({ failsWithout: true, passesWith: true })
+    },
+    30_000,
+  )
 })
 
 describe('the PR checks gate', () => {
@@ -1445,16 +1546,20 @@ describe('the PR checks gate', () => {
       const only = [checks[3]]
       await runGate({ outDir, fp, user: 'qa-test', repoDir: repo, run: git, exec, checks: only, log: () => {} })
     }
-    await gateAs({ 'backend/x.ts': 'x' })
+    const snapshot = 'backend/src/__snapshots__/x.test.ts.snap'
+    await gateAs({ 'backend/x.ts': 'x', [snapshot]: snapshotOf({}) })
     expect(cmds).toEqual([
       [
         ...['sudo', '-n', '--user', 'qa-test', '--set-home', '--', 'env', `PATH=${process.env.PATH}`],
         ...['env', 'CI=true', 'bash', '-eo', 'pipefail', '-c', 'false'],
       ],
     ])
-    // The catalog check rewrites the catalogs as the test user.
-    for (const catalogs of ['src/locales/en', 'backend/src/emails/locales/en/messages.po'])
-      expect((await stat(join(repo, catalogs))).mode & 0o002).toBe(0o002)
+    // The catalog check rewrites the catalogs as the test user, and bun test opens the snapshot files for writing.
+    const writable = async (path: string) => ((await stat(join(repo, path))).mode & 0o002) === 0o002
+    for (const opened of ['src/locales/en', 'backend/src/emails/locales/en/messages.po', snapshot])
+      expect({ opened, writable: await writable(opened) }).toEqual({ opened, writable: true })
+    for (const closed of ['backend/x.ts', 'backend/src/__snapshots__', 'src/chat.ts'])
+      expect({ closed, writable: await writable(closed) }).toEqual({ closed, writable: false })
     await gateAs({ 'src/x.ts': 'x' })
     expect(cmds).toHaveLength(1)
   })
@@ -1475,6 +1580,31 @@ describe('the PR checks gate', () => {
     expect(cmds).toEqual([])
     expect(await git(['git', 'log', '--format=%s'])).toBe('init\n')
   })
+
+  test.skipIf(!testUser)(
+    'runs a snapshot test the patch adds as another user, as CI runs it',
+    async () => {
+      // mkdtemp made the scratch folder private to this user.
+      await chmod(dir, 0o755)
+      await patchOf({
+        'src/chat.test.ts': `import { expect, test } from 'bun:test'\ntest('chat', () => expect('a').toMatchSnapshot())\n`,
+        'src/__snapshots__/chat.test.ts.snap': snapshotOf({ 'chat 1': 'a' }),
+      })
+      const unitTests = [{ name: 'unit tests', run: 'cd src && bun test ./chat.test.ts' }]
+      const failed = await runGate({
+        outDir,
+        fp,
+        user: testUser,
+        repoDir: repo,
+        run: git,
+        exec: quiet,
+        checks: unitTests,
+        log: () => {},
+      })
+      expect(failed).toBeUndefined()
+    },
+    30_000,
+  )
 
   // Lifecycle scripts point core.hooksPath at husky's folder, which a patch may change before the gate commits.
   test('commits the tree with no git hook, whatever core.hooksPath says', async () => {

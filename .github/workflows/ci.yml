@@ -428,6 +428,8 @@ jobs:
     if: needs.detect-changes.outputs.qa == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      QA_TEST_USER: qa-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -453,6 +455,14 @@ jobs:
 
       - name: Type check the QA scripts
         run: bunx tsc -p .github/qa
+
+      # The weekly gate runs a patch's tests as another user, who cannot write to the checkout. With this user the QA
+      # tests run a snapshot test that way; without it they skip that test.
+      - name: Create the user the QA tests run snapshot tests as
+        run: |
+          sudo useradd --create-home "$QA_TEST_USER"
+          # Lets that user reach bun without listing this user's home.
+          sudo chmod o+x "$HOME"
 
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5

@@ -850,6 +850,13 @@ Traps:
   ("Something went wrong") in every run after. `install android` maps the stack's ports again before it opens the
   app. `device android` also grows the emulator's log buffers to 64 MB, so the log a replay job saves at its end
   still holds its first runs.
+- A system error dialog such as "System UI isn't responding" covers the app and hides its screen from Maestro, so a
+  flow fails on an assert that the app would pass. Right after boot, `device android` sets the global setting
+  `hide_error_dialogs` to 1, which stops Android from showing any new ANR or crash dialog, and broadcasts
+  `CLOSE_SYSTEM_DIALOGS` to close one already on screen (the setting does not touch a dialog that is up). It then reads
+  the setting back and fails the step if it is not 1, so an image that ignores it fails at the boot instead of as flaky
+  flows. The trade-off: the setting also hides the app's own crash dialog, so an app crash shows in the logs and as
+  the flow's failure, not as a dialog on the video.
 
 Not proven locally: `device android`, `install android` and `logs android`. They need an emulator, and so far have
 run only on GitHub's runners (KVM, `x86_64`).

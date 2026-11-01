@@ -150,6 +150,17 @@ system_image() {
   "$sdkmanager" --install emulator "$android_image" > /dev/null
 }
 
+# A system error dialog ("System UI isn't responding") covers the app and hides its screen from Maestro. The setting
+# stops system_server from showing any new ANR or crash dialog; the broadcast closes one already on screen, which
+# the setting alone leaves in place (the dialogs listen for it, and the shell may send it).
+hide_error_dialogs() {
+  local serial=$1
+  adb -s "$serial" shell settings put global hide_error_dialogs 1
+  adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
+  [ "$(adb -s "$serial" shell settings get global hide_error_dialogs | tr -d '\r')" = 1 ] ||
+    die "the emulator ignored hide_error_dialogs, so a system error dialog can cover the app during a flow"
+}
+
 device_android() {
   export ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-$HOME/.android/avd}
   mkdir -p "$ANDROID_AVD_HOME"
@@ -186,6 +197,7 @@ device_android() {
     sleep 2
   done
   [ "$(adb -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] || die "the emulator did not boot"
+  hide_error_dialogs "$serial"
   reverse_ports "$serial"
   # Room for a whole replay leg, so the log a job saves at its end still holds its first runs: about 5 MB an hour.
   adb -s "$serial" logcat -b main,system,crash,events -G 64M >&2 || echo "warning: could not grow the emulator's log" >&2

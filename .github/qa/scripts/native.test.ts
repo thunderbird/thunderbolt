@@ -22,7 +22,7 @@ const noPorts = {
 }
 
 /** `/sdcard` resolves only from the second check on, and Android 16 refuses the push of sample.png. */
-const fakeAdb = () => {
+const fakeAdb = ({ ignoresSettings = false } = {}) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const calls = join(bin, 'calls.log')
   const script = `#!/bin/bash
@@ -34,6 +34,10 @@ case "$*" in
     [ -f '${bin}/mounted' ] && exit 0
     touch '${bin}/mounted'
     exit 1 ;;
+  *"settings put global hide_error_dialogs 1")
+    ${ignoresSettings ? 'exit 0' : `touch '${bin}/hidden'`} ;;
+  *"settings get global hide_error_dialogs")
+    [ -f '${bin}/hidden' ] && echo 1 || echo null ;;
   *"push "*sample.png*) echo "adb: error: failed to copy: Operation not permitted" >&2; exit 1 ;;
 esac
 exit 0
@@ -126,6 +130,32 @@ test('device android waits for /sdcard, pushes each fixture alone and only warns
   expect(at(/ push /)).toBeGreaterThan(at(/mkdir -p \/sdcard\/Download/))
   // c7's PowerSync too, so the app on the emulator can sync.
   expect(log).toContain('-s emulator-5554 reverse tcp:18081 tcp:18081')
+})
+
+test('device android hides system error dialogs and closes a showing one before it maps ports or pushes files', () => {
+  const { env, calls } = fakeAdb()
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8').trim().split('\n')
+  const at = (text: string) => log.findIndex((line) => line.endsWith(text))
+  const put = at('settings put global hide_error_dialogs 1')
+
+  expect(proc.exitCode).toBe(0)
+  const readBack = at('settings get global hide_error_dialogs')
+  expect(put).toBeGreaterThan(at('getprop sys.boot_completed'))
+  expect(at('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')).toBeGreaterThan(put)
+  expect(readBack).toBeGreaterThan(put)
+  expect(readBack).toBeLessThan(log.findIndex((line) => line.includes(' reverse ')))
+})
+
+test('device android fails when the emulator does not keep hide_error_dialogs, before anything else runs on it', () => {
+  const { env, calls } = fakeAdb({ ignoresSettings: true })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8')
+
+  expect(proc.exitCode).not.toBe(0)
+  expect(proc.stderr.toString()).toContain('ignored hide_error_dialogs')
+  expect(log).not.toContain(' reverse ')
+  expect(log).not.toContain(' push ')
 })
 
 test('device android reverses the stack ports it is configured with', () => {

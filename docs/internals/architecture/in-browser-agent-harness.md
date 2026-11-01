@@ -87,6 +87,20 @@ same mount. Sharing it removes the copy step: what Pi writes, `cat` sees, and vi
   surfaces (`js-exec`/QuickJS, python), neither enabled here, and breaks the bash interpreter it protects by tripping
   over just-bash's internal `Proxy` use. The sandbox is the virtual mount, which has no host-process access.
 
+### Commands the browser shell lacks
+
+The app resolves just-bash's **browser** bundle, which excludes `xan`, `sqlite3`, `tar`, and `python3` (they exit 127),
+and no JavaScript runtime is enabled. `awk` has no CSV mode. The environment prompt names only commands that run, and
+[`environment-prompt.test.ts`](../../../shared/agent-core/environment-prompt.test.ts) executes each one against the
+browser bundle, because Bun resolves the Node bundle, where the excluded commands work.
+
+### Attachments in the workspace
+
+[`writeAgentWorkspaceFiles`](../../../shared/agent-core/build-app-harness.ts) writes the turn's text attachments under
+`attachments/` before each prompt, overwriting any edit the model made, so the model can compute over a file too large
+to inline. What gets written, and the preview the prompt carries instead, is described in
+[attachments.md](attachments.md#the-built-in-agent-queries-text-attachments-from-its-workspace).
+
 ## The workspace jail
 
 Every thread's tools are rooted at `/workspace/<threadId>` on the one shared mount, which is also the isolation

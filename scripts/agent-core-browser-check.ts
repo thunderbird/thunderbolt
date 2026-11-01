@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
 
+/** Rows in the workspace file standing in for a large attachment: 1.2 MB, like a 10,000-row export. */
+const bigTsvRows = 600_000
 const temporaryDist = await mkdtemp(join(tmpdir(), 'thunderbolt-agent-core-'))
 const dist = resolve(process.env.BROWSER_TEST_DIST ?? temporaryDist)
 const server = Bun.serve({
@@ -94,63 +96,96 @@ try {
         }
         await page.goto(server.url.href)
         await loadHarness()
-        const results = await page.evaluate(async (url) => {
-          // Import the emitted app chunk, after removing helpers: a source/Bun import misses this regression.
-          const core: typeof import('../shared/agent-core/index.ts') = await import(url)
-          const backend = await core.mountAgentFs()
-          const conversations = []
-          for (const providerId of ['openrouter', 'thunderbolt', 'tinfoil']) {
-            const requests: string[] = []
-            const model = {
-              providerId,
-              modelId: providerId === 'tinfoil' ? 'glm-5-2' : 'test',
-              baseURL: 'https://provider.invalid/v1',
-              apiKey: 'test-placeholder',
-              reasoning: false,
-              supportsImages: false,
-              fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
-                requests.push(String(init?.body))
-                return new Response(
-                  [
-                    'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"hello back"},"finish_reason":null}]}',
-                    'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
-                    'data: [DONE]',
-                    '',
-                  ].join('\n\n'),
-                  { headers: { 'Content-Type': 'text/event-stream' } },
-                )
-              },
+        const results = await page.evaluate(
+          async ({ url, bigTsvRows }) => {
+            // Import the emitted app chunk, after removing helpers: a source/Bun import misses this regression.
+            const core: typeof import('../shared/agent-core/index.ts') = await import(url)
+            const backend = await core.mountAgentFs()
+            const conversations = []
+            for (const providerId of ['openrouter', 'thunderbolt', 'tinfoil']) {
+              const requests: string[] = []
+              const model = {
+                providerId,
+                modelId: providerId === 'tinfoil' ? 'glm-5-2' : 'test',
+                baseURL: 'https://provider.invalid/v1',
+                apiKey: 'test-placeholder',
+                reasoning: false,
+                supportsImages: false,
+                fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+                  requests.push(String(init?.body))
+                  return new Response(
+                    [
+                      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"hello back"},"finish_reason":null}]}',
+                      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+                      'data: [DONE]',
+                      '',
+                    ].join('\n\n'),
+                    { headers: { 'Content-Type': 'text/event-stream' } },
+                  )
+                },
+              }
+              const harness = await core.buildAppHarness({
+                model:
+                  providerId === 'tinfoil'
+                    ? {
+                        ...model,
+                        kind: 'confidential',
+                        vendor: 'zhipu',
+                        receipts: core.createReceiptLifecycle({
+                          submit: async () => {},
+                          reportError: (error) => {
+                            throw error
+                          },
+                        }),
+                      }
+                    : { ...model, kind: 'openai-compat' },
+                systemPrompt: 'Answer briefly.',
+                thinkingLevel: 'off',
+                threadId: providerId,
+              })
+              const first = await harness.prompt('hello first turn')
+              const second = await harness.prompt('hello second turn')
+              conversations.push({ providerId, first, second, requests })
             }
-            const harness = await core.buildAppHarness({
-              model:
-                providerId === 'tinfoil'
-                  ? {
-                      ...model,
-                      kind: 'confidential',
-                      vendor: 'zhipu',
-                      receipts: core.createReceiptLifecycle({
-                        submit: async () => {},
-                        reportError: (error) => {
-                          throw error
-                        },
-                      }),
-                    }
-                  : { ...model, kind: 'openai-compat' },
-              systemPrompt: 'Answer briefly.',
-              thinkingLevel: 'off',
-              threadId: providerId,
-            })
-            const first = await harness.prompt('hello first turn')
-            const second = await harness.prompt('hello second turn')
-            conversations.push({ providerId, first, second, requests })
-          }
-          const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
-          const written = await env.writeFile('persist.txt', 'survives reload')
-          if (!written.ok) {
-            throw written.error
-          }
-          return { backend, conversations }
-        }, chunkUrl)
+            const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
+            const written = await env.writeFile('persist.txt', 'survives reload')
+            if (!written.ok) {
+              throw written.error
+            }
+            // Attachments land as TSV, and the shell the model gets can aggregate them by column.
+            // Two files in one call, one over a megabyte, mirror a large and a small attachment sent together.
+            const failures = await core.writeAgentWorkspaceFiles('openrouter', [
+              {
+                path: 'attachments/a/spend.tsv',
+                content:
+                  'date\tpayee\tamount\n2024-03-01\tUnited, Inc\t-300.5\n2025-01-09\tHertz, LLC\t-99.5\n2025-02-01\tHilton\t-200',
+              },
+              { path: 'attachments/b/large.tsv', content: `n\n${'0\n'.repeat(bigTsvRows)}` },
+            ])
+            if (failures.length > 0) {
+              throw failures[0].error
+            }
+            const aggregated = await env.exec(
+              `awk -F'\\t' 'NR>1 { total[substr($1, 1, 4)] += $3 } END { for (year in total) print year, total[year] }' attachments/a/spend.tsv | sort`,
+            )
+            if (!aggregated.ok) {
+              throw aggregated.error
+            }
+            const largeLines = await env.exec('wc -l < attachments/b/large.tsv')
+            if (!largeLines.ok) {
+              throw largeLines.error
+            }
+            return {
+              backend,
+              conversations,
+              aggregated: aggregated.value.stdout,
+              largeLines: largeLines.value.stdout.trim(),
+            }
+          },
+          { url: chunkUrl, bigTsvRows },
+        )
+        assert.equal(results.aggregated, '2024 -300.5\n2025 -299.5\n')
+        assert.equal(results.largeLines, String(bigTsvRows + 1))
         assert.equal(results.backend, 'opfs')
         for (const { first, second, requests } of results.conversations) {
           for (const response of [first, second]) {
@@ -171,9 +206,23 @@ try {
           if (!read.ok) {
             throw read.error
           }
-          return { backend, text: read.value }
+          const attachment = await env.fileInfo('attachments/a/spend.tsv')
+          // Read the large file's bytes straight from OPFS, bypassing ZenFS's view of it.
+          const root = await navigator.storage.getDirectory()
+          const workspace = await root.getDirectoryHandle('workspace')
+          const thread = await workspace.getDirectoryHandle('openrouter')
+          const attachments = await thread.getDirectoryHandle('attachments')
+          const dir = await attachments.getDirectoryHandle('b')
+          const largeHandle = await dir.getFileHandle('large.tsv')
+          const largeBytes = (await largeHandle.getFile()).size
+          return { backend, text: read.value, attachmentPersisted: attachment.ok, largeBytes }
         }, chunkUrl)
-        assert.deepEqual(persisted, { backend: 'opfs', text: 'survives reload' })
+        assert.deepEqual(persisted, {
+          backend: 'opfs',
+          text: 'survives reload',
+          attachmentPersisted: true,
+          largeBytes: 2 + bigTsvRows * 2,
+        })
         assert.deepEqual(errors, [])
         console.log(`PASS ${label}`)
       } catch (error) {

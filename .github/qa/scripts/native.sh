@@ -152,11 +152,13 @@ system_image() {
 
 # A system error dialog ("System UI isn't responding") covers the app and hides its screen from Maestro. The setting
 # stops system_server from showing any new ANR or crash dialog; the broadcast closes one already on screen, which
-# the setting alone leaves in place (the dialogs listen for it, and the shell may send it).
+# the setting alone leaves in place (the dialogs listen for it, and the shell may send it), so a refusal only warns.
+# An app that stops responding is killed instead of asked to wait, so a hang shows as the app disappearing.
 hide_error_dialogs() {
   local serial=$1
   adb -s "$serial" shell settings put global hide_error_dialogs 1
-  adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null
+  adb -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null ||
+    echo "warning: could not close a system dialog already on screen" >&2
   [ "$(adb -s "$serial" shell settings get global hide_error_dialogs | tr -d '\r')" = 1 ] ||
     die "the emulator ignored hide_error_dialogs, so a system error dialog can cover the app during a flow"
 }
@@ -354,8 +356,8 @@ verify_build() {
 
 # The run half, with no key and from this checkout's own verify.ts: runs <flow> three times on <app> (verify-build's
 # output) on <device>, with the stack already serving, and writes the verdict to <out-json>, named `<fp>.<…>.json`,
-# with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when too few runs reached the
-# screen to tell, and non-zero otherwise; CI uploads the pass, or the inconclusive marker, on that. A
+# with the videos and the WebView log beside it. It exits 0 when the patch passes, 3 when the check could not tell
+# whether it works, and non-zero otherwise; CI uploads the pass, or the inconclusive marker, on that. A
 # finding's repro flow sits in the run's qa-out, whose verified.json holds its oracle; any other flow is the fix
 # agent's visual check. <original-app> is the build-native artifact of the same variant, without the patch, where the
 # flow must fail too: a visual check and a real-AI session need it.

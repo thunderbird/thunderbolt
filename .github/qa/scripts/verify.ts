@@ -718,7 +718,7 @@ export type NativeVerify = {
   runs: number
   failed: number
   passed: boolean
-  /** No run that reached the screen failed the patch or the check, and too few reached it to pass. */
+  /** No run that reached the screen failed, and the check could not tell whether the patch works. */
   inconclusive: boolean
   error?: string
   failsWithout?: boolean

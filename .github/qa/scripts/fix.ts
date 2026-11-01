@@ -808,7 +808,7 @@ const uncheckedNative = (fp: string, verifyNative: NativeCheck[], artifacts: Set
   return verifyNative.flatMap(({ fp: checked, platform }) => {
     if (checked !== fp || has('pass', platform)) return []
     if (has('inconclusive', platform)) {
-      const reason = `the native check on ${platform} reached the screen in too few runs to tell whether the patch works`
+      const reason = `the native check on ${platform} could not tell whether the patch works`
       return [{ platform, reason }]
     }
     if (has('patched', platform) && !has('native-started', platform)) {
@@ -856,7 +856,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
       .map((v) => ({
         check: v.platform,
         needed: !unchecked.some(({ platform }) => platform === v.platform),
-        reason: `the flow still fails on the native platform (${v.platform}). That run used the patched app and the backend from before the patch`,
+        reason: `the patch did not build on the native platform (${v.platform}), or the flow still fails there. A run, if one happened, used the patched app and the backend from before the patch`,
       })),
   ]
   return checks
@@ -1009,9 +1009,10 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
  *   later run, and the result and the run summary say why. When `artifacts.txt` lists no status of `attempt`, the
  *   job died before it recorded anything (a lost runner), its key scan failed, or it did not run in that attempt,
- *   and the ticket is left untouched the same way. A malformed file, or a listed status whose file is missing, fails publish. One reason,
- *   `already-passes`, means the repro passed three times on the commit before any agent code ran: with the
- *   `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no label.
+ *   and the ticket is left untouched the same way. A malformed file, or a listed status whose file is missing, fails
+ *   publish. One reason, `already-passes`, means the repro passed three times on the commit before any agent code
+ *   ran: with the `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no
+ *   label.
  * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
  * reads `artifacts.txt`, the names of the run's artifacts, and needs a `qa-pass-<fp>-<check>-<attempt>` for every
  * check the task needs (`missingPasses`). A missing `artifacts.txt` fails publish.
@@ -1019,13 +1020,13 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  * `Human Required` label. A native check without a pass that says nothing about the patch (`uncheckedNative`: its
  * `qa-inconclusive-<fp>-<platform>-<attempt>` marker is listed, or its patched app is and its
  * `qa-native-started-<fp>-<platform>-<attempt>` marker is not) leaves the ticket untouched for a later run when no
- * other reason stands against the patch. A patch that passed all that but lacks the `checks` pass, which the PR checks gate uploads
- * when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run, like a fix job that
- * stopped before its session. Otherwise
- * the task's branch gets one commit under the git identity the workflow configured, is pushed with `token` (a
- * GitHub App token; check out with `persist-credentials: false` so no second auth header competes), and becomes a
- * draft PR, whose link goes on the ticket as a comment. The push fails if the branch appeared on origin after route
- * checked it, so a person's branch is never extended or overwritten.
+ * other reason stands against the patch. A patch that passed all that but lacks the `checks` pass, which the PR
+ * checks gate uploads when the tree `stage` builds passes `prChecks`, leaves the ticket untouched for a later run,
+ * like a fix job that stopped before its session. Otherwise the task's branch gets one commit under the git identity
+ * the workflow configured, is pushed with `token` (a GitHub App token; check out with `persist-credentials: false`
+ * so no second auth header competes), and becomes a draft PR, whose link goes on the ticket as a comment. The push
+ * fails if the branch appeared on origin after route checked it, so a person's branch is never extended or
+ * overwritten.
  *
  * Guardrail: this never merges, approves, marks ready or enables auto-merge. No `gh pr merge`, `gh pr ready`,
  * `gh pr review`, and no merge or review API call. A person reviews the draft and decides.

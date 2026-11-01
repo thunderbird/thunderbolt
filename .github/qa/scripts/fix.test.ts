@@ -2249,8 +2249,8 @@ describe('publish', () => {
       visual: 'the visual check did not fail three times without the patch and pass three times with it',
       tests: "the patch's unit tests did not fail without the fix and pass with it",
       real: 'the repro spec still fails on the real AI providers',
-      ios: 'the flow still fails on the native platform (ios)',
-      android: 'the flow still fails on the native platform (android)',
+      ios: 'the patch did not build on the native platform (ios), or the flow still fails there',
+      android: 'the patch did not build on the native platform (android), or the flow still fails there',
     }
     const tasks: [string, Setup, (keyof typeof reasons)[]][] = [
       ['a web spec task', {}, ['session', 'replay', 'tests']],
@@ -2295,7 +2295,7 @@ describe('publish', () => {
       },
     )
 
-    describe('a native check too few of whose runs reached the screen', () => {
+    describe('a native check that could not tell whether the patch works', () => {
       const nativeTask = { flow: 'native', verifyNative: [native('ios'), native('android')] }
       const listed = (...names: string[]) =>
         put(join(outDir, 'artifacts.txt'), [`qa-fix-status-${fp}-1`, ...names, ''].join('\n'))
@@ -2318,7 +2318,7 @@ describe('publish', () => {
           log: () => {},
         })
 
-        const why = 'the native check on ios reached the screen in too few runs to tell whether the patch works'
+        const why = 'the native check on ios could not tell whether the patch works'
         expect(result).toEqual({ outcome: 'infrastructure', reason: why })
         expect(calls).toEqual([])
         expect(await readFile(summary, 'utf8')).toBe(`- THB-1 is left untouched for a later run: ${why}\n`)

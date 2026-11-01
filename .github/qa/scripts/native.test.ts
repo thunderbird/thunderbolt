@@ -22,7 +22,7 @@ const noPorts = {
 }
 
 /** `/sdcard` resolves only from the second check on, and Android 16 refuses the push of sample.png. */
-const fakeAdb = ({ ignoresSettings = false } = {}) => {
+const fakeAdb = ({ ignoresSettings = false, refusesBroadcast = false } = {}) => {
   const bin = mkdtempSync(join(work, 'bin-'))
   const calls = join(bin, 'calls.log')
   const script = `#!/bin/bash
@@ -38,6 +38,8 @@ case "$*" in
     ${ignoresSettings ? 'exit 0' : `touch '${bin}/hidden'`} ;;
   *"settings get global hide_error_dialogs")
     [ -f '${bin}/hidden' ] && echo 1 || echo null ;;
+  *"am broadcast "*)
+    ${refusesBroadcast ? 'echo "java.lang.SecurityException: permission denied" >&2; exit 1' : 'exit 0'} ;;
   *"push "*sample.png*) echo "adb: error: failed to copy: Operation not permitted" >&2; exit 1 ;;
 esac
 exit 0
@@ -145,6 +147,17 @@ test('device android hides system error dialogs and closes a showing one before 
   expect(at('am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS')).toBeGreaterThan(put)
   expect(readBack).toBeGreaterThan(put)
   expect(readBack).toBeLessThan(log.findIndex((line) => line.includes(' reverse ')))
+})
+
+test('device android goes on with a warning when the system refuses the dialog-closing broadcast', () => {
+  const { env, calls } = fakeAdb({ refusesBroadcast: true })
+  const proc = Bun.spawnSync(['bash', native, 'device', 'android'], { env: { ...process.env, ...noPorts, ...env } })
+  const log = readFileSync(calls, 'utf8')
+
+  expect(proc.exitCode).toBe(0)
+  expect(proc.stderr.toString()).toContain('could not close a system dialog')
+  expect(log).toContain('settings get global hide_error_dialogs')
+  expect(log).toContain(' reverse ')
 })
 
 test('device android fails when the emulator does not keep hide_error_dialogs, before anything else runs on it', () => {

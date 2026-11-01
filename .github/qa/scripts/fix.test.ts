@@ -2049,14 +2049,16 @@ describe('publish', () => {
   })
 
   // The patch would pass every check, so only the status stands between it and a PR.
-  const publishPassingPatch = (runs: RunCall[], calls: Call[], log: (line: string) => void = () => {}) =>
+  const publishPassingPatch = (runs: RunCall[], calls: Call[], log: (line: string) => void = () => {}, attempt = '1') =>
     publish({
       outDir,
       fp,
       live: true,
       key: 'lin',
       token: 't',
+      attempt,
       summary: join(dir, 'summary.md'),
+      repoDir: dir,
       run: fakeRun(runs, diffOutput),
       fetchFn: fakeLinear(calls),
       log,
@@ -2083,15 +2085,23 @@ describe('publish', () => {
   })
 
   // A lost runner uploads nothing. The list decides, so a status file on disk or another attempt's status opens no PR.
-  test('a fix job that uploaded no status in this attempt leaves the ticket and the repository alone', async () => {
+  test.each([
+    ['1', '2'],
+    ['2', '1'],
+  ])('no fix status in attempt %s leaves the ticket and the repository alone', async (attempt, other) => {
     await setup()
-    const passes = everyCheck.map((c) => `qa-pass-${fp}-${c}-1`)
-    await put(join(outDir, 'artifacts.txt'), [`qa-fix-${fp}-1`, `qa-fix-status-${fp}-2`, ...passes].join('\n'))
+    const passes = everyCheck.map((c) => `qa-pass-${fp}-${c}-${attempt}`)
+    await put(
+      join(outDir, 'artifacts.txt'),
+      [`qa-fix-${fp}-${attempt}`, `qa-fix-status-${fp}-${other}`, ...passes].join('\n'),
+    )
     const runs: RunCall[] = []
     const calls: Call[] = []
-    const result = await publishPassingPatch(runs, calls)
+    const result = await publishPassingPatch(runs, calls, () => {}, attempt)
 
-    const reason = 'the fix job uploaded no fix status in run attempt 1, so it ended before it recorded anything'
+    const reason =
+      `the run has no fix status from attempt ${attempt}: the fix job died before it recorded anything, ` +
+      'or it did not run in this attempt'
     expect(result).toEqual({ outcome: 'infrastructure', reason })
     expect(runs).toEqual([])
     expect(calls).toEqual([])

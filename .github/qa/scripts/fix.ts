@@ -985,8 +985,8 @@ const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
  * - `status/<fp>.json`, from the `qa-fix-status-<fp>` artifact the fix job uploads with every outcome: whether the
  *   job stopped before the fix session began. If so nothing was diagnosed, so the ticket is left untouched for a
  *   later run, and the result and the run summary say why. When `artifacts.txt` lists no status of `attempt`, the
- *   job died before it recorded anything (a lost runner) or its key scan failed, and the ticket is left untouched
- *   the same way. A malformed file, or a listed status whose file is missing, fails publish. One reason,
+ *   job died before it recorded anything (a lost runner), its key scan failed, or it did not run in that attempt,
+ *   and the ticket is left untouched the same way. A malformed file, or a listed status whose file is missing, fails publish. One reason,
  *   `already-passes`, means the repro passed three times on the commit before any agent code ran: with the
  *   `qa-pass-<fp>-unpatched-<attempt>` pass the ticket gets a comment saying so, and no PR and no label.
  * Both artifacts carry the run attempt in their name, and the workflow downloads those of `attempt`. Publish also
@@ -1043,7 +1043,8 @@ export const publish = async ({
   const artifacts = new Set((await readFile(join(outDir, 'artifacts.txt'), 'utf8')).split('\n').filter(Boolean))
   if (!artifacts.has(`qa-fix-status-${fp}-${attempt}`)) {
     return leaveForLater(
-      `the fix job uploaded no fix status in run attempt ${attempt}, so it ended before it recorded anything`,
+      `the run has no fix status from attempt ${attempt}: the fix job died before it recorded anything, ` +
+        'or it did not run in this attempt',
     )
   }
   // The fix job records and uploads this before any code the agent wrote runs outside its sandbox. A process the

@@ -456,15 +456,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    for its whole cap, though the action had no chance to write its execution file. `publish` downloads the file into
    `qa-out/status/`, where the agent's `qa-fix-<fp>-<run attempt>` cannot reach, and fails on a malformed one. When
    the session never began, `publish` touches neither Linear nor GitHub and still succeeds, and the run summary names
-   the ticket and says it was left for a later run. Only a process the sandbox let outlive the session
-   could still rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is
-   unconfirmed). At worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to
+   the ticket and says it was left for a later run. Only a process the sandbox let outlive the session could still
+   rewrite that record before its upload (whether the sandbox blocks writes to `$RUNNER_TEMP` is unconfirmed). At worst that leaves its own ticket untouched instead of `Human Required`; the record never leads to
    a PR. A session that began and then failed or timed out keeps the diagnosis and `Human Required`. A fix job that
-   uploaded no status died before it recorded anything (the runner was lost or shut down), or its key scan failed.
-   Nothing says whether the agent ran, so `publish` treats it like a session that never began: no PR, no Linear
-   write, and a summary line naming the ticket. It decides from the run's artifact list and
-   downloads the status by pattern, which finds nothing without an error, so that run shows no error annotation in
-   `publish`. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
+   uploaded no status died before it recorded anything (the runner was lost or shut down), its key scan failed, or
+   it did not run in that attempt. Nothing says whether the agent ran, so `publish` treats it like a session that
+   never began: no PR, no Linear write, and a summary line naming the ticket. It decides from the run's artifact
+   list and downloads the status by pattern, which finds nothing without an error, so that run shows no error
+   annotation in `publish`. One whose secret scan failed uploaded its status but no fix output, and its ticket gets
    `Human Required`. `verify-native-run` and `verify-real` download the patched app or frontend by pattern, so a fix
    that built none shows no error there either.
    An iOS or Android task carries its Maestro `flow` instead of a spec: the agent writes the patch on Linux (reproducing

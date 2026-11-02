@@ -120,6 +120,14 @@ describe('OnboardingLocationStep', () => {
       expect(triggerButton?.getAttribute('aria-expanded')).toBeTruthy()
     })
 
+    it('gives the location combobox an accessible name', async () => {
+      await renderComponent()
+
+      expect(screen.getByRole('combobox', { name: 'Location' })).toBe(
+        screen.getByText('Select location…').closest('button')!,
+      )
+    })
+
     it('should maintain accessibility during interactions', async () => {
       await renderComponent()
 

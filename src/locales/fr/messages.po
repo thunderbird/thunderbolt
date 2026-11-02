@@ -2376,6 +2376,7 @@ msgstr "Stockage local"
 msgid "Localization"
 msgstr "Localisation"
 
+#: src/components/location-search-combobox.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "Position"

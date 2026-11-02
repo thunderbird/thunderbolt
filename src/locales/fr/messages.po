@@ -865,6 +865,7 @@ msgstr "Presse-papiers indisponible. Veuillez sélectionner la phrase ci-dessus 
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Fermer"
@@ -1635,6 +1636,7 @@ msgstr "Terminé"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Télécharger"
 

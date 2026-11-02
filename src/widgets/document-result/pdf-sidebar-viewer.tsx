@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ContentViewHeader } from '@/content-view/header'
 import { useContentView } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,7 @@ type DocumentPreviewProps = {
  * by the caller (Haystack-backed or local IndexedDB) and passed in as `state`.
  */
 const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPreviewProps) => {
+  const { t } = useLingui()
   const { close } = useContentView()
   const [numPages, setNumPages] = useState<number | null>(null)
 
@@ -77,7 +78,14 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
   }, [initialPage, numPages])
 
   const downloadAction = (
-    <Button onClick={handleDownload} disabled={!blobUrl} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+    <Button
+      onClick={handleDownload}
+      disabled={!blobUrl}
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 rounded-full"
+      aria-label={t`Download`}
+    >
       <Download className="size-4" />
     </Button>
   )

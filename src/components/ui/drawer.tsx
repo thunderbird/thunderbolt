@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
-import { type ComponentProps, useState } from 'react'
+import { type ComponentProps, useRef, useState } from 'react'
 
 import { useSurfaceHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
@@ -68,7 +68,9 @@ type DrawerContentProps = DrawerPrimitive.Popup.Props & {
   forceBackdrop?: boolean
 }
 
-const DrawerContent = ({ className, children, forceBackdrop = false, ...props }: DrawerContentProps) => {
+const DrawerContent = ({ className, children, forceBackdrop = false, initialFocus, ...props }: DrawerContentProps) => {
+  const popupRef = useRef<HTMLDivElement>(null)
+
   return (
     <DrawerPrimitive.VirtualKeyboardProvider>
       <DrawerPrimitive.Portal data-slot="drawer-portal">
@@ -84,7 +86,16 @@ const DrawerContent = ({ className, children, forceBackdrop = false, ...props }:
           className="pointer-events-auto fixed inset-0 z-50 select-none"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <DrawerPrimitive.Popup data-slot="drawer-content" className={cn(popupClass, className)} {...props}>
+          {/* The sheet aria-hides everything outside it, so `initialFocus={false}`
+              (keep focus off the sheet's fields and rows) focuses the popup itself
+              rather than leaving focus on the now-hidden trigger. */}
+          <DrawerPrimitive.Popup
+            ref={popupRef}
+            data-slot="drawer-content"
+            className={cn(popupClass, className)}
+            initialFocus={initialFocus === false ? popupRef : initialFocus}
+            {...props}
+          >
             <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[inherit] select-text group-data-[swiping]/drawer-content:select-none">
               {children}
             </DrawerPrimitive.Content>

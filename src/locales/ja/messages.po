@@ -1513,7 +1513,7 @@ msgstr "説明"
 
 #: src/projects/project-form.tsx
 msgid "Description (optional)"
-msgstr ""
+msgstr "説明（任意）"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -3659,8 +3659,8 @@ msgid "Share debug transcript"
 msgstr ""
 
 #: src/projects/project-form.tsx
-msgid "Shared instructions for projects chats"
-msgstr ""
+msgid "Shared instructions for project chats"
+msgstr "プロジェクト内のチャットに共通の指示"
 
 #: src/lib/tray.tsx
 msgid "Show"
@@ -4853,7 +4853,7 @@ msgstr "これは何のためのものですか？"
 
 #: src/projects/project-form.tsx
 msgid "What is this project for?"
-msgstr ""
+msgstr "このプロジェクトの目的は何ですか？"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"

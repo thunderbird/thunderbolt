@@ -3671,8 +3671,8 @@ msgid "Share debug transcript"
 msgstr "Share debug transcript"
 
 #: src/projects/project-form.tsx
-msgid "Shared instructions for projects chats"
-msgstr "Shared instructions for projects chats"
+msgid "Shared instructions for project chats"
+msgstr "Shared instructions for project chats"
 
 #: src/lib/tray.tsx
 msgid "Show"

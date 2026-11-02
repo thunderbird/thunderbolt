@@ -1537,7 +1537,7 @@ msgstr "Descrição"
 
 #: src/projects/project-form.tsx
 msgid "Description (optional)"
-msgstr ""
+msgstr "Descrição (opcional)"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -3683,8 +3683,8 @@ msgid "Share debug transcript"
 msgstr ""
 
 #: src/projects/project-form.tsx
-msgid "Shared instructions for projects chats"
-msgstr ""
+msgid "Shared instructions for project chats"
+msgstr "Instruções compartilhadas para os chats do projeto"
 
 #: src/lib/tray.tsx
 msgid "Show"
@@ -4877,7 +4877,7 @@ msgstr "Para que isto serve?"
 
 #: src/projects/project-form.tsx
 msgid "What is this project for?"
-msgstr ""
+msgstr "Para que serve este projeto?"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"

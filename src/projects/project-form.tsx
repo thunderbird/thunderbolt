@@ -119,7 +119,7 @@ export const ProjectForm = ({ initialValues, onCancel, onSubmit }: ProjectFormPr
         <Textarea
           id={fieldId('instructions')}
           maxLength={maxProjectInstructionsLength}
-          placeholder={t`Shared instructions for projects chats`}
+          placeholder={t`Shared instructions for project chats`}
           value={instructions}
           onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'instructions', value: event.target.value })}
           className="min-h-48 resize-none md:min-h-48"

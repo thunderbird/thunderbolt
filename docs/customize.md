@@ -46,8 +46,9 @@ model of its own, chosen at its end, and ignores what you configure here.
 | Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave                                 |
 | Custom                | Optional   | Required     | Any OpenAI-compatible endpoint on this machine, or on an address reachable over HTTPS |
 
-The **Custom** form pre-fills `http://localhost:11434/v1`, the usual address of a local Ollama
-install. Leave the key blank if the endpoint does not need one.
+The **Custom** form suggests `http://localhost:11434/v1`, the usual address of a local Ollama
+install, as a placeholder; type the endpoint URL to load its models. Leave the key blank if the
+endpoint does not need one.
 
 ### Adding a model
 

@@ -149,9 +149,9 @@ export const ProjectTree = (props: ProjectTreeProps) => {
       {dialog?.type === 'edit' && <ProjectEditorDialog project={dialog.project} onClose={closeDialog} />}
       {dialog?.type === 'delete' && (
         <ProjectDeleteDialog
-          projectId={dialog.projectId}
+          target={dialog.target}
           onClose={closeDialog}
-          onDeleted={() => projectsDeleted(dialog.projectId)}
+          onDeleted={() => projectsDeleted(dialog.target)}
         />
       )}
     </>

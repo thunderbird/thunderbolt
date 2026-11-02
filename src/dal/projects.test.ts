@@ -115,13 +115,19 @@ describe('chat membership', () => {
     expect(await getProjectChatThreads(db, project.id)).toHaveLength(0)
   })
 
-  it('orphans chats on project delete instead of removing them', async () => {
+  it('deletes only the selected project, keeping its chats and other projects intact', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })
     const threadId = await seedThread(project.id)
+    const other = await createProject(db, { name: 'Keep' })
+    const otherThreadId = await seedThread(other.id)
     await softDeleteProject(db, project.id)
 
-    const [thread] = await db.select().from(chatThreadsTable)
+    expect(await getProject(db, project.id)).toBeNull()
+    expect(await getProject(db, other.id)).not.toBeNull()
+    const [otherThread] = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, otherThreadId))
+    expect(otherThread.projectId).toBe(other.id)
+    const [thread] = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId))
     expect(thread.id).toBe(threadId)
     expect(thread.projectId).toBeNull()
     expect(thread.deletedAt).toBeNull()
@@ -129,6 +135,18 @@ describe('chat membership', () => {
 })
 
 describe('bulk project deletion', () => {
+  it.each([null, undefined])('does not widen single-project deletion for a missing id (%s)', async (id) => {
+    const db = getDb()
+    const project = await createProject(db, { name: 'Keep' })
+    const chatId = await seedThread(project.id)
+    // An untyped caller must not turn a missing selection into bulk deletion.
+    // @ts-expect-error Missing ids are also rejected at the TypeScript boundary.
+    await softDeleteProject(db, id)
+    expect(await getProject(db, project.id)).not.toBeNull()
+    const [chat] = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, chatId))
+    expect(chat.projectId).toBe(project.id)
+  })
+
   it('soft-deletes every live project, preserving chats, messages, and existing deletion dates', async () => {
     const db = getDb()
     const projects = await Promise.all([

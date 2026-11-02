@@ -8,7 +8,7 @@
  *
  */
 
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
@@ -133,9 +133,8 @@ export const updateProject = async (db: AnyDrizzleDatabase, id: string, patch: U
  * take a user's conversations with it; removing the chats too is a separate,
  * explicit action.
  */
-const softDeleteProjects = async (db: AnyDrizzleDatabase, id: string | null): Promise<void> => {
+const softDeleteProjects = async (db: AnyDrizzleDatabase, target: SQL): Promise<void> => {
   const deletedAt = nowIso()
-  const target = and(isNull(projectsTable.deletedAt), id === null ? undefined : eq(projectsTable.id, id))
   await db.transaction(async (tx) => {
     await tx
       .update(chatThreadsTable)
@@ -151,10 +150,12 @@ const softDeleteProjects = async (db: AnyDrizzleDatabase, id: string | null): Pr
 }
 
 /** Remove one project while keeping its chats as ordinary chats. */
-export const softDeleteProject = (db: AnyDrizzleDatabase, id: string): Promise<void> => softDeleteProjects(db, id)
+export const softDeleteProject = (db: AnyDrizzleDatabase, id: string): Promise<void> =>
+  softDeleteProjects(db, and(isNull(projectsTable.deletedAt), eq(projectsTable.id, id))!)
 
 /** Remove every live project atomically, keeping all chats and their messages. */
-export const softDeleteAllProjects = (db: AnyDrizzleDatabase): Promise<void> => softDeleteProjects(db, null)
+export const softDeleteAllProjects = (db: AnyDrizzleDatabase): Promise<void> =>
+  softDeleteProjects(db, isNull(projectsTable.deletedAt))
 
 /** Pin (or unpin, with `null`) a project to the top of the list. */
 export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order: number | null): Promise<void> => {

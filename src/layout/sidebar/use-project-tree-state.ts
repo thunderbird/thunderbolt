@@ -10,6 +10,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useProjects, setProjectPinned } from '@/dal/projects'
 import { useDatabase } from '@/contexts'
 import type { Project } from '@/types'
+import type { ProjectDeletionTarget } from '@/projects/project-delete-dialog'
 import type { ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { projectTreeReducer } from '@/projects/project-tree-state'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
@@ -18,7 +19,7 @@ import type { ChatThread } from './types'
 type ProjectDialog =
   | { type: 'create' }
   | { type: 'edit'; project: Project }
-  | { type: 'delete'; projectId: string | null }
+  | { type: 'delete'; target: ProjectDeletionTarget }
 
 /** Keep project expansion, incremental disclosure, and creation navigation together. */
 export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThreadId?: string) => {
@@ -47,10 +48,10 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
     dialog,
     sectionExpanded,
     openCreateDialog: () => setDialog({ type: 'create' }),
-    openDeleteAll: () => setDialog({ type: 'delete', projectId: null }),
+    openDeleteAll: () => setDialog({ type: 'delete', target: { scope: 'all' } }),
     closeDialog: () => setDialog(null),
-    projectsDeleted: async (projectId: string | null) => {
-      if (activeId && (projectId === null || activeId === projectId)) {
+    projectsDeleted: async (target: ProjectDeletionTarget) => {
+      if (activeId && (target.scope === 'all' || activeId === target.projectId)) {
         await closeMobileSidebar()
         navigate('/chats/new')
       }
@@ -67,7 +68,7 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
           await setProjectPinned(db, project.id, project.pinnedOrder === null ? 0 : null)
         }),
       onEdit: () => setDialog({ type: 'edit', project }),
-      onDelete: () => setDialog({ type: 'delete', projectId: project.id }),
+      onDelete: () => setDialog({ type: 'delete', target: { scope: 'one', projectId: project.id } }),
     }),
     projectCreated: async (id: string) => {
       setSectionExpanded('true')

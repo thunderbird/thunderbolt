@@ -150,6 +150,7 @@ export const ChatList = ({
       <SidebarMenuItem>
         <SidebarMenuButton
           onClick={onSearchClick}
+          aria-label={t`Search`}
           tooltip={t`Search`}
           className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
         >
@@ -162,6 +163,7 @@ export const ChatList = ({
             <SidebarMenuButton
               onClick={() => deleteAllChatsDialogRef.current?.open()}
               disabled={deleteAllChatsMutation.isPending}
+              aria-label={t`Clear all chats`}
               tooltip={t`Clear all chats`}
               className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
             >

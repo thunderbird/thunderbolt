@@ -143,6 +143,18 @@ describe('Sidebar reactivity', () => {
     expect(sidebarFooter?.className).not.toContain('shadow-[')
   })
 
+  it('names the icon-only chat actions in the collapsed rail', async () => {
+    await getDb().insert(chatThreadsTable).values({ id: uuidv7(), title: 'Rail Chat', isEncrypted: 0 })
+
+    renderWithReactivity(<Sidebar />, {
+      tables: ['chat_threads'],
+      wrapper: createSidebarWrapper({ defaultOpen: false }),
+    })
+
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Clear all chats' }))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+  })
+
   describe('section toggle', () => {
     const minimalConfig = { config: { minimalMode: true }, configLoaded: true }
 

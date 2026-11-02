@@ -38,4 +38,13 @@ describe('ContentViewHeader', () => {
     fireEvent.click(closeButton)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('names the close button on desktop', () => {
+    const onClose = mock()
+
+    render(<ContentViewHeader title="sample.pdf" onClose={onClose} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
-import { getFileType } from './pdf-sidebar-viewer'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, mock, test } from 'bun:test'
+import { ContentViewProvider } from '@/content-view/context'
+import { getFileType, LocalPdfSidebarViewer } from './pdf-sidebar-viewer'
 
 describe('getFileType', () => {
   test('detects PDF', () => {
@@ -29,5 +31,21 @@ describe('getFileType', () => {
 
   test('returns unsupported when there is no extension', () => {
     expect(getFileType('README')).toBe('unsupported')
+  })
+})
+
+describe('LocalPdfSidebarViewer', () => {
+  afterEach(cleanup)
+
+  test('gives the header icon buttons accessible names', () => {
+    render(
+      <ContentViewProvider trackEvent={mock()}>
+        <LocalPdfSidebarViewer localFileId="missing" fileName="sample.pdf" />
+      </ContentViewProvider>,
+    )
+
+    expect(screen.getByRole('heading', { name: 'sample.pdf' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 })

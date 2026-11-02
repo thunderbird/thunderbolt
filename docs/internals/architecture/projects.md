@@ -111,7 +111,7 @@ explicit project pin order remains first. Metadata edits do not bump recency.
 
 Starting a drag does not expand folders or remove the five-item cap. The
 "Remove from project" drop target appears only for a chat that belongs to a
-project. **Move to project** remains searchable for reaching any folder.
+project. **Move** remains searchable for reaching any folder.
 
 The burn action and its search command delete **only chats outside projects**.
 They soft-delete and scrub the matching threads and messages in one transaction;
@@ -165,7 +165,7 @@ include/exclude on any future table.
 - **Search is lexical, not semantic.** Vector search needs an embedding model, a
   vector store, and a privacy decision about sending message text to a provider.
 - **Touch drag is unverified.** Both mobile and desktop show project folders.
-  Every platform reaches membership through **Move to project** in a chat's
+  Every platform reaches membership through **Move** in a chat's
   action menu (long-press on mobile, right-click or `⋯` on desktop), which opens
   `MoveChatToProjectDialog`. The sidebar owns one dialog instance rather than one
   per row, since the list is virtualized and hundreds of rows long.

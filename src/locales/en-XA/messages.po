@@ -99,8 +99,8 @@ msgstr ""
 #~ msgstr ""
 
 #: src/layout/sidebar/sidebar-section-toggle.tsx
-msgid "{label} options"
-msgstr ""
+#~ msgid "{label} options"
+#~ msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -1414,7 +1414,6 @@ msgstr ""
 msgid "Delete chats"
 msgstr ""
 
-#: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 #: src/search/commands/use-commands.ts
 msgid "Delete chats outside projects"
@@ -2508,14 +2507,19 @@ msgstr ""
 msgid "More"
 msgstr ""
 
+#: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "Move"
+msgstr ""
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "Move to project"
-msgstr ""
+#~ msgid "Move to project"
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
@@ -3003,14 +3007,19 @@ msgstr ""
 msgid "Personalization"
 msgstr ""
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr ""
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-msgid "Pin project"
-msgstr ""
+#~ msgid "Pin project"
+#~ msgstr ""
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3082,6 +3091,10 @@ msgstr ""
 msgid "Project name"
 msgstr ""
 
+#: src/layout/sidebar/project-tree.tsx
+msgid "Project options"
+msgstr ""
+
 #: src/projects/project-editor-dialog.tsx
 msgid "Project settings"
 msgstr ""
@@ -3139,6 +3152,10 @@ msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
+msgstr ""
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Recent chat options"
 msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
@@ -3410,7 +3427,6 @@ msgid "Scroll to bottom"
 msgstr ""
 
 #: src/components/ui/page-search.tsx
-#: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
@@ -4576,14 +4592,16 @@ msgstr ""
 msgid "Unlock with passkey"
 msgstr ""
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr ""
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-msgid "Unpin project"
-msgstr ""
+#~ msgid "Unpin project"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"

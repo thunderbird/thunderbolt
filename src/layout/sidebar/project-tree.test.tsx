@@ -18,6 +18,7 @@ import { chatThreadsTable } from '@/db/tables'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
+import { PowerSyncReactivityTestProvider } from '@/test-utils/powersync-mock'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import {
@@ -29,7 +30,7 @@ import {
 } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import { ProjectTree } from './project-tree'
-import type { ProjectTreeProps } from './project-tree-row'
+import type { ProjectTreeProps } from './project-tree'
 
 registerFramerMotionMock()
 // Register before linking the drawer so its close callback settles under fake timers.
@@ -52,7 +53,7 @@ const tree = (isDragging: boolean, isMobile = false, overrides: Partial<ProjectT
     isMobile={isMobile}
     isDragging={isDragging}
     draggingFromProjectId={null}
-    deleteChatMutation={{ mutate: () => {}, isPending: false } as never}
+    deleteChatMutation={{ mutate: () => {}, isPending: false }}
     deleteChatDialogRef={{ current: null }}
     threadIdRef={{ current: null }}
     onChatClick={() => {}}
@@ -210,7 +211,7 @@ it('preserves the visible project rows and open folders while dragging a recent 
   expect(section).toHaveAttribute('aria-expanded', 'false')
   expect(firstProject).not.toBeVisible()
   expect(screen.queryByRole('button', { name: 'Show more projects' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Projects options' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Project options' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'New project' })).toBeNull()
 
   rerender(tree(true))
@@ -271,7 +272,7 @@ it('keeps management actions and dialog focus in the collapsed project submenu',
   }
   await openMenu()
   await act(async () => {
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin project' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
   })
   expect((await getProject(getDb(), project.id))?.pinnedOrder).toBe(0)
   await openMenu()
@@ -305,7 +306,7 @@ it('opens project creation by long-pressing the mobile Projects heading without 
   const section = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'false')
-  expect(screen.getByRole('button', { name: 'Projects options' })).toHaveClass('hidden')
+  expect(screen.getByRole('button', { name: 'Project options' })).toHaveClass('hidden')
   expect(screen.queryByRole('button', { name: 'New project' })).toBeNull()
 
   fireEvent.touchStart(section, { touches: [{ clientX: 20, clientY: 20 }] })
@@ -332,7 +333,7 @@ it('creates a project from the desktop section options menu', async () => {
     { wrapper: createWrapper() },
   )
   const section = await waitForElement(() => screen.queryByRole('button', { name: 'Projects' }))
-  const options = screen.getByRole('button', { name: 'Projects options' })
+  const options = screen.getByRole('button', { name: 'Project options' })
   fireEvent.keyDown(options, { key: 'Enter' })
   expect(section).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'New project' })))
@@ -356,7 +357,7 @@ it.each([false, true])('discards a cancelled project draft before reopening (mob
   }
   render(tree(false, isMobile), { wrapper: createWrapper() })
   const openCreation = async () => {
-    const options = screen.getByRole('button', { name: 'Projects options' })
+    const options = screen.getByRole('button', { name: 'Project options' })
     if (isMobile) {
       fireEvent.contextMenu(screen.getByRole('button', { name: 'Projects' }))
     } else {
@@ -461,7 +462,7 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   }
 
   await openMenu()
-  for (const name of ['New chat', 'Pin project', 'Edit', 'Delete']) {
+  for (const name of ['New chat', 'Pin', 'Edit', 'Delete']) {
     expect(screen.getByRole(actionRole, { name })).toBeVisible()
   }
   if (isMobile) {
@@ -470,7 +471,7 @@ it.each(['context', 'overflow', 'mobile'])('offers the same working project acti
   } else {
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'New chat',
-      'Pin project',
+      'Pin',
       'Edit',
       'Delete',
     ])
@@ -528,4 +529,41 @@ it('restores Projects expansion after remounting and persists both toggle direct
   fireEvent.click(restored)
   expect(restored).toHaveAttribute('aria-expanded', 'true')
   expect(localStorage.getItem('sidebar.projects.expanded')).toBeNull()
+})
+
+it('keeps an editor draft when live projects push its row out of the preview', async () => {
+  for (const name of ['Oldest', 'Editing', 'Third', 'Fourth', 'Fifth', 'Newest']) {
+    await createProject(getDb(), { name })
+  }
+  const triggerChangeRef = { current: null as ((tables: string[]) => void) | null }
+  render(
+    <PowerSyncReactivityTestProvider
+      tables={['projects', 'chat_threads', 'chat_messages']}
+      triggerChangeRef={triggerChangeRef}
+    >
+      {tree(false)}
+    </PowerSyncReactivityTestProvider>,
+    { wrapper: createWrapper() },
+  )
+  const folder = await waitForElement(() => screen.queryByRole('button', { name: 'Editing' }))
+  fireEvent.contextMenu(folder)
+  fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Edit' })))
+  const editor = await waitForElement(() => screen.queryByRole('dialog', { name: 'Project settings' }))
+  fireEvent.change(within(editor).getByRole('textbox', { name: 'Name' }), { target: { value: 'Unsaved draft' } })
+
+  await act(async () => {
+    await createProject(getDb(), { name: 'Arrived through sync' })
+    triggerChangeRef.current!(['projects'])
+    await getClock().runAllAsync()
+  })
+  await waitForElement(() => screen.queryByRole('button', { name: 'Arrived through sync' }))
+  expect(screen.queryByRole('button', { name: 'Editing' })).toBeNull()
+  expect(screen.getByRole('dialog', { name: 'Project settings' })).toBe(editor)
+  expect(within(editor).getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved draft')
+  await act(async () => {
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }))
+    await getClock().runAllAsync()
+  })
+  expect(screen.queryByRole('dialog', { name: 'Project settings' })).toBeNull()
+  expect((await getAllProjects(getDb())).some((project) => project.name === 'Unsaved draft')).toBe(true)
 })

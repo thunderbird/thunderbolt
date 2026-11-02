@@ -25,7 +25,7 @@ Every message in a chat carries the project's name and instructions, alongside t
 
 ## Add chats to a project
 
-**Move to project** in a chat's action menu both files a chat and removes it from a project, and on desktop you can drag a chat onto a project row instead. A chat belongs to at most one project.
+**Move** in a chat's action menu both files a chat and removes it from a project, and on desktop you can drag a chat onto a project row instead. A chat belongs to at most one project.
 
 Expand a project folder to see its chats. **⋯ → New chat** creates a chat inside that project. Projects, their chats, and Recents show five entries initially; **Show more** adds five at a time. The sidebar uses one scroll area. Chats and projects rise with recent conversation activity.
 

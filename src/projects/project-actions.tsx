@@ -8,39 +8,35 @@ import { MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 import { useProjectActionsState } from './use-project-actions-state'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
-import { ProjectDeleteDialog } from './project-delete-dialog'
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
 import type { Project } from '@/types'
-import { ProjectEditorDialog } from './project-editor-dialog'
-import { ProjectActionMenuItems } from './project-action-menu-items'
+import { ProjectActionMenuItems, type ProjectActionHandlers } from './project-action-menu-items'
 
 type ProjectActionsProps = {
   project: Project
-  onNewChat: () => void
-  onDeleted: () => void
+  actions: ProjectActionHandlers
   triggerClassName?: string
   children: (menu: ReactNode) => ReactElement
 }
 
 /** Project navigation and management from the sidebar row. */
-export const ProjectActions = ({ project, onNewChat, onDeleted, triggerClassName, children }: ProjectActionsProps) => {
+export const ProjectActions = ({
+  project,
+  actions: projectActions,
+  triggerClassName,
+  children,
+}: ProjectActionsProps) => {
   const { t } = useLingui()
   const {
     isMobile,
-    dialog,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
     actions,
     handleCloseAutoFocus,
     handleMobileOpenChange,
-    closeDialog,
-  } = useProjectActionsState({
-    projectId: project.id,
-    pinned: project.pinnedOrder !== null,
-    onNewChat,
-  })
+  } = useProjectActionsState(projectActions)
   const pinned = project.pinnedOrder !== null
   const menu = (
     <DetailActionsMenu
@@ -80,7 +76,7 @@ export const ProjectActions = ({ project, onNewChat, onDeleted, triggerClassName
           actions={[
             { label: t`New chat`, icon: <MessageCirclePlus className="size-4" />, onSelect: actions.onNewChat },
             {
-              label: pinned ? t`Unpin project` : t`Pin project`,
+              label: pinned ? t`Unpin` : t`Pin`,
               icon: pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />,
               onSelect: actions.onTogglePin,
             },
@@ -95,10 +91,6 @@ export const ProjectActions = ({ project, onNewChat, onDeleted, triggerClassName
             <ProjectActionMenuItems context pinned={pinned} {...actions} />
           </ContextMenuContent>
         </ContextMenu>
-      )}
-      {dialog === 'edit' && <ProjectEditorDialog project={project} onClose={closeDialog} />}
-      {dialog === 'delete' && (
-        <ProjectDeleteDialog projectId={project.id} onClose={closeDialog} onDeleted={onDeleted} />
       )}
     </>
   )

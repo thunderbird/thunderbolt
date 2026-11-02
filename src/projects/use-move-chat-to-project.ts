@@ -6,7 +6,7 @@
  * Moving a chat into (or out of) a project.
  *
  * Shared by the two entry points — dragging a chat onto a sidebar project row,
- * and the chat's own "Move to project" action — because the write is more than
+ * and the chat's own "Move" action — because the write is more than
  * one column: the live session's badge has to be updated and the sidebar list
  * re-read. Two copies of that would drift.
  *

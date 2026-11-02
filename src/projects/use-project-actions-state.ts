@@ -2,30 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useRef, useState, useTransition } from 'react'
-import { useDatabase } from '@/contexts'
-import { setProjectPinned } from '@/dal/projects'
+import { useRef, useState } from 'react'
 import { useLongPress } from '@/hooks/use-long-press'
 import { useIsMobile } from '@/hooks/use-mobile'
 
-type ProjectActionsStateProps = {
-  projectId: string
-  pinned: boolean
-  onNewChat: () => void
-}
+import type { ProjectActionHandlers } from './project-action-menu-items'
 
-/** Coordinate project actions, focus restoration, and mobile long-press behavior. */
-export const useProjectActionsState = ({ projectId, pinned, onNewChat }: ProjectActionsStateProps) => {
-  const db = useDatabase()
+/** Keep menu focus and mobile long-press behavior independent of dialog ownership. */
+export const useProjectActionsState = (actions: ProjectActionHandlers) => {
   const { isMobile } = useIsMobile()
-  const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
-  const [, startTransition] = useTransition()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const openingDialog = useRef(false)
   const longPressFired = useRef(false)
-  const openDialog = (next: 'edit' | 'delete') => {
+  const handOffFocus = (action: () => void) => () => {
     openingDialog.current = !isMobile
-    setDialog(next)
+    action()
   }
   const handleCloseAutoFocus = (event: Event) => {
     if (openingDialog.current) {
@@ -43,28 +34,18 @@ export const useProjectActionsState = ({ projectId, pinned, onNewChat }: Project
     longPressFired.current = true
     handleMobileOpenChange(true)
   })
-  const actions = {
-    onNewChat: () => {
-      openingDialog.current = !isMobile
-      onNewChat()
-    },
-    onTogglePin: () => {
-      startTransition(async () => {
-        await setProjectPinned(db, projectId, pinned ? null : 0)
-      })
-    },
-    onEdit: () => openDialog('edit'),
-    onDelete: () => openDialog('delete'),
-  }
   return {
     isMobile,
-    dialog,
     mobileMenuOpen,
     longPressFired,
     longPressHandlers,
-    actions,
+    actions: {
+      ...actions,
+      onNewChat: handOffFocus(actions.onNewChat),
+      onEdit: handOffFocus(actions.onEdit),
+      onDelete: handOffFocus(actions.onDelete),
+    },
     handleCloseAutoFocus,
     handleMobileOpenChange,
-    closeDialog: () => setDialog(null),
   }
 }

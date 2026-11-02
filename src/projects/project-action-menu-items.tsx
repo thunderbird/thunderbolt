@@ -7,6 +7,13 @@ import { MessageCirclePlus, Pin, PinOff, SquarePen, Trash2 } from 'lucide-react'
 import { ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 
+export type ProjectActionHandlers = {
+  onNewChat: () => void
+  onEdit: () => void
+  onTogglePin: () => void
+  onDelete: () => void
+}
+
 /** Keep the folder's context menu and overflow menu in sync. */
 export const ProjectActionMenuItems = ({
   context = false,
@@ -15,14 +22,7 @@ export const ProjectActionMenuItems = ({
   onTogglePin,
   pinned,
   onDelete,
-}: {
-  context?: boolean
-  onNewChat: () => void
-  onEdit: () => void
-  onTogglePin: () => void
-  pinned: boolean
-  onDelete: () => void
-}) => {
+}: ProjectActionHandlers & { context?: boolean; pinned: boolean }) => {
   const Item = context ? ContextMenuItem : DropdownMenuItem
   const Separator = context ? ContextMenuSeparator : DropdownMenuSeparator
   return (
@@ -33,7 +33,7 @@ export const ProjectActionMenuItems = ({
       </Item>
       <Item onSelect={onTogglePin} className="cursor-pointer">
         {pinned ? <PinOff /> : <Pin />}
-        {pinned ? <Trans>Unpin project</Trans> : <Trans>Pin project</Trans>}
+        {pinned ? <Trans>Unpin</Trans> : <Trans>Pin</Trans>}
       </Item>
       <Separator />
       <Item onSelect={onEdit} className="cursor-pointer">

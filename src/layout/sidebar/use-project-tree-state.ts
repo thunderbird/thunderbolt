@@ -2,26 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useReducer, useState } from 'react'
+import { useReducer, useState, useTransition } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSidebar } from '@/components/ui/sidebar'
-import { useProjects } from '@/dal/projects'
+import { useProjects, setProjectPinned } from '@/dal/projects'
+import { useDatabase } from '@/contexts'
+import type { Project } from '@/types'
+import type { ProjectActionHandlers } from '@/projects/project-action-menu-items'
 import { projectTreeReducer } from '@/projects/project-tree-state'
 import { useSidebarPreviewState } from './use-sidebar-preview-state'
 import type { ChatThread } from './types'
 
+type ProjectDialog =
+  | { type: 'create' }
+  | { type: 'edit'; project: Project }
+  | { type: 'delete'; projectId: string | null }
+
 /** Keep project expansion, incremental disclosure, and creation navigation together. */
 export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThreadId?: string) => {
   const projects = useProjects()
+  const db = useDatabase()
+  const [, startTransition] = useTransition()
   const createNewChat = useCreateNewChat()
   const navigate = useNavigate()
   const { closeMobileSidebar } = useSidebar()
   const [params] = useSearchParams()
   const activeId = chatThreads.find((thread) => thread.id === currentChatThreadId)?.projectId ?? params.get('projectId')
   const [state, dispatch] = useReducer(projectTreeReducer, { activeId, expanded: new Set(activeId ? [activeId] : []) })
-  const [dialog, setDialog] = useState<'create' | 'deleteAll' | null>(null)
+  const [dialog, setDialog] = useState<ProjectDialog | null>(null)
   const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.projects.expanded', 'true')
   const sectionExpanded = storedExpanded !== 'false'
   if (state.activeId !== activeId) {
@@ -36,20 +46,31 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
     projectList,
     dialog,
     sectionExpanded,
-    openCreateDialog: () => setDialog('create'),
-    openDeleteAll: () => setDialog('deleteAll'),
+    openCreateDialog: () => setDialog({ type: 'create' }),
+    openDeleteAll: () => setDialog({ type: 'delete', projectId: null }),
     closeDialog: () => setDialog(null),
-    projectsDeleted: async () => {
-      if (activeId) {
+    projectsDeleted: async (projectId: string | null) => {
+      if (activeId && (projectId === null || activeId === projectId)) {
         await closeMobileSidebar()
         navigate('/chats/new')
       }
     },
     toggleSection: () => setSectionExpanded(sectionExpanded ? 'false' : 'true'),
     toggleProject: (id: string) => dispatch({ type: 'toggle', id }),
+    getProjectActions: (project: Project): ProjectActionHandlers => ({
+      onNewChat: async () => {
+        await closeMobileSidebar()
+        createNewChat(project.id)
+      },
+      onTogglePin: () =>
+        startTransition(async () => {
+          await setProjectPinned(db, project.id, project.pinnedOrder === null ? 0 : null)
+        }),
+      onEdit: () => setDialog({ type: 'edit', project }),
+      onDelete: () => setDialog({ type: 'delete', projectId: project.id }),
+    }),
     projectCreated: async (id: string) => {
       setSectionExpanded('true')
-      dispatch({ type: 'navigate', id })
       await closeMobileSidebar()
       createNewChat(id)
     },

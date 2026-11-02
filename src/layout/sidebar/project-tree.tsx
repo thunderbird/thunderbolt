@@ -8,13 +8,32 @@ import { useRef } from 'react'
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar'
 import { unassignDropId } from '@/projects/chat-drop'
 import { ProjectCreateDialog } from '@/projects/project-create-dialog'
+import type { ChatListProps } from './types'
+import { ProjectEditorDialog } from '@/projects/project-editor-dialog'
 import { ProjectDeleteDialog } from '@/projects/project-delete-dialog'
 import { ProjectDropRow } from './project-drop-row'
-import { ProjectTreeRow, type ProjectTreeProps } from './project-tree-row'
+import { ProjectTreeRow } from './project-tree-row'
 import { useProjectTreeState } from './use-project-tree-state'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import { SidebarSectionToggle } from './sidebar-section-toggle'
 import { ProjectTreeMenu } from './project-tree-menu'
+
+export type ProjectTreeProps = Pick<
+  ChatListProps,
+  | 'chatThreads'
+  | 'currentChatThreadId'
+  | 'isCollapsed'
+  | 'isMobile'
+  | 'deleteChatMutation'
+  | 'deleteChatDialogRef'
+  | 'threadIdRef'
+  | 'onChatClick'
+  | 'onRename'
+  | 'onMoveToProject'
+> & {
+  isDragging: boolean
+  draggingFromProjectId: string | null
+}
 
 /** Projects and their chats live entirely in the sidebar. */
 export const ProjectTree = (props: ProjectTreeProps) => {
@@ -31,6 +50,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
     openDeleteAll,
     closeDialog,
     projectsDeleted,
+    getProjectActions,
     toggleSection,
     toggleProject,
     projectCreated,
@@ -48,6 +68,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
             onChatClick={props.onChatClick}
             onNewProject={openCreateDialog}
             onDeleteAllProjects={openDeleteAll}
+            getProjectActions={getProjectActions}
           />
         </div>
       ) : (
@@ -58,6 +79,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
               onToggle={toggleSection}
               controls="sidebar-projects-section"
               label={t`Projects`}
+              optionsLabel={t`Project options`}
               actions={[
                 { label: t`New project`, icon: <Plus className="size-4" />, onSelect: openCreateDialog },
                 {
@@ -75,7 +97,16 @@ export const ProjectTree = (props: ProjectTreeProps) => {
               {projectList.items.map((project) => (
                 <ProjectTreeRow
                   key={project.id}
-                  {...props}
+                  currentChatThreadId={props.currentChatThreadId}
+                  isMobile={props.isMobile}
+                  deleteChatMutation={props.deleteChatMutation}
+                  deleteChatDialogRef={props.deleteChatDialogRef}
+                  threadIdRef={props.threadIdRef}
+                  onChatClick={props.onChatClick}
+                  onRename={props.onRename}
+                  onMoveToProject={props.onMoveToProject}
+                  draggingFromProjectId={props.draggingFromProjectId}
+                  actions={getProjectActions(project)}
                   project={project}
                   chats={props.chatThreads.filter((thread) => thread.projectId === project.id)}
                   active={project.id === activeId}
@@ -112,11 +143,16 @@ export const ProjectTree = (props: ProjectTreeProps) => {
           </div>
         </div>
       )}
-      {dialog === 'create' && (
+      {dialog?.type === 'create' && (
         <ProjectCreateDialog onClose={closeDialog} onCreated={projectCreated} returnFocusRef={createTriggerRef} />
       )}
-      {dialog === 'deleteAll' && (
-        <ProjectDeleteDialog projectId={null} onClose={closeDialog} onDeleted={projectsDeleted} />
+      {dialog?.type === 'edit' && <ProjectEditorDialog project={dialog.project} onClose={closeDialog} />}
+      {dialog?.type === 'delete' && (
+        <ProjectDeleteDialog
+          projectId={dialog.projectId}
+          onClose={closeDialog}
+          onDeleted={() => projectsDeleted(dialog.projectId)}
+        />
       )}
     </>
   )

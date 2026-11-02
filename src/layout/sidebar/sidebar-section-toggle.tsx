@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useLingui } from '@lingui/react/macro'
 import { ChevronRight, MoreVertical } from 'lucide-react'
 import { useRef } from 'react'
 import { Button } from '@/components/ui/button'
@@ -19,15 +18,16 @@ export const SidebarSectionToggle = ({
   onToggle,
   controls,
   label,
+  optionsLabel,
   actions,
 }: {
   expanded: boolean
   onToggle: () => void
   controls: string
   label: string
+  optionsLabel: string
   actions: ResponsiveActionMenuAction[]
 }) => {
-  const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const openingAction = useRef(false)
   const { menuOpen, setMenuOpen, longPressHandlers, handleClick, handleKeyDown } =
@@ -89,7 +89,7 @@ export const SidebarSectionToggle = ({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={t`${label} options`}
+            aria-label={optionsLabel}
             className="hidden md:inline-flex size-[var(--touch-height-default)] shrink-0 bg-transparent text-muted-foreground transition-opacity hover:bg-transparent dark:hover:bg-transparent active:bg-transparent data-[state=open]:bg-transparent md:size-8 md:opacity-0 md:group-hover/section:opacity-100 md:group-has-[:focus-visible]/section:opacity-100 md:data-[state=open]:opacity-100 md:group-data-[state=open]/section:opacity-100"
           >
             <MoreVertical className="size-4" />

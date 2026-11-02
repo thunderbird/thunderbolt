@@ -64,21 +64,20 @@ const Fixture = ({
       <SidebarProvider>
         <div ref={scrollRef}>
           <ChatList
-            sharedScrollRef={scrollRef}
+            scrollRef={scrollRef}
             chatThreads={chats}
             isCollapsed={isCollapsed}
             isMobile={isMobile}
             mobileNavToggle={null}
             mobileSecondaryNavigation={null}
-            deleteAllChatsMutation={{ mutate: () => {}, isPending: false } as never}
-            deleteChatMutation={{ mutate: () => {}, isPending: false } as never}
+            deleteAllChatsMutation={{ mutate: () => {}, isPending: false }}
+            deleteChatMutation={{ mutate: () => {}, isPending: false }}
             deleteAllChatsDialogRef={{ current: null }}
             deleteChatDialogRef={{ current: null }}
             threadIdRef={{ current: null }}
             onChatClick={onChatClick}
             onRename={() => {}}
             onMoveToProject={() => {}}
-            onSearchClick={() => {}}
           />
         </div>
       </SidebarProvider>
@@ -101,7 +100,7 @@ it('collapses Recents and restores its expanded preview', async () => {
   expect(screen.queryAllByRole('button', { name: 'Recent chat 1' })).toHaveLength(0)
   expect(screen.queryByRole('button', { name: 'Show more recent chats' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Delete chats' })).not.toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Recents options' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Recent chat options' })).toBeInTheDocument()
 
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'true')
@@ -136,7 +135,7 @@ it('opens the protected burn confirmation by long-pressing Recents without toggl
 it('opens Delete chats from desktop section options without collapsing Recents', async () => {
   render(<Fixture isMobile={false} />, { wrapper: createTestProvider() })
   const section = await waitForElement(() => screen.queryByRole('button', { name: 'Recents' }))
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Recents options' }), { key: 'Enter' })
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Recent chat options' }), { key: 'Enter' })
   fireEvent.click(await waitForElement(() => screen.queryByRole('menuitem', { name: 'Delete chats' })))
   expect(await waitForElement(() => screen.queryByRole('alertdialog', { name: 'Delete chats?' }))).toBeVisible()
   expect(section).toHaveAttribute('aria-expanded', 'true')
@@ -152,7 +151,7 @@ it.each(['overflow', 'context', 'mobile'])('starts a standalone chat from the Re
   if (menu === 'context') {
     fireEvent.contextMenu(section)
   } else {
-    const options = screen.getByRole('button', { name: 'Recents options' })
+    const options = screen.getByRole('button', { name: 'Recent chat options' })
     if (isMobile) {
       fireEvent.contextMenu(screen.getByRole('button', { name: 'Recents' }))
     } else {

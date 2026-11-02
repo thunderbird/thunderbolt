@@ -5,23 +5,26 @@
 /** Chats that were started from a Mini App. */
 
 import { eq } from 'drizzle-orm'
-
+import { toCompilableQuery } from '@powersync/drizzle-driver'
+import { useQuery } from '@powersync/tanstack-react-query'
+import { useDatabase } from '@/contexts'
 import { chatThreadsTable } from '@/db/tables'
-import { useChatsWithLastActivity, type ChatWithLastActivity } from './chats-with-last-activity'
+import { uuidv7ToDate } from '@/lib/utils'
+import { getChatActivityQuery } from './chat-activity-query'
 
 /** A chat started from a Mini App, with when it was last active. */
-export type MiniAppChat = ChatWithLastActivity
+export type MiniAppChat = { id: string; title: string | null; lastActivityAt: Date }
 
-/**
- * Live chats started from one Mini App, newest activity first.
- *
- * The activity ordering matches the sidebar — see
- * {@link useChatsWithLastActivity}. What stays here is the column, and the
- * lifecycle note that made this a separate module in the first place: a project
- * is a row this app owns and cleans up after, while a Mini App is deployment
- * config that can vanish between releases, so a project orphans its chats on
- * delete and an app leaves theirs pointing at an id that no longer resolves.
- * That divergence lives in the mutations, not in this read.
- */
-export const useMiniAppChats = (appId: string): MiniAppChat[] =>
-  useChatsWithLastActivity(['miniAppChats', appId], eq(chatThreadsTable.miniAppId, appId))
+/** Live chats started from one Mini App, in the sidebar's activity order. */
+export const useMiniAppChats = (appId: string): MiniAppChat[] => {
+  const db = useDatabase()
+  const { data = [] } = useQuery({
+    queryKey: ['miniAppChats', appId],
+    query: toCompilableQuery(getChatActivityQuery(db, eq(chatThreadsTable.miniAppId, appId))),
+  })
+  return data.map((row) => ({
+    id: row.id,
+    title: row.title,
+    lastActivityAt: uuidv7ToDate(row.lastActivityId),
+  }))
+}

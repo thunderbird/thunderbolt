@@ -6,6 +6,7 @@ import { useLingui } from '@lingui/react/macro'
 import { Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 
@@ -40,7 +41,12 @@ export const SidebarHeaderActions = ({
   }
 
   return (
-    <div className="flex items-center gap-1 max-md:w-full max-md:justify-between">
+    <div
+      className={cn(
+        'flex items-center gap-1 max-md:w-full',
+        children ? 'max-md:justify-between' : 'max-md:justify-end',
+      )}
+    >
       {isMobile && children}
       {onSearchClick && (
         <Button

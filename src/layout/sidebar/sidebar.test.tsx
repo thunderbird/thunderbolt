@@ -101,46 +101,19 @@ describe('Sidebar reactivity', () => {
     expect(screen.queryByText('Second Chat')).not.toBeInTheDocument()
   })
 
-  it('scrolls the mobile label beneath masked header and footer scrims', async () => {
+  it.each([false, true])('uses one mobile navigation scroller (minimal mode: %s)', async (minimalMode) => {
     forceMobileViewport()
-    const db = getDb()
-
-    await db.insert(chatThreadsTable).values({
-      id: uuidv7(),
-      title: 'Mobile Chat',
-      isEncrypted: 0,
-    })
-
-    renderWithReactivity(<Sidebar />, {
-      tables: ['chat_threads'],
-      wrapper: SidebarTestWrapper,
-    })
-
+    useConfigStore.setState({ config: { minimalMode }, configLoaded: true })
+    await getDb().insert(chatThreadsTable).values({ id: uuidv7(), title: 'Mobile Chat', isEncrypted: 0 })
+    renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
     await waitForElement(() => screen.queryByText('Mobile Chat'))
 
-    const scrollArea = document.querySelector<HTMLElement>('[data-slot="chat-list-scroll"]')
-    const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
-    const recentChatsLabel = screen.getByText('Recents')
-    const sidebarFooter = document.querySelector<HTMLElement>('[data-sidebar="footer"]')
-
-    expect(scrollArea).toContainElement(recentChatsLabel)
-    expect(mobileHeader).not.toContainElement(recentChatsLabel)
-    expect(scrollArea).not.toContainElement(mobileHeader)
-    expect(mobileHeader).toHaveClass('absolute', 'pt-[calc(var(--header-safe-area-top)+0.5rem)]')
-    expect(scrollArea).toHaveClass('pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]')
-    expect(scrollArea).not.toHaveClass('overscroll-y-none')
-    expect(scrollArea?.querySelector('[data-slot="mobile-sidebar-header-spacer"]')).toBeInTheDocument()
-    expect(sidebarFooter).toHaveClass('pb-[var(--mobile-sidebar-footer-inset)]')
-    expect(document.querySelector('[data-slot="mobile-sidebar-header-scrim"]')).toHaveClass(
-      'from-sidebar',
-      'backdrop-blur-[4px]',
-    )
-    expect(document.querySelector('[data-slot="mobile-sidebar-footer-scrim"]')).toHaveClass(
-      'from-sidebar',
-      'backdrop-blur-[4px]',
-    )
-    expect(scrollArea?.className).not.toContain('shadow-[')
-    expect(sidebarFooter?.className).not.toContain('shadow-[')
+    const scrollArea = document.querySelector<HTMLElement>('[data-slot="sidebar-navigation-scroll"]')
+    expect(scrollArea).toContainElement(screen.getByText('Mobile Chat'))
+    expect(scrollArea).toContainElement(screen.getByRole('button', { name: 'Recents' }))
+    expect(scrollArea).toContainElement(document.querySelector('[data-slot="mobile-sidebar-header"]'))
+    expect(scrollArea).not.toContainElement(document.querySelector('[data-sidebar="footer"]'))
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
   })
 
   describe('section toggle', () => {
@@ -283,7 +256,7 @@ describe('Sidebar reactivity', () => {
       const mobileHeader = document.querySelector<HTMLElement>('[data-slot="mobile-sidebar-header"]')
       expect(mobileHeader).toBeInTheDocument()
       expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
-      expect(mobileHeader?.firstElementChild?.nextElementSibling?.firstElementChild).toHaveClass('justify-end')
+      expect(mobileHeader).toContainElement(screen.getByRole('button', { name: 'Search' }))
     })
 
     it('pulls an open Settings section back to chats when minimal mode arrives', () => {

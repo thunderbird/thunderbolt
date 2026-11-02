@@ -99,8 +99,8 @@ msgstr "{fileName} will be saved to your Downloads folder."
 #~ msgstr "{label} — already in this project"
 
 #: src/layout/sidebar/sidebar-section-toggle.tsx
-msgid "{label} options"
-msgstr "{label} options"
+#~ msgid "{label} options"
+#~ msgstr "{label} options"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -1414,7 +1414,6 @@ msgstr "Delete Chat"
 msgid "Delete chats"
 msgstr "Delete chats"
 
-#: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/recent-chats-menu.tsx
 #: src/search/commands/use-commands.ts
 msgid "Delete chats outside projects"
@@ -2508,14 +2507,19 @@ msgstr "Modified model"
 msgid "More"
 msgstr "More"
 
+#: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "Move"
+msgstr "Move"
+
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "Move file"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "Move to project"
-msgstr "Move to project"
+#~ msgid "Move to project"
+#~ msgstr "Move to project"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
@@ -3003,14 +3007,19 @@ msgstr "Permission Required"
 msgid "Personalization"
 msgstr "Personalization"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin"
+msgstr "Pin"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-msgid "Pin project"
-msgstr "Pin project"
+#~ msgid "Pin project"
+#~ msgstr "Pin project"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3082,6 +3091,10 @@ msgstr "Processing…"
 msgid "Project name"
 msgstr "Project name"
 
+#: src/layout/sidebar/project-tree.tsx
+msgid "Project options"
+msgstr "Project options"
+
 #: src/projects/project-editor-dialog.tsx
 msgid "Project settings"
 msgstr "Project settings"
@@ -3140,6 +3153,10 @@ msgstr "Reasoning"
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
 msgstr "Received an error while testing the model."
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Recent chat options"
+msgstr "Recent chat options"
 
 #: src/layout/sidebar/chat-list.tsx
 #~ msgid "Recent Chats"
@@ -3410,7 +3427,6 @@ msgid "Scroll to bottom"
 msgstr "Scroll to bottom"
 
 #: src/components/ui/page-search.tsx
-#: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/palette/search-palette.tsx
 msgid "Search"
@@ -4576,14 +4592,16 @@ msgstr "Unlock sync with a passkey"
 msgid "Unlock with passkey"
 msgstr "Unlock with passkey"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "Unpin"
 
 #: src/projects/project-action-menu-items.tsx
 #: src/projects/project-actions.tsx
-msgid "Unpin project"
-msgstr "Unpin project"
+#~ msgid "Unpin project"
+#~ msgstr "Unpin project"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"

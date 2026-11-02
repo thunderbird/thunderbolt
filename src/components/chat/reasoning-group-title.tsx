@@ -70,7 +70,10 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mc
                 {loadingLabel}
               </span>
             </m.div>
-          ) : null
+          ) : (
+            // The trigger shows only a spinner here, so name it for assistive tech.
+            <span className="sr-only">{t`Thinking`}</span>
+          )
         ) : (
           <m.div
             key="completed"

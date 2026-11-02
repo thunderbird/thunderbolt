@@ -4090,6 +4090,7 @@ msgstr "The transcript was rejected by the server."
 msgid "Theme"
 msgstr "Theme"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx

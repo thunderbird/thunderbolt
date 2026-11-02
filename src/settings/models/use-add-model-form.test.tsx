@@ -11,6 +11,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
 import { getClock } from '@/testing-library'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { generateModelName, useAddModelForm } from './use-add-model-form'
@@ -231,6 +232,27 @@ describe('useAddModelForm', () => {
     })
 
     expect(useChatStore.getState().models.find((model) => model.name === 'Toolless Model')?.toolUsage).toBe(0)
+  })
+
+  it('keeps the catalog vendor of a re-added Thunderbolt model so chat routes it like the default', async () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    await act(async () => {
+      result.current.onSubmit({
+        provider: 'thunderbolt',
+        name: 'Re-added Opus',
+        model: defaultModelOpus55.model,
+        customModel: '',
+        url: '',
+        apiKey: '',
+        supportsTools: true,
+      })
+      await getClock().runAllAsync()
+    })
+
+    expect(useChatStore.getState().models.find((model) => model.name === 'Re-added Opus')?.vendor).toBe('anthropic')
   })
 
   it('turns tools back on when the provider changes', () => {

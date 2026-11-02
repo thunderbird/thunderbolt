@@ -22,6 +22,8 @@ export type AvailableModel = {
   supports_tools?: boolean
   /** Whether the model accepts image input. Undefined when the provider doesn't say. */
   supports_images?: boolean
+  /** Only the built-in Thunderbolt catalog sets this; managed models pick their transport by vendor. */
+  vendor?: string | null
 }
 
 /** OpenRouter-style catalog rows report accepted inputs under `architecture`. */
@@ -40,7 +42,12 @@ export type CatalogRequest = {
 /** Built-in catalog derived from the shipped default models; never fetched. */
 export const thunderboltModelCatalog: AvailableModel[] = defaultModels
   .filter((model) => model.provider === 'thunderbolt')
-  .map((model) => ({ id: model.model, name: model.name, supports_tools: model.toolUsage === 1 }))
+  .map((model) => ({
+    id: model.model,
+    name: model.name,
+    supports_tools: model.toolUsage === 1,
+    vendor: model.vendor,
+  }))
 
 /** Anthropic's models endpoint is not OpenAI-compatible: auth is `x-api-key` (not a
  *  bearer), a version header is mandatory, and rows carry `display_name`. Listing

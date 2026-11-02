@@ -18,7 +18,7 @@ import { useDatabase } from '@/contexts'
 import { createModel, getAvailableModels } from '@/dal'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
-import type { CatalogRequest } from './model-catalog'
+import { type CatalogRequest, thunderboltModelCatalog } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
@@ -159,6 +159,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
         enabled: 1,
         toolUsage: supportsTools ? 1 : 0,
         contextWindow: null,
+        // Managed models route by vendor (see `createModel` in `@/ai/fetch`), e.g. Opus to the Anthropic endpoint.
+        vendor:
+          values.provider === 'thunderbolt'
+            ? (thunderboltModelCatalog.find((candidate) => candidate.id === values.model)?.vendor ?? null)
+            : null,
       })
       return getAvailableModels(db)
     },

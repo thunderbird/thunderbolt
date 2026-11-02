@@ -2,8 +2,27 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import '@/testing-library'
+import { ContentViewProvider } from '@/content-view/context'
+import { HttpClientProvider } from '@/contexts'
+import { createClient } from '@/lib/http'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, test } from 'bun:test'
-import { getFileType } from './pdf-sidebar-viewer'
+import { getFileType, PdfSidebarViewer } from './pdf-sidebar-viewer'
+
+describe('PdfSidebarViewer', () => {
+  test('names the icon-only download button', () => {
+    const pendingClient = createClient({ fetch: () => new Promise<Response>(() => {}) })
+    render(
+      <HttpClientProvider httpClient={pendingClient}>
+        <ContentViewProvider>
+          <PdfSidebarViewer fileId="file-1" fileName="sample.pdf" />
+        </ContentViewProvider>
+      </HttpClientProvider>,
+    )
+    expect(screen.getByRole('button', { name: 'Download' })).toBeDefined()
+  })
+})
 
 describe('getFileType', () => {
   test('detects PDF', () => {

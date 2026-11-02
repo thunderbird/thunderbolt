@@ -1635,6 +1635,7 @@ msgstr "Terminé"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Télécharger"
 

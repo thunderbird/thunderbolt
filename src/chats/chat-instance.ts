@@ -211,6 +211,15 @@ const applySessionSideEffect = (effect: SessionSideEffect): void => {
   }
 }
 
+/**
+ * Drop each user message the user stopped before any reply streamed. Stopping
+ * then drops the empty assistant shell (see `onFinish`), so the stopped prompt
+ * would reach the model right before the next one, and the model would answer
+ * both, running the reply the user stopped all over again.
+ */
+const withoutStoppedPrompts = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] =>
+  messages.filter((message, index) => message.role !== 'user' || messages[index + 1]?.role !== 'user')
+
 /** DI seams for tests. Production binds to the real ACP cache + entry point and
  *  the DAL's `updateChatThread`. Module-level functions are passed by reference
  *  so test files can swap in fakes without `mock.module()`. `connectToAgent`
@@ -462,7 +471,12 @@ export const createAgentRoutingFetch = (
         throw createTurnBudgetExhaustedError()
       }
 
-      const response = await adapter.fetch(init, {
+      const modelMessages = withoutStoppedPrompts(requestMessages)
+      const modelInit =
+        modelMessages.length === requestMessages.length
+          ? init
+          : { ...init, body: JSON.stringify({ ...requestBody, messages: modelMessages }) }
+      const response = await adapter.fetch(modelInit, {
         threadId: id,
         chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,

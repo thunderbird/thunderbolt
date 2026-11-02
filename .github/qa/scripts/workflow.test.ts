@@ -591,6 +591,15 @@ describe("CI's check of the fix job's dev stack", () => {
       expect(qa).toContain(path)
     expect(ci.jobs.qa.if).toBe("needs.detect-changes.outputs.qa == 'true'")
   })
+
+  // Without the user, fix.test.ts skips the snapshot tests it runs as another user.
+  test('creates the user the QA tests run snapshot tests as, before they run', () => {
+    const at = (name: string) => ci.jobs.qa.steps.findIndex((s) => s.name === name)
+    const create = 'Create the user the QA tests run snapshot tests as'
+    expect(ci.jobs.qa.env?.QA_TEST_USER).toBe('qa-test')
+    expect(ci.jobs.qa.steps[at(create)]?.run).toContain('sudo useradd --create-home "$QA_TEST_USER"')
+    expect(at(create)).toBeLessThan(at('Run QA tests (5x)'))
+  })
 })
 
 const attempt = '-${{ github.run_attempt }}'
@@ -1021,7 +1030,9 @@ describe('publish', () => {
     })
 
     test("publish reads the status from its own artifact, which the agent's fix artifact cannot carry", () => {
-      const download = steps('publish').find((s) => s.with?.name === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`)
+      const download = steps('publish').find(
+        (s) => s.with?.pattern === `qa-fix-status-\${{ matrix.task.fp }}${attempt}`,
+      )
       expect(download?.with?.path).toBe('qa-out/status')
       expect(download?.['continue-on-error']).toBeUndefined()
       // The fix artifact lands in qa-out too, so none of its paths may reach qa-out/status.
@@ -1029,6 +1040,13 @@ describe('publish', () => {
       const paths = (fixUpload?.with?.path ?? '').split('\n').filter(Boolean)
       expect(paths.length).toBeGreaterThan(0)
       for (const path of paths) expect(path).toMatch(/^qa-out\/fix(-\$\{\{ matrix\.task\.fp \}\})?\//)
+    })
+
+    // A download by name fails with an error annotation when the artifact is missing; a pattern that matches nothing
+    // succeeds. Only the file job's qa-filed, which every publish matrix entry comes from, is read by name.
+    test('no download in publish can fail when the fix job died before it uploaded anything', () => {
+      const downloads = steps('publish').filter((s) => s.uses?.startsWith('actions/download-artifact@'))
+      expect(downloads.flatMap((s) => s.with?.name ?? [])).toEqual(['qa-filed'])
     })
   })
 
@@ -1164,11 +1182,135 @@ describe('native jobs', () => {
     expect(indexOf('replay-native', upload)).toBeGreaterThan(indexOf('replay-native', save))
   })
 
-  test("Android's replay starts Maestro's driver once, before the console stream that a reset there would end", () => {
+  test("Android's replay and fix check start Maestro's driver once, before the console stream a reset would end", () => {
     const warmUp = "Start Maestro's driver on the emulator"
-    expect(step('replay-native', warmUp).if).toBe("matrix.leg.platform == 'android'")
+    expect(step('verify-native-run', warmUp)).toEqual(step('replay-native', warmUp))
+    expect(step('replay-native', warmUp).if).toBe("env.QA_PLATFORM == 'android' && env.QA_NO_DEVICE != 'true'")
     expect(indexOf('replay-native', warmUp)).toBeGreaterThan(indexOf('replay-native', 'Boot the device'))
     expect(indexOf('replay-native', warmUp)).toBeLessThan(indexOf('replay-native', 'Stream the WebView console'))
+    // verify-native-run's stream starts inside the run step.
+    expect(indexOf('verify-native-run', warmUp)).toBeGreaterThan(indexOf('verify-native-run', 'Boot the device'))
+    expect(indexOf('verify-native-run', warmUp)).toBeLessThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
+    )
+  })
+
+  test("the fix check's verdict artifact holds Maestro's per-step output and the WebView log", () => {
+    const keep = "Keep Maestro's output with the verdict"
+    expect(step('verify-native-run', keep)).toMatchObject({
+      if: "always() && env.QA_NO_DEVICE != 'true'",
+      run: 'cp -R ~/.maestro/tests qa-out/verify/maestro || true',
+    })
+    const upload = steps('verify-native-run').findIndex((s) => s.with?.name?.startsWith('qa-verify-'))
+    expect(steps('verify-native-run')[upload].with?.path).toBe('qa-out/verify/')
+    expect(indexOf('verify-native-run', keep)).toBe(upload - 1)
+    expect(indexOf('verify-native-run', keep)).toBeGreaterThan(
+      indexOf('verify-native-run', 'Run the flow on the patched app'),
+    )
+    // native.sh verify-run writes the stream's log beside the result, inside that folder.
+    expect(step('verify-native-run', 'Run the flow on the patched app').run).toContain(
+      '"qa-out/verify/$QA_FP.$QA_PLATFORM.json"',
+    )
+  })
+
+  /** Runs the fix check's run step with `native.sh` replaced by `script`, the job having started `startedAgo` s ago. */
+  const runStepWith = (script: string, startedAgo = 0) => {
+    const temp = mkdtempSync(join(work, 'verify-run-'))
+    mkdirSync(join(temp, '.github/qa/scripts'), { recursive: true })
+    // A real run takes minutes, so the deadline is asleep, and dies whole, by the time the run ends.
+    writeFileSync(join(temp, '.github/qa/scripts/native.sh'), `#!/bin/bash\nsleep 0.2\n${script}\n`, { mode: 0o755 })
+    // GNU sleep rejects a negative duration, where macOS treats it as zero.
+    mkdirSync(join(temp, 'bin'))
+    writeFileSync(join(temp, 'bin/sleep'), '#!/bin/bash\n[[ $1 == -* ]] && exit 1\nexec /bin/sleep "$@"\n', {
+      mode: 0o755,
+    })
+    const output = join(temp, 'output')
+    writeFileSync(output, '')
+    const proc = Bun.spawnSync(
+      ['bash', '-e', '-c', step('verify-native-run', 'Run the flow on the patched app').run ?? ''],
+      {
+        cwd: temp,
+        env: {
+          PATH: `${join(temp, 'bin')}:${process.env.PATH}`,
+          RUNNER_TEMP: temp,
+          GITHUB_OUTPUT: output,
+          QA_FP: 'fp1',
+          QA_LEG_START: String(Math.floor(Date.now() / 1000) - startedAgo),
+        },
+      },
+    )
+    return { code: proc.exitCode, output: readFileSync(output, 'utf8'), dir: temp }
+  }
+
+  test("the fix check's run step records a failed or inconclusive verdict, and each marker needs its own", () => {
+    // 1 is a crash of Bun and 2 is native.sh's own `die`, both the pipeline's, so neither marks a verdict.
+    expect(
+      [0, 1, 2, 3, 4].map((code) => runStepWith(`exit ${code}`)).map(({ code, output }) => ({ code, output })),
+    ).toEqual([
+      { code: 0, output: '' },
+      { code: 1, output: '' },
+      { code: 2, output: '' },
+      { code: 3, output: 'inconclusive=true\n' },
+      { code: 4, output: 'failed=true\n' },
+    ])
+    const markerOf = (prefix: string) => steps('verify-native-run').find((s) => s.with?.name?.startsWith(prefix))
+    expect(markerOf('qa-inconclusive-')?.if).toBe(
+      "always() && steps.run.outcome == 'failure' && steps.run.outputs.inconclusive == 'true'",
+    )
+    expect(markerOf('qa-inconclusive-')?.with?.name).toBe(
+      `qa-inconclusive-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`,
+    )
+    expect(markerOf('qa-native-failed-')?.if).toBe(
+      "always() && steps.run.outcome == 'failure' && steps.run.outputs.failed == 'true'",
+    )
+    expect(markerOf('qa-native-failed-')?.with?.name).toBe(
+      `qa-native-failed-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`,
+    )
+  })
+
+  test("the fix check's run stops, every process of it, 52 minutes into the job, and counts as inconclusive", () => {
+    // The deadline counts from the job's first step, so the setup before the run is on the clock.
+    expect(steps('verify-native-run')[0].run).toBe('echo "QA_LEG_START=$(date +%s)" >> "$GITHUB_ENV"')
+    const started = performance.now()
+    const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait', 52 * 60 - 1)
+    expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
+    expect(performance.now() - started).toBeLessThan(4000)
+    const child = Number(readFileSync(join(dir, 'child.pid'), 'utf8'))
+    expect(() => process.kill(child, 0)).toThrow()
+    // A run that ends in time keeps its own verdict, the deadline long ahead of it.
+    expect(runStepWith('exit 0', 52 * 60 - 30).code).toBe(0)
+  })
+
+  test("the fix check's run stops at once when the deadline has already passed", () => {
+    // performance.now, since Date.now stays frozen while a synchronous spawn blocks the test.
+    const started = performance.now()
+    // Left to finish, this run would exit 0 after 30 s.
+    const { code, output, dir } = runStepWith('sleep 30 & echo $! > child.pid\nwait\nexit 0', 52 * 60 + 5)
+    expect({ code, output }).toEqual({ code: 3, output: 'inconclusive=true\n' })
+    expect(performance.now() - started).toBeLessThan(4000)
+    expect(() => process.kill(Number(readFileSync(join(dir, 'child.pid'), 'utf8')), 0)).toThrow()
+  })
+
+  /** The index of the verify-native-run upload whose artifact name starts with `prefix`. */
+  const uploadOf = (prefix: string) => steps('verify-native-run').findIndex((s) => s.with?.name?.startsWith(prefix))
+
+  test("the fix check's started marker goes up once the pipeline's steps passed, before any patched app opens", () => {
+    const started = steps('verify-native-run')[uploadOf('qa-native-started-')]
+    expect(started.with?.name).toBe(`qa-native-started-\${{ matrix.check.fp }}-\${{ matrix.check.platform }}${attempt}`)
+    // No status function, so it runs only when every step before it succeeded.
+    expect(started.if).toBe("env.QA_NO_DEVICE != 'true'")
+    expect(uploadOf('qa-native-started-')).toBeGreaterThan(indexOf('verify-native-run', 'Boot the device'))
+    expect(uploadOf('qa-native-started-')).toBeGreaterThan(indexOf('verify-native-run', 'Start the stack'))
+    expect(uploadOf('qa-native-started-')).toBeLessThan(
+      indexOf('verify-native-run', "Start Maestro's driver on the emulator"),
+    )
+  })
+
+  test("the fix check's verdict goes up straight after its run, before the logs", () => {
+    const run = indexOf('verify-native-run', 'Run the flow on the patched app')
+    const verdicts = [uploadOf('qa-pass-'), uploadOf('qa-inconclusive-'), uploadOf('qa-native-failed-')]
+    expect(verdicts.toSorted((a, b) => a - b)).toEqual([run + 1, run + 2, run + 3])
+    expect(uploadOf('qa-verify-')).toBeGreaterThan(run + 3)
   })
 
   test("iOS's console stream starts right after the boot, before the app installs and the stack starts", () => {

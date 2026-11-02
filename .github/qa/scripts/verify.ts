@@ -32,6 +32,7 @@ import {
   type FindingFile,
   type RejectedFile,
 } from './findings'
+import { fakeProviderReply } from '../../../e2e/fake-provider'
 import { checkMaestroFlow, flowVars, maestroEnv } from './maestro-flow'
 import { createRunFlow } from './replay-native'
 import { cleanLogLine } from './sanitize'
@@ -366,8 +367,68 @@ const awaitedText = z.union([
   z.object({ assertVisible: shownText }).transform((c) => c.assertVisible),
 ])
 
-const landingOf = (session: string) =>
-  session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : 'Ask me anything…'
+const chatLanding = 'Ask me anything…'
+const landingOf = (session: string) => (session.startsWith('c1-first-run-') ? 'Welcome to Thunderbolt!' : chatLanding)
+
+/** `getGreeting`'s texts, read from its source: the app's macros do not run outside its build. */
+const greetings = [
+  ...(await Bun.file(join(import.meta.dir, '../../../src/components/chat/chat-ui-greeting.ts')).text()).matchAll(
+    /msg`([^`]+)`/g,
+  ),
+].map((match) => match[1])
+const replyFirstWord = fakeProviderReply.split(' ')[0]
+
+/**
+ * Waits and assertions that cannot hold on another run, rewritten to ones that do. The chat greeting changes with the
+ * hour, so it becomes the chat's landing text. Maestro matches a text against the element's whole text, so the start
+ * of the fake provider's reply, past its first word, becomes the whole reply.
+ */
+const steadyTextOf = (text: string) => {
+  if (greetings.includes(text)) return chatLanding
+  if (text.length > replyFirstWord.length && text !== fakeProviderReply && fakeProviderReply.startsWith(text)) {
+    return fakeProviderReply
+  }
+  return undefined
+}
+/** A selector's text, and the same selector with another text: only the text changes, so `width` still narrows it. */
+const textSelector = z.union([
+  z.string().transform((text) => ({ text, withText: (to: string) => to })),
+  z.looseObject({ text: z.string() }).transform((selector) => ({
+    text: selector.text,
+    withText: (to: string) => ({ ...selector, text: to }),
+  })),
+])
+type TextSelector = z.infer<typeof textSelector>
+const waitOn = z.object({ extendedWaitUntil: z.looseObject({ visible: textSelector }) })
+const assertOn = z.object({ assertVisible: textSelector })
+const typedText = z.object({ inputText: shownText }).transform((c) => c.inputText)
+const blockOptions = z.looseObject({ commands: commandList })
+/** The blocks `checkMaestroFlow` lets a flow nest commands in, as their name and options. */
+const commandBlock = z
+  .union([z.object({ retry: blockOptions }), z.object({ repeat: blockOptions }), z.object({ runFlow: blockOptions })])
+  .transform((command) => Object.entries(command)[0])
+/** Every command of a flow, those inside its blocks included. */
+const allCommands = (commands: unknown[]): unknown[] =>
+  commands.flatMap((command) => {
+    const [, options] = commandBlock.safeParse(command).data ?? []
+    return [command, ...(options ? allCommands(options.commands) : [])]
+  })
+const steadyCommands = commandList.transform((commands) => {
+  // A text the flow types shows on the screen as typed, so it is left as the flow wrote it.
+  const typed = new Set(allCommands(commands).flatMap((command) => typedText.safeParse(command).data ?? []))
+  const steady = ({ text, withText }: TextSelector) => withText(typed.has(text) ? text : (steadyTextOf(text) ?? text))
+  const rewrite = (list: unknown[]): unknown[] =>
+    list.map((command) => {
+      const [name, options] = commandBlock.safeParse(command).data ?? []
+      if (name && options) return { [name]: { ...options, commands: rewrite(options.commands) } }
+      const wait = waitOn.safeParse(command).data
+      if (wait)
+        return { extendedWaitUntil: { ...wait.extendedWaitUntil, visible: steady(wait.extendedWaitUntil.visible) } }
+      const assert = assertOn.safeParse(command).data
+      return assert ? { assertVisible: steady(assert.assertVisible) } : command
+    })
+  return rewrite(commands)
+})
 
 /** The commands of a flow `checkMaestroFlow` serialized, after its header. */
 const commandsOf = (yaml: string) => commandList.parse(Bun.YAML.parse(yaml.slice(yaml.indexOf('\n---\n') + 5)))
@@ -453,17 +514,16 @@ const consentSplit = async (flow: unknown[], session: string, oracle: Oracle | u
  * never the finding's. The harness signs in (`control/sign-in.yaml`) when the flow waits for the first screen without
  * typing the code, as an iOS flow can; any other flow runs as written. A c1 flow past the privacy step gets the
  * harness's way through it too (`consentSplit`). Where a failed flow is the bug, every step before its last command
- * that is not a settle joins the sign-in, so only that command can prove the bug. `apart: false` keeps them in the
- * flow, for a patched run, where a failure anywhere fails the patch.
+ * that is not a settle joins the sign-in, so only that command can prove the bug. Every wait and assertion goes
+ * through `steadyCommands` first.
  */
 const withSignIn = async (
   yaml: string,
   session: string,
   appId: string,
   oracle: Oracle | undefined,
-  apart = true,
 ): Promise<NativeFlow> => {
-  const commands = commandsOf(yaml)
+  const commands = steadyCommands.parse(commandsOf(yaml))
   const from = landingIndex(commands, session)
   const harness = from >= 0 && !typesSignInCode.test(JSON.stringify(commands))
   const wait = { extendedWaitUntil: { visible: landingOf(session), timeout: 120000 } }
@@ -471,10 +531,9 @@ const withSignIn = async (
   const flow = harness ? commands.slice(from) : commands
   const split = await consentSplit(flow, session, oracle)
   const rest = split?.flow ?? flow
-  const assertAt =
-    apart && failureIsBug(oracle) ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
+  const assertAt = failureIsBug(oracle) ? rest.findLastIndex((command) => !settle.safeParse(command).success) : -1
   const before = [...signIn, ...(split?.signIn ?? []), ...rest.slice(0, Math.max(assertAt, 0))]
-  if (before.length === 0) return { yaml }
+  if (before.length === 0) return { yaml: serialize(rest, appId) }
   return { signIn: serialize(before, appId), yaml: serialize(rest.slice(Math.max(assertAt, 0)), appId) }
 }
 
@@ -674,6 +733,8 @@ export type NativeVerify = {
   runs: number
   failed: number
   passed: boolean
+  /** No run that reached the screen failed, and the check could not tell whether the patch works. */
+  inconclusive: boolean
   error?: string
   failsWithout?: boolean
   passesWith?: boolean
@@ -681,9 +742,12 @@ export type NativeVerify = {
 
 /**
  * The exit code of `verify.ts fix-native`, and so the native verdict publish trusts: the workflow uploads the
- * platform's pass on that step's outcome, never on the result file the patched app could rewrite.
+ * platform's pass on that step's outcome (0), and its failure or inconclusive marker on that step's own record of a 4
+ * or a 3, never on the result file the patched app could rewrite. A genuine failure is 4 because nothing else
+ * produces it: a crash of Bun exits 1, and `native.sh`'s `die` exits 2.
  */
-export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed'>) => (verdict.passed ? 0 : 1)
+export const nativeExitCode = (verdict: Pick<NativeVerify, 'passed' | 'inconclusive'>) =>
+  verdict.passed ? 0 : verdict.inconclusive ? 3 : 4
 
 /** The fix agent's visual check has no finding, so only its own Maestro assertions fail a run. */
 const checkFailure = (run: FlowRun) =>
@@ -696,14 +760,16 @@ type Oracle = FindingFile['finding']['oracle']
 
 /**
  * The native half of a fix's verification, run with no key on the platform's runner. The flow runs three times on the
- * patched app, and a run fails when the flow fails or shows the bug (`flowFailure`, or the visual check's own
- * assertions). A run whose driver never started counts as failed, and so does one without the probe's ready line when
- * the oracle reads the WebView log: a dead stream or a silenced probe shows no bug either. A failure before the bug's
- * assertion fails the patched run too: a fix must leave the whole way there working. `passed` needs three counted
- * runs, every one clean.
+ * patched app, split as replay splits it (`withSignIn`), and a run fails when it shows the bug (`flowFailure`, or the
+ * visual check's own final assertion). A run that shows no bug but failed, its driver never started, or had no probe
+ * ready line when the oracle reads the WebView log, never reached the screen: a dead stream or a step on the way
+ * there shows nothing about the patch, so the run is replaced like replay's. `passed` needs three counted runs, every
+ * one clean.
  * With `original` the flow also runs three times on the app without the patch, where every run must show the bug
  * (`failsWithout`); `passed` then needs both. A visual check needs `original`, and so does a real-AI session, which
  * is verified here on the fake AI: its flow must fail without the patch to prove anything.
+ * A verdict that is not a pass is `inconclusive` unless a run that reached the screen failed it: the patched app
+ * showed the bug, or the unpatched one passed the fix agent's visual check.
  */
 export const verifyNativeFix = async (
   opts: { fp: string; platform: string; session: string; flow: string; outDir: string; patched: RunFlow } & (
@@ -723,28 +789,24 @@ export const verifyNativeFix = async (
   const next = counter()
   const bug = oracle ? (run: FlowRun) => flowFailure(oracle, run) : checkFailure
   const silent = (run: FlowRun) =>
-    oracle && webviewOracles.has(oracle.type) && !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
-      ? 'the layout probe never reported ready'
-      : undefined
-  const patched = await threeRuns(
-    { runFlow: opts.patched, outDir, next },
-    await withSignIn(check.yaml, session, appId, oracle, false),
-    session,
-    (run) => bug(run) ?? silent(run) ?? (run.passed ? undefined : (run.error ?? 'the flow failed')),
-  )
+    oracle !== undefined &&
+    webviewOracles.has(oracle.type) &&
+    !run.layout.some((line) => /\[qa-layout\] ready\b/.test(line))
+  const unseen = (run: FlowRun) => bug(run) === undefined && (!run.passed || silent(run))
+  const flow = await withSignIn(check.yaml, session, appId, oracle)
+  const patched = await threeRuns({ runFlow: opts.patched, outDir, next }, flow, session, bug, unseen)
   const { failed, runs, error, reason } = patched.replay
   // A run whose harness sign-in failed does not count, so a patch that breaks sign-in cannot pass on no runs.
-  const result = { fp, platform, runs, failed, passed: failed === 0 && runs === 3, error: error ?? reason }
-  if (!original) return result
-  const unpatched = await threeRuns(
-    { runFlow: original, outDir, next },
-    await withSignIn(check.yaml, session, appId, oracle),
-    session,
-    bug,
-    oracle && unreached(oracle),
-  )
+  const passesWith = failed === 0 && runs === 3
+  const result = { fp, platform, runs, failed, passed: passesWith, error: error ?? reason }
+  if (!original) return { ...result, inconclusive: !passesWith && failed === 0 }
+  const unpatched = await threeRuns({ runFlow: original, outDir, next }, flow, session, bug, unseen)
   const failsWithout = unpatched.replay.runs === 3 && unpatched.replay.failed === 3
-  return { ...result, failsWithout, passesWith: result.passed, passed: failsWithout && result.passed }
+  const passed = failsWithout && passesWith
+  // A real-AI repro flow may simply not show its bug on the fake AI; only the agent's own check can be wrong.
+  const checkPassesUnpatched = oracle === undefined && unpatched.replay.failed < unpatched.replay.runs
+  const inconclusive = !passed && failed === 0 && !checkPassesUnpatched
+  return { ...result, failsWithout, passesWith, passed, inconclusive }
 }
 
 /**

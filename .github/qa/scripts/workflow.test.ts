@@ -262,7 +262,18 @@ describe('fix job', () => {
 
   test('the agent may not edit git, the pipeline, e2e or the tool configs', () => {
     const args = step('fix', 'Fix').with?.claude_args ?? ''
-    for (const rule of ['.git/**', '.github/**', 'e2e/**', '**/vite.config.*', '**/tsconfig*.json', '**/.husky/**'])
+    for (const rule of [
+      '.git/**',
+      '.github/**',
+      'e2e/**',
+      '**/vite.config.*',
+      '**/playwright.config.*',
+      '**/playwright.*.config.*',
+      '**/tsconfig*.json',
+      '**/.husky/**',
+      'scripts/chrome.ts',
+      'scripts/install-chrome.ts',
+    ])
       expect(args).toContain(`"Edit(${rule})"`)
   })
 

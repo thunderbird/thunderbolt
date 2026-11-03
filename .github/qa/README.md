@@ -34,10 +34,11 @@ touches, in any folder, a dependency manifest, lockfile or build-tool file (`pac
 Gradle wrapper, `Podfile`, `Gemfile`, `Package.resolved`, `Package.swift`, `requirements*.txt`, `go.mod`, `go.sum`),
 or a git hook under `.husky/` or lint-staged config (`.lintstagedrc*`, `lint-staged.config.*`), which run on a
 developer's machine at their next commit. It refuses the Vite, Playwright and TypeScript configs (`vite.config.*`,
-`playwright.config.*`, `tsconfig*.json`), which the dev servers, the build and the checks run or obey. It also
-refuses a patch that adds or changes a symlink or submodule, or that matches a secret pattern, and one that lacks the
-pass of a check its task needs (see "Passes" below). App code of any kind, `src-tauri/` and `backend/drizzle/`
-included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
+`playwright.config.*`, `playwright.*.config.*`, `tsconfig*.json`), which the dev servers, the build and the checks
+run or obey, and `scripts/chrome.ts` and `scripts/install-chrome.ts`, which pick the browser every replay launches
+and the one CI downloads. It also refuses a patch that adds or changes a symlink or submodule, or that matches a
+secret pattern, and one that lacks the pass of a check its task needs (see "Passes" below). App code of any
+kind, `src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
 "security": no finding text and no regression spec. Its branch is `qa-fix/<identifier>`, never Linear's name,
 whose slug comes from the ticket's title.
 

@@ -704,6 +704,9 @@ describe('isDenied', () => {
     'vite.config.ts',
     'web/vite.config.mjs',
     'playwright.config.ts',
+    'playwright.e2ee.config.ts',
+    'playwright.extended.config.ts',
+    'playwright.preview.config.ts',
     'tsconfig.json',
     'tsconfig.node.json',
     'backend/tsconfig.json',
@@ -711,6 +714,9 @@ describe('isDenied', () => {
     // The preview deploy runs this program from the PR's tree with AWS deploy credentials.
     'deploy/pulumi/index.ts',
     'deploy/pulumi/src/alb.ts',
+    // chrome.ts picks the browser every Playwright config launches; install-chrome.ts picks the build CI downloads.
+    'scripts/chrome.ts',
+    'scripts/install-chrome.ts',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -739,6 +745,9 @@ describe('isDenied', () => {
     'src/lib/lint-staged.ts',
     'src/lib/vite-config.ts',
     'src/settings/tsconfig-view.tsx',
+    'src/lib/playwright.configure.ts',
+    'scripts/chrome.test.ts',
+    'src/scripts/chrome.ts',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })

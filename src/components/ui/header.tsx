@@ -55,12 +55,12 @@ type HeaderAgentSelectorProps = {
   onAddAgent?: () => void
   /** Mobile-only presentation. When set, the selector renders inside its own
    *  absolutely positioned wrapper: centered as a labeled pill on an empty new
-   *  chat, and docked top-right as a circular icon button once the thread
+   *  chat, and docked beside the project as a circular icon button once the thread
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Mobile project control that moves left as the agent picker docks beside it. */
-  projectControl?: ReactNode
+  /** Mobile project control that shares a capsule with the docked agent picker. */
+  projectControl?: (joined: boolean) => ReactNode
 }
 
 const HeaderAgentSelector = ({
@@ -77,7 +77,7 @@ const HeaderAgentSelector = ({
   // `status` flips to `submitted` synchronously on send, so the transition starts
   // the moment the user submits — before the thread row lands in the store.
   // Existing chats mount with `hasThread` already true, so they render docked
-  // top-right with no transition (CSS transitions don't run on first paint).
+  // in place with no transition (CSS transitions don't run on first paint).
   const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
 
   const selector = (
@@ -88,6 +88,7 @@ const HeaderAgentSelector = ({
       onAddAgent={onAddAgent}
       disabled={isReplying}
       collapsed={collapsed}
+      mobileJoined={collapsed && !!projectControl}
     />
   )
 
@@ -96,43 +97,52 @@ const HeaderAgentSelector = ({
   }
 
   return (
-    // Absolutely positioned so the macOS traffic-light clearance on the left
-    // column can't push the centered state off-center. Docked: a translate of
-    // half the header width (50cqw — the header is a size container) minus the
-    // pill's own width pins the right edge flush with the content edge (cqw is
-    // content-box based, so the header's px-2 padding provides the gap).
-    //
-    // Only `translate` transitions — `left` stays fixed. Animating `left`
-    // re-runs layout on the main thread every frame, and this slide fires at
-    // the busiest main-thread moment in the app (first send mounts the message
-    // list), which made it visibly stutter. A translate-only transition runs
-    // on the compositor and stays smooth regardless of main-thread load.
-    //
-    // The trigger width stays fixed throughout. Its labeled pill and logo-only
-    // circle crossfade internally (see AgentSelector), so this wrapper only
-    // animates translate and both directions remain compositor-driven.
     <>
       {projectControl && (
         <div
-          {...mobile.dragProps}
+          aria-hidden="true"
           className={cn(
-            'absolute top-2 right-2 z-10 transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-            collapsed ? '-translate-x-[calc(var(--touch-height-lg)+0.5rem)]' : 'translate-x-0',
+            'pointer-events-none absolute top-2 right-2 h-[var(--touch-height-lg)] w-[calc(var(--touch-height-lg)*2)] overflow-hidden rounded-full transition-[clip-path] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            mobileHeaderControlFillClass,
+            // Clip a fixed-size surface; animating width would cause layout on every frame.
+            collapsed
+              ? '[clip-path:inset(0_0_0_0_round_var(--touch-height-lg))]'
+              : '[clip-path:inset(0_0_0_50%_round_var(--touch-height-lg))]',
           )}
         >
-          {projectControl}
+          <div
+            className={cn(
+              'absolute right-[var(--touch-height-lg)] inset-y-3 border-l border-border/50 transition-opacity duration-300 motion-reduce:transition-none',
+              collapsed ? 'opacity-100' : 'opacity-0',
+            )}
+          />
         </div>
       )}
-      {/* Cross above the project while docking. Only the visible agent trigger
-          accepts taps, leaving the project accessible under the empty pill. */}
+      {projectControl && (
+        <div {...mobile.dragProps} className="absolute top-2 right-2 z-10">
+          {projectControl(collapsed)}
+        </div>
+      )}
+      {/* Keep the first-send slide translate-only: layout/custom-property animations
+          compete with mounting the message list. The outer rail moves by its own
+          width and the inner trigger by its own half-width. Percentage endpoints
+          stay unchanged on resize, so resizing does not start another transition. */}
       <div
         {...mobile.dragProps}
         className={cn(
-          'pointer-events-none absolute top-2 left-1/2 z-20 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-          collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex justify-end transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          projectControl ? 'right-[calc(0.5rem+var(--touch-height-lg))]' : 'right-2',
+          collapsed ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {selector}
+        <div
+          className={cn(
+            'flex w-max shrink-0 items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? 'translate-x-0' : 'translate-x-1/2',
+          )}
+        >
+          {selector}
+        </div>
       </div>
     </>
   )
@@ -314,7 +324,20 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
-      projectControl={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
+      projectControl={
+        isChatRoute
+          ? (joined) => (
+              <ProjectBadge
+                chatThreadId={chatThreadId ?? null}
+                iconOnly
+                className={cn(
+                  'max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:hover:bg-muted-foreground/10',
+                  joined && 'max-md:rounded-l-none max-md:rounded-r-full',
+                )}
+              />
+            )
+          : undefined
+      }
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
@@ -326,9 +349,7 @@ export const Header = () => {
     return (
       <header
         {...dragProps}
-        // `@container` lets the agent pill's docked translate use 50cqw (half
-        // the header width) so its slide can be translate-only (see above).
-        className="@container relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
           {/* The same panel glyph as the desktop toggle, so one icon means

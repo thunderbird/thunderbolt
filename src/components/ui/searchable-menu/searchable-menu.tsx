@@ -91,13 +91,13 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem, closeMenu 
   }
 
   return (
-    <div className={cn('flex items-center rounded-lg hover:bg-accent/50', isSelected && 'bg-accent')}>
+    <div className={cn('group/menu-item flex items-center rounded-lg hover:bg-accent/50', isSelected && 'bg-accent')}>
       {button}
       <button
         type="button"
         aria-label={action.label}
         title={action.label}
-        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10"
+        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10 transition-opacity [@media(hover:hover)]:md:opacity-0 md:group-hover/menu-item:opacity-100 md:group-focus-within/menu-item:opacity-100"
         onClick={() => {
           closeMenu()
           action.onAction()
@@ -182,6 +182,7 @@ export const SearchableMenu = <T,>({
   searchPlaceholder: searchPlaceholderProp,
   emptyMessage: emptyMessageProp,
   mobileTitle: mobileTitleProp,
+  showDesktopTitle = false,
   mobileSide = 'bottom',
   trigger,
   renderItem,
@@ -280,12 +281,18 @@ export const SearchableMenu = <T,>({
           </div>
         )}
 
+        {showDesktopTitle && (
+          <h3 className="px-4 pt-2 text-xs font-medium text-muted-foreground max-md:hidden">{mobileTitle}</h3>
+        )}
+
         <div
           className="min-h-0 overflow-y-auto"
           style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
         >
           <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
-            {isGroupedItems(filteredItems) ? (
+            {flatFiltered.length === 0 ? (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+            ) : isGroupedItems(filteredItems) ? (
               filteredItems.map((group) => (
                 <GroupSection
                   key={group.id}
@@ -310,10 +317,6 @@ export const SearchableMenu = <T,>({
                   />
                 ))}
               </div>
-            )}
-
-            {flatFiltered.length === 0 && (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
             )}
           </div>
         </div>

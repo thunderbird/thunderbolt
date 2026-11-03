@@ -115,6 +115,19 @@ describe('chat membership', () => {
     expect(await getProjectChatThreads(db, project.id)).toHaveLength(0)
   })
 
+  it.each(['deleted', 'missing'])('refuses a move to a %s project', async (target) => {
+    const db = getDb()
+    const current = await createProject(db, { name: 'Keep' })
+    const threadId = await seedThread(current.id)
+    const destination = await createProject(db, { name: 'Removed' })
+    await softDeleteProject(db, destination.id)
+    const targetId = target === 'deleted' ? destination.id : 'missing'
+
+    expect(await setChatThreadProject(db, threadId, targetId)).toBe(false)
+    expect(await getProjectChatThreads(db, current.id)).toHaveLength(1)
+    expect(await setChatThreadProject(db, 'unsaved-draft', targetId)).toBe(false)
+  })
+
   it('deletes only the selected project, keeping its chats and other projects intact', async () => {
     const db = getDb()
     const project = await createProject(db, { name: 'P' })

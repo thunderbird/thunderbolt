@@ -2571,12 +2571,17 @@ msgstr "Mais"
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Move"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "Mover arquivo"
+
+#: src/projects/project-badge.tsx
+msgid "Move session?"
+msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
@@ -4449,6 +4454,11 @@ msgstr ""
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
 msgstr "Isso vai negar ao dispositivo o acesso aos seus dados criptografados. O dispositivo precisará configurar a sincronização novamente."
+
+#. placeholder {0}: dialog.project.name
+#: src/projects/project-badge.tsx
+msgid "This will move the session to <0>{0}</0>."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."

@@ -2559,11 +2559,16 @@ msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Move"
 msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
+msgstr ""
+
+#: src/projects/project-badge.tsx
+msgid "Move session?"
 msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
@@ -4436,6 +4441,11 @@ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
+msgstr ""
+
+#. placeholder {0}: dialog.project.name
+#: src/projects/project-badge.tsx
+msgid "This will move the session to <0>{0}</0>."
 msgstr ""
 
 #: src/settings/preferences.tsx

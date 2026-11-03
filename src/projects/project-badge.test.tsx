@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { useQueryClient } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { useConfigStore } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
+import { eq } from 'drizzle-orm'
 import { getAllProjects } from '@/dal/projects'
 import { getDb } from '@/db/database'
 import { chatThreadsTable, projectsTable } from '@/db/tables'
@@ -19,6 +21,7 @@ import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { createMockChatInstance, hydrateStore } from '@/test-utils/chat-store-mocks'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useProjectTreeState } from '@/layout/sidebar/use-project-tree-state'
+import { useProjectBadgeState } from './use-project-badge-state'
 import { ProjectBadge } from './project-badge'
 // Keep lazy module I/O outside fake-clock interaction waits.
 import './project-editor-dialog'
@@ -152,6 +155,76 @@ it.each([false, true])(
   },
 )
 
+it.each([false, true])('can cancel or confirm moving to another project (mobile: %s)', async (mobile) => {
+  if (mobile) {
+    forceMobileViewport()
+  }
+  await getDb().insert(projectsTable).values({ id: 'p2', name: 'Research' })
+  await renderBadge({ iconOnly: mobile })
+  const triggerName = mobile ? 'In project: Q3 Planning' : 'Q3 Planning'
+  fireEvent.click(screen.getByRole('button', { name: triggerName }))
+  fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+  const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+  await act(async () => {
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+    await getClock().runAllAsync()
+  })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: triggerName }))
+  fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+    await getClock().runAllAsync()
+  })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p2')
+})
+
+it('closes a pending move when a synced deletion reaches the project list', async () => {
+  await getDb().insert(projectsTable).values({ id: 'p2', name: 'Research' })
+  const { result } = renderHook(() => ({ badge: useProjectBadgeState('chat-1'), queries: useQueryClient() }), {
+    wrapper: createTestProvider(),
+  })
+  await act(async () => {
+    await getClock().runAllAsync()
+  })
+  act(() => result.current.badge.requestProjectChange('p2'))
+  expect(result.current.badge.dialog?.type).toBe('move')
+  await act(async () => {
+    await getDb().update(projectsTable).set({ deletedAt: '2026-11-02T12:00:00Z' }).where(eq(projectsTable.id, 'p2'))
+    await result.current.queries.invalidateQueries({ queryKey: ['projects'] })
+    await getClock().runAllAsync()
+  })
+  expect(result.current.badge.dialog).toBeNull()
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+})
+
+it.each([false, true])(
+  'rejects a deleted move target before the picker refreshes (persisted: %s)',
+  async (persisted) => {
+    await getDb().insert(projectsTable).values({ id: 'p2', name: 'Research' })
+    if (persisted) {
+      await getDb().insert(chatThreadsTable).values({ id: 'chat-1', title: 'Keep', projectId: 'p1' })
+    }
+    await renderBadge()
+    fireEvent.click(screen.getByRole('button', { name: 'Q3 Planning' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+    const confirm = screen.getByRole('button', { name: 'Move' })
+    // Simulate an incoming sync write without refreshing the projects query yet.
+    await getDb().update(projectsTable).set({ deletedAt: '2026-11-02T12:00:00Z' }).where(eq(projectsTable.id, 'p2'))
+    await act(async () => {
+      fireEvent.click(confirm)
+      await getClock().runAllAsync()
+    })
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+    const threads = await getDb().select().from(chatThreadsTable)
+    expect(threads).toEqual(persisted ? [expect.objectContaining({ projectId: 'p1' })] : [])
+  },
+)
+
 it.each([
   [false, 'p2'],
   [true, 'p2'],
@@ -175,6 +248,16 @@ it.each([
       )
       await getClock().runAllAsync()
     })
+    if (targetProjectId) {
+      expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+      const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
+      expect(confirmation).toHaveTextContent('This will move the session to Research.')
+      expect(within(confirmation).getByText('Research', { selector: 'strong' })).toBeInTheDocument()
+      await act(async () => {
+        fireEvent.click(within(confirmation).getByRole('button', { name: 'Move' }))
+        await getClock().runAllAsync()
+      })
+    }
     const session = useChatStore.getState().sessions.get('chat-1')
     expect(session?.projectId).toBe(targetProjectId)
     expect(session?.chatInstance).toBe(chatInstance)
@@ -255,6 +338,12 @@ it.each(['p2', null])('keeps draft sidebar selection in sync when choosing %s', 
     fireEvent.click(screen.getByRole('button', { name: targetProjectId ? 'Research' : 'Remove from project' }))
     await getClock().runAllAsync()
   })
+  if (targetProjectId) {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+      await getClock().runAllAsync()
+    })
+  }
   expect(screen.getByLabelText('Active project')).toHaveTextContent(targetProjectId ?? 'none')
   if (targetProjectId) {
     expect(screen.getByLabelText('Active project')).toHaveAttribute('data-expanded', 'true')

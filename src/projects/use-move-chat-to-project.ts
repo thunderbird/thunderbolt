@@ -35,8 +35,10 @@ export type MoveChatDeps = {
 
 export const moveChatToProject = async ({ chatThreadId, projectId }: ChatDrop, deps: MoveChatDeps): Promise<void> => {
   await withChatThreadWrite(chatThreadId, async () => {
-    await deps.setProject(deps.db, chatThreadId, projectId)
-    deps.updateOpenSession(chatThreadId, projectId)
+    const assigned = await deps.setProject(deps.db, chatThreadId, projectId)
+    if (assigned) {
+      deps.updateOpenSession(chatThreadId, projectId)
+    }
   })
   // Only the chat rows need a nudge; the project counts are a reactive PowerSync
   // query and update themselves.

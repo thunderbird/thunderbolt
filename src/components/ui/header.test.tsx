@@ -164,7 +164,9 @@ describe('Header', () => {
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
-    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement).toHaveClass('top-2')
+    expect(screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement?.parentElement).toHaveClass(
+      'top-2',
+    )
   })
 
   it('keeps showing the thread agent after the synced list hydrates', async () => {
@@ -202,7 +204,8 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    expect(wrapper).toHaveClass('left-1/2', '[translate:-50%_0]')
+    expect(wrapper).toHaveClass('translate-x-1/2')
+    expect(wrapper?.parentElement).toHaveClass('left-1/2', '-translate-x-full')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-0')
   })
 
@@ -212,14 +215,12 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    // `left` stays fixed — only `translate` differs between the two states,
-    // so the dock slide can run entirely on the compositor.
-    expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
-    expect(wrapper).not.toHaveClass('[translate:-50%_0]')
-    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+    expect(wrapper).toHaveClass('translate-x-0', 'transition-[translate]')
+    expect(wrapper?.parentElement).toHaveClass('translate-x-0', 'transition-[translate]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-transparent')
   })
 
-  it('keeps the project control visible while it swaps places with the agent on first submit', async () => {
+  it('docks the agent left of the project on first submit without remounting either', async () => {
     const project = await createProject(getDb(), { name: 'Launch' })
     const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
     render(<Header />, { wrapper: TestWrapper })
@@ -228,7 +229,7 @@ describe('Header', () => {
     const trigger = screen.getByTestId('agent-selector-trigger')
     const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass('right-2', 'translate-x-0')
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
 
     act(() => chat.submit())
     await flushAgentsQuery()
@@ -237,7 +238,11 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
     expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass('-translate-x-[calc(var(--touch-height-lg)+0.5rem)]')
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
+    expect(trigger.closest('button')?.parentElement?.parentElement).toHaveClass(
+      'translate-x-0',
+      'right-[calc(0.5rem+var(--touch-height-lg))]',
+    )
   })
 
   it('shows the project control when opening an existing mobile chat', async () => {
@@ -246,7 +251,7 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
     await flushAgentsQuery()
 
-    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass('right-2')
   })
 
   it('hides the agent selector in minimal mode', () => {

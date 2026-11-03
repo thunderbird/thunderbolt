@@ -3,33 +3,58 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { appendFileSync } from 'node:fs'
-import { Browser, BrowserTag, detectBrowserPlatform, install, resolveBuildId } from '@puppeteer/browsers'
+import {
+  Browser,
+  type BrowserPlatform,
+  BrowserTag,
+  detectBrowserPlatform,
+  install,
+  type InstalledBrowser,
+  type InstallOptions,
+  resolveBuildId,
+} from '@puppeteer/browsers'
 import { $ } from 'bun'
 import { getChromeCacheDir } from './chrome'
 
-const platform = detectBrowserPlatform()
-if (!platform) {
-  throw new Error(`Chrome for Testing does not support ${process.platform}/${process.arch}`)
+type InstallChromeDeps = {
+  platform: BrowserPlatform | undefined
+  cacheDir: string
+  install: (options: InstallOptions & { unpack?: true }) => Promise<InstalledBrowser>
+  resolveBuildId: typeof resolveBuildId
 }
 
-if (process.argv.includes('--with-deps') && process.platform === 'linux') {
-  await $`bunx playwright install-deps chromium`
+/** Install the current Chrome for Testing Stable and point the cached `stable` alias at it. */
+export const installChrome = async ({ platform, cacheDir, install, resolveBuildId }: InstallChromeDeps) => {
+  if (!platform) {
+    throw new Error(`Chrome for Testing does not support ${process.platform}/${process.arch}`)
+  }
+  const buildId = await resolveBuildId(Browser.CHROME, platform, BrowserTag.STABLE)
+  const browser = await install({
+    cacheDir,
+    browser: Browser.CHROME,
+    platform,
+    buildId,
+    buildIdAlias: BrowserTag.STABLE,
+    downloadProgressCallback: 'default',
+  })
+  // install() returns before updating aliases on a cache hit (@puppeteer/browsers 3.2.6); drop this once it doesn't.
+  const metadata = browser.readMetadata()
+  browser.writeMetadata({ ...metadata, aliases: { ...metadata.aliases, stable: buildId } })
+  return { buildId, executablePath: browser.executablePath }
 }
 
-const buildId = await resolveBuildId(Browser.CHROME, platform, BrowserTag.STABLE)
-const browser = await install({
-  cacheDir: getChromeCacheDir(),
-  browser: Browser.CHROME,
-  platform,
-  buildId,
-  buildIdAlias: BrowserTag.STABLE,
-  downloadProgressCallback: 'default',
-})
-// install() returns early on a cache hit, before updating aliases.
-const metadata = browser.readMetadata()
-browser.writeMetadata({ ...metadata, aliases: { ...metadata.aliases, stable: buildId } })
-
-console.log(`Chrome Stable ${buildId}: ${browser.executablePath}`)
-if (process.env.GITHUB_ENV) {
-  appendFileSync(process.env.GITHUB_ENV, `THUNDERBOLT_CHROME_EXECUTABLE=${browser.executablePath}\n`)
+if (import.meta.main) {
+  if (process.argv.includes('--with-deps') && process.platform === 'linux') {
+    await $`bunx playwright install-deps chromium`
+  }
+  const { buildId, executablePath } = await installChrome({
+    platform: detectBrowserPlatform(),
+    cacheDir: getChromeCacheDir(),
+    install,
+    resolveBuildId,
+  })
+  console.log(`Chrome Stable ${buildId}: ${executablePath}`)
+  if (process.env.GITHUB_ENV) {
+    appendFileSync(process.env.GITHUB_ENV, `THUNDERBOLT_CHROME_EXECUTABLE=${executablePath}\n`)
+  }
 }

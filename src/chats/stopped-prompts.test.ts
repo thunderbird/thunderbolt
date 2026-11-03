@@ -74,7 +74,9 @@ describe('withStoppedReplyMarkers', () => {
   it('keeps the stopped prompt out of the prompt sent to the built-in agent', async () => {
     const messages = [...opening, user('u2', essayPrompt, true), user('u3', question)]
 
-    const { history, prompt } = await prepareBuiltInConversation(withStoppedReplyMarkers(messages), undefined)
+    const { history, prompt } = await prepareBuiltInConversation(withStoppedReplyMarkers(messages), undefined, {
+      workspace: false,
+    })
 
     expect(prompt.text).toBe(question)
     expect(history.at(-1)).toEqual({ role: 'assistant', text: stoppedReplyMarker })

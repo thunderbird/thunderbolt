@@ -81,11 +81,11 @@ would come out sideways with no metadata left to correct it.
 
 ## Delivery is native-first
 
-| Transport                                                                                        | Current-turn attachment becomes                                                                 |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| AI SDK ([`src/lib/attachments.ts`](../../../src/lib/attachments.ts))                             | A `file` part with the bytes as a data URL, one image part per page under `deliverAs: 'images'` |
-| Built-in agent ([`src/acp/built-in-conversation.ts`](../../../src/acp/built-in-conversation.ts)) | Text plus Pi `image` blocks; Pi has no document block, so PDF/DOCX always extract to text       |
-| ACP ([`src/acp/acp-adapter.ts`](../../../src/acp/acp-adapter.ts))                                | An embedded `resource` block (base64) when the agent advertises `embeddedContext`, else text    |
+| Transport                                                                                        | Current-turn attachment becomes                                                                   |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| AI SDK ([`src/lib/attachments.ts`](../../../src/lib/attachments.ts))                             | A `file` part with the bytes as a data URL, one image part per page under `deliverAs: 'images'`   |
+| Built-in agent ([`src/acp/built-in-conversation.ts`](../../../src/acp/built-in-conversation.ts)) | Text plus Pi `image` blocks; PDF/DOCX extract to text, written to the workspace when tools are on |
+| ACP ([`src/acp/acp-adapter.ts`](../../../src/acp/acp-adapter.ts))                                | An embedded `resource` block (base64) when the agent advertises `embeddedContext`, else text      |
 
 `defaultDeliveryMode` ([`src/files/transformers/index.ts`](../../../src/files/transformers/index.ts)) returns `'text'`
 for plain-text MIME types and for xlsx (no provider accepts a spreadsheet as a native file part, so native-first would only buy a guaranteed rejection and a retry), and `undefined` (native bytes) otherwise. An explicit `deliverAs` overrides it, and is how
@@ -100,6 +100,27 @@ Stateless chat replays the whole history per send. Re-inlining old bytes would b
 poison the thread if one historical attachment became undeliverable: the bad part replays forever and every later
 send fails, including a plain-text follow-up. For the same reason a missing attachment is not an error, the reference part stays (dropped from model
 input by `convertToModelMessages`) and the turn goes without it.
+
+### The built-in agent queries text attachments from its workspace
+
+When the turn's tools are on, every attachment the built-in agent receives as text is also written into the thread's
+[harness workspace](in-browser-agent-harness.md#attachments-in-the-workspace) under
+`attachments/<localFileId>/`, and the prompt carries its path plus a bounded preview: the whole content when short,
+otherwise the first 200 lines (16,000 characters) and a marker saying how much was cut. One rule covers every size, so
+short files read exactly as before, and a 10,000-row export no longer overflows the context window: the model
+aggregates it with `bash`.
+
+- **Tabular files land as TSV.** A CSV becomes `<name>.tsv` and each xlsx sheet `<sheet>.tsv` (sheet names that clean up
+  to the same name get a ` (2)` suffix)
+  ([`src/files/tabular.ts`](../../../src/files/tabular.ts)). The browser shell has no CSV parser, and `awk -F,`
+  silently splits a quoted `"Hertz, LLC"` into two columns; tabs and line breaks inside a field become spaces so
+  `awk -F'\t'` always sees the original columns. A CSV that doesn't convert cleanly (other delimiters, malformed
+  quoting, ragged rows) keeps its original text. Other text (txt/md/json, extracted PDF/DOCX) is written as text.
+- **History turns use the same shape**, so a harness rebuilt from history cannot overflow on an old attachment either.
+- **IndexedDB stays the source of truth.** The full set is rewritten every send, so a model edit, a reload, the
+  in-memory fallback, or a removed workspace all recover on the next send. A failed write is logged, not fatal.
+- **Tools off means inline.** With no `bash` to query with (`toolUsage === 0`), attachments are inlined whole, as on
+  the AI SDK path.
 
 ### Why ACP degrades instead of rasterizing
 
@@ -191,6 +212,12 @@ on the card.
   not `thunderbolt-files`, so a sent attachment's bytes outlive the chat, and the account.
 - **Scanned PDFs have no OCR.** `pdf-to-text` reads only the embedded text layer; the images rung is the fallback,
   which needs a vision model on the other end.
+- **Large text attachments still overflow without tools.** The AI SDK path and a tool-less built-in model inline the
+  whole file, so a big CSV hits the context-window error there. Truncating instead would yield confidently wrong
+  totals.
+- **Workspace copies outlive deleted threads.** A thread's workspace, attachment copies included, is not removed when
+  the thread is deleted. Deleting or editing the agent removes only the workspaces of threads it ran since the page
+  loaded; the rest stay in OPFS until sign-out clears it.
 - **Images have no remediation path.** An image has no text transformer and no image transformer, so a rejection
   reports exhausted immediately.
 
@@ -201,6 +228,7 @@ on the card.
 | Blob store (IndexedDB)              | `src/lib/file-blob-storage.ts`                             |
 | Message part + AI SDK hydration     | `src/lib/attachments.ts`, `src/types.ts`                   |
 | Transformer registry                | `src/files/transformers/index.ts`                          |
+| CSV parsing and TSV output          | `src/files/tabular.ts`                                     |
 | Compression                         | `src/files/compress/`                                      |
 | Composer intake (picker/drop/paste) | `src/components/chat/chat-prompt-input.tsx`                |
 | Remediation ladder                  | `src/components/chat/use-attachment-remediation.ts`        |

@@ -5403,7 +5403,7 @@ dependencies = [
 
 [[package]]
 name = "thunderbolt"
-version = "0.1.152"
+version = "0.1.153"
 dependencies = [
  "anyhow",
  "hex",

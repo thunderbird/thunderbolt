@@ -210,7 +210,7 @@ jobs:
         # Skip --with-deps: the runner image already ships Chromium's system libraries,
         # and its apt step can stall on a slow mirror.
         timeout-minutes: 3
-        run: bunx playwright install chromium
+        run: bun run browsers:install
 
       - name: Smoke test deployed preview
         run: bun run e2e:preview

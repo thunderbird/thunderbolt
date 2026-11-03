@@ -5,6 +5,7 @@
 import { trackEvent } from '@/lib/posthog'
 import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
+import { v7 as uuidv7 } from 'uuid'
 
 /**
  * Shared core for starting a new chat: tracks the event and navigates to
@@ -13,15 +14,19 @@ import { useNavigate } from 'react-router'
  *
  * The navigation carries `focusComposer`, a consume-once request the chat
  * composer honors on arrival (see `chat-prompt-input.tsx`) so the tap lands
- * ready to type — keyboard up on the native mobile apps. The composer's
- * mount-time `autoFocus` can't cover this on its own: starting a chat from
- * `/chats/new` reuses the same composer instance, so nothing remounts.
+ * ready to type — keyboard up on the native mobile apps. The explicit draft
+ * request also makes repeated New Chat actions distinct, even when
+ * the URL stays `/chats/new`.
  */
 export const useCreateNewChat = () => {
   const navigate = useNavigate()
 
-  return useCallback(() => {
-    trackEvent('chat_new_clicked')
-    navigate('/chats/new', { state: { focusComposer: true } })
-  }, [navigate])
+  return useCallback(
+    (projectId?: string) => {
+      trackEvent('chat_new_clicked')
+      const search = projectId ? `?${new URLSearchParams({ projectId })}` : ''
+      navigate(`/chats/new${search}`, { state: { focusComposer: true, newChatRequestId: uuidv7() } })
+    },
+    [navigate],
+  )
 }

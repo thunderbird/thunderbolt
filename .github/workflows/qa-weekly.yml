@@ -157,21 +157,19 @@ jobs:
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
 
+      # The key is per run: this job saves the current Stable and the run's later jobs restore it. A longer-lived key
+      # would keep serving the first Stable it saved, and every job would download the newer one anyway.
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with: &browser-cache
           path: ~/.cache/ms-playwright
-          key: qa-browsers-${{ hashFiles('bun.lock') }}-mcp-0.0.83
+          key: qa-browsers-${{ github.run_id }}
 
       - &install-browsers
         name: Install browsers
         timeout-minutes: 10
-        # Two installs: the repo's Playwright replays specs, the MCP (pinned in mcp.json) has its own Chromium. An
-        # install deletes the cached browsers of every Playwright copy missing from disk, and the MCP's npx copy exists
-        # only from its own install on, so the MCP goes first or the repo's install deletes its restored Chromium.
-        run: |
-          npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
-          bunx playwright install chromium
+        # Tests and both MCP servers use the same independently refreshed Chrome Stable build.
+        run: bun run browsers:install --with-deps
 
       # Reverts up to two recent fixes from main; a failed canary build drops the canaries instead of failing the run.
       - name: Pick the canaries and build them
@@ -692,7 +690,7 @@ jobs:
           fi
       - name: Install the second device's browser
         if: matrix.leg.postgres
-        run: npx --yes --package @playwright/mcp@0.0.83 playwright install --with-deps chromium
+        run: bun run browsers:install --with-deps
       - name: Install Claude Code
         # The hook and the Edit rule were measured on this version; the canary does not run Claude Code. Before a
         # bump, follow "Upgrading the Claude Code CLI" in .github/qa/README.md.
@@ -964,7 +962,7 @@ jobs:
       - *device-tools
       - name: Install the browser for c7's specs
         if: matrix.leg.postgres
-        run: bunx playwright install --with-deps chromium
+        run: bun run browsers:install --with-deps
       # Both builds: a c1 flow runs on the onboarding one, every other flow on the plain one.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -1386,7 +1384,8 @@ jobs:
             --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
             --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
-              "Edit(deploy/pulumi/**)" "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/tsconfig*.json)"
+              "Edit(deploy/pulumi/**)" "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/playwright.*.config.*)"
+              "Edit(scripts/chrome*)" "Edit(scripts/install-chrome*)" "Edit(**/tsconfig*.json)"
               "Edit(**/.husky/**)" "Edit(**/package.json)" "Edit(**/bun.lock)" "Edit(**/bun.lockb)" "Edit(**/Cargo.toml)"
               "Edit(**/Cargo.lock)" "Edit(**/*.gradle)" "Edit(**/*.gradle.kts)" "Edit(**/gradle-wrapper.*)"
               "Edit(**/Podfile*)" "Edit(**/Package.resolved)" "Edit(**/Package.swift)" "Edit(**/Gemfile*)"

@@ -181,16 +181,16 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 ## Encryption
 
-End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync, and each new device has to be approved from one the user already trusts, or recovered with their recovery phrase. The apps decide this from their own key material, not from the server, so a compromised server cannot switch it off.
+End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync. A new device unlocks through fingerprint approval from a trusted device, the current recovery phrase, or a passkey enrolled for sync. Fingerprint approval requires trusted client code on both the approving device and the new device; a malicious web host can replace the code it serves.
 
-> Because the servers hold only ciphertext for that content, an administrator cannot recover a user's data for them unless you run [organizational key escrow](#organizational-key-escrow). Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
+> Users unlock devices through fingerprint approval, their current recovery phrase, or an available passkey enrolled for sync. [Organizational key escrow](#organizational-key-escrow) separately supports offline decryption by an operator holding its private key; the supported escrow workflow decrypts data offline and does not restore the user's recovery phrase.
 
 **Upgrading from a release before 0.1.135**, where encryption was the `E2EE_ENABLED` setting:
 
 1. Set `MIN_APP_VERSION=0.1.135` in the same deploy that moves the backend to 0.1.135 or later. Older apps then show an upgrade screen instead of uploading plain text or silently failing to sync.
 2. Remove `E2EE_ENABLED`. Nothing reads it any more.
 
-Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. Accounts that already used encryption are upgraded in place: the first device to open the new version shows the user a new recovery phrase once, and the old phrase stops working.
+Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. For a legacy encrypted account, the migrating device shows a new recovery phrase once; save that new phrase because the old one stops working. Other trusted regular app devices return to pending approval, while existing pending or denied requests keep their state. They unlock through verified approval, the new phrase, or a passkey enrolled for sync. Existing encrypted data is preserved; CLI and bridge entries keep their state.
 
 ### Organizational key escrow
 
@@ -463,7 +463,7 @@ The challenge route has its own per-IP bucket, sized by the same `ANONYMOUS_SIGN
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as a semver string (`0.2.0`, or `0.2.0-rc.1`). Empty disables the check. |
 
-Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version on their API calls.
+On an honest deployment, every gated request must declare an accepted `X-App-Version` header at or above the configured minimum. Missing, malformed or below-minimum headers receive `426 Upgrade Required`. Apps that support the version gate show the update prompt. Personal access tokens earn no exemption, so API scripts and the CLI must send the header on their gated API calls. The value is client-supplied and does not prove which executable is running; a malicious server can ignore the policy.
 
 Exempt, because none of them can set the header: the startup configuration request, health checks, SSO and SAML browser callbacks, the command-line client's device-grant login, analytics capture, static assets, and the proxy WebSocket upgrade. `OPTIONS` preflights are always exempt. A blocked user can therefore still reach the update prompt.
 

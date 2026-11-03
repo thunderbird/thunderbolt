@@ -66,12 +66,20 @@ const popupClass = cn(
 type DrawerContentProps = DrawerPrimitive.Popup.Props & {
   /** Render the backdrop even when this drawer is nested in another drawer. */
   forceBackdrop?: boolean
+  /** Keep a nested sheet inside its host dialog's stacking and focus boundary. */
+  portalContainer?: DrawerPrimitive.Portal.Props['container']
 }
 
-const DrawerContent = ({ className, children, forceBackdrop = false, ...props }: DrawerContentProps) => {
+const DrawerContent = ({
+  className,
+  children,
+  forceBackdrop = false,
+  portalContainer,
+  ...props
+}: DrawerContentProps) => {
   return (
     <DrawerPrimitive.VirtualKeyboardProvider>
-      <DrawerPrimitive.Portal data-slot="drawer-portal">
+      <DrawerPrimitive.Portal data-slot="drawer-portal" container={portalContainer}>
         <DrawerPrimitive.Backdrop data-slot="drawer-overlay" className={backdropClass} forceRender={forceBackdrop} />
         {/* Portaled events still bubble through the React tree, so this
             deliberately stops ALL parent pointerdown handling — not just the

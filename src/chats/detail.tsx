@@ -10,7 +10,7 @@ import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
-import { Navigate, useParams, useSearchParams } from 'react-router'
+import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { preloadChatMessageList } from '@/components/chat/chat-messages-loader'
@@ -108,23 +108,22 @@ export const ChatHydrateHandler = ({
  * be on the very render that enters the new-chat state, or the key would point
  * at the previous chat for a frame.
  */
-export const useNewChatId = (isNew: boolean, projectId: string | null): string => {
-  const [minted, setMinted] = useState(() => uuidv7())
-  // Which new-chat visit `minted` belongs to. Null while a persisted thread is
-  // open, so returning to /chats/new always reads as a new visit.
+export const useNewChatId = (isNew: boolean, projectId: string | null, requestedId?: string): string => {
   const visit = isNew ? (projectId ?? '') : null
-  const [mintedFor, setMintedFor] = useState<string | null>(visit)
-
-  if (visit !== mintedFor) {
-    setMintedFor(visit)
-    // Leaving /chats/new keeps the id: the navigation the first send triggers
-    // goes to exactly this id, and re-minting there would defeat the whole point.
-    if (visit !== null) {
-      setMinted(uuidv7())
+  const [draft, setDraft] = useState(() => ({ id: uuidv7(), visit, requestedId }))
+  // The composer consumes navigation state after focusing. Clearing requestedId
+  // must not remount it; only a new explicit request starts another draft.
+  const hasNewRequest = isNew && requestedId !== undefined && requestedId !== draft.requestedId
+  if (visit !== draft.visit || hasNewRequest) {
+    const next = {
+      id: isNew ? uuidv7() : draft.id,
+      visit,
+      requestedId,
     }
+    setDraft(next)
+    return next.id
   }
-
-  return minted
+  return draft.id
 }
 
 /**
@@ -186,6 +185,7 @@ const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
 
 export default function ChatDetailPage() {
   const params = useParams()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
 
   const chatThreadId = params.chatThreadId
@@ -197,7 +197,8 @@ export default function ChatDetailPage() {
   // remount, no re-hydration, and the session kept project X — silently filing
   // the first message under a project the user had just left.
   const projectId = isNew ? searchParams.get('projectId') : null
-  const newChatId = useNewChatId(isNew, projectId)
+  const requestedId = (location.state as { newChatRequestId?: string } | null)?.newChatRequestId
+  const newChatId = useNewChatId(isNew, projectId, requestedId)
 
   // Overlap the renderer load with existing-chat hydration. Blank chats warm it
   // from ChatContentReady after the composer renders (typing also preloads it).

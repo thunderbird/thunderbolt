@@ -62,7 +62,7 @@ const ProjectOptions = ({
   if (projects.length === 0) {
     return (
       <p className="py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
-        <Trans>No projects yet. Create one from the Projects page, then move this chat into it.</Trans>
+        <Trans>No projects yet. Create one in the sidebar, then move this chat into it.</Trans>
       </p>
     )
   }
@@ -144,7 +144,7 @@ export const MoveChatToProjectPicker = ({
 }: MoveChatToProjectPickerProps) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
-  const title = t`Move to project`
+  const title = t`Move`
   const description = t`Chats in a project inherit its instructions.`
 
   // Selecting always dismisses: the sheet is a picker, not a settings surface.

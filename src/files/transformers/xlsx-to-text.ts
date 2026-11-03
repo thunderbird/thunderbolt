@@ -43,24 +43,38 @@ const isEmptyRow = (row: (CellValue | null)[]): boolean => row.every((cell) => c
  *  embedded quotes, so `Stark, Inc.` stays one cell instead of reading as two. */
 const csvField = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
 
-/**
- * Extracts a plain-text table dump from an XLSX blob via a lazily-imported
- * read-excel-file. Multiple sheets are concatenated with a heading per sheet so
- * the model can tell them apart; rows are joined as CSV-ish text rather than a
- * Markdown table, since spreadsheet column counts and widths vary too widely
- * for a fixed-width table to stay readable.
- */
-export const xlsxToText = async (file: StoredFile): Promise<{ text: string }> => {
+/** One worksheet as text cells, blank spacer rows removed. */
+export type SpreadsheetSheet = {
+  readonly name: string
+  readonly rows: string[][]
+}
+
+/** Reads every worksheet of an XLSX blob as text cells via a lazily-imported read-excel-file. */
+export const readXlsxSheets = async (file: StoredFile): Promise<SpreadsheetSheet[]> => {
   const { default: readXlsxFile } = await import('read-excel-file/browser')
   const sheets = await readXlsxFile(file.blob)
-  const text = sheets
-    .map(({ sheet, data }) => {
-      const rows = data
-        .filter((row) => !isEmptyRow(row))
-        .map((row) => row.map((cell) => csvField(cellText(cell))).join(', '))
-        .join('\n')
-      return `## Sheet: ${sheet}\n${rows}`
+  return sheets.map(({ sheet, data }) => ({
+    name: sheet,
+    rows: data.filter((row) => !isEmptyRow(row)).map((row) => row.map(cellText)),
+  }))
+}
+
+/**
+ * Renders sheets as a plain-text table dump. Multiple sheets are concatenated
+ * with a heading per sheet so the model can tell them apart; rows are joined as
+ * CSV-ish text rather than a Markdown table, since spreadsheet column counts and
+ * widths vary too widely for a fixed-width table to stay readable.
+ */
+const sheetsToText = (sheets: readonly SpreadsheetSheet[]): string =>
+  sheets
+    .map(({ name, rows }) => {
+      const text = rows.map((row) => row.map(csvField).join(', ')).join('\n')
+      return `## Sheet: ${name}\n${text}`
     })
     .join('\n\n')
-  return { text: text.trim() }
-}
+    .trim()
+
+/** Extracts a plain-text table dump from an XLSX blob — see {@link sheetsToText}. */
+export const xlsxToText = async (file: StoredFile): Promise<{ text: string }> => ({
+  text: sheetsToText(await readXlsxSheets(file)),
+})

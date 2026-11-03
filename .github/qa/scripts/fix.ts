@@ -39,16 +39,21 @@ const dependencyFiles = new RegExp(
     // Git hooks and lint-staged run code on a developer's machine at their next commit.
     String.raw`\.husky/.*|\.lintstagedrc[^/]*|lint-staged\.config\.[^/]+`,
     // Tool configs the dev servers, the build and the checks execute or obey, outside the app code a person reviews.
-    String.raw`vite\.config\.[^/]+|playwright\.config\.[^/]+|tsconfig[^/]*\.json`,
+    // The PR checks load every Playwright config to list its specs, playwright.e2ee.config.ts included.
+    String.raw`vite\.config\.[^/]+|playwright\.([^/]+\.)?config\.[^/]+|tsconfig[^/]*\.json`,
   ].join('|')})$`,
 )
 /**
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
  * `.github/`, dependency and hook files, the tool configs, `e2e/`, whose helpers every repro spec and visual check
- * imports (`publish` adds the regression spec there itself), and `deploy/pulumi/`, which the preview deploy runs from
- * the PR's tree with AWS deploy credentials. App code is open, because a person reviews every draft PR.
+ * imports (`publish` adds the regression spec there itself), `deploy/pulumi/`, which the preview deploy runs from
+ * the PR's tree with AWS deploy credentials, and `scripts/chrome*` and `scripts/install-chrome*`, which pick the
+ * browser every replay launches and CI downloads. The wildcard matters: the configs import `scripts/chrome` without an
+ * extension, so a new `chrome.js` would load before `chrome.ts`. App code is open, because a person reviews every
+ * draft PR.
  */
-export const isDenied = (path: string) => /^(\.github|e2e|deploy\/pulumi)\//.test(path) || dependencyFiles.test(path)
+export const isDenied = (path: string) =>
+  /^(\.github|e2e|deploy\/pulumi)\/|^scripts\/(install-)?chrome[^/]*$/.test(path) || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier'>
 /**

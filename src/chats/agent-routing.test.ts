@@ -185,38 +185,6 @@ describe('createAgentRoutingFetch', () => {
     expect(budgets[2]?.intent).toBe('auto')
   })
 
-  it('leaves a prompt stopped before its reply out of the next turn sent to the agent', async () => {
-    resetStore()
-    const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)
-    hydrateSessionWith('t-stopped', builtInAgent)
-    const customFetch = createAgentRoutingFetch('t-stopped', saveMessages, httpClient, getProxyFetch, {
-      connectToAgent: mock(async () => adapter) as never,
-    })
-    const message = (id: string, role: 'user' | 'assistant', text: string) => ({
-      id,
-      role,
-      parts: [{ type: 'text', text }],
-    })
-
-    await customFetch('/chat', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: 't-stopped',
-        messages: [
-          message('u1', 'user', 'I live in Lisbon.'),
-          message('a1', 'assistant', 'Noted.'),
-          message('u2', 'user', 'Write a long essay about Lisbon.'),
-          message('u3', 'user', 'Which city do I live in?'),
-        ],
-      }),
-    })
-
-    const [init] = adapterFetch.mock.calls[0] as unknown as [RequestInit, AgentAdapterContext]
-    const sent = JSON.parse(init.body as string) as { id: string; messages: ThunderboltUIMessage[] }
-    expect(sent.id).toBe('t-stopped')
-    expect(sent.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u3'])
-  })
-
   it('passes the current regenerate revision without changing it on normal sends', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)

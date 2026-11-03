@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { lazy, Suspense, useRef } from 'react'
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ChevronDown, FolderMinus, Settings } from 'lucide-react'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { SearchableMenu, searchableMenuRowClass } from '@/components/ui/searchable-menu'
 import { cn } from '@/lib/utils'
@@ -35,8 +36,18 @@ export const ProjectBadge = (props: ProjectBadgeProps) => <ProjectBadgeContent k
 const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: ProjectBadgeProps) => {
   const { t } = useLingui()
   const triggerRef = useRef<HTMLDivElement>(null)
-  const { projects, project, isVisible, dialog, openCreate, openEdit, closeDialog, isPending, selectProject } =
-    useProjectBadgeState(chatThreadId)
+  const {
+    projects,
+    project,
+    isVisible,
+    dialog,
+    openCreate,
+    openEdit,
+    closeDialog,
+    isPending,
+    selectProject,
+    requestProjectChange,
+  } = useProjectBadgeState(chatThreadId)
   if (!isVisible) {
     return null
   }
@@ -60,7 +71,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
       <SearchableMenu
         items={items}
         value={project?.id}
-        onValueChange={selectProject}
+        onValueChange={requestProjectChange}
         searchable={projects.length > 10}
         searchPlaceholder={t`Search projects`}
         emptyMessage={t`No matching projects.`}
@@ -80,7 +91,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
           { label: t`Create Project`, onAction: openCreate },
         ]}
         width={240}
-        maxHeight={340}
+        maxHeight={300}
         align={iconOnly ? 'end' : 'start'}
         renderItem={(item) => (
           <div className={cn(searchableMenuRowClass, isPending && 'cursor-wait opacity-60')}>
@@ -118,7 +129,25 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
           </div>
         )}
       />
-      {dialog && (
+      {dialog?.type === 'move' && (
+        <ConfirmActionDialog
+          open
+          title={t`Move session?`}
+          description={
+            <Trans>
+              This will move the session to <strong>{dialog.project.name}</strong>.
+            </Trans>
+          }
+          confirmLabel={t`Move`}
+          confirmVariant="default"
+          onCancel={closeDialog}
+          onConfirm={() => {
+            selectProject(dialog.project.id)
+            closeDialog()
+          }}
+        />
+      )}
+      {dialog && dialog.type !== 'move' && (
         <Suspense fallback={null}>
           {dialog.type === 'edit' ? (
             <ProjectEditorDialog project={dialog.project} onClose={closeDialog} />

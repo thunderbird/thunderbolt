@@ -152,6 +152,33 @@ it.each([false, true])(
   },
 )
 
+it.each([false, true])('can cancel or confirm moving to another project (mobile: %s)', async (mobile) => {
+  if (mobile) {
+    forceMobileViewport()
+  }
+  await getDb().insert(projectsTable).values({ id: 'p2', name: 'Research' })
+  await renderBadge({ iconOnly: mobile })
+  const triggerName = mobile ? 'In project: Q3 Planning' : 'Q3 Planning'
+  fireEvent.click(screen.getByRole('button', { name: triggerName }))
+  fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+  const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+  await act(async () => {
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
+    await getClock().runAllAsync()
+  })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+  expect(screen.queryByRole('alertdialog')).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: triggerName }))
+  fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+    await getClock().runAllAsync()
+  })
+  expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p2')
+})
+
 it.each([
   [false, 'p2'],
   [true, 'p2'],
@@ -175,6 +202,16 @@ it.each([
       )
       await getClock().runAllAsync()
     })
+    if (targetProjectId) {
+      expect(useChatStore.getState().sessions.get('chat-1')?.projectId).toBe('p1')
+      const confirmation = screen.getByRole('alertdialog', { name: 'Move session?' })
+      expect(confirmation).toHaveTextContent('This will move the session to Research.')
+      expect(within(confirmation).getByText('Research', { selector: 'strong' })).toBeInTheDocument()
+      await act(async () => {
+        fireEvent.click(within(confirmation).getByRole('button', { name: 'Move' }))
+        await getClock().runAllAsync()
+      })
+    }
     const session = useChatStore.getState().sessions.get('chat-1')
     expect(session?.projectId).toBe(targetProjectId)
     expect(session?.chatInstance).toBe(chatInstance)
@@ -255,6 +292,12 @@ it.each(['p2', null])('keeps draft sidebar selection in sync when choosing %s', 
     fireEvent.click(screen.getByRole('button', { name: targetProjectId ? 'Research' : 'Remove from project' }))
     await getClock().runAllAsync()
   })
+  if (targetProjectId) {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+      await getClock().runAllAsync()
+    })
+  }
   expect(screen.getByLabelText('Active project')).toHaveTextContent(targetProjectId ?? 'none')
   if (targetProjectId) {
     expect(screen.getByLabelText('Active project')).toHaveAttribute('data-expanded', 'true')

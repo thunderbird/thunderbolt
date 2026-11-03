@@ -12,7 +12,7 @@ type MobileActionSheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description?: string
+  description?: ReactNode
   children: ReactNode
   initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
   portalContainer?: ComponentProps<typeof DrawerContent>['portalContainer']

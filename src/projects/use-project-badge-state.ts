@@ -9,7 +9,7 @@ import { useProjects } from '@/dal/projects'
 import type { Project } from '@/types'
 import { useMoveChatToProject } from './use-move-chat-to-project'
 
-type ProjectBadgeDialog = { type: 'create' } | { type: 'edit'; project: Project }
+type ProjectBadgeDialog = { type: 'create' } | { type: 'edit' | 'move'; project: Project }
 
 /** Share project assignment between the draft session, persisted chat, and sidebar. */
 export const useProjectBadgeState = (chatThreadId: string | null) => {
@@ -20,6 +20,15 @@ export const useProjectBadgeState = (chatThreadId: string | null) => {
   const [dialog, setDialog] = useState<ProjectBadgeDialog | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  const selectProject = (nextProjectId: string | null) => {
+    if (!chatThreadId || nextProjectId === projectId || isPending) {
+      return
+    }
+    startTransition(async () => {
+      await moveChat({ chatThreadId, projectId: nextProjectId })
+    })
+  }
+
   return {
     projects,
     isVisible: !minimalMode && projectId !== undefined,
@@ -29,13 +38,20 @@ export const useProjectBadgeState = (chatThreadId: string | null) => {
     openEdit: (project: Project) => setDialog({ type: 'edit', project }),
     closeDialog: () => setDialog(null),
     isPending,
-    selectProject: (nextProjectId: string | null) => {
-      if (!chatThreadId || nextProjectId === projectId || isPending) {
+    selectProject,
+    requestProjectChange: (nextProjectId: string) => {
+      if (nextProjectId === projectId || isPending) {
         return
       }
-      startTransition(async () => {
-        await moveChat({ chatThreadId, projectId: nextProjectId })
-      })
+      const target = projects.find((candidate) => candidate.id === nextProjectId)
+      if (!target) {
+        return
+      }
+      if (projectId) {
+        setDialog({ type: 'move', project: target })
+        return
+      }
+      selectProject(nextProjectId)
     },
   }
 }

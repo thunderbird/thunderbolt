@@ -157,11 +157,13 @@ jobs:
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
 
+      # The key is per run: this job saves the current Stable and the run's later jobs restore it. A longer-lived key
+      # would keep serving the first Stable it saved, and every job would download the newer one anyway.
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with: &browser-cache
           path: ~/.cache/ms-playwright
-          key: qa-browsers-${{ hashFiles('bun.lock') }}-chrome-stable
+          key: qa-browsers-${{ github.run_id }}
 
       - &install-browsers
         name: Install browsers

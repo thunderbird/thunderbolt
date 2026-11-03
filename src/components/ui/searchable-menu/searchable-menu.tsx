@@ -285,7 +285,9 @@ export const SearchableMenu = <T,>({
           style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
         >
           <div className={cn('flex flex-col gap-4 px-1 pb-1', !searchable && 'pt-1')}>
-            {isGroupedItems(filteredItems) ? (
+            {flatFiltered.length === 0 ? (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+            ) : isGroupedItems(filteredItems) ? (
               filteredItems.map((group) => (
                 <GroupSection
                   key={group.id}
@@ -310,10 +312,6 @@ export const SearchableMenu = <T,>({
                   />
                 ))}
               </div>
-            )}
-
-            {flatFiltered.length === 0 && (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
             )}
           </div>
         </div>

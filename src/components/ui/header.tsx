@@ -97,16 +97,17 @@ const HeaderAgentSelector = ({
   }
 
   return (
-    // The agent's fixed-width trigger slides between the center and right edge.
-    // Only docking progress transitions; viewport changes reposition it instantly.
     <>
       {projectControl && (
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute top-2 right-2 h-[var(--touch-height-lg)] overflow-hidden rounded-full transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            'pointer-events-none absolute top-2 right-2 h-[var(--touch-height-lg)] w-[calc(var(--touch-height-lg)*2)] overflow-hidden rounded-full transition-[clip-path] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
             mobileHeaderControlFillClass,
-            collapsed ? 'w-[calc(var(--touch-height-lg)*2)]' : 'w-[var(--touch-height-lg)]',
+            // Clip a fixed-size surface; animating width would cause layout on every frame.
+            collapsed
+              ? '[clip-path:inset(0_0_0_0_round_var(--touch-height-lg))]'
+              : '[clip-path:inset(0_0_0_50%_round_var(--touch-height-lg))]',
           )}
         >
           <div
@@ -122,16 +123,26 @@ const HeaderAgentSelector = ({
           {projectControl(collapsed)}
         </div>
       )}
-      {/* Only the visible agent trigger accepts taps; the project stays to its right. */}
+      {/* Keep the first-send slide translate-only: layout/custom-property animations
+          compete with mounting the message list. The outer rail moves by its own
+          width and the inner trigger by its own half-width. Percentage endpoints
+          stay unchanged on resize, so resizing does not start another transition. */}
       <div
         {...mobile.dragProps}
         className={cn(
-          'mobile-agent-dock pointer-events-none absolute top-2 left-1/2 z-20 flex items-center transition-[--agent-dock-progress] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-          collapsed && '[--agent-dock-progress:1]',
-          projectControl && '[--agent-dock-inset:var(--touch-height-lg)]',
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex justify-end transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          projectControl ? 'right-[calc(0.5rem+var(--touch-height-lg))]' : 'right-2',
+          collapsed ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {selector}
+        <div
+          className={cn(
+            'flex w-max shrink-0 items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? 'translate-x-0' : 'translate-x-1/2',
+          )}
+        >
+          {selector}
+        </div>
       </div>
     </>
   )
@@ -338,8 +349,7 @@ export const Header = () => {
     return (
       <header
         {...dragProps}
-        // Container units keep the docked agent aligned with the header's right edge.
-        className="@container relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
           {/* The same panel glyph as the desktop toggle, so one icon means

@@ -50,6 +50,15 @@ describe('Chrome cache', () => {
     expect(getChromeExecutablePath(cacheDir)).toContain('156.0.8078.81')
   })
 
+  test('the CLI fails instead of printing a path to a missing Chrome', () => {
+    const result = Bun.spawnSync(['bun', join(import.meta.dir, 'chrome.ts')], {
+      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(cacheDir, 'empty') },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout.toString()).toBe('')
+    expect(result.stderr.toString()).toContain('bun run browsers:install')
+  })
+
   test.each(['darwin', 'linux'])('extended %s projects keep Chrome launch options out of other engines', (platform) => {
     const result = Bun.spawnSync(
       [

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,5 +39,10 @@ export const getChromeExecutablePath = (cacheDir = getChromeCacheDir()): string 
 export const getChromeLaunchOptions = () => ({ executablePath: getChromeExecutablePath() })
 
 if (import.meta.main) {
-  console.log(getChromeExecutablePath())
+  const executablePath = getChromeExecutablePath()
+  if (!existsSync(executablePath)) {
+    console.error(`Chrome for Testing Stable is not installed (${executablePath}). Run \`bun run browsers:install\`.`)
+    process.exit(1)
+  }
+  console.log(executablePath)
 }

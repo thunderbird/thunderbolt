@@ -5,7 +5,7 @@
 import type { AgentHarness, AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Model, MutableModels } from '@earendil-works/pi-ai'
 import type { RequestInfo } from 'undici-types'
-import type { SharedModel } from '../../../shared/defaults/models.ts'
+import type { ImageSupport, SharedModel } from '../../../shared/defaults/models.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import type { LogoutResult } from '../auth/logout.ts'
 
@@ -14,6 +14,7 @@ export type ManagedCatalog = {
   readonly version: number
   readonly defaultModelId: string
   readonly data: SharedModel[]
+  readonly imageSupport: Readonly<Record<string, ImageSupport>>
 }
 export type ManagedCatalogLoader = (
   backendUrl: string,

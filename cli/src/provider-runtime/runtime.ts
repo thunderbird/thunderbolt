@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createHash } from 'node:crypto'
-import type { SharedModel } from '../../../shared/defaults/models.ts'
+import { isKnownToReadImages, type SharedModel } from '../../../shared/defaults/models.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import type { CliDeviceMetadata, ensureRegisteredSession } from '../auth/account-client.ts'
@@ -677,17 +677,20 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
         sessionRejected = true
       })
     }
+    const supportsImages = isKnownToReadImages(model, catalog)
     const createBinding = async (): Promise<PreparedPiBinding> => {
       if (model.isConfidential === 1) {
         return dependencies.createTinfoilBinding({
           credential: registeredCredential as SessionCredential,
           model,
+          supportsImages,
           onStoredSessionRejected,
         })
       }
       return dependencies.createManagedDirectBinding({
         credential: registeredCredential,
         model,
+        supportsImages,
         observeResponse: async (response) => {
           if (accountGeneration !== preparedGeneration || effectiveManagedCredentialIdentity !== registeredIdentity) {
             return

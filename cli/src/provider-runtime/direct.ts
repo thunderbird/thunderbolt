@@ -2,12 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  defaultModelImageSupport,
-  defaultModels,
-  isKnownToReadImages,
-  type SharedModel,
-} from '../../../shared/defaults/models.ts'
+import type { SharedModel } from '../../../shared/defaults/models.ts'
 import { buildOpenAiCompatModel } from '../../../shared/agent-core/openai-compat-model.ts'
 import type { CredentialedFetch, CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { createCredentialedFetch, getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
@@ -18,6 +13,8 @@ import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, ResolvedAcc
 type ManagedDirectBindingOptions = {
   readonly credential: ResolvedAccountCredential
   readonly model: SharedModel
+  /** Whether to send images; known only from the catalog the model came from. */
+  readonly supportsImages: boolean
   readonly observeResponse: CredentialResponseObserver
   readonly fetchFn?: AccountFetch
 }
@@ -83,7 +80,7 @@ export const createManagedDirectBinding = async (options: ManagedDirectBindingOp
     // The catalog has no per-model reasoning flag yet (THU-863).
     reasoning: true,
     contextWindow: options.model.contextWindow!,
-    supportsImages: isKnownToReadImages(options.model, { data: defaultModels, imageSupport: defaultModelImageSupport }),
+    supportsImages: options.supportsImages,
   })
   const provider = built.models.getProvider(providerId)
   if (!provider) throw new Error('Managed direct provider construction failed')

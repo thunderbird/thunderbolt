@@ -2,12 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import {
-  defaultModelImageSupport,
-  defaultModels,
-  isKnownToReadImages,
-  type SharedModel,
-} from '../../../shared/defaults/models.ts'
+import type { SharedModel } from '../../../shared/defaults/models.ts'
 import {
   buildConfidentialModel,
   isConfidentialModelError,
@@ -30,6 +25,8 @@ const sdkPlaceholderCredential = 'thunderbolt-session'
 export type CreateTinfoilBindingOptions = {
   readonly credential: SessionCredential
   readonly model: SharedModel
+  /** Whether to send images; known only from the catalog the model came from. */
+  readonly supportsImages: boolean
   readonly onStoredSessionRejected: () => Promise<void>
   readonly fetchFn?: AccountFetch
   readonly receiptTimeoutMs?: number
@@ -137,7 +134,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     receipts,
     reasoning: true,
     contextWindow: options.model.contextWindow ?? undefined,
-    supportsImages: isKnownToReadImages(options.model, { data: defaultModels, imageSupport: defaultModelImageSupport }),
+    supportsImages: options.supportsImages,
   })
   const provider = built.models.getProvider(providerId)
   if (!provider) throw new Error('Tinfoil provider construction failed.')

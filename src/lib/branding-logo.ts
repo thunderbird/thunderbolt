@@ -48,9 +48,9 @@ const downloadOnce = async (logo: BrandingLogoFile, client: HttpClient): Promise
  * `useBrandingLogo` and the favicon read them from there.
  *
  * A `data:` URL rather than the backend's URL because the Tauri content
- * security policy limits images to the app itself, `asset:`, `data:` and the
- * hosted API — it can't name a backend whose address is a user setting
- * (`blob:` isn't allowed either). Files are content-addressed and served
+ * security policy limits images to the app itself, `asset:`, `data:`, `blob:`
+ * and the hosted API — it can't name a backend whose address is a user
+ * setting. Files are content-addressed and served
  * `immutable`, so a returning launch reads them from the HTTP cache. A failed
  * download is logged and retried on the next sync.
  *

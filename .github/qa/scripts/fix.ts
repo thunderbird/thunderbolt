@@ -47,11 +47,13 @@ const dependencyFiles = new RegExp(
  * True when a fix PR must not touch `path` (repo-relative). Only the supply chain and the verification are closed:
  * `.github/`, dependency and hook files, the tool configs, `e2e/`, whose helpers every repro spec and visual check
  * imports (`publish` adds the regression spec there itself), `deploy/pulumi/`, which the preview deploy runs from
- * the PR's tree with AWS deploy credentials, and `scripts/chrome.ts` and `scripts/install-chrome.ts`, which pick the
- * browser every replay launches and CI downloads. App code is open, because a person reviews every draft PR.
+ * the PR's tree with AWS deploy credentials, and `scripts/chrome*` and `scripts/install-chrome*`, which pick the
+ * browser every replay launches and CI downloads. The wildcard matters: the configs import `scripts/chrome` without an
+ * extension, so a new `chrome.js` would load before `chrome.ts`. App code is open, because a person reviews every
+ * draft PR.
  */
 export const isDenied = (path: string) =>
-  /^(\.github|e2e|deploy\/pulumi)\/|^scripts\/(install-)?chrome\.ts$/.test(path) || dependencyFiles.test(path)
+  /^(\.github|e2e|deploy\/pulumi)\/|^scripts\/(install-)?chrome[^/]*$/.test(path) || dependencyFiles.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier'>
 /**

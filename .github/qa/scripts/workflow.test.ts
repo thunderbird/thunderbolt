@@ -271,8 +271,8 @@ describe('fix job', () => {
       '**/playwright.*.config.*',
       '**/tsconfig*.json',
       '**/.husky/**',
-      'scripts/chrome.ts',
-      'scripts/install-chrome.ts',
+      'scripts/chrome*',
+      'scripts/install-chrome*',
     ])
       expect(args).toContain(`"Edit(${rule})"`)
   })

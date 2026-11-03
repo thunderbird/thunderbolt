@@ -717,6 +717,10 @@ describe('isDenied', () => {
     // chrome.ts picks the browser every Playwright config launches; install-chrome.ts picks the build CI downloads.
     'scripts/chrome.ts',
     'scripts/install-chrome.ts',
+    // The configs import `scripts/chrome` without an extension, so these would load before chrome.ts.
+    'scripts/chrome',
+    'scripts/chrome.js',
+    'scripts/chrome.test.ts',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })
@@ -746,8 +750,8 @@ describe('isDenied', () => {
     'src/lib/vite-config.ts',
     'src/settings/tsconfig-view.tsx',
     'src/lib/playwright.configure.ts',
-    'scripts/chrome.test.ts',
     'src/scripts/chrome.ts',
+    'scripts/chrome/notes.md',
   ])('allows %s', (path) => {
     expect(isDenied(path)).toBe(false)
   })

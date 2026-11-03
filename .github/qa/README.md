@@ -1221,7 +1221,7 @@ Never run on GitHub (only locally, or read in the action's code):
 - the workflow as a whole, including the matrix, the artifacts between jobs and the job conditions;
 - `claude-code-action` forwarding `--setting-sources`, `--permission-mode`, `--tools` and the MCP config;
 - conditional service containers with an empty image, YAML anchors, and brace patterns in `download-artifact`;
-- installing the MCP's Chromium with `npx --package @playwright/mcp@0.0.83 playwright install chromium`;
+- refreshing the shared Chrome for Testing Stable build with `bun run browsers:install --with-deps`;
 - the GitHub App token, the bot identity lookup, the push and `gh pr create`;
 - every Linear call: label and state lookups, dedupe, `fileUpload`, ticket creation, the scorecard query;
 - the heartbeat and `notify-on-failure` for this workflow;

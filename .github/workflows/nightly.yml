@@ -64,7 +64,7 @@ jobs:
         # Firefox needs apt packages the runner image may lack, so --with-deps stays;
         # the timeout makes a slow-mirror stall fail fast instead.
         timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium firefox
+        run: bun run browsers:install --with-deps && bunx playwright install --with-deps firefox
 
       - name: Check spec collection
         run: bun run e2e:check-collected

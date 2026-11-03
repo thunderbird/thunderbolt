@@ -105,7 +105,8 @@ test.describe('artifact harness (real browser)', () => {
     const types = messages.map((m) => m.type)
     expect(types).toContain('artifact-ready')
     expect(types).not.toContain('artifact-error')
-    const height = messages.find((m) => m.type === 'artifact-height')
+    // Chrome can report zero before the first layout; the host consumes the latest height.
+    const height = messages.findLast((m) => m.type === 'artifact-height')
     expect(height?.height ?? 0).toBeGreaterThan(0)
   })
 

@@ -4,6 +4,7 @@
 
 import { defineConfig, devices } from '@playwright/test'
 import baseConfig from './playwright.config'
+import { getChromeLaunchOptions } from './scripts/chrome'
 
 const isMac = (process.env.EXTENDED_PLATFORM ?? process.platform) === 'darwin'
 process.env.E2E_EXTENDED_WEBKIT_PERSISTENT = String(isMac)
@@ -14,8 +15,8 @@ const browsers = isMac
       { name: 'webkit-iphone', device: devices['iPhone 13'] },
     ]
   : [
-      { name: 'chromium-desktop', device: devices['Desktop Chrome'] },
-      { name: 'chromium-mobile', device: devices['Pixel 7'] },
+      { name: 'chromium-desktop', device: { ...devices['Desktop Chrome'], launchOptions: getChromeLaunchOptions() } },
+      { name: 'chromium-mobile', device: { ...devices['Pixel 7'], launchOptions: getChromeLaunchOptions() } },
       { name: 'firefox-desktop', device: devices['Desktop Firefox'] },
       { name: 'firefox-mobile', device: { ...devices['Desktop Firefox'], viewport: { width: 390, height: 844 } } },
     ]
@@ -57,7 +58,7 @@ export default defineConfig({
       browsers.map(({ name, device }) => ({
         ...project,
         name: `${project.name}-${name}`,
-        use: { ...project.use, ...device, baseURL: project.use?.baseURL },
+        use: { ...project.use, launchOptions: {}, ...device, baseURL: project.use?.baseURL },
       })),
     ) ?? []),
     {

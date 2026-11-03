@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defineConfig, devices } from '@playwright/test'
+import { getChromeLaunchOptions } from './scripts/chrome'
 import { idpCertSingleLine } from './e2e/saml-test-certs'
 
 const isCI = !!process.env.CI
@@ -60,6 +61,7 @@ export default defineConfig({
       testMatch: /consumer-.*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
+        launchOptions: getChromeLaunchOptions(),
         baseURL: `http://localhost:${consumerVitePort}`,
       },
     },
@@ -72,6 +74,7 @@ export default defineConfig({
       testMatch: /(?:oidc|acp-|proxy-).*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
+        launchOptions: getChromeLaunchOptions(),
         baseURL: `http://localhost:${oidcVitePort}`,
       },
     },
@@ -84,6 +87,7 @@ export default defineConfig({
       testMatch: /saml.*\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
+        launchOptions: getChromeLaunchOptions(),
         baseURL: `http://localhost:${samlVitePort}`,
       },
     },
@@ -97,6 +101,7 @@ export default defineConfig({
       testMatch: /min-version-gate\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
+        launchOptions: getChromeLaunchOptions(),
         baseURL: `http://localhost:${oidcVitePort}`,
       },
     },
@@ -107,7 +112,7 @@ export default defineConfig({
       // not the worktree dir "feat-html-artifact-tool" (which also contains "artifact-").
       name: 'artifact',
       testMatch: /\/artifact-[^/]*\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: getChromeLaunchOptions() },
     },
   ],
   webServer: [

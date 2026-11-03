@@ -7,6 +7,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
+import { getChromeLaunchOptions } from './chrome'
 
 const temporaryDist = await mkdtemp(join(tmpdir(), 'thunderbolt-agent-core-'))
 const dist = resolve(process.env.BROWSER_TEST_DIST ?? temporaryDist)
@@ -46,6 +47,7 @@ try {
       // WebKit's ephemeral contexts reject OPFS; each case needs its own persistent profile.
       const browser = await engine.launchPersistentContext(
         join(temporaryDist, `${engineName}-${removeIteratorHelpers}`),
+        engineName === 'chromium' ? getChromeLaunchOptions() : {},
       )
       const timeout = setTimeout(() => {
         void browser.close()

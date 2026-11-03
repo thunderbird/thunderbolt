@@ -1404,10 +1404,17 @@ describe('caches', () => {
     }
   })
 
-  test("the MCP's Chromium installs before the repo's, whose install would delete it otherwise", () => {
-    const [first, second] = (step('build', 'Install browsers').run ?? '').trim().split('\n')
-    expect(first).toStartWith('npx --yes --package @playwright/mcp@')
-    expect(second).toBe('bunx playwright install chromium')
+  test('tests and both MCP servers use the independently refreshed Stable browser', () => {
+    expect(step('build', 'Install browsers').run).toBe('bun run browsers:install --with-deps')
+    for (const file of ['mcp.json', 'mcp-two-devices.json']) {
+      const config = JSON.parse(readFileSync(join(import.meta.dir, '..', file), 'utf8')) as {
+        mcpServers: Record<string, { args: string[] }>
+      }
+      for (const { args } of Object.values(config.mcpServers)) {
+        expect(args).toContain('--executable-path')
+        expect(args[args.indexOf('--executable-path') + 1]).toBe('${THUNDERBOLT_CHROME_EXECUTABLE}')
+      }
+    }
   })
 })
 

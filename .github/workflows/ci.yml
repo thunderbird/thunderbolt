@@ -362,7 +362,7 @@ jobs:
         # WebKit needs apt packages the runner image lacks, so --with-deps stays;
         # the timeout makes a slow-mirror stall fail fast instead.
         timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium webkit
+        run: bun run browsers:install --with-deps && bunx playwright install --with-deps webkit
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
@@ -468,7 +468,7 @@ jobs:
         run: bun run test:qa --rerun-each 5
 
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bun run browsers:install --with-deps
 
       # The layout probe's static pages; they need no stack.
       - name: Run the layout probe tests

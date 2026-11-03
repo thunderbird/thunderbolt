@@ -91,17 +91,8 @@ setup: setup-symlinks
 	else \
 		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
 	fi
-# Playwright does not publish Ubuntu 26.04 ARM64 builds yet; its Ubuntu 24.04 build is ABI-compatible.
-	@echo "$(BLUE)→ Installing Playwright Chromium (used by bun run e2e)...$(NC)"
-	@if [ "$$(uname -s)" = "Linux" ] \
-		&& { [ "$$(uname -m)" = "aarch64" ] || [ "$$(uname -m)" = "arm64" ]; } \
-		&& [ -r /etc/os-release ] \
-		&& ( . /etc/os-release; [ "$${ID:-}" = "ubuntu" ] && [ "$${VERSION_ID:-}" = "26.04" ] ); then \
-		echo "$(YELLOW)! Using Playwright's Ubuntu 24.04 ARM64 browsers on Ubuntu 26.04$(NC)"; \
-		PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-arm64 bunx playwright install chromium; \
-	else \
-		bunx playwright install chromium; \
-	fi
+	@echo "$(BLUE)→ Installing current Chrome for Testing Stable (used by bun run e2e)...$(NC)"
+	bun run browsers:install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies

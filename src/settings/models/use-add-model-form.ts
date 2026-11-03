@@ -226,8 +226,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
-    // The URL starts blank (the input's placeholder suggests Ollama's address) so
-    // the catalog auto-fetch never probes an endpoint the user did not enter.
+    // The URL starts blank so the catalog auto-fetch never calls an endpoint the user did not enter.
     for (const field of ['name', 'model', 'customModel', 'apiKey', 'url'] as const) {
       form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
     }

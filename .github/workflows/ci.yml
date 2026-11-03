@@ -481,8 +481,16 @@ jobs:
           QA_BACKEND_USER: qa-dev
         run: |
           .github/qa/scripts/stack.sh start dev
+          # `playwright screenshot` takes no executable path, so this loads each page in Chrome for Testing directly.
           for port in 1424 1425; do
-            bunx playwright screenshot --wait-for-timeout 5000 "http://localhost:$port" "$RUNNER_TEMP/dev-$port.png" || failed=1
+            bun -e "
+              import { chromium } from '@playwright/test'
+              import { getChromeLaunchOptions } from './scripts/chrome'
+              const browser = await chromium.launch(getChromeLaunchOptions())
+              await (await browser.newPage()).goto(Bun.argv[1])
+              await Bun.sleep(5000)
+              await browser.close()
+            " "http://localhost:$port" || failed=1
           done
           .github/qa/scripts/stack.sh stop || failed=1
           if grep -iE 'EACCES|EPERM|permission denied' "$RUNNER_TEMP/qa-stack.log"; then

@@ -216,6 +216,18 @@
   --elevation-strong: rgb(0 0 0 / 0.35);
 }
 
+/* Animate the docking progress, not the viewport-dependent position. Resizing
+   then updates the position immediately without restarting the send transition. */
+@property --agent-dock-progress {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.mobile-agent-dock {
+  translate: calc(-50% + var(--agent-dock-progress) * (50cqw - 50% - var(--agent-dock-inset, 0px))) 0;
+}
+
 /* ===========================
    Software keyboard inset
 

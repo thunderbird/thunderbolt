@@ -202,7 +202,8 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    expect(wrapper).toHaveClass('left-1/2', '[translate:-50%_0]')
+    expect(wrapper).toHaveClass('left-1/2', 'mobile-agent-dock')
+    expect(wrapper).not.toHaveClass('[--agent-dock-progress:1]')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-0')
   })
 
@@ -212,14 +213,12 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
 
     const wrapper = screen.getByTestId('agent-selector-trigger').closest('button')?.parentElement
-    // `left` stays fixed — only `translate` differs between the two states,
-    // so the dock slide can run entirely on the compositor.
-    expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
-    expect(wrapper).not.toHaveClass('[translate:-50%_0]')
-    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
+    expect(wrapper).toHaveClass('left-1/2', '[--agent-dock-progress:1]', 'transition-[--agent-dock-progress]')
+    expect(wrapper).not.toHaveClass('transition-[translate]')
+    expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-transparent')
   })
 
-  it('slides the project control below the agent on first submit without remounting either', async () => {
+  it('docks the agent left of the project on first submit without remounting either', async () => {
     const project = await createProject(getDb(), { name: 'Launch' })
     const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
     render(<Header />, { wrapper: TestWrapper })
@@ -228,7 +227,7 @@ describe('Header', () => {
     const trigger = screen.getByTestId('agent-selector-trigger')
     const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass('right-2', 'translate-y-0')
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
 
     act(() => chat.submit())
     await flushAgentsQuery()
@@ -237,9 +236,10 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
     expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass(
-      'right-2',
-      'translate-y-[calc(var(--touch-height-lg)+0.5rem)]',
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2')
+    expect(trigger.closest('button')?.parentElement).toHaveClass(
+      '[--agent-dock-progress:1]',
+      '[--agent-dock-inset:var(--touch-height-lg)]',
     )
   })
 
@@ -249,10 +249,7 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
     await flushAgentsQuery()
 
-    expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass(
-      'right-2',
-      'translate-y-[calc(var(--touch-height-lg)+0.5rem)]',
-    )
+    expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass('right-2')
   })
 
   it('hides the agent selector in minimal mode', () => {

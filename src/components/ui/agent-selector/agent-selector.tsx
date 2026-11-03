@@ -216,6 +216,7 @@ export const AgentSelector = ({
       searchPlaceholder={t`Search agents`}
       emptyMessage={t`No agents found`}
       mobileTitle={t`Choose agent`}
+      showDesktopTitle
       mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}

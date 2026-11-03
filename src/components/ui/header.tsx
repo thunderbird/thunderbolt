@@ -59,7 +59,7 @@ type HeaderAgentSelectorProps = {
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Mobile project control that moves left as the agent picker docks beside it. */
+  /** Mobile project control that moves down as the agent picker docks above it. */
   projectControl?: ReactNode
 }
 
@@ -117,14 +117,13 @@ const HeaderAgentSelector = ({
           {...mobile.dragProps}
           className={cn(
             'absolute top-2 right-2 z-10 transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
-            collapsed ? '-translate-x-[calc(var(--touch-height-lg)+0.5rem)]' : 'translate-x-0',
+            collapsed ? 'translate-y-[calc(var(--touch-height-lg)+0.5rem)]' : 'translate-y-0',
           )}
         >
           {projectControl}
         </div>
       )}
-      {/* Cross above the project while docking. Only the visible agent trigger
-          accepts taps, leaving the project accessible under the empty pill. */}
+      {/* Only the visible agent trigger accepts taps; the project docks below it. */}
       <div
         {...mobile.dragProps}
         className={cn(

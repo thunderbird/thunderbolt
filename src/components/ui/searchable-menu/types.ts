@@ -55,6 +55,8 @@ export type SearchableMenuProps<T = unknown> = {
   emptyMessage?: string
   /** Accessible heading shown on the mobile card menu */
   mobileTitle?: string
+  /** Also show the mobile title as a small heading above the desktop list. */
+  showDesktopTitle?: boolean
   /** Screen edge the mobile card menu enters from */
   mobileSide?: MobileCardMenuSide
   /** Custom trigger content - receives selected item */

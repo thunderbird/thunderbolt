@@ -65,6 +65,7 @@ const ProjectBadgeContent = ({ chatThreadId, iconOnly = false, className }: Proj
         searchPlaceholder={t`Search projects`}
         emptyMessage={t`No matching projects.`}
         mobileTitle={t`Choose project`}
+        showDesktopTitle
         mobileSide="top"
         footerAction={[
           ...(project

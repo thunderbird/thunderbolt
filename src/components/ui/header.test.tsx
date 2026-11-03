@@ -219,7 +219,7 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
   })
 
-  it('keeps the project control visible while it swaps places with the agent on first submit', async () => {
+  it('slides the project control below the agent on first submit without remounting either', async () => {
     const project = await createProject(getDb(), { name: 'Launch' })
     const chat = setupWithAgent(customAgent, { withThread: false, projectId: project.id })
     render(<Header />, { wrapper: TestWrapper })
@@ -228,7 +228,7 @@ describe('Header', () => {
     const trigger = screen.getByTestId('agent-selector-trigger')
     const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass('right-2', 'translate-x-0')
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2', 'translate-y-0')
 
     act(() => chat.submit())
     await flushAgentsQuery()
@@ -237,7 +237,10 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
     expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
     expect(projectControl).toBeVisible()
-    expect(projectControl.closest('.absolute')).toHaveClass('-translate-x-[calc(var(--touch-height-lg)+0.5rem)]')
+    expect(projectControl.closest('.absolute')).toHaveClass(
+      'right-2',
+      'translate-y-[calc(var(--touch-height-lg)+0.5rem)]',
+    )
   })
 
   it('shows the project control when opening an existing mobile chat', async () => {
@@ -246,7 +249,10 @@ describe('Header', () => {
     render(<Header />, { wrapper: TestWrapper })
     await flushAgentsQuery()
 
-    expect(screen.getByRole('button', { name: 'In project: Launch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'In project: Launch' }).closest('.absolute')).toHaveClass(
+      'right-2',
+      'translate-y-[calc(var(--touch-height-lg)+0.5rem)]',
+    )
   })
 
   it('hides the agent selector in minimal mode', () => {

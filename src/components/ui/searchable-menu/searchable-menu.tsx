@@ -182,6 +182,7 @@ export const SearchableMenu = <T,>({
   searchPlaceholder: searchPlaceholderProp,
   emptyMessage: emptyMessageProp,
   mobileTitle: mobileTitleProp,
+  showDesktopTitle = false,
   mobileSide = 'bottom',
   trigger,
   renderItem,
@@ -278,6 +279,10 @@ export const SearchableMenu = <T,>({
               />
             </div>
           </div>
+        )}
+
+        {showDesktopTitle && (
+          <h3 className="px-4 pt-2 text-xs font-medium text-muted-foreground max-md:hidden">{mobileTitle}</h3>
         )}
 
         <div

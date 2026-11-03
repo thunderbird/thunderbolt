@@ -2352,7 +2352,7 @@ msgstr "ローカルストレージ"
 msgid "Localization"
 msgstr "地域と言語"
 
-#: src/components/location-search-combobox.tsx
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "位置情報"

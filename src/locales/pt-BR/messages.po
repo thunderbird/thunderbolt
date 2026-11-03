@@ -2376,7 +2376,7 @@ msgstr "Armazenamento local"
 msgid "Localization"
 msgstr "Localização"
 
-#: src/components/location-search-combobox.tsx
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "Local"

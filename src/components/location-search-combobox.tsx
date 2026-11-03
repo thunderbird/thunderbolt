@@ -63,8 +63,6 @@ export const LocationSearchCombobox = ({
       }}
       className={className}
       disabled={disabled}
-      // A combobox takes no name from its content, so the trigger needs one of its own.
-      aria-label={t`Location`}
       {...rest}
     />
   )

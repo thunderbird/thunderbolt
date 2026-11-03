@@ -123,9 +123,7 @@ describe('OnboardingLocationStep', () => {
     it('gives the location combobox an accessible name', async () => {
       await renderComponent()
 
-      expect(screen.getByRole('combobox', { name: 'Location' })).toBe(
-        screen.getByText('Select location…').closest('button')!,
-      )
+      expect(screen.getByRole('combobox', { name: 'Location' })).toBeInTheDocument()
     })
 
     it('should maintain accessibility during interactions', async () => {

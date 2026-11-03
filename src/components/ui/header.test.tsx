@@ -225,7 +225,7 @@ describe('Header', () => {
     const trigger = screen.getByTestId('agent-selector-trigger')
     const projectControl = screen.getByRole('button', { name: 'In project: Launch' })
     expect(projectControl).toBeVisible()
-    expect(projectControl.parentElement).toHaveClass('right-2', 'translate-x-0')
+    expect(projectControl.closest('.absolute')).toHaveClass('right-2', 'translate-x-0')
 
     act(() => chat.submit())
     await flushAgentsQuery()
@@ -234,7 +234,7 @@ describe('Header', () => {
     expect(screen.getByTestId('agent-selector-trigger')).toBe(trigger)
     expect(screen.getByRole('button', { name: 'In project: Launch' })).toBe(projectControl)
     expect(projectControl).toBeVisible()
-    expect(projectControl.parentElement).toHaveClass('-translate-x-[calc(var(--touch-height-lg)+0.5rem)]')
+    expect(projectControl.closest('.absolute')).toHaveClass('-translate-x-[calc(var(--touch-height-lg)+0.5rem)]')
   })
 
   it('shows the project control when opening an existing mobile chat', async () => {

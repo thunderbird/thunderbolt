@@ -762,6 +762,10 @@ msgstr "Modell auswählen"
 msgid "Choose one"
 msgstr "Eine Option wählen"
 
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr "Projekt auswählen"
+
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
 #~ msgstr "Wählen Sie Ihren E-Mail-Anbieter {displayReason}"
@@ -898,6 +902,11 @@ msgstr "Wird abgeschlossen…"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "Konfiguration"
+
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
+msgstr "{0} konfigurieren"
 
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
@@ -1268,6 +1277,10 @@ msgstr "Passkey erstellen"
 
 #: src/projects/project-create-dialog.tsx
 msgid "Create project"
+msgstr "Projekt erstellen"
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
 msgstr "Projekt erstellen"
 
 #: src/components/create-item/context.tsx
@@ -2666,6 +2679,7 @@ msgstr "Keine passenden Verbindungen."
 #~ msgstr "Keine passenden Projekte"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr "Keine passenden Projekte."
 
@@ -3212,6 +3226,7 @@ msgstr "Entfernt alle Chats, Einstellungen und zwischengespeicherten Daten von d
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr "Aus Projekt entfernen"
 
@@ -3486,6 +3501,7 @@ msgid "Search models…"
 msgstr "Modelle suchen…"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr "Projekte suchen"
 

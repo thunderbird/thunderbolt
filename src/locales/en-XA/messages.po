@@ -762,6 +762,10 @@ msgstr ""
 msgid "Choose one"
 msgstr ""
 
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr ""
+
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
 #~ msgstr ""
@@ -897,6 +901,11 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
+msgstr ""
+
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -1268,6 +1277,10 @@ msgstr ""
 
 #: src/projects/project-create-dialog.tsx
 msgid "Create project"
+msgstr ""
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
 msgstr ""
 
 #: src/components/create-item/context.tsx
@@ -2666,6 +2679,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr ""
 
@@ -3212,6 +3226,7 @@ msgstr ""
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr ""
 
@@ -3486,6 +3501,7 @@ msgid "Search models…"
 msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr ""
 

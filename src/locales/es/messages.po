@@ -774,6 +774,10 @@ msgstr "Elegir modelo"
 msgid "Choose one"
 msgstr "Elige una"
 
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr "Elegir proyecto"
+
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
 #~ msgstr "Elige tu proveedor de correo {displayReason}"
@@ -910,6 +914,11 @@ msgstr "Completando…"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "Configuración"
+
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
+msgstr "Configurar {0}"
 
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
@@ -1280,6 +1289,10 @@ msgstr "Crear llave de acceso"
 
 #: src/projects/project-create-dialog.tsx
 msgid "Create project"
+msgstr "Crear proyecto"
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
 msgstr "Crear proyecto"
 
 #: src/components/create-item/context.tsx
@@ -2678,6 +2691,7 @@ msgstr "No hay conexiones que coincidan."
 #~ msgstr "No hay proyectos que coincidan"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr "No hay proyectos que coincidan."
 
@@ -3224,6 +3238,7 @@ msgstr "Quitar todos los chats, ajustes y datos en caché de este dispositivo."
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr "Quitar del proyecto"
 
@@ -3498,6 +3513,7 @@ msgid "Search models…"
 msgstr "Buscar modelos…"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr "Buscar proyectos"
 

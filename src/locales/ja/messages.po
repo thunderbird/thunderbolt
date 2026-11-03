@@ -750,6 +750,10 @@ msgstr "モデルを選択"
 msgid "Choose one"
 msgstr "1 つ選択"
 
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr "プロジェクトを選択"
+
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
 #~ msgstr "メールプロバイダーを選択してください {displayReason}"
@@ -886,6 +890,11 @@ msgstr "完了しています…"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Configuration"
 msgstr "構成"
+
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
+msgstr "{0}を設定"
 
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
@@ -1256,6 +1265,10 @@ msgstr "パスキーを作成"
 
 #: src/projects/project-create-dialog.tsx
 msgid "Create project"
+msgstr "プロジェクトを作成"
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
 msgstr "プロジェクトを作成"
 
 #: src/components/create-item/context.tsx
@@ -2654,6 +2667,7 @@ msgstr "一致する接続はありません。"
 #~ msgstr "一致するプロジェクトはありません"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr "一致するプロジェクトはありません。"
 
@@ -3200,6 +3214,7 @@ msgstr "このデバイスからすべてのチャット、設定、キャッシ
 
 #: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr "プロジェクトから削除"
 
@@ -3474,6 +3489,7 @@ msgid "Search models…"
 msgstr "モデルを検索…"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr "プロジェクトを検索"
 

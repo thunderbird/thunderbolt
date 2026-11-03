@@ -56,19 +56,16 @@ type ItemButtonProps<T> = {
   item: SearchableMenuItem<T>
   isSelected: boolean
   onClick: () => void
+  closeMenu: () => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
 }
 
-const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButtonProps<T>) => {
-  if (renderItem) {
-    return (
-      <button type="button" disabled={item.disabled} onClick={onClick} className="w-full text-left">
-        {renderItem(item, isSelected)}
-      </button>
-    )
-  }
-
-  return (
+const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem, closeMenu }: ItemButtonProps<T>) => {
+  const button = renderItem ? (
+    <button type="button" disabled={item.disabled} onClick={onClick} className="w-full min-w-0 text-left">
+      {renderItem(item, isSelected)}
+    </button>
+  ) : (
     <button
       type="button"
       disabled={item.disabled}
@@ -87,6 +84,29 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem }: ItemButt
       </div>
     </button>
   )
+
+  const action = item.action
+  if (!action) {
+    return button
+  }
+
+  return (
+    <div className={cn('flex items-center rounded-lg hover:bg-accent/50', isSelected && 'bg-accent')}>
+      {button}
+      <button
+        type="button"
+        aria-label={action.label}
+        title={action.label}
+        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10"
+        onClick={() => {
+          closeMenu()
+          action.onAction()
+        }}
+      >
+        {action.icon}
+      </button>
+    </div>
+  )
 }) as <T>(props: ItemButtonProps<T>) => ReactNode
 ;(ItemButton as { displayName?: string }).displayName = 'ItemButton'
 
@@ -96,9 +116,10 @@ type GroupSectionProps<T> = {
   onSelect: (id: string, item: SearchableMenuItem<T>) => void
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
   hideLabel?: boolean
+  closeMenu: () => void
 }
 
-const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }: GroupSectionProps<T>) => {
+const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel, closeMenu }: GroupSectionProps<T>) => {
   if (group.items.length === 0) {
     return null
   }
@@ -119,6 +140,7 @@ const GroupSection = memo(<T,>({ group, value, onSelect, renderItem, hideLabel }
             isSelected={value === item.id}
             onClick={() => onSelect(item.id, item)}
             renderItem={renderItem}
+            closeMenu={closeMenu}
           />
         ))}
       </div>
@@ -271,6 +293,7 @@ export const SearchableMenu = <T,>({
                   value={value}
                   onSelect={handleSelect}
                   renderItem={renderItem}
+                  closeMenu={closeMenu}
                   hideLabel={filteredItems.length === 1}
                 />
               ))
@@ -283,6 +306,7 @@ export const SearchableMenu = <T,>({
                     isSelected={value === item.id}
                     onClick={() => handleSelect(item.id, item)}
                     renderItem={renderItem}
+                    closeMenu={closeMenu}
                   />
                 ))}
               </div>
@@ -297,7 +321,9 @@ export const SearchableMenu = <T,>({
 
       {footerAction && (
         <div className="border-t p-1 dark:border-border/50">
-          <FooterActionRow {...footerAction} closeMenu={closeMenu} />
+          {(Array.isArray(footerAction) ? footerAction : [footerAction]).map((action) => (
+            <FooterActionRow key={action.label} {...action} closeMenu={closeMenu} />
+          ))}
         </div>
       )}
     </div>

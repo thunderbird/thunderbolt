@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSidebar } from '@/components/ui/sidebar'
+import { useChatStore } from '@/chats/chat-store'
 import { useProjects, setProjectPinned } from '@/dal/projects'
 import { useDatabase } from '@/contexts'
 import type { Project } from '@/types'
@@ -30,7 +31,19 @@ export const useProjectTreeState = (chatThreads: ChatThread[], currentChatThread
   const navigate = useNavigate()
   const { closeMobileSidebar } = useSidebar()
   const [params] = useSearchParams()
-  const activeId = chatThreads.find((thread) => thread.id === currentChatThreadId)?.projectId ?? params.get('projectId')
+  const draftProjectId = useChatStore((store) => {
+    if (currentChatThreadId !== 'new') {
+      return undefined
+    }
+    const session = store.sessions.get(store.currentSessionId ?? '')
+    return session?.chatThread ? undefined : session?.projectId
+  })
+  // The URL seeds a new chat, but its picker can change or clear that assignment.
+  // Only fall back before hydration: null is an explicit removal from the project.
+  const activeId =
+    draftProjectId !== undefined
+      ? draftProjectId
+      : (chatThreads.find((thread) => thread.id === currentChatThreadId)?.projectId ?? params.get('projectId'))
   const [state, dispatch] = useReducer(projectTreeReducer, { activeId, expanded: new Set(activeId ? [activeId] : []) })
   const [dialog, setDialog] = useState<ProjectDialog | null>(null)
   const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.projects.expanded', 'true')

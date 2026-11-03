@@ -153,6 +153,13 @@ export type ImageSupport = 'supported' | 'unsupported'
  *  editing a row's URL or model slug points it at a different model. */
 export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' | 'vendor'>
 
+/** A models lineup with its image-support declarations, keyed by row id: the
+ *  bundled defaults, or a newer set the backend ships in `/v1/config`. */
+export type ImageSupportLineup = {
+  data: ReadonlyArray<ImageSupportModel & Pick<SharedModel, 'id'>>
+  imageSupport: Readonly<Record<string, ImageSupport>>
+}
+
 /**
  * Image support of every shipped default, keyed by default id. Declared rather
  * than detected because the CLI can't detect it; the app uses it to skip
@@ -170,17 +177,19 @@ export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = 
 const imageCapableManagedVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
 
 /**
- * Image support known without asking anyone: the shipped defaults (and any row on
- * the same provider and model slug), every Claude model on the native Anthropic
- * provider, and Thunderbolt-hosted models from vision vendors. Everything else
+ * Image support known without asking anyone: the lineup's declarations (applied to
+ * any row on the same provider and model slug), every Claude model on the native
+ * Anthropic provider, and Thunderbolt-hosted models from vision vendors. A lineup
+ * row without a declaration falls through to the other rules. Everything else
  * needs detection, which only the app can do.
  */
-export const staticImageSupport = (model: ImageSupportModel): ImageSupport | undefined => {
-  const shipped = defaultModels.find(
+export const staticImageSupport = (model: ImageSupportModel, lineup: ImageSupportLineup): ImageSupport | undefined => {
+  const shipped = lineup.data.find(
     (candidate) => candidate.provider === model.provider && candidate.model === model.model,
   )
-  if (shipped) {
-    return defaultModelImageSupport[shipped.id]
+  const declared = shipped && lineup.imageSupport[shipped.id]
+  if (declared) {
+    return declared
   }
   if (model.provider === 'anthropic') {
     return 'supported'
@@ -196,7 +205,8 @@ export const staticImageSupport = (model: ImageSupportModel): ImageSupport | und
  * image can't be explained, as in the CLI: only to models known to read them.
  * The app detects the rest instead, and strips only models known not to.
  */
-export const isKnownToReadImages = (model: ImageSupportModel): boolean => staticImageSupport(model) === 'supported'
+export const isKnownToReadImages = (model: ImageSupportModel, lineup: ImageSupportLineup): boolean =>
+  staticImageSupport(model, lineup) === 'supported'
 
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`

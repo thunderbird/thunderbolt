@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getKnownImageSupport, imageSupportKey, setCachedImageSupport } from '@/ai/image-support'
+import { getKnownImageSupport, getStaticImageSupport, imageSupportKey, setCachedImageSupport } from '@/ai/image-support'
 import { defaultDeliveryMode } from '@/files/transformers'
 import { getAttachments } from '@/lib/attachments'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { AttachmentData, Model, ThunderboltUIMessage } from '@/types'
-import { type ImageSupport, staticImageSupport } from '@shared/defaults/models'
+import type { ImageSupport } from '@shared/defaults/models'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
@@ -108,7 +108,7 @@ export const useImageSupportCheck = ({
   if (query.data === 'supported' || !hasDraftImage) {
     return noCheck
   }
-  const isOverridable = staticImageSupport(model) === undefined
+  const isOverridable = getStaticImageSupport(model) === undefined
   return {
     notice: 'unsupported',
     tryAnyway: isOverridable

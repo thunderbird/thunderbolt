@@ -12,7 +12,13 @@
  * result never needs a schema change or sync-rule deploy. Each device detects once.
  */
 
-import { type ImageSupport, type ImageSupportModel, staticImageSupport } from '@shared/defaults/models'
+import {
+  defaultModelImageSupport,
+  defaultModels,
+  type ImageSupport,
+  type ImageSupportModel,
+  staticImageSupport,
+} from '@shared/defaults/models'
 import { z } from 'zod'
 
 const storageKey = 'thunderbolt_image_support'
@@ -60,6 +66,10 @@ export const clearImageSupportCache = (): void => {
   localStorage.removeItem(storageKey)
 }
 
+/** Image support fixed by rule, judged against the bundled models lineup. */
+export const getStaticImageSupport = (model: ImageSupportModel): ImageSupport | undefined =>
+  staticImageSupport(model, { data: defaultModels, imageSupport: defaultModelImageSupport })
+
 /** Image support known right now without a network call, or undefined when it still needs detecting. */
 export const getKnownImageSupport = (model: ImageSupportModel): ImageSupport | undefined =>
-  staticImageSupport(model) ?? getCachedImageSupport(model)
+  getStaticImageSupport(model) ?? getCachedImageSupport(model)

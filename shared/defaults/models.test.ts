@@ -35,15 +35,20 @@ const computeSnapshotHash = () =>
 
 // `hashModel` deliberately hashes only user-editable fields (it drives the
 // user-edit detection in reconciliation), so it is blind to metadata like
-// `vendor` and `description`. Hash those separately here so a metadata-only
-// defaults change still trips the snapshot and gets its version bump.
+// `vendor`, `description` and image support. Hash those separately here so a
+// metadata-only defaults change still trips the snapshot and gets its version bump.
 const computeMetadataHash = () =>
-  defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
+  defaultModels
+    .map(
+      (model, index) =>
+        `${index}:${hashValues([model.vendor, model.description, defaultModelImageSupport[model.id] ?? null])}`,
+    )
+    .join('|')
 
 const expected = {
   version: 11,
   hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-bs87m1|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
-  metadataHash: '0:vzhyk4|1:1sqs5u|2:-cajkcl',
+  metadataHash: '0:-5cyn16|1:-v53uf0|2:-bj1ngs',
 }
 
 describe('defaultModels version snapshot', () => {

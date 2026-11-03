@@ -156,8 +156,9 @@ export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' |
 /**
  * Image support of every shipped default, keyed by default id. Declared rather
  * than detected because the CLI can't detect it; the app uses it to skip
- * detection. `models.test.ts` fails if a default ships without an entry. Not
- * synced, so changing it needs no version bump.
+ * detection. The backend ships it beside the rows in `/v1/config`, picked by
+ * `defaultModelsVersion` like them, so changing an entry needs a version bump.
+ * `models.test.ts` fails if a default ships without an entry.
  */
 export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = {
   [defaultModelOpus55.id]: 'supported',

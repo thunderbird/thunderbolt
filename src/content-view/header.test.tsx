@@ -39,7 +39,7 @@ describe('ContentViewHeader', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('names the close button on desktop', () => {
+  it('gives the desktop close button an accessible name', () => {
     const onClose = mock()
 
     render(<ContentViewHeader title="sample.pdf" onClose={onClose} />)

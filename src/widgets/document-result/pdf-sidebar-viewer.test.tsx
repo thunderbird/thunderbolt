@@ -37,15 +37,13 @@ describe('getFileType', () => {
 describe('LocalPdfSidebarViewer', () => {
   afterEach(cleanup)
 
-  test('gives the header icon buttons accessible names', () => {
+  test('names the download button', () => {
     render(
       <ContentViewProvider trackEvent={mock()}>
         <LocalPdfSidebarViewer localFileId="missing" fileName="sample.pdf" />
       </ContentViewProvider>,
     )
 
-    expect(screen.getByRole('heading', { name: 'sample.pdf' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 })

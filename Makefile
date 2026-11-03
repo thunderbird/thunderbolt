@@ -92,7 +92,7 @@ setup: setup-symlinks
 		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
 	fi
 	@echo "$(BLUE)→ Installing current Chrome for Testing Stable (used by bun run e2e)...$(NC)"
-	bun run browsers:install
+	@bun run browsers:install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies

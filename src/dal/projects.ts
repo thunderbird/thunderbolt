@@ -8,7 +8,7 @@
  *
  */
 
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, getTableColumns, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { v7 as uuidv7 } from 'uuid'
@@ -168,13 +168,25 @@ export const setProjectPinned = async (db: AnyDrizzleDatabase, id: string, order
 export const getProjectChatThreads = async (db: AnyDrizzleDatabase, projectId: string) =>
   getChatActivityQuery(db, eq(chatThreadsTable.projectId, projectId))
 
-/** Move a chat into a project, or out of every project with `null`. */
+/** Move a chat into a live project, or out with `null`. Returns false when the
+ * target disappeared, so callers also leave the live session unchanged. */
 export const setChatThreadProject = async (
   db: AnyDrizzleDatabase,
   chatThreadId: string,
   projectId: string | null,
-): Promise<void> => {
-  await db.update(chatThreadsTable).set({ projectId }).where(eq(chatThreadsTable.id, chatThreadId))
+): Promise<boolean> => {
+  const availableProject = db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, projectId ?? ''), isNull(projectsTable.deletedAt)))
+  // Check inside the UPDATE so a synced deletion cannot race a separate read.
+  const updated = await db
+    .update(chatThreadsTable)
+    .set({ projectId })
+    .where(and(eq(chatThreadsTable.id, chatThreadId), projectId === null ? undefined : exists(availableProject)))
+    .returning({ id: chatThreadsTable.id })
+  // Drafts have no row yet, but their session assignment still needs validation.
+  return updated.length > 0 || projectId === null || (await availableProject).length > 0
 }
 
 // ── Live hooks ───────────────────────────────────────────────────────────────

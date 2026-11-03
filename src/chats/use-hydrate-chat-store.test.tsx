@@ -12,7 +12,7 @@ import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, chatThreadsTable, modelsTable } from '@/db/tables'
+import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
@@ -659,6 +659,9 @@ describe('useHydrateChatStore', () => {
     it.each(['project-b', null])(
       'keeps first-save membership consistent when a move to %s starts first',
       async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
         const id = uuidv7()
         const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
           wrapper: TestWrapper,
@@ -674,9 +677,10 @@ describe('useHydrateChatStore', () => {
             {
               db: getDb(),
               setProject: async (...args) => {
-                await setChatThreadProject(...args)
+                const assigned = await setChatThreadProject(...args)
                 wroteProject.resolve()
                 await releaseMove.promise
+                return assigned
               },
               updateOpenSession: (chatThreadId, nextProjectId) =>
                 useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
@@ -696,6 +700,9 @@ describe('useHydrateChatStore', () => {
     it.each(['project-b', null])(
       'keeps first-save membership consistent when a move to %s starts during insertion',
       async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
         const id = uuidv7()
         const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
           wrapper: TestWrapper,

@@ -20,6 +20,12 @@ export const useProjectBadgeState = (chatThreadId: string | null) => {
   const [dialog, setDialog] = useState<ProjectBadgeDialog | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Close a stale prompt as soon as a synced deletion removes its target.
+  // The write also validates against the database, before query updates arrive.
+  if (dialog?.type === 'move' && !projects.some((candidate) => candidate.id === dialog.project.id)) {
+    setDialog(null)
+  }
+
   const selectProject = (nextProjectId: string | null) => {
     if (!chatThreadId || nextProjectId === projectId || isPending) {
       return

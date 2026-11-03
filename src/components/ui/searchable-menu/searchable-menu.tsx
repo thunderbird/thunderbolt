@@ -97,7 +97,7 @@ const ItemButton = memo(<T,>({ item, isSelected, onClick, renderItem, closeMenu 
         type="button"
         aria-label={action.label}
         title={action.label}
-        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10 transition-opacity md:opacity-0 md:group-hover/menu-item:opacity-100 md:group-focus-within/menu-item:opacity-100"
+        className="mr-1 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:size-10 transition-opacity [@media(hover:hover)]:md:opacity-0 md:group-hover/menu-item:opacity-100 md:group-focus-within/menu-item:opacity-100"
         onClick={() => {
           closeMenu()
           action.onAction()

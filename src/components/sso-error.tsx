@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router'
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { getSsoErrorMessage } from '@/lib/sso-error-messages'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 /**
  * Where a failed SSO login lands (`errorCallbackURL` in `sso-redirect.tsx`, or `AuthGate` for an error that
@@ -15,6 +16,7 @@ import { getSsoErrorMessage } from '@/lib/sso-error-messages'
 const SsoError = () => {
   const [searchParams] = useSearchParams()
   const { i18n } = useLingui()
+  const localMode = useLocalSettingsStore((state) => state.localMode)
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-dvh px-6">
@@ -36,6 +38,13 @@ const SsoError = () => {
             <Trans>Try again</Trans>
           </Link>
         </Button>
+        {localMode && (
+          <Button asChild variant="outline">
+            <Link to="/" replace>
+              <Trans>Continue locally</Trans>
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   )

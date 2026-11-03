@@ -4,6 +4,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { setActiveLocale } from '@/i18n/active-locale'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -76,6 +77,17 @@ describe('auth-token', () => {
   })
 
   describe('setAuthToken', () => {
+    it('binds the server immediately when a bearer credential is issued', () => {
+      useLocalSettingsStore.setState({
+        cloudUrl: 'https://selected.example/v1',
+        localMode: true,
+        serverHasAuthenticated: false,
+      })
+      setAuthToken('issued-before-session-fetch')
+      clearAuthToken()
+      expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
+    })
+
     it('stores token in localStorage', () => {
       setAuthToken('cached-token')
       expect(getAuthToken()).toBe('cached-token')

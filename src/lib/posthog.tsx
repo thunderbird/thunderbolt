@@ -18,6 +18,10 @@ let posthogClient: PostHog | null = null
 const startupEvents = new Set<EventType>(['app_init_timing', 'app_chat_ready', 'app_content_ready'])
 const pendingStartupEvents = new Map<EventType, Record<string, unknown> | undefined>()
 
+/** Standalone installs retain Thunderbolt telemetry without configuring an app server. */
+export const getAnalyticsUrl = (cloudUrl: string): string =>
+  cloudUrl.replace(/\/+$/, '') || 'https://api.thunderbolt.io/v1'
+
 /**
  * Reset the PostHog client - for testing only
  */
@@ -33,7 +37,7 @@ export const resetPosthogClient = () => {
  */
 export const getPosthogClient = (): PostHog | null => posthogClient
 
-const routePatterns = ['/chats/:chatThreadId'] as const
+const routePatterns = ['/chats/:chatThreadId', '/oauth/openrouter/:flowId', '/oauth/tinfoil/:flowId'] as const
 
 /**
  * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.
@@ -52,13 +56,41 @@ export const sanitizeUrl = (url: string): string => {
   const pathname = parsedPathname ?? (url.startsWith('/') ? url : `/${url}`)
   const routeOnlyUrl = parsedPathname === null ? url : url.split(/[?#]/, 1)[0]
   for (const pattern of routePatterns) {
-    const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`)
+    const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}/?$`)
     if (regex.test(pathname)) {
       return routeOnlyUrl.replace(pathname, pattern)
     }
   }
 
   return routeOnlyUrl
+}
+
+const analyticsUrlProperties = new Set([
+  'url',
+  '$current_url',
+  '$pathname',
+  '$referrer',
+  '$initial_current_url',
+  '$initial_pathname',
+  '$initial_referrer',
+  '$session_entry_url',
+  '$session_entry_pathname',
+  '$session_entry_referrer',
+])
+
+/** Removes callback nonces from SDK session/person URL properties as well as event URLs. */
+const sanitizeAnalyticsUrls = (value: unknown): void => {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+  const properties = value as Record<string, unknown>
+  for (const [key, child] of Object.entries(properties)) {
+    if (analyticsUrlProperties.has(key) && typeof child === 'string') {
+      properties[key] = sanitizeUrl(child)
+    } else {
+      sanitizeAnalyticsUrls(child)
+    }
+  }
 }
 
 /** Remove API keys from a PostHog property tree before it leaves the app. */
@@ -112,15 +144,15 @@ export const setCapturing = (client: PostHog, isCapturing: boolean) => {
 
 /**
  * Initialize Posthog analytics and return the client
- * @param httpClient - Optional HTTP client for dependency injection. If not provided, creates a client with cloudUrl from settings as prefixUrl
+ * @param httpClient - Optional HTTP client for dependency injection.
  */
 export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
-    const cloudUrl = getLocalSetting('cloudUrl')
+    const analyticsUrl = getAnalyticsUrl(getLocalSetting('cloudUrl'))
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
 
-    const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
+    const client = httpClient ?? createClient({ prefixUrl: analyticsUrl })
     const { public_posthog_api_key: apiKey } = await client
       .get('posthog/config', { timeout: 5_000 })
       .json<{ public_posthog_api_key?: string }>()
@@ -130,8 +162,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
       return { success: true, data: null }
     }
 
-    // Use the cloudUrl proxy for PostHog analytics
-    const apiHost = `${cloudUrl}/posthog`
+    const apiHost = `${analyticsUrl}/posthog`
 
     const { default: posthog } = await import('posthog-js')
     // The app is already interactive: consent may have changed while config
@@ -162,19 +193,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
             return null
           }
 
-          if (typeof event.properties?.$current_url === 'string') {
-            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
-          }
-
-          if (typeof event.properties?.url === 'string') {
-            event.properties.url = sanitizeUrl(event.properties.url)
-          }
-          if (typeof event.properties?.$pathname === 'string') {
-            event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
-          }
-          if (typeof event.properties?.$referrer === 'string') {
-            event.properties.$referrer = sanitizeUrl(event.properties.$referrer)
-          }
+          sanitizeAnalyticsUrls(event.properties)
 
           if (stripApiKeys(event.properties) && import.meta.env.DEV) {
             console.warn('Removed apiKey from PostHog event properties')

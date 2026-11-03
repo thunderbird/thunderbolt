@@ -290,7 +290,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
    * Call this when user enables sync.
    */
   async connectToSync(): Promise<void> {
-    if (!this.powerSync || !this._db) {
+    if (!this.powerSync || !this._db || !getLocalSetting('cloudUrl')) {
       return
     }
 

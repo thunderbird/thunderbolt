@@ -14,10 +14,27 @@
 import { getActiveLocale } from '@/i18n/active-locale'
 import { appVersionHeader } from '@/lib/app-version'
 import { getDeviceDisplayName } from '@/lib/platform'
+import { markServerAuthenticated } from '@/stores/local-settings-store'
 
 const deviceIdKey = 'thunderbolt_device_id'
 const authTokenKey = 'thunderbolt_auth_token'
 const userCacheSecretKey = 'thunderbolt_user_cache_secret'
+const authTokenListeners = new Set<() => void>()
+
+/** Subscribes to token changes in this window and other tabs without requiring auth context. */
+export const subscribeAuthToken = (listener: () => void): (() => void) => {
+  authTokenListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === authTokenKey || event.key === null) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    authTokenListeners.delete(listener)
+    window.removeEventListener('storage', onStorage)
+  }
+}
 
 /** Get or create device_id (from localStorage). */
 export const getDeviceId = (): string => {
@@ -34,12 +51,17 @@ export const getAuthToken = (): string | null => localStorage.getItem(authTokenK
 
 /** Store the auth token in localStorage. Use clearAuthToken() to remove. */
 export const setAuthToken = (token: string): void => {
+  if (token) {
+    markServerAuthenticated()
+  }
   localStorage.setItem(authTokenKey, token)
+  authTokenListeners.forEach((listener) => listener())
 }
 
 /** Clear the auth token (for sign-out). */
 export const clearAuthToken = (): void => {
   localStorage.removeItem(authTokenKey)
+  authTokenListeners.forEach((listener) => listener())
 }
 
 /** Clear the device ID (for revoked devices — forces a new ID on next login). */

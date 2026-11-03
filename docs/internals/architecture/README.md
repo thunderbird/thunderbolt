@@ -4,9 +4,9 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 
 ## Key Architecture Decisions
 
-- **Offline-first.** Local SQLite is the source of truth. The app works without network.
+- **Offline-first.** Local SQLite is the source of truth. The app works without network. [Standalone mode](standalone-mode.md) starts without a backend and lets users configure their own models and search provider.
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
-- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls go through the universal proxy at `/v1/proxy`, which maps caller headers to `X-Proxy-Passthrough-*` and forwards the caller's credentials (`src/lib/proxy-fetch.ts`). Only a Tauri build compiled with the `native_fetch` Cargo feature can skip it (when `proxy_enabled` is off), but that feature defaults to off and no build in this repo passes it, so every shipped build proxies ([tauri-shell.md](tauri-shell.md#the-native_fetch-cargo-feature)). Managed models use `/v1/chat/*` instead.
+- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). Downloaded apps ship native HTTP and can call user providers directly without a Thunderbolt server. With a server configured, the universal proxy at `/v1/proxy` remains available (`src/lib/proxy-fetch.ts`); browser builds use it for CORS. Managed models require a server. See [native transport](tauri-shell.md#the-native_fetch-cargo-feature).
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
 - **E2E encrypted.** Always on: content is encrypted before leaving the device and the server stores only ciphertext for it ([E2E Encryption](e2e-encryption.md)).
 

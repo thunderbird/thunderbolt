@@ -11,12 +11,31 @@ import { useEffect, useReducer } from 'react'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
 /** Total wizard steps; the last one is the celebration, which ends the wizard.
  *  Step 6 is the passkey step, appended before the celebration so the
  *  earlier steps keep their numbers. */
 export const onboardingStepCount = 7
+
+/** Keep persisted connected steps stable while inserting device-only setup. */
+export const getOnboardingSteps = (isStandalone: boolean, hasBuiltInSearch = false): readonly OnboardingStep[] =>
+  isStandalone ? (hasBuiltInSearch ? [1, 8, 9, 3, 5, 7] : [1, 8, 9, 10, 3, 5, 7]) : [1, 2, 3, 4, 5, 6, 7]
+
+/** Maps a saved step into the current server mode after a connection change. */
+export const resolveOnboardingStep = (
+  step: OnboardingStep,
+  isStandalone: boolean,
+  hasBuiltInSearch = false,
+): OnboardingStep => {
+  if (isStandalone && hasBuiltInSearch && step === 10) {
+    return 3
+  }
+  if (getOnboardingSteps(isStandalone, hasBuiltInSearch).includes(step)) {
+    return step
+  }
+  return isStandalone ? 8 : 2
+}
 
 type OnboardingState = {
   currentStep: OnboardingStep
@@ -53,9 +72,6 @@ type OnboardingAction =
   | { type: 'SET_LOCATION_VALID'; payload: boolean }
   | { type: 'SET_SUBMITTING_LOCATION'; payload: boolean }
   | { type: 'SUBMIT_LOCATION'; payload: { locationName: string; locationLat: number; locationLng: number } }
-  | { type: 'NEXT_STEP' }
-  | { type: 'PREV_STEP' }
-  | { type: 'SKIP_STEP' }
 
 const initialState: OnboardingState = {
   currentStep: 1,
@@ -81,8 +97,8 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         ...state,
         currentStep: action.payload,
         canGoBack: action.payload > 1,
-        canGoNext: action.payload < onboardingStepCount,
-        canSkip: action.payload > 1 && action.payload < onboardingStepCount,
+        canGoNext: action.payload !== onboardingStepCount,
+        canSkip: action.payload > 1 && action.payload !== onboardingStepCount,
       }
 
     case 'SET_PRIVACY_AGREED':
@@ -161,39 +177,6 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         isSubmittingLocation: true,
       }
 
-    case 'NEXT_STEP': {
-      const nextStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
-      return {
-        ...state,
-        currentStep: nextStep,
-        canGoBack: nextStep > 1,
-        canGoNext: nextStep < onboardingStepCount,
-        canSkip: nextStep > 1 && nextStep < onboardingStepCount,
-      }
-    }
-
-    case 'PREV_STEP': {
-      const prevStep = Math.max(state.currentStep - 1, 1) as OnboardingStep
-      return {
-        ...state,
-        currentStep: prevStep,
-        canGoBack: prevStep > 1,
-        canGoNext: prevStep < onboardingStepCount,
-        canSkip: prevStep > 1 && prevStep < onboardingStepCount,
-      }
-    }
-
-    case 'SKIP_STEP': {
-      const skipStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
-      return {
-        ...state,
-        currentStep: skipStep,
-        canGoBack: skipStep > 1,
-        canGoNext: skipStep < onboardingStepCount,
-        canSkip: skipStep > 1 && skipStep < onboardingStepCount,
-      }
-    }
-
     default:
       return state
   }
@@ -202,7 +185,10 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
 /**
  * Hook for managing onboarding state and actions
  */
-export const useOnboardingState = () => {
+export const useOnboardingState = ({
+  isStandalone = false,
+  hasBuiltInSearch = false,
+}: { isStandalone?: boolean; hasBuiltInSearch?: boolean } = {}) => {
   const [state, dispatch] = useReducer(onboardingReducer, initialState)
 
   // Settings integration for persistence
@@ -221,7 +207,7 @@ export const useOnboardingState = () => {
   // Sync with saved step on mount
   useEffect(() => {
     const savedStep = parseInt(onboardingCurrentStep.value || '1', 10)
-    if (savedStep >= 1 && savedStep <= onboardingStepCount) {
+    if (savedStep >= 1 && savedStep <= 10) {
       dispatch({ type: 'SET_CURRENT_STEP', payload: savedStep as OnboardingStep })
     }
   }, [onboardingCurrentStep.value])
@@ -236,8 +222,18 @@ export const useOnboardingState = () => {
 
   const isProviderConnected = state.isProviderConnected || (integrationStatusData?.googleConnected ?? false)
 
+  const currentStep = resolveOnboardingStep(state.currentStep, isStandalone, hasBuiltInSearch)
+  const steps = getOnboardingSteps(isStandalone, hasBuiltInSearch)
+  const stepIndex = steps.indexOf(currentStep)
+  const setCurrentStep = async (step: OnboardingStep) => {
+    dispatch({ type: 'SET_CURRENT_STEP', payload: step })
+    await onboardingCurrentStep.setValue(String(step))
+  }
+  const adjacentStep = (offset: number) => steps[Math.max(0, Math.min(stepIndex + offset, steps.length - 1))]
+
   const actions = {
     setCurrentStep: (step: OnboardingStep) => dispatch({ type: 'SET_CURRENT_STEP', payload: step }),
+    goToStep: setCurrentStep,
     setPrivacyAgreed: (agreed: boolean) => dispatch({ type: 'SET_PRIVACY_AGREED', payload: agreed }),
     setProviderConnected: (connected: boolean) => dispatch({ type: 'SET_PROVIDER_CONNECTED', payload: connected }),
     setConnecting: (connecting: boolean) => dispatch({ type: 'SET_CONNECTING', payload: connecting }),
@@ -319,19 +315,13 @@ export const useOnboardingState = () => {
     },
 
     nextStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
-      dispatch({ type: 'NEXT_STEP' })
-      await onboardingCurrentStep.setValue(String(newStep))
+      await setCurrentStep(adjacentStep(1))
     },
     prevStep: async () => {
-      const newStep = Math.max(state.currentStep - 1, 1) as OnboardingStep
-      dispatch({ type: 'PREV_STEP' })
-      await onboardingCurrentStep.setValue(String(newStep))
+      await setCurrentStep(adjacentStep(-1))
     },
     skipStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
-
-      if (state.currentStep === 3) {
+      if (currentStep === 3) {
         try {
           await preferredName.setValue('')
           dispatch({ type: 'SET_NAME_VALUE', payload: '' })
@@ -341,12 +331,22 @@ export const useOnboardingState = () => {
         }
       }
 
-      dispatch({ type: 'SKIP_STEP' })
-      await onboardingCurrentStep.setValue(String(newStep))
+      await setCurrentStep(adjacentStep(1))
     },
   }
 
-  return { state: { ...state, isProviderConnected }, actions }
+  return {
+    state: {
+      ...state,
+      currentStep,
+      isProviderConnected,
+      canGoBack: stepIndex > 0,
+      canSkip: stepIndex > 0 && stepIndex < steps.length - 1,
+    },
+    actions,
+    stepIndex,
+    totalSteps: steps.length,
+  }
 }
 
 export type { OnboardingAction, OnboardingState }

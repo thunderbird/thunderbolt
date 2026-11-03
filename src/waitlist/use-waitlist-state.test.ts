@@ -29,11 +29,11 @@ describe('useWaitlistState — returning-user onboarding', () => {
     return (rows[0] as { value: string | null } | undefined)?.value ?? null
   }
 
-  const verifyAs = async (user: { id: string; isNew?: boolean }) => {
+  const verifyAs = async (user: { id: string; isNew?: boolean }, onSuccess?: () => void) => {
     const authClient = createMockAuthClient({
       signInEmailOtp: mock(async () => ({ data: { user }, error: null })),
     })
-    const { result } = renderHook(() => useWaitlistState({ authClient }), { wrapper: createTestProvider() })
+    const { result } = renderHook(() => useWaitlistState({ authClient, onSuccess }), { wrapper: createTestProvider() })
 
     act(() => {
       result.current.actions.setEmail('test@example.com')
@@ -65,8 +65,10 @@ describe('useWaitlistState — returning-user onboarding', () => {
     useWelcomeStore.setState({ pending: false })
   })
 
-  it('marks onboarding complete for an account that already existed', async () => {
-    await verifyAs({ id: 'u1', isNew: false })
+  it('marks onboarding complete and notifies the modal after an existing account signs in', async () => {
+    const onSuccess = mock()
+    await verifyAs({ id: 'u1', isNew: false }, onSuccess)
+    expect(onSuccess).toHaveBeenCalledTimes(1)
 
     expect(await readOnboarding()).toBe('true')
   })

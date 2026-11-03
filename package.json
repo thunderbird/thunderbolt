@@ -141,6 +141,7 @@
     "cmdk": "^1.1.1",
     "css-tree": "^3.2.1",
     "drizzle-orm": "^0.45.2",
+    "ehbp": "^0.4.1",
     "events": "^3.3.0",
     "framer-motion": "^12.23.12",
     "input-otp": "^1.4.2",

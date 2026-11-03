@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
@@ -69,7 +70,9 @@ import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
 import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { isModelAvailable, matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
@@ -249,7 +252,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
     // `resolveSkillTokenInstructions`).
-    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const minimalMode = useConfigCapability(selectMinimalMode)
     const configSettled = useConfigStore(selectConfigSettled)
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     // Display-title → slug, for the whole library (disabled skills still
@@ -338,6 +341,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Only when no model fits the thread's confidentiality lock: otherwise
     // `resolveSessionModel` already swapped one in for the built-in.
     const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+    const needsOwnModel = useLocalProviders()
+    const modelNeedsSetup =
+      isBuiltInAgent(selectedAgent) && !isModelAvailable(selectedModel, needsOwnModel ? '' : cloudUrl)
     // `useChatAutomation` holds back the unanswered last turn of a private chat
     // on a non-built-in agent. Say so, and hold a typed send too: it would carry
     // the private history to that agent unencrypted.
@@ -349,9 +356,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       lastRole: messages.at(-1)?.role,
     })
     const builtInAgentName = builtInAgent.name
-    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const builtInAgentEnabled = useConfigCapability(selectBuiltInAgentEnabled)
     const sendBlocked =
-      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
+      imageSupportBlocksSend ||
+      queuedAttachmentsBlockSend ||
+      noModelForThread ||
+      modelNeedsSetup ||
+      privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -888,6 +899,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               {queuedAttachmentsBlockSend && (
                 <ComposerAlert key="attachments-unsupported">
                   <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
+                </ComposerAlert>
+              )}
+              {modelNeedsSetup && (
+                <ComposerAlert key="model-needs-setup">
+                  <Trans>Add and select a model in Settings to start chatting.</Trans>
                 </ComposerAlert>
               )}
               {noModelForThread && (

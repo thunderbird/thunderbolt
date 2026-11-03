@@ -15,8 +15,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { GradientLock } from '@/components/ui/gradient-lock'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { cn } from '@/lib/utils'
-import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
@@ -62,6 +64,7 @@ export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
   i18n: I18n,
+  cloudUrl = useLocalSettingsStore.getState().cloudUrl,
 ): SearchableMenuGroup<ModelItemData>[] => {
   // Custom and built-in models share one group — the selector only splits by
   // confidentiality (available vs the greyed-out opposite-mode section below).
@@ -70,6 +73,9 @@ export const categorizeModels = (
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
+    if (!isModelAvailable(model, cloudUrl)) {
+      continue
+    }
     const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
     const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
@@ -122,12 +128,14 @@ export const ModelSelector = ({
   variant = 'pill',
 }: ModelSelectorProps) => {
   const { t, i18n } = useLingui()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  const needsOwnModel = useLocalProviders()
   // Computed during render rather than memoized: `useLingui` returns the same
   // `i18n` singleton across a language switch, so an `i18n` dependency never
   // invalidates and the disabled-group labels would stay in the outgoing
   // locale until `models`/`chatThread` happened to change. Partitioning the
   // model list is cheap; see the Localization section in AGENTS.md.
-  const groupedItems = categorizeModels(models, chatThread, i18n)
+  const groupedItems = categorizeModels(models, chatThread, i18n, needsOwnModel ? '' : cloudUrl)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
@@ -215,7 +223,7 @@ export const ModelSelector = ({
       items={groupedItems}
       value={selectedModel?.id}
       onValueChange={handleModelChange}
-      searchable={models.length > 10}
+      searchable={groupedItems.reduce((count, group) => count + group.items.length, 0) > 10}
       searchPlaceholder={t`Search Models`}
       emptyMessage={t`No models found`}
       mobileTitle={t`Choose model`}

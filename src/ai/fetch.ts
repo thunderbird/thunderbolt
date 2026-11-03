@@ -46,11 +46,13 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { handleSessionRejected } from '@/lib/session-rejected'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
+import { usesLocalProviders } from '@/lib/provider-mode'
 import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
 import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { getTinfoilWebApi } from '@/integrations/tinfoil-search/connection'
 import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
@@ -269,6 +271,9 @@ export const resolveOpenAiCompatConnection = (
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       const cloudUrl = getLocalSetting('cloudUrl')
+      if (usesLocalProviders(cloudUrl)) {
+        return null
+      }
       const token = getAuthToken() || 'thunderbolt'
       // See the `thunderbolt` case in createModel for the SSO/token rationale:
       // SSO web has no bearer token (cookie auth), so strip the placeholder
@@ -558,7 +563,11 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    ? await getAvailableTools(httpClient, sourceCollector, {
+        settings,
+        integrationStatus,
+        tinfoilSearchApi: await getTinfoilWebApi(db),
+      })
     : []
   const appToolset = addSkillTool(
     createToolset(availableTools, toolCallCache, webToolBudget),

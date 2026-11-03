@@ -8,9 +8,8 @@ import { SiAnthropic } from '@icons-pack/react-simple-icons'
 import { Server } from 'lucide-react'
 
 import openAiLogoSrc from '@/assets/openai.svg'
-import openRouterLogoSrc from '@/assets/openrouter.svg'
-import tinfoilLogoSrc from '@/assets/tinfoil.svg'
 import { AppLogo } from '@/components/app-logo'
+import { ProviderBrandLogo } from '@/components/provider-brand-logo'
 import { IconTile } from '@/components/settings/icon-tile'
 import type { Model } from '@/types'
 
@@ -43,9 +42,8 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
     case 'anthropic':
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
-      return <img src={openRouterLogoSrc} alt="" className="h-5 w-auto dark:invert" />
     case 'tinfoil':
-      return <img src={tinfoilLogoSrc} alt="" className="size-5 dark:invert" />
+      return <ProviderBrandLogo provider={model.provider} className="size-5" />
     case 'custom':
       return <Server className="size-5 text-muted-foreground" aria-hidden="true" />
     case 'thunderbolt':

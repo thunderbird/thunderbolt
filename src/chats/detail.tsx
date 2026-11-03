@@ -15,6 +15,8 @@ import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
 import { PageFallback } from '@/loading'
+import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
@@ -59,6 +61,8 @@ export const ChatHydrateHandler = ({
   // not change under a chat the user is mid-way through composing. A genuinely
   // different chat arrives as a different key and remounts this.
   const [id] = useState(() => existingId ?? newChatId)
+  const needsOwnModel = useLocalProviders()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
 
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,
@@ -73,7 +77,7 @@ export const ChatHydrateHandler = ({
   useEffect(() => {
     hydrateChatStore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [id, cloudUrl, needsOwnModel])
 
   // Visible feedback while an existing thread hydrates (message load +
   // session setup): sidebar taps navigate here immediately, so this spinner —

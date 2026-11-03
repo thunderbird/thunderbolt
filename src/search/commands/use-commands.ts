@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { useConfigCapability } from '@/hooks/use-config-capability'
+import { selectMinimalMode } from '@/api/config-store'
 import { useAuth } from '@/contexts'
 import { themeIcons } from '@/components/theme-icons'
 import { useSidebar } from '@/components/ui/sidebar'
@@ -178,7 +179,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
   const { toggleSidebar, closeMobileSidebar } = useSidebar()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const { data: session } = useAuth().useSession()
 
   return buildCommands({

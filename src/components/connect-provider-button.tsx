@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
-import { Button } from '@/components/ui/button'
+import { useLingui } from '@lingui/react/macro'
+import { ProviderConnectionButton } from './provider-connection-button'
+import { ServerConnectionModal } from '@/components/server-connection'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
-import { Check, Loader2, X } from 'lucide-react'
 import { useState } from 'react'
 
 type ConnectProviderButtonProps = {
@@ -53,7 +54,8 @@ export const ConnectProviderButton = ({
   useOAuthConnectHook,
 }: ConnectProviderButtonProps) => {
   const { t } = useLingui()
-  const [isHovered, setIsHovered] = useState(false)
+  const [serverConnectionOpen, setServerConnectionOpen] = useState(false)
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const connectingLabel = connectingLabelProp ?? t`Connecting…`
   const connectedLabel = connectedLabelProp ?? t`Connected!`
 
@@ -77,45 +79,36 @@ export const ConnectProviderButton = ({
     if (isConnected || isConnecting) {
       return
     }
+    if (!cloudUrl) {
+      setServerConnectionOpen(true)
+      return
+    }
 
     await connect(provider)
   }
 
   const providerName = provider === 'microsoft' ? 'Microsoft' : 'Google'
-  const defaultConnectLabel = connectLabel || `Connect ${providerName}`
-
-  const showDisconnect = isConnected && allowDisconnect && isHovered
+  const defaultConnectLabel = connectLabel || t`Connect ${providerName}`
 
   return (
-    <Button
-      onClick={handleClick}
-      disabled={isConnecting || (isConnected && !allowDisconnect)}
-      variant={isConnected ? 'ghost' : variant}
-      size={size}
-      className={className}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {isConnected ? (
-        showDisconnect ? (
-          <>
-            <X className="w-4 h-4 mr-2" />
-            <Trans>Disconnect</Trans>
-          </>
-        ) : (
-          <>
-            <Check className="w-4 h-4 mr-2 text-green-600" />
-            {connectedLabel}
-          </>
-        )
-      ) : isConnecting ? (
-        <>
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          {connectingLabel}
-        </>
-      ) : (
-        defaultConnectLabel
-      )}
-    </Button>
+    <>
+      <ProviderConnectionButton
+        isConnected={isConnected}
+        isProcessing={isConnecting}
+        onConnect={handleClick}
+        onDisconnect={allowDisconnect ? onDisconnect : undefined}
+        connectLabel={defaultConnectLabel}
+        connectingLabel={connectingLabel}
+        connectedLabel={connectedLabel}
+        variant={variant}
+        size={size}
+        className={className}
+      />
+      <ServerConnectionModal
+        open={serverConnectionOpen}
+        onOpenChange={setServerConnectionOpen}
+        onConnected={() => setServerConnectionOpen(false)}
+      />
+    </>
   )
 }

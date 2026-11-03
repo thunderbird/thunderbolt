@@ -148,15 +148,16 @@ export const modelsTable = sqliteTable(
   ],
 )
 
-/** Local-only table for model API keys. Never synced via PowerSync. */
+/** Local-only table for model API keys and OAuth connection references. Never synced via PowerSync. */
 export const modelsSecretsTable = sqliteTable('models_secrets', {
   modelId: text('id').primaryKey(),
   apiKey: text('api_key'),
+  oauthProvider: text('oauth_provider', { enum: ['tinfoil'] }),
 })
 
-/** Local-only table for integration credentials (Google, Microsoft OAuth tokens). Never synced via PowerSync. */
+/** Local-only table for integration credentials (Google, Microsoft, Tinfoil OAuth tokens). Never synced via PowerSync. */
 export const integrationsSecretsTable = sqliteTable('integrations_secrets', {
-  provider: text('id').primaryKey(), // 'google' | 'microsoft'
+  provider: text('id').primaryKey(), // 'google' | 'microsoft' | 'tinfoil'
   credentials: text('credentials'), // JSON blob (OAuth tokens)
   enabled: integer('enabled').default(0),
 })

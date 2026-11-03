@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Plus } from 'lucide-react'
 import { lazy, Suspense, useReducer } from 'react'
@@ -110,7 +111,7 @@ export const ChatSkillsBar = ({
   const { openCreateItem } = useCreateItem()
   // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
   // text is plain text there.
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   // Hidden too until `/config` answers, so the chips never flash in and out.
   const configLoaded = useConfigStore(selectConfigSettled)
 

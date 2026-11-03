@@ -10,12 +10,31 @@ import {
   modelApiKeyForConnection,
   providerAutoFetchesCatalog,
   shouldDisableAddModel,
+  isModelAvailable,
+  modelRequiresServer,
+  needsApiKey,
 } from './model-policy'
 
 const model = {
   model: 'gpt-4',
   url: 'https://api.example.com/v1',
 }
+
+describe('standalone model availability', () => {
+  it('requires a server for Thunderbolt and system Tinfoil credentials', () => {
+    expect(modelRequiresServer({ provider: 'thunderbolt', isSystem: 0 })).toBe(true)
+    expect(isModelAvailable({ provider: 'thunderbolt', isSystem: 1 }, '')).toBe(false)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 1 }, '')).toBe(false)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 1 }, 'https://server.example/v1')).toBe(true)
+  })
+
+  it('accepts local endpoints and user credentials without a server', () => {
+    expect(isModelAvailable({ provider: 'custom', isSystem: 0 }, '')).toBe(true)
+    expect(isModelAvailable({ provider: 'openai', isSystem: 0 }, '')).toBe(true)
+    expect(isModelAvailable({ provider: 'tinfoil', isSystem: 0 }, '')).toBe(true)
+    expect(needsApiKey({ provider: 'openai', isSystem: 0, apiKey: null })).toBe(true)
+  })
+})
 
 describe('model edit policy', () => {
   it('does not require a connection test for a name-only edit', () => {

@@ -12,9 +12,10 @@
  * or its emoji changes.
  */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { useNavigate } from 'react-router'
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectMinimalMode } from '@/api/config-store'
 import { useChatStore } from '@/chats/chat-store'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useProjects } from '@/dal/projects'
@@ -40,7 +41,7 @@ export const ProjectBadge = ({
   const navigate = useNavigate()
   const projectId = useChatStore((state) => (chatThreadId ? state.sessions.get(chatThreadId)?.projectId : null))
   const projects = useProjects()
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
 
   const project = projectId ? projects.find((candidate) => candidate.id === projectId) : undefined
   // Minimal mode has no Projects page to open, so the badge goes too. The chat

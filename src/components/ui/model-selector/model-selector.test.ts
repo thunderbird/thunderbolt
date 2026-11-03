@@ -5,6 +5,8 @@
 import { describe, expect, test } from 'bun:test'
 import { i18n } from '@lingui/core'
 import { categorizeModels } from './model-selector'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { needsApiKey } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
 import type { ChatThread } from '@/layout/sidebar/types'
@@ -144,5 +146,38 @@ describe('needsApiKey', () => {
       apiKey: null,
     })
     expect(needsApiKey(model)).toBe(true)
+  })
+})
+
+describe('standalone model visibility', () => {
+  test('omits all hosted entries, including those in disabled confidentiality groups', () => {
+    const own = makeModel({
+      id: 'own',
+      name: 'OpenRouter default',
+      provider: 'openrouter',
+      apiKey: 'own-key',
+      isSystem: 0,
+    })
+    const managed = makeModel({
+      id: 'managed',
+      name: 'Managed Tinfoil',
+      provider: 'tinfoil',
+      isSystem: 1,
+      isConfidential: 1,
+    })
+    const groups = categorizeModels([standardModel, confidentialModel, managed, own], null, i18n, '')
+    expect(groups.flatMap((group) => group.items.map((item) => item.id))).toEqual(['own'])
+    const privateGroups = categorizeModels([standardModel, confidentialModel, managed, own], confidentialChat, i18n, '')
+    expect(privateGroups.flatMap((group) => group.items.map((item) => item.id))).toEqual(['own'])
+    expect(categorizeModels([standardModel, managed], null, i18n, '')).toEqual([])
+  })
+
+  test('reveals hosted models only after the locally chosen server is authenticated', () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: true })
+    expect(categorizeModels([standardModel], null, i18n)).toEqual([])
+    setAuthToken('cloud-session')
+    expect(categorizeModels([standardModel], null, i18n)[0].items[0].id).toBe(standardModel.id)
+    clearAuthToken()
+    expect(categorizeModels([standardModel], null, i18n)).toEqual([])
   })
 })

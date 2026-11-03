@@ -13,6 +13,7 @@
  * positions itself against the pane, so both misplace themselves in a plain div.
  */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans } from '@lingui/react/macro'
 import { plural } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -20,7 +21,7 @@ import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectMinimalMode } from '@/api/config-store'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { IconTile } from '@/components/settings/icon-tile'
 import {
@@ -246,7 +247,7 @@ const ProjectsView = () => {
  * `/projects/:projectId` return to the chat home.
  */
 const ProjectsPage = () => {
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const minimalMode = useConfigCapability(selectMinimalMode)
   return minimalMode ? <Navigate to="/chats/new" replace /> : <ProjectsView />
 }
 

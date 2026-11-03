@@ -4,19 +4,9 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
-const mockSetSyncEnabled = mock(() => Promise.resolve())
 const mockTrackEvent = mock(() => {})
-
-// Partial mock: spread the REAL module so every other export (incl. reconnectSync,
-// which sidebar-footer.tsx consumes for real) survives if this registration
-// leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
-// the local spy this suite asserts on. See docs/internals/development/testing.md §65.
-const realPowersync = await import('@/db/powersync/sync-state')
-mock.module('@/db/powersync/sync-state', () => ({
-  ...realPowersync,
-  setSyncEnabled: mockSetSyncEnabled,
-}))
 
 // Spread the REAL modules so every untouched export survives if these
 // registrations leak across files under `--randomize`; only the symbols this
@@ -58,14 +48,14 @@ import { useSyncEnabledToggle } from './use-sync-enabled-toggle'
 
 describe('useSyncEnabledToggle', () => {
   beforeEach(() => {
-    mockSetSyncEnabled.mockClear()
+    useLocalSettingsStore.setState({ syncEnabled: false })
     mockTrackEvent.mockClear()
     mockGetCK.mockClear()
     mockGetCK.mockImplementation(() => Promise.resolve(null))
   })
 
   afterEach(() => {
-    mockSetSyncEnabled.mockRestore?.()
+    useLocalSettingsStore.setState({ syncEnabled: false })
     mockTrackEvent.mockRestore?.()
     mockGetCK.mockRestore?.()
   })
@@ -93,6 +83,7 @@ describe('useSyncEnabledToggle', () => {
   })
 
   it('handleSyncToggle(false) disables sync and tracks event', async () => {
+    useLocalSettingsStore.setState({ syncEnabled: true })
     const { result } = renderHook(() => useSyncEnabledToggle())
 
     await act(async () => {
@@ -100,7 +91,7 @@ describe('useSyncEnabledToggle', () => {
     })
 
     expect(result.current.syncEnabled).toBe(false)
-    expect(mockSetSyncEnabled).toHaveBeenCalledWith(false)
+    expect(useLocalSettingsStore.getState().syncEnabled).toBe(false)
     expect(mockTrackEvent).toHaveBeenCalledWith('settings_sync_disabled')
   })
 })

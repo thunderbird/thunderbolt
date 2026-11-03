@@ -106,3 +106,23 @@ describe('deployed frontend caching', () => {
     expect(response.status).toBe(404)
   })
 })
+
+describe('encrypted search relay', () => {
+  test('blocks unsupported methods, missing credentials and plaintext requests', async () => {
+    const url = `${origin}/_tinfoil/search`
+    expect((await fetch(url, { method: 'PUT' })).status).toBe(405)
+    expect((await fetch(url, { method: 'POST' })).status).toBe(401)
+    expect((await fetch(url, { method: 'POST', headers: { authorization: 'Bearer fake' }, body: '{}' })).status).toBe(
+      400,
+    )
+    expect(
+      (
+        await fetch(url, {
+          method: 'POST',
+          headers: { authorization: 'Bearer fake', 'sec-fetch-site': 'cross-site' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(403)
+  })
+})

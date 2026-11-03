@@ -4,6 +4,8 @@
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useConfigStore } from '@/api/config-store'
+import { thunderboltCloudUrl } from '@/lib/constants'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -63,6 +65,7 @@ import { type ReactNode } from 'react'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
+const originalConfig = useConfigStore.getState().config
 
 describe('SignInModal', () => {
   let consoleSpies: ConsoleSpies
@@ -96,6 +99,7 @@ describe('SignInModal', () => {
   })
 
   afterEach(async () => {
+    useConfigStore.setState({ config: originalConfig })
     cleanup()
     await resetTestDatabase()
     mockOnOpenChange.mockClear()
@@ -120,6 +124,43 @@ describe('SignInModal', () => {
   }
 
   describe('rendering', () => {
+    it('offers organization sign-in for a server that advertises SSO', async () => {
+      useConfigStore.setState({ config: { authMode: 'oidc' } })
+      renderModal()
+      expect(await screen.findByRole('button', { name: 'Continue with organization' })).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('Email address')).not.toBeInTheDocument()
+    })
+
+    it('asks for a server before sign-in when using standalone mode', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      renderModal()
+      expect(await screen.findByRole('heading', { name: 'Connect your account' })).toBeInTheDocument()
+      expect(screen.queryByLabelText('Thunderbolt server address')).not.toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: 'Cloud (Waitlist)' })).toBeChecked()
+      expect(screen.queryByRole('radio', { name: 'Local' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('radio', { name: 'Enterprise' }))
+      expect(screen.queryByLabelText('Thunderbolt server address')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(screen.getByLabelText('Thunderbolt server address')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+      expect(screen.getByRole('radio', { name: 'Enterprise' })).toBeChecked()
+      expect(screen.queryByPlaceholderText('Email address')).not.toBeInTheDocument()
+      expect(mockFetchSpy.mock.calls.some(([request]) => (request as Request).url.includes('waitlist/join'))).toBe(
+        false,
+      )
+    })
+
+    it('uses the waitlist for a selected Cloud server before the first sign-in', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: thunderboltCloudUrl, localMode: true })
+      renderModal()
+      expect(await screen.findByText('Want early access?')).toBeInTheDocument()
+      expect(screen.getByText('Join the waitlist or sign in if you already have access.')).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('Email address')).not.toBeInTheDocument()
+      expect(mockFetchSpy.mock.calls.some(([request]) => (request as Request).url.includes('waitlist/join'))).toBe(
+        false,
+      )
+    })
+
     it('renders when open', async () => {
       renderModal({ open: true })
       expect(await screen.findByText('Sign In')).toBeInTheDocument()
@@ -291,7 +332,9 @@ describe('SignInModal', () => {
         await getClock().tickAsync(100)
       })
 
-      expect(mockFetchSpy).not.toHaveBeenCalled()
+      expect(mockFetchSpy.mock.calls.some(([request]) => (request as Request).url.includes('waitlist/join'))).toBe(
+        false,
+      )
     })
   })
 

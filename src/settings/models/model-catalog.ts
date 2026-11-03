@@ -103,7 +103,8 @@ const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): stri
     return apiKey ? 'https://api.openai.com/v1/models' : undefined
   }
   if (provider === 'openrouter') {
-    return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
+    // Respect this account's provider preferences, privacy settings, and guardrails.
+    return apiKey ? 'https://openrouter.ai/api/v1/models/user' : undefined
   }
   if (provider === 'custom' && url) {
     return `${normalizeOpenAiBaseUrl(url)}/models`

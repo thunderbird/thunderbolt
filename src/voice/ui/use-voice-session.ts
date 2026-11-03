@@ -13,6 +13,9 @@ import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDatabase } from '@/contexts'
 import { builtInAgent } from '@/defaults/agents'
 import { getSettings } from '@/dal'
+import { showSignInModalEvent } from '@/hooks/use-credential-events'
+import { hasServerAuthentication } from '@/lib/provider-mode'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
@@ -148,8 +151,15 @@ export const useVoiceSession = () => {
           import('@/voice/chat-reply'),
           getSettings(db, { experimental_feature_voice: false }),
         ])
+      const engine = createVoiceEngine(experimentalFeatureVoice)
+      if (engine.id === 'thunderbolt' && (!getLocalSetting('cloudUrl') || !hasServerAuthentication())) {
+        setVoiceModeActive(false)
+        patch({ active: false })
+        window.dispatchEvent(new CustomEvent(showSignInModalEvent))
+        return
+      }
       const voice = createVoiceSession({
-        engine: createVoiceEngine(experimentalFeatureVoice),
+        engine,
         // The transcript + reply render as normal chat bubbles via sendMessage, so
         // the UI itself only needs the session state.
         reply: createChatReply(toReplyChat(session.chatInstance, session.id)),

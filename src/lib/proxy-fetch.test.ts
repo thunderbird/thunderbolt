@@ -13,6 +13,7 @@ import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 import { setAuthToken } from './auth-token'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -156,6 +157,83 @@ describe('createProxyFetch — app-version gate', () => {
 })
 
 describe('createProxyFetch — Standalone (Tauri) mode', () => {
+  it('keeps local providers direct after selecting a server until sign-in', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+    const native = mock(async () => new Response('direct'))
+    const hosted = mock(async () => new Response('proxied'))
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://server.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => true,
+      getNativeFetchCapability: async () => true,
+      tauriFetch: native as unknown as typeof fetch,
+      fetchImpl: hosted as unknown as typeof fetch,
+    })
+    await proxyFetch('https://provider.example/v1/models')
+    expect(native).toHaveBeenCalledTimes(1)
+    expect(hosted).not.toHaveBeenCalled()
+    setAuthToken('signed-in-token')
+    await proxyFetch('https://provider.example/v1/models')
+    expect(hosted).toHaveBeenCalledTimes(1)
+  })
+  it('uses native transport with no server even when a previous proxy toggle is enabled', async () => {
+    const native = mock(async () => new Response('direct'))
+    const hosted = mock(async () => new Response('unexpected'))
+    const proxyFetch = createProxyFetch({
+      cloudUrl: '',
+      isStandalone: () => true,
+      getProxyEnabled: () => true,
+      getNativeFetchCapability: async () => true,
+      getProxyAuthToken: () => 'server-token',
+      tauriFetch: native as unknown as typeof fetch,
+      fetchImpl: hosted as unknown as typeof fetch,
+    })
+    await proxyFetch('https://provider.example/v1/chat', { headers: { Authorization: 'Bearer provider-key' } })
+    expect(native).toHaveBeenCalledWith('https://provider.example/v1/chat', {
+      headers: { Authorization: 'Bearer provider-key' },
+      signal: undefined,
+    })
+    expect(hosted).not.toHaveBeenCalled()
+  })
+
+  it('preserves cancellation and request bodies for HttpClient native requests', async () => {
+    const controller = new AbortController()
+    const request = new Request('http://localhost:11434/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"message":"hello"}',
+      signal: controller.signal,
+    })
+    const native = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(request.signal)
+      const forwarded = new Request(input, init)
+      expect(forwarded.method).toBe('POST')
+      expect(forwarded.headers.get('Content-Type')).toBe('application/json')
+      expect(await forwarded.text()).toBe('{"message":"hello"}')
+      controller.abort()
+      expect(init?.signal?.aborted).toBe(true)
+      return new Response('ok')
+    })
+    await createProxyFetch({
+      cloudUrl: '',
+      isStandalone: () => true,
+      getNativeFetchCapability: async () => true,
+      tauriFetch: native as unknown as typeof fetch,
+    })(request)
+    expect(native).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses browser direct fetch without inventing a proxy endpoint when no server exists', async () => {
+    const direct = mock(async () => new Response('direct'))
+    const proxyFetch = createProxyFetch({
+      cloudUrl: '',
+      isStandalone: () => false,
+      fetchImpl: direct as unknown as typeof fetch,
+    })
+    await proxyFetch('https://provider.example/v1/models')
+    expect(direct).toHaveBeenCalledWith('https://provider.example/v1/models', undefined)
+  })
+
   it('calls Tauri fetch directly without rewriting headers when toggle is off and native_fetch is available', async () => {
     const tauriFetchMock = mock(async () => new Response('tauri-direct', { status: 200 }))
 

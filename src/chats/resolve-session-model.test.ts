@@ -7,6 +7,7 @@ import { createMockModel } from '@/test-utils/chat-store-mocks'
 import type { Agent } from '@/types/acp'
 import { describe, expect, it } from 'bun:test'
 import { resolveSessionModel } from './resolve-session-model'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const confidential = createMockModel({ id: 'confidential', provider: 'tinfoil', isSystem: 1, isConfidential: 1 })
 const missingKey = createMockModel({ id: 'missing-key', provider: 'openai', apiKey: null })
@@ -15,6 +16,12 @@ const models = [confidential, missingKey, standard]
 const nonPrivateThread = { isEncrypted: 0 }
 
 describe('resolveSessionModel', () => {
+  it('replaces a managed selection with an own-key model when no server is connected', () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const local = createMockModel({ provider: 'custom', isSystem: 0, isConfidential: 0 })
+    expect(resolveSessionModel(builtInAgent, null, standard, [standard, local])).toBe(local)
+  })
+
   it('takes the first model the picker enables for the thread, skipping one missing its API key', () => {
     expect(resolveSessionModel(builtInAgent, nonPrivateThread, confidential, models).id).toBe(standard.id)
   })

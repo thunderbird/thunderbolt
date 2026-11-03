@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useState, type ReactNode } from 'react'
 
@@ -190,8 +191,8 @@ export const Header = () => {
   const { openCreateItem } = useCreateItem()
   const location = useLocation()
   const allAgents = useAllAgents()
-  const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
-  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const allowCustomAgents = useConfigCapability(selectAllowCustomAgents)
+  const minimalMode = useConfigCapability(selectMinimalMode)
   const configSettled = useConfigStore(selectConfigSettled)
 
   const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(

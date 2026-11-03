@@ -4,6 +4,7 @@
 
 import { type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 
 type OnboardingFeatureCardProps = {
   icon: LucideIcon
@@ -11,12 +12,13 @@ type OnboardingFeatureCardProps = {
   // needing useLingui() to produce a string.
   title: ReactNode
   description: ReactNode
+  className?: string
 }
 
-export const OnboardingFeatureCard = ({ icon: Icon, title, description }: OnboardingFeatureCardProps) => {
+export const OnboardingFeatureCard = ({ icon: Icon, title, description, className }: OnboardingFeatureCardProps) => {
   return (
-    <div className="flex items-center gap-4 p-4">
-      <Icon className="size-6 shrink-0" />
+    <div className={cn('flex items-center gap-4 p-4', className)}>
+      <Icon className="size-6 shrink-0" aria-hidden="true" />
       <div className="space-y-0.5">
         <h3 className="text-[length:var(--font-size-body)] font-medium">{title}</h3>
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{description}</p>

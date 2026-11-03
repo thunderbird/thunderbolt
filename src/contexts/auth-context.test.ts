@@ -11,6 +11,7 @@ import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/se
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getPlatform } from '@/lib/platform'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
@@ -18,6 +19,8 @@ import {
   buildFetchOptions,
   hydrateSessionFromCache,
   subscribeSessionCachePersist,
+  createAuthClientInstance,
+  standaloneAuthFetch,
 } from './auth-context'
 import type { createAuthClient } from 'better-auth/react'
 
@@ -36,6 +39,22 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
 }
 
 const originalDispatch = window.dispatchEvent
+
+describe('standalone authentication', () => {
+  it('starts signed out without hydrating a previous server session', () => {
+    setAuthToken('old-server-token')
+    const client = createAuthClientInstance('')
+    expect(client.$store.atoms.session.get()).toMatchObject({ data: null, isPending: false })
+    clearAuthToken()
+  })
+
+  it('handles session reads locally and rejects sign-in until a server is selected', async () => {
+    expect(await (await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/get-session')).json()).toBeNull()
+    const signIn = await standaloneAuthFetch('https://standalone.invalid/v1/api/auth/sign-in/email-otp')
+    expect(signIn.status).toBe(503)
+    expect(await signIn.json()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
+  })
+})
 
 describe('authRequestHeaders', () => {
   const env = import.meta.env as Record<string, unknown>
@@ -352,6 +371,22 @@ describe('subscribeSessionCachePersist', () => {
     atom.emit({ data: payload })
 
     expect(getCachedSession()).toEqual(payload)
+  })
+
+  it('permanently binds the selected server after its first successful session', () => {
+    useLocalSettingsStore.setState({
+      cloudUrl: 'https://chosen.example/v1',
+      localMode: true,
+      serverHasAuthenticated: false,
+    })
+    const atom = createFakeSubscribableAtom()
+    subscribeSessionCachePersist(createFakeClient(atom))
+
+    atom.emit({ data: { user: { id: 'u1' }, session: { id: 's1' } } })
+    clearCachedSession()
+    atom.emit({ data: null })
+
+    expect(useLocalSettingsStore.getState().serverHasAuthenticated).toBe(true)
   })
 
   it('does not persist when data is null (initial / signed-out state)', () => {

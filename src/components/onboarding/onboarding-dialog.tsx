@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { lazy, Suspense, useEffect, useEffectEvent, useReducer, useState, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
-import { useDatabase } from '@/contexts'
-import { deleteIntegrationCredentials } from '@/dal'
+import { useDatabase, useSignInModal } from '@/contexts'
+import { deleteIntegrationCredentials, updateSettings } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
@@ -25,18 +25,34 @@ import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { OnboardingServerStep } from './onboarding-server-step'
+import { useOnboardingServerState } from './use-onboarding-server-state'
+import { OnboardingSearchStep } from './onboarding-search-step'
+import { useOnboardingModelState } from './use-onboarding-model-state'
+import { useNeedsOwnModel } from '@/hooks/use-needs-own-model'
+
+// The provider catalog and connection probe load only when this step is opened.
+const OnboardingModelStep = lazy(() => import('./onboarding-model-step'))
 
 /** Wizard position of the passkey step. */
 const passkeyStep = 6
 
 export const OnboardingDialog = () => {
+  const { t } = useLingui()
   const { isMobile } = useIsMobile()
+  const isStandalone = useNeedsOwnModel()
+  const { openSignInModal } = useSignInModal()
+  const serverState = useOnboardingServerState()
+  const hasSearchProvider = useSearchProviderStore((state) => Boolean(state.provider && state.apiKey))
+  const { configuredModels } = useOnboardingModelState()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
-  const { state, actions } = useOnboardingState()
+  const hasBuiltInSearch = configuredModels.some((model) => model.provider === 'tinfoil' && model.toolUsage !== 0)
+  const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
   // The account gets one passkey, so the step is offered only while it has none.
   const accountPasskey = useAccountPasskey()
   const shouldOfferPasskeyStep = accountPasskey.isSettled && !accountPasskey.isUnavailable && !accountPasskey.passkey
@@ -71,23 +87,41 @@ export const OnboardingDialog = () => {
   }
 
   // Celebration step completion handler
-  const [isCompleting, setIsCompleting] = useState(false)
-  const [isFormDirty, setIsFormDirty] = useState(false)
-  const { onboardingCurrentStep } = useSettings({
-    onboarding_current_step: '1',
-  })
+  const [isCompleting, startCompleting] = useTransition()
+  const [{ isFormDirty, isSearchReady }, updateForm] = useReducer(
+    (
+      state: { isFormDirty: boolean; isSearchReady: boolean },
+      patch: Partial<{ isFormDirty: boolean; isSearchReady: boolean }>,
+    ) => ({ ...state, ...patch }),
+    { isFormDirty: false, isSearchReady: hasSearchProvider },
+  )
+  const setIsFormDirty = (isFormDirty: boolean) => updateForm({ isFormDirty })
+  const [completionError, setCompletionError] = useState<string | null>(null)
 
-  const handleCelebrationComplete = async () => {
-    setIsCompleting(true)
-    await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
-    setIsCompleting(false)
+  const handleCelebrationComplete = () => {
+    startCompleting(async () => {
+      setCompletionError(null)
+      try {
+        await updateSettings(db, { user_has_completed_onboarding: true, onboarding_current_step: '1' })
+        await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      } catch (error) {
+        console.error('Failed to finish onboarding:', error)
+        setCompletionError(t`Could not finish setup. Please try again.`)
+      }
+    })
   }
 
   // Unified action handlers
   const handleContinue = async () => {
-    if (state.currentStep === onboardingStepCount) {
+    if (state.currentStep === 8) {
+      serverState.continueSetup(actions.nextStep)
+    } else if (state.currentStep === onboardingStepCount) {
       // Special handling for celebration step
       handleCelebrationComplete()
+    } else if (state.currentStep === 10) {
+      if (hasSearchProvider && isSearchReady) {
+        await actions.nextStep()
+      }
     } else if (state.currentStep === 2) {
       // Auth step - only allow continue if connected
       if (state.isProviderConnected) {
@@ -111,12 +145,21 @@ export const OnboardingDialog = () => {
   const isCelebration = state.currentStep === onboardingStepCount
 
   const handleBackAction = () => {
+    if (state.currentStep === 10) {
+      updateForm({ isSearchReady: hasSearchProvider })
+    }
+    if (state.currentStep === 8 && serverState.goBack()) {
+      return
+    }
     if (state.canGoBack) {
       actions.prevStep()
     }
   }
 
   const handleSkipAction = () => {
+    if (state.currentStep === 10) {
+      updateForm({ isSearchReady: hasSearchProvider })
+    }
     if (state.canSkip) {
       actions.skipStep()
     }
@@ -139,71 +182,98 @@ export const OnboardingDialog = () => {
           style={isMobile ? { paddingBottom: 'var(--kb, 0px)' } : undefined}
         >
           <div className="relative flex w-full shrink-0 items-center justify-center px-4 pb-2">
-            <StepIndicators currentStep={state.currentStep} totalSteps={onboardingStepCount} />
+            <StepIndicators currentStep={stepIndex + 1} totalSteps={totalSteps} />
           </div>
-          <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
-            {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
-            {state.currentStep === 2 && (
-              <OnboardingAuthStep
-                isProcessing={state.processingOAuth}
-                isConnected={state.isProviderConnected}
-                onConnectionChange={actions.setProviderConnected}
-                onDisconnect={handleProviderDisconnect}
-              />
-            )}
-            {state.currentStep === 3 && (
-              <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 4 && (
-              <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-            )}
-            {state.currentStep === 5 && <OnboardingLanguageStep />}
-            {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
-              <div className="flex flex-1 items-center justify-center">
-                <Loader2 className="size-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
-            {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
-          </div>
-          <div className="relative flex w-full shrink-0 px-5 pt-2">
-            <OnboardingActionButtons
-              onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
-              onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
-              onContinue={handleContinue}
-              showBack={isCelebration ? false : state.canGoBack}
-              showSkip={isCelebration ? false : state.canSkip}
-              skipDisabled={
-                (state.currentStep === 2 && state.isProviderConnected) ||
-                (state.currentStep === 3 && state.isNameValid) ||
-                (state.currentStep === 4 && isFormDirty)
-              }
-              continueDisabled={
-                state.currentStep === 1
-                  ? !state.privacyAgreed
-                  : state.currentStep === 2
-                    ? !state.isProviderConnected
-                    : state.currentStep === 3
-                      ? !state.isNameValid
-                      : state.currentStep === 4
-                        ? !state.isLocationValid
-                        : state.currentStep === passkeyStep
-                          ? !accountPasskey.isSettled
-                          : isCelebration && isCompleting
-              }
-              continueText={
-                isCelebration ? (
-                  isCompleting ? (
+          {state.currentStep === 9 ? (
+            <Suspense fallback={<Loader2 className="size-6 animate-spin self-center text-muted-foreground" />}>
+              <OnboardingModelStep onBack={handleBackAction} onContinue={actions.nextStep} onSkip={actions.skipStep} />
+            </Suspense>
+          ) : (
+            <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 py-4">
+              {state.currentStep === 1 && <OnboardingPrivacyStep state={state} actions={actions} />}
+              {state.currentStep === 8 && (
+                <OnboardingServerStep
+                  serverState={serverState}
+                  onSignIn={openSignInModal}
+                  onContinueLocal={actions.nextStep}
+                />
+              )}
+              {state.currentStep === 10 && (
+                <OnboardingSearchStep onReadyChange={(isSearchReady) => updateForm({ isSearchReady })} />
+              )}
+              {state.currentStep === 2 && (
+                <OnboardingAuthStep
+                  isProcessing={state.processingOAuth}
+                  isConnected={state.isProviderConnected}
+                  onConnectionChange={actions.setProviderConnected}
+                  onDisconnect={handleProviderDisconnect}
+                />
+              )}
+              {state.currentStep === 3 && (
+                <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+              )}
+              {state.currentStep === 4 && (
+                <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
+              )}
+              {state.currentStep === 5 && <OnboardingLanguageStep />}
+              {state.currentStep === passkeyStep && !accountPasskey.isSettled && (
+                <div className="flex flex-1 items-center justify-center">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
+              {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
+              {completionError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {completionError}
+                </p>
+              )}
+            </div>
+          )}
+          {state.currentStep !== 9 && (
+            <div className="relative flex w-full shrink-0 px-5 pt-2">
+              <OnboardingActionButtons
+                onBack={isCelebration ? undefined : state.canGoBack ? handleBackAction : undefined}
+                onSkip={isCelebration ? undefined : state.canSkip ? handleSkipAction : undefined}
+                onContinue={handleContinue}
+                showBack={isCelebration ? false : state.canGoBack}
+                backDisabled={state.currentStep === 8 && serverState.isBusy}
+                showSkip={isCelebration || state.currentStep === 8 ? false : state.canSkip}
+                showContinue={state.currentStep !== 8 || serverState.isChoosingSetup}
+                skipDisabled={
+                  (state.currentStep === 2 && state.isProviderConnected) ||
+                  (state.currentStep === 3 && state.isNameValid) ||
+                  (state.currentStep === 4 && isFormDirty)
+                }
+                continueDisabled={
+                  state.currentStep === 8
+                    ? serverState.isBusy
+                    : state.currentStep === 1
+                      ? !state.privacyAgreed
+                      : state.currentStep === 2
+                        ? !state.isProviderConnected
+                        : state.currentStep === 3
+                          ? !state.isNameValid
+                          : state.currentStep === 4
+                            ? !state.isLocationValid
+                            : state.currentStep === 10
+                              ? !hasSearchProvider || !isSearchReady
+                              : state.currentStep === passkeyStep
+                                ? !accountPasskey.isSettled
+                                : isCelebration && isCompleting
+                }
+                continueText={
+                  state.currentStep === 8 && serverState.isConnecting ? (
+                    <Trans>Connecting…</Trans>
+                  ) : isCelebration && isCompleting ? (
                     <Trans>Completing…</Trans>
                   ) : (
-                    <Trans>Start Using Thunderbolt</Trans>
+                    <Trans>Continue</Trans>
                   )
-                ) : (
-                  <Trans>Continue</Trans>
-                )
-              }
-            />
-          </div>
+                }
+              />
+            </div>
+          )}
         </div>
       </ResponsiveModalContentComposable>
     </Dialog>

@@ -36,6 +36,7 @@ import { updateSettings } from './settings'
 import { nowIso } from '@/lib/utils'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import { getAllEnabledTriggers } from './triggers'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -306,6 +307,39 @@ describe('Models DAL', () => {
   })
 
   describe('getAvailableModels', () => {
+    it('offers only user-run models and prefers one over the managed default without a server', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      await createModel(db, {
+        id: 'local-model',
+        provider: 'custom',
+        name: 'Local model',
+        model: 'local',
+        url: 'http://localhost:11434/v1',
+        enabled: 1,
+        isSystem: 0,
+      })
+      await updateSettings(db, { selected_model: defaultModelDeepSeekV41Flash.id })
+      expect((await getAvailableModels(db)).map(({ id }) => id)).toEqual(['local-model'])
+      expect((await getSelectedModel(db)).id).toBe('local-model')
+    })
+
+    it('keeps a non-runnable default placeholder when no user model has been added yet', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      expect(await getAvailableModels(db)).toEqual([])
+      expect((await getSelectedModel(db)).id).toBe(defaultModelDeepSeekV41Flash.id)
+    })
+
+    it('does not offer server models just because a local user selected a server URL', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+      const db = getDb()
+      await db.insert(modelsTable).values([...defaultModels])
+      expect(await getAvailableModels(db)).toEqual([])
+    })
+
     it('should return empty array when no enabled models exist', async () => {
       const db = getDb()
       const modelId = uuidv7()
@@ -1167,7 +1201,7 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBeNull()
     })
 
-    it('should not create a secret row when updating with null apiKey and no existing row', async () => {
+    it('keeps an explicitly cleared credential empty', async () => {
       const db = getDb()
       const modelId = uuidv7()
 
@@ -1206,7 +1240,7 @@ describe('Models DAL', () => {
       expect(model?.apiKey).toBe('sk-second')
     })
 
-    it('should delete an existing secret when apiKey is explicitly cleared', async () => {
+    it('clears an existing secret without deleting its local record', async () => {
       const db = getDb()
       const modelId = uuidv7()
       await createModel(db, {
@@ -1221,7 +1255,7 @@ describe('Models DAL', () => {
 
       expect(
         await db.select().from(modelsSecretsTable).where(eq(modelsSecretsTable.modelId, modelId)).get(),
-      ).toBeUndefined()
+      ).toMatchObject({ apiKey: null, oauthProvider: null })
       expect((await getModel(db, modelId))?.apiKey).toBeNull()
     })
 

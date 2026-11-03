@@ -9,8 +9,14 @@ import { getDb } from '@/db/database'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
-import { createConfigs as createProConfigs } from '@/integrations/thunderbolt-pro/tools'
+import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
+import { getTinfoilWebApi } from '@/integrations/tinfoil-search/connection'
+import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
+import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
+import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
+import { usesLocalProviders } from '@/lib/provider-mode'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ToolConfig } from '@/types'
@@ -19,6 +25,7 @@ import { tool, type Tool } from 'ai'
 
 /** Settings + integration status that gate which tools are exposed. */
 export type ToolAvailabilityContext = {
+  tinfoilSearchApi?: WebToolApi
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
 }
@@ -33,7 +40,7 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return { settings, integrationStatus }
+  return { settings, integrationStatus, tinfoilSearchApi: await getTinfoilWebApi(db) }
 }
 
 export const getAvailableTools = async (
@@ -45,22 +52,37 @@ export const getAvailableTools = async (
   const {
     settings: { experimentalFeatureTasks, integrationsProIsEnabled },
     integrationStatus,
+    tinfoilSearchApi,
   } = context ?? (await loadToolAvailabilityContext())
 
   // render_html is a core capability, always available regardless of integrations.
   const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
 
-  const shouldIncludeProTools = proEnabled && integrationsProIsEnabled
+  const { provider, apiKey, selection } = useSearchProviderStore.getState()
+  const hasServer = !usesLocalProviders()
+  const shouldIncludeProTools = hasServer && proEnabled && integrationsProIsEnabled
 
-  if (shouldIncludeProTools) {
-    baseTools.push(...createProConfigs(httpClient, sourceCollector))
+  const selected = resolveSearchSelection(selection, {
+    custom: Boolean(provider && apiKey),
+    tinfoil: !hasServer && Boolean(tinfoilSearchApi),
+    cloud: shouldIncludeProTools,
+  })
+
+  if (selected === 'custom' && provider) {
+    baseTools.push(
+      ...createWebSearchTools(httpClient, sourceCollector, createStandaloneWebApi(apiKey, undefined, provider)),
+    )
+  } else if (selected === 'tinfoil' && tinfoilSearchApi) {
+    baseTools.push(...createWebSearchTools(httpClient, sourceCollector, tinfoilSearchApi))
+  } else if (selected === 'cloud') {
+    baseTools.push(...createWebSearchTools(httpClient, sourceCollector))
   }
 
-  if (integrationStatus.googleEnabled) {
+  if (hasServer && integrationStatus.googleEnabled) {
     baseTools.push(...createGoogleConfigs(httpClient))
   }
 
-  if (integrationStatus.microsoftEnabled) {
+  if (hasServer && integrationStatus.microsoftEnabled) {
     baseTools.push(...createMicrosoftConfigs(httpClient))
   }
 

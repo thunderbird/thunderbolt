@@ -20,7 +20,7 @@ import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-b
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { isModelAvailable, matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -1107,6 +1107,10 @@ export const createChatInstance = (
 
     if (!selectedModel) {
       throw new Error('No selected model')
+    }
+
+    if (isBuiltInAgent(selectedAgent) && !isModelAvailable(selectedModel)) {
+      throw new Error('Configure and select an available model before sending a message.')
     }
 
     // The hosted agent doesn't use the selected model, and its threads are never

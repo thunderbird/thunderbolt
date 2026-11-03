@@ -4,10 +4,18 @@
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { prewarmSystemModel } from './prewarm-system-model'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const systemModel = { provider: 'tinfoil', isSystem: 1 } as const
 
 describe('prewarmSystemModel', () => {
+  it('does not load a server-authenticated client while standalone', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const loadPrewarm = mock(async () => async () => {})
+    await prewarmSystemModel(systemModel, loadPrewarm)
+    expect(loadPrewarm).not.toHaveBeenCalled()
+  })
+
   afterEach(() => {
     mock.restore()
   })

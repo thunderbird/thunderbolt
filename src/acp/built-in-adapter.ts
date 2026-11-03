@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { tinfoilSession } from '@/lib/tinfoil-session'
 /**
  * Built-in adapter — the app's first-party agent, exposed through the same
  * `AgentAdapter` seam as every ACP agent. Selecting it must look identical to
@@ -419,7 +420,8 @@ export const resolvePiModel = async (
         receiptHttpClient,
       }
     }
-    if (!model.apiKey) {
+    const apiKey = model.oauthProvider === 'tinfoil' ? await tinfoilSession.getAccessToken() : model.apiKey
+    if (!apiKey) {
       throw new Error('No API key provided for Tinfoil provider')
     }
     const acquireUserClient = options.getTinfoilClient ?? getTinfoilClient
@@ -434,14 +436,23 @@ export const resolvePiModel = async (
       context.telemetry,
     )
     const evictClient = options.evictUserTinfoilClient ?? evictUserTinfoilClient
-    const fetch: PiModelDescriptor['fetch'] = (input, init) => fetchTinfoil(client, input, init, evictClient)
+    const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
+      // Long-running agent turns can outlive an access token. Refresh before each
+      // encrypted request, not just when building the harness at turn start.
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+      if (model.oauthProvider === 'tinfoil') {
+        headers.set('Authorization', `Bearer ${await tinfoilSession.getAccessToken()}`)
+      }
+      const request = { ...init, headers }
+      return fetchTinfoil(client, input, request, evictClient)
+    }
     return {
       descriptor: {
         kind: 'openai-compat',
         providerId: 'tinfoil',
         modelId: model.model,
         baseURL: client.getBaseURL()!,
-        apiKey: model.apiKey,
+        apiKey,
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,

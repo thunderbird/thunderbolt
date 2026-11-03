@@ -16,23 +16,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
 import { getDb } from '@/db/database'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 
 const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
 
 const mockClearLocalData = mock(() => Promise.resolve())
-
-// Partial mock: spread the REAL module so every other export (getPowerSyncInstance,
-// reconnectSync, syncEnabledChangeEvent, isSyncEnabled) is preserved and can't break
-// dependents if this registration leaks across files under `--randomize`. Only
-// `setSyncEnabled` is overridden with a local spy the suite asserts on.
-// See docs/internals/development/testing.md §65 and the sibling spread-mocks in use-pending-device-notification.test.tsx.
-const realPowersync = await import('@/db/powersync/sync-state')
-const mockSetSyncEnabled = mock(() => Promise.resolve())
-mock.module('@/db/powersync/sync-state', () => ({
-  ...realPowersync,
-  setSyncEnabled: mockSetSyncEnabled,
-}))
 
 // No createTestProvider here: its AuthProvider mounts a second copy of this hook with the real
 // clearLocalData, which can call window.location.replace after its test has ended.
@@ -59,6 +48,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   // Mirror the beforeEach cleanup so the last test's auth token can't leak into the next test file.
   afterEach(() => {
     localStorage.clear()
+    useLocalSettingsStore.setState({ syncEnabled: false })
   })
 
   const setupAuthAndDevice = async (deviceOverrides?: { revokedAt?: string | null }) => {
@@ -276,7 +266,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       setAuthToken(authToken)
       const signInModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
-      mockSetSyncEnabled.mockClear()
+      useLocalSettingsStore.setState({ syncEnabled: true })
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
         wrapper: createQueryTestWrapper(),
@@ -286,7 +276,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         dispatchCredentialsInvalid('sync_not_permitted')
       })
 
-      expect(mockSetSyncEnabled).toHaveBeenCalledWith(false)
+      expect(useLocalSettingsStore.getState().syncEnabled).toBe(false)
       expect(getAuthToken()).toBe(authToken)
       expect(mockClearLocalData).not.toHaveBeenCalled()
       expect(mockReplace).not.toHaveBeenCalled()

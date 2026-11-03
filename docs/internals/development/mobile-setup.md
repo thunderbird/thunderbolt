@@ -141,14 +141,11 @@ equivalent of the Android clobber.
   `:1420` and the webview fetches from it. iOS simulator and Android emulator usually
   forward `localhost` correctly; a physical device needs `TAURI_DEV_HOST=0.0.0.0` and your
   Mac's LAN IP.
-- **CORS on `api.anthropic.com` in BYO-key mode.** The webview enforces browser CORS on
-  every Tauri target, so BYO-key calls cannot hit a provider directly. They don't:
-  `src/lib/proxy-fetch.ts` routes them through the universal proxy at `/v1/proxy`
-  (`backend/src/proxy/routes.ts`), wrapping provider headers as `X-Proxy-Passthrough-*`,
-  which the proxy strips before calling upstream. The `tauri-plugin-http` direct path is
-  compiled out of every build here: `src-tauri/src/lib.rs` registers it only under the
-  `native_fetch` Cargo feature, which defaults off (`src-tauri/Cargo.toml`) and is passed by
-  no build, so `createProxyFetch` uses the proxy even when `proxy_enabled` is off.
+- **CORS on provider APIs in BYO-key mode.** Downloaded builds enable the `native_fetch`
+  Cargo feature by default. `src/lib/proxy-fetch.ts` uses Tauri's CORS-free HTTP plugin
+  when no server is configured, or when the configured-server proxy toggle is off.
+  With the proxy enabled it routes through `/v1/proxy`. A custom build that disables
+  default Cargo features needs a configured server or a CORS-enabled provider endpoint.
 
 ## Local desktop builds
 

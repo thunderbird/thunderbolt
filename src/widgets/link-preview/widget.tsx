@@ -7,6 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
+import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { LinkPreviewData } from '@/integrations/thunderbolt-pro/schemas'
 import type { SourceMetadata } from '@/types/source'
 import { LinkPreview } from './display'
@@ -69,10 +71,18 @@ const FetchLinkPreview = ({
   fetchPreviewFn?: (params: { url: string }) => Promise<LinkPreviewData>
 }) => {
   const httpClient = useHttpClient()
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
   const { data, isLoading, error } = useMessageCache<LinkPreviewData>({
     messageId,
     cacheKey: ['linkPreview', url],
-    fetchFn: () => (fetchPreviewFn ? fetchPreviewFn({ url }) : fetchLinkPreview({ url }, httpClient)),
+    fetchFn: () => {
+      if (fetchPreviewFn) {
+        return fetchPreviewFn({ url })
+      }
+      return cloudUrl
+        ? fetchLinkPreview({ url }, httpClient)
+        : createStandaloneWebApi('').fetchLinkPreview({ url }, httpClient)
+    },
   })
 
   if (isLoading) {

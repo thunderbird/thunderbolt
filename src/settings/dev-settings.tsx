@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ModificationIndicator } from '@/components/modification-indicator'
+import { ServerConnectionForm } from '@/components/server-connection'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { SectionCard } from '@/components/ui/section-card'
@@ -13,8 +14,10 @@ import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-sett
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
+import { Trans, useLingui } from '@lingui/react/macro'
 
 export default function DevSettingsPage() {
+  const { t } = useLingui()
   const settings = useLocalSettingsStore(
     useShallow((s) => ({
       cloudUrl: s.cloudUrl,
@@ -42,32 +45,28 @@ export default function DevSettingsPage() {
 
       <SectionCard title="Network">
         <div className="flex flex-col gap-8">
-          {/* Cloud URL Setting */}
           <div className="space-y-2">
-            <ModificationIndicator
-              as="label"
-              className="block text-sm font-medium"
-              hasModifications={isModified('cloudUrl')}
-              onReset={() => resetSetting('cloudUrl')}
-            >
-              Cloud URL
-            </ModificationIndicator>
-            <Input
-              type="url"
-              value={cloudUrl}
-              onChange={(e) => setLocalSetting('cloudUrl', e.target.value)}
-              // Consumers (http client, PowerSync, ACP transports) can't work
-              // with a blank base URL, but snapping back mid-edit would make
-              // the field impossible to clear and retype — so restore the
-              // default only when the field is left empty.
-              onBlur={(e) => {
-                if (e.target.value.trim() === '') {
-                  resetSetting('cloudUrl')
-                }
-              }}
-              placeholder="http://localhost:8000"
-            />
-            <p className="text-sm text-muted-foreground">The URL of the Thunderbolt backend</p>
+            {cloudUrl ? (
+              <>
+                <label className="block text-sm font-medium" htmlFor="developer-cloud-url">
+                  <Trans>Thunderbolt Server</Trans>
+                </label>
+                <Input
+                  id="developer-cloud-url"
+                  type="url"
+                  value={cloudUrl}
+                  readOnly
+                  aria-label={t`Thunderbolt Server`}
+                />
+                <p className="text-sm text-muted-foreground">
+                  <Trans>
+                    Reset local data before choosing a different server so account credentials and data stay separate.
+                  </Trans>
+                </p>
+              </>
+            ) : (
+              <ServerConnectionForm />
+            )}
           </div>
 
           {/* Divider between settings */}

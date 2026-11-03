@@ -7,6 +7,7 @@ import { useActiveLocale } from '@/i18n/use-active-locale'
 import { fetchLocationById } from '@/lib/locations'
 import type { StringSettingWithDefaultHook } from '@/hooks/use-settings'
 import { baseLanguage } from '@shared/i18n/base-language'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useEffect, useEffectEvent } from 'react'
 
 /**
@@ -35,12 +36,13 @@ export const useLocationNameDisplay = (
 ): string => {
   const httpClient = useHttpClient()
   const locale = useActiveLocale()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const id = Number(locationId)
 
   // `isLoading` is part of the condition, not an optimization: the stored value
   // reads as empty until the query settles, and resolving off that would fetch
   // on every mount — the thing this setting exists to avoid.
-  const needsResolve = id > 0 && baseLanguage(locale) !== 'en' && !display.isLoading && !display.value
+  const needsResolve = !!cloudUrl && id > 0 && baseLanguage(locale) !== 'en' && !display.isLoading && !display.value
 
   const resolve = useEffectEvent(async () => {
     try {

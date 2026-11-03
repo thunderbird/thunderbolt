@@ -268,6 +268,16 @@ describe('SsoRedirect', () => {
 
       expect(replaceSpy).not.toHaveBeenCalled()
       expect(view.getByText('Try again')).toBeTruthy()
+      expect(view.queryByRole('button', { name: 'Continue locally' })).not.toBeInTheDocument()
+    })
+
+    it('lets an optional server sign-in timeout return to local work', async () => {
+      useLocalSettingsStore.setState({ localMode: true })
+      const { replaceSpy, view } = await renderWithLoopbackCallback('http://127.0.0.1:17421/')
+
+      fireEvent.click(view.getByRole('button', { name: 'Continue locally' }))
+
+      expect(replaceSpy).toHaveBeenCalledWith('/')
     })
 
     it('preserves an anonymous session snapshot through the desktop SSO callback without refetching', async () => {

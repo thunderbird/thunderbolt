@@ -8,23 +8,27 @@ import { useMutation } from '@tanstack/react-query'
 import { useCallback, useReducer } from 'react'
 
 import { useDatabase } from '@/contexts'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
 import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
 import { useAddModelForm } from './use-add-model-form'
+import { modelRequiresServer } from './model-policy'
 
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
 export const useModelsPageState = () => {
   const db = useDatabase()
+  const localProviders = useLocalProviders()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
   const { panel, deleteConfirmId, mutationError } = state
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null
-  const { data: models = [] } = useQuery({
+  const { data: allModels = [] } = useQuery({
     queryKey: ['models'],
     query: toCompilableQuery(getAllModels(db)),
   })
+  const models = localProviders ? allModels.filter((model) => !modelRequiresServer(model)) : allModels
   const activeModel = models.find((model) => model.id === activeModelId)
   const editingModel = panel?.kind === 'edit' ? activeModel : undefined
   const clearMutationError = useCallback(() => dispatch({ type: 'MUTATION_STARTED' }), [])

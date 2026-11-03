@@ -188,6 +188,9 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
+  if (!prefixUrl) {
+    return createStandaloneClient(config)
+  }
   const backendUrl =
     prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
       ? new URL(prefixUrl)
@@ -265,3 +268,19 @@ export const createAuthenticatedClient = (
 
 /** Default client with no config — use for external API calls that don't need auth or prefixUrl. */
 export const http = createClient()
+
+/** Allow external APIs locally while refusing backend-relative calls before a server is selected. */
+export const createStandaloneClient = (config: Pick<HttpClientConfig, 'fetch'> = {}): HttpClient => {
+  const externalClient = createClient(config)
+  const request = (method: keyof HttpClient, url: string, options?: RequestOptions): ResponsePromise => {
+    if (/^https?:\/\//.test(url)) {
+      return externalClient[method](url, options)
+    }
+    return makeResponsePromise(Promise.reject(new Error('Connect to a Thunderbolt server to use this feature')))
+  }
+  return {
+    get: (url, options) => request('get', url, options),
+    post: (url, options) => request('post', url, options),
+    delete: (url, options) => request('delete', url, options),
+  }
+}

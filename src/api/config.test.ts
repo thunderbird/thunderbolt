@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { useConfigStore } from './config-store'
 import { fetchConfig } from './config'
@@ -36,6 +36,15 @@ describe('fetchConfig', () => {
 
     expect(result).toEqual({ builtInAgentEnabled: true })
     expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
+  })
+
+  it('settles locally and clears stale server policy without a request in standalone mode', async () => {
+    useConfigStore.setState({ config: { minimalMode: true, minAppVersion: '99.0.0' }, forceUpgrade: true })
+    const client = createMockHttpClient({})
+    const get = mock(client.get)
+    expect(await fetchConfig('', { ...client, get })).toEqual({})
+    expect(get).not.toHaveBeenCalled()
+    expect(useConfigStore.getState()).toMatchObject({ config: {}, configLoaded: true, forceUpgrade: false })
   })
 
   it('returns null and preserves cached store value when backend is unreachable', async () => {

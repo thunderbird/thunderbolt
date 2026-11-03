@@ -3,6 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { BackButton } from '@/components/ui/back-button'
+import { Button } from '@/components/ui/button'
+import { connectionModalSurfaceClass } from '@/components/ui/modal-styles'
+import { ChangeServerButton, ServerConnectionModal } from '@/components/server-connection'
+import { thunderboltCloudUrl } from '@/lib/constants'
+import { isSsoMode } from '@/lib/auth-mode'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -25,6 +31,8 @@ type SignInModalProps = {
  * Provides the modal chrome and delegates to SignInForm for all form logic.
  */
 export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps) => {
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const localMode = useLocalSettingsStore((s) => s.localMode)
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
 
@@ -47,13 +55,35 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
   }
   const handleGoToOtp = () => setStep('otp')
 
+  if (!cloudUrl || (cloudUrl === thunderboltCloudUrl && localMode)) {
+    return <ServerConnectionModal open={open} onOpenChange={onOpenChange} onAuthenticated={handleSuccess} />
+  }
+
+  if (isSsoMode()) {
+    return (
+      <ResponsiveModal open={open} onOpenChange={onOpenChange} className={connectionModalSurfaceClass}>
+        <ResponsiveModalContent centered className="flex flex-col gap-4">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>
+              <Trans>Sign In</Trans>
+            </ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              <Trans>Continue with your organization's sign-in to connect to this server.</Trans>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <Button onClick={() => window.location.assign('/sso-redirect')}>
+            <Trans>Continue with organization</Trans>
+          </Button>
+          <ChangeServerButton />
+        </ResponsiveModalContent>
+      </ResponsiveModal>
+    )
+  }
+
   return (
     <ResponsiveModal
       open={open}
-      // md:min-h-0 drops the desktop dialog's default 550px minimum so the
-      // simple email form doesn't float in empty space (mobile stays
-      // full-screen via its own min-h-dvh).
-      className="md:min-h-0"
+      className={connectionModalSurfaceClass}
       onOpenChange={(open) => {
         if (!open) {
           setStep('email')
@@ -68,8 +98,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
       {/* Header lives INSIDE the centered content block so the title and the
           form center together as one group on mobile's full-screen modal,
           instead of the title pinning to the top with the form floating
-          separately below it. Desktop is content-height (md:min-h-0), so
-          centering is a no-op there. */}
+          separately below it. */}
       <ResponsiveModalContent centered className="flex flex-col gap-4">
         <ResponsiveModalHeader className={step === 'email' ? 'text-center' : ''}>
           <ResponsiveModalTitle className={step === 'email' ? 'text-2xl font-semibold' : 'sr-only'}>
@@ -91,6 +120,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
           onEmailSent={handleGoToOtp}
           goBackRef={goBackRef}
         />
+        {step === 'email' && <ChangeServerButton />}
       </ResponsiveModalContent>
     </ResponsiveModal>
   )

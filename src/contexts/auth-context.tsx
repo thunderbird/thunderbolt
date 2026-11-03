@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useHttpClient } from '@/contexts/http-client-context'
+import { useConfigStore } from '@/api/config-store'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { getActiveLocale } from '@/i18n/active-locale'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
@@ -12,10 +13,11 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
-import { normalizeBackendUrl } from '@/lib/url-utils'
+import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
+import { markServerAuthenticated } from '@/stores/local-settings-store'
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
 /**
@@ -24,15 +26,16 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * Uses Bearer token authentication for all platforms, storing tokens
  * in the settings database for persistence across app restarts.
  */
-export const createAuthClientInstance = (cloudUrl: string) => {
-  const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
+export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()) => {
+  // Better Auth requires a base URL even when its transport is entirely local.
+  const baseURL = `${resolveAbsoluteBackendUrl(cloudUrl || 'https://standalone.invalid/v1')}/api/auth`
   const platform = getPlatform()
 
   const client = createAuthClient({
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
-    fetchOptions: buildFetchOptions(platform),
+    fetchOptions: cloudUrl ? buildFetchOptions(platform, ssoMode) : { customFetchImpl: standaloneAuthFetch },
     // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
     // The refresh manager skips offline checks, but still refetches on reconnect
     // and cross-tab broadcasts so cached sessions recover when the network returns.
@@ -42,8 +45,25 @@ export const createAuthClientInstance = (cloudUrl: string) => {
     },
   })
 
-  hydrateSessionFromCache(client)
+  if (cloudUrl) {
+    hydrateSessionFromCache(client)
+  } else {
+    const session = client.$store.atoms.session
+    session.set({ ...session.get(), data: null, isPending: false })
+  }
   return client
+}
+
+/** An offline auth adapter: session reads are signed out, and account operations require server setup. */
+export const standaloneAuthFetch = async (input: string | URL | Request): Promise<Response> => {
+  const url = new URL(input instanceof Request ? input.url : input.toString())
+  if (url.pathname.endsWith('/get-session')) {
+    return Response.json(null)
+  }
+  return Response.json(
+    { code: 'SERVER_NOT_CONFIGURED', message: 'Select a Thunderbolt server before signing in' },
+    { status: 503 },
+  )
 }
 
 /**
@@ -106,6 +126,7 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
     const data = state.data
     if (data?.user && data?.session) {
+      markServerAuthenticated()
       setCachedSession(data)
     }
   })
@@ -132,8 +153,8 @@ const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
 const isSignInRequest = (url: URL | string | undefined): boolean =>
   url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
 
-export const buildFetchOptions = (platform: string) => ({
-  credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
+export const buildFetchOptions = (platform: string, ssoMode = isSsoMode()) => ({
+  credentials: (ssoMode ? 'include' : 'omit') as RequestCredentials,
   // Applied per request instead of through `headers` so the locale is re-read on
   // every call, not frozen at client construction before the synced setting hydrates.
   onRequest: (ctx: { headers: Headers }) => {
@@ -194,6 +215,8 @@ type AuthProviderProps = {
 }
 
 export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }: AuthProviderProps) => {
+  useConfigStore((state) => state.config.authMode)
+  const ssoMode = isSsoMode()
   // Run the credentials-invalid listener at the top of AuthProvider so it mounts early —
   // before any children that depend on auth. When the user deletes their account elsewhere
   // or a device is revoked, this listener triggers a full reset and reload.
@@ -204,13 +227,9 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
       return { authClient: overrideClient }
     }
 
-    if (!cloudUrl) {
-      return null
-    }
-
-    const client = createAuthClientInstance(cloudUrl)
+    const client = createAuthClientInstance(cloudUrl ?? '', ssoMode)
     return { authClient: client }
-  }, [cloudUrl, overrideClient])
+  }, [cloudUrl, overrideClient, ssoMode])
 
   // Persist session updates back to the localStorage cache (THU-580). Scoped to
   // an effect so the listener is released when `value` is replaced — otherwise
@@ -229,12 +248,12 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   // twice.
   const ssoAliasConsumedRef = useRef(false)
   useEffect(() => {
-    if (!value?.authClient || ssoAliasConsumedRef.current) {
+    if (!cloudUrl || !value.authClient || ssoAliasConsumedRef.current) {
       return
     }
     ssoAliasConsumedRef.current = true
     void consumePendingSsoAnonAlias(value.authClient)
-  }, [value])
+  }, [value, cloudUrl])
 
   // Check the session on mount via HttpClient — its afterResponse hook fires
   // session_expired on the first 401, or device_revoked on a 403 for a revoked device.
@@ -242,16 +261,16 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   // gets its 403. Avoids Better Auth's auth client to sidestep its internal retry path.
   // Ref guards against StrictMode's double mount.
   const httpClient = useHttpClient()
-  const sessionCheckFiredRef = useRef(false)
+  const sessionCheckClientRef = useRef<AuthClient | null>(null)
   useEffect(() => {
-    if (!value?.authClient || sessionCheckFiredRef.current) {
+    if ((!cloudUrl && !overrideClient) || sessionCheckClientRef.current === value.authClient) {
       return
     }
-    sessionCheckFiredRef.current = true
+    sessionCheckClientRef.current = value.authClient
     void httpClient.get('api/auth/get-session').catch(() => {
       // 401 is handled by the afterResponse hook; other failures aren't session signals.
     })
-  }, [value, httpClient])
+  }, [value, httpClient, cloudUrl, overrideClient])
 
   // Cross-tab auth-token sync: another tab's token change propagates via storage events.
   //   - Token rotated (next truthy, changed): reload to pick up the new session identity.
@@ -274,10 +293,6 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
       }
     })
   }, [])
-
-  if (!value) {
-    return null
-  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

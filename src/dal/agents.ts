@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useConfigCapability } from '@/hooks/use-config-capability'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
-import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { selectBuiltInAgentEnabled } from '@/api/config-store'
 import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
@@ -119,7 +120,7 @@ export const loadAllAgents = async (
 /** Combined list hook: built-in first (unless disabled by deployment), then
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
 export const useAllAgents = (): Agent[] => {
-  const includeBuiltIn = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+  const includeBuiltIn = useConfigCapability(selectBuiltInAgentEnabled)
   return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
 }
 

@@ -35,6 +35,9 @@ import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetc
 import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
+import { TinfoilImpactDialog } from './tinfoil-impact-dialog'
+import { AiProviderDetail } from './ai-provider-detail'
+import { useAiProviderConnections } from './use-ai-provider-connections'
 import { ConnectionsList } from './connections-list'
 import { IntegrationDetail } from './integration-detail'
 import { McpServerDetail } from './mcp-server-detail'
@@ -161,6 +164,9 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     formErrorSources.find((source): source is { title: string; body: string } => source.body != null) ?? null
 
   const { servers, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
+
+  const providerConnections = useAiProviderConnections()
+  const aiProviders = providerConnections.providers
 
   const integrationsController = useIntegrationsController({ db, dispatch })
 
@@ -300,6 +306,18 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
         </DetailPanel>
       )
     }
+    if (selected?.kind === 'provider') {
+      const connection = aiProviders.find((provider) => provider.id === selected.id)
+      if (connection) {
+        return (
+          <AiProviderDetail
+            key={connection.id}
+            connection={connection}
+            onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+          />
+        )
+      }
+    }
     if (activeIntegration) {
       return (
         <IntegrationDetail
@@ -381,6 +399,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     <div className="relative flex h-full">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ConnectionsList
+          aiProviders={aiProviders}
+          areProvidersReady={providerConnections.ready}
+          isProviderTogglePending={providerConnections.pending}
+          providerError={providerConnections.error}
+          onToggleProvider={providerConnections.toggle}
+          onSelectProvider={(id) => toggleSelection({ kind: 'provider', id })}
           integrations={integrationsController.integrations}
           areIntegrationsReady={integrationsController.areIntegrationsReady}
           servers={servers}
@@ -398,6 +422,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       <DetailPanelSurface open={panelOpen} onClose={closePanel}>
         {panel}
       </DetailPanelSurface>
+      <TinfoilImpactDialog
+        action="disable"
+        open={providerConnections.confirmDisable}
+        pending={providerConnections.pending}
+        error={providerConnections.error}
+        onCancel={providerConnections.cancelDisable}
+        onConfirm={providerConnections.disableConfirmed}
+      />
       {shouldClearNavigationState && location.state !== null && <Navigate to="." replace state={null} />}
       <AlertDialog
         open={pendingDelete !== null}

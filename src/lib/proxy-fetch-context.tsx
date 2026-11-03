@@ -5,7 +5,7 @@
 /**
  * React context for the universal proxy fetch.
  *
- * The provider builds one `proxyFetch` per `cloudUrl` and memoizes it. Consumers
+ * The provider memoizes `proxyFetch` for the current server and authentication. Consumers
  * call `useFetch()` from any component or hook to get a `fetch`-shaped function
  * that hides Hosted (web) vs Standalone (Tauri) mode — see `proxy-fetch.ts`.
  *
@@ -19,6 +19,7 @@
  */
 
 import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { getAuthToken } from '@/lib/auth-token'
 import { isTauri } from '@/lib/platform'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -42,19 +43,19 @@ type ProxyFetchProviderProps = {
 
 /**
  * Mounts a memoized `proxyFetch` for the current `cloudUrl` setting and the
- * `proxy_enabled` localStorage flag. The fetch is re-created only when those
+ * `proxy_enabled` localStorage flag and authentication. The fetch is re-created only when those
  * inputs change (`useMemo`, no `useEffect` — this is derived state, see
  * CLAUDE.md `useEffect` discipline).
  *
  * Effective proxy behaviour:
- *   - Web: always proxied (browser CORS forces it; the toggle is UI-disabled).
- *   - Tauri: respects the user toggle; default OFF means upstream-direct.
+ *   - Local providers: direct, using native HTTP on Tauri and browser fetch on web.
+ *   - Authenticated web: proxied (browser CORS forces it; the toggle is UI-disabled).
+ *   - Authenticated Tauri: respects the user toggle; default OFF means upstream-direct.
  */
 export const ProxyFetchProvider = ({ children, proxyFetch: override, isStandalone }: ProxyFetchProviderProps) => {
-  // `cloudUrl` is sourced from the persisted local-settings-store (seeded from
-  // VITE_THUNDERBOLT_CLOUD_URL with a localhost fallback), so it's always a
-  // non-null string here.
+  // An empty persisted cloudUrl means the user has not selected a server.
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const needsOwnModel = useLocalProviders()
   const [proxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
 
   // Web always proxies (toggle is UI-disabled). Tauri respects the stored value.
@@ -69,12 +70,12 @@ export const ProxyFetchProvider = ({ children, proxyFetch: override, isStandalon
       return override
     }
     return createProxyFetch({
-      cloudUrl,
+      cloudUrl: needsOwnModel ? '' : cloudUrl,
       isStandalone,
       getProxyEnabled: () => effectiveProxyEnabled,
       getProxyAuthToken: getAuthToken,
     })
-  }, [override, cloudUrl, effectiveProxyEnabled, isStandalone])
+  }, [override, cloudUrl, needsOwnModel, effectiveProxyEnabled, isStandalone])
 
   // Mirror `proxyFetch` into a ref so the stable `getProxyFetch` getter below
   // always returns the *current* fetch. Closures captured by non-React callers

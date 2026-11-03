@@ -5,6 +5,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ExternalLinkBehavior } from '@/lib/external-link-behavior'
+import { isTauri } from '@/lib/platform'
 
 /**
  * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
@@ -33,6 +34,10 @@ export const defaultVoiceProvider: VoiceProviderConfig = {
 
 type LocalSettingsState = {
   cloudUrl: string
+  /** Keep local routes available after optionally connecting a server. Never grants server access. */
+  localMode: boolean
+  /** A successful session permanently binds this installation's data to its server. */
+  serverHasAuthenticated: boolean
   externalLinkBehavior: ExternalLinkBehavior
   debugPosthog: boolean
   isNativeFetchEnabled: boolean
@@ -52,8 +57,15 @@ type LocalSettingsActions = {
 
 type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 
+const initialCloudUrl =
+  isTauri() && import.meta.env.VITE_AUTH_MODE !== 'sso' ? '' : import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || ''
+
 export const initialLocalSettings: LocalSettingsState = {
-  cloudUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
+  // A downloaded app starts locally; managed SSO builds keep their deployment.
+  // Persisted settings still win, so an upgrade preserves an existing server.
+  cloudUrl: initialCloudUrl,
+  localMode: !initialCloudUrl,
+  serverHasAuthenticated: !!initialCloudUrl,
   externalLinkBehavior: 'ask',
   debugPosthog: false,
   isNativeFetchEnabled: false,
@@ -64,6 +76,18 @@ export const initialLocalSettings: LocalSettingsState = {
   voiceProvider: defaultVoiceProvider,
 }
 
+/** Legacy server installations stay account-bound; new local installs can correct an unused server. */
+export const mergeLocalSettings = (persistedState: unknown, currentState: LocalSettingsStore): LocalSettingsStore => {
+  const persisted = (persistedState ?? {}) as Partial<LocalSettingsState>
+  const cloudUrl = persisted.cloudUrl ?? currentState.cloudUrl
+  return {
+    ...currentState,
+    ...persisted,
+    localMode: persisted.localMode ?? !cloudUrl,
+    serverHasAuthenticated: persisted.serverHasAuthenticated ?? !!cloudUrl,
+  }
+}
+
 export const useLocalSettingsStore = create<LocalSettingsStore>()(
   persist(
     (set) => ({
@@ -72,11 +96,14 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
     }),
     {
       name: 'thunderbolt-local-settings',
+      merge: mergeLocalSettings,
       // Listed explicitly (rather than spread + omit) so TS errors if a new
       // LocalSettingsState field is added without persisting it, and so no
       // future store action can silently leak into localStorage.
       partialize: (s): LocalSettingsState => ({
         cloudUrl: s.cloudUrl,
+        localMode: s.localMode,
+        serverHasAuthenticated: s.serverHasAuthenticated,
         externalLinkBehavior: s.externalLinkBehavior,
         debugPosthog: s.debugPosthog,
         isNativeFetchEnabled: s.isNativeFetchEnabled,
@@ -96,3 +123,11 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
  */
 export const getLocalSetting = <K extends keyof LocalSettingsState>(key: K): LocalSettingsState[K] =>
   useLocalSettingsStore.getState()[key]
+
+/** Keep a selected server bound after the first credential, including after that credential expires. */
+export const markServerAuthenticated = (): void => {
+  const settings = useLocalSettingsStore.getState()
+  if (settings.cloudUrl && !settings.serverHasAuthenticated) {
+    useLocalSettingsStore.setState({ serverHasAuthenticated: true })
+  }
+}

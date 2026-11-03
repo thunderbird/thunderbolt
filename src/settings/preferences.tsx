@@ -22,6 +22,7 @@ import { useHttpClient } from '@/contexts'
 import { useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
+import { ChangeServerButton } from '@/components/server-connection'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import { ExternalLinkToggleGroup } from '@/components/external-link-toggle-group'
 import { ThemeToggleGroup } from '@/components/theme-toggle-group'
@@ -194,17 +195,16 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
+  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const runningInTauri = isTauri()
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !runningInTauri || !isAuthenticated
-  const proxyTooltipReason = !runningInTauri
-    ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
-    : t`Sign in to enable cloud proxy.`
-  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
+  const proxyDisabled = !runningInTauri && !!cloudUrl
+  const proxyTooltipReason = t`Proxying is required in the web app to bypass browser CORS restrictions.`
+  const proxyChecked = cloudUrl && isAuthenticated ? effectiveProxyEnabled : false
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -451,11 +451,7 @@ export default function PreferencesSettingsPage() {
     if (!pendingImport) {
       return
     }
-    const userId = session?.user?.id
-    if (!userId) {
-      dispatch({ type: 'SET_IMPORT_ERROR', payload: t`You must be signed in to import data.` })
-      return
-    }
+    const userId = session?.user?.id ?? ''
     dispatch({ type: 'SET_IS_IMPORTING', payload: true })
     dispatch({ type: 'SET_IMPORT_ERROR', payload: null })
     try {
@@ -489,16 +485,13 @@ export default function PreferencesSettingsPage() {
   }
 
   const handleExportData = async () => {
-    const userId = session?.user?.id
-    if (!userId) {
-      return
-    }
+    const userId = session?.user?.id ?? ''
     dispatch({ type: 'SET_EXPORT_ERROR', payload: null })
     dispatch({ type: 'SET_IS_EXPORTING', payload: true })
     try {
       const payload = await exportUserData(db, {
         id: userId,
-        email: session.user.email ?? null,
+        email: session?.user?.email ?? null,
       })
       await downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
@@ -731,12 +724,32 @@ export default function PreferencesSettingsPage() {
             >
               <Trans>Location</Trans>
             </ModificationIndicator>
-            <LocationSearchCombobox
-              value={localizedLocationName}
-              onSelect={handleSelectLocation}
-              id="localization-location-trigger"
-              aria-labelledby="localization-location-label localization-location-trigger"
-            />
+            {cloudUrl ? (
+              <LocationSearchCombobox
+                value={localizedLocationName}
+                onSelect={handleSelectLocation}
+                id="localization-location-trigger"
+                aria-labelledby="localization-location-label localization-location-trigger"
+              />
+            ) : (
+              <Input
+                key={locationName.value}
+                defaultValue={locationName.value}
+                placeholder={t`City or region`}
+                aria-labelledby="localization-location-label"
+                onBlur={async (event) => {
+                  await updateSettings(db, {
+                    location_name: event.target.value.trim(),
+                    location_name_display: '',
+                    location_id: '',
+                    location_lat: '',
+                    location_lng: '',
+                    location_country_code: '',
+                  })
+                  trackEvent('settings_location_update')
+                }}
+              />
+            )}
             <p className="text-sm text-muted-foreground">
               <Trans>Enables location-based responses</Trans>
             </p>
@@ -1006,13 +1019,30 @@ export default function PreferencesSettingsPage() {
       <div className="h-6" />
 
       <SectionCard title={t`Network`}>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">
+              <Trans>Thunderbolt Server</Trans>
+            </label>
+            <p className="break-all text-sm text-muted-foreground">
+              {cloudUrl || <Trans>Use a server for sign-in, sync, and cloud features.</Trans>}
+            </p>
+          </div>
+          {cloudUrl ? (
+            <ChangeServerButton />
+          ) : (
+            <Button variant="secondary" onClick={openSignInModal}>
+              <Trans>Connect to server</Trans>
+            </Button>
+          )}
+        </div>
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">
               <Trans>Use Cloud Proxy</Trans>
             </label>
             <p className="text-sm text-muted-foreground">
-              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
+              <Trans>When enabled, requests are routed through your Thunderbolt server's cloud proxy.</Trans>
             </p>
           </div>
           {proxyDisabled ? (
@@ -1034,7 +1064,13 @@ export default function PreferencesSettingsPage() {
           ) : (
             <Switch
               checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+              onCheckedChange={(checked) => {
+                if (!cloudUrl || !isAuthenticated) {
+                  openSignInModal()
+                  return
+                }
+                setProxyEnabledStr(checked ? 'true' : 'false')
+              }}
               aria-label={t`Use Cloud Proxy`}
             />
           )}
@@ -1074,81 +1110,75 @@ export default function PreferencesSettingsPage() {
 
           {isFullUser && syncEnabled && <ChangeRecoveryKeySection />}
 
-          {isAuthenticated && (
-            <>
-              <div className="h-px bg-border -mx-6" />
+          <>
+            <div className="h-px bg-border -mx-6" />
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="export-data-button" className="text-sm font-medium">
-                  <Trans>Export Your Data</Trans>
-                </label>
-                <p id="export-data-description" className="text-sm text-muted-foreground">
-                  <Trans>Export all of your data as JSON.</Trans>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="export-data-button" className="text-sm font-medium">
+                <Trans>Export Your Data</Trans>
+              </label>
+              <p id="export-data-description" className="text-sm text-muted-foreground">
+                <Trans>Export all of your data as JSON.</Trans>
+              </p>
+              {exportError && (
+                <p id="export-data-error" className="text-sm text-destructive" role="alert">
+                  {exportError}
                 </p>
-                {exportError && (
-                  <p id="export-data-error" className="text-sm text-destructive" role="alert">
-                    {exportError}
-                  </p>
-                )}
-                <Button
-                  id="export-data-button"
-                  variant="secondary"
-                  disabled={isExporting}
-                  aria-busy={isExporting}
-                  aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
-                  onClick={handleExportData}
-                >
-                  {isExporting ? t`Exporting…` : t`Export My Data`}
-                </Button>
-              </div>
+              )}
+              <Button
+                id="export-data-button"
+                variant="secondary"
+                disabled={isExporting}
+                aria-busy={isExporting}
+                aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
+                onClick={handleExportData}
+              >
+                {isExporting ? t`Exporting…` : t`Export My Data`}
+              </Button>
+            </div>
 
-              <div className="h-px bg-border -mx-6" />
+            <div className="h-px bg-border -mx-6" />
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="import-data-button" className="text-sm font-medium">
-                  <Trans>Import Your Data</Trans>
-                </label>
-                <p id="import-data-description" className="text-sm text-muted-foreground">
-                  <Trans>Import your data from previously exported JSON.</Trans>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="import-data-button" className="text-sm font-medium">
+                <Trans>Import Your Data</Trans>
+              </label>
+              <p id="import-data-description" className="text-sm text-muted-foreground">
+                <Trans>Import your data from previously exported JSON.</Trans>
+              </p>
+              {importError && (
+                <p id="import-data-error" className="text-sm text-destructive" role="alert">
+                  {importError}
                 </p>
-                {importError && (
-                  <p id="import-data-error" className="text-sm text-destructive" role="alert">
-                    {importError}
-                  </p>
-                )}
-                {importSuccess && (
-                  <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
-                    {importSuccess}
-                  </p>
-                )}
-                <input
-                  ref={importFileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="hidden"
-                  onChange={handleImportFileSelected}
-                />
-                <Button
-                  id="import-data-button"
-                  variant="secondary"
-                  disabled={isImporting}
-                  aria-busy={isImporting}
-                  aria-describedby={
-                    importError
-                      ? 'import-data-error'
-                      : importSuccess
-                        ? 'import-data-success'
-                        : 'import-data-description'
-                  }
-                  onClick={handleImportClick}
-                >
-                  {isImporting ? t`Importing…` : t`Import Data`}
-                </Button>
-              </div>
-            </>
-          )}
+              )}
+              {importSuccess && (
+                <p id="import-data-success" className="text-sm text-muted-foreground" role="status">
+                  {importSuccess}
+                </p>
+              )}
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handleImportFileSelected}
+              />
+              <Button
+                id="import-data-button"
+                variant="secondary"
+                disabled={isImporting}
+                aria-busy={isImporting}
+                aria-describedby={
+                  importError ? 'import-data-error' : importSuccess ? 'import-data-success' : 'import-data-description'
+                }
+                onClick={handleImportClick}
+              >
+                {isImporting ? t`Importing…` : t`Import Data`}
+              </Button>
+            </div>
+          </>
 
-          {isAnonymous && (
+          {!isFullUser && (
             <>
               <div className="h-px bg-border -mx-6" />
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Model } from '@/types'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 /**
  * Warm a managed Tinfoil model without pulling the AI provider pipeline into
@@ -13,7 +14,7 @@ export const prewarmSystemModel = async (
   model: Pick<Model, 'provider' | 'isSystem'> | null | undefined,
   loadPrewarm = async () => (await import('./tinfoil-client')).runSystemModelPrewarm,
 ) => {
-  if (!model || model.provider !== 'tinfoil' || !model.isSystem) {
+  if (!model || model.provider !== 'tinfoil' || !model.isSystem || usesLocalProviders()) {
     return
   }
   try {

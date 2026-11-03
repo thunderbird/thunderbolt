@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
 import { Trans } from '@lingui/react/macro'
-import { Database, EyeOff, ServerOff } from 'lucide-react'
+import { CodeXml, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
@@ -32,28 +32,43 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
         <OnboardingStepHeader
           icon={<AppLogo size={72} />}
           title={<Trans>Welcome to Thunderbolt!</Trans>}
-          description={<Trans>Your private AI assistant</Trans>}
+          description={
+            <Trans>
+              AI that <strong>you</strong> control.
+            </Trans>
+          }
         />
 
-        <div className="mt-10 rounded-xl bg-muted">
-          <OnboardingFeatureCard
-            icon={ServerOff}
-            title={<Trans>Zero Logs</Trans>}
-            description={<Trans>We don't keep logs of your conversations.</Trans>}
-          />
-
-          <OnboardingFeatureCard
-            icon={EyeOff}
-            title={<Trans>Zero Training</Trans>}
-            description={<Trans>We don't train models on your data.</Trans>}
-          />
-
-          <OnboardingFeatureCard
-            icon={Database}
-            title={<Trans>Local Storage</Trans>}
-            description={<Trans>Data is stored securely on your device.</Trans>}
-          />
-        </div>
+        <ul className="mt-10 rounded-xl bg-muted text-foreground/80">
+          {[
+            {
+              id: 'private',
+              icon: ShieldCheck,
+              title: <Trans>Private</Trans>,
+              description: <Trans>Built to protect your data.</Trans>,
+            },
+            {
+              id: 'customizable',
+              icon: SlidersHorizontal,
+              title: <Trans>Customizable</Trans>,
+              description: <Trans>Choose your agents, models, and tools.</Trans>,
+            },
+            {
+              id: 'open-source',
+              icon: CodeXml,
+              title: <Trans>Open Source</Trans>,
+              description: <Trans>Code you can inspect and improve.</Trans>,
+            },
+          ].map(({ id, ...feature }, index) => (
+            <li
+              key={id}
+              className="animate-in fade-in-0 slide-in-from-bottom-3 duration-300 fill-mode-both motion-reduce:animate-none"
+              style={{ animationDelay: `${index * 180}ms` }}
+            >
+              <OnboardingFeatureCard {...feature} className="gap-6 px-6" />
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="mt-8">

@@ -12,6 +12,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { PostHog } from 'posthog-js'
 import {
   initPosthog,
+  getAnalyticsUrl,
   resetPosthogClient,
   sanitizeUrl,
   setCapturing,
@@ -101,6 +102,17 @@ afterAll(async () => {
   resetPosthogClient()
 })
 
+describe('analytics destination', () => {
+  it('uses Thunderbolt telemetry when no app server is configured', () => {
+    expect(getAnalyticsUrl('')).toBe('https://api.thunderbolt.io/v1')
+  })
+
+  it('preserves self-hosted analytics and normalizes trailing slashes', () => {
+    expect(getAnalyticsUrl('https://my-server.example/v1///')).toBe('https://my-server.example/v1')
+    expect(getAnalyticsUrl('/v1')).toBe('/v1')
+  })
+})
+
 describe('analytics sanitizeUrl', () => {
   it('replaces dynamic chat IDs with route params for pathnames', () => {
     expect(sanitizeUrl('/chats/123')).toBe('/chats/:chatThreadId')
@@ -115,6 +127,18 @@ describe('analytics sanitizeUrl', () => {
 
   it('removes OAuth callback credentials', () => {
     expect(sanitizeUrl('/oauth/callback?code=authorization-code&state=csrf-state')).toBe('/oauth/callback')
+  })
+
+  it('removes OpenRouter flow nonces and authorization parameters, including trailing slash callbacks', () => {
+    expect(sanitizeUrl('/oauth/openrouter/secret-nonce?code=secret-code&state=secret-state')).toBe(
+      '/oauth/openrouter/:flowId',
+    )
+    expect(sanitizeUrl('/oauth/tinfoil/secret-nonce?code=secret-code&state=secret-state')).toBe(
+      '/oauth/tinfoil/:flowId',
+    )
+    expect(sanitizeUrl('https://app.test/oauth/openrouter/secret-nonce/?code=secret-code#fragment')).toBe(
+      'https://app.test/oauth/openrouter/:flowId',
+    )
   })
 
   it('removes magic-link credentials', () => {
@@ -270,6 +294,35 @@ describe('analytics before_send sanitization', () => {
     const result = capturedOptions!.before_send(event)
     expect(result.properties.$current_url).toBe('https://app/chats/:chatThreadId')
     expect(result.properties.$referrer).toBe('https://referrer.test/chats/:chatThreadId')
+  })
+
+  it('removes callback nonces from SDK session-entry and nested initial person properties', async () => {
+    await initPosthog(createMockHttpClient('test-key'))
+    const callback = 'https://app.test/oauth/openrouter/private-nonce?code=private-code&state=private-state'
+    const event: PosthogEvent = {
+      event: 'app_init_timing',
+      properties: {
+        $session_entry_url: callback,
+        $session_entry_pathname: '/oauth/openrouter/private-nonce',
+        $session_entry_referrer: callback,
+        $set_once: {
+          $initial_current_url: callback,
+          $initial_pathname: '/oauth/openrouter/private-nonce',
+          $initial_referrer: callback,
+        },
+        $set: { $current_url: callback },
+      },
+    }
+    const result = capturedOptions!.before_send(event)
+    expect(result.properties.$session_entry_url).toBe('https://app.test/oauth/openrouter/:flowId')
+    expect(result.properties.$session_entry_pathname).toBe('/oauth/openrouter/:flowId')
+    expect(result.properties.$set_once).toEqual({
+      $initial_current_url: 'https://app.test/oauth/openrouter/:flowId',
+      $initial_pathname: '/oauth/openrouter/:flowId',
+      $initial_referrer: 'https://app.test/oauth/openrouter/:flowId',
+    })
+    expect(result.properties.$set).toEqual({ $current_url: 'https://app.test/oauth/openrouter/:flowId' })
+    expect(JSON.stringify(result)).not.toContain('private-')
   })
 
   it('ignores non-string URL-like properties', async () => {

@@ -16,7 +16,7 @@ name = "thunderbolt_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-default = []
+default = ["native_fetch"]
 native_fetch = []
 
 [workspace]

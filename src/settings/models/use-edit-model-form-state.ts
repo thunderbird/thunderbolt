@@ -95,6 +95,7 @@ export const useEditModelFormState = (model: Model) => {
     model: watchedModel,
     url: watchedUrl,
     apiKey: effectiveApiKey,
+    oauthProvider: liveApiKeyEdit.kind === 'keep' ? model.oauthProvider : null,
   })
   const hasConnectionEdits = hasModelConnectionChanges(model, {
     model: watchedModel,
@@ -143,6 +144,7 @@ export const useEditModelFormState = (model: Model) => {
       model: values.model,
       url: values.url,
       apiKey: effectiveApiKey,
+      oauthProvider: liveApiKeyEdit.kind === 'keep' ? model.oauthProvider : null,
     })
   }
   const submissionFor = (values: EditModelFormValues): EditModelSubmission => ({

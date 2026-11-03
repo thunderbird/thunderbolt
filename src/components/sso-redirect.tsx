@@ -13,6 +13,7 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { useAuth } from '@/contexts'
 import Loading from '@/loading'
+import { Button } from '@/components/ui/button'
 
 /**
  * In SSO mode (OIDC or SAML), redirects unauthenticated users to the backend's
@@ -23,6 +24,7 @@ import Loading from '@/loading'
  */
 const SsoRedirect = () => {
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const localMode = useLocalSettingsStore((s) => s.localMode)
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
   const analytics = useAnonymousPromotionAnalytics()
@@ -117,6 +119,11 @@ const SsoRedirect = () => {
         >
           <Trans>Try again</Trans>
         </button>
+        {localMode && (
+          <Button variant="outline" onClick={() => window.location.replace('/')}>
+            <Trans>Continue locally</Trans>
+          </Button>
+        )}
       </div>
     )
   }

@@ -22,12 +22,22 @@ export type { FetchContentParams, SearchParams, SearchResultData }
 
 const sourceRegistryCap = 200
 
+export type WebToolApi = {
+  search: typeof search
+  fetchContent: typeof fetchContent
+  fetchLinkPreview: typeof fetchLinkPreview
+}
+
 /**
  * Thunderbolt Pro Tools Configuration Factory
  * @param httpClient - HTTP client for making requests (injected for dependency injection)
  * @param sourceCollector - Optional shared array to accumulate source metadata during tool execution
  */
-export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMetadata[]): ToolConfig[] => {
+export const createConfigs = (
+  httpClient: HttpClient,
+  sourceCollector?: SourceMetadata[],
+  api: WebToolApi = { search, fetchContent, fetchLinkPreview },
+): ToolConfig[] => {
   let nextIndex = (sourceCollector?.length ?? 0) + 1
 
   return [
@@ -38,7 +48,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
       cacheable: true,
       parameters: searchSchema,
       execute: async (params: SearchParams) => {
-        const results = await search(params, httpClient)
+        const results = await api.search(params, httpClient)
 
         return results.map((result) => {
           const existingSource = sourceCollector?.find((s) => s.url === result.pageUrl)
@@ -81,8 +91,8 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
       execute: async (params: FetchContentParams) => {
         // Fetch content and link preview in parallel — link preview gives us og:site_name
         const [result, preview] = await Promise.all([
-          fetchContent(params, httpClient),
-          fetchLinkPreview({ url: params.url }, httpClient).catch(() => null),
+          api.fetchContent(params, httpClient),
+          api.fetchLinkPreview({ url: params.url }, httpClient).catch(() => null),
         ])
 
         if (!result) {

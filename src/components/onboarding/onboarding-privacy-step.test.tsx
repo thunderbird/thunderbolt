@@ -55,15 +55,14 @@ describe('OnboardingPrivacyStep', () => {
 
       expect(screen.getByText(/Welcome to/)).toBeInTheDocument()
       expect(screen.getByText(/Thunderbolt/)).toBeInTheDocument()
-      expect(screen.getByText(/Your private AI assistant/)).toBeInTheDocument()
     })
 
     it('should render privacy features', () => {
       renderComponent()
 
-      expect(screen.getByText('Zero Logs')).toBeInTheDocument()
-      expect(screen.getByText('Zero Training')).toBeInTheDocument()
-      expect(screen.getByText('Local Storage')).toBeInTheDocument()
+      expect(screen.getByText('Private')).toBeInTheDocument()
+      expect(screen.getByText('Customizable')).toBeInTheDocument()
+      expect(screen.getByText('Open Source')).toBeInTheDocument()
     })
   })
 

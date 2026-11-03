@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
+import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { saveIntegrationCredentials } from '@/dal/integrations'
+import type { TinfoilCredentials } from '@/lib/tinfoil-auth'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -15,7 +19,8 @@ import { z } from 'zod'
 import { useChatStore } from '@/chats/chat-store'
 import type { ComboboxItem } from '@/components/ui/combobox'
 import { useDatabase } from '@/contexts'
-import { createModel, getAvailableModels } from '@/dal'
+import { getAllModels, getAvailableModels, updateSettings } from '@/dal'
+import { useLocalProviders } from '@/hooks/use-local-providers'
 import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
@@ -100,15 +105,18 @@ export const generateModelName = (modelId: string): string => {
 type UseAddModelFormOptions = {
   isOpen: boolean
   onClose: () => void
+  /** Called only after a model is saved and the available-model list is refreshed. */
+  onSaved?: () => void
   /** Clears page-level mutation feedback when an add attempt begins. */
   onMutationStart?: () => void
 }
 
 /** Owns the reusable add-model form, catalog, connection test, and mutation. */
-export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddModelFormOptions) => {
+export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: UseAddModelFormOptions) => {
   const { i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const isStandalone = useLocalProviders()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
@@ -116,11 +124,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
     defaultValues: {
-      provider: 'thunderbolt',
+      provider: isStandalone ? 'custom' : 'thunderbolt',
       name: '',
       model: '',
       customModel: '',
-      url: '',
+      url: isStandalone ? 'http://localhost:11434/v1' : '',
       apiKey: '',
     },
   })
@@ -147,17 +155,59 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   }
 
   const addMutation = useMutation({
-    mutationFn: async (values: AddModelFormValues) => {
-      await createModel(db, {
-        id: uuidv7(),
-        ...values,
-        apiKey: values.apiKey || null,
-        url: values.url || null,
-        isSystem: 0,
-        enabled: 1,
-        toolUsage: 1,
-        contextWindow: null,
-      })
+    mutationFn: async (
+      values: AddModelFormValues &
+        Partial<
+          Pick<
+            Model,
+            | 'contextWindow'
+            | 'vendor'
+            | 'isConfidential'
+            | 'supportsParallelToolCalls'
+            | 'startWithReasoning'
+            | 'oauthProvider'
+          >
+        > & { tinfoilCredentials?: TinfoilCredentials },
+    ) => {
+      const { tinfoilCredentials, ...modelValues } = values
+      const save = () =>
+        db.transaction(async (tx) => {
+          const previous = values.oauthProvider
+            ? (await getAllModels(tx)).find(
+                (model) =>
+                  model.oauthProvider === values.oauthProvider &&
+                  model.provider === values.provider &&
+                  model.model === values.model &&
+                  model.isSystem !== 1,
+              )
+            : undefined
+          const id = previous?.id ?? uuidv7()
+
+          if (tinfoilCredentials) {
+            await saveIntegrationCredentials(tx, 'tinfoil', tinfoilCredentials, true)
+          }
+          const modelData = {
+            id,
+            ...modelValues,
+            apiKey: values.oauthProvider ? null : values.apiKey || null,
+            url: values.url || null,
+            isSystem: 0,
+            enabled: 1,
+            toolUsage: 1,
+            contextWindow: values.contextWindow ?? null,
+          }
+          if (previous) {
+            // Reauthorization restores access; it must not reset the user's model configuration.
+            await updateModelInTransaction(tx, id, { apiKey: null, oauthProvider: values.oauthProvider, enabled: 1 })
+          } else {
+            await createModelInTransaction(tx, modelData)
+          }
+          return id
+        })
+      const id = tinfoilCredentials ? await withTinfoilSessionLock(save) : await save()
+      if (isStandalone) {
+        await updateSettings(db, { selected_model: id })
+      }
       return getAvailableModels(db)
     },
     onMutate: () => {
@@ -167,7 +217,12 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     onSuccess: async (models) => {
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
+      await queryClient.invalidateQueries({ queryKey: ['tinfoil-session'] })
+      if (isStandalone) {
+        await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      }
       close()
+      onSaved?.()
     },
     onError: (error: unknown) => {
       console.error('Failed to add the model.', error)
@@ -242,6 +297,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
 
   return {
+    allowServerModels: !isStandalone,
     form,
     modelItems,
     selectedModelId,
@@ -254,6 +310,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     connectionError: connection.error,
     submitError,
     onSubmit: submit,
+    saveModel: addMutation.mutateAsync,
     onCancel: close,
     onProviderChange: changeProvider,
     onCatalogInvalidated: catalog.invalidateCatalog,

@@ -157,21 +157,25 @@ deep-link and updater config.
 ## The `native_fetch` cargo feature
 
 `tauri-plugin-http`, the native CORS-free HTTP path, is registered only under the `native_fetch`
-Cargo feature ([`src-tauri/src/lib.rs:19`](../../../src-tauri/src/lib.rs#L19)), which defaults off
-([`src-tauri/Cargo.toml:18`](../../../src-tauri/Cargo.toml#L18)) and no build in this repo passes. Every
-shipped build reports `native_fetch: false`:
+Cargo feature ([`src-tauri/src/lib.rs:19`](../../../src-tauri/src/lib.rs#L19)), enabled by default
+([`src-tauri/Cargo.toml:18`](../../../src-tauri/Cargo.toml#L18)). Downloaded builds can therefore run
+without a Thunderbolt server, using the user's provider credentials or a local model endpoint.
 
-- The **"Use Native Fetch" dev toggle is inert**;
-  [`dev-settings.tsx`](../../../src/settings/dev-settings.tsx) disables the switch and says why.
-- **`createProxyFetch`'s Tauri-direct branch is unreachable.** Its toggle-off path is also gated on
-  the capability, since the plugin's JS shim throws "plugin http not found" in a build without it.
-  BYO-key traffic uses the universal proxy (THU-467).
-- [`src/lib/fetch.ts`](../../../src/lib/fetch.ts) re-checks the capability rather than trusting a
-  persisted `true` from an older build.
+- `createProxyFetch` uses native HTTP when no server is configured, regardless of a previously
+  saved proxy toggle. Local users also keep direct transport after selecting a server, until they
+  sign in. With an authenticated server, `proxy_enabled` chooses direct or hosted transport.
+- [`src/lib/fetch.ts`](../../../src/lib/fetch.ts) also uses native HTTP in standalone mode, so model
+  catalogs and loopback model requests do not depend on browser CORS settings.
+- The main window's `http:default` capability permits HTTP and HTTPS destinations for user-chosen
+  provider/MCP endpoints and web tools. Its URL patterns explicitly wildcard ports as well as hosts
+  and paths; omitting `:*` restricts requests to the protocol's default port and breaks local model
+  endpoints such as Ollama on port 11434. Other webviews do not inherit that capability.
+- Both wrappers pass `Request.signal` explicitly to the plugin, which reads cancellation only from
+  `init.signal`. Request bodies, provider headers, and streaming responses retain their fetch shape.
 
-Locally: `bun run tauri build --features native_fetch`, plus the upstream in the `http:default`
-allowlist. Whether the branch stays is undecided; treat it as opt-in, not as a second supported
-transport.
+Custom builds can disable default Cargo features. The frontend still checks the capability before
+calling the plugin; without it, a configured server supplies the proxy, while serverless requests
+use browser fetch and remain subject to CORS.
 
 ## Platform detection in the frontend
 

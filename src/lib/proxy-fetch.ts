@@ -33,6 +33,7 @@ import { handleAppVersionUnsupported } from './app-version-unsupported'
 import { getAuthToken } from './auth-token'
 import { getCapabilities, isTauri } from './platform'
 import { handleSessionRejected } from './session-rejected'
+import { usesLocalProviders } from './provider-mode'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -166,7 +167,7 @@ const raiseOuterHopVersionBlock = async (response: Response): Promise<void> => {
 }
 
 export type ProxyFetchOptions = {
-  /** Cloud (backend) base URL ending in `/v1`, e.g. `http://localhost:8000/v1`. */
+  /** Backend URL ending in `/v1`. Empty means no server is configured. */
   cloudUrl: string
   /** When true, attach an Authorization header from this token getter. */
   getProxyAuthToken?: () => string | null
@@ -182,8 +183,8 @@ export type ProxyFetchOptions = {
   /** Effective `proxy_enabled` value. Defaults to `() => true`, which preserves
    *  Hosted-mode (web) behaviour for callers that don't wire the user setting.
    *
-   *  Web always proxies (browser CORS forces it — the toggle is disabled in the
-   *  UI). Tauri respects the user toggle; when off, requests go upstream-direct
+   *  Connected web clients proxy (browser CORS forces it — the toggle is disabled
+   *  in the UI). Tauri respects the user toggle; when off, requests go upstream-direct
    *  via the Tauri HTTP plugin so the user's IP is hidden from us. Callers that
    *  want to honour the toggle (the React provider and the module-scoped cache
    *  in `src/ai/fetch.ts`) pass a getter that reads the `proxy_enabled` localStorage
@@ -193,9 +194,9 @@ export type ProxyFetchOptions = {
    *  to `getCapabilities()` (memoised) — tests inject a stub. When false, the
    *  Tauri-direct path is unreachable (the plugin's JS shim would throw
    *  "plugin http not found"), so we fall through to the hosted proxy even on
-   *  Tauri with `proxy_enabled=false`. Universal Proxy (THU-467) is the
-   *  intended path; this guard makes the toggle a no-op in builds that ship
-   *  without the native fetch capability. */
+   *  Tauri with `proxy_enabled=false`. Native HTTP ships by default; older or
+   *  explicitly reduced builds fall back to the server proxy when authenticated,
+   *  or the webview's CORS-limited fetch when using local providers. */
   getNativeFetchCapability?: () => Promise<boolean>
 }
 
@@ -206,15 +207,23 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
     options.getNativeFetchCapability ?? (() => getCapabilities().then((c) => c.native_fetch))
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
-    const proxyEnabled = options.getProxyEnabled?.() ?? true
+    const localProviders = usesLocalProviders(options.cloudUrl)
+    const proxyEnabled = !localProviders && (options.getProxyEnabled?.() ?? true)
     if (standalone && !proxyEnabled && (await readNativeFetchCapability())) {
-      // Standalone + toggle off + plugin compiled in: hit the upstream directly
-      // through Tauri's HTTP plugin. Builds without `--features native_fetch`
-      // fall through to the hosted proxy (THU-467 Universal Proxy is the
-      // canonical path; the Tauri-direct branch is opt-in for builds that
-      // want to keep the user's IP off our backend).
+      // Native HTTP ships by default and avoids browser CORS for local providers.
+      // Authenticated users also take this path when they disable server proxying.
       const tFetch = options.tauriFetch ?? (tauriFetch as unknown as typeof fetch)
-      return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
+      // The native plugin reads cancellation only from init.signal, not Request.signal.
+      return tFetch(input as RequestInfo, {
+        ...init,
+        signal: init?.signal ?? (input instanceof Request ? input.signal : undefined),
+      }) as unknown as Response
+    }
+
+    // Never invent a proxy endpoint when the user chose to run without a server.
+    // Browser deployments and older native builds can still reach CORS-enabled providers.
+    if (localProviders) {
+      return (options.fetchImpl ?? globalThis.fetch)(input, init)
     }
 
     const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)
@@ -270,7 +279,7 @@ export const createProxyWebSocket = (options: {
 
   return (url: string, protocols?: string[]): WebSocket => {
     const standalone = standaloneCheck()
-    if (standalone) {
+    if (standalone || usesLocalProviders(options.cloudUrl)) {
       return new WebSocket(url, protocols)
     }
     const wsBase = options.cloudUrl.replace(/^http/, 'ws').replace(/\/$/, '')

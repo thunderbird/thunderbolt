@@ -40,31 +40,10 @@
       "identifier": "http:default",
       "allow": [
         {
-          "url": "http://localhost:11434"
+          "url": "http://*:*/*"
         },
         {
-          "url": "http://localhost:3001"
-        },
-        {
-          "url": "https://api.openai.com"
-        },
-        {
-          "url": "https://router.huggingface.co"
-        },
-        {
-          "url": "https://accounts.google.com"
-        },
-        {
-          "url": "https://www.googleapis.com"
-        },
-        {
-          "url": "https://login.microsoftonline.com"
-        },
-        {
-          "url": "https://graph.microsoft.com"
-        },
-        {
-          "url": "http://localhost:8000"
+          "url": "https://*:*/*"
         }
       ]
     },

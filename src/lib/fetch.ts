@@ -4,6 +4,8 @@
 
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { getLocalSetting } from '@/stores/local-settings-store'
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 /**
  * Custom fetch function that handles CORS issues by routing through Tauri when available
@@ -16,15 +18,16 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
     return globalThis.fetch(input, init)
   }
 
-  if (getLocalSetting('isNativeFetchEnabled')) {
-    // The "Use Native Fetch" dev setting can only be toggled on in builds
-    // compiled with `--features native_fetch`; guard against stale `true`
-    // values from prior builds so we don't invoke an unregistered plugin
-    // ("plugin http not found").
+  if (usesLocalProviders() || getLocalSetting('isNativeFetchEnabled')) {
+    // Native HTTP ships by default. Keep older or explicitly reduced builds
+    // from invoking an unregistered plugin ("plugin http not found").
     const { native_fetch: nativeFetchAvailable } = await getCapabilities()
     if (nativeFetchAvailable) {
-      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
-      return tauriFetch(input, init)
+      // HttpClient passes a Request, but the plugin only reads cancellation from init.
+      return tauriFetch(input, {
+        ...init,
+        signal: init?.signal ?? (input instanceof Request ? input.signal : undefined),
+      })
     }
   }
 

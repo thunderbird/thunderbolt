@@ -98,7 +98,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             )}
           />
         )}
-        {model.provider !== 'thunderbolt' && (
+        {model.provider !== 'thunderbolt' && !model.oauthProvider && (
           <FormField
             control={state.form.control}
             name="apiKey"
@@ -134,6 +134,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           provider={model.provider}
           model={state.watchedModel}
           apiKey={state.effectiveApiKey}
+          hasOAuth={Boolean(model.oauthProvider)}
           isTesting={state.connection.isTesting}
           onTest={state.testConnection}
           status={state.connection.status}

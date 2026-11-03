@@ -247,9 +247,9 @@ Five entry points, not interchangeable:
   response hooks sit behind an origin-and-prefix guard (`isBackendRequest`), so the same client can
   call an external API without leaking identity headers or misreading a 401 as an expired session.
   The bearer is attached regardless of origin, and a caller-set `Authorization` is left alone.
-- **`src/lib/fetch.ts` is the Tauri-aware escape hatch.** It honours the "Use Native Fetch" dev
-  setting and re-checks the `native_fetch` capability before invoking the plugin, so a stale `true`
-  cannot call an unregistered plugin.
+- **`src/lib/fetch.ts` is the Tauri-aware escape hatch.** It uses native HTTP when no server is
+  configured or the "Use Native Fetch" dev setting is on. It re-checks the `native_fetch` capability
+  before invoking the plugin, so custom builds without that feature still use browser fetch.
 - **`TauriStreamableHTTPClientTransport` monkey-patches `globalThis.fetch`** for the SDK
   constructor's duration: a workaround for a transport with no injection point, not a pattern to
   copy.
@@ -259,20 +259,21 @@ Five entry points, not interchangeable:
 `createProxyFetch` hides one branch from call sites
 ([src/lib/proxy-fetch.ts:200-236](../../../src/lib/proxy-fetch.ts#L200)):
 
-- **Hosted** wraps the request for `${cloudUrl}/proxy`. Always the case on web.
-- **Standalone** calls the upstream directly through Tauri's HTTP plugin, so the user's IP never
-  reaches our backend. Requires all three of: running under Tauri, `proxy_enabled` _off_, and a
-  build compiled with the `native_fetch` capability.
+- **Hosted** wraps the request for `${cloudUrl}/proxy` when a server is configured and the proxy is
+  enabled. Browser builds with a server always use this path.
+- **Standalone** (empty `cloudUrl`) calls upstream directly through Tauri's HTTP plugin, ignoring
+  any saved proxy preference. The `native_fetch` capability ships by default. With a server,
+  Tauri also supports direct requests when `proxy_enabled` is off.
 
 Three gotchas:
 
 - **Note the polarity**: `proxy_enabled` _off_ is the direct path, and off is the default
   (`useLocalStorage('proxy_enabled', 'false')`).
-- **Web always proxies** (browser CORS leaves no choice), so the setting is UI-disabled there and
-  when signed out
+- **Web with a server always proxies**, so the setting is UI-disabled there and when signed out
   ([src/settings/preferences.tsx:207-216](../../../src/settings/preferences.tsx#L207)).
-- **A Tauri build without `--features native_fetch`** falls back to the hosted proxy regardless of
-  the toggle: the plugin's JS shim would throw "plugin http not found".
+- **A custom Tauri build with default features disabled** falls back to the hosted proxy when a
+  server exists. Without a server it uses browser fetch; it never invents a backend URL. The same
+  browser-CORS limitation applies to serverless web deployments.
 
 `computeEffectiveProxyEnabled` computes it once; the React provider, MCP transports, settings toggle
 and the ACP transport's `isStandaloneTransport` all call it rather than re-deriving.

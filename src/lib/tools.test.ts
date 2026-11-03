@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, test } from 'bun:test'
+import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
+import type { SourceMetadata } from '@/types/source'
+import { afterEach, describe, expect, it, test } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { z } from 'zod'
@@ -232,6 +236,46 @@ const context = (overrides: Partial<ToolAvailabilityContext> = {}): ToolAvailabi
 // read (the duplicate the DI removed) would surface here. This locks in the
 // dedup from the hot send path (`aiFetchStreamingResponse`).
 describe('getAvailableTools (injected context)', () => {
+  afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
+
+  it('does not expose server web tools without a configured server', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      undefined,
+      context({
+        settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
+        integrationStatus: integrationStatus({ googleEnabled: true, microsoftEnabled: true }),
+      }),
+    )
+    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+  })
+
+  it('exposes own-key web tools without a server or Pro integration', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    useSearchProviderStore.getState().configureSearchProvider('brave-key')
+    const tools = await getAvailableTools(stubHttpClient, undefined, context())
+    expect(tools.map(({ name }) => name)).toEqual(['render_html', 'search', 'fetch_content'])
+  })
+
+  it('exposes Tinfoil search through regular Pi tools and the source collector without a separate key', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const api = createTinfoilWebApi(
+      async () => 'token',
+      async () => ({
+        structuredContent: { results: [{ title: 'Evidence', url: 'https://example.com', content: 'A fact' }] },
+      }),
+    )
+    const sources: SourceMetadata[] = []
+    const tools = await getAvailableTools(stubHttpClient, sources, context({ tinfoilSearchApi: api }))
+    expect(tools.map(({ name }) => name)).toEqual(['render_html', 'search', 'fetch_content'])
+    const piTools = await toPiAgentTools(createToolset(tools))
+    const search = piTools.find((tool) => tool.name === 'search')!
+    const result = await search.execute('search-call', { query: 'test', max_results: 1 })
+    expect(JSON.stringify(result.content)).toContain('Source 1')
+    expect(sources).toMatchObject([{ url: 'https://example.com', index: 1, toolName: 'search' }])
+  })
+
   it('returns only the always-available render_html tool when every gate is disabled', async () => {
     const tools = await getAvailableTools(stubHttpClient, undefined, context())
     expect(tools.map((tool) => tool.name)).toEqual(['render_html'])

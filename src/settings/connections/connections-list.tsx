@@ -23,7 +23,8 @@ import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
-import type { Integration } from './types'
+import { ProviderBrandLogo } from '@/components/provider-brand-logo'
+import type { AiProviderConnection, Integration } from './types'
 
 /** Shared row shell for both integration and MCP-server rows. */
 const ConnectionRow = ({
@@ -65,8 +66,10 @@ const IntegrationRow = ({
   isActive,
   onSelect,
   onToggleEnabled,
+  disabled = false,
 }: {
-  integration: Integration
+  integration: Pick<Integration, 'name' | 'icon' | 'isEnabled' | 'isConnected' | 'userEmail'>
+  disabled?: boolean
   isActive: boolean
   onSelect: () => void
   onToggleEnabled: (next: boolean) => void
@@ -88,7 +91,7 @@ const IntegrationRow = ({
             checked={integration.isEnabled}
             // Enabling only makes sense once the account is connected — the aside
             // holds the connect flow.
-            disabled={!integration.isConnected}
+            disabled={disabled || !integration.isConnected}
             onCheckedChange={onToggleEnabled}
             aria-label={integration.isEnabled ? t`Disable ${integrationName}` : t`Enable ${integrationName}`}
           />
@@ -155,6 +158,12 @@ const ServerRow = ({
  * slide-in detail panel; the "+" opens the add-MCP-server flow there too.
  */
 export const ConnectionsList = ({
+  aiProviders,
+  areProvidersReady,
+  onToggleProvider,
+  isProviderTogglePending,
+  providerError,
+  onSelectProvider,
   integrations,
   areIntegrationsReady,
   servers,
@@ -168,6 +177,12 @@ export const ConnectionsList = ({
   onEditServer,
   onDeleteServer,
 }: {
+  aiProviders: AiProviderConnection[]
+  areProvidersReady: boolean
+  onToggleProvider: (id: AiProviderConnection['id'], enabled: boolean) => void
+  isProviderTogglePending: boolean
+  providerError: string | null
+  onSelectProvider: (id: AiProviderConnection['id']) => void
   integrations: Integration[]
   /** True once the async sources behind the integrations' enabled state have
    *  resolved — used to remount the rows so their switches render directly in
@@ -198,7 +213,10 @@ export const ConnectionsList = ({
     }
   }, [integrations, servers, query])
 
-  const nothingMatches = filteredIntegrations.length === 0 && filteredServers.length === 0
+  const filteredProviders = aiProviders.filter((provider) => provider.name.toLowerCase().includes(query.toLowerCase()))
+
+  const nothingMatches =
+    filteredProviders.length === 0 && filteredIntegrations.length === 0 && filteredServers.length === 0
 
   // md:min-w mirrors the skills/agents/models pages: once the detail aside
   // squeezes the list to this floor, the column stops sliding and tucks under
@@ -215,7 +233,12 @@ export const ConnectionsList = ({
       </PageSearch>
 
       <SettingsListBody>
-        {filteredIntegrations.length > 0 && (
+        {providerError && (
+          <p role="alert" className="text-sm text-destructive">
+            {providerError}
+          </p>
+        )}
+        {(filteredIntegrations.length > 0 || filteredProviders.length > 0) && (
           <ul className="flex flex-col gap-4">
             {filteredIntegrations.map((integration) => (
               <IntegrationRow
@@ -224,6 +247,21 @@ export const ConnectionsList = ({
                 isActive={activeKey === `integration:${integration.id}`}
                 onSelect={() => onSelectIntegration(integration.id)}
                 onToggleEnabled={(next) => onToggleIntegration(integration, next)}
+              />
+            ))}
+            {filteredProviders.map((provider) => (
+              <IntegrationRow
+                key={`${provider.id}:${areProvidersReady}`}
+                integration={{
+                  name: provider.name,
+                  icon: <ProviderBrandLogo provider={provider.id} className="size-5" />,
+                  isConnected: provider.connected,
+                  isEnabled: provider.enabled,
+                }}
+                isActive={activeKey === `provider:${provider.id}`}
+                onSelect={() => onSelectProvider(provider.id)}
+                onToggleEnabled={(next) => onToggleProvider(provider.id, next)}
+                disabled={!areProvidersReady || isProviderTogglePending}
               />
             ))}
           </ul>

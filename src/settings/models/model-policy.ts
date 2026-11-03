@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Model } from '@/types'
+import { getLocalSetting } from '@/stores/local-settings-store'
+import { usesLocalProviders } from '@/lib/provider-mode'
 
 export type ApiKeyEdit = { kind: 'keep' } | { kind: 'replace'; value: string } | { kind: 'clear' }
 
@@ -49,15 +51,32 @@ export const providerRequiresApiKey = (provider: Model['provider']): boolean =>
  * System Tinfoil rows are server-authenticated (the key is injected by the
  * backend proxy), so they never flag as missing.
  */
-export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey'>): boolean => {
+export const needsApiKey = (model: Pick<Model, 'provider' | 'isSystem' | 'apiKey' | 'oauthProvider'>): boolean => {
   if (!providerRequiresApiKey(model.provider)) {
     return false
   }
-  if (model.provider === 'tinfoil' && model.isSystem === 1) {
+  if (model.provider === 'tinfoil' && (model.isSystem === 1 || model.oauthProvider === 'tinfoil')) {
     return false
   }
   return !model.apiKey
 }
+
+/** Managed models rely on the connected server for routing and provider credentials. */
+export const modelRequiresServer = (model: Pick<Model, 'provider' | 'isSystem'>): boolean =>
+  model.provider === 'thunderbolt' || (model.provider === 'tinfoil' && model.isSystem === 1)
+
+/** Whether this device can run a configured model with its current server connection. */
+export const isModelAvailable = (
+  model: Pick<Model, 'provider' | 'isSystem'>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+): boolean => !modelRequiresServer(model) || !usesLocalProviders(cloudUrl)
+
+/** A model that can finish standalone onboarding without relying on server credentials. */
+export const isStandaloneModelReady = (model: Model): boolean =>
+  model.enabled === 1 &&
+  isModelAvailable(model, '') &&
+  !needsApiKey(model) &&
+  (model.provider !== 'custom' || Boolean(model.url?.trim()))
 
 /**
  * Whether a model may run in a thread. A thread is locked to models whose

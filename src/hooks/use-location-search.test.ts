@@ -10,10 +10,16 @@ import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import { act, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useLocationSearch } from './use-location-search'
 
 let consoleSpies: ConsoleSpies
+const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+
+beforeEach(() => {
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+})
 
 beforeAll(async () => {
   await setupTestDatabase()
@@ -28,6 +34,7 @@ afterAll(async () => {
 // The module-level locale and its mirror leak across test files — bun test
 // shares one module registry and one happy-dom localStorage for the whole run.
 afterEach(() => {
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
   setActiveLocale('en')
   localStorage.removeItem('thunderbolt_locale')
 })
@@ -54,6 +61,18 @@ const mockLocationResponse = [
 ]
 
 describe('useLocationSearch', () => {
+  it('does not call a backend in standalone mode', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    const { result } = renderHook(() => useLocationSearch(), {
+      wrapper: createTestProvider({ mockResponse: mockLocationResponse }),
+    })
+    act(() => result.current.setSearchQuery('San Francisco'))
+    await act(async () => {
+      await getClock().tickAsync(300)
+    })
+    expect(result.current.locations).toEqual([])
+  })
+
   describe('Initial state', () => {
     it('should initialize with default values', () => {
       const { result } = renderHook(() => useLocationSearch(), {

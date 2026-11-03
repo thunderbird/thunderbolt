@@ -1,0 +1,383 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { msg } from '@lingui/core/macro'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { i18n } from '@/i18n'
+import { fetch as nativeFetch } from '@/lib/fetch'
+import { http } from '@/lib/http'
+import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
+import { isMobile, isTauri } from '@/lib/platform'
+import { createOpenRouterCallbackChannel, openRouterCallbackChannelName } from '@/lib/openrouter-callback'
+
+export type ProviderAuthorizationConfig = {
+  authorizationEndpoint: string
+  callbackPath: '/oauth/openrouter' | '/oauth/tinfoil'
+  buildUrl?: (challenge: string, redirectUri: string, state: string) => string
+  fixedCallbackPath?: boolean
+}
+const openRouterConfig: ProviderAuthorizationConfig = {
+  authorizationEndpoint: 'https://openrouter.ai/auth',
+  callbackPath: '/oauth/openrouter',
+}
+const connectionTimeoutMs = 5 * 60 * 1000
+
+const errorMessages = {
+  cancelled: msg`OpenRouter connection was cancelled.`,
+  timeout: msg`OpenRouter connection timed out. Please try again.`,
+  pending: msg`An OpenRouter connection is already in progress.`,
+  popupBlocked: msg`Allow popups to connect to OpenRouter, then try again.`,
+  mobile: msg`Use the authorization code option to connect to OpenRouter on this device.`,
+  callback: msg`OpenRouter returned an invalid authorization response. Please try again.`,
+  exchange: msg`Could not connect to OpenRouter. Please try again with a new authorization code.`,
+  start: msg`Could not open the OpenRouter connection. Please try again.`,
+}
+
+/** A safe, localized error that never includes a provider response or credential. */
+class OpenRouterConnectionError extends Error {
+  constructor(kind: keyof typeof errorMessages) {
+    super(i18n._(errorMessages[kind]))
+  }
+}
+
+/** Resolves connection-error copy against the current UI locale. */
+const connectionError = (kind: keyof typeof errorMessages): Error => new OpenRouterConnectionError(kind)
+
+/** Cancellation remains recognizable to UI callers without exposing an abort reason. */
+const cancellationError = (): DOMException => new DOMException(i18n._(errorMessages.cancelled), 'AbortError')
+
+export type OpenRouterConnectionOptions = { signal?: AbortSignal }
+
+export type OpenRouterManualConnection = {
+  authorizationUrl: string
+  /** Keep in memory until the user pastes the code; never put it in a URL or log. */
+  verifier: string
+}
+
+/** Browser and native boundaries, injectable without replacing shared modules in tests. */
+export type OpenRouterAuthDependencies = {
+  isTauri: () => boolean
+  isMobile: () => boolean
+  origin: () => string
+  openPopup: () => Window | null
+  listenForMessage: (handler: (event: MessageEvent<unknown>) => void) => () => void
+  createCallbackChannel: typeof createOpenRouterCallbackChannel
+  startLoopback: () => Promise<number>
+  listenForLoopback: (handler: (url: string) => void) => Promise<() => void>
+  openExternalUrl: (url: string) => Promise<void>
+  generateVerifier: () => string
+  generateChallenge: (verifier: string) => Promise<string>
+  generateState: () => string
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  timeoutMs: number
+}
+
+/** Builds an authorization URL with S256, adding a callback only for automatic flows. */
+const buildAuthorizationUrl = (
+  authorizationEndpoint: string,
+  challenge: string,
+  callbackUrl?: string,
+  state?: string,
+): string => {
+  const url = new URL(authorizationEndpoint)
+  url.searchParams.set('code_challenge', challenge)
+  url.searchParams.set('code_challenge_method', 'S256')
+  url.searchParams.set('key_label', 'Thunderbolt')
+  if (callbackUrl) {
+    url.searchParams.set('callback_url', callbackUrl)
+  }
+  if (state) {
+    url.searchParams.set('state', state)
+  }
+  return url.toString()
+}
+
+/** Rejects promptly on cancellation while still observing a late asynchronous completion. */
+const withAbort = async <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> => {
+  let onAbort = () => {}
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (signal.aborted) {
+      onAbort()
+    }
+  })
+  try {
+    return await Promise.race([operation, aborted])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/** Owns the deadline and cleanup, including listeners registered after cancellation. */
+const createConnectionScope = (externalSignal: AbortSignal | undefined, timeoutMs: number) => {
+  const controller = new AbortController()
+  const cleanups = new Set<() => void>()
+  let disposed = false
+  const cancel = () => controller.abort(cancellationError())
+  const timeout = setTimeout(() => controller.abort(connectionError('timeout')), timeoutMs)
+  externalSignal?.addEventListener('abort', cancel, { once: true })
+  if (externalSignal?.aborted) {
+    cancel()
+  }
+
+  return {
+    signal: controller.signal,
+    addCleanup: (cleanup: () => void) => {
+      if (disposed) {
+        cleanup()
+        return
+      }
+      cleanups.add(cleanup)
+    },
+    dispose: () => {
+      disposed = true
+      controller.abort(cancellationError())
+      clearTimeout(timeout)
+      externalSignal?.removeEventListener('abort', cancel)
+      for (const cleanup of cleanups) {
+        cleanup()
+      }
+      cleanups.clear()
+    },
+  }
+}
+
+type CallbackData = { code?: unknown; state?: unknown; error?: unknown }
+
+/** Verifies the CSRF nonce before returning a code; provider error text is never surfaced. */
+const readCallbackCode = (data: CallbackData, expectedState: string): string => {
+  if (data.error) {
+    // OpenRouter does not echo state when the user declines. Transport ownership
+    // (the exact popup or loopback origin) is checked before this function runs.
+    throw connectionError(data.error === 'invalid_response' ? 'callback' : 'cancelled')
+  }
+  if (data.state !== expectedState || typeof data.code !== 'string' || !data.code.trim()) {
+    throw connectionError('callback')
+  }
+  return data.code
+}
+
+/** Implements the PKCE-to-API-key protocol with provider-specific endpoints and injectable platform boundaries. */
+export const createProviderAuthorization = (
+  config: ProviderAuthorizationConfig,
+  overrides: Partial<OpenRouterAuthDependencies> = {},
+) => {
+  const deps: OpenRouterAuthDependencies = {
+    isTauri,
+    isMobile,
+    origin: () => window.location.origin,
+    openPopup: () => window.open('about:blank', '_blank', 'popup,width=520,height=720'),
+    listenForMessage: (handler) => {
+      window.addEventListener('message', handler)
+      return () => window.removeEventListener('message', handler)
+    },
+    createCallbackChannel: createOpenRouterCallbackChannel,
+    startLoopback: () => invoke<number>('start_oauth_server'),
+    listenForLoopback: (handler) => listen<{ url: string }>('oauth-callback', (event) => handler(event.payload.url)),
+    openExternalUrl: openUrl,
+    generateVerifier: generateCodeVerifier,
+    generateChallenge: generateCodeChallenge,
+    generateState: generateCodeVerifier,
+    fetch: nativeFetch,
+    timeoutMs: connectionTimeoutMs,
+    ...overrides,
+  }
+  let connecting = false
+
+  /** Opens the browser immediately, validates the returned code, and returns a device-local API key. */
+  const startConnection = async ({ signal }: OpenRouterConnectionOptions = {}): Promise<{
+    code: string
+    verifier: string
+    redirectUri: string
+  }> => {
+    if (signal?.aborted) {
+      throw cancellationError()
+    }
+    if (connecting) {
+      throw connectionError('pending')
+    }
+    if (deps.isTauri() && deps.isMobile()) {
+      throw connectionError('mobile')
+    }
+    connecting = true
+    const scope = createConnectionScope(signal, deps.timeoutMs)
+    try {
+      const native = deps.isTauri()
+      // Allocate synchronously inside the click handler, before PKCE hashing or
+      // any other await, so browsers do not treat it as an unsolicited popup.
+      const popup = native ? null : deps.openPopup()
+      if (!native && !popup) {
+        throw connectionError('popupBlocked')
+      }
+      if (popup) {
+        scope.addCleanup(() => popup.close())
+      }
+      const verifier = deps.generateVerifier()
+      const state = deps.generateState()
+      const challenge = await withAbort(deps.generateChallenge(verifier), scope.signal)
+      const origin = native ? `http://localhost:${await withAbort(deps.startLoopback(), scope.signal)}` : deps.origin()
+      const callbackUrl = native
+        ? `${origin}/`
+        : `${origin}${config.callbackPath}${config.fixedCallbackPath ? '' : `/${state}`}`
+
+      const authorizationUrl =
+        config.buildUrl?.(challenge, callbackUrl, state) ??
+        buildAuthorizationUrl(config.authorizationEndpoint, challenge, callbackUrl, state)
+
+      let deliver!: (data: CallbackData) => void
+      const callback = new Promise<string>((resolve, reject) => {
+        deliver = (data) => {
+          try {
+            resolve(readCallbackCode(data, state))
+          } catch (error) {
+            reject(error)
+          }
+        }
+      })
+      // Observe callback failures immediately, including callbacks arriving while
+      // the native browser opener is still resolving.
+      const response = withAbort(callback, scope.signal)
+      void response.catch(() => {})
+
+      if (native) {
+        const register = async () => {
+          const unlisten = await deps.listenForLoopback((value) => {
+            const url = URL.canParse(value) ? new URL(value) : null
+            if (!url || url.origin !== origin) {
+              return
+            }
+            deliver({
+              code: url.pathname === '/' ? url.searchParams.get('code') : null,
+              state: url.searchParams.get('state'),
+              error: url.searchParams.get('error') || url.searchParams.get('error_description'),
+            })
+          })
+          scope.addCleanup(unlisten)
+        }
+        await withAbort(register(), scope.signal)
+        await withAbort(deps.openExternalUrl(authorizationUrl), scope.signal)
+      } else if (popup) {
+        const channel = deps.createCallbackChannel(openRouterCallbackChannelName(state))
+        channel.onmessage = (event) => {
+          const data = event.data
+          if (typeof data !== 'object' || data === null || !('type' in data) || data.type !== 'openrouter-callback') {
+            return
+          }
+          deliver({
+            code: 'code' in data ? data.code : undefined,
+            state: 'state' in data ? data.state : undefined,
+            error: 'error' in data ? data.error : undefined,
+          })
+        }
+        scope.addCleanup(() => {
+          channel.onmessage = null
+          channel.close()
+        })
+        scope.addCleanup(
+          deps.listenForMessage((event) => {
+            if (event.origin !== origin || event.source !== popup) {
+              return
+            }
+            const data = event.data
+            if (typeof data === 'object' && data !== null && 'type' in data && data.type === 'oauth-callback') {
+              deliver({
+                code: 'code' in data ? data.code : undefined,
+                state: 'state' in data ? data.state : undefined,
+                error: 'error' in data ? data.error : undefined,
+              })
+            }
+          }),
+        )
+        // COOP makes a live cross-origin popup appear closed. The callback's
+        // same-origin BroadcastChannel, explicit cancellation, and timeout own
+        // completion; polling popup.closed would cancel legitimate OAuth flows.
+        popup.location.href = authorizationUrl
+      }
+
+      const code = await response
+      popup?.close()
+      return { code, verifier, redirectUri: callbackUrl }
+    } catch (error) {
+      if (error instanceof OpenRouterConnectionError) {
+        throw error
+      }
+      if (scope.signal.aborted) {
+        throw scope.signal.reason
+      }
+      throw connectionError('start')
+    } finally {
+      scope.dispose()
+      connecting = false
+    }
+  }
+
+  return { startConnection }
+}
+
+/** Creates the configured OpenRouter PKCE-to-key flow. */
+export const createOpenRouterAuth = (overrides: Partial<OpenRouterAuthDependencies> = {}) => {
+  const authorization = createProviderAuthorization(openRouterConfig, overrides)
+  /** Exchanges a one-use authorization code directly with OpenRouter, without a Thunderbolt server. */
+  const exchangeCode = async (code: string, verifier: string, signal?: AbortSignal): Promise<string> => {
+    if (signal?.aborted) {
+      throw cancellationError()
+    }
+    if (!code.trim() || !verifier.trim()) {
+      throw connectionError('callback')
+    }
+    try {
+      const response: unknown = await http
+        .post('https://openrouter.ai/api/v1/auth/keys', {
+          json: { code: code.trim(), code_verifier: verifier, code_challenge_method: 'S256' },
+          credentials: 'omit',
+          fetch: overrides.fetch ?? nativeFetch,
+          signal,
+          timeout: 30_000,
+        })
+        .json<unknown>()
+      if (
+        typeof response !== 'object' ||
+        response === null ||
+        !('key' in response) ||
+        typeof response.key !== 'string' ||
+        !response.key.trim()
+      ) {
+        throw connectionError('exchange')
+      }
+      return response.key
+    } catch {
+      if (signal?.aborted) {
+        throw cancellationError()
+      }
+      throw connectionError('exchange')
+    }
+  }
+
+  /** Prepares OpenRouter's copy-code flow for mobile or browsers that cannot receive callbacks. */
+  const prepareManualConnection = async (): Promise<OpenRouterManualConnection> => {
+    const verifier = (overrides.generateVerifier ?? generateCodeVerifier)()
+    const challenge = await (overrides.generateChallenge ?? generateCodeChallenge)(verifier)
+    return { authorizationUrl: buildAuthorizationUrl(openRouterConfig.authorizationEndpoint, challenge), verifier }
+  }
+
+  const startConnection = async (options: OpenRouterConnectionOptions = {}) => {
+    const grant = await authorization.startConnection(options)
+    return exchangeCode(grant.code, grant.verifier, options.signal)
+  }
+  return { startConnection, prepareManualConnection, exchangeCode }
+}
+
+const openRouterAuth = createOpenRouterAuth()
+
+/** Connects OpenRouter in a desktop system browser or a web popup; returns the API key without persisting it. */
+export const startOpenRouterConnection = openRouterAuth.startConnection
+
+/** Prepares a PKCE authorization page that displays a code for the user to paste back on mobile. */
+export const prepareOpenRouterManualConnection = openRouterAuth.prepareManualConnection
+
+/** Exchanges a pasted code with the matching in-memory verifier directly with OpenRouter. */
+export const exchangeOpenRouterCode = openRouterAuth.exchangeCode

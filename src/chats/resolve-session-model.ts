@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { isBuiltInAgent } from '@/defaults/agents'
-import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
+import { isModelAvailable, matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
 import type { Agent } from '@/types/acp'
 
@@ -30,8 +30,15 @@ export const resolveSessionModel = (
   currentModel: Model,
   models: Model[],
 ): Model => {
-  if (!isBuiltInAgent(agent) || matchesThreadConfidentiality(currentModel, chatThread)) {
+  if (
+    !isBuiltInAgent(agent) ||
+    (matchesThreadConfidentiality(currentModel, chatThread) && isModelAvailable(currentModel))
+  ) {
     return currentModel
   }
-  return models.find((model) => matchesThreadConfidentiality(model, chatThread) && !needsApiKey(model)) ?? currentModel
+  return (
+    models.find(
+      (model) => matchesThreadConfidentiality(model, chatThread) && isModelAvailable(model) && !needsApiKey(model),
+    ) ?? currentModel
+  )
 }

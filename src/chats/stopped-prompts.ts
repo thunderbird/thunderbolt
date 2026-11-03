@@ -5,6 +5,7 @@
 import type { ThunderboltUIMessage } from '@/types'
 import { stoppedReplyMarker } from '@shared/agent-core/stopped-reply'
 
+/** Only visible answer text counts, not reasoning or tool output. */
 const hasReplyText = (message: ThunderboltUIMessage): boolean =>
   message.parts.some((part) => part.type === 'text' && part.text.trim().length > 0)
 

@@ -109,7 +109,7 @@ export const ProjectTree = (props: ProjectTreeProps) => {
                   actions={getProjectActions(project)}
                   project={project}
                   chats={props.chatThreads.filter((thread) => thread.projectId === project.id)}
-                  active={project.id === activeId}
+                  active={props.currentChatThreadId === 'new' && project.id === activeId}
                   expanded={state.expanded.has(project.id)}
                   onToggle={() => toggleProject(project.id)}
                 />

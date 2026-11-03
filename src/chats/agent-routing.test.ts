@@ -185,6 +185,32 @@ describe('createAgentRoutingFetch', () => {
     expect(budgets[2]?.intent).toBe('auto')
   })
 
+  it('sends the agent a stop marker after a prompt the user stopped', async () => {
+    resetStore()
+    const sentBodies: string[] = []
+    const adapter: AgentAdapter = {
+      ...buildFakeAdapter(builtInAgent).adapter,
+      fetch: async (init) => {
+        sentBodies.push(String(init.body))
+        return new Response('streamed')
+      },
+    }
+    hydrateSessionWith('t-stopped', builtInAgent)
+    const customFetch = createAgentRoutingFetch('t-stopped', saveMessages, httpClient, getProxyFetch, {
+      connectToAgent: async () => adapter,
+    })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }], metadata: { stoppedByUser: true } },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
+    ]
+
+    await customFetch('/chat', { method: 'POST', body: JSON.stringify({ id: 't-stopped', messages }) })
+
+    const sent: { id: string; messages: ThunderboltUIMessage[] } = JSON.parse(sentBodies[0]!)
+    expect(sent.id).toBe('t-stopped')
+    expect(sent.messages.map((message) => message.id)).toEqual(['u1', 'u1-stopped', 'u2'])
+  })
+
   it('passes the current regenerate revision without changing it on normal sends', async () => {
     resetStore()
     const { adapter, fetch: adapterFetch } = buildFakeAdapter(builtInAgent)

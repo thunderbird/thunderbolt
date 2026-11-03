@@ -566,6 +566,34 @@ describe('createChatInstance — retry policy', () => {
     expect(wouldAutoSend()).toBe(false)
   })
 
+  it('flags and saves the prompt of a stopped turn', async () => {
+    const saved: ThunderboltUIMessage[] = []
+    const { instance, finishAbortedEmpty } = createRetryHarness(async ({ messages }) => {
+      saved.push(...messages)
+    })
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await finishAbortedEmpty()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+    expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual([['u1', true]])
+  })
+
+  it('does not flag the last prompt when stop() runs with nothing in flight', async () => {
+    const { instance } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Hello' }] },
+    ] as never
+
+    await instance.stop()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBeUndefined()
+  })
+
   it('settles the composer to idle after an aborted loader turn', async () => {
     const { instance, finishAbortedEmpty } = createRetryHarness()
     ;(instance as unknown as { status: string }).status = 'submitted'

@@ -60,6 +60,7 @@ import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
+import { withStoppedReplyMarkers } from './stopped-prompts'
 
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
@@ -462,7 +463,11 @@ export const createAgentRoutingFetch = (
         throw createTurnBudgetExhaustedError()
       }
 
-      const response = await adapter.fetch(init, {
+      const modelInit = {
+        ...init,
+        body: JSON.stringify({ ...requestBody, messages: withStoppedReplyMarkers(requestMessages) }),
+      }
+      const response = await adapter.fetch(modelInit, {
         threadId: id,
         chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,
@@ -817,6 +822,19 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
+  /** Flag the stopped turn's prompt and save it, so later turns can tell the model the reply was
+   *  stopped (see `withStoppedReplyMarkers`). Saved now so the flag survives a reload. */
+  const markPromptStopped = async () => {
+    const index = instance.messages.findLastIndex((message) => message.role === 'user')
+    const prompt = instance.messages[index]
+    if (!prompt) {
+      return
+    }
+    const stopped: ThunderboltUIMessage = { ...prompt, metadata: { ...prompt.metadata, stoppedByUser: true } }
+    instance.messages = instance.messages.map((message, i) => (i === index ? stopped : message))
+    await saveMessages({ id, messages: [stopped] })
+  }
+
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
     // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
@@ -897,6 +915,7 @@ export const createChatInstance = (
           await saveMessages({ id, messages: [completedMessage] })
           finishedTurn.telemetry?.endPhase('final_save')
         }
+        await markPromptStopped()
         emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
@@ -1188,6 +1207,7 @@ export const createChatInstance = (
     // stopping spinner (masked with a live request in `getTurnActivity`, so
     // lingering past settle is harmless) and `useChatAutomation`'s auto-run gate.
     useChatStore.getState().updateSession(id, { stopping: true })
+    const stoppedRetry = retryTimeout !== null
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
@@ -1206,6 +1226,10 @@ export const createChatInstance = (
     }
     if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
       instance.messages = instance.messages.slice(0, -1)
+    }
+    // Voice mode also calls `stop` when nothing is running; only a pending retry is a reply cut short.
+    if (stoppedRetry) {
+      await markPromptStopped()
     }
     emitTurnCompleted(currentTurn, 'abort')
     resetRetryStateForNewTurn()

@@ -566,38 +566,51 @@ describe('createChatInstance — retry policy', () => {
     expect(wouldAutoSend()).toBe(false)
   })
 
-  it('flags and saves the prompt of a stopped turn', async () => {
+  it('flags and saves the prompt when stop() cancels a running reply', async () => {
     const saved: ThunderboltUIMessage[] = []
     const { instance, finishAbortedEmpty } = createRetryHarness(async ({ messages }) => {
       saved.push(...messages)
     })
+    Object.assign(instance, { status: 'submitted' })
     instance.messages = [
       { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
       { id: 'a-empty', role: 'assistant', parts: [] },
     ] as never
 
+    await instance.stop()
     await finishAbortedEmpty()
 
     expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
     expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual([['u1', true]])
   })
 
-  it('flags the stopped prompt, not one sent while the stop is still saving', async () => {
+  it('flags the stopped prompt, not one sent before the aborted request unwinds', async () => {
     const { instance, finishAborted } = createRetryHarness()
+    Object.assign(instance, { status: 'streaming' })
     instance.messages = [
       { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
       { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
     ] as never
 
-    // The SDK doesn't await onFinish, so a send can land before its first save resolves.
-    const settled = finishAborted()
+    await instance.stop()
     instance.messages = [
       ...instance.messages,
       { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
     ]
-    await settled
+    await finishAborted()
 
     expect(instance.messages.map((message) => message.metadata?.stoppedByUser)).toEqual([true, undefined, undefined])
+  })
+
+  it('clears the stop flag when the prompt is regenerated', async () => {
+    const { instance } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }], metadata: { stoppedByUser: true } },
+    ]
+
+    await instance.regenerate()
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(false)
   })
 
   it('flags the prompt when stop() cancels a pending retry, without resetting a turn started meanwhile', async () => {

@@ -822,18 +822,17 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
-  /** Flag the stopped turn's prompt and save it, so later turns can tell the model the reply was
-   *  stopped (see `withStoppedReplyMarkers`). The flag is set as soon as this is called; the
-   *  returned promise is only the save, which keeps the flag across a reload. */
-  const markPromptStopped = async () => {
+  /** Set or clear the stop flag on the latest prompt, which later turns turn into a stop marker
+   *  (see `withStoppedReplyMarkers`). Returns the changed prompt, or nothing if it was already set. */
+  const setPromptStopped = (stoppedByUser: boolean): ThunderboltUIMessage | undefined => {
     const index = instance.messages.findLastIndex((message) => message.role === 'user')
     const prompt = instance.messages[index]
-    if (!prompt) {
-      return
+    if (!prompt || Boolean(prompt.metadata?.stoppedByUser) === stoppedByUser) {
+      return undefined
     }
-    const stopped: ThunderboltUIMessage = { ...prompt, metadata: { ...prompt.metadata, stoppedByUser: true } }
-    instance.messages = instance.messages.map((message, i) => (i === index ? stopped : message))
-    await saveMessages({ id, messages: [stopped] })
+    const updated: ThunderboltUIMessage = { ...prompt, metadata: { ...prompt.metadata, stoppedByUser } }
+    instance.messages = instance.messages.map((message, i) => (i === index ? updated : message))
+    return updated
   }
 
   const startNewTurn = () => {
@@ -880,9 +879,6 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Not awaited yet: the SDK is already `ready` and doesn't await onFinish, so a new
-        // send could land during the saves below and become the last prompt.
-        const promptMarked = markPromptStopped()
         // Settle the aborted turn so no spinner survives the stop,
         // keyed off the trailing assistant message.
         const lastIndex = instance.messages.length - 1
@@ -919,7 +915,6 @@ export const createChatInstance = (
           await saveMessages({ id, messages: [completedMessage] })
           finishedTurn.telemetry?.endPhase('final_save')
         }
-        await promptMarked
         emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
@@ -1120,6 +1115,8 @@ export const createChatInstance = (
   const regenerateResponse = (): Promise<void> => {
     routingState.regenerationRevision = (routingState.regenerationRevision ?? 0) + 1
     stampRetryModel()
+    // A new attempt at the prompt; the request saves the cleared flag with the other messages.
+    setPromptStopped(false)
     return originalRegenerate()
   }
 
@@ -1211,7 +1208,10 @@ export const createChatInstance = (
     // stopping spinner (masked with a live request in `getTurnActivity`, so
     // lingering past settle is harmless) and `useChatAutomation`'s auto-run gate.
     useChatStore.getState().updateSession(id, { stopping: true })
-    const stoppedRetry = retryTimeout !== null
+    const inFlight = instance.status === 'streaming' || instance.status === 'submitted'
+    // Voice mode also calls `stop` when nothing is running, so flag only a reply that was running or
+    // waiting to retry. Flagged before the teardown, so a prompt sent meanwhile is never the one flagged.
+    const stoppedPrompt = inFlight || retryTimeout !== null ? setPromptStopped(true) : undefined
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
@@ -1220,23 +1220,23 @@ export const createChatInstance = (
     // dialog on screen awaiting an answer the cancelled turn will never use.
     // No-ops when nothing is pending.
     useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
-    if (instance.status === 'streaming' || instance.status === 'submitted') {
+    if (inFlight) {
       // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
       // round-trip, and the in-browser harness has to unwind its loop — so the
       // `stopping` flag also tells the composer about the wait instead of
       // leaving the button looking inert.
       void originalStop()
-      return
+    } else {
+      if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
+        instance.messages = instance.messages.slice(0, -1)
+      }
+      emitTurnCompleted(currentTurn, 'abort')
+      resetRetryStateForNewTurn()
     }
-    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
-      instance.messages = instance.messages.slice(0, -1)
+    // Saved last, once the turn has settled, so a turn started meanwhile is never reset.
+    if (stoppedPrompt) {
+      await saveMessages({ id, messages: [stoppedPrompt] })
     }
-    // Voice mode also calls `stop` when nothing is running; only a pending retry is a reply cut short.
-    // Settle before awaiting the save, so a turn started meanwhile is never reset.
-    const promptMarked = stoppedRetry ? markPromptStopped() : undefined
-    emitTurnCompleted(currentTurn, 'abort')
-    resetRetryStateForNewTurn()
-    await promptMarked
   }
 
   return instance

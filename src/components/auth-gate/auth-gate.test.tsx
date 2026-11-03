@@ -6,8 +6,8 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test'
+import { MemoryRouter, Route, Router, Routes, useLocation } from 'react-router'
 import { AuthGate } from './auth-gate'
 
 const env = import.meta.env as Record<string, string | undefined>
@@ -49,6 +49,20 @@ describe('AuthGate in SSO mode with no session', () => {
     renderGateAt('/')
 
     expect(screen.getByText('/sso-redirect')).toBeInTheDocument()
+  })
+
+  it('keeps a spinner visible until the auth redirect commits', () => {
+    env.VITE_AUTH_MODE = 'sso'
+    const replace = mock(() => {})
+    const { container } = render(
+      <Router location="/" navigator={{ createHref: () => '/', go: () => {}, push: () => {}, replace }}>
+        <AuthGate require="authenticated" />
+      </Router>,
+      { wrapper: createTestProvider({ authClient: createMockAuthClient() }) },
+    )
+
+    expect(replace).toHaveBeenCalled()
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
   })
 
   it('shows the error page instead of restarting the login when the callback carries an error', () => {

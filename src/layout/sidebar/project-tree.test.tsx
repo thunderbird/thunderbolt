@@ -168,6 +168,7 @@ it.each(['context', 'overflow', 'mobile'])(
 
     await act(async () => {
       fireEvent.click(newChat)
+      await getClock().runAllAsync()
     })
 
     expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent(`/chats/new?projectId=${project.id}`)

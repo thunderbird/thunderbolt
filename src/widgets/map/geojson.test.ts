@@ -131,6 +131,45 @@ describe('parseFeatureCollection', () => {
       ),
     ).toBeNull()
   })
+
+  test('repairs a geometry that uses the type name as a key', () => {
+    const parsed = parseFeatureCollection(
+      collection([
+        {
+          type: 'Feature',
+          geometry: { Point: '', coordinates: [2.17227, 41.40467] },
+          properties: { name: 'Sagra Specialty Coffee' },
+        },
+      ]),
+    )
+    expect(parsed?.features).toHaveLength(1)
+    expect(parsed?.features[0].geometry).toEqual({ type: 'Point', coordinates: [2.17227, 41.40467] })
+    expect(parsed?.features[0].properties?.name).toBe('Sagra Specialty Coffee')
+  })
+
+  test('repairs a geometry whose type is null', () => {
+    const parsed = parseFeatureCollection(
+      collection([
+        {
+          type: 'Feature',
+          geometry: { type: null, Point: '', coordinates: [2.17227, 41.40467] },
+          properties: { name: 'Sagra Specialty Coffee' },
+        },
+      ]),
+    )
+    expect(parsed?.features[0].geometry).toEqual({ type: 'Point', coordinates: [2.17227, 41.40467] })
+  })
+
+  test('drops an invalid feature and keeps the valid ones', () => {
+    const parsed = parseFeatureCollection(
+      collection([
+        point(2.17, 41.38, { name: 'Nomad' }),
+        { type: 'Feature', geometry: { type: 'Point', coordinates: ['nope'] }, properties: null },
+        point(2.15, 41.4, { name: 'SlowMov' }),
+      ]),
+    )
+    expect(parsed?.features.map((f) => f.properties?.name)).toEqual(['Nomad', 'SlowMov'])
+  })
 })
 
 describe('featureLabel', () => {

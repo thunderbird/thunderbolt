@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Check, Loader2, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusCard } from '@/components/ui/status-card'
+import type { ToolSupport } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import { providerRequiresApiKey, providerRequiresConnectionTest } from './model-policy'
 
@@ -18,6 +19,7 @@ type ConnectionTestSectionProps = {
   onTest: () => void
   status: 'idle' | 'success' | 'error'
   error: string | null
+  toolSupport: ToolSupport | null
 }
 
 /** Determines whether the current provider fields are sufficient for a test. */
@@ -37,6 +39,7 @@ export const ConnectionTestSection = ({
   onTest,
   status,
   error,
+  toolSupport,
 }: ConnectionTestSectionProps) => {
   const { t } = useLingui()
   const canTest = canTestModelConnection(provider, model, apiKey)
@@ -61,7 +64,14 @@ export const ConnectionTestSection = ({
           <Trans>Enter an API key to test the connection before saving.</Trans>
         </p>
       )}
-      {status === 'success' && (
+      {status === 'success' && toolSupport === 'unsupported' && (
+        <StatusCard
+          icon={<AlertTriangle className="h-4 w-4 text-warning" />}
+          title={t`Connected without tools`}
+          description={t`This model doesn't support tools, so chats will run without them. Tools have been turned off below.`}
+        />
+      )}
+      {status === 'success' && toolSupport !== 'unsupported' && (
         <StatusCard
           icon={<Check className="h-4 w-4 text-success" />}
           title={t`Test successful!`}

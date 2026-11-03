@@ -3,6 +3,38 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
+ * Zero-width sigil the composer writes in front of a chip. It takes no width in
+ * the textarea or its overlay, so a chip shows no gap. {@link normalizeSkillTokensToSlugs}
+ * turns it into `/` at send time.
+ */
+export const chipMarker = '\u2060'
+
+const pendingSlash = '\u2061'
+const pendingAt = '\u2062'
+
+/**
+ * Zero-width stand-in the composer stores for a `/` or `@` that opened the picker,
+ * or null for any other key. The value stays the single source of the trigger, and
+ * {@link foldPendingSigils} turns it back into the typed character without changing
+ * any offset.
+ */
+export const pendingSigilForKey = (key: string): string | null => {
+  if (key === '/') {
+    return pendingSlash
+  }
+  return key === '@' ? pendingAt : null
+}
+
+/** True for a stand-in written by {@link pendingSigilForKey}. */
+export const isPendingSigil = (char: string | undefined): boolean => char === pendingSlash || char === pendingAt
+
+/** True when `text` holds a stand-in that has not been folded back yet. */
+export const hasPendingSigil = (text: string): boolean => text.includes(pendingSlash) || text.includes(pendingAt)
+
+/** Replace stand-ins with the characters the user typed. Output length equals input length. */
+export const foldPendingSigils = (text: string): string => text.replaceAll(pendingSlash, '/').replaceAll(pendingAt, '@')
+
+/**
  * Slash-token grammar: `/` followed by one or more `[a-z0-9-_]` chars,
  * matched only when *preceded* by whitespace or start-of-input AND
  * terminated by whitespace or end-of-input. Mirrors the AgentSkills spec
@@ -79,6 +111,12 @@ export type SkillTokenMatch = {
   isDisplay: boolean
 }
 
+const isSigil = (char: string): boolean => char === '/' || char === chipMarker
+
+/** A token is committed when text follows it, or when it is a picker chip (marker sigil), which is complete on insert. */
+const isCommitted = (text: string, start: number, end: number): boolean =>
+  end < text.length || text[start] === chipMarker
+
 const isBoundary = (text: string, index: number): boolean => index >= text.length || /\s/.test(text[index])
 
 /**
@@ -109,7 +147,7 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
   const tokens: SkillTokenMatch[] = []
   let i = 0
   while (i < text.length) {
-    const isTokenStart = text[i] === '/' && (i === 0 || /\s/.test(text[i - 1]))
+    const isTokenStart = isSigil(text[i]) && (i === 0 || /\s/.test(text[i - 1]))
     if (!isTokenStart) {
       i++
       continue
@@ -118,14 +156,14 @@ export const findSkillTokens = (text: string, displayNameToSlug?: ReadonlyMap<st
     if (entry) {
       const [name, slug] = entry
       const end = i + 1 + name.length
-      tokens.push({ slug, start: i, end, committed: end < text.length, isDisplay: true })
+      tokens.push({ slug, start: i, end, committed: isCommitted(text, i, end), isDisplay: true })
       i = end
       continue
     }
     const slugMatch = /^[\w-]+/.exec(text.slice(i + 1))
     if (slugMatch && isBoundary(text, i + 1 + slugMatch[0].length)) {
       const end = i + 1 + slugMatch[0].length
-      tokens.push({ slug: slugMatch[0], start: i, end, committed: end < text.length, isDisplay: false })
+      tokens.push({ slug: slugMatch[0], start: i, end, committed: isCommitted(text, i, end), isDisplay: false })
       i = end
       continue
     }
@@ -162,18 +200,18 @@ export const deleteSkillTokenAt = (
  * Rewrite display tokens (`/Daily Brief`) in `text` to their canonical slug
  * form (`/daily-brief`). Run at send time so the composer can show human
  * titles while the model — and the stored message — only ever sees slugs.
- * Slug tokens and unrecognized text pass through untouched.
+ * Slug tokens and unrecognized text pass through untouched; pending sigils
+ * become the typed character and stray chip markers are dropped.
  */
 export const normalizeSkillTokensToSlugs = (text: string, displayNameToSlug: ReadonlyMap<string, string>): string => {
-  const tokens = findSkillTokens(text, displayNameToSlug)
-  if (tokens.length === 0) {
-    return text
-  }
+  const folded = foldPendingSigils(text)
+  const tokens = findSkillTokens(folded, displayNameToSlug)
   let result = ''
   let cursor = 0
   for (const { slug, start, end } of tokens) {
-    result += text.slice(cursor, start) + `/${slug}`
+    result += folded.slice(cursor, start) + `/${slug}`
     cursor = end
   }
-  return result + text.slice(cursor)
+  // A marker left behind by editing a chip must not reach the model.
+  return (result + folded.slice(cursor)).replaceAll(chipMarker, '')
 }

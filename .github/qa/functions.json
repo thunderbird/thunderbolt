@@ -43,6 +43,10 @@
       "outcome": "A thread of 12 or more messages, with a 2,000-character prompt and one with Markdown and code, shows every message in order with Markdown and code rendered"
     },
     { "id": "stop-reply", "outcome": "Stopping a reply mid-stream ends it, and the next message gets a full reply" },
+    {
+      "id": "sidebar-toggle",
+      "outcome": "The sidebar opens and closes: a drawer on a phone, a collapsible panel on a wide screen"
+    },
     { "id": "regenerate", "outcome": "Retrying or regenerating a reply gives a new reply in its place" },
     { "id": "chat-rename", "outcome": "A renamed chat shows its new name in the sidebar", "reload": true },
     {
@@ -245,48 +249,5 @@
     },
     { "id": "devices-list", "outcome": "Settings → Devices on A lists both devices" },
     { "id": "device-revoke", "outcome": "Revoking B from A ends B's access, and B says so" }
-  ],
-  "c8-phone": [
-    { "id": "sidebar-drawer", "outcome": "The sidebar drawer opens and closes, and its contents fit the screen" },
-    {
-      "id": "chat-send",
-      "outcome": "Messages, a long one too, are sent and get the fake reply, and the thread fits the screen"
-    },
-    {
-      "id": "chat-rename-delete",
-      "outcome": "A renamed chat shows its new name and a deleted one is gone",
-      "reload": true
-    },
-    {
-      "id": "skill-crud",
-      "outcome": "A skill created, edited and then deleted on the phone shows each change in Settings → Skills",
-      "reload": true
-    },
-    {
-      "id": "skill-slash",
-      "outcome": "The slash (/) popup fits the screen and puts the picked skill into the message"
-    },
-    {
-      "id": "skill-detail-fit",
-      "outcome": "A skill with a long name and long instructions opens its detail screen and its edit screen, and both fit the screen"
-    },
-    {
-      "id": "project-create-delete",
-      "outcome": "A project created on the phone shows in the sidebar, and once deleted it is gone",
-      "reload": true
-    },
-    {
-      "id": "project-detail-fit",
-      "outcome": "A project with long instructions opens its detail and edit screens, and both fit the screen"
-    },
-    {
-      "id": "settings-fit",
-      "outcome": "Preferences, Skills, Models, Connections and Devices open and fit the screen (the overflow check finds nothing)"
-    },
-    {
-      "id": "settings-detail-fit",
-      "outcome": "The detail screen of a model in Settings → Models and of a connection in Settings → Connections fits the screen"
-    },
-    { "id": "pref-changes", "outcome": "A changed preferred name, theme and unit show as chosen", "reload": true }
   ]
 }

@@ -101,6 +101,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     this.backendUrl = normalizeBackendUrl(this.backendUrl)
   }
 
+  /** Read auth immediately before a request: signing out can happen during async encryption work. */
+  private getRequestAuth(): { headers: Record<string, string>; credentials: RequestCredentials | undefined } {
+    const headers = getAuthenticatedHeaders()
+    const ssoMode = isSsoMode()
+    if (!headers.Authorization && !ssoMode) {
+      throw new Error('Not signed in — deferring sync')
+    }
+    return { headers, credentials: ssoMode ? 'include' : undefined }
+  }
+
   /**
    * Fetch credentials (JWT token) from the backend.
    * Returns null if unable to get credentials (e.g., not authenticated or PowerSync not configured).
@@ -121,10 +131,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       }
 
       const tokenRequestStartedAt = performance.now()
-      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
-        headers: getAuthenticatedHeaders(),
-        credentials: ssoMode ? 'include' : undefined,
-      })
+      const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, this.getRequestAuth())
       console.info(`[PowerSync] /powersync/token: ${Math.round(performance.now() - tokenRequestStartedAt)}ms`)
 
       if (!response.ok) {
@@ -234,11 +241,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * bare 403 as "not proof of anything".
    */
   private async probeAccountEncryption(): Promise<{ status: 'set-up' | 'absent' | 'unknown' }> {
+    const auth = this.getRequestAuth()
     try {
-      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, {
-        headers: getAuthenticatedHeaders(),
-        credentials: isSsoMode() ? 'include' : undefined,
-      })
+      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, auth)
       if (response.status === 404) {
         return { status: 'absent' }
       }
@@ -357,11 +362,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
 
       console.info(`Uploading ${operations.length} operations to backend`)
 
+      const auth = this.getRequestAuth()
       const response = await this.fetchFn(`${this.backendUrl}/powersync/upload`, {
+        ...auth,
         method: 'PUT',
-        headers: { ...getAuthenticatedHeaders(), 'Content-Type': 'application/json' },
+        headers: { ...auth.headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ operations }),
-        credentials: isSsoMode() ? 'include' : undefined,
       })
 
       if (!response.ok) {

@@ -112,10 +112,11 @@ order:
    expired, a 403 `DEVICE_DISCONNECTED` means this device was revoked
    ([auth-context.tsx](../../../src/contexts/auth-context.tsx)).
 
-`refetchOnWindowFocus` and `refetchWhenOffline` are both `false`
-([auth-context.tsx:36-43](../../../src/contexts/auth-context.tsx)): the `storage` listener covers cross-tab
-changes and the 401 handling covers expiry, so leaving them on only spends rate-limit budget on every
-focus, `visibilitychange` and `online`.
+`refetchOnWindowFocus: false` disables focus and visibility-change refetches to avoid spending
+rate-limit budget on every tab switch. `refetchWhenOffline: false` suppresses refresh-manager requests
+while offline; reconnects (`online`) and cross-tab broadcasts still trigger a session refetch
+([auth-context.tsx](../../../src/contexts/auth-context.tsx)). Thunderbolt's `storage` listener handles
+cross-tab token changes, and 401 handling detects session expiry.
 
 ## Cross-tab agreement
 

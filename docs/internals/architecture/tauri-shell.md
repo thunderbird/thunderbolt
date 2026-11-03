@@ -26,7 +26,6 @@ Everything else goes through an official plugin.
 | Command                   | Platforms                                 | Purpose                                                                                                   | Frontend caller                                                                                                                                                                              |
 | ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `toggle_dock_icon`        | macOS (no-op else)                        | Switches activation policy between `Regular` and `Accessory`, so hiding to the tray removes the dock icon | [`src/lib/tray.tsx`](../../../src/lib/tray.tsx)                                                                                                                                              |
-| `capabilities`            | all                                       | Returns `{ native_fetch }`. See [`native_fetch`](#the-native_fetch-cargo-feature).                        | [`src/lib/platform.ts`](../../../src/lib/platform.ts)                                                                                                                                        |
 | `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme    | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
 | `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                          | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
 | `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                                 | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
@@ -97,21 +96,21 @@ Android specifics and the `gen/android` re-init trap:
 
 ## Plugins and the capability manifest
 
-| Scope                       | Plugins                                                                                                         |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Every target                | `process`, `fs`, `opener`, `os`, `deep-link`, `haptics`, `updater`, `store`, `platform-utils`                   |
-| Desktop only                | `single-instance`. Its handler shows and focuses the existing `main` window, so a second copy raises the first. |
-| `debug_assertions` only     | `devtools`                                                                                                      |
-| `native_fetch` feature only | `tauri-plugin-http`. See [below](#the-native_fetch-cargo-feature).                                              |
+| Scope                   | Plugins                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Every target            | `process`, `fs`, `opener`, `os`, `deep-link`, `haptics`, `updater`, `store`, `platform-utils`, `http`           |
+| Desktop only            | `single-instance`. Its handler shows and focuses the existing `main` window, so a second copy raises the first. |
+| `debug_assertions` only | `devtools`                                                                                                      |
 
 Registration is not enough.
 [`capabilities/default.json`](../../../src-tauri/capabilities/default.json) is the allowlist the webview
-is held to, scoped to `windows: ["main"]`. A command or window operation that works in a scratch
+is held to, scoped to `webviews: ["main"]` so child previews inherit no native permissions. A command or window operation that works in a scratch
 build and fails in the app is almost always missing an entry there.
 
 - `remote.urls` permits `http://localhost:1420/*` because in dev Vite serves the frontend, which
   counts as remote content.
-- The `http:default` URL allowlist only matters in builds that register the HTTP plugin.
+- The `http:default` scope allows arbitrary HTTP/HTTPS hosts, ports and paths (including IPv6); no other schemes are allowed.
+  Accepted risk: scripts in the main webview can invoke CORS-free native HTTP directly and read any reachable public, loopback, private or link-local service, including metadata endpoints; Cloud Proxy and `createProxyFetch` are routing policy, not IPC security boundaries, and preview webviews are excluded.
 - **`devtools` needs a crypto provider first.** Its `reqwest`/rustls stack panics on its first HTTPS
   call on iOS dev builds with no process-default provider, so
   [`src-tauri/src/lib.rs:55`](../../../src-tauri/src/lib.rs#L55) installs
@@ -154,24 +153,24 @@ deep-link and updater config.
   created, since WebKitGTK reads `JSC_*` at its own init. Tracked at
   [webkit.org bug 319572](https://bugs.webkit.org/show_bug.cgi?id=319572); remove when it lands.
 
-## The `native_fetch` cargo feature
+## Native HTTP
 
-`tauri-plugin-http`, the native CORS-free HTTP path, is registered only under the `native_fetch`
-Cargo feature ([`src-tauri/src/lib.rs:19`](../../../src-tauri/src/lib.rs#L19)), which defaults off
-([`src-tauri/Cargo.toml:18`](../../../src-tauri/Cargo.toml#L18)) and no build in this repo passes. Every
-shipped build reports `native_fetch: false`:
+`tauri-plugin-http` is registered unconditionally on desktop and mobile. Its `cookies` feature
+is disabled so it has no persisted cookie jar; HTTP/2, charset handling and macOS system proxy configuration remain enabled. TLS verification
+uses both OS certificates and bundled public roots (Android can have an empty native store).
 
-- The **"Use Native Fetch" dev toggle is inert**;
-  [`dev-settings.tsx`](../../../src/settings/dev-settings.tsx) disables the switch and says why.
-- **`createProxyFetch`'s Tauri-direct branch is unreachable.** Its toggle-off path is also gated on
-  the capability, since the plugin's JS shim throws "plugin http not found" in a build without it.
-  BYO-key traffic uses the universal proxy (THU-467).
-- [`src/lib/fetch.ts`](../../../src/lib/fetch.ts) re-checks the capability rather than trusting a
-  persisted `true` from an older build.
+`createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
+directly from the device; ON opts into the backend universal proxy for non-loopback targets.
+Loopback models and HTTP/SSE MCP servers always connect directly on desktop and mobile.
+Native failures never retry through the backend. See
+[native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out user proxying
+non-loopback traffic gets backend 401s until they turn Use Cloud Proxy off or sign in.
+Remote ACP WebSockets follow the same rule. With the toggle on, non-loopback external agents need
+public `wss://` addresses. LAN agents need a `wss://` address with Use Cloud Proxy off. Plain `ws://`
+works only for a local bridge at its default port (`8839`) on the same computer as the desktop app.
+Tinfoil uses its attested client.
 
-Locally: `bun run tauri build --features native_fetch`, plus the upstream in the `http:default`
-allowlist. Whether the branch stays is undecided; treat it as opt-in, not as a second supported
-transport.
+Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on.
 
 ## Platform detection in the frontend
 
@@ -208,14 +207,10 @@ says anything about the viewport.
   `navigator`, so a bun test with no DOM gets the web/false answer. The hooks do need one:
   `useIsMobile` reads `window.matchMedia` through `useSyncExternalStore`.
 
-### Capabilities and the database type
-
-`getCapabilities()` is async because it must `invoke('capabilities')`, and is memoized per page via
-[`memoize`](../../../src/lib/memoize.ts). It resolves to `{ native_fetch: false }` off Tauri _and_ on
-any invoke failure, so a build problem degrades to the proxy path rather than erroring.
+### The database type
 
 `getDatabaseType()` unconditionally returns `'powersync'`
-([`src/lib/platform.ts:272`](../../../src/lib/platform.ts#L272)) and both callers
+([`src/lib/platform.ts:287`](../../../src/lib/platform.ts#L287)) and both callers
 ([`use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts),
 [`src/lib/fs.ts`](../../../src/lib/fs.ts)) feed it straight into `getDatabasePath`, so that function's
 `bun-sqlite` branch is dead. The `bun-sqlite` type survives for bun tests, which build a `Database`

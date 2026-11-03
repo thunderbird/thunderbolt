@@ -18,7 +18,7 @@ Each workspace below has its own dependencies and its own checks; there is no si
 | `docs/`              | Architecture and development docs.                                                                                                         |
 | `public/`            | Static assets served by Vite.                                                                                                              |
 
-`cli`, `agent-core`, `wasm-artifact` and `rust` are separate path-gated jobs in `.github/workflows/ci.yml`, so a change in one of those trees is not covered by the frontend job. The `wasm-artifact` job fails the build when `crates/` changed without a regenerated `src/acp/iroh/pkg`, and verifies the committed artifacts against `CHECKSUMS.txt` — rebuild with `crates/thunderbolt-acp-client/build.sh` and commit the output in the same change.
+`cli`, `agent-core`, `wasm-artifact` and `rust` are separate path-gated jobs in `.github/workflows/ci.yml`, so a change in one of those trees is not covered by the frontend job. The `wasm-artifact` job requires crate input changes to include regenerated `src/acp/iroh/pkg`, checks current inputs against `SOURCES.txt`, and verifies artifacts against `CHECKSUMS.txt`. Rebuild with `crates/thunderbolt-acp-client/build.sh` and commit the output in the same change. For input-check failures and provenance limits, see the [CI guide](docs/internals/development/ci-and-previews.md#gates-that-surprise-people); build details live in the [crate README](crates/thunderbolt-acp-client/README.md).
 
 ## Core Principles
 
@@ -104,7 +104,7 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 
 When adding a new route, default to lazy unless the route is on the chat/landing critical path. Pair the lazy import with a content-area `<Suspense fallback={...}>` placed around the relevant `<Outlet />` (see `src/layout/main-layout.tsx` and `src/settings/layout.tsx`) so the sidebar/nav stays mounted while the chunk loads.
 
-Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive the component with `lazy(routeChunkLoaders.<key>)`. That map is the single source for both `lazy()` and `preloadAllRouteChunks`, which warms every chunk from local disk right after first paint on the Tauri apps while the web build keeps true lazy loading. A route written as a bare `lazy(() => import(...))` is therefore lazy but never prefetched — leave one outside the map only when the chunk should stay cold, and say why inline: `VoiceSettingsPage` is feature-flagged and hidden by default, `SsoRedirect` is enterprise-only, and the dev-only routes are `import.meta.env.DEV`-guarded so Vite eliminates them from production builds.
+Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive the component with `lazy(routeChunkLoaders.<key>)`. That map is the single source for both `lazy()` and `preloadAllRouteChunks`, which warms chunks serially from local disk after core initialization on Tauri, yielding between imports. Web routes load on demand. Routes outside the map must explain their loading policy inline: `VoiceSettingsPage` is hidden by default, `SsoError` is reached only after a failed enterprise login, and dev-only routes are `import.meta.env.DEV`-guarded so Vite eliminates them from production builds. `SsoRedirect` has a deployment-specific loader: it stays cold in consumer deployments, while SSO deployments warm it during initialization to avoid a redirect-chunk waterfall.
 
 ## Testing
 

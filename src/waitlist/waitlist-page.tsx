@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
-import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
+import { useBrandingLinks } from '@/lib/branding-selectors'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Fingerprint } from 'lucide-react'
-import { useNavigate } from 'react-router'
+import { useId } from 'react'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
@@ -27,16 +28,14 @@ import { WaitlistLanguagePicker } from './waitlist-language-picker'
  */
 export const WaitlistPage = () => {
   const { t } = useLingui()
+  const links = useBrandingLinks()
   const authClient = useAuth()
-  const navigate = useNavigate()
-  const { state, isValidEmail, actions } = useWaitlistState({
-    authClient,
-    onVerified: () => navigate('/', { replace: true }),
-  })
+  const { state, isValidEmail, actions } = useWaitlistState({ authClient })
 
   const isVerifying = state.status === 'verifying'
   const email = state.email
   const passkeyAvailable = usePasskeyAvailable()
+  const otpPromptId = useId()
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
@@ -62,7 +61,7 @@ export const WaitlistPage = () => {
           </div>
 
           <div className="mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0">
-            <p className="text-sm text-muted-foreground">
+            <p id={otpPromptId} className="text-sm text-muted-foreground">
               <Trans>If you received a code to log in, enter it here:</Trans>
             </p>
             <InputOTP
@@ -73,6 +72,7 @@ export const WaitlistPage = () => {
               onComplete={actions.handleOtpComplete}
               disabled={isVerifying}
               autoFocus
+              aria-labelledby={otpPromptId}
               autoComplete="one-time-code"
               data-1p-ignore
               data-lpignore="true"
@@ -169,7 +169,7 @@ export const WaitlistPage = () => {
             <Trans>
               By continuing, you agree to our{' '}
               <a
-                href={termsOfServiceUrl}
+                href={links.termsOfService}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:no-underline"
@@ -178,7 +178,7 @@ export const WaitlistPage = () => {
               </a>{' '}
               and{' '}
               <a
-                href={privacyPolicyUrl}
+                href={links.privacyPolicy}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:no-underline"

@@ -23,7 +23,7 @@ export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: 
   const usedTokensLabel = formatters.compactNumber(usedTokens)
   const maxTokensLabel = formatters.compactNumber(maxTokens)
 
-  const strokeColor = 'rgb(107 114 128)' // gray-500 - consistent darker gray
+  const strokeColor = 'var(--color-muted-foreground)'
 
   // SVG circle parameters
   const size = 24
@@ -48,7 +48,7 @@ export const ContextUsageIndicator = ({ usedTokens = 0, maxTokens, className }: 
                   cy={size / 2}
                   r={radius}
                   fill="none"
-                  stroke="rgb(229 231 235)"
+                  stroke="var(--color-border)"
                   strokeWidth={strokeWidth}
                 />
                 {/* Progress circle */}

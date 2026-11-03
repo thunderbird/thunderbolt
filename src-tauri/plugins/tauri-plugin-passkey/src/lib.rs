@@ -14,6 +14,8 @@
 //! - **iOS**: the Tauri mobile plugin bridge to the same `AuthenticationServices`
 //!   API (`src/mobile.rs` + `ios/`).
 //! - **Android**: the same bridge to Credential Manager (`src/mobile.rs` + `android/`).
+//! - **Windows**: the Windows WebAuthn API in `webauthn.dll` (`src/win.rs`), which
+//!   takes a caller-built clientDataJSON (`src/client_data.rs`).
 //! - **other platforms**: every call fails with `Error::Unavailable`; the app never
 //!   offers passkeys there.
 
@@ -22,6 +24,8 @@ use tauri::{
     Manager, Runtime,
 };
 
+#[cfg(any(windows, test))]
+mod client_data;
 mod commands;
 #[cfg(any(target_os = "macos", test))]
 mod credential_ids;
@@ -35,14 +39,18 @@ pub use models::*;
 mod desktop;
 #[cfg(mobile)]
 mod mobile;
+#[cfg(windows)]
+mod win;
 
 #[cfg(target_os = "macos")]
 use desktop::Passkey;
 #[cfg(mobile)]
 use mobile::Passkey;
+#[cfg(windows)]
+use win::Passkey;
 
 /// Fallback handle for platforms with no native passkey support.
-#[cfg(not(any(target_os = "macos", mobile)))]
+#[cfg(not(any(target_os = "macos", windows, mobile)))]
 mod unsupported {
     use std::marker::PhantomData;
     use tauri::{Runtime, Window};
@@ -70,7 +78,7 @@ mod unsupported {
         }
     }
 }
-#[cfg(not(any(target_os = "macos", mobile)))]
+#[cfg(not(any(target_os = "macos", windows, mobile)))]
 use unsupported::Passkey;
 
 /// Access to the passkey APIs, added to `AppHandle`/`Window`/`App` by the plugin.
@@ -96,7 +104,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             let passkey = desktop::init(app, _api)?;
             #[cfg(mobile)]
             let passkey = mobile::init(app, _api)?;
-            #[cfg(not(any(target_os = "macos", mobile)))]
+            #[cfg(windows)]
+            let passkey = win::init(app, _api)?;
+            #[cfg(not(any(target_os = "macos", windows, mobile)))]
             let passkey = Passkey::<R>(std::marker::PhantomData);
 
             app.manage(passkey);

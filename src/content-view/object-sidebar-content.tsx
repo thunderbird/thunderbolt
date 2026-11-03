@@ -24,7 +24,7 @@ export const ObjectSidebarContent = ({ content, onClose }: ObjectSidebarContentP
     >
       <ContentViewHeader title={content.title} onClose={onClose} className="md:bg-card" />
       <SidebarContent className="p-4 overflow-x-hidden">
-        <p className="text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">{content.output}</p>
+        <p className="text-foreground text-sm whitespace-pre-wrap">{content.output}</p>
       </SidebarContent>
     </div>
   )

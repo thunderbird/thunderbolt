@@ -16,7 +16,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun
 import { createElement, type ReactNode } from 'react'
 import { z } from 'zod'
 import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
-import { MCPProvider, resolveMcpAccessToken, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
+import { MCPProvider, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
+import { resolveMcpAccessToken } from './mcp-client'
 
 /** A `Deferred` lets a test hold a fake `createClient` open so two concurrent
  *  reconnects (or a remove mid-reconnect) overlap deterministically. */

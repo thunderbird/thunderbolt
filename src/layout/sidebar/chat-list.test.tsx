@@ -163,6 +163,7 @@ it.each(['overflow', 'context', 'mobile'])('starts a standalone chat from the Re
   expect(actions.map((action) => action.textContent)).toEqual(['New chat', 'Delete chats'])
   await act(async () => {
     fireEvent.click(actions[0])
+    await getClock().runAllAsync()
   })
   expect(screen.getByRole('status', { name: 'Location' })).toHaveTextContent(/^\/chats\/new$/)
   expect(screen.getByRole('status', { name: 'Location' })).toHaveAttribute('data-focus-composer', 'true')

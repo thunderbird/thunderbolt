@@ -47,6 +47,7 @@ import {
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
+  isToolSupportRejectionError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
@@ -942,6 +943,12 @@ export const createChatInstance = (
         return
       }
 
+      // A model that rejects tools rejects the identical retry too.
+      if (isToolSupportRejectionError(lastError)) {
+        markRetriesExhausted(finishedTurn)
+        return
+      }
+
       // The hosted agent refuses a turn while the previous reply still runs. That
       // clears on its own, so it takes the retry loop below on a longer delay.
       const isRunInProgress = isAgentRunInProgressError(lastError)
@@ -1070,10 +1077,26 @@ export const createChatInstance = (
 
   const originalRegenerate = instance.regenerate.bind(instance)
 
+  /** A retry can run on a different model than the original send; record the one it
+   *  uses on the prompt, so the turn (and its saved row) names the model that answered. */
+  const stampRetryModel = () => {
+    // `selectedModel` can be missing at runtime; the send path guards it the same way.
+    const modelId = useChatStore.getState().sessions.get(id)?.selectedModel?.id
+    const index = instance.messages.findLastIndex((message) => message.role === 'user')
+    const prompt = instance.messages[index]
+    if (!modelId || !prompt || prompt.metadata?.modelId === modelId) {
+      return
+    }
+    const next = instance.messages.slice()
+    next[index] = { ...prompt, metadata: { ...prompt.metadata, modelId } }
+    instance.messages = next
+  }
+
   /** Mark and start one response regeneration so persistent agents rebuild from
    *  the request transcript while ordinary sends keep their live session. */
   const regenerateResponse = (): Promise<void> => {
     routingState.regenerationRevision = (routingState.regenerationRevision ?? 0) + 1
+    stampRetryModel()
     return originalRegenerate()
   }
 

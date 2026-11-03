@@ -112,7 +112,7 @@ export const PermissionDialog = ({
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 my-2" role="dialog">
       <div className="flex items-center gap-2">
-        <ShieldAlert className="size-4 text-amber-500" />
+        <ShieldAlert className="size-4 text-warning" />
         <span className="font-medium text-[length:var(--font-size-body)]">{i18n._(toolKindLabel(kind))}</span>
       </div>
 

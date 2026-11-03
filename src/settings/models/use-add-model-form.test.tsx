@@ -6,6 +6,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
@@ -33,6 +34,22 @@ describe('generateModelName', () => {
     expect(generateModelName('glm-5.2')).toBe('Glm 5.2')
   })
 })
+
+/** A provider that answers chat completions but rejects any request carrying tools, as Ollama does. */
+const toollessProxyFetch: FetchFn = Object.assign(
+  async (_input: RequestInfo | URL, init?: RequestInit) =>
+    String(init?.body).includes('"tools"')
+      ? Response.json({ error: { message: 'gemma3:4b does not support tools' } }, { status: 400 })
+      : Response.json({
+          id: 'completion-id',
+          object: 'chat.completion',
+          created: 1,
+          model: 'gemma3:4b',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'test successful' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+        }),
+  { preconnect: async () => true },
+)
 
 describe('useAddModelForm', () => {
   beforeAll(async () => {
@@ -64,11 +81,12 @@ describe('useAddModelForm', () => {
         customModel: '',
         url: '',
         apiKey: '',
+        supportsTools: true,
       })
       await getClock().runAllAsync()
     })
 
-    expect(useChatStore.getState().models.some((model) => model.name === 'New Chat Model')).toBe(true)
+    expect(useChatStore.getState().models.find((model) => model.name === 'New Chat Model')?.toolUsage).toBe(1)
     expect(onMutationStart).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -93,6 +111,7 @@ describe('useAddModelForm', () => {
           customModel: '',
           url: '',
           apiKey: '',
+          supportsTools: true,
         })
         await getClock().runAllAsync()
       })
@@ -124,6 +143,7 @@ describe('useAddModelForm', () => {
         customModel: 'gpt-4-turbo-preview',
         url: '',
         apiKey: '',
+        supportsTools: true,
       })
       await getClock().runAllAsync()
     })
@@ -163,5 +183,66 @@ describe('useAddModelForm', () => {
     } finally {
       getSpy.mockRestore()
     }
+  })
+
+  it('saves a model that rejects tools with tool usage off after the connection test', async () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider({ proxyFetch: toollessProxyFetch }),
+    })
+
+    act(() => {
+      result.current.onProviderChange('custom')
+      result.current.form.setValue('url', 'https://models.example.com/v1')
+      result.current.form.setValue('model', 'gemma3:4b')
+      result.current.form.setValue('name', 'Gemma')
+    })
+    await act(async () => {
+      await result.current.onTestConnection()
+    })
+
+    expect(result.current.connectionStatus).toBe('success')
+    expect(result.current.toolSupport).toBe('unsupported')
+    expect(result.current.form.getValues('supportsTools')).toBe(false)
+
+    await act(async () => {
+      result.current.onSubmit(result.current.form.getValues())
+      await getClock().runAllAsync()
+    })
+
+    expect(useChatStore.getState().models.find((model) => model.name === 'Gemma')?.toolUsage).toBe(0)
+  })
+
+  it('saves tool usage off when the switch is turned off by hand', async () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    await act(async () => {
+      result.current.onSubmit({
+        provider: 'thunderbolt',
+        name: 'Toolless Model',
+        model: 'toolless-model',
+        customModel: '',
+        url: '',
+        apiKey: '',
+        supportsTools: false,
+      })
+      await getClock().runAllAsync()
+    })
+
+    expect(useChatStore.getState().models.find((model) => model.name === 'Toolless Model')?.toolUsage).toBe(0)
+  })
+
+  it('turns tools back on when the provider changes', () => {
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    act(() => {
+      result.current.form.setValue('supportsTools', false)
+      result.current.onProviderChange('custom')
+    })
+
+    expect(result.current.form.getValues('supportsTools')).toBe(true)
   })
 })

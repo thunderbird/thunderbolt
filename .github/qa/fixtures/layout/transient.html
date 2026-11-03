@@ -1,0 +1,32 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Transient</title>
+  </head>
+  <body>
+    <button>Start</button>
+    <!-- A splash that goes away 200 ms after load. -->
+    <div id="overlay" style="position: fixed; inset: 0; background: #fff">Loading</div>
+    <!-- A toast sits over the button below it until it times out. -->
+    <button style="position: fixed; bottom: 20px; left: 20px">Undo</button>
+    <div role="status" style="position: fixed; bottom: 0; left: 0; width: 300px; height: 80px; background: #333">
+      Saved
+    </div>
+    <!-- A tooltip and a Radix popover, each open beside its trigger and over the button next to it. -->
+    <button style="position: fixed; top: 100px; left: 20px">Bold</button>
+    <div role="tooltip" style="position: fixed; top: 90px; left: 0; width: 200px; height: 40px; background: #333">
+      Bold (Ctrl+B)
+    </div>
+    <button style="position: fixed; top: 200px; left: 20px">Next</button>
+    <div data-radix-popper-content-wrapper style="position: fixed; top: 190px; left: 0">
+      <div style="width: 200px; height: 40px; background: #eee">Results</div>
+    </div>
+    <script>
+      addEventListener('load', () => setTimeout(() => document.getElementById('overlay').remove(), 200))
+    </script>
+  </body>
+</html>

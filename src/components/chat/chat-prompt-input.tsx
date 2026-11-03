@@ -16,7 +16,12 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
+import {
+  chipMarker,
+  deleteSkillTokenAt,
+  foldPendingSigils,
+  normalizeSkillTokensToSlugs,
+} from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -40,6 +45,7 @@ import { AnimatePresence } from 'framer-motion'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
+  type KeyboardEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -66,8 +72,9 @@ import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
-import { loadChatMessageList } from './chat-messages-loader'
-import { builtInAgent, isBuiltInAgent } from '@/defaults/agents'
+import { preloadChatMessageList } from './chat-messages-loader'
+import { isBuiltInAgent } from '@/defaults/agents'
+import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
@@ -115,6 +122,29 @@ const acceptedAttachmentExtensions = [
 
 /** `accept` attribute string for the file picker. */
 const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
+
+/** True for ArrowRight at the end of the text or ArrowLeft at the start, where the caret cannot move. */
+const isArrowAtBoundary = (key: string, ta: HTMLTextAreaElement): boolean => {
+  if (ta.selectionStart !== ta.selectionEnd) {
+    return false
+  }
+  if (key === 'ArrowRight') {
+    return ta.selectionStart === ta.value.length
+  }
+  return key === 'ArrowLeft' && ta.selectionStart === 0
+}
+
+/** Caret target when an unmodified arrow would step onto a chip marker (zero-width, so the step is invisible). */
+const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLTextAreaElement): number | null => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || ta.selectionStart !== ta.selectionEnd) {
+    return null
+  }
+  const caret = ta.selectionStart
+  if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
+    return Math.min(ta.value.length, caret + 2)
+  }
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
+}
 
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
@@ -348,7 +378,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       stopping,
       lastRole: messages.at(-1)?.role,
     })
-    const builtInAgentName = builtInAgent.name
+    const builtInAgentName = useAppName()
     const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
     const sendBlocked =
       imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
@@ -368,7 +398,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
      * behaviour and it silently ate whatever the user had typed when an app
      * decided to propose something.
      */
-    useConsumePendingPrompt(chatThreadId, (prompt) => setInput(mergeIntoDraft(inputRef.current, prompt)))
+    useConsumePendingPrompt(chatThreadId, (prompt) =>
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
+    )
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -384,7 +416,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       }
       hasPreloadedSendDependencies.current = true
       preloadAgentConnection()
-      void loadChatMessageList()
+      preloadChatMessageList()
     }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
@@ -406,6 +438,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setHighlightedIdx,
       selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
+      handleChange: handleSlashChange,
+      handleSelect: handleSlashSelect,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -426,7 +460,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // so the token stays resolvable at send time.
         const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
         const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
+        const next = appendSlashToken(
+          foldPendingSigils(inputRef.current),
+          skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug,
+        )
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -445,11 +482,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const insertInstructionText = useCallback(
       (text: string) => {
         const ta = getTextarea()
-        const start = ta?.selectionStart ?? input.length
-        const end = ta?.selectionEnd ?? input.length
-        const needsSpace = start > 0 && input[start - 1] !== ' '
+        const current = foldPendingSigils(input)
+        const start = ta?.selectionStart ?? current.length
+        const end = ta?.selectionEnd ?? current.length
+        const needsSpace = start > 0 && current[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
-        const next = input.slice(0, start) + insert + input.slice(end)
+        const next = current.slice(0, start) + insert + current.slice(end)
         const pos = start + insert.length
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
@@ -543,7 +581,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => (minimalMode ? input : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      () => (minimalMode ? foldPendingSigils(input) : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
       [minimalMode, input, displayNameToSlug],
     )
 
@@ -779,6 +817,18 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (e: Parameters<typeof handleSlashKeyDown>[0]) => {
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
+        const skipTo = caretPastChipMarker(e, ta)
+        if (skipTo !== null) {
+          e.preventDefault()
+          ta.setSelectionRange(skipTo, skipTo)
+          setCursorPos(skipTo)
+          return
+        }
+        if (isArrowAtBoundary(e.key, ta)) {
+          // WKWebView inserts the arrow's private-use codepoint as text when the caret can't move.
+          e.preventDefault()
+          return
+        }
         if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
           const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
           if (deletion) {
@@ -953,7 +1003,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               if (value.length > 0) {
                 preloadSendDependencies()
               }
-              setInput(value)
+              handleSlashChange(value, getTextarea()?.selectionStart ?? value.length)
             }}
             placeholder={t`Ask me anything…`}
             showSubmitButton
@@ -1007,7 +1057,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : null
             }
             onTextareaKeyDown={handleTextareaKeyDown}
-            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)}
             onTextareaPaste={handlePaste}
           />
           {/* Voice mode morphs the composer in-place: the overlay covers the

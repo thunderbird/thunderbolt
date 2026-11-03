@@ -2,7 +2,7 @@
 
 Goal: onboarding, the first chat and leaving the app work for someone who has never used Thunderbolt.
 
-Start state: this build shows onboarding. The app runs at **http://localhost:1425** (not 1424), desktop viewport.
+Start state: the onboarding build, at **http://localhost:1425**.
 
 1. Sign in with a fresh address. Go through every onboarding step, then the welcome dialog.
    Edge cases: back and forward between steps, a reload in the middle, skipping optional steps, an empty and a
@@ -16,8 +16,10 @@ Start state: this build shows onboarding. The app runs at **http://localhost:142
 5. Delete the account from the settings, then try to sign in with the same address again.
    Function: `delete-account`.
 
-Specs for this charter: start with `test.use({ baseURL: 'http://localhost:1425' })` and sign in by hand
-(`page.goto('/')`, fill the "Email" field, press Continue, fill `input[autocomplete="one-time-code"]` with
-`12345678`), because `loginViaEmailCode` expects onboarding to be off.
+Specs for this charter: import `onboardingURL` from exactly `'../../../.github/qa/ports'`, start with
+`test.use({ baseURL: onboardingURL })` and sign in with `const email = await enterEmailCode(page)`, because
+`loginViaEmailCode` expects onboarding to be off. To sign back in with the same address, call
+`enterEmailCode(page, email)`: the backend refuses a second code for an address within 15 s, and the helper waits
+that out. Give such a spec `test.setTimeout(120_000)`.
 
 Out of bounds: settings beyond what these steps need.

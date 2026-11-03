@@ -9,7 +9,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
-import { getWebOsPlatform, isMacDesktop, isTauri, isWebDesktopPlatform } from '@/lib/platform'
+import { getWebOsPlatform, isMacDesktop, isTauri, isTouchPlatform, isWebDesktopPlatform } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
 import type { I18n, MessageDescriptor } from '@lingui/core'
@@ -49,12 +49,15 @@ export type BuildCommandsDeps = {
   i18n: I18n
   flags: CommandFlags
   /** In minimal mode (see `selectMinimalMode`) there is no Settings section or
-   *  Projects, so every `/settings/*` and Projects command is dropped. */
+   *  Projects, so every `/settings/*` and Projects command is dropped, as are the
+   *  theme commands. */
   minimalMode: boolean
   /** True for an anonymous session, which has nothing to sign out of. */
   isAnonymous: boolean
   showDownloadApp: boolean
   isMac: boolean
+  /** False on phones and tablets, where keyboard shortcut hints mean nothing. */
+  showShortcuts: boolean
   onNewChat: () => void
   onSetTheme: (theme: Theme) => void
   onToggleSidebar: () => void
@@ -80,14 +83,16 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       to,
     }))
 
-  const themeCommands: PaletteCommand[] = themeOptions.map(({ theme, title }) => ({
-    id: `theme-${theme}`,
-    title: deps.i18n._(title),
-    icon: themeIcons[theme],
-    section: 'actions',
-    keywords: ['theme', 'appearance'],
-    run: () => deps.onSetTheme(theme),
-  }))
+  const themeCommands: PaletteCommand[] = deps.minimalMode
+    ? []
+    : themeOptions.map(({ theme, title }) => ({
+        id: `theme-${theme}`,
+        title: deps.i18n._(title),
+        icon: themeIcons[theme],
+        section: 'actions',
+        keywords: ['theme', 'appearance'],
+        run: () => deps.onSetTheme(theme),
+      }))
 
   const downloadCommands: PaletteCommand[] = deps.showDownloadApp
     ? [
@@ -128,7 +133,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
       title: deps.i18n._(msg`Toggle sidebar`),
       icon: PanelLeft,
       section: 'actions',
-      shortcut: deps.isMac ? '⌘B' : 'Ctrl+B',
+      shortcut: deps.showShortcuts ? (deps.isMac ? '⌘B' : 'Ctrl+B') : undefined,
       run: deps.onToggleSidebar,
     },
     ...downloadCommands,
@@ -187,6 +192,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
     },
     showDownloadApp: showAppDownloads && !isTauri() && isWebDesktopPlatform(),
     isMac: isMacPlatform(),
+    showShortcuts: !isTouchPlatform(),
     // "New chat" navigates, so dismiss the mobile sidebar drawer first (no-op on
     // desktop / when closed) — the palette's `handleCommand` only closes it for
     // `to` commands, and this is a `run` command.

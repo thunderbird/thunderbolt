@@ -37,6 +37,7 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       customModel: z.string().optional(),
       url: z.string().optional(),
       apiKey: z.string().optional(),
+      supportsTools: z.boolean(),
     })
     .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
       message: i18n._(urlRequiredForCustom),
@@ -122,6 +123,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
       customModel: '',
       url: '',
       apiKey: '',
+      supportsTools: true,
     },
   })
   const provider = form.watch('provider')
@@ -147,7 +149,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
   }
 
   const addMutation = useMutation({
-    mutationFn: async (values: AddModelFormValues) => {
+    mutationFn: async ({ supportsTools, ...values }: AddModelFormValues) => {
       await createModel(db, {
         id: uuidv7(),
         ...values,
@@ -155,7 +157,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
         url: values.url || null,
         isSystem: 0,
         enabled: 1,
-        toolUsage: 1,
+        toolUsage: supportsTools ? 1 : 0,
         contextWindow: null,
       })
       return getAvailableModels(db)
@@ -182,14 +184,17 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     addMutation.mutate({ ...values, model: resolveModelId(values) })
   }
 
-  const testConnection = () => {
+  const testConnection = async () => {
     const values = form.getValues()
-    connection.test({
+    const toolSupport = await connection.test({
       provider: values.provider,
       model: resolveModelId(values),
       url: values.url,
       apiKey: values.apiKey,
     })
+    if (toolSupport) {
+      form.setValue('supportsTools', toolSupport === 'supported')
+    }
   }
 
   const selectModel = (modelId: string) => {
@@ -204,6 +209,10 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
     form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    // Thunderbolt models skip the connection test; the shipped defaults already know.
+    if (provider === 'thunderbolt') {
+      form.setValue('supportsTools', selected?.supports_tools !== false)
+    }
   }
 
   // Recomputes formState.isValid for the freshly blanked fields (the submit
@@ -220,6 +229,7 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     for (const field of ['name', 'model', 'customModel', 'apiKey'] as const) {
       form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
     }
+    form.setValue('supportsTools', true, { shouldDirty: false })
     // Ollama's default local endpoint — the most common custom provider.
     form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
       shouldValidate: false,
@@ -236,10 +246,6 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
   }
   const modelItems = buildModelItems()
-  const supportsTools =
-    !selectedModelId ||
-    selectedModelId === 'custom' ||
-    catalog.models.find((candidate) => candidate.id === selectedModelId)?.supports_tools === true
 
   return {
     form,
@@ -247,11 +253,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     selectedModelId,
     isLoadingCatalog: catalog.isLoading,
     catalogError: catalog.error,
-    supportsTools,
     isPending: addMutation.isPending,
     isTesting: connection.isTesting,
     connectionStatus: connection.status,
     connectionError: connection.error,
+    toolSupport: connection.toolSupport,
     submitError,
     onSubmit: submit,
     onCancel: close,

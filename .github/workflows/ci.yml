@@ -57,6 +57,8 @@ jobs:
             agent-core:
               - 'shared/agent-core/**'
               - 'scripts/agent-core-browser-check.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'
@@ -114,6 +116,8 @@ jobs:
             qa:
               - '.github/qa/**'
               - 'scripts/notify-on-failure.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'e2e/helpers.ts'
               - 'shared/tsconfig.base.json'
               - 'shared/defaults/models.ts'
@@ -362,7 +366,7 @@ jobs:
         # WebKit needs apt packages the runner image lacks, so --with-deps stays;
         # the timeout makes a slow-mirror stall fail fast instead.
         timeout-minutes: 10
-        run: bunx playwright install --with-deps chromium webkit
+        run: bun run browsers:install --with-deps && bunx playwright install --with-deps webkit
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
@@ -467,8 +471,8 @@ jobs:
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5
 
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Install Chrome for Testing
+        run: bun run browsers:install --with-deps
 
       # The layout probe's static pages; they need no stack.
       - name: Run the layout probe tests
@@ -481,8 +485,16 @@ jobs:
           QA_BACKEND_USER: qa-dev
         run: |
           .github/qa/scripts/stack.sh start dev
+          # `playwright screenshot` takes no executable path, so this loads each page in Chrome for Testing directly.
           for port in 1424 1425; do
-            bunx playwright screenshot --wait-for-timeout 5000 "http://localhost:$port" "$RUNNER_TEMP/dev-$port.png" || failed=1
+            bun -e "
+              import { chromium } from '@playwright/test'
+              import { getChromeLaunchOptions } from './scripts/chrome'
+              const browser = await chromium.launch(getChromeLaunchOptions())
+              await (await browser.newPage()).goto(Bun.argv[1])
+              await Bun.sleep(5000)
+              await browser.close()
+            " "http://localhost:$port" || failed=1
           done
           .github/qa/scripts/stack.sh stop || failed=1
           if grep -iE 'EACCES|EPERM|permission denied' "$RUNNER_TEMP/qa-stack.log"; then

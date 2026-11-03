@@ -132,7 +132,9 @@ Bridge and CLI rows share the shape and lifecycle, so the DAL guards carry the d
 
 Trust-sensitive columns are server-managed. `revoked_at`, `trusted`, `approval_pending`, `public_key`, `mlkem_public_key`, `app_version`, `device_type`, `node_id` and `node_id_attested_at` sit in `uploadDenyColumns`, stripped from any `PUT`/`PATCH`; `devices` sits in `uploadDenyDelete`, so a sync `DELETE` is rejected and a row goes only through the section 6 route ([backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts), full gate in [powersync-upload-authorization.md](powersync-upload-authorization.md)). How `trusted`, `approval_pending` and `public_key` feed encryption setup and device approval: [e2e-encryption.md](e2e-encryption.md).
 
-Three routes write `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+Three routes set `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+
+During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. Other device states remain unchanged.
 
 ### Settings > Devices
 

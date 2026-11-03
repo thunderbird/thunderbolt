@@ -34,10 +34,11 @@ touches, in any folder, a dependency manifest, lockfile or build-tool file (`pac
 Gradle wrapper, `Podfile`, `Gemfile`, `Package.resolved`, `Package.swift`, `requirements*.txt`, `go.mod`, `go.sum`),
 or a git hook under `.husky/` or lint-staged config (`.lintstagedrc*`, `lint-staged.config.*`), which run on a
 developer's machine at their next commit. It refuses the Vite, Playwright and TypeScript configs (`vite.config.*`,
-`playwright.config.*`, `tsconfig*.json`), which the dev servers, the build and the checks run or obey. It also
-refuses a patch that adds or changes a symlink or submodule, or that matches a secret pattern, and one that lacks the
-pass of a check its task needs (see "Passes" below). App code of any kind, `src-tauri/` and `backend/drizzle/`
-included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
+`playwright.config.*`, `playwright.*.config.*`, `tsconfig*.json`), which the dev servers, the build and the checks
+run or obey, and `scripts/chrome*` and `scripts/install-chrome*`, which pick the browser every replay launches and
+the one CI downloads. It also refuses a patch that adds or changes a symlink or submodule, or that matches a
+secret pattern, and one that lacks the pass of a check its task needs (see "Passes" below). App code of any
+kind, `src-tauri/` and `backend/drizzle/` included, can be changed. The repo is public, so a security fix's PR names only its ticket and never says
 "security": no finding text and no regression spec. Its branch is `qa-fix/<identifier>`, never Linear's name,
 whose slug comes from the ticket's title.
 
@@ -1221,7 +1222,7 @@ Never run on GitHub (only locally, or read in the action's code):
 - the workflow as a whole, including the matrix, the artifacts between jobs and the job conditions;
 - `claude-code-action` forwarding `--setting-sources`, `--permission-mode`, `--tools` and the MCP config;
 - conditional service containers with an empty image, YAML anchors, and brace patterns in `download-artifact`;
-- installing the MCP's Chromium with `npx --package @playwright/mcp@0.0.83 playwright install chromium`;
+- refreshing the shared Chrome for Testing Stable build with `bun run browsers:install --with-deps`;
 - the GitHub App token, the bot identity lookup, the push and `gh pr create`;
 - every Linear call: label and state lookups, dedupe, `fileUpload`, ticket creation, the scorecard query;
 - the heartbeat and `notify-on-failure` for this workflow;

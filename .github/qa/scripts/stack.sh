@@ -75,8 +75,10 @@ if [ "$1" = start ]; then
     if [ "${2:-}" = dev ]; then
       # What the dev servers write in the checkout: Vite's cache, which also stages PowerSync's assets for
       # public/@powersync, and the bundled config, in a dir both users can add files to. Other caches go to CACHE_DIR
-      # (see as_server).
-      sudo install -d --owner "$QA_BACKEND_USER" node_modules/.vite public/@powersync
+      # (see as_server). The chown is recursive because a restored cache can hold Vite's optimized deps, and Vite
+      # deletes them when they go stale.
+      mkdir -p node_modules/.vite public/@powersync
+      sudo chown -R "$QA_BACKEND_USER" node_modules/.vite public/@powersync
       sudo install -d --mode 1777 node_modules/.vite-temp
     fi
     # sudo makes itself unkillable by this user, so after `lock` only this rule stops the servers: SIGTERM to all of

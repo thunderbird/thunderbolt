@@ -20,7 +20,7 @@ import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 /** Get an envelope by device ID and user ID. `wrappedCk` carries the AK (v2). */
 export const getEnvelopeByDeviceId = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database
-    .select({ wrappedCk: envelopesTable.wrappedCk })
+    .select({ wrappedCk: envelopesTable.wrappedCk, attestation: envelopesTable.attestation })
     .from(envelopesTable)
     .where(and(eq(envelopesTable.deviceId, deviceId), eq(envelopesTable.userId, userId)))
     .limit(1)

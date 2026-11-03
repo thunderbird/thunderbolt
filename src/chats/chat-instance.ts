@@ -823,7 +823,8 @@ export const createChatInstance = (
   }
 
   /** Flag the stopped turn's prompt and save it, so later turns can tell the model the reply was
-   *  stopped (see `withStoppedReplyMarkers`). Saved now so the flag survives a reload. */
+   *  stopped (see `withStoppedReplyMarkers`). The flag is set as soon as this is called; the
+   *  returned promise is only the save, which keeps the flag across a reload. */
   const markPromptStopped = async () => {
     const index = instance.messages.findLastIndex((message) => message.role === 'user')
     const prompt = instance.messages[index]
@@ -879,6 +880,9 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
+        // Not awaited yet: the SDK is already `ready` and doesn't await onFinish, so a new
+        // send could land during the saves below and become the last prompt.
+        const promptMarked = markPromptStopped()
         // Settle the aborted turn so no spinner survives the stop,
         // keyed off the trailing assistant message.
         const lastIndex = instance.messages.length - 1
@@ -915,7 +919,7 @@ export const createChatInstance = (
           await saveMessages({ id, messages: [completedMessage] })
           finishedTurn.telemetry?.endPhase('final_save')
         }
-        await markPromptStopped()
+        await promptMarked
         emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
@@ -1228,11 +1232,11 @@ export const createChatInstance = (
       instance.messages = instance.messages.slice(0, -1)
     }
     // Voice mode also calls `stop` when nothing is running; only a pending retry is a reply cut short.
-    if (stoppedRetry) {
-      await markPromptStopped()
-    }
+    // Settle before awaiting the save, so a turn started meanwhile is never reset.
+    const promptMarked = stoppedRetry ? markPromptStopped() : undefined
     emitTurnCompleted(currentTurn, 'abort')
     resetRetryStateForNewTurn()
+    await promptMarked
   }
 
   return instance

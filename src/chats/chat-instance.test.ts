@@ -582,6 +582,40 @@ describe('createChatInstance — retry policy', () => {
     expect(saved.map((message) => [message.id, message.metadata?.stoppedByUser])).toEqual([['u1', true]])
   })
 
+  it('flags the stopped prompt, not one sent while the stop is still saving', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    // The SDK doesn't await onFinish, so a send can land before its first save resolves.
+    const settled = finishAborted()
+    instance.messages = [
+      ...instance.messages,
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'Which city?' }] },
+    ]
+    await settled
+
+    expect(instance.messages.map((message) => message.metadata?.stoppedByUser)).toEqual([true, undefined, undefined])
+  })
+
+  it('flags the prompt when stop() cancels a pending retry, without resetting a turn started meanwhile', async () => {
+    const { resolveSave, saveMessages } = createDeferredSaveMessages()
+    const { finishWithError, getTurnBudget, instance } = createRetryHarness(saveMessages)
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Write an essay' }] }] as never
+    await finishWithError()
+
+    const stopped = instance.stop()
+    await instance.sendMessage({ text: 'Which city?' })
+    const newTurnBudget = getTurnBudget()
+    resolveSave(0)
+    await stopped
+
+    expect(instance.messages[0]!.metadata?.stoppedByUser).toBe(true)
+    expect(getTurnBudget()).toBe(newTurnBudget)
+  })
+
   it('does not flag the last prompt when stop() runs with nothing in flight', async () => {
     const { instance } = createRetryHarness()
     instance.messages = [

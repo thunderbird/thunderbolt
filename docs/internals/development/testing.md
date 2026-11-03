@@ -40,15 +40,19 @@ helm unittest deploy/k8s
 All Chrome-based tests use Google’s current **Chrome for Testing Stable**, downloaded separately from
 Playwright with `bun run browsers:install`. Run it after setting up a checkout and regularly before browser
 work. CI refreshes Stable on every run, including after restoring a cache. Installing Playwright alone, or
-running `playwright install chromium`, does not refresh this browser.
+running `playwright install chromium`, does not refresh this browser. On Linux, `--with-deps` also installs
+the system libraries Playwright lists for its own Chromium. We install with `@puppeteer/browsers` because
+Playwright's `channel: 'chrome'` launches the system Google Chrome, and `playwright install chrome` replaces
+that installation on macOS and Linux. Its Linux installer also does not support Arm64.
 
 The Stable alias lives under the Playwright browser cache (`stable-chrome/`) and is resolved locally when
 launching tests. An absent installation fails rather than silently falling back to Playwright’s pinned Chromium.
-`PLAYWRIGHT_BROWSERS_PATH` supports a shared cache across OS users. Firefox and WebKit still use the
+`PLAYWRIGHT_BROWSERS_PATH` supports a shared cache across OS users. Only the user who installs into it should
+be able to write to it, because every other user runs the browsers it holds. Firefox and WebKit still use the
 builds paired with Playwright and must be updated with Playwright.
 
 The QA MCP servers use this same build. GitHub Actions receives its executable path from the installer;
-for local QA, export it after installation:
+for local QA, export it again after each `browsers:install`, because the path names one Chrome build:
 
 ```sh
 export THUNDERBOLT_CHROME_EXECUTABLE="$(bun scripts/chrome.ts)"

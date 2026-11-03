@@ -19,7 +19,7 @@ import type { ChatListProps } from './types'
 
 let restoreMeasurement: () => void
 beforeAll(async () => {
-  restoreMeasurement = mockVirtuaMeasurement()
+  restoreMeasurement = mockVirtuaMeasurement({ viewportHeight: 1200 })
   await setupTestDatabase()
 })
 afterEach(() => {
@@ -32,7 +32,7 @@ afterAll(async () => {
   await teardownTestDatabase()
 })
 
-const chats = Array.from({ length: 12 }, (_, index) => ({
+const chats = Array.from({ length: 27 }, (_, index) => ({
   id: `chat-${index + 1}`,
   title: `Recent chat ${index + 1}`,
   projectId: null,
@@ -91,9 +91,9 @@ it('collapses Recents and restores its expanded preview', async () => {
   await waitForElement(() => screen.queryByText('Recent chat 1'))
   const section = screen.getByRole('button', { name: 'Recents' })
   expect(section).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.queryByText('Recent chat 6')).not.toBeInTheDocument()
+  expect(screen.queryByText('Recent chat 21')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Show more recent chats' }))
-  expect(await waitForElement(() => screen.queryByText('Recent chat 10'))).toBeVisible()
+  expect(await waitForElement(() => screen.queryByText('Recent chat 25'))).toBeVisible()
 
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'false')
@@ -104,8 +104,8 @@ it('collapses Recents and restores its expanded preview', async () => {
 
   fireEvent.click(section)
   expect(section).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByText('Recent chat 10')).toBeVisible()
-  expect(screen.queryByText('Recent chat 11')).not.toBeInTheDocument()
+  expect(screen.getByText('Recent chat 25')).toBeVisible()
+  expect(screen.queryByText('Recent chat 26')).not.toBeInTheDocument()
 })
 
 it('opens the protected burn confirmation by long-pressing Recents without toggling the section', async () => {
@@ -195,7 +195,7 @@ it('opens the Recents confirmation by right-clicking the desktop heading', async
   expect(section).toHaveAttribute('aria-expanded', 'true')
 })
 
-it('shows one Recents rail button and reveals five chats at a time inside its menu', async () => {
+it('shows one Recents rail button and starts with twenty chats and reveals five more inside its menu', async () => {
   const onChatClick = mock(() => {})
   render(<Fixture isMobile={false} isCollapsed onChatClick={onChatClick} />, { wrapper: createTestProvider() })
   const trigger = screen.getByRole('button', { name: 'Recents' })
@@ -203,9 +203,9 @@ it('shows one Recents rail button and reveals five chats at a time inside its me
 
   fireEvent.keyDown(trigger, { key: 'Enter' })
   await waitForElement(() => screen.queryByRole('menuitem', { name: 'Recent chat 1' }))
-  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(5)
+  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(20)
   fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' }))
-  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(10)
+  expect(screen.getAllByRole('menuitem', { name: /^Recent chat / })).toHaveLength(25)
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(screen.getByRole('menuitem', { name: 'Recent chat 9' }))
   expect(onChatClick).toHaveBeenCalledWith('chat-9', null)

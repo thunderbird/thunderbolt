@@ -16,6 +16,7 @@ import {
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { ChatMenuItems } from './chat-menu-items'
+import { recentChatsPreviewCount } from './use-sidebar-preview-state'
 import type { ChatListProps } from './types'
 
 /** Keep recent chats and their bulk action inside one collapsed-rail menu. */
@@ -77,7 +78,12 @@ export const RecentChatsMenu = ({
             </DropdownMenuItem>
           )}
         </div>
-        <ChatMenuItems chatThreads={chatThreads} currentChatThreadId={currentChatThreadId} onChatClick={onChatClick} />
+        <ChatMenuItems
+          initialCount={recentChatsPreviewCount}
+          chatThreads={chatThreads}
+          currentChatThreadId={currentChatThreadId}
+          onChatClick={onChatClick}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => createNewChat()}>
           <Plus />

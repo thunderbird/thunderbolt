@@ -14,9 +14,10 @@ export const ChatMenuItems = ({
   chatThreads,
   currentChatThreadId,
   onChatClick,
-}: Pick<ChatListProps, 'chatThreads' | 'currentChatThreadId' | 'onChatClick'>) => {
+  initialCount,
+}: Pick<ChatListProps, 'chatThreads' | 'currentChatThreadId' | 'onChatClick'> & { initialCount?: number }) => {
   const { i18n } = useLingui()
-  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId)
+  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId, initialCount)
 
   return (
     <>

@@ -14,7 +14,7 @@ import { type Ref, type RefObject } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
 import { ChatListItem } from './chat-list-item'
 import type { ChatListProps } from './types'
-import { useSidebarPreviewState } from './use-sidebar-preview-state'
+import { recentChatsPreviewCount, useSidebarPreviewState } from './use-sidebar-preview-state'
 import { useSharedChatListMetrics } from './use-shared-chat-list-metrics'
 import { SidebarListToggle } from './sidebar-list-toggle'
 import { SidebarSectionToggle } from './sidebar-section-toggle'
@@ -58,7 +58,7 @@ export const ChatList = ({
   const createNewChat = useCreateNewChat()
   const { closeMobileSidebar } = useSidebar()
   const shared = useSharedChatListMetrics(isCollapsed ? undefined : scrollRef)
-  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId)
+  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId, recentChatsPreviewCount)
   const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.recents.expanded', 'true')
   const sectionExpanded = storedExpanded !== 'false'
   const hasListContent = chatThreads.length > 0

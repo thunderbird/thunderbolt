@@ -12,6 +12,7 @@
  */
 
 import { defineConfig, devices } from '@playwright/test'
+import { getChromeLaunchOptions } from './scripts/chrome'
 import { testOrgEscrowPublicKey } from './e2e/e2ee/org-escrow-key'
 
 const isCI = !!process.env.CI
@@ -97,6 +98,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     ...devices['Desktop Chrome'],
+    launchOptions: getChromeLaunchOptions(),
     baseURL: `http://localhost:${frontendPort}`,
     permissions: ['clipboard-read', 'clipboard-write'],
     screenshot: 'only-on-failure',

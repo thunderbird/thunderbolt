@@ -315,7 +315,7 @@ export const SearchableMenu = <T,>({
           {triggerContent}
         </button>
       }
-      mobileMenu={{ side: mobileSide, className: contentClassName, initialFocus: false }}
+      mobileMenu={{ side: mobileSide, className: contentClassName }}
       desktopMenu={{
         align,
         side,

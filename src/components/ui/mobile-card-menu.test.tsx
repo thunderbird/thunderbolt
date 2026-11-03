@@ -3,10 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import { getClock } from '@/testing-library'
 import { MobileCardMenu } from './mobile-card-menu'
 
 afterEach(cleanup)
@@ -95,29 +94,5 @@ describe('MobileCardMenu', () => {
     fireEvent.click(viewport)
     expect(onOpenChange).toHaveBeenCalledTimes(1)
     expect(onOpenChange.mock.calls[0]?.[0]).toBe(false)
-  })
-
-  it('moves focus off the aria-hidden trigger when initialFocus is false', async () => {
-    const renderMenu = (open: boolean) => (
-      <>
-        <button type="button">Trigger</button>
-        <MobileCardMenu open={open} onOpenChange={() => {}} title="Choose model" initialFocus={false}>
-          <button type="button">Model one</button>
-        </MobileCardMenu>
-      </>
-    )
-    const { rerender } = render(renderMenu(false))
-    const trigger = screen.getByRole('button', { name: 'Trigger' })
-    act(() => trigger.focus())
-
-    rerender(renderMenu(true))
-    await act(async () => {
-      await getClock().runAllAsync()
-    })
-
-    // The modal sheet aria-hides everything outside it, so focus left on the
-    // trigger would be hidden from assistive technology.
-    expect(trigger.closest('[aria-hidden="true"]')).not.toBeNull()
-    expect(document.activeElement?.getAttribute('data-slot')).toBe('drawer-content')
   })
 })

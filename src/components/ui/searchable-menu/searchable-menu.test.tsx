@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { desktopWidth, forceMobileViewport, mobileWidth, restoreViewport, setViewport } from '@/test-utils/viewport'
 import { SearchableMenu } from './searchable-menu'
 import type { SearchableMenuItem } from './types'
@@ -121,6 +122,24 @@ describe('SearchableMenu', () => {
 
       fireEvent.click(screen.getByText('Option 2'))
       expect(handleChange).toHaveBeenCalledWith('2', mockFlatItems[1])
+    })
+
+    it('moves focus from the trigger to the drawer without focusing the search field', async () => {
+      forceMobileViewport()
+      const renderMenu = (open: boolean) => (
+        <SearchableMenu items={mockFlatItems} onValueChange={() => {}} open={open} onOpenChange={() => {}} />
+      )
+      const { rerender } = render(renderMenu(false))
+      const trigger = document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement
+      act(() => trigger.focus())
+
+      rerender(renderMenu(true))
+      await act(() => getClock().runAllAsync())
+
+      // The open drawer hides the rest of the page, including the trigger, from screen readers.
+      expect(trigger.closest('[aria-hidden="true"]')).not.toBeNull()
+      expect(document.activeElement?.getAttribute('data-slot')).toBe('drawer-content')
+      expect(screen.getByPlaceholderText('Search…')).not.toHaveFocus()
     })
   })
 })

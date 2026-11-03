@@ -15,6 +15,7 @@ type MobileActionSheetProps = {
   description?: string
   children: ReactNode
   initialFocus?: ComponentProps<typeof DrawerContent>['initialFocus']
+  portalContainer?: ComponentProps<typeof DrawerContent>['portalContainer']
   role?: 'dialog' | 'alertdialog'
 }
 
@@ -29,10 +30,17 @@ export const MobileActionSheet = ({
   description,
   children,
   initialFocus,
+  portalContainer,
   role = 'dialog',
 }: MobileActionSheetProps) => (
   <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="down">
-    <DrawerContent forceBackdrop initialFocus={initialFocus} role={role} className={modalFieldSurfaceClass}>
+    <DrawerContent
+      forceBackdrop
+      portalContainer={portalContainer}
+      initialFocus={initialFocus}
+      role={role}
+      className={modalFieldSurfaceClass}
+    >
       <DrawerHandle className="mb-1 mt-2" />
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-[var(--modal-footer-inset)] pt-2">
         <div className="flex shrink-0 flex-col gap-2">

@@ -12,6 +12,12 @@ export type SearchableMenuItem<T = unknown> = {
   description?: string
   icon?: ReactNode
   disabled?: boolean
+  /** Independent row action, such as configuring an item without selecting it. */
+  action?: {
+    label: string
+    icon: ReactNode
+    onAction: () => void
+  }
   data?: T
   /** Additional searchable text (not displayed) */
   searchTerms?: string
@@ -55,8 +61,8 @@ export type SearchableMenuProps<T = unknown> = {
   trigger?: ReactNode | ((selected: SearchableMenuItem<T> | undefined, isOpen: boolean) => ReactNode)
   /** Custom item renderer */
   renderItem?: (item: SearchableMenuItem<T>, isSelected: boolean) => ReactNode
-  /** Footer action row; the menu owns its rendering and close-first behavior. */
-  footerAction?: SearchableMenuFooterAction
+  /** One or more footer actions; the menu owns rendering and close-first behavior. */
+  footerAction?: SearchableMenuFooterAction | SearchableMenuFooterAction[]
   /** Popover width */
   width?: string | number
   /** Controlled open state */

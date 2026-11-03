@@ -51,5 +51,8 @@ describe('moveChatToProject', () => {
       'database is gone',
     )
     expect(failing.updateOpenSession).not.toHaveBeenCalled()
+    // A failed write must release the chat's queue for a subsequent move.
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p2' }, deps)
+    expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', 'p2')
   })
 })

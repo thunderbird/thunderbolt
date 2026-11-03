@@ -7,9 +7,11 @@
  * tests are really about when the chat subtree remounts — and, more to the
  * point, when it must not.
  */
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 import { useNewChatId } from './detail'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 
 /** Mirrors the route: `/chats/new` → isNew true, `/chats/<id>` → false. */
 const renderRoute = (isNew: boolean, projectId: string | null = null) =>
@@ -71,4 +73,34 @@ describe('useNewChatId', () => {
     rerender({ isNew: false, projectId: null })
     expect(result.current).toBe(idle)
   })
+})
+
+it('starts a fresh standalone draft on repeated New Chat actions at the same URL', () => {
+  const { result } = renderHook(
+    () => {
+      const location = useLocation()
+      const navigate = useNavigate()
+      const createNewChat = useCreateNewChat()
+      const requestedId = (location.state as { newChatRequestId?: string } | null)?.newChatRequestId
+      const projectId = new URLSearchParams(location.search).get('projectId')
+      return {
+        id: useNewChatId(true, projectId, requestedId),
+        createNewChat,
+        consumeFocus: () => navigate(location.pathname + location.search, { replace: true, state: {} }),
+        location,
+      }
+    },
+    { wrapper: MemoryRouter },
+  )
+  act(() => result.current.createNewChat())
+  const first = result.current.id
+  act(() => result.current.consumeFocus())
+  expect(result.current.id).toBe(first)
+  act(() => result.current.createNewChat())
+  expect(result.current.location.pathname).toBe('/chats/new')
+  expect(result.current.location.search).toBe('')
+  expect(result.current.id).not.toBe(first)
+  const second = result.current.id
+  act(() => result.current.consumeFocus())
+  expect(result.current.id).toBe(second)
 })

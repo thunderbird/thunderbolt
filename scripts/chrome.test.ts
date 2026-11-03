@@ -18,11 +18,27 @@ describe('Chrome cache', () => {
     )
   })
 
-  test('uses the platform cache and honors Linux and Windows cache overrides', () => {
-    expect(getChromeCacheDir({}, 'darwin', '/home')).toBe('/home/Library/Caches/ms-playwright/stable-chrome')
-    expect(getChromeCacheDir({}, 'linux', '/home')).toBe('/home/.cache/ms-playwright/stable-chrome')
-    expect(getChromeCacheDir({ XDG_CACHE_HOME: '/cache' }, 'linux', '/home')).toBe('/cache/ms-playwright/stable-chrome')
-    expect(getChromeCacheDir({ LOCALAPPDATA: '/local' }, 'win32', '/home')).toBe('/local/ms-playwright/stable-chrome')
+  test.each([
+    ['macOS default', {}, 'darwin', '/home/Library/Caches/ms-playwright/stable-chrome'],
+    ['Linux default', {}, 'linux', '/home/.cache/ms-playwright/stable-chrome'],
+    ['XDG_CACHE_HOME', { XDG_CACHE_HOME: '/cache' }, 'linux', '/cache/ms-playwright/stable-chrome'],
+    ['empty XDG_CACHE_HOME', { XDG_CACHE_HOME: '' }, 'linux', '/home/.cache/ms-playwright/stable-chrome'],
+    ['LOCALAPPDATA', { LOCALAPPDATA: '/local' }, 'win32', '/local/ms-playwright/stable-chrome'],
+    ['win32 without LOCALAPPDATA', {}, 'win32', '/home/AppData/Local/ms-playwright/stable-chrome'],
+    [
+      'relative PLAYWRIGHT_BROWSERS_PATH',
+      { PLAYWRIGHT_BROWSERS_PATH: 'browsers', INIT_CWD: '/repo' },
+      'linux',
+      '/repo/browsers/stable-chrome',
+    ],
+  ] as const)('%s', (_, env, platform, expected) => {
+    expect(getChromeCacheDir(env, platform, '/home')).toBe(expected)
+  })
+
+  test('keeps PLAYWRIGHT_BROWSERS_PATH=0 inside the checkout', () => {
+    expect(getChromeCacheDir({ PLAYWRIGHT_BROWSERS_PATH: '0' }, 'linux', '/home')).toBe(
+      join(import.meta.dir, '../node_modules/.cache/stable-chrome'),
+    )
   })
 
   test('resolves an updated Stable alias even when the Playwright version stays fixed', () => {

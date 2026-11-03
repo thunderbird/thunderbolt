@@ -13,19 +13,21 @@ export const getChromeCacheDir = (
   platform: NodeJS.Platform = process.platform,
   home = homedir(),
 ): string => {
+  // Same rules as playwright-core's registryDirectory: an empty variable counts as unset, and a relative path
+  // starts at INIT_CWD.
   if (env.PLAYWRIGHT_BROWSERS_PATH === '0') {
     return resolve(dirname(fileURLToPath(import.meta.url)), '../node_modules/.cache/stable-chrome')
   }
   if (env.PLAYWRIGHT_BROWSERS_PATH) {
-    return resolve(env.PLAYWRIGHT_BROWSERS_PATH, 'stable-chrome')
+    return resolve(env.INIT_CWD || process.cwd(), env.PLAYWRIGHT_BROWSERS_PATH, 'stable-chrome')
   }
   if (platform === 'darwin') {
     return join(home, 'Library/Caches/ms-playwright/stable-chrome')
   }
   if (platform === 'win32') {
-    return join(env.LOCALAPPDATA ?? join(home, 'AppData/Local'), 'ms-playwright/stable-chrome')
+    return join(env.LOCALAPPDATA || join(home, 'AppData/Local'), 'ms-playwright/stable-chrome')
   }
-  return join(env.XDG_CACHE_HOME ?? join(home, '.cache'), 'ms-playwright/stable-chrome')
+  return join(env.XDG_CACHE_HOME || join(home, '.cache'), 'ms-playwright/stable-chrome')
 }
 
 /** Resolve the installed Stable alias without network access or a fallback to bundled Chromium. */

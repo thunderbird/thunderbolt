@@ -58,6 +58,7 @@ export default defineConfig({
       browsers.map(({ name, device }) => ({
         ...project,
         name: `${project.name}-${name}`,
+        // Drop the base project's Chrome executablePath; only the Chromium devices set their own.
         use: { ...project.use, launchOptions: {}, ...device, baseURL: project.use?.baseURL },
       })),
     ) ?? []),

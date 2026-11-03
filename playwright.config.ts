@@ -32,6 +32,8 @@ const gateVitePort = 1423
 const gateBackendPort = 8004
 const gateMinAppVersion = '99.0.0'
 
+const desktopChrome = { ...devices['Desktop Chrome'], launchOptions: getChromeLaunchOptions() }
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -60,8 +62,7 @@ export default defineConfig({
       name: 'consumer',
       testMatch: /consumer-.*\.spec\.ts$/,
       use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: getChromeLaunchOptions(),
+        ...desktopChrome,
         baseURL: `http://localhost:${consumerVitePort}`,
       },
     },
@@ -73,8 +74,7 @@ export default defineConfig({
       // saml-test-certs.ts, helpers.ts) are never misclassified as test files.
       testMatch: /(?:oidc|acp-|proxy-).*\.spec\.ts$/,
       use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: getChromeLaunchOptions(),
+        ...desktopChrome,
         baseURL: `http://localhost:${oidcVitePort}`,
       },
     },
@@ -86,8 +86,7 @@ export default defineConfig({
       // import test file").
       testMatch: /saml.*\.spec\.ts$/,
       use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: getChromeLaunchOptions(),
+        ...desktopChrome,
         baseURL: `http://localhost:${samlVitePort}`,
       },
     },
@@ -100,8 +99,7 @@ export default defineConfig({
       name: 'min-version-gate',
       testMatch: /min-version-gate\.spec\.ts$/,
       use: {
-        ...devices['Desktop Chrome'],
-        launchOptions: getChromeLaunchOptions(),
+        ...desktopChrome,
         baseURL: `http://localhost:${oidcVitePort}`,
       },
     },
@@ -112,7 +110,7 @@ export default defineConfig({
       // not the worktree dir "feat-html-artifact-tool" (which also contains "artifact-").
       name: 'artifact',
       testMatch: /\/artifact-[^/]*\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'], launchOptions: getChromeLaunchOptions() },
+      use: desktopChrome,
     },
   ],
   webServer: [

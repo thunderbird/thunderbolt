@@ -471,7 +471,7 @@ jobs:
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5
 
-      - name: Install Chromium
+      - name: Install Chrome for Testing
         run: bun run browsers:install --with-deps
 
       # The layout probe's static pages; they need no stack.

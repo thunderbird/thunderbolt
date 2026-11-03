@@ -1082,6 +1082,7 @@ msgstr "Fenêtre de contexte dépassée"
 msgid "Continue"
 msgstr "Continuer"
 
+#: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
 msgstr "Copié"
@@ -1101,6 +1102,10 @@ msgstr "Copier la cible du bridge"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr "Copier la commande de compilation"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Copy fingerprint"
+msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
@@ -1191,6 +1196,10 @@ msgstr "Impossible d'ajouter la clé d'accès. Vous pourrez en ajouter une plus 
 msgid "Couldn't add the agent. Please try again."
 msgstr "Impossible d'ajouter l'agent. Veuillez réessayer."
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't approve this device. Please try again."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Impossible de joindre « {filename} » — le stockage de votre navigateur est plein ou indisponible."
@@ -1206,6 +1215,14 @@ msgstr "Impossible de rechercher des mises à jour : {error}"
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates."
 msgstr "Impossible de rechercher des mises à jour."
+
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't copy. Select the fingerprint to copy it manually."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't download the update"
@@ -1299,6 +1316,10 @@ msgstr "Impossible de mettre à jour. Veuillez réessayer."
 #: src/components/chat/error-message.tsx
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr "Impossible de vérifier la connexion IA sécurisée. C'est généralement temporaire — réessayez dans un instant."
+
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
+msgstr ""
 
 #: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
@@ -1593,6 +1614,11 @@ msgstr "Paramètres de développement"
 msgid "Device access revoked"
 msgstr "Accès de l'appareil révoqué"
 
+#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Device fingerprint"
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
 msgstr "QR code d'association de l'appareil"
@@ -1882,6 +1908,14 @@ msgstr "Saisissez le code à 8 chiffres"
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
 msgstr "Saisissez le code affiché dans votre terminal pour continuer."
+
+#: src/components/approve-device-dialog.tsx
+msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Enter this fingerprint on your trusted device before approving."
+msgstr ""
 
 #: src/components/sign-in-modal.tsx
 msgid "Enter your code"
@@ -4236,6 +4270,10 @@ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
+msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
 msgstr ""
 
 #: src/components/chat/error-message.tsx

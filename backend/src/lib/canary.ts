@@ -110,10 +110,23 @@ export const verifyChallengeSignature = async (
     return false
   }
 
+  return verifyAccountSignature(
+    metadata.signingPublicKey,
+    proof.signature,
+    encodeChallengePayload(proof.nonce, proof.operation, proof.deviceId),
+  )
+}
+
+/** Verify an account-epoch signature over a caller-reconstructed, domain-separated payload. */
+export const verifyAccountSignature = async (
+  signingPublicKey: string,
+  signature: string,
+  payload: Uint8Array,
+): Promise<boolean> => {
   try {
     const publicKey = await crypto.subtle.importKey(
       signingPublicKeyFormat,
-      Buffer.from(metadata.signingPublicKey, 'base64'),
+      Buffer.from(signingPublicKey, 'base64'),
       ecdsaKeyAlgorithm,
       false,
       ['verify'],
@@ -121,9 +134,9 @@ export const verifyChallengeSignature = async (
     return await crypto.subtle.verify(
       ecdsaSignAlgorithm,
       publicKey,
-      Buffer.from(proof.signature, 'base64'),
+      Buffer.from(signature, 'base64'),
       // Copy into a fresh Uint8Array so TS narrows the backing buffer to ArrayBuffer (BufferSource).
-      new Uint8Array(encodeChallengePayload(proof.nonce, proof.operation, proof.deviceId)),
+      new Uint8Array(payload),
     )
   } catch {
     // Malformed public key or signature bytes — reject rather than throw.

@@ -14,6 +14,7 @@ export {
   upsertDevice,
   upsertCliDevice,
   revokeDevice,
+  requireMigrationSiblingApproval,
   denyDevice,
   markDeviceTrusted,
   registerDevice,

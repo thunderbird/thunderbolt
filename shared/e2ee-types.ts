@@ -668,7 +668,7 @@ export type WrappedKeysListResponse = {
 }
 
 /**
- * GET /v1/encryption/envelope-targets — the devices an AK rotation / upgrade must
+ * GET /v1/encryption/envelope-targets — the devices an AK rotation must
  * cover, with the hybrid public keys needed to wrap an envelope for each. Every
  * entry is envelope-capable by construction (trusted, non-revoked, both keys
  * present), so both fields are non-null.

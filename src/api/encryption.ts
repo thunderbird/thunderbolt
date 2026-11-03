@@ -41,7 +41,7 @@ export type RegisterDeviceResponse =
 type StoreEnvelopeResponse = { trusted: true }
 
 /** GET /devices/me/envelope — `wrappedCK` carries the AK in v2 (name kept for wire compat). */
-type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string }
+type FetchEnvelopeResponse = { trusted: boolean; wrappedCK: string; attestation: string | null }
 
 // =============================================================================
 // Device registration + envelopes
@@ -188,7 +188,7 @@ export const fetchWrappedKey = async (httpClient: HttpClient, keyId: KeyId): Pro
   httpClient.get(`encryption/keys/${encodeURIComponent(keyId)}`).json<WrappedKeyResponse>()
 
 /**
- * The devices an AK rotation / upgrade must cover, with the public keys needed to
+ * The devices an AK rotation must cover, with the public keys needed to
  * wrap for each. Server-authoritative on purpose: it is the same predicate the
  * coverage validator uses, so the two can never disagree the way a
  * PowerSync-synced local read could.
@@ -235,9 +235,9 @@ export const postStepUpRequest = async (httpClient: HttpClient): Promise<void> =
 }
 
 /**
- * v1→v2 migration (WS1): the migrator absorbs the legacy CK as the `"v1"` slot,
+ * v1→v2 migration: the migrator absorbs the legacy CK as the `"v1"` slot,
  * mints a fresh primary DEK `"0"`, registers the signing key + kdf_salt +
- * recovery slot, writes a new-AK envelope for every trusted device, and
+ * recovery slot and the sole device envelope for its local keys, and
  * CAS-flips scheme_version 1→2
  * atomically. Gated by the D1 CK-possession proof (not a signature). A second
  * concurrent migrator loses the CAS and receives HTTP 409.

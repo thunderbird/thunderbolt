@@ -1070,6 +1070,7 @@ msgstr ""
 msgid "Continue"
 msgstr ""
 
+#: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
 msgstr ""
@@ -1088,6 +1089,10 @@ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Copy fingerprint"
 msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
@@ -1179,6 +1184,10 @@ msgstr ""
 msgid "Couldn't add the agent. Please try again."
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't approve this device. Please try again."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr ""
@@ -1193,6 +1202,14 @@ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates."
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't copy. Select the fingerprint to copy it manually."
 msgstr ""
 
 #: src/settings/app-version-section.tsx
@@ -1286,6 +1303,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
+msgstr ""
+
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
 msgstr ""
 
 #: src/projects/project-create-form.tsx
@@ -1581,6 +1602,11 @@ msgstr ""
 msgid "Device access revoked"
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Device fingerprint"
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
 msgstr ""
@@ -1869,6 +1895,14 @@ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
+msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Enter this fingerprint on your trusted device before approving."
 msgstr ""
 
 #: src/components/sign-in-modal.tsx
@@ -4224,6 +4258,10 @@ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
+msgstr ""
+
+#: src/components/approve-device-dialog.tsx
+msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
 msgstr ""
 
 #: src/components/chat/error-message.tsx

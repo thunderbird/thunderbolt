@@ -12,7 +12,7 @@ import {
   getDeviceById,
   getEncryptionMetadata,
   getUserById,
-  upsertDevice,
+  touchDevice,
 } from '@/dal'
 import { findPlaintextViolation } from '@/lib/encrypted-payload'
 import type { db as DbType } from '@/db/client'
@@ -86,7 +86,7 @@ const validateDeviceForSync = async (
 }
 
 /**
- * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, device upsert.
+ * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, `touchDevice`.
  * Used by both session-based and bearer-only token paths.
  * Requires x-device-id so revocation can always be enforced; a revoked device cannot bypass by omitting it.
  *
@@ -117,19 +117,7 @@ const issuePowerSyncToken = async (
   // (e.g. `1.234.567-rc.1+build.2024.01.01`).
   const appVersion = rawAppVersion && rawAppVersion.length > 0 && rawAppVersion.length <= 64 ? rawAppVersion : undefined
 
-  const now = new Date()
-  const upserted = await upsertDevice(database, {
-    id: deviceId,
-    userId,
-    name: deviceName,
-    lastSeen: now,
-    createdAt: now,
-    ...(appVersion ? { appVersion } : {}),
-  })
-
-  if (upserted.length === 0 || upserted[0].userId !== userId) {
-    return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
-  }
+  await touchDevice(database, { id: deviceId, userId, name: deviceName, ...(appVersion ? { appVersion } : {}) })
 
   const token = await powersyncJwt.sign({ sub: userId, user_id: userId, device_id: deviceId })
   const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()

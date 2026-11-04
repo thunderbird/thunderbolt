@@ -10,6 +10,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   countActiveDevices,
+  deviceLastSeenRefreshMs,
   denyDevice,
   getDeviceById,
   getTrustedNodeIds,
@@ -19,8 +20,8 @@ import {
   registerDevice,
   revokeDevice,
   setDeviceNodeId,
+  touchDevice,
   upsertCliDevice,
-  upsertDevice,
   withUserDeviceRegistrationLock,
 } from './devices'
 
@@ -103,21 +104,51 @@ describe('devices DAL', () => {
     })
   })
 
-  describe('upsertDevice', () => {
-    it('inserts a new device', async () => {
-      const now = new Date()
-      const result = await upsertDevice(db, { id: 'd2', userId, name: 'Laptop', lastSeen: now, createdAt: now })
-      expect(result).toHaveLength(1)
-      expect(result[0].name).toBe('Laptop')
+  describe('touchDevice', () => {
+    const lastSeen = new Date('2026-11-04T10:00:00Z')
+    const insertDevice = () =>
+      db.insert(devicesTable).values({ id: 'd3', userId, name: 'Tablet', appVersion: '0.1.90', lastSeen })
+    const readDevice = async () => (await db.select().from(devicesTable).where(eq(devicesTable.id, 'd3')))[0]
+
+    it('skips the write while lastSeen is fresh and nothing changed', async () => {
+      await insertDevice()
+      const now = new Date(lastSeen.getTime() + deviceLastSeenRefreshMs - 1000)
+
+      const result = await touchDevice(db, { id: 'd3', userId, name: 'Tablet', appVersion: '0.1.90' }, now)
+
+      expect(result).toHaveLength(0)
+      expect((await readDevice()).lastSeen).toEqual(lastSeen)
     })
 
-    it('updates lastSeen on conflict', async () => {
-      const now = new Date()
-      await upsertDevice(db, { id: 'd3', userId, name: 'Tablet', lastSeen: now, createdAt: now })
-      const later = new Date(now.getTime() + 60000)
-      await upsertDevice(db, { id: 'd3', userId, name: 'Tablet Updated', lastSeen: later, createdAt: now })
-      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, 'd3'))
-      expect(rows[0].name).toBe('Tablet Updated')
+    it('refreshes lastSeen once it is stale', async () => {
+      await insertDevice()
+      const now = new Date(lastSeen.getTime() + deviceLastSeenRefreshMs + 1000)
+
+      const result = await touchDevice(db, { id: 'd3', userId, name: 'Tablet' }, now)
+
+      expect(result).toHaveLength(1)
+      expect((await readDevice()).lastSeen).toEqual(now)
+    })
+
+    it.each([
+      ['name', { name: 'Tablet Updated', appVersion: '0.1.90' }],
+      ['appVersion', { name: 'Tablet', appVersion: '0.1.91' }],
+    ])('writes a changed %s even while lastSeen is fresh', async (_field, change) => {
+      await insertDevice()
+      const now = new Date(lastSeen.getTime() + 1000)
+
+      await touchDevice(db, { id: 'd3', userId, ...change }, now)
+
+      expect(await readDevice()).toMatchObject({ ...change, lastSeen: now })
+    })
+
+    it("never touches another user's device", async () => {
+      await insertDevice()
+
+      const result = await touchDevice(db, { id: 'd3', userId: 'someone-else', name: 'Stolen' })
+
+      expect(result).toHaveLength(0)
+      expect((await readDevice()).name).toBe('Tablet')
     })
   })
 

@@ -190,7 +190,7 @@ Correctness is unaffected, but never conclude anything about index usage from a 
 ### `ON CONFLICT` is the idiom, and `setWhere` is load-bearing
 
 Every upsert pins its conflict handling with a `setWhere` re-asserting ownership
-(`eq(devicesTable.userId, …)`) or liveness (`isNull(devicesTable.revokedAt)`): `upsertDevice`,
+(`eq(devicesTable.userId, …)`) or liveness (`isNull(devicesTable.revokedAt)`):
 `upsertCliDevice`, `registerDevice`, `registerBridgeDevice`
 ([`devices.ts`](../../../backend/src/dal/devices.ts)) and `upsertEnvelope`
 ([`encryption.ts`](../../../backend/src/dal/encryption.ts)).

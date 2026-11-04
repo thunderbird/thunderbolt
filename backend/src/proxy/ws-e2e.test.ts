@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createApp } from '@/index'
 import { wsCloseAuthUnavailable, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
@@ -710,6 +710,8 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
   const servers: Array<{ stop: () => Promise<void> }> = []
 
   afterEach(async () => {
+    // Here rather than at the end of a test, so a failed or timed-out test does not leave console.error muted.
+    mock.restore()
     for (const server of servers.splice(0)) {
       await server.stop()
     }
@@ -767,11 +769,10 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
     expect((await closed).code).toBe(wsCloseAuthUnavailable)
     expect(upstreamConnections).toEqual([])
     expect(errorSpy.mock.calls.map(([line]) => line)).toContain('WebSocket bearer check failed — database down')
-    errorSpy.mockRestore()
   }, 15_000)
 
   it('dials nothing for a client that closes before the bearer check throws', async () => {
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(console, 'error').mockImplementation(() => {})
     const upstreamConnections: unknown[] = []
     const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
     const relay = await startRelay(upstream.port)
@@ -792,7 +793,6 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
 
     expect((await lateClosed).code).toBe(wsCloseAuthUnavailable)
     expect(upstreamConnections).toEqual([])
-    errorSpy.mockRestore()
   }, 15_000)
 
   it('closes the upstream with 1000 when the client closes without a status code', async () => {

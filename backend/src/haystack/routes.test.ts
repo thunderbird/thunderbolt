@@ -31,7 +31,7 @@ import { clearSettingsCache } from '@/config/settings'
 import { createGatedAuth } from '@/test-utils/mock-auth'
 import { createTestSettings } from '@/test-utils/settings'
 import { encodeWsBearer } from '@shared/ws-bearer'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
 import type { HaystackAcpDeps } from './acp-server'
@@ -180,6 +180,8 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   })
 
   afterEach(async () => {
+    // Here rather than at the end of a test, so a failed or timed-out test does not leave console.error muted.
+    mock.restore()
     for (const cleanup of cleanups.splice(0)) {
       await cleanup()
     }
@@ -371,7 +373,7 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   }, 15000)
 
   it('closes 1013 without sending a frame when the bearer check throws', async () => {
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(console, 'error').mockImplementation(() => {})
     const servers = countServersBuilt()
     const gated = await startGatedHaystack(servers.deps)
     cleanups.push(gated.stop)
@@ -387,11 +389,10 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     expect((await term).code).toBe(wsCloseAuthUnavailable)
     expect(frames).toEqual([])
     expect(servers.built()).toBe(0)
-    errorSpy.mockRestore()
   }, 15000)
 
   it('builds no Haystack server for a client that closes before the bearer check throws', async () => {
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    spyOn(console, 'error').mockImplementation(() => {})
     const servers = countServersBuilt()
     const gated = await startGatedHaystack(servers.deps)
     cleanups.push(gated.stop)
@@ -409,7 +410,6 @@ describe('WS /v1/haystack/ws — auth gating', () => {
 
     expect((await lateTerm).code).toBe(wsCloseAuthUnavailable)
     expect(servers.built()).toBe(0)
-    errorSpy.mockRestore()
   }, 15000)
 
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
+import { getChatReasoningEffort as defaultGetChatReasoningEffort } from '@/ai/reasoning-effort'
 import {
   getOrConnectAdapter as defaultGetOrConnectAdapter,
   wakeAdapterReconnect as defaultWakeAdapterReconnect,
@@ -219,6 +220,7 @@ const applySessionSideEffect = (effect: SessionSideEffect): void => {
  *  is forwarded through `getOrConnectAdapter` into the global cache so a test
  *  can fake the connect while exercising the real reuse path. */
 export type CreateChatInstanceDeps = {
+  getChatReasoningEffort?: typeof defaultGetChatReasoningEffort
   getOrConnectAdapter?: typeof defaultGetOrConnectAdapter
   connectToAgent?: typeof defaultConnectToAgent
   updateChatThread?: typeof defaultUpdateChatThread
@@ -355,6 +357,7 @@ export const createAgentRoutingFetch = (
       throw new Error('No session found')
     }
 
+    await session.configurationChange
     const { chatThread, selectedAgent, selectedModel } = session
     const telemetry =
       operation === 'prompt' && isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
@@ -472,6 +475,9 @@ export const createAgentRoutingFetch = (
       acpSessionId: chatThread?.acpSessionId ?? null,
       saveMessages,
       selectedModel,
+      reasoningEffort: isBuiltInAgent(selectedAgent)
+        ? await (deps.getChatReasoningEffort ?? defaultGetChatReasoningEffort)(id, selectedModel)
+        : undefined,
       mcpClients,
       reconnectClient,
       httpClient,

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { piReasoningCapabilities } from '../../../shared/agent-core/reasoning-capabilities.ts'
+import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { modelsAreEqual } from '@earendil-works/pi-ai'
@@ -388,5 +390,42 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     return disposePromise
   }
 
-  return { subscribe, registerToolCallGate, steer, prompt, abort, currentProviderId, switchBinding, deactivate, dispose }
+  const defaultThinkingLevel = harness.getThinkingLevel()
+  const reasoning = {
+    capabilities: () => piReasoningCapabilities(harness.getModel()),
+    current: (): ReasoningEffort | undefined => {
+      const level = harness.getThinkingLevel()
+      return level === defaultThinkingLevel
+        ? undefined
+        : level === 'off'
+          ? 'none'
+          : isReasoningEffort(level)
+            ? level
+            : undefined
+    },
+    set: async (effort: ReasoningEffort | undefined): Promise<void> => {
+      if (disposed || !activeBinding) throw new Error('Harness runtime is unavailable.')
+      if (promptActive || transitionActive) throw new Error('Wait for the current operation to finish.')
+      if (effort !== undefined && !reasoning.capabilities().efforts.includes(effort))
+        throw new Error('Unsupported reasoning effort.')
+      const finish = beginTransition()
+      try {
+        await harness.setThinkingLevel(effort === undefined ? defaultThinkingLevel : effort === 'none' ? 'off' : effort)
+      } finally {
+        finish()
+      }
+    },
+  }
+  return {
+    reasoning,
+    subscribe,
+    registerToolCallGate,
+    steer,
+    prompt,
+    abort,
+    currentProviderId,
+    switchBinding,
+    deactivate,
+    dispose,
+  }
 }

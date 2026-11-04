@@ -1173,6 +1173,10 @@ msgstr "URL kopieren"
 msgid "Could not bind the pairing code"
 msgstr "Der Kopplungscode konnte nicht gebunden werden"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
@@ -1467,6 +1471,10 @@ msgstr "Die Daten werden sicher auf Ihrem Gerät gespeichert."
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
+msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Default"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -2003,6 +2011,10 @@ msgstr "Wird exportiert…"
 msgid "External Links"
 msgstr "Externe Links"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2246,6 +2258,14 @@ msgstr "QR-Code ausblenden"
 #: src/settings/devices.tsx
 msgid "Hide QR code for {deviceName}"
 msgstr "QR-Code für {deviceName} ausblenden"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Higher effort can improve difficult answers but takes more time and tokens."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -2545,6 +2565,10 @@ msgstr "Abmelden"
 msgid "Logging out…"
 msgstr "Abmeldung…"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Überwiegend klar"
@@ -2565,10 +2589,18 @@ msgstr "Karten können hier nicht angezeigt werden – WebGL ist in diesem Brows
 msgid "Maximize"
 msgstr "Maximieren"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP-Server"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2594,6 +2626,10 @@ msgstr ""
 #: src/mini-apps/mini-app-page.tsx
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Minimize"
@@ -2964,6 +3000,10 @@ msgstr "Die OAuth-Validierung ist fehlgeschlagen"
 msgid "Objects"
 msgstr "Objekte"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -2975,6 +3015,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Änderungen werden synchronisiert, sobald Sie wieder online sind."
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3314,6 +3358,10 @@ msgstr "Bereit zum Senden"
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Begründung"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."

@@ -224,6 +224,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
     const response = await fetch('https://backend.test', {
@@ -260,6 +261,7 @@ describe('createAgentRoutingFetch — connection status', () => {
         },
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
         getDb: (() => ({})) as never,
@@ -281,6 +283,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -299,6 +302,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -315,6 +319,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -332,6 +337,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -358,6 +364,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -397,6 +404,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -464,6 +472,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -1603,6 +1612,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     },
   }
   const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getChatReasoningEffort: async () => undefined,
     getOrConnectAdapter: async () => adapter,
     trackEvent: () => {},
   })

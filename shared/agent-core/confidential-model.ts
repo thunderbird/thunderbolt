@@ -18,6 +18,8 @@ import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '../inference-usage.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
+import type { ReasoningEffort } from '../reasoning-effort.ts'
+
 const vendorAliases = { zhipu: 'zai' } as const
 // pi-ai 0.82.1 has no glm-5.3 and no deepseek-v4-1-flash; swap each alias for the real catalog id when upgrading Pi
 const modelAliases = {
@@ -75,6 +77,7 @@ export type BuildConfidentialModelOptions = {
   readonly fetch: OpenAiCompatFetch
   /** Provider-facing capture half of the caller-owned receipt lifecycle. */
   readonly receipts: ReceiptCapture
+  readonly getReasoningEffort?: () => ReasoningEffort | undefined
   readonly reasoning: boolean
   readonly contextWindow?: number
   readonly supportsImages: boolean
@@ -387,6 +390,8 @@ export const buildConfidentialModel = (
     reasoning: options.reasoning,
     contextWindow: options.contextWindow,
     supportsImages: options.supportsImages,
+    getReasoningEffort: options.getReasoningEffort,
+    effortFormat: 'tinfoil',
     compat: compatible.compat,
     thinkingLevelMap: compatible.thinkingLevelMap,
   })

@@ -15,14 +15,26 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { realpath } from 'node:fs/promises'
 import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
-import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
+import {
+  assistantMessage,
+  controlledAgent,
+  fakeHarness,
+  fakeStore,
+  preparedBinding,
+  providerRuntime,
+} from './test-fixtures.ts'
 
 const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
   try {
@@ -79,7 +91,10 @@ const restoreSpies: (() => void)[] = []
 beforeAll(() => {
   const consoleError = spyOn(console, 'error').mockImplementation(() => {})
   const stderrWrite = spyOn(process.stderr, 'write').mockImplementation(() => true)
-  restoreSpies.push(() => consoleError.mockRestore(), () => stderrWrite.mockRestore())
+  restoreSpies.push(
+    () => consoleError.mockRestore(),
+    () => stderrWrite.mockRestore(),
+  )
 })
 afterAll(() => {
   for (const restore of restoreSpies) restore()
@@ -665,5 +680,50 @@ describe('createHarnessAgent (ACP server)', () => {
     await client.cancel({ sessionId })
     const response = await pending
     expect(response.stopReason).toBe('cancelled')
+  })
+})
+
+describe('ACP effort options', () => {
+  test('advertises native choices, validates opaque IDs, reports updates and isolates sessions', async () => {
+    const build: BuildServeHarness = async () => {
+      const state: { effort: import('../../../shared/reasoning-effort.ts').ReasoningEffort | undefined } = {
+        effort: undefined,
+      }
+      return fakeHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['low', 'high'] }),
+          current: () => state.effort,
+          set: async (effort) => {
+            state.effort = effort
+          },
+        },
+      })
+    }
+    const pair = connectPair(build)
+    await pair.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const first = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    const second = await pair.client.newSession({ cwd: '.', mcpServers: [] })
+    expect(first.configOptions?.[0].currentValue).toBe('default')
+    await expect(
+      pair.client.setSessionConfigOption({ sessionId: first.sessionId, configId: 'reasoning_effort', value: 'none' }),
+    ).rejects.toThrow('Unsupported')
+    const changed = await pair.client.setSessionConfigOption({
+      sessionId: first.sessionId,
+      configId: 'reasoning_effort',
+      value: 'high',
+    })
+    expect(changed.configOptions[0].currentValue).toBe('high')
+    expect(second.configOptions?.[0].currentValue).toBe('default')
+    expect(
+      pair.updates.some(
+        (update) => update.sessionId === first.sessionId && update.update.sessionUpdate === 'config_option_update',
+      ),
+    ).toBe(true)
+    const reset = await pair.client.setSessionConfigOption({
+      sessionId: first.sessionId,
+      configId: 'reasoning_effort',
+      value: 'default',
+    })
+    expect(reset.configOptions[0].currentValue).toBe('default')
   })
 })

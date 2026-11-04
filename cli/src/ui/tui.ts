@@ -365,6 +365,7 @@ const thinkingLabel = {
   medium: 'med',
   high: 'high',
   xhigh: 'xhigh',
+  max: 'max',
 } as const satisfies Readonly<Record<ThinkingLevel, string>>
 
 /** Styles one footer key and its subdued action label. */

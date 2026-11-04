@@ -56,6 +56,7 @@ const fixture = (
     createClient({ prefixUrl: 'https://backend.test' }),
     () => Object.assign(async () => new Response(), { preconnect: async () => false }),
     {
+      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
       createChat: () => createMockChatInstance(messages),
       trackEvent: () => {},

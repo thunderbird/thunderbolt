@@ -329,3 +329,30 @@ shows up there and nowhere else.
 | `src/acp/built-in-adapter.ts`              | Adapter seam, harness cache and signature, lazy engine import, teardown              |
 | `src/acp/built-in-conversation.ts`         | Request body → seed history plus the current prompt (including attachments)          |
 | `scripts/agent-core-browser-check.ts`      | Production-chunk regression check in Chromium and WebKit                             |
+
+## Reasoning effort
+
+The chat composer discovers effort controls from the selected provider. Unsupported or unknown models hide the
+selector. Default preserves the existing model-profile/provider behavior; Off appears only when the serving model
+supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
+A saved value that is no longer supported resolves to Default.
+
+`shared/reasoning-effort.ts` owns provider capability rules and exact wire values. OpenAI Chat Completions uses
+`reasoning_effort`; OpenRouter uses `reasoning.effort`. Tinfoil uses its documented native `reasoning_effort` values,
+including values that differ from Pi's catalog aliases. Explicit overrides replace conflicting profile controls.
+OpenAI/Anthropic capabilities come from Pi's model catalog, OpenRouter from its public model catalog, and Tinfoil
+from its documented per-model list. Update that list when changing the bundled confidential models.
+
+The browser harness changes thinking level between turns without rebuilding the session or losing compaction
+checkpoints. Returning to Default restores the profile's level and removes the explicit payload override.
+
+Remote ACP agents remain authoritative: the composer displays their `thought_level` select options verbatim,
+including grouped choices, and commits through `session/set_config_option`. Initial responses, setter responses,
+and idle `config_option_update` notifications refresh the control. No advertised option means no selector.
+The CLI Pi harness exposes the same ACP control, serializes changes against active prompts, and restores saved
+thinking-level entries when resuming a session.
+
+Provider references: [OpenAI](https://developers.openai.com/api/docs/guides/reasoning),
+[OpenRouter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens),
+[Tinfoil](https://docs.tinfoil.sh/guides/reasoning),
+[ACP configuration](https://agentclientprotocol.com/protocol/v1/session-config-options).

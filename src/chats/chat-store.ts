@@ -79,6 +79,8 @@ const getToolAllowanceKey = (agentId: string, toolKey: string): string => `${age
 export type ConnectionStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
 export type ChatSession = {
+  /** Local settings write that the next send must observe before resolving its effort. */
+  configurationChange?: Promise<void>
   chatInstance: Chat<ThunderboltUIMessage> & { compactContext?: (instructions?: string) => Promise<void> }
   compactionStatus?: CompactionStatus
   chatThread: ChatThread | null

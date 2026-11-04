@@ -23,7 +23,7 @@ import { cliVersion } from './version.ts'
 export { cliVersion }
 
 /** All valid `--thinking` levels, in increasing depth. */
-const thinkingLevels: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const thinkingLevels: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 const defaultTransport: BridgeTransport = 'wss'
 
@@ -320,10 +320,7 @@ const parseConnectArgs = (
 }
 
 /** Builds canonical execution fields without resolving provider state. */
-const buildCommandExecutionConfig = (
-  flags: Flags,
-  cwd: string,
-): CommandSyntaxServeConfig => ({
+const buildCommandExecutionConfig = (flags: Flags, cwd: string): CommandSyntaxServeConfig => ({
   cwd,
   yolo: flags.yolo,
   thinking: flags.thinking,
@@ -399,10 +396,7 @@ const parseIrohAdminArgs = (rest: string[]): ParsedSyntaxKind<'iroh-admin'> | Sy
  * @returns a terminal info action (`help`/`version`/`error`), a syntactic run
  *   selection, or a bridge with a {@link BridgeConfig}
  */
-export const parseCommandSyntax = (
-  argv: string[],
-  cwd?: string,
-): ParsedCommandSyntax => {
+export const parseCommandSyntax = (argv: string[], cwd?: string): ParsedCommandSyntax => {
   const subcommand = argv[0]
   if (subcommand === 'login' || subcommand === 'logout') return parseAccountArgs(subcommand, argv.slice(1))
   if (subcommand === 'config') {

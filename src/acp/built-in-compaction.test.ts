@@ -22,6 +22,7 @@ import { stoppedReplyMarker } from '@shared/agent-core/stopped-reply'
 afterEach(resetStore)
 
 type RequestBody = {
+  reasoning_effort?: string
   messages: Array<{ role: string; content: unknown; tool_calls?: Array<{ id: string }>; tool_call_id?: string }>
 }
 
@@ -159,6 +160,30 @@ const metadata = async (response: Response): Promise<UIMessageMetadata> => {
 }
 
 describe('built-in compaction integration', () => {
+  it('changes effort after compaction, preserves the checkpoint, and restores Default', async () => {
+    const f = fixture()
+    const adapter = f.adapter()
+    const first = user('Remember the original task')
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      const checkpoint = await adapter.compact!(body([first, assistant('Done')]), f.context)
+      const compacted: ThunderboltUIMessage = { ...assistant('Done'), metadata: { contextCompaction: checkpoint } }
+      f.context.reasoningEffort = 'high'
+      const next = user('Continue at high effort')
+      await metadata(await adapter.fetch(body([first, compacted, next]), f.context))
+      expect(f.providerRequests.at(-1)?.reasoning_effort).toBe('high')
+      expect(JSON.stringify(f.providerRequests.at(-1)?.messages)).toContain('Condensed previous task')
+      f.context.reasoningEffort = undefined
+      await metadata(
+        await adapter.fetch(body([first, compacted, next, assistant('Done'), user('Use default')]), f.context),
+      )
+      expect(f.providerRequests.at(-1)?.reasoning_effort).toBeUndefined()
+      expect(JSON.stringify(f.providerRequests.at(-1)?.messages)).toContain('Condensed previous task')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
   it.each(['earlier', 'current'] as const)(
     'allows cancelling the wait for a stopped run before compacting the %s transcript',
     async (boundary) => {
@@ -279,6 +304,7 @@ describe('built-in compaction integration', () => {
         f.context.httpClient,
         f.context.getProxyFetch,
         {
+          getChatReasoningEffort: async () => undefined,
           getOrConnectAdapter: async () => adapter,
           createChat: () => createMockChatInstance(messages),
           trackEvent: () => {},
@@ -323,6 +349,7 @@ describe('built-in compaction integration', () => {
       f.context.httpClient,
       f.context.getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         createChat: () => createMockChatInstance(messages),
         trackEvent: () => {},

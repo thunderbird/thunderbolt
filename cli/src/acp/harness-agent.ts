@@ -22,11 +22,15 @@
  * below remains the per-connection registry, now hydrated from disk on resume.
  */
 
+import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { realpath } from 'node:fs/promises'
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type {
   Agent,
   AgentSideConnection,
+  SessionConfigOption,
+  SetSessionConfigOptionRequest,
+  SetSessionConfigOptionResponse,
   AuthenticateResponse,
   CancelNotification,
   ContentBlock,
@@ -62,7 +66,7 @@ import type { SessionStore } from './session-store.ts'
  */
 export type ServeHarness = Pick<
   HarnessRuntime,
-  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'
+  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose' | 'reasoning'
 >
 
 /** Builds a {@link ServeHarness} for one disk-backed Pi session. */
@@ -265,8 +269,20 @@ export const createHarnessAgent = (
     skills: readonly SkillDefinition[],
     phase: string,
   ): Promise<void> => {
+    const branch = await session.getBranch()
+    const savedThinking = branch.findLast((entry) => entry.type === 'thinking_level_change')
     const binding = await prepareProviderBinding(runtime, config.selection, { signal: conn.signal })
     const harness = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), binding, session)
+    try {
+      if (savedThinking?.type === 'thinking_level_change' && harness.reasoning) {
+        const savedEffort = savedThinking.thinkingLevel === 'off' ? 'none' : savedThinking.thinkingLevel
+        if (isReasoningEffort(savedEffort) && harness.reasoning.capabilities().efforts.includes(savedEffort)) {
+          await harness.reasoning.set(savedEffort)
+        }
+      }
+    } catch (error) {
+      return rejectWiring({ harness, unsubscribe: () => {} }, toError(error))
+    }
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
@@ -310,12 +326,59 @@ export const createHarnessAgent = (
     sessions.set(sessionId, candidate)
   }
 
+  /** ACP clients use exactly these values; Default restores the invocation's configured level. */
+  const sessionConfig = (sessionId: string): { configOptions?: SessionConfigOption[] } => {
+    const reasoning = requireSession(sessionId).harness.reasoning
+    const efforts = reasoning?.capabilities().efforts ?? []
+    if (!reasoning || !efforts.length) return {}
+    return {
+      configOptions: [
+        {
+          id: 'reasoning_effort',
+          name: 'Reasoning effort',
+          category: 'thought_level',
+          type: 'select',
+          currentValue: reasoning.current() ?? 'default',
+          options: [
+            { value: 'default', name: 'Default' },
+            ...efforts.map((value) => ({
+              value,
+              name: value === 'none' ? 'Off' : reasoning.capabilities().kind === 'toggle' ? 'On' : value,
+            })),
+          ],
+        },
+      ],
+    }
+  }
+
+  const setSessionConfigOption = async (
+    params: SetSessionConfigOptionRequest,
+  ): Promise<SetSessionConfigOptionResponse> => {
+    const reasoning = requireSession(params.sessionId).harness.reasoning
+    if (
+      params.configId !== 'reasoning_effort' ||
+      !reasoning ||
+      !reasoning.capabilities().efforts.length ||
+      (params.value !== 'default' &&
+        (!isReasoningEffort(params.value) || !reasoning.capabilities().efforts.includes(params.value)))
+    ) {
+      throw RequestError.invalidParams(undefined, 'Unsupported reasoning configuration')
+    }
+    await reasoning.set(params.value === 'default' ? undefined : (params.value as ReasoningEffort))
+    const configOptions = sessionConfig(params.sessionId).configOptions ?? []
+    await conn.sessionUpdate({
+      sessionId: params.sessionId,
+      update: { sessionUpdate: 'config_option_update', configOptions },
+    })
+    return { configOptions }
+  }
+
   const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
     const sessionId = crypto.randomUUID()
     const workspaceRoot = await trustedWorkspace
     const session = await store.createSession(sessionId, workspaceRoot)
     await activate(sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/new')
-    return { sessionId }
+    return { sessionId, ...sessionConfig(sessionId) }
   }
 
   // Resume a prior thread on a fresh process: rehydrate the agent's execution
@@ -333,7 +396,7 @@ export const createHarnessAgent = (
     const workspaceRoot = await trustedWorkspace
     const session = await store.openSession(params.sessionId, workspaceRoot)
     await activate(params.sessionId, workspaceRoot, session, readWireSkills(params._meta), 'session/resume')
-    return {}
+    return sessionConfig(params.sessionId)
   }
 
   const prompt = async (params: PromptRequest): Promise<PromptResponse> => {
@@ -353,5 +416,5 @@ export const createHarnessAgent = (
   // trust boundary, so `authenticate` is a no-op the client should never need.
   const authenticate = async (): Promise<AuthenticateResponse> => ({})
 
-  return { initialize, newSession, resumeSession, prompt, cancel, authenticate }
+  return { initialize, newSession, resumeSession, setSessionConfigOption, prompt, cancel, authenticate }
 }

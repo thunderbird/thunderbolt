@@ -879,6 +879,7 @@ msgstr "Portapapeles no disponible. Selecciona la frase de arriba y cópiala man
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Cerrar"
@@ -1721,6 +1722,7 @@ msgstr "Listo"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Descargar"
 

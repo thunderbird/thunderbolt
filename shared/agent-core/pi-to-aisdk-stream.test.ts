@@ -3,10 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import type { AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import {
+  AgentHarness,
+  InMemorySessionRepo,
+  type AgentHarnessEvent,
+  type AgentHarnessTool,
+} from '@earendil-works/pi-agent-core'
+import {
+  createModels,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxText,
+  fauxThinking,
+  fauxToolCall,
+  type AssistantMessage,
+  type FauxResponseStep,
+  type Message,
+} from '@earendil-works/pi-ai'
+import { transformMessages } from '@earendil-works/pi-ai/api/transform-messages'
 import { readUIMessageStream, type UIMessage } from 'ai'
+import { Type } from 'typebox'
 import { piHarnessToUiMessageStream, type AiSdkChunk } from './pi-to-aisdk-stream.ts'
+import { stoppedReplyMarker } from './stopped-reply.ts'
 
 type ContentEvent =
   | { type: 'text_start' | 'thinking_start'; contentIndex: number }
@@ -34,12 +52,13 @@ const assistantMessage: AssistantMessage = {
 /** Supplies typed harness events without starting a model or mocking shared modules. */
 const createHarnessEvents = () => {
   const listeners = new Set<(event: AgentHarnessEvent) => void>()
-  const harness: Pick<AgentHarness, 'subscribe' | 'abort'> = {
+  const harness: Pick<AgentHarness, 'subscribe' | 'abort' | 'appendMessage'> = {
     subscribe: (listener: (event: AgentHarnessEvent) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
     abort: async () => ({ clearedSteer: [], clearedFollowUp: [] }),
+    appendMessage: async () => {},
   }
   const emit = (event: AgentHarnessEvent): void => listeners.forEach((listener) => listener(event))
   return { harness, emit }
@@ -439,5 +458,135 @@ describe('piHarnessToUiMessageStream abort', () => {
 
     expect(state.abortCount).toBe(0)
     expect(output).toBe('data: [DONE]\n\n')
+  })
+})
+
+/** The text of an assistant message as the provider receives it. */
+const assistantText = (message: Message | undefined): string =>
+  message?.role === 'assistant'
+    ? message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
+    : ''
+
+/** Run one chat turn through the bridge, pressing Stop once `stopAt` shows up in the stream. */
+const sendTurn = async (harness: AgentHarness, text: string, stop?: AbortController, stopAt?: string) => {
+  const stream = piHarnessToUiMessageStream(
+    harness,
+    async () => {
+      await harness.prompt(text)
+      await harness.waitForIdle()
+    },
+    {},
+    stop?.signal,
+  )
+  const decoder = new TextDecoder()
+  for await (const chunk of stream) {
+    if (stopAt && decoder.decode(chunk, { stream: true }).includes(stopAt)) {
+      stop?.abort()
+    }
+  }
+  await harness.waitForIdle()
+}
+
+/**
+ * Drive a real harness over three turns, stopping the second, and return what
+ * the provider receives on the third. pi-ai's `transformMessages` is the step
+ * every provider applies to the session before sending it.
+ */
+const historyAfterStop = async (options: {
+  stoppedReply: (stop: AbortController) => AssistantMessage
+  stopAt?: string
+  tools?: (stop: AbortController) => AgentHarnessTool<undefined>[]
+}) => {
+  const faux = fauxProvider({ tokensPerSecond: 1000 })
+  const models = createModels()
+  models.setProvider(faux.provider)
+  const model = faux.getModel()
+  const stop = new AbortController()
+  const sent: Message[] = []
+  const tools = options.tools?.(stop) ?? []
+  const harness = new AgentHarness({
+    session: await new InMemorySessionRepo().create({}),
+    models,
+    model,
+    tools,
+    activeToolNames: tools.map((tool) => tool.name),
+  })
+
+  faux.setResponses([fauxAssistantMessage('Noted.')])
+  await sendTurn(harness, 'I live in Lisbon.')
+  // The spare answers the extra model call Pi makes after an aborted tool, if any.
+  faux.setResponses([() => options.stoppedReply(stop), fauxAssistantMessage('spare')])
+  await sendTurn(harness, 'Write a long essay about Lisbon.', stop, options.stopAt)
+  const capture: FauxResponseStep = (context) => {
+    sent.push(...transformMessages(context.messages, model))
+    return fauxAssistantMessage('You live in Lisbon.')
+  }
+  faux.setResponses([capture])
+  await sendTurn(harness, 'Which city do I live in?')
+  return sent
+}
+
+const essay = 'Lisbon grew up on seven hills above the Tagus. '.repeat(200)
+
+describe('piHarnessToUiMessageStream after Stop', () => {
+  it('keeps the partial reply so the model does not write it again', async () => {
+    const sent = await historyAfterStop({ stoppedReply: () => fauxAssistantMessage(essay), stopAt: '"text-delta"' })
+
+    expect(sent.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user'])
+    const partial = assistantText(sent[3])
+    expect(partial.length).toBeGreaterThan(0)
+    expect(partial.length).toBeLessThan(essay.trim().length)
+    expect(essay.startsWith(partial)).toBe(true)
+  })
+
+  it('answers the stopped prompt with a marker when Stop came before the first token', async () => {
+    const sent = await historyAfterStop({
+      stoppedReply: (stop) => {
+        stop.abort()
+        return fauxAssistantMessage(essay)
+      },
+    })
+
+    expect(sent.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user'])
+    expect(assistantText(sent[3])).toBe(stoppedReplyMarker)
+  })
+
+  it('answers the stopped prompt with a marker when Stop came during reasoning', async () => {
+    const sent = await historyAfterStop({
+      stoppedReply: () => fauxAssistantMessage([fauxThinking('Let me plan the essay. '.repeat(200)), fauxText(essay)]),
+      stopAt: '"reasoning-delta"',
+    })
+
+    expect(sent.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user'])
+    expect(assistantText(sent[3])).toBe(stoppedReplyMarker)
+  })
+
+  it('answers the stopped prompt with a marker when Stop came during a tool call', async () => {
+    const sent = await historyAfterStop({
+      stoppedReply: () => fauxAssistantMessage(fauxToolCall('search', {}), { stopReason: 'toolUse' }),
+      tools: (stop) => [
+        {
+          name: 'search',
+          label: 'Search',
+          description: 'Search the web',
+          parameters: Type.Object({}),
+          execute: async () => {
+            stop.abort()
+            throw new Error('aborted')
+          },
+        },
+      ],
+    })
+
+    expect(sent.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+      'toolResult',
+      'assistant',
+      'user',
+    ])
+    expect(assistantText(sent[5])).toBe(stoppedReplyMarker)
   })
 })

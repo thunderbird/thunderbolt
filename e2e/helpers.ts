@@ -128,7 +128,16 @@ export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = '
 }
 
 /**
- * Collect uncaught JS errors, filtering Tauri-specific noise.
+ * Browser-raised page errors that no app code threw:
+ * - ResizeObserver defers notifications when a callback changes layout; nothing is lost.
+ * - WebKit reports a failed or navigation-cancelled cross-origin fetch as a pageerror
+ *   even when the app catches it.
+ */
+const isBrowserNoise = (message: string) =>
+  message.startsWith('ResizeObserver loop') || message.endsWith('due to access control checks.')
+
+/**
+ * Collect uncaught JS errors, filtering Tauri-specific and browser-raised noise.
  */
 export const collectPageErrors = (page: Page): string[] => {
   const errors: string[] = []
@@ -137,7 +146,8 @@ export const collectPageErrors = (page: Page): string[] => {
       !error.message.includes('__TAURI__') &&
       !error.message.includes('tauri') &&
       !error.message.includes('window.__TAURI_INTERNALS__') &&
-      !error.message.includes('convertFileSrc')
+      !error.message.includes('convertFileSrc') &&
+      !isBrowserNoise(error.message)
     ) {
       errors.push(error.message)
     }

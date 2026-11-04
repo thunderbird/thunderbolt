@@ -44,5 +44,15 @@ export default defineConfig({
       outputDir: resolve('test-results/qa-probe'),
       use: { baseURL: undefined, video: 'off', trace: 'off' },
     },
+    // The layout sweep on a running stack (control/sweep.spec.ts). Baselines are per OS, since fonts render
+    // differently: CI compares only the `-linux` ones.
+    {
+      name: 'sweep',
+      testDir: 'control',
+      testMatch: 'sweep.spec.ts',
+      outputDir: `${outDir}/sweep`,
+      snapshotPathTemplate: 'sweep-baselines/web/{arg}-{platform}{ext}',
+      use: { video: 'off', trace: 'off' },
+    },
   ],
 })

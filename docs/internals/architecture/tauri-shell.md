@@ -159,6 +159,12 @@ deep-link and updater config.
 is disabled so it has no persisted cookie jar; HTTP/2, charset handling and macOS system proxy configuration remain enabled. TLS verification
 uses both OS certificates and bundled public roots (Android can have an empty native store).
 
+Native requests carry no `Origin`, like proxied ones. Without the plugin's `unsafe-headers` feature it stamps
+the webview origin (`tauri://localhost`, `http://tauri.localhost`) on every request, and MCP servers that
+validate `Origin` against DNS rebinding, such as Metabase, answer 403. With the feature on,
+`src/lib/native-fetch.ts` sends an empty `Origin` and the plugin strips it. The feature also lets webview
+scripts set other forbidden headers such as `Cookie`; that adds nothing to the accepted native-HTTP risk above.
+
 `createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
 directly from the device; ON opts into the backend universal proxy for non-loopback targets.
 Loopback models and HTTP/SSE MCP servers always connect directly on desktop and mobile.

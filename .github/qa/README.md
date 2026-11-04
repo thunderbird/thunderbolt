@@ -572,7 +572,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    session's init message names them) and extend the denies. After the merge, the first fix session's transcript
    should show the `simplify` load, with no other skill.
 
-7. **report** (`report.ts summary`): the job summary.
+7. **report** (`report.ts summary`): the job summary. `report.ts fix-prs` adds how the bot's earlier fix PRs ended,
+   read from GitHub alone (`pull-requests: read`): a PR of the app `thunderbolt-automation-agent` whose first commit is
+   the bot's is right first time when it merged with only the bot's commits (merges of main aside), needed edits when
+   it merged with any other commit, discarded when it closed unmerged, and waits for a person while open. The
+   factory bot opens PRs as the same app, but a person writes their first commit, so they are left out. A failed
+   GitHub call loses only that section.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
 

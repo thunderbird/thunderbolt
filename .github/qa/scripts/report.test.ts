@@ -10,11 +10,13 @@ import type { Canary } from './canaries'
 import type { RawFinding } from './findings'
 import {
   checkCoverage,
+  fixPrSection,
   matchCanaries,
   nothingExplored,
   probeGaps,
   renderReport,
   runCanary,
+  runFixPrs,
   runSummary,
   sessionFromExecution,
   suggestCap,
@@ -745,12 +747,12 @@ describe('probeGaps', () => {
     '[     254ms] [ERROR] Failed to load resource: the server responded with a status of 404',
     '[     762ms] [ERROR] [qa-layout] covered button "Continue" @ /repo/.github/qa/layout-probe.js:209',
   ].join('\n')
-  const logs: Record<string, string> = {
-    '/out/mcp/console-a.log': readyLog,
-    '/out/mcp-b/console-b.log': readyLog,
-    '/out/mcp/console-c.log': '[ 90ms] [ERROR] Failed to load resource: 404\n[ 99ms] [ERROR] boom',
-  }
-  const readLog = async (path: string) => logs[path]
+  const logs = new Map([
+    ['/out/mcp/console-a.log', readyLog],
+    ['/out/mcp-b/console-b.log', readyLog],
+    ['/out/mcp/console-c.log', '[ 90ms] [ERROR] Failed to load resource: 404\n[ 99ms] [ERROR] boom'],
+  ])
+  const readLog = async (path: string) => logs.get(path)
 
   it('counts a load as measured only when its linked console lines hold the ready line', async () => {
     const steps = [
@@ -1006,5 +1008,53 @@ describe('canaries', () => {
     await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
     await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))
     await expect(runCanary(dir, join(dir, 'missing'), join(dir, 'canaries.json'))).rejects.toThrow('candidates.json')
+  })
+})
+
+describe('fix PRs of earlier runs', () => {
+  const bot = 'thunderbolt-automation-agent[bot]'
+  const commit = (name: string, parents = 1) => ({ commit: { author: { name }, parents: { totalCount: parents } } })
+  const pr = (number: number, state: 'OPEN' | 'CLOSED' | 'MERGED', ...nodes: ReturnType<typeof commit>[]) => ({
+    number,
+    state,
+    commits: { nodes },
+  })
+  const prs = [
+    pr(1, 'MERGED', commit(bot)),
+    // A merge of main is not an edit.
+    pr(2, 'MERGED', commit(bot), commit('Ítalo Menezes', 2)),
+    pr(3, 'MERGED', commit(bot), commit('Ítalo Menezes')),
+    pr(4, 'CLOSED', commit(bot)),
+    pr(5, 'OPEN', commit(bot), commit('Ítalo Menezes')),
+    // The factory bot opens PRs as the same app, but a person writes their first commit.
+    pr(6, 'MERGED', commit('Ariene'), commit(bot)),
+  ]
+
+  it('classifies each PR the bot published from how it ended, and leaves out the ones it did not', () => {
+    expect(fixPrSection(prs)).toContain(
+      [
+        '- right first time: 2 (#1, #2)',
+        '- needed edits: 1 (#3)',
+        '- discarded: 1 (#4)',
+        '- open: 1 (#5)',
+        '',
+        'Right first time: 2 of 4 decided.',
+      ].join('\n'),
+    )
+    expect(fixPrSection([])).toContain('- open: 0\n\nRight first time: 0 of 0 decided.')
+  })
+
+  it("asks GitHub for the app's PRs in the run's repository and appends the section to the summary", async () => {
+    const calls: string[][] = []
+    const run = async (cmd: string[]) => {
+      calls.push(cmd)
+      return JSON.stringify({ data: { search: { nodes: prs } } })
+    }
+    const summary = join(dir, 'summary.md')
+    const section = await runFixPrs('o/r', run, summary)
+    expect(calls[0].slice(0, 3)).toEqual(['gh', 'api', 'graphql'])
+    expect(calls[0].at(-1)).toBe('q=repo:o/r is:pr author:app/thunderbolt-automation-agent')
+    expect(await readFile(summary, 'utf8')).toBe(section)
+    expect(section).toContain('Right first time: 2 of 4 decided.')
   })
 })

@@ -84,17 +84,17 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
-  onVerified?: () => void
 }
 
 /**
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
+ * AuthGate owns the signed-in redirect; post-sign-in work can finish after this page unmounts.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
@@ -150,7 +150,6 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
       }
-      onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
@@ -168,7 +167,6 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       analytics.onPromotionSuccess(userId)
 
       useWelcomeStore.getState().trigger()
-      onVerified?.()
     } catch (error) {
       if (isPasskeyCancellation(error)) {
         dispatch({ type: 'PASSKEY_CANCEL' })

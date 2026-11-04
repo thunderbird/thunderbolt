@@ -46,3 +46,26 @@ export const mockLocationData = [
     lon: -0.1278,
   },
 ]
+
+/**
+ * A client for a fake backend at `http://backend.test` that answers each
+ * request path (without the leading slash) with `respond`'s body, or fails the
+ * request when it returns undefined. Records every requested path.
+ * @param respond - The body for a path, or undefined to fail that request.
+ */
+export const createRecordingClient = (respond: (path: string) => BodyInit | undefined) => {
+  const requests: string[] = []
+  const client = createClient({
+    prefixUrl: 'http://backend.test',
+    fetch: async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname.slice(1)
+      requests.push(path)
+      const body = respond(path)
+      if (body === undefined) {
+        throw new Error('offline')
+      }
+      return new Response(body)
+    },
+  })
+  return { client, requests }
+}

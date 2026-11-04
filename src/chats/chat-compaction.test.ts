@@ -18,6 +18,7 @@ import type { AgentAdapter } from '@/types/acp'
 import type { CompactionCheckpoint } from '@shared/agent-core'
 import { createChatInstance } from './chat-instance'
 import { useChatStore } from './chat-store'
+import { stoppedReplyMarker } from '@shared/agent-core/stopped-reply'
 
 afterEach(resetStore)
 
@@ -71,6 +72,43 @@ const fixture = (
 }
 
 describe('chat compaction control', () => {
+  it('includes the cancellation marker for the latest reasoning-only reply in a manual summary', async () => {
+    const f = fixture()
+    const pending: ThunderboltUIMessage[] = [
+      {
+        id: 'stopped-user',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Cancelled question' }],
+        metadata: { stoppedByUser: true },
+      },
+      { id: 'reasoning', role: 'assistant', parts: [{ type: 'reasoning', text: 'Planning' }] },
+    ]
+    f.instance.messages = [...f.messages, ...pending]
+    await f.instance.compactContext()
+    const summarized = JSON.parse(String(f.adapterCompact.mock.calls[0][0].body)).messages as ThunderboltUIMessage[]
+    expect(summarized.at(-1)?.parts).toEqual([{ type: 'text', text: stoppedReplyMarker }])
+    expect(f.instance.messages.map(({ id }) => id)).toEqual(['user', 'assistant', 'stopped-user', 'reasoning'])
+    expect(f.saved.mock.calls[0][0].messages[0].id).toBe('reasoning')
+  })
+
+  it('summarizes stopped-turn markers without inserting them into the visible or saved transcript', async () => {
+    const f = fixture()
+    const stopped: ThunderboltUIMessage = {
+      id: 'stopped-user',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Cancelled question' }],
+      metadata: { stoppedByUser: true },
+    }
+    f.instance.messages = [stopped, ...f.messages]
+    await f.instance.compactContext()
+    const summarized = JSON.parse(String(f.adapterCompact.mock.calls[0][0].body)).messages as ThunderboltUIMessage[]
+    expect(summarized.map(({ id }) => id)).toEqual(['stopped-user', 'stopped-user-stopped', 'user', 'assistant'])
+    expect(summarized[1].parts).toEqual([{ type: 'text', text: stoppedReplyMarker }])
+    expect(f.instance.messages.map(({ id }) => id)).toEqual(['stopped-user', 'user', 'assistant'])
+    expect(f.saved.mock.calls[0][0].messages.map(({ id }) => id)).toEqual(['assistant'])
+    expect(f.instance.messages.at(-1)?.metadata?.contextCompaction).toEqual(checkpoint)
+  })
+
   it('preserves all trailing unanswered messages and refuses a chat with no response yet', async () => {
     const f = fixture()
     const pending: ThunderboltUIMessage[] = [

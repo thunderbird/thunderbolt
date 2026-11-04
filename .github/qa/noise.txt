@@ -8,3 +8,6 @@ __TAURI__
 tauri
 window.__TAURI_INTERNALS__
 convertFileSrc
+
+# A probe line is a `layout` finding. Filed as `console-error` it is only an observation, so its mislabel is visible.
+[qa-layout]

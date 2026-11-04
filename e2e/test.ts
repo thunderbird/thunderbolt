@@ -168,6 +168,14 @@ export const test = browserTest.extend({
  * navigation leaves reads the host's languages (`en-US` on CI) while its last
  * effects still run, and can mirror or seed English for the page that replaces
  * it. `--accept-lang` makes the browser itself German; Firefox and WebKit ignore
- * the flag. Overriding a launch option starts its own worker.
+ * the flag. The flag is added to the project's launch options, so its browser
+ * executable still applies. Overriding a launch option starts its own worker.
  */
-export const deTest = test.extend({ locale: 'de-DE', launchOptions: { args: ['--accept-lang=de-DE,de'] } })
+export const deTest = test.extend({
+  locale: 'de-DE',
+  launchOptions: [
+    async ({ launchOptions }, use) =>
+      use({ ...launchOptions, args: [...(launchOptions.args ?? []), '--accept-lang=de-DE,de'] }),
+    { scope: 'worker' },
+  ],
+})

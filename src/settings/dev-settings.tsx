@@ -10,8 +10,7 @@ import { SettingsPageShell } from '@/components/settings/settings-list'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { getCapabilities, isTauri } from '@/lib/platform'
-import { useQuery } from '@tanstack/react-query'
+import { isTauri } from '@/lib/platform'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function DevSettingsPage() {
@@ -29,12 +28,6 @@ export default function DevSettingsPage() {
 
   const resetSetting = <K extends keyof typeof initialLocalSettings>(key: K) =>
     setLocalSetting(key, initialLocalSettings[key])
-
-  const { data: capabilities } = useQuery({
-    queryKey: ['capabilities'],
-    queryFn: getCapabilities,
-    enabled: isTauri(),
-  })
 
   return (
     <SettingsPageShell className="gap-6">
@@ -91,15 +84,12 @@ export default function DevSettingsPage() {
                   <Switch
                     checked={isNativeFetchEnabled}
                     onCheckedChange={(value) => setLocalSetting('isNativeFetchEnabled', value)}
-                    disabled={!capabilities?.native_fetch}
+                    disabled={!isTauri()}
                   />
                 </span>
               </TooltipTrigger>
-              {!capabilities?.native_fetch && (
-                <TooltipContent sideOffset={4}>
-                  This feature is only available on some desktop versions of the app that were built with the
-                  native_fetch feature flag.
-                </TooltipContent>
+              {!isTauri() && (
+                <TooltipContent sideOffset={4}>Native HTTP is only available in the Tauri app.</TooltipContent>
               )}
             </Tooltip>
           </div>

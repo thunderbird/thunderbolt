@@ -44,6 +44,8 @@ import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createHostedAgentRoutes } from '@/hosted-agent/routes'
 import { createConfigRoutes } from '@/api/config'
+import { createBrandingAssets, noBrandingAssets } from '@/branding/assets'
+import { createSafeFetch } from '@/utils/url-validation'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -202,7 +204,7 @@ export const createApp = async (deps?: AppDeps) => {
           rateLimit: inferenceRateLimit,
         }),
       )
-      .use(createConfigRoutes(settings))
+      .use(createConfigRoutes(settings, deps?.brandingAssets ?? noBrandingAssets))
       .use(
         createDebugTranscriptsRoutes({
           auth,
@@ -238,6 +240,9 @@ export const createApp = async (deps?: AppDeps) => {
   )
 }
 
+// How long boot waits for the branding downloads; per-request timeouts bound each one.
+const brandingStartupWaitMs = 15_000
+
 /**
  * Start the server
  */
@@ -262,7 +267,23 @@ const startServer = async () => {
     // Run PGLite migrations before creating the app (no-op for Postgres)
     await runMigrations()
 
-    const app = await createApp()
+    // Downloads the operator's fonts and logos before the server takes traffic, so
+    // a pod that joins a rolling deploy serves them from its first /config: a
+    // client fetches /config once per launch and caches it. The wait is capped,
+    // and a download still running (or failed, and retrying) lands later.
+    // Started here rather than in createApp, so apps built by tests never fetch.
+    const brandingAssets = createBrandingAssets(settings.branding, {
+      fetchFn: createSafeFetch(globalThis.fetch, undefined, { httpsOnly: true }),
+      logger: log,
+    })
+    if (!(await brandingAssets.loadWithin(brandingStartupWaitMs))) {
+      log.warn(
+        { waitedMs: brandingStartupWaitMs },
+        'Branding downloads still running; starting without them, they appear in /config once they land',
+      )
+    }
+
+    const app = await createApp({ brandingAssets })
 
     // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
     // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
@@ -13,7 +14,6 @@ import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { privacyPolicyUrl } from '@/lib/constants'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
@@ -170,8 +170,10 @@ const distanceUnitOptions = ['metric', 'imperial'] as const
 const temperatureUnitOptions = ['c', 'f'] as const
 const timeFormatOptions = ['12h', '24h'] as const
 
-export default function PreferencesSettingsPage() {
+const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: () => boolean }) => {
   const { t } = useLingui()
+  const links = useBrandingLinks()
+  const appName = useAppName()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
@@ -194,17 +196,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
-  const runningInTauri = isTauri()
+  const runningInTauri = isStandalone()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyDisabled = !runningInTauri || (!isAuthenticated && !effectiveProxyEnabled)
   const proxyTooltipReason = !runningInTauri
     ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
     : t`Sign in to enable cloud proxy.`
-  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -431,7 +433,7 @@ export default function PreferencesSettingsPage() {
       const payload = await readJsonFile(file)
       const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
       if (!summary) {
-        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a Thunderbolt export.` })
+        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a ${appName} export.` })
         return
       }
       dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
@@ -702,7 +704,7 @@ export default function PreferencesSettingsPage() {
               }}
             />
             <p className="text-sm text-muted-foreground">
-              <Trans>How Thunderbolt salutes you</Trans>
+              <Trans>How {appName} salutes you</Trans>
             </p>
           </div>
         </div>
@@ -914,7 +916,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title={t`Help Thunderbolt Improve`}>
+      <SectionCard title={t`Help ${appName} Improve`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <label className="text-sm font-medium">
@@ -979,8 +981,9 @@ export default function PreferencesSettingsPage() {
                     Read more about our{' '}
                     <a
                       className="text-primary underline-offset-4 hover:underline"
-                      href={privacyPolicyUrl}
+                      href={links.privacyPolicy}
                       target="_blank"
+                      rel="noopener noreferrer"
                     >
                       privacy policy
                     </a>
@@ -1012,32 +1015,33 @@ export default function PreferencesSettingsPage() {
               <Trans>Use Cloud Proxy</Trans>
             </label>
             <p className="text-sm text-muted-foreground">
-              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
+              <Trans>
+                Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s
+                backend. Local (loopback) models always connect directly.
+              </Trans>
             </p>
           </div>
-          {proxyDisabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label={proxyTooltipReason}>
-                  <Switch
-                    checked={proxyChecked}
-                    disabled
-                    aria-label={t`Use Cloud Proxy`}
-                    className="pointer-events-none"
-                  />
-                </span>
-              </TooltipTrigger>
+          <Tooltip open={proxyDisabled && tooltipOpen} onOpenChange={setTooltipOpen}>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={proxyDisabled ? 0 : undefined}
+                aria-label={proxyDisabled ? proxyTooltipReason : undefined}
+              >
+                <Switch
+                  checked={effectiveProxyEnabled}
+                  onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+                  disabled={proxyDisabled}
+                  aria-label={t`Use Cloud Proxy`}
+                  className={proxyDisabled ? 'pointer-events-none' : undefined}
+                />
+              </span>
+            </TooltipTrigger>
+            {proxyDisabled && (
               <TooltipContent side="top">
                 <p>{proxyTooltipReason}</p>
               </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch
-              checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label={t`Use Cloud Proxy`}
-            />
-          )}
+            )}
+          </Tooltip>
         </div>
       </SectionCard>
 
@@ -1286,3 +1290,5 @@ export default function PreferencesSettingsPage() {
     </SettingsPageShell>
   )
 }
+
+export default PreferencesSettingsPage

@@ -130,11 +130,16 @@ export const validateWsTarget = (raw: string): ValidatedTarget => {
 type RelayState = {
   upstream: WebSocket | null
   upstreamReady: boolean
-  /** Messages received from the downstream client while upstream was still connecting. */
+  /** Messages received from the downstream client before the upstream opened, auth included. */
   pending: Array<string | ArrayBuffer | Uint8Array>
   pendingBytes: number
   closing: boolean
 }
+
+/** Whether one more frame of `bytes` would push a pre-connect queue past its message or byte cap
+ *  (shared with the Haystack route, which queues frames while its bearer check runs). */
+export const overflowsPreConnectQueue = (queue: { pending: { length: number }; pendingBytes: number }, bytes: number) =>
+  queue.pending.length + 1 > queueMessages || queue.pendingBytes + bytes > queueBytes
 
 const messageByteLength = (msg: string | ArrayBuffer | Uint8Array): number => {
   if (typeof msg === 'string') {
@@ -180,8 +185,30 @@ const deriveConnectArgs = (extras: WsExtras): WsConnectArgs | null => {
   return { targetUrl: validated.target.toString(), callerProtocols: parsed.callerProtocols }
 }
 
+/**
+ * The code to relay for a close seen on the other side, or undefined to close with no status.
+ * Only 1000-1003, 1007-1014 and 3000-4999 may be sent (RFC 6455 §7.4); Bun's WebSocket throws on
+ * the rest. A clean close without a status (1005) relays as 1000, a deliberate end. A dropped or
+ * failed connection relays with no status, which the browser reads as 1005 and may retry.
+ */
+export const relayCloseCode = (code: number): number | undefined => {
+  if ((code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1014) || (code >= 3000 && code <= 4999)) {
+    return code
+  }
+  return code === 1005 || code === 0 ? 1000 : undefined
+}
+
+/** Bun's ServerWebSocket sends 1000 for `close()` with no code, but a status-less frame for 1006. */
+const downstreamNoStatusCloseCode = 1006
+
+/** Close `ws`; without a code a client WebSocket sends a close frame that carries no status. */
 const safeWsClose = (ws: { close: (code?: number, reason?: string) => void }, code?: number, reason?: string) => {
   try {
+    if (code === undefined) {
+      // A reason without a code makes the client send 1000.
+      ws.close()
+      return
+    }
     ws.close(code, reason)
   } catch {
     // already closed
@@ -278,6 +305,26 @@ export const createUniversalProxyWsRoutes = (options: {
       const extras = wsExtras(ws)
       const requestId = crypto.randomUUID()
       let observedClose: { code: number; reason?: string } | null = null
+      extras.recordClose = (code, reason) => {
+        observedClose = { code, reason }
+      }
+
+      // Attached before the bearer check awaits: Bun can deliver frames together with the upgrade,
+      // and `message()` must queue them rather than find no relay and drop them.
+      const state: RelayState = {
+        upstream: null,
+        upstreamReady: false,
+        pending: [],
+        pendingBytes: 0,
+        closing: false,
+      }
+      extras.relay = state
+      const refuse = (code: number, reason: string) => {
+        state.closing = true
+        state.pending = []
+        state.pendingBytes = 0
+        ws.close(code, reason)
+      }
 
       // Validate the bearer exactly once per accepted socket. The bearer rides
       // a `thunderbolt.bearer.<token>` subprotocol entry (browsers can't set
@@ -288,14 +335,14 @@ export const createUniversalProxyWsRoutes = (options: {
       const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
       const user = await authorizeWsBearer(auth, subprotocolHeader)
       if (!user) {
-        ws.close(wsCloseUnauthorized, 'unauthorized')
+        refuse(wsCloseUnauthorized, 'unauthorized')
         return
       }
       const userId = user.id
 
       const connectArgs = deriveConnectArgs(extras)
       if (!connectArgs) {
-        ws.close(wsCloseCodes.invalidSubprotocol, 'invalid')
+        refuse(wsCloseCodes.invalidSubprotocol, 'invalid')
         return
       }
       const targetUrl = connectArgs.targetUrl
@@ -317,18 +364,12 @@ export const createUniversalProxyWsRoutes = (options: {
         })
         observedClose = null
       }
-      extras.recordClose = (code, reason) => {
-        observedClose = { code, reason }
-      }
 
-      const state: RelayState = {
-        upstream: null,
-        upstreamReady: false,
-        pending: [],
-        pendingBytes: 0,
-        closing: false,
+      if (state.closing) {
+        // The client closed, or overflowed the queue, while the bearer check ran: log it, dial nothing.
+        extras.observe()
+        return
       }
-      extras.relay = state
 
       const upstream = openUpstream(wsFactory, targetUrl, connectArgs.callerProtocols, ws)
       if (!upstream) {
@@ -362,7 +403,7 @@ export const createUniversalProxyWsRoutes = (options: {
           return
         }
         state.closing = true
-        safeWsClose(ws, event.code || 1000, event.reason || '')
+        safeWsClose(ws, relayCloseCode(event.code) ?? downstreamNoStatusCloseCode, event.reason || '')
       })
 
       upstream.addEventListener('error', () => {
@@ -396,7 +437,7 @@ export const createUniversalProxyWsRoutes = (options: {
 
       // Queue while upstream is still connecting.
       const bytes = messageByteLength(payload)
-      if (state.pending.length + 1 > queueMessages || state.pendingBytes + bytes > queueBytes) {
+      if (overflowsPreConnectQueue(state, bytes)) {
         state.closing = true
         if (state.upstream) {
           safeWsClose(state.upstream, 1000)
@@ -416,8 +457,11 @@ export const createUniversalProxyWsRoutes = (options: {
         return
       }
       state.closing = true
+      // A close during the bearer check would otherwise keep the queue alive until auth settles.
+      state.pending = []
+      state.pendingBytes = 0
       if (state.upstream && state.upstream.readyState === state.upstream.OPEN) {
-        safeWsClose(state.upstream, code || 1000, reason || '')
+        safeWsClose(state.upstream, relayCloseCode(code), reason || '')
       } else if (state.upstream && state.upstream.readyState === state.upstream.CONNECTING) {
         // Native WebSocket has no .abort(); .close() during connect is well-defined.
         safeWsClose(state.upstream)

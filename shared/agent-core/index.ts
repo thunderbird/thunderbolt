@@ -42,9 +42,12 @@ export {
   buildAppHarness,
   removeAgentWorkspace,
   workspaceDirFor,
+  writeAgentWorkspaceFiles,
   type BuildAppHarnessOptions,
   type PiModelDescriptor,
   type AppHarness,
+  type WorkspaceFile,
+  type WorkspaceWriteFailure,
 } from './build-app-harness.ts'
 export type { CompactionCheckpoint, CompactionStatus, HarnessCompaction } from './compaction.ts'
 export { ensureBufferPolyfill } from './ensure-buffer.ts'

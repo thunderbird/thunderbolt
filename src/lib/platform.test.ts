@@ -10,6 +10,7 @@ import {
   hasOpfsFile,
   isIndexedDbAvailable,
   isPrPreview,
+  isTouchPlatform,
   prPreviewHostRegex,
 } from './platform'
 
@@ -227,5 +228,45 @@ describe('hasOpfsFile', () => {
     await expect(hasOpfsFile('thunderbolt-sync.db', rootThat(new DOMException('no', 'SecurityError')))).rejects.toThrow(
       'no',
     )
+  })
+})
+
+describe('isTouchPlatform', () => {
+  const originalUserAgent = navigator.userAgent
+  const originalMaxTouchPoints = navigator.maxTouchPoints
+
+  const stubNavigator = (userAgent: string, maxTouchPoints: number) => {
+    Object.defineProperty(navigator, 'userAgent', { value: userAgent, configurable: true })
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: maxTouchPoints, configurable: true })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: originalUserAgent, configurable: true })
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: originalMaxTouchPoints, configurable: true })
+  })
+
+  it('is true for an iPhone browser', () => {
+    stubNavigator('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is true for an Android browser', () => {
+    stubNavigator('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is true for iPadOS Safari posing as a Mac', () => {
+    stubNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', 5)
+    expect(isTouchPlatform()).toBe(true)
+  })
+
+  it('is false for a Mac with no touch input', () => {
+    stubNavigator('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', 0)
+    expect(isTouchPlatform()).toBe(false)
+  })
+
+  it('is false for a Windows touchscreen laptop', () => {
+    stubNavigator('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36', 10)
+    expect(isTouchPlatform()).toBe(false)
   })
 })

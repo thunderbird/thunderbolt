@@ -18,7 +18,11 @@ it('emits finite labels with the original category precedence and no error text'
     expect(warn).toHaveBeenCalledWith('[db-diagnostic] query=rejected category=locked name=other')
     expect(warn).toHaveBeenCalledTimes(1)
   } finally {
-    import.meta.env.VITE_DB_DIAGNOSTIC = previous
+    if (previous === undefined) {
+      delete import.meta.env.VITE_DB_DIAGNOSTIC
+    } else {
+      import.meta.env.VITE_DB_DIAGNOSTIC = previous
+    }
     warn.mockRestore()
   }
 })
@@ -46,7 +50,11 @@ it('skips disabled diagnostics and observes readiness without awaiting it', asyn
     await Promise.allSettled([rejection])
     expect(warn).toHaveBeenCalledWith('[db-diagnostic] readiness=rejected category=open name=other')
   } finally {
-    import.meta.env.VITE_DB_DIAGNOSTIC = previous
+    if (previous === undefined) {
+      delete import.meta.env.VITE_DB_DIAGNOSTIC
+    } else {
+      import.meta.env.VITE_DB_DIAGNOSTIC = previous
+    }
     warn.mockRestore()
   }
 })

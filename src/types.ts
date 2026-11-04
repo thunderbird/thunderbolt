@@ -40,6 +40,7 @@ export type InitData = {
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
   experimentalFeatureVoice: boolean
+  sidebarOpen: boolean
 }
 
 /**
@@ -206,6 +207,12 @@ export type UIMessageMetadata = {
    * alone, since they may well be artifact reads.
    */
   embeddedSurface?: Exclude<EmbeddedSurfaceChoice, null>
+  /**
+   * Set on a prompt when the user stopped its reply. If the reply had no text
+   * yet, later turns show the model a stop marker after the prompt, so the
+   * model doesn't answer it again.
+   */
+  stoppedByUser?: boolean
 }
 
 /**

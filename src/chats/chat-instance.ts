@@ -47,6 +47,7 @@ import {
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
+  isToolSupportRejectionError,
 } from '@/lib/error-utils'
 import type { HttpClient } from '@/lib/http'
 import { hasAssistantContent } from '@/lib/message-utils'
@@ -60,6 +61,7 @@ import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
+import { withStoppedReplyMarkers } from './stopped-prompts'
 
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
@@ -490,7 +492,14 @@ export const createAgentRoutingFetch = (
           ? (compactionStatus) => useChatStore.getState().updateSession(id, { compactionStatus })
           : undefined,
     }
-    return { adapter, context, init }
+    const modelInit = {
+      ...init,
+      body: JSON.stringify({
+        ...requestBody,
+        messages: withStoppedReplyMarkers(requestMessages, { includeLatestPrompt: operation === 'compact' }),
+      }),
+    }
+    return { adapter, context, init: modelInit }
   }
 
   return Object.assign(
@@ -838,6 +847,19 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
+  /** Set or clear the stop flag on the latest prompt, which later turns turn into a stop marker
+   *  (see `withStoppedReplyMarkers`). Returns the changed prompt, or nothing if it was already set. */
+  const setPromptStopped = (stoppedByUser: boolean): ThunderboltUIMessage | undefined => {
+    const index = instance.messages.findLastIndex((message) => message.role === 'user')
+    const prompt = instance.messages[index]
+    if (!prompt || Boolean(prompt.metadata?.stoppedByUser) === stoppedByUser) {
+      return undefined
+    }
+    const updated: ThunderboltUIMessage = { ...prompt, metadata: { ...prompt.metadata, stoppedByUser } }
+    instance.messages = instance.messages.map((message, i) => (i === index ? updated : message))
+    return updated
+  }
+
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
     // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
@@ -960,6 +982,12 @@ export const createChatInstance = (
       // A transport loss may have interrupted the turn after the agent performed
       // side effects. Only the user may choose to submit it again.
       if (getChatErrorKind(lastError) === 'connection-lost') {
+        markRetriesExhausted(finishedTurn)
+        return
+      }
+
+      // A model that rejects tools rejects the identical retry too.
+      if (isToolSupportRejectionError(lastError)) {
         markRetriesExhausted(finishedTurn)
         return
       }
@@ -1092,10 +1120,28 @@ export const createChatInstance = (
 
   const originalRegenerate = instance.regenerate.bind(instance)
 
+  /** A retry can run on a different model than the original send; record the one it
+   *  uses on the prompt, so the turn (and its saved row) names the model that answered. */
+  const stampRetryModel = () => {
+    // `selectedModel` can be missing at runtime; the send path guards it the same way.
+    const modelId = useChatStore.getState().sessions.get(id)?.selectedModel?.id
+    const index = instance.messages.findLastIndex((message) => message.role === 'user')
+    const prompt = instance.messages[index]
+    if (!modelId || !prompt || prompt.metadata?.modelId === modelId) {
+      return
+    }
+    const next = instance.messages.slice()
+    next[index] = { ...prompt, metadata: { ...prompt.metadata, modelId } }
+    instance.messages = next
+  }
+
   /** Mark and start one response regeneration so persistent agents rebuild from
    *  the request transcript while ordinary sends keep their live session. */
   const regenerateResponse = (): Promise<void> => {
     routingState.regenerationRevision = (routingState.regenerationRevision ?? 0) + 1
+    stampRetryModel()
+    // A new attempt at the prompt; the request saves the cleared flag with the other messages.
+    setPromptStopped(false)
     return originalRegenerate()
   }
 
@@ -1242,6 +1288,10 @@ export const createChatInstance = (
     // stopping spinner (masked with a live request in `getTurnActivity`, so
     // lingering past settle is harmless) and `useChatAutomation`'s auto-run gate.
     useChatStore.getState().updateSession(id, { stopping: true })
+    const inFlight = instance.status === 'streaming' || instance.status === 'submitted'
+    // Voice mode also calls `stop` when nothing is running, so flag only a reply that was running or
+    // waiting to retry. Flagged before the teardown, so a prompt sent meanwhile is never the one flagged.
+    const stoppedPrompt = inFlight || retryTimeout !== null ? setPromptStopped(true) : undefined
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
@@ -1250,19 +1300,23 @@ export const createChatInstance = (
     // dialog on screen awaiting an answer the cancelled turn will never use.
     // No-ops when nothing is pending.
     useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
-    if (instance.status === 'streaming' || instance.status === 'submitted') {
+    if (inFlight) {
       // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
       // round-trip, and the in-browser harness has to unwind its loop — so the
       // `stopping` flag also tells the composer about the wait instead of
       // leaving the button looking inert.
       void originalStop()
-      return
+    } else {
+      if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
+        instance.messages = instance.messages.slice(0, -1)
+      }
+      emitTurnCompleted(currentTurn, 'abort')
+      resetRetryStateForNewTurn()
     }
-    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
-      instance.messages = instance.messages.slice(0, -1)
+    // Saved last, once the turn has settled, so a turn started meanwhile is never reset.
+    if (stoppedPrompt) {
+      await saveMessages({ id, messages: [stoppedPrompt] })
     }
-    emitTurnCompleted(currentTurn, 'abort')
-    resetRetryStateForNewTurn()
   }
 
   return Object.assign(instance, { compactContext })

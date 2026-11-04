@@ -27,6 +27,9 @@ process.env.RATE_LIMIT_ENABLED = 'false'
 // so that test signToken() helpers produce matching signatures
 process.env.BETTER_AUTH_SECRET = 'better-auth-secret-12345678901234567890'
 
+// A developer's .env often carries a test theme; suites that want branding set it themselves.
+delete process.env.BRANDING
+
 // Initialize the database before any tests run
 console.log('🔧 Initializing test database...')
 await testDbManager.initialize()

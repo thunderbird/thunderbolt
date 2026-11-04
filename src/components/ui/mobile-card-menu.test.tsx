@@ -47,7 +47,7 @@ describe('MobileCardMenu', () => {
       'h-1',
       'w-10',
       'bg-muted-foreground/10',
-      'dark:bg-white/5',
+      'dark:bg-foreground/5',
     )
   })
 

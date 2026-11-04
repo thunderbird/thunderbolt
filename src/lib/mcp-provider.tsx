@@ -2,17 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createMCPClient } from '@ai-sdk/mcp'
+import type { createMCPClient } from '@ai-sdk/mcp'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useDatabase, useHttpClient } from '@/contexts'
-import { getMcpServerCredentials, type McpServerCredentials } from '@/dal/mcp-secrets'
-import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { getAuthToken } from './auth-token'
-import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
-import { isUnauthorizedError } from './mcp-errors'
-import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { isUnauthorizedError } from './mcp-unauthorized-error'
+import type { MCPTransportType } from './mcp-transport'
 
 type SdkMcpClient = Awaited<ReturnType<typeof createMCPClient>>
 type MCPTools = Awaited<ReturnType<SdkMcpClient['tools']>>
@@ -79,40 +74,6 @@ type MCPContextType = {
 
 const MCPContext = createContext<MCPContextType | undefined>(undefined)
 
-/**
- * Resolve the bearer token to inject for a server's outbound MCP requests from
- * its on-device credential blob:
- *   - `bearer`: the static token verbatim.
- *   - `oauth`: a *fresh* access token via {@link ensureValidMcpOAuthToken},
- *     which proactively refreshes near expiry and persists the rotated token —
- *     auto-applied on the next reconnect since `defaultCreateClient` re-reads
- *     credentials each connect. Refresh routes through the same proxy fetch the
- *     transport uses (SSRF-validated by `/v1/proxy` on web).
- *   - none / no row: `undefined` (unauthenticated server).
- * `ensureValidMcpOAuthToken` is injectable so the provider can be unit-tested
- * without the SDK refresh path; production omits it and uses the real one.
- */
-export const resolveMcpAccessToken = async (
-  db: AnyDrizzleDatabase,
-  serverId: string,
-  credentials: McpServerCredentials | null,
-  cloudUrl: string,
-  ensureValidToken: typeof ensureValidMcpOAuthToken = ensureValidMcpOAuthToken,
-): Promise<string | undefined> => {
-  if (credentials?.type === 'bearer') {
-    return credentials.token
-  }
-  if (credentials?.type === 'oauth') {
-    const fetchFn = createProxyFetch({
-      cloudUrl,
-      getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
-    })
-    return ensureValidToken(db, serverId, fetchFn)
-  }
-  return undefined
-}
-
 /** Connect a single MCP server using its on-device credentials. Extracted as a
  *  free function so tests can inject a fake via {@link MCPProvider}'s
  *  `createClient` prop without touching the AI SDK / proxy stack. */
@@ -147,13 +108,10 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
   }
 
   const defaultCreateClient: CreateClientFn = async (serverId, url, type) => {
-    // Re-reads credentials from the db, so a refreshed token is picked up on reconnect.
-    const credentials = await getMcpServerCredentials(db, serverId)
-    const token = await resolveMcpAccessToken(db, serverId, credentials, cloudUrl)
-    const headers = buildMcpHeaders(token)
-    const transport = createMcpTransport(url, type, cloudUrl, headers, httpClient)
-    const mcpClient = await createMCPClient({ transport })
-    return mcpClient
+    // The provider mounts for every chat, but the SDK, transports and OAuth
+    // runtime are only needed once an enabled MCP server actually connects.
+    const { connectMcpClient } = await import('./mcp-client')
+    return connectMcpClient({ db, httpClient, serverId, url, type, cloudUrl })
   }
 
   const createClient = injectedCreateClient ?? defaultCreateClient

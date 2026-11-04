@@ -49,11 +49,11 @@ const sizeClasses: Record<NonNullable<StatusIndicatorProps['size']>, string> = {
 }
 
 const stateClasses: Record<StatusState, string> = {
-  online: 'bg-green-500',
-  connected: 'bg-green-500',
-  offline: 'bg-red-500',
-  disconnected: 'bg-red-500',
-  connecting: 'bg-yellow-500',
+  online: 'bg-success',
+  connected: 'bg-success',
+  offline: 'bg-destructive',
+  disconnected: 'bg-destructive',
+  connecting: 'bg-warning',
   error: 'bg-destructive',
   neutral: 'bg-muted-foreground/30',
 }

@@ -17,6 +17,7 @@ import { createChatInstance } from '@/chats/chat-instance'
 import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import type { CompactionCheckpoint } from '@shared/agent-core'
+import { stoppedReplyMarker } from '@shared/agent-core/stopped-reply'
 
 afterEach(resetStore)
 
@@ -158,44 +159,70 @@ const metadata = async (response: Response): Promise<UIMessageMetadata> => {
 }
 
 describe('built-in compaction integration', () => {
-  it('waits for a stopped run to unwind before compacting the earlier transcript', async () => {
-    const entered = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    const f = fixture({
-      beforeResponse: async (request) => {
-        if (!isSummary(request) && f.providerRequests.length === 2) {
-          entered.resolve()
-          // Model/tool teardown can outlive the UI's Stop action.
-          await release.promise
+  it.each(['earlier', 'current'] as const)(
+    'allows cancelling the wait for a stopped run before compacting the %s transcript',
+    async (boundary) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const f = fixture({
+        beforeResponse: async (request) => {
+          if (!isSummary(request) && f.providerRequests.length === 2) {
+            entered.resolve()
+            // Model/tool teardown can outlive the UI's Stop action.
+            await release.promise
+            throw new DOMException('Stopped', 'AbortError')
+          }
+        },
+      })
+      const adapter = f.adapter()
+      const first = user('Original task')
+      const completed = [first, assistant('Finished the task.')]
+      const pending = user('Unanswered request')
+      const controller = new AbortController()
+      try {
+        await metadata(await adapter.fetch(body([first]), f.context))
+        const response = await adapter.fetch({ ...body([...completed, pending]), signal: controller.signal }, f.context)
+        const result = metadata(response)
+        await entered.promise
+        controller.abort()
+        await result
+        const messages =
+          boundary === 'earlier'
+            ? completed
+            : [
+                ...completed,
+                pending,
+                { ...assistant(''), parts: [{ type: 'reasoning' as const, text: 'Partial reasoning' }] },
+              ]
+        const compactionController = new AbortController()
+        const cancelled = Promise.allSettled([
+          adapter.compact!({ ...body(messages), signal: compactionController.signal }, f.context),
+        ])
+        await getClock().tickAsync(0)
+        expect(f.requests.filter(isSummary)).toHaveLength(0)
+        compactionController.abort()
+        expect(await cancelled).toEqual([
+          { status: 'rejected', reason: expect.objectContaining({ name: 'AbortError' }) },
+        ])
+        const compacted = Promise.allSettled([adapter.compact!(body(messages), f.context)])
+        await getClock().tickAsync(0)
+        expect(f.requests.filter(isSummary)).toHaveLength(0)
+        release.resolve()
+        expect(await compacted).toEqual([expect.objectContaining({ status: 'fulfilled' })])
+        expect(f.requests.filter(isSummary)).toHaveLength(1)
+        const summaryInput = JSON.stringify(f.requests.filter(isSummary))
+        if (boundary === 'current') {
+          expect(summaryInput).toContain('Unanswered request')
+          expect(summaryInput).toContain(stoppedReplyMarker)
+        } else {
+          expect(summaryInput).not.toContain('Unanswered request')
         }
-      },
-    })
-    const adapter = f.adapter()
-    const first = user('Original task')
-    const completed = [first, assistant('Finished the task.')]
-    const controller = new AbortController()
-    try {
-      await metadata(await adapter.fetch(body([first]), f.context))
-      const response = await adapter.fetch(
-        { ...body([...completed, user('Unanswered request')]), signal: controller.signal },
-        f.context,
-      )
-      const result = metadata(response)
-      await entered.promise
-      controller.abort()
-      await result
-      const compacted = Promise.allSettled([adapter.compact!(body(completed), f.context)])
-      await getClock().tickAsync(0)
-      expect(f.requests.filter(isSummary)).toHaveLength(0)
-      release.resolve()
-      expect(await compacted).toEqual([expect.objectContaining({ status: 'fulfilled' })])
-      expect(f.requests.filter(isSummary)).toHaveLength(1)
-      expect(JSON.stringify(f.requests.filter(isSummary))).not.toContain('Unanswered request')
-    } finally {
-      release.resolve()
-      adapter.disconnect()
-    }
-  })
+      } finally {
+        release.resolve()
+        adapter.disconnect()
+      }
+    },
+  )
 
   it.each(['manual', 'send'] as const)('includes intervening agent turns before %s compaction', async (mode) => {
     const f = fixture()

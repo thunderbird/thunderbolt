@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chipMarker } from './parse-skill-tokens'
+
 /**
- * Append a `/name` token to `value` for the chat composer, normalizing
+ * Append a chip token (`chipMarker` + name) to `value` for the chat composer, normalizing
  * surrounding whitespace. `name` may be a display title with spaces
  * (`Daily Brief`) — the send path maps display tokens back to slugs.
  *
@@ -22,7 +24,7 @@
  * unit-testable without spinning up the chat-store / draft-input stack.
  */
 export const appendSlashToken = (value: string, name: string): string => {
-  const token = `/${name}`
+  const token = `${chipMarker}${name}`
   if (value.length === 0) {
     return `${token} `
   }
@@ -31,9 +33,11 @@ export const appendSlashToken = (value: string, name: string): string => {
   // splitting on the last space) keeps this correct for multi-word display
   // titles.
   const trimmedRight = value.replace(/\s+$/, '')
-  const boundaryChar = trimmedRight[trimmedRight.length - token.length - 1]
-  const endsWithToken =
-    trimmedRight.endsWith(token) && (trimmedRight.length === token.length || /\s/.test(boundaryChar))
+  // Older drafts and hand-typed tokens use a literal `/` instead of the marker.
+  const endsWithToken = [token, `/${name}`].some((candidate) => {
+    const boundaryChar = trimmedRight[trimmedRight.length - candidate.length - 1]
+    return trimmedRight.endsWith(candidate) && (trimmedRight.length === candidate.length || /\s/.test(boundaryChar))
+  })
   if (endsWithToken) {
     // Preserve the existing trailing space behaviour: if there was no space
     // after the token, add one so the caret lands clear of it.

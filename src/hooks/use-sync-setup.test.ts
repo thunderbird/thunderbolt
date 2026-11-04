@@ -3,8 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
-import { describe, expect, it } from 'bun:test'
-import { classifyEncryptionMetadata, reducer, initialState } from './use-sync-setup'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { classifyEncryptionMetadata, reducer, initialState, useSyncSetup } from './use-sync-setup'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import 'fake-indexeddb/auto'
+import { clearAllKeys, generateAK, generateKeyPair, generateMlKemKeyPair, getAK, storeKeyPair, wrapAK } from '@/crypto'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { createSpyHttpClient } from '@/test-utils/http-client-spy'
+import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
 
 const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   canary_iv: 'iv',
@@ -25,6 +31,63 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   scheme_version: schemeVersion,
 })
 
+describe('receiver verification failure', () => {
+  afterEach(async () => {
+    cleanup()
+    await clearAllKeys()
+    clearCachedSession()
+    localStorage.removeItem('thunderbolt_device_id')
+  })
+
+  const receiverWrapper = async () => {
+    await clearAllKeys()
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+    localStorage.setItem('thunderbolt_device_id', 'receiver')
+    setCachedSession({ user: { id: 'account-1' } })
+    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      const path = new URL(request.url).pathname
+      if (path.endsWith('/devices')) {
+        return Response.json({ trusted: false })
+      }
+      if (path.endsWith('/envelope')) {
+        return Response.json({ trusted: true, wrappedCK, attestation: null })
+      }
+      if (path.endsWith('/keys')) {
+        return Response.json({ keys: [] })
+      }
+      return Response.json({ ...metadata(2), passkey_credential_id: 'available-passkey' })
+    })
+    return createQueryTestWrapper({ httpClient })
+  }
+
+  it('offers retry and available-option guidance instead of raw attestation diagnostics', async () => {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: await receiverWrapper() })
+    await act(async () => {
+      expect(await result.current.confirmApproval()).toBe(false)
+    })
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
+    expect(result.current.isLoading).toBe(false)
+    expect(await getAK()).toBeNull()
+  })
+
+  it('routes a receiver-verification failure at detection to existing recovery and passkey choices', async () => {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: await receiverWrapper() })
+    await act(async () => {
+      expect((await result.current.continueIntro()).outcome).toBe('additional-device')
+    })
+    expect(result.current.step).toBe('approval-waiting')
+    expect(result.current.passkeySlotCredentialId).toBe('available-passkey')
+    expect(result.current.approvalError).toContain('Check now')
+    expect(result.current.approvalError).toContain('another option below')
+    expect(await getAK()).toBeNull()
+  })
+})
+
 describe('classifyEncryptionMetadata', () => {
   it('returns "none" when there is no metadata (404)', () => {
     expect(classifyEncryptionMetadata(null)).toBe('none')
@@ -40,6 +103,12 @@ describe('classifyEncryptionMetadata', () => {
 })
 
 describe('useSyncSetup reducer', () => {
+  it('retains the locally computed fingerprint while entering approval and clears it on reset', () => {
+    const prepared = reducer(initialState, { type: 'SET_APPROVAL_FINGERPRINT', payload: 'local-fingerprint' })
+    const waiting = reducer(prepared, { type: 'DETECTED_ADDITIONAL_DEVICE' })
+    expect(waiting.approvalFingerprint).toBe('local-fingerprint')
+    expect(reducer(waiting, { type: 'RESET' }).approvalFingerprint).toBe('')
+  })
   it('routes a migration into the recovery-key display step', () => {
     const next = reducer(initialState, { type: 'SET_RECOVERY_KEY', payload: 'word '.repeat(24).trim() })
     expect(next.step).toBe('recovery-key-display')

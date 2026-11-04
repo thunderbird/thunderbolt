@@ -146,7 +146,7 @@ export const ModelSelector = ({
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
       ) : selected?.data?.model.isConfidential === 1 ? (
         <GradientLock className="size-3.5 shrink-0" />
       ) : null}
@@ -178,7 +178,7 @@ export const ModelSelector = ({
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (
-          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-amber-500" />
+          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
         ) : item.icon ? (
           <span className="ml-auto flex-shrink-0">{item.icon}</span>
         ) : null}

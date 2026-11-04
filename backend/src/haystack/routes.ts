@@ -8,11 +8,43 @@ import { authorizeWsBearer, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { createStandaloneLogger } from '@/config/logger'
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { overflowsPreConnectQueue, wsCloseCodes } from '@/proxy/ws'
 import type { User } from '@shared/types/auth'
 import { wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { Elysia, t } from 'elysia'
 import { HaystackAcpServer, type HaystackAcpDeps } from './acp-server'
 import { createHaystackProvider, parsePipelinesEnv } from './provider'
+
+/** Per-socket state. */
+type HaystackSocketState = {
+  /** Set once the bearer check passes; until then frames wait in `pending`, under the proxy relay's caps. */
+  server: HaystackAcpServer | null
+  pending: string[]
+  pendingBytes: number
+  closing: boolean
+}
+
+/** Stashed on `ws.data`, the upgrade context, so the key is prefixed to stay clear of its fields. */
+type HaystackSocketData = { __haystack?: HaystackSocketState }
+
+const haystackSocketData = (ws: { data: unknown }): HaystackSocketData => ws.data as HaystackSocketData
+
+/** Stop taking frames and drop the ones still waiting for the bearer check. */
+const stopAccepting = (state: HaystackSocketState) => {
+  state.closing = true
+  state.pending = []
+  state.pendingBytes = 0
+}
+
+const refuse = (
+  ws: { close: (code?: number, reason?: string) => void },
+  state: HaystackSocketState,
+  code: number,
+  reason: string,
+) => {
+  stopAccepting(state)
+  ws.close(code, reason)
+}
 
 /**
  * Mount the Haystack ACP adapter routes.
@@ -122,6 +154,10 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
       async open(ws) {
         const log = createStandaloneLogger(settings)
         const data = ws.data as unknown as { request?: Request }
+        // Attached before the bearer check awaits: Bun can deliver frames together with the
+        // upgrade, and `message()` must queue them rather than find no state and drop them.
+        const state: HaystackSocketState = { server: null, pending: [], pendingBytes: 0, closing: false }
+        haystackSocketData(ws).__haystack = state
 
         // Validate the bearer exactly once per accepted socket. Doing this in
         // `beforeHandle` instead is unsafe because Bun's adapter can call it
@@ -131,14 +167,14 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         const subprotocolHeader = data.request?.headers.get('sec-websocket-protocol') ?? null
         const user: User | null = await authorizeWsBearer(auth, subprotocolHeader)
         if (!user) {
-          ws.close(wsCloseUnauthorized, 'unauthorized')
+          refuse(ws, state, wsCloseUnauthorized, 'unauthorized')
           return
         }
 
         const url = new URL(data.request?.url ?? 'http://localhost/haystack/ws')
         const pipelineSlug = url.searchParams.get('pipeline')
         if (!pipelineSlug) {
-          ws.close(wsCloseUnauthorized, 'missing pipeline parameter')
+          refuse(ws, state, wsCloseUnauthorized, 'missing pipeline parameter')
           return
         }
 
@@ -147,7 +183,12 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
         // pipeline — we close instead of opening to keep error surface tight.
         const descriptor = parsePipelinesEnv(settings).find((p) => p.id === pipelineSlug)
         if (!descriptor) {
-          ws.close(wsCloseUnauthorized, 'unknown pipeline')
+          refuse(ws, state, wsCloseUnauthorized, 'unknown pipeline')
+          return
+        }
+
+        // The client closed, or overflowed the queue, while the bearer check ran.
+        if (state.closing) {
           return
         }
 
@@ -161,23 +202,39 @@ export const createHaystackRoutes = (settings: Settings, auth: Auth, deps?: Hays
           settings,
           deps,
         })
-        ;(ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer = server
+        state.server = server
         log.debug({ pipelineSlug, pipelineName: descriptor.pipelineName, userId: user.id }, 'haystack ws opened')
+        const queued = state.pending
+        state.pending = []
+        state.pendingBytes = 0
+        // Started in arrival order, before any later frame, which now goes straight to the server.
+        await Promise.all(queued.map((text) => server.handleMessage(text)))
       },
       async message(ws, message) {
-        const server = (ws.data as unknown as { __haystackServer?: HaystackAcpServer }).__haystackServer
-        if (!server) {
-          // Auth already rejected this socket; the client may still race a
-          // first frame before the close lands. Drop quietly.
+        const state = haystackSocketData(ws).__haystack
+        if (!state || state.closing) {
           return
         }
         const text = typeof message === 'string' ? message : JSON.stringify(message)
-        await server.handleMessage(text)
+        if (state.server) {
+          await state.server.handleMessage(text)
+          return
+        }
+        const bytes = Buffer.byteLength(text, 'utf-8')
+        if (overflowsPreConnectQueue(state, bytes)) {
+          refuse(ws, state, wsCloseCodes.queueOverflow, 'pre-connect queue overflow')
+          return
+        }
+        state.pending.push(text)
+        state.pendingBytes += bytes
       },
       close(ws) {
-        const slot = ws.data as unknown as { __haystackServer?: HaystackAcpServer }
-        slot.__haystackServer?.dispose()
-        slot.__haystackServer = undefined
+        const state = haystackSocketData(ws).__haystack
+        if (!state) {
+          return
+        }
+        stopAccepting(state)
+        state.server?.dispose()
       },
     })
 }

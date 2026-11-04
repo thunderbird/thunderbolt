@@ -19,6 +19,7 @@ import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
 import { useLingui } from '@lingui/react/macro'
+import { ChatContentReady } from './chat-content-ready'
 
 const MiniAppApprovalHost = lazy(() =>
   import('@/mini-apps/mini-app-approval-host').then((module) => ({ default: module.MiniAppApprovalHost })),
@@ -136,6 +137,7 @@ export default function ChatUI() {
                 <div className="mx-auto w-full min-w-[300px] max-w-[728px] space-y-4 px-3 pt-[calc(var(--header-inset)+1.5rem)] pb-0 md:px-4">
                   <Suspense fallback={null}>
                     <ChatMessageList scrollTargetRef={scrollTargetRef} />
+                    <ChatContentReady />
                   </Suspense>
                 </div>
               </m.div>
@@ -210,6 +212,7 @@ export default function ChatUI() {
             </div>
             <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
               <ChatPromptInput />
+              {!hasMessages && <ChatContentReady />}
             </m.div>
           </m.div>
         </m.div>

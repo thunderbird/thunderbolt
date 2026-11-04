@@ -28,7 +28,7 @@ import type {
  *
  * We call the plugin's endpoints ourselves instead of using Better Auth's
  * `passkeyClient()`, and run the ceremony with `@simplewebauthn/browser` on web or
- * natively on the Apple and Android Tauri apps (`passkey-native.ts`). That's what lets us add
+ * natively on the Apple, Android and Windows Tauri apps (`passkey-native.ts`). That's what lets us add
  * the PRF extension to the ceremony options.
  */
 
@@ -102,7 +102,7 @@ const fetchCeremonyOptions = async <T>(
 
 /**
  * True when this runtime can perform a WebAuthn ceremony: the browser on web, or
- * the native bridge on the Apple and Android Tauri apps. Other Tauri webviews may expose
+ * the native bridge on the Apple, Android and Windows Tauri apps. Other Tauri webviews may expose
  * `PublicKeyCredential` yet fail the ceremony, so they're excluded. SSO
  * deployments swap the whole auth surface, so exclude them too.
  */
@@ -178,7 +178,7 @@ const splitPrfOutput = <T extends { clientExtensionResults: AuthenticationExtens
   }
 }
 
-/** Run a registration ceremony, natively on the Apple and Android Tauri apps and in the browser elsewhere. */
+/** Run a registration ceremony, natively on the Apple, Android and Windows Tauri apps and in the browser elsewhere. */
 const runRegistration = async (
   optionsJSON: PublicKeyCredentialCreationOptionsJSON,
 ): Promise<{ response: RegistrationResponseJSON; prfOutput: Uint8Array | null }> => {
@@ -194,7 +194,7 @@ const runRegistration = async (
 }
 
 /**
- * Run an assertion ceremony, natively on the Apple and Android Tauri apps and in the browser
+ * Run an assertion ceremony, natively on the Apple, Android and Windows Tauri apps and in the browser
  * elsewhere. `withPrf` asks for the PRF output; sign-in never does.
  */
 const runAssertion = async (

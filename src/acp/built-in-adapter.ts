@@ -82,7 +82,7 @@ import {
   getTinfoilClient,
   isTinfoilTransportWedgedError,
 } from '@/ai/tinfoil-client'
-import { prepareBuiltInConversation, prepareBuiltInHistory, splitCompactedHistory } from './built-in-conversation'
+import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
 import { isPiModelCandidate, managedAnthropicCatalogId } from './built-in-model-support'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
@@ -142,6 +142,8 @@ export type BuiltInAdapterOptions = {
   loadAgentCore?: () => Promise<AgentCoreModule>
   /** Shared per-send config preparation injection for adapter-level tests. */
   prepareConfig?: typeof prepareAiRequestConfig
+  /** Attachment/history preparation injection for adapter-level tests. */
+  prepareConversation?: typeof prepareBuiltInConversation
   /** Attested-client seams for adapter tests. */
   getSystemTinfoilClient?: typeof getSystemTinfoilClient
   getTinfoilClient?: typeof getTinfoilClient
@@ -729,6 +731,31 @@ const abortHarness = async (record: HarnessRecord): Promise<void> => {
   await record.harness.abort().catch(() => {})
 }
 
+/** Wait for a rebuilt or stopped harness without trapping a cancelled manual compaction behind teardown. */
+const waitForCompactionHarness = async (
+  pending: Promise<HarnessRecord>,
+  signal?: AbortSignal | null,
+): Promise<HarnessRecord> => {
+  const ready = async () => {
+    const record = await pending
+    // Stop closes the UI before Pi flushes its final reply and cancellation marker.
+    await record.harness.waitForIdle()
+    return record
+  }
+  if (!signal) {
+    return ready()
+  }
+  signal.throwIfAborted()
+  const aborted = Promise.withResolvers<never>()
+  const onAbort = () => aborted.reject(signal.reason)
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    return await Promise.race([ready(), aborted.promise])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
 /** Tear down one thread's harness: abort any in-flight run, then remove its
  *  isolated workspace so no files leak. Optimistic — `remove` can't throw
  *  (`force`), and a benign idle-abort error is swallowed. */
@@ -756,6 +783,7 @@ const fetchViaHarness = async (
   fallback: () => Promise<Response>,
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
+  prepareConversation: typeof prepareBuiltInConversation,
   tinfoilOptions: TinfoilClientOptions,
 ): Promise<Response> => {
   const debugTraceId = context.debugTranscriptTraceId
@@ -795,7 +823,9 @@ const fetchViaHarness = async (
   const transformMessage = (message: AgentMessage) => supersedeHarnessAppContext(message, supersededCallIds)
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
-  const { history, prompt, compaction } = await prepareBuiltInConversation(messages, skillInstructions)
+  const { history, prompt, files, compaction } = await prepareConversation(messages, skillInstructions, {
+    workspace: config.supportsTools,
+  })
   if (debugTraceId) {
     recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
       composeAppHarnessSystemPrompt(config),
@@ -815,6 +845,14 @@ const fetchViaHarness = async (
   )
   const record = await cached.record
   await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+  // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
+  const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+  for (const { path, error } of failures) {
+    console.error(`Built-in agent: could not save ${path} to the workspace`, error)
+  }
+  const promptText = failures.length
+    ? `${prompt.text}\n\n[Could not save ${failures.map(({ path }) => path).join(', ')} to the workspace. Answer from the preview only, and say the full file could not be read.]`
+    : prompt.text
   context.telemetry?.endPhase('harness_build')
   const { harness } = record
   context.telemetry?.setDimensions({ engine: 'pi' })
@@ -861,7 +899,7 @@ const fetchViaHarness = async (
           // Stop closes the UI before Pi finishes unwinding. Claim this user turn
           // now so a compaction of earlier history rebuilds instead of reusing it.
           cached.lastUserMessageId = messages[lastUserIndex].id
-          await harness.prompt(prompt.text, { images: prompt.images })
+          await harness.prompt(promptText, { images: prompt.images })
           await harness.waitForIdle()
         } catch (error) {
           // An exceptional failure may leave only part of its turn in the session.
@@ -919,6 +957,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
   const aiFetch = options.aiFetch ?? aiFetchStreamingResponse
   const loadAgentCore = options.loadAgentCore ?? (() => import('@shared/agent-core'))
   const prepareConfig = options.prepareConfig ?? prepareAiRequestConfig
+  const prepareConversation = options.prepareConversation ?? prepareBuiltInConversation
 
   // Per-thread harness cache, scoped to this adapter instance. The adapter is
   // itself cached per-agent (`adapter-cache.ts`), so a thread's harness survives
@@ -954,6 +993,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
         () => fetchViaLegacyPipeline(init, context),
         loadAgentCore,
         prepareConfig,
+        prepareConversation,
         options,
       )
     }
@@ -980,15 +1020,18 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     const messages = parseMessages(init)
     const supersededCallIds =
       config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
-    const previous = splitCompactedHistory(messages)
-    const history = await prepareBuiltInHistory(previous.messages)
+    const { history, files, compaction } = await prepareBuiltInHistory(messages, { workspace: config.supportsTools })
     const signature = harnessSignature(resolved, config.stableSystemPrompt, context.regenerationRevision)
     const lastUserId = messages.findLast((message) => message.role === 'user')?.id
     const cached = getOrBuildHarness(harnessCache, context.threadId, signature, lastUserId, () =>
-      buildHarnessRecord(agentCore, context, resolved, history, config, previous.compaction),
+      buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
     )
-    const record = await cached.record
+    const record = await waitForCompactionHarness(cached.record, init.signal)
     await prepareHarnessForSend(agentCore, record, config, context.httpClient)
+    const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
+    for (const { path, error } of failures) {
+      console.error(`Built-in agent: could not save ${path} to the workspace`, error)
+    }
     // The caller still has to save the returned checkpoint. Rebuild on the next
     // operation from that caller's durable history, whether the save succeeds
     // or fails. Keep the record owned by the cache for disconnect cleanup.

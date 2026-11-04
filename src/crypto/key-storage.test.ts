@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import {
   storeKeyPair,
@@ -95,6 +95,7 @@ const seedV1Store = (entries: Array<{ id: string; value: unknown }>): Promise<vo
   })
 
 beforeEach(deleteDatabase)
+afterEach(deleteDatabase)
 
 describe('storeKeyPair / getKeyPair', () => {
   it('round-trips both key pairs, decrypting the ML-KEM secret on read', async () => {

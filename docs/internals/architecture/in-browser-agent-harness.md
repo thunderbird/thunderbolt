@@ -87,6 +87,20 @@ same mount. Sharing it removes the copy step: what Pi writes, `cat` sees, and vi
   surfaces (`js-exec`/QuickJS, python), neither enabled here, and breaks the bash interpreter it protects by tripping
   over just-bash's internal `Proxy` use. The sandbox is the virtual mount, which has no host-process access.
 
+### Commands the browser shell lacks
+
+The app resolves just-bash's **browser** bundle, which excludes `xan`, `sqlite3`, `tar`, and `python3` (they exit 127),
+and no JavaScript runtime is enabled. `awk` has no CSV mode. The environment prompt names only commands that run, and
+[`environment-prompt.test.ts`](../../../shared/agent-core/environment-prompt.test.ts) executes each one against the
+browser bundle, because Bun resolves the Node bundle, where the excluded commands work.
+
+### Attachments in the workspace
+
+[`writeAgentWorkspaceFiles`](../../../shared/agent-core/build-app-harness.ts) writes the turn's text attachments under
+`attachments/` before each prompt, overwriting any edit the model made, so the model can compute over a file too large
+to inline. What gets written, and the preview the prompt carries instead, is described in
+[attachments.md](attachments.md#the-built-in-agent-queries-text-attachments-from-its-workspace).
+
 ## The workspace jail
 
 Every thread's tools are rooted at `/workspace/<threadId>` on the one shared mount, which is also the isolation
@@ -179,7 +193,7 @@ The context circle opens a menu with manual compaction and optional summary inst
 The built-in Pi adapter also checks usage before each provider request, including requests
 between tool steps, and compacts at 80% of the selected model's context window. Manual
 compaction waits for an idle conversation; Stop cancels the summary request. Manual
-checkpoints end at the latest assistant message, leaving unanswered user turns
+checkpoints end at the latest assistant message with content, leaving unanswered user turns
 outside the summary so Retry replays them once, verbatim. Compaction
 uses the selected model and its existing authenticated, proxied or confidential transport.
 A tool-style row in the transcript shows compaction progress. Saved checkpoints render
@@ -201,10 +215,14 @@ Compaction preserves the visible transcript. A versioned checkpoint lives in the
 message's existing encrypted `metadata` column, so it syncs without a schema migration.
 It stores the summary and retained Pi messages, including tool pairs. Structured image
 parts become text markers and raw tool-result `details` are omitted from the durable copy:
-image binaries and original attachments
-stay local, matching ordinary transcript replay. Live Pi messages are not rewritten by
-checkpoint serialization. On reload or model
+image binaries and original attachments stay local, matching ordinary transcript replay.
+Live Pi messages are not rewritten by checkpoint serialization. On reload or model
 change the adapter restores it, then seeds only visible turns after that boundary.
+Attachment files are restored from the full visible transcript, including turns before
+the checkpoint, so paths referenced by a summary still resolve in the workspace.
+Manual compaction uses the same attachment previews and tool-availability policy as
+normal requests. Stopped-reply markers are included in both model-input paths without
+being inserted into the visible or saved transcript.
 Regeneration removes the regenerated response from the request, so its checkpoint is
 excluded too. Automatic checkpoints are emitted only when compaction actually runs,
 avoiding a copy of the growing context on every subsequent message.

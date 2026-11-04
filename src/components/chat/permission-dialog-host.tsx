@@ -35,6 +35,8 @@ export const PermissionDialogHost = () => {
 
   return (
     <PermissionDialog
+      key={pendingPermission.requestId}
+      allowRemember={pendingPermission.allowRemember}
       request={pendingPermission.request}
       onRespond={(response) => resolvePendingPermission(id, response)}
       onAlwaysAllowTool={handleAlwaysAllowTool}

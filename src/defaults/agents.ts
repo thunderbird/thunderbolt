@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getAppName } from '@/lib/branding-selectors'
-import type { Agent } from '@/types/acp'
+import type { Agent, CloudAgent } from '@/types/acp'
 
 /**
  * The built-in agent. Lives in code only — never a DB row.
@@ -37,7 +37,8 @@ export const builtInAgent: Agent = {
  * agent). Built-in-only chat affordances — the mode picker and the mode-aware
  * loading label — gate on this; ACP agents own their conversation mode upstream.
  */
-export const isBuiltInAgent = (agent: Agent): boolean => agent.type === 'built-in'
+export const isBuiltInAgent = (agent: Agent): boolean =>
+  agent.type === 'built-in' || (isPortableAgent(agent) && agent.executionEnvironment === 'local')
 
 /**
  * Whether an agent is the backend's hosted agent (`managed-http`). It runs on
@@ -46,3 +47,10 @@ export const isBuiltInAgent = (agent: Agent): boolean => agent.type === 'built-i
  * private), and it takes no attachments for now.
  */
 export const isHostedAgent = (agent: Agent): boolean => agent.type === 'managed-http'
+
+/** Scoped cloud execution uses its own transport and encryption boundary, separate from hosted HTTP agents. */
+export const isCloudAgent = (agent: Agent): agent is CloudAgent =>
+  isPortableAgent(agent) && agent.executionEnvironment !== 'local'
+
+/** Saved Thunderbolt definitions can run in either environment without becoming a second agent. */
+export const isPortableAgent = (agent: Agent): agent is CloudAgent => agent.type === 'cloud'

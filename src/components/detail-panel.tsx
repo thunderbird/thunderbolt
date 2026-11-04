@@ -45,6 +45,8 @@ type DetailPanelProps = {
   subtitle?: string
   /** Extra header actions (e.g. a ⋯ menu), rendered left of the Close button. */
   actions?: ReactNode
+  /** Keep form actions over the scrolling body on desktop as well as mobile. */
+  pinFormFooter?: boolean
   onClose: () => void
   /** Hide when the containing modal supplies its own close control. */
   showCloseButton?: boolean
@@ -62,6 +64,7 @@ export const DetailPanel = ({
   title,
   subtitle,
   actions,
+  pinFormFooter,
   onClose,
   showCloseButton = true,
   children,
@@ -120,9 +123,12 @@ export const DetailPanel = ({
           spacer provides real scroll runway even when a short form otherwise
           fits and iOS has panned its focused field awkwardly. */}
       <div
+        data-slot="detail-panel-body"
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:pt-4 max-md:pt-[calc(var(--modal-top-inset)+1rem)] max-md:pb-[calc(var(--touch-height-default)+var(--modal-footer-inset))] max-md:after:h-[var(--kb,0px)] max-md:after:shrink-0 max-md:after:content-['']",
           floatingFormFooterClass,
+          pinFormFooter &&
+            'md:pb-20 md:[&_[data-slot=form-footer]]:absolute md:[&_[data-slot=form-footer]]:inset-x-6 md:[&_[data-slot=form-footer]]:bottom-5 md:[&_[data-slot=form-footer]]:z-10 md:[&_[data-slot=form-footer]]:before:pointer-events-none md:[&_[data-slot=form-footer]]:before:absolute md:[&_[data-slot=form-footer]]:before:-inset-x-6 md:[&_[data-slot=form-footer]]:before:-top-8 md:[&_[data-slot=form-footer]]:before:-bottom-5 md:[&_[data-slot=form-footer]]:before:-z-10 md:[&_[data-slot=form-footer]]:before:bg-gradient-to-t md:[&_[data-slot=form-footer]]:before:from-sidebar md:[&_[data-slot=form-footer]]:before:via-sidebar/95 md:[&_[data-slot=form-footer]]:before:to-transparent',
         )}
       >
         {children}

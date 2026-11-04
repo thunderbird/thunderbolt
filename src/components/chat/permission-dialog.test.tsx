@@ -7,7 +7,7 @@ import '@/testing-library'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { useChatStore } from '@/chats/chat-store'
+import { useChatStore, type PendingPermission } from '@/chats/chat-store'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { PermissionDialog } from './permission-dialog'
 import { PermissionDialogHost } from './permission-dialog-host'
@@ -155,7 +155,10 @@ describe('PermissionDialogHost', () => {
   })
 
   /** Renders host with a real store session containing one pending request. */
-  const renderPendingPermission = (resolve: (response: RequestPermissionResponse) => void) => {
+  const renderPendingPermission = (
+    resolve: (response: RequestPermissionResponse) => void,
+    options: Partial<PendingPermission> = {},
+  ) => {
     hydrateStore({
       chatInstance: createMockChatInstance(),
       chatThread: null,
@@ -168,10 +171,54 @@ describe('PermissionDialogHost', () => {
       requestId: 'request-1',
       request: baseRequest,
       resolve,
+      ...options,
     })
 
     render(<PermissionDialogHost />)
   }
+
+  it('offers only once choices for cloud approvals and never records an allowance', () => {
+    const resolve = mock(() => {})
+    renderPendingPermission(resolve, {
+      allowRemember: false,
+      request: {
+        ...baseRequest,
+        options: [
+          ...baseRequest.options,
+          { optionId: 'always', name: 'Remember approval', kind: 'allow_always' },
+          { optionId: 'never', name: 'Remember denial', kind: 'reject_always' },
+        ],
+      },
+    })
+    expect(screen.queryByText('Always allow everything from this agent')).toBeNull()
+    expect(screen.queryByText('Always allow all Run command actions')).toBeNull()
+    expect(screen.queryByText('Remember approval')).toBeNull()
+    expect(screen.queryByText('Remember denial')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'selected', optionId: 'allow' } })
+    expect(useChatStore.getState().alwaysAllowedAgentIds.size).toBe(0)
+    expect(useChatStore.getState().alwaysAllowedAgentToolKeys.size).toBe(0)
+  })
+
+  it('resets the response lock when the next durable approval immediately replaces a resolved one', () => {
+    const nextResolve = mock(() => {})
+    renderPendingPermission(
+      () => {
+        useChatStore.getState().setPendingPermission('session-1', {
+          agentId: 'agent-1',
+          requestId: 'request-2',
+          request: baseRequest,
+          allowRemember: false,
+          resolve: nextResolve,
+        })
+      },
+      { allowRemember: false },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    expect(screen.getByRole('button', { name: 'Allow' })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(nextResolve).toHaveBeenCalledWith({ outcome: { outcome: 'selected', optionId: 'reject' } })
+  })
 
   it('records a tool allowance and resolves the current request', () => {
     const resolve = mock(() => {})

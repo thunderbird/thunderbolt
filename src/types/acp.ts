@@ -20,6 +20,7 @@ import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { ChatThread, Model, SaveMessagesFunction } from '@/types'
 import type { AgentTransport, AgentType } from '@shared/acp-types'
+import type { BuiltInAgentConfiguration } from '@/ai/fetch'
 
 /** Capabilities advertised by an ACP agent on `initialize`. Stored on the
  *  adapter so the connect logic can branch on `loadSession` and future
@@ -45,10 +46,9 @@ export type AgentCapabilities = {
 /** Unified Agent row used across UI, DAL, and chat routing. Combines fields
  *  from the synced `agents` table (user customs), the local-only `agents_system`
  *  table (env-var-discovered), and the hardcoded built-in default. */
-export type Agent = {
+type AgentBase = {
   id: string
   name: string
-  type: AgentType
   /** The wire transports plus `iroh`, which only a user-added remote-acp agent
    *  uses: it is dialed peer-to-peer over an n0 relay, and its `url` carries the
    *  bridge's NodeId/ticket instead of a `ws(s)://` URL. `http` is a managed-http
@@ -63,11 +63,31 @@ export type Agent = {
   userId: string | null
 }
 
+/** Existing local, discovered, and ACP agents retain their wire contract. */
+export type ProtocolAgent = AgentBase & { type: AgentType }
+
+/** A summary of a scoped cloud resource, never its decrypted configuration or credentials. */
+export type CloudAgent = AgentBase & {
+  type: 'cloud'
+  /** A saved definition is portable; the selection pins an individual chat's runtime. */
+  executionEnvironment?: 'local' | 'cloud'
+  localModelId?: string
+  cloudAgentId: string
+  transport: 'http'
+  url: null
+  isSystem: 0
+  userId: string
+}
+
+export type Agent = ProtocolAgent | CloudAgent
+
 /** Per-request context handed to `AgentAdapter.fetch`. Carries everything the
  *  built-in adapter passes to `aiFetchStreamingResponse` AND everything the
  *  ACP adapter needs to translate ACP `sessionUpdate` notifications into
  *  AI SDK v5 UI message stream chunks. */
 export type AgentAdapterContext = {
+  agentConfiguration?: BuiltInAgentConfiguration
+  agentApprovalMode?: 'ask' | 'full-access'
   threadId: string
   chatThread: ChatThread | null
   acpSessionId: string | null

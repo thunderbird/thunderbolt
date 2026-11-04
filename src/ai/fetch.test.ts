@@ -4,6 +4,7 @@
 
 import { createWebToolBudget } from '@/ai/web-tool-budget'
 import { createModel as insertModel } from '@/dal/models'
+import { createSkill } from '@/dal/skills'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -865,6 +866,57 @@ describe('logical-turn citation registry', () => {
       )
       expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
       expect(requests).toEqual(['one', 'two', 'one'])
+    } finally {
+      await teardownTestDatabase()
+    }
+  })
+})
+
+describe('saved local agent configuration', () => {
+  it('uses saved skill content and instructions while excluding unselected library skills and web tools', async () => {
+    await setupTestDatabase()
+    try {
+      await insertModel(getDb(), {
+        id: 'portable-model',
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'Test',
+        toolUsage: 1,
+      })
+      await createSkill(getDb(), {
+        name: 'unselected',
+        label: 'Unselected',
+        description: 'Hidden',
+        instruction: 'PRIVATE LIBRARY INSTRUCTION',
+      })
+      await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+      const httpClient = createClient({ prefixUrl: 'https://backend.test' })
+      const available = await prepareAiRequestConfig({ modelId: 'portable-model', httpClient })
+      expect(available.skills.some(({ name }) => name === 'unselected')).toBe(true)
+      expect(available.toolset.search).toBeDefined()
+      const selected = [{ name: 'selected', description: 'Saved skill', instruction: 'SAVED SKILL INSTRUCTIONS' }]
+      const scoped = await prepareAiRequestConfig({
+        modelId: 'portable-model',
+        httpClient,
+        agentConfiguration: {
+          instructions: 'SAVED AGENT INSTRUCTIONS',
+          skills: selected,
+          searchEnabled: false,
+          unavailableCapabilities: ['Laptop MCP'],
+        },
+      })
+      expect(scoped.skills).toEqual(selected)
+      expect(scoped.stableSystemPrompt).toContain('SAVED AGENT INSTRUCTIONS')
+      expect(scoped.stableSystemPrompt).toContain('Laptop MCP')
+      expect(scoped.stableSystemPrompt).not.toContain('unselected')
+      expect(scoped.toolset.search).toBeUndefined()
+      expect(scoped.toolset.fetch_content).toBeUndefined()
+      expect(await scoped.toolset.skill.execute!({ name: 'selected' }, { toolCallId: 'load', messages: [] })).toBe(
+        'SAVED SKILL INSTRUCTIONS',
+      )
+      await expect(
+        scoped.toolset.skill.execute!({ name: 'unselected' }, { toolCallId: 'hidden', messages: [] }),
+      ).rejects.toThrow('not found')
     } finally {
       await teardownTestDatabase()
     }

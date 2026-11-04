@@ -137,6 +137,9 @@ export const applyOperation = async (
     return true
   }
 
+  // Cloud state is authoritative on the server, including approvals and run results.
+  if (op.type === 'cloud_agent_projections') return false
+
   if (!validTables.has(op.type)) {
     return false
   }

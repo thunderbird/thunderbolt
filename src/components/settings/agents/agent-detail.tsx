@@ -29,7 +29,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { Switch } from '@/components/ui/switch'
 import { useDatabase } from '@/contexts'
 import { getAllMcpServers } from '@/dal'
 import type { UpdateAgentPatch } from '@/dal/agents'
@@ -90,6 +89,7 @@ export const AgentDetail = ({
   testAcpConnection = defaultTestAcpConnection,
 }: AgentDetailProps) => {
   const appName = useAppName()
+  const { t } = useLingui()
   const agentName = agent.name
   const Icon = iconForAgent(agent)
   const flavor = agentFlavor(agent)
@@ -137,6 +137,13 @@ export const AgentDetail = ({
       actions={managementMenu}
       onClose={onClose}
     >
+      <div className="flex flex-col gap-1">
+        <FieldLabel>{t`Environment`}</FieldLabel>
+        <p className="text-base">
+          {flavor === 'built-in' ? <Trans>In this app</Trans> : <Trans>Connected environment</Trans>}
+        </p>
+      </div>
+      <DetailDivider />
       {flavor === 'built-in' && <BuiltInBody />}
       {flavor === 'system' && <SystemBody agent={agent} />}
       {flavor === 'custom' && (
@@ -296,21 +303,8 @@ const CustomBody = ({
   testAcpConnection: NonNullable<AgentDetailProps['testAcpConnection']>
 }) => {
   const { i18n, t } = useLingui()
-  const customAgentName = agent.name
   const [testResult, setTestResult] = useState<TestState>('idle')
-  const [enabledError, setEnabledError] = useState<string | null>(null)
   const isWebSocket = agent.transport === 'websocket'
-
-  const handleEnabledChange = async (next: boolean) => {
-    setEnabledError(null)
-    try {
-      await onUpdate({ enabled: next ? 1 : 0 })
-    } catch (error) {
-      // The optimistic Switch reverts on the next render; say why.
-      console.error('Failed to update agent enabled state', error)
-      setEnabledError(t`Couldn't update. Please try again.`)
-    }
-  }
 
   const handleTest = async () => {
     if (!agent.url) {
@@ -369,28 +363,6 @@ const CustomBody = ({
           placeholder={t`Optional`}
           onSave={(description) => onUpdate({ description: description === '' ? null : description })}
         />
-        {isEditable && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col">
-                <FieldLabel>{t`Enabled`}</FieldLabel>
-                <p className="text-sm text-muted-foreground">
-                  <Trans>Disabled agents stay out of the chat agent picker.</Trans>
-                </p>
-              </div>
-              <Switch
-                checked={agent.enabled === 1}
-                onCheckedChange={(next) => void handleEnabledChange(next)}
-                aria-label={agent.enabled === 1 ? t`Disable ${customAgentName}` : t`Enable ${customAgentName}`}
-              />
-            </div>
-            {enabledError && (
-              <p role="alert" className="text-sm text-destructive">
-                {enabledError}
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       <DetailDivider />

@@ -29,7 +29,8 @@ import { getDb } from '@/db/database'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
-import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
+import { createBuiltInAdapter } from './built-in-adapter'
+import { createLocalAgentAdapter, type LocalAgentAdapterOptions } from './local-agent-adapter'
 import { createManagedHttpAdapter } from './managed-http-adapter'
 
 /** Connection-scoped context handed to {@link connectToAgent}. Deliberately
@@ -44,7 +45,7 @@ export type ConnectToAgentContext = {
   onAvailableCommands?: (commands: AcpCommand[]) => void
 }
 
-export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
+export type ConnectToAgentDeps = LocalAgentAdapterOptions & AcpAdapterDeps
 
 /** Read enabled skills from same DAL source used by built-in agent. */
 const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllSkills(getDb()))
@@ -61,7 +62,14 @@ export const connectToAgent = async (
   ctx: ConnectToAgentContext,
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
-  switch (agent.type) {
+  const type = agent.type
+  const id = agent.id
+  switch (type) {
+    case 'cloud':
+      if (agent.executionEnvironment === 'local') {
+        return createLocalAgentAdapter(agent, ctx.httpClient, deps)
+      }
+      throw new Error('Cloud agents require the scoped cloud chat transport')
     case 'built-in':
       return createBuiltInAdapter(agent, deps)
     case 'managed-http':
@@ -84,8 +92,8 @@ export const connectToAgent = async (
         },
       )
     default: {
-      const unknownType: never = agent.type
-      throw new Error(`Unknown agent type ${String(unknownType)} for agent ${agent.id}`)
+      const unknownType: never = type
+      throw new Error(`Unknown agent type ${String(unknownType)} for agent ${id}`)
     }
   }
 }

@@ -15,6 +15,7 @@ import { builtInAgent } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
 import type { Agent } from '@/types/acp'
 import { customAgentTypes, type CustomAgentType } from '@shared/acp-types'
+import { useCloudAgentInventory } from '@/cloud-agent/use-cloud-agent-inventory'
 import { clearAcpSessionIdsForAgent } from './chat-threads'
 
 /** Shape persisted in the local-only `agents_secrets` table. */
@@ -119,14 +120,15 @@ export const loadAllAgents = async (
 
 /** Combined list hook: built-in first (unless disabled by deployment), then
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
-export const useAllAgents = (): Agent[] => {
+export const useAllAgents = ({ includeCloud = true }: { includeCloud?: boolean } = {}): Agent[] => {
   const includeBuiltIn = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
   // `builtInAgent.name` reads the app name live, so the same object stays current
   // wherever it is held (the chat store keeps the selected agent by reference;
   // a copy with the name baked in would go stale there). The value is unused:
   // subscribing re-renders every agent list when `/config` renames the app.
   useAppName()
-  return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
+  const cloud = useCloudAgentInventory({ enabled: includeCloud })
+  return [...composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn }), ...cloud.agents]
 }
 
 /** Wire transports a user-creatable custom agent can use: a `ws(s)://` endpoint,

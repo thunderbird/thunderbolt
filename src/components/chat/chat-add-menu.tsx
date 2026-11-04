@@ -9,6 +9,9 @@ import { useState } from 'react'
 import { ResponsiveActionMenu, type ResponsiveActionMenuAction } from '@/components/ui/responsive-action-menu'
 
 type ChatAddMenuProps = {
+  side?: 'top' | 'bottom'
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   /** Omitted when the selected agent takes no attachments, which hides the action. */
   onUploadFile?: () => void
   /** Omitted when the Connections route is unreachable (minimal mode), which hides the action. */
@@ -21,7 +24,13 @@ type ChatAddMenuProps = {
  * Each action is present only when its handler is given, mirroring `onUploadFile`, so the props
  * stay the single source of what the menu offers. With no actions it renders nothing.
  */
-export const ChatAddMenu = ({ onUploadFile, onOpenConnections }: ChatAddMenuProps) => {
+export const ChatAddMenu = ({
+  onUploadFile,
+  onOpenConnections,
+  open: controlledOpen,
+  onOpenChange,
+  side = 'bottom',
+}: ChatAddMenuProps) => {
   const { t } = useLingui()
   const [open, setOpen] = useState(false)
 
@@ -51,11 +60,11 @@ export const ChatAddMenu = ({ onUploadFile, onOpenConnections }: ChatAddMenuProp
 
   return (
     <ResponsiveActionMenu
-      open={open}
-      onOpenChange={setOpen}
+      open={controlledOpen ?? open}
+      onOpenChange={onOpenChange ?? setOpen}
       title={t`Add to chat`}
       actions={actions}
-      desktopMenu={{ side: 'bottom', align: 'start', className: 'min-w-44' }}
+      desktopMenu={{ side, align: 'start', className: 'min-w-44' }}
       trigger={
         <button
           type="button"

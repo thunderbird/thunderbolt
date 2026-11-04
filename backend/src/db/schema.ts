@@ -28,3 +28,6 @@ export * from './inference-usage-schema'
 
 // Re-export solved captcha challenges (server-only replay protection)
 export * from './captcha-schema'
+
+export * from './cloud-agent-schema'
+export * from './cloud-runtime-schema'

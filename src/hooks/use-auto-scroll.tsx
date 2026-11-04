@@ -8,12 +8,15 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type KeyboardEvent,
+  type PointerEvent,
   type RefCallback,
   type TouchEvent,
   type WheelEvent,
 } from 'react'
 
 const smoothScrollDuration = 300
+const verticalScrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
 
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
 
@@ -34,11 +37,13 @@ type UseAutoScrollReturn = {
   scrollToElement: (selector: string, offsetFromTop?: number, smooth?: boolean, programmatic?: boolean) => boolean
   /** Engages auto-follow: subsequent content growth scrolls the viewport to the bottom. */
   resetUserScroll: () => void
-  /** Disables auto-follow (as if the user scrolled away), so callers can pin the viewport elsewhere. */
+  /** Pins the viewport until user scroll input or an explicit reset releases it. */
   disableAutoScroll: () => void
   scrollHandlers: {
     onWheel: (e: WheelEvent) => void
     onTouchStart: (e: TouchEvent) => void
+    onPointerDown: (e: PointerEvent) => void
+    onKeyDown: (e: KeyboardEvent) => void
   }
 }
 
@@ -56,8 +61,8 @@ export const useAutoScroll = ({
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
   const [scrollTarget, setScrollTarget] = useState<HTMLDivElement | null>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
-  // Ref for sync access in effects - auto-scroll disabled by default
-  const userHasScrolledRef = useRef(true)
+  // A deliberate viewport pin survives layout changes that expose the bottom anchor.
+  const autoFollowRef = useRef<'following' | 'paused' | 'pinned'>('paused')
   const animationFrameRef = useRef<number | null>(null)
   const isProgrammaticScrollRef = useRef(false)
   const timeoutRef = useRef<number | null>(null)
@@ -82,6 +87,20 @@ export const useAutoScroll = ({
     }, 100) as unknown as number
   }, [])
 
+  /** Releases an in-flight animation before user input or a newer scroll takes over. */
+  const cancelSmoothScroll = useCallback(() => {
+    if (animationFrameRef.current === null) {
+      return
+    }
+    cancelAnimationFrame(animationFrameRef.current)
+    animationFrameRef.current = null
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+    isProgrammaticScrollRef.current = false
+  }, [])
+
   /**
    * Performs smooth scroll animation to target position, or instant scroll if smooth=false.
    * Manages programmatic scroll flag and animation frame cleanup.
@@ -92,6 +111,8 @@ export const useAutoScroll = ({
         return false
       }
 
+      cancelSmoothScroll()
+
       // Set flag for programmatic scrolls
       if (programmatic) {
         isProgrammaticScrollRef.current = true
@@ -100,10 +121,6 @@ export const useAutoScroll = ({
       const shouldSmooth = smoothScroll ?? (!isStreaming && smooth)
 
       if (shouldSmooth) {
-        if (animationFrameRef.current !== null) {
-          cancelAnimationFrame(animationFrameRef.current)
-        }
-
         const startScrollTop = scrollContainer.scrollTop
         const distance = targetScrollTop - startScrollTop
         const startTime = performance.now()
@@ -137,7 +154,7 @@ export const useAutoScroll = ({
 
       return true
     },
-    [scrollContainer, smooth, isStreaming, clearProgrammaticFlagAfterDelay],
+    [scrollContainer, smooth, isStreaming, clearProgrammaticFlagAfterDelay, cancelSmoothScroll],
   )
 
   const scrollToBottom = useCallback(
@@ -179,30 +196,6 @@ export const useAutoScroll = ({
     [scrollContainer, scrollToBottom, scrollToPosition],
   )
 
-  /**
-   * Aborts an in-flight smooth (rAF-driven) scroll so a real user scroll can
-   * take over immediately. Without this, the easing loop keeps writing scrollTop
-   * on the next frame and yanks the user back toward the animation's target,
-   * defeating their opt-out. No-op when no animation is running, so the natural
-   * opt-out path (nothing in flight) keeps its existing semantics.
-   */
-  const cancelSmoothScroll = useCallback(() => {
-    if (animationFrameRef.current === null) {
-      return
-    }
-    cancelAnimationFrame(animationFrameRef.current)
-    animationFrameRef.current = null
-    // The cancelled animation may have owned the programmatic-scroll flag (which
-    // it only clears in its final step). The user has taken over, so release the
-    // flag now — otherwise the IntersectionObserver would mistake the user's own
-    // scroll-to-bottom for a programmatic one and skip re-engaging follow.
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
-    }
-    isProgrammaticScrollRef.current = false
-  }, [])
-
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       if (e.deltaY === 0) {
@@ -210,8 +203,8 @@ export const useAutoScroll = ({
       }
       // A real user wheel pre-empts any in-flight smooth programmatic scroll.
       cancelSmoothScroll()
-      if (e.deltaY < 0) {
-        userHasScrolledRef.current = true
+      if (e.deltaY < 0 || autoFollowRef.current === 'pinned') {
+        autoFollowRef.current = 'paused'
       }
     },
     [cancelSmoothScroll],
@@ -219,23 +212,54 @@ export const useAutoScroll = ({
 
   // Any touch interaction disables auto-scroll - user wants control
   const handleTouchStart = useCallback(() => {
-    userHasScrolledRef.current = true
+    autoFollowRef.current = 'paused'
     cancelSmoothScroll()
   }, [cancelSmoothScroll])
 
+  const handlePointerDown = useCallback(
+    (e: PointerEvent) => {
+      // Native scrollbar presses target the scrolling container itself.
+      if (e.button !== 0 || e.target !== e.currentTarget) {
+        return
+      }
+      autoFollowRef.current = 'paused'
+      cancelSmoothScroll()
+    },
+    [cancelSmoothScroll],
+  )
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !verticalScrollKeys.has(e.key)) {
+        return
+      }
+      const target = e.target
+      if (target instanceof Element) {
+        if (
+          target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')
+        ) {
+          return
+        }
+        if (e.key === ' ' && target.closest('button, a[href], [role="button"]')) {
+          return
+        }
+      }
+      autoFollowRef.current = 'paused'
+      cancelSmoothScroll()
+    },
+    [cancelSmoothScroll],
+  )
+
   const resetUserScroll = useCallback(() => {
-    userHasScrolledRef.current = false
+    autoFollowRef.current = 'following'
   }, [])
 
   /**
-   * Disables auto-follow (as if the user had scrolled away). Used when a caller
-   * intentionally positions the viewport somewhere other than the bottom (e.g.
-   * pinning a freshly-sent question near the top) so streamed content can't drag
-   * the view back down. The IntersectionObserver still re-engages follow if the
-   * user later scrolls to the bottom.
+   * Holds an intentional viewport position through layout changes. Actual user
+   * scroll input releases the pin, after which reaching the bottom resumes follow.
    */
   const disableAutoScroll = useCallback(() => {
-    userHasScrolledRef.current = true
+    autoFollowRef.current = 'pinned'
   }, [])
 
   // IntersectionObserver for bottom detection - runs when elements are available
@@ -252,8 +276,8 @@ export const useAutoScroll = ({
         setIsAtBottom(atBottom)
 
         // Enable auto-scroll when user scrolls to bottom (not on initial setup, not programmatic)
-        if (atBottom && !isFirstObservation && !isProgrammaticScrollRef.current) {
-          userHasScrolledRef.current = false
+        if (atBottom && !isFirstObservation && !isProgrammaticScrollRef.current && autoFollowRef.current !== 'pinned') {
+          autoFollowRef.current = 'following'
         }
 
         isFirstObservation = false
@@ -274,7 +298,7 @@ export const useAutoScroll = ({
   }, [scrollContainer, scrollTarget, rootMargin])
 
   const onAutoScroll = useEffectEvent(() => {
-    if (!userHasScrolledRef.current && scrollContainer) {
+    if (autoFollowRef.current === 'following' && scrollContainer) {
       scrollToBottom()
     }
   })
@@ -322,6 +346,11 @@ export const useAutoScroll = ({
     scrollToElement,
     resetUserScroll,
     disableAutoScroll,
-    scrollHandlers: { onWheel: handleWheel, onTouchStart: handleTouchStart },
+    scrollHandlers: {
+      onWheel: handleWheel,
+      onTouchStart: handleTouchStart,
+      onPointerDown: handlePointerDown,
+      onKeyDown: handleKeyDown,
+    },
   }
 }

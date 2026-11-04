@@ -108,6 +108,44 @@ const translate = async (...messages: ContentEvent[][]) => {
   return { chunks, parts: snapshots.at(-1)?.parts.filter((part) => part.type !== 'step-start') }
 }
 
+describe('piHarnessToUiMessageStream incremental delivery', () => {
+  it('delivers each partial answer while the prompt remains pending', async () => {
+    const { harness, emit } = createHarnessEvents()
+    const prompt = Promise.withResolvers<void>()
+    const reader = piHarnessToUiMessageStream(harness, () => prompt.promise).getReader()
+    const readChunk = async (): Promise<AiSdkChunk | undefined> => {
+      const { value } = await reader.read()
+      return value ? parseChunks(new TextDecoder().decode(value))[0] : undefined
+    }
+
+    emit({ type: 'agent_start' })
+    emit({ type: 'turn_start' })
+    expect(await readChunk()).toEqual({ type: 'start' })
+    expect(await readChunk()).toEqual({ type: 'start-step' })
+
+    const emitText = (delta: string): void =>
+      emit({
+        type: 'message_update',
+        message: assistantMessage,
+        assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta, partial: assistantMessage },
+      })
+    emitText('First ')
+    expect(await readChunk()).toEqual({ type: 'text-start', id: 'pi-text-0' })
+    expect(await readChunk()).toEqual({ type: 'text-delta', id: 'pi-text-0', delta: 'First ' })
+
+    // The second fragment does not exist until the first has reached the reader.
+    emitText('second.')
+    expect(await readChunk()).toEqual({ type: 'text-delta', id: 'pi-text-0', delta: 'second.' })
+
+    prompt.resolve()
+    expect(await readChunk()).toEqual({ type: 'text-end', id: 'pi-text-0' })
+    expect(await readChunk()).toEqual({ type: 'finish-step' })
+    expect(await readChunk()).toEqual({ type: 'finish' })
+    expect(await readChunk()).toBeUndefined()
+    expect(await reader.read()).toEqual({ done: true, value: undefined })
+  })
+})
+
 describe('piHarnessToUiMessageStream content boundaries', () => {
   it.each([' tail', ' ', '\n'])('keeps the answer intact across a mixed reasoning tail %j', async (tail) => {
     const { chunks, parts } = await translate([
@@ -365,6 +403,35 @@ const createHarnessFake = () => {
 }
 
 describe('piHarnessToUiMessageStream abort', () => {
+  it('awaits harness cleanup when the consumer cancels a paced stream', async () => {
+    const fixture = createHarnessEvents()
+    const cleanup = Promise.withResolvers<void>()
+    const state = { abortCount: 0, cancelFinished: false }
+    const harness = {
+      ...fixture.harness,
+      abort: async () => {
+        state.abortCount += 1
+        await cleanup.promise
+        return { clearedSteer: [], clearedFollowUp: [] }
+      },
+    }
+    const stream = piHarnessToUiMessageStream(harness, () => new Promise<void>(() => {}), {}, undefined, undefined, {
+      chunking: () => null,
+      delayInMs: 10,
+    })
+    const cancel = (async () => {
+      await stream.cancel()
+      state.cancelFinished = true
+    })()
+    await Promise.resolve()
+    expect(state.abortCount).toBe(1)
+    expect(state.cancelFinished).toBe(false)
+    cleanup.resolve()
+    await cancel
+    expect(state.abortCount).toBe(1)
+    expect(state.cancelFinished).toBe(true)
+  })
+
   it('closes the stream and aborts the harness when the signal fires mid-run', async () => {
     const { harness, state, emit, listenerCount } = createHarnessFake()
     const controller = new AbortController()

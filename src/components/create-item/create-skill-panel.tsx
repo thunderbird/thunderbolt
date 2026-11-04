@@ -61,6 +61,7 @@ const createSkillReducer = (state: CreateSkillState, action: CreateSkillAction):
 
 type CreateSkillPanelProps = {
   open: boolean
+  overlay?: boolean
   onClose: () => void
   onCloseComplete: () => void
   initialName?: string
@@ -68,7 +69,14 @@ type CreateSkillPanelProps = {
 }
 
 /** Creates or edits a skill over the current screen without changing routes. */
-export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, skillId }: CreateSkillPanelProps) => {
+export const CreateSkillPanel = ({
+  open,
+  overlay,
+  onClose,
+  onCloseComplete,
+  initialName,
+  skillId,
+}: CreateSkillPanelProps) => {
   const { t } = useLingui()
   const createSkillTracked = useCreateSkillTracked()
   const { skills, isLoading, updateSkill } = useLibrarySkills()
@@ -85,6 +93,7 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
   if (isEditing && !activeSkill) {
     return (
       <CreateItemLoadingPanel
+        overlay={overlay}
         kind="skill"
         title={title}
         open={open}
@@ -131,6 +140,7 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
   return (
     <>
       <CreateItemPanelShell
+        overlay={overlay}
         kind="skill"
         title={title}
         open={open}

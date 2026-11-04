@@ -12,10 +12,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * Thunderbolt agent. Managed-acp, managed-http and remote-acp agents own
  * their own model selection upstream, so it is hidden for them.
  *
- * Uses the `composer` ModelSelector variant, opening down on desktop and up
- * on mobile (above the bottom-anchored composer).
+ * The composer chooses the opening direction from its position; standalone
+ * callers default to down on desktop and up on mobile.
  */
-export const ChatModelPicker = () => {
+export const ChatModelPicker = ({ side }: { side?: 'top' | 'bottom' }) => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const { openCreateItem } = useCreateItem()
@@ -38,7 +38,7 @@ export const ChatModelPicker = () => {
       chatThread={chatThread ?? null}
       onModelChange={handleModelChange}
       onAddModels={() => openCreateItem({ kind: 'model' })}
-      side={isMobile ? 'top' : 'bottom'}
+      side={side ?? (isMobile ? 'top' : 'bottom')}
       align="end"
     />
   )

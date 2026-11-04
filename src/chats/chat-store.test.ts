@@ -7,6 +7,8 @@ import { getChatThread } from '@/dal/chat-threads'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { chatThreadsTable } from '@/db/tables'
+import { cloudAgentToAgent } from '@/cloud-agent/agent-inventory'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
 import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import type { ChatThread } from '@/types'
@@ -495,6 +497,27 @@ describe('chat-store', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe(customAgent.id)
+    })
+
+    it('warms the saved model when choosing local execution, without waiting on attestation', async () => {
+      const model = createMockModel({ id: 'agent-model', provider: 'tinfoil', isSystem: 1 })
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'local-first-turn',
+        mcpClients: [],
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+      const view = cloudAgentViewFixture()
+      view.config.localModelId = model.id
+      const localAgent = { ...cloudAgentToAgent(view), executionEnvironment: 'local' as const }
+      const pending = Promise.withResolvers<void>()
+      const prewarmSystemModel = mock(() => pending.promise)
+      await useChatStore.getState().setSelectedAgent('local-first-turn', localAgent, { prewarmSystemModel })
+      expect(prewarmSystemModel).toHaveBeenCalledWith(model)
+      pending.resolve()
     })
 
     it('switches the thread agent and clears its ACP session in memory and storage', async () => {

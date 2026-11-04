@@ -66,6 +66,7 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, sho
       <CreateItemProvider>
         <TooltipProvider>
           <ChatSkillsBar
+            availableSkills={props.availableSkills}
             onAddToChat={props.onAddToChat ?? (() => undefined)}
             onAddInstruction={props.onAddInstruction ?? (() => undefined)}
             usePinnedSkills={props.usePinnedSkills ?? fakeUsePinnedSkills({ pinned: [] })}
@@ -117,6 +118,38 @@ describe('ChatSkillsBar', () => {
       useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
     })
     expect(screen.getByLabelText('Add a skill')).toBeTruthy()
+  })
+
+  it('filters pins and add candidates to available saved skills and inserts the saved instructions', () => {
+    const selected = skill('selected', 'selected')
+    const unselected = skill('unselected', 'unselected')
+    const available = skill('available', 'available')
+    const saved = { ...selected, instruction: 'Saved cloud instructions' }
+    const addInstruction = mock(() => {})
+    renderBar({
+      availableSkills: [saved, available],
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [selected, unselected] }),
+      useLibrarySkills: fakeUseLibrarySkills([selected, unselected, available]),
+      useEnabledSkills: fakeUseEnabledSkills(new Set(['selected', 'unselected', 'available'])),
+      onAddInstruction: addInstruction,
+    })
+    expect(screen.queryByRole('button', { name: 'Pinned skill Unselected' })).toBeNull()
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Pinned skill Selected' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add instructions to chat' }))
+    expect(addInstruction).toHaveBeenCalledWith('Saved cloud instructions')
+    fireEvent.click(screen.getByRole('button', { name: 'Add a skill' }))
+    expect(screen.getByText('Available')).toBeInTheDocument()
+    expect(screen.queryByText('Unselected')).toBeNull()
+  })
+
+  it('shows no library pins while the configured execution environment has no available skills', () => {
+    const local = skill('local', 'local')
+    const { container } = renderBar({
+      availableSkills: [],
+      usePinnedSkills: fakeUsePinnedSkills({ pinned: [local] }),
+      useLibrarySkills: fakeUseLibrarySkills([local]),
+    })
+    expect(container.firstChild).toBeNull()
   })
 
   it('excludes widget skills from pin candidates', () => {

@@ -13,7 +13,7 @@ import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, isPortableAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isEmbedded } from '@/lib/embed'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
@@ -31,6 +31,7 @@ import {
   selectMinimalMode,
   useConfigStore,
 } from '@/api/config-store'
+import { agentSwitchNeedsNewChat, newChatForAgent, newChatSearchForAgent } from '@/chats/agent-switch'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
@@ -53,6 +54,7 @@ type HeaderAgentSelectorProps = {
   /** Omitted when the deployment forbids custom agents — the selector then hides
    *  its "Add Agent" footer. */
   onAddAgent?: () => void
+  onEditAgent?: (agent: Agent) => void
   /** Mobile-only presentation. When set, the selector renders inside its own
    *  absolutely positioned wrapper: centered as a labeled pill on an empty new
    *  chat, and docked beside the project as a circular icon button once the thread
@@ -69,6 +71,7 @@ const HeaderAgentSelector = ({
   agents,
   onSelect,
   onAddAgent,
+  onEditAgent,
   mobile,
   projectControl,
 }: HeaderAgentSelectorProps) => {
@@ -86,6 +89,7 @@ const HeaderAgentSelector = ({
       agents={agents}
       onSelect={onSelect}
       onAddAgent={onAddAgent}
+      onEditAgent={onEditAgent}
       disabled={isReplying}
       collapsed={collapsed}
       mobileJoined={collapsed && !!projectControl}
@@ -201,6 +205,7 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
+  const navigate = useNavigate()
   const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
@@ -294,11 +299,26 @@ export const Header = () => {
   }
 
   const handleAgentSelect = (agent: Agent) => {
+    if (agentSwitchNeedsNewChat(effectiveAgent, agent, hasThread || !!chatInstance?.messages.length)) {
+      navigate(newChatForAgent(agent))
+      return
+    }
     if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
       setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
       return
     }
     switchAgent(chatThreadId, agent)
+    if (
+      !hasThread &&
+      !chatInstance?.messages.length &&
+      location.pathname === '/chats/new' &&
+      new URLSearchParams(location.search).has('agent')
+    ) {
+      navigate(
+        { pathname: location.pathname, search: newChatSearchForAgent(location.search, agent), hash: location.hash },
+        { replace: true },
+      )
+    }
   }
 
   const privateSwitchDialog = (
@@ -337,6 +357,9 @@ export const Header = () => {
               />
             )
           : undefined
+      }
+      onEditAgent={(agent) =>
+        openCreateItem({ kind: 'agent', agentId: isPortableAgent(agent) ? agent.cloudAgentId : agent.id })
       }
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />

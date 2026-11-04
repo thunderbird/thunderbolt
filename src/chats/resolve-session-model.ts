@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isBuiltInAgent } from '@/defaults/agents'
+import { isBuiltInAgent, isPortableAgent } from '@/defaults/agents'
 import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
 import type { Agent } from '@/types/acp'
@@ -30,6 +30,9 @@ export const resolveSessionModel = (
   currentModel: Model,
   models: Model[],
 ): Model => {
+  if (isPortableAgent(agent) && agent.executionEnvironment === 'local' && agent.localModelId) {
+    return models.find((model) => model.id === agent.localModelId) ?? currentModel
+  }
   if (!isBuiltInAgent(agent) || matchesThreadConfidentiality(currentModel, chatThread)) {
     return currentModel
   }

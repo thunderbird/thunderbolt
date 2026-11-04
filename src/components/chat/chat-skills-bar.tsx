@@ -16,6 +16,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { maxPinnedSkills } from '@/dal'
 import { isWidgetSkillId } from '@/defaults/skills'
+import { mergeVisibleSkillPinOrder } from '@/cloud-agent/composer-skills'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
@@ -78,6 +79,8 @@ type ChatSkillsBarProps = {
    * ongoing thread — pinning is a "starting a new chat" affordance.
    */
   hidden?: boolean
+  /** A configured execution environment can expose only its saved, available skills. */
+  availableSkills?: Skill[]
   // Dependency injection for tests / Storybook.
   usePinnedSkills?: typeof usePinnedSkills_default
   useLibrarySkills?: typeof useLibrarySkills_default
@@ -98,12 +101,17 @@ export const ChatSkillsBar = ({
   onAddToChat,
   onAddInstruction,
   hidden,
+  availableSkills,
   usePinnedSkills = usePinnedSkills_default,
   useLibrarySkills = useLibrarySkills_default,
   useEnabledSkills = useEnabledSkills_default,
 }: ChatSkillsBarProps) => {
-  const { pinned, pinnedSet, reorderPins, togglePin } = usePinnedSkills()
-  const { skills: library } = useLibrarySkills()
+  const { pinned: allPinned, pinnedSet, reorderPins, togglePin } = usePinnedSkills()
+  const { skills: allLibrary } = useLibrarySkills()
+  const library = availableSkills ?? allLibrary
+  const pinned = availableSkills
+    ? allPinned.flatMap((skill) => availableSkills.find(({ id }) => id === skill.id) ?? [])
+    : allPinned
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
   const trackSkillEvent = useSkillTelemetry()
@@ -156,7 +164,12 @@ export const ChatSkillsBar = ({
           // firing telemetry so a rejection doesn't record a phantom event.
           dispatch({ type: 'MUTATION_STARTED' })
           try {
-            await reorderPins(ids)
+            await reorderPins(
+              mergeVisibleSkillPinOrder(
+                allPinned.map(({ id }) => id),
+                ids,
+              ),
+            )
             trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
           } catch (error) {
             console.error('reorderPins failed:', error)

@@ -2,12 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { session, user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
 import { and, eq, gt, gte, inArray, lt, notExists, or } from 'drizzle-orm'
-import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
-import type * as schema from '@/db/schema'
+import {
+  cloudAgents,
+  cloudArtifactGrants,
+  cloudArtifactRevisions,
+  cloudArtifacts,
+  cloudBlobCleanup,
+  cloudIdentities,
+} from '@/db/cloud-agent-schema'
+import { cloudRuntimeNamespaces } from '@/db/cloud-runtime-schema'
 
 /** Get a user by ID. Returns null if not found. */
 export const getUserById = async (database: typeof DbType, id: string) =>
@@ -27,20 +34,82 @@ export const getUserByEmail = async (database: typeof DbType, email: string) =>
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Hard-delete a user. Cascades to all related tables via FK constraints. */
-export const deleteUser = async (database: typeof DbType, id: string) => database.delete(user).where(eq(user.id, id))
+/** Remove non-cascading grants and runtime scopes, queuing encrypted objects before their references disappear. */
+const removeCloudAccountData = async (database: QueryableDatabase, ids: string[]) => {
+  if (ids.length === 0) {
+    return
+  }
+  // Match creation/publication lock order before the user cascade reaches the owner identity.
+  await database
+    .select({ id: cloudIdentities.userId })
+    .from(cloudIdentities)
+    .where(inArray(cloudIdentities.userId, ids))
+    .for('update')
+  const agents = await database
+    .select({ id: cloudAgents.id })
+    .from(cloudAgents)
+    .where(inArray(cloudAgents.userId, ids))
+    .for('update')
+  const artifacts = await database
+    .select({ id: cloudArtifacts.id })
+    .from(cloudArtifacts)
+    .where(inArray(cloudArtifacts.userId, ids))
+    .for('update')
+  const revisions = await database
+    .select({ objectKey: cloudArtifactRevisions.objectKey })
+    .from(cloudArtifactRevisions)
+    .where(inArray(cloudArtifactRevisions.userId, ids))
+  if (revisions.length) {
+    await database
+      .insert(cloudBlobCleanup)
+      .values(
+        revisions.map(({ objectKey }) => ({
+          objectKey,
+          deleteAfter: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })),
+      )
+      .onConflictDoNothing()
+  }
+  if (artifacts.length) {
+    await database.delete(cloudArtifactGrants).where(
+      inArray(
+        cloudArtifactGrants.artifactId,
+        artifacts.map(({ id }) => id),
+      ),
+    )
+  }
+  if (agents.length) {
+    await database.delete(cloudArtifactGrants).where(
+      and(
+        eq(cloudArtifactGrants.recipientKind, 'agent'),
+        inArray(
+          cloudArtifactGrants.recipientId,
+          agents.map(({ id }) => id),
+        ),
+      ),
+    )
+    await database.delete(cloudRuntimeNamespaces).where(
+      inArray(
+        cloudRuntimeNamespaces.namespace,
+        agents.map(({ id }) => `agent:${id}`),
+      ),
+    )
+  }
+}
+
+/** Account removal is atomic with durable object cleanup; remaining owned rows cascade with the user. */
+export const deleteUser = async (database: typeof DbType, id: string) =>
+  database.transaction(async (tx) => {
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, id)).for('update')
+    await removeCloudAccountData(tx, [id])
+    return tx.delete(user).where(eq(user.id, id))
+  })
 
 /** Mark a user as no longer new (after first sign-in). */
 export const markUserNotNew = async (database: typeof DbType, id: string) =>
   database.update(user).set({ isNew: false }).where(eq(user.id, id))
 
 const idleAnonymousUserBatchSize = 500
-
-/**
- * `QueryableDatabase` narrowed to the driver-agnostic base: its pglite | postgres-js union
- * merges `returning`'s overloads, so a column list in `returning()` does not type-check on it.
- */
-type PurgeDatabase = Pick<PgDatabase<PgQueryResultHKT, typeof schema>, 'delete' | 'select'>
 
 /**
  * Hard-delete anonymous users idle for more than `idleDays` days, `batchSize` per statement until
@@ -56,7 +125,7 @@ type PurgeDatabase = Pick<PgDatabase<PgQueryResultHKT, typeof schema>, 'delete' 
  * Resolves to the number of users deleted.
  */
 export const deleteIdleAnonymousUsers = async (
-  database: PurgeDatabase,
+  database: typeof DbType,
   idleDays: number,
   batchSize = idleAnonymousUserBatchSize,
 ) => {
@@ -86,7 +155,15 @@ export const deleteIdleAnonymousUsers = async (
     .limit(batchSize)
 
   const deleteBatch = async (deletedSoFar: number): Promise<number> => {
-    const deleted = await database.delete(user).where(inArray(user.id, idleBatch)).returning({ id: user.id })
+    const deleted = await database.transaction(async (tx) => {
+      const candidates = await tx.select({ id: user.id }).from(user).where(inArray(user.id, idleBatch)).for('update')
+      if (candidates.length === 0) {
+        return []
+      }
+      const ids = candidates.map(({ id }) => id)
+      await removeCloudAccountData(tx, ids)
+      return tx.delete(user).where(inArray(user.id, ids)).returning()
+    })
     return deleted.length < batchSize ? deletedSoFar + deleted.length : deleteBatch(deletedSoFar + deleted.length)
   }
   return deleteBatch(0)

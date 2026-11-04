@@ -175,6 +175,7 @@ export default function Sidebar() {
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
+            onArtifactsClick={() => handleNavigate('/artifacts')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

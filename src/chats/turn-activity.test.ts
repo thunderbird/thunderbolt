@@ -41,6 +41,29 @@ describe('getTurnActivity', () => {
     expect(activity.hasError).toBe(false)
   })
 
+  it('does not retry a durable cloud status placeholder as an empty local response', () => {
+    const activity = getTurnActivity({
+      ...base,
+      status: 'ready',
+      lastMessage: {
+        ...emptyAssistant,
+        metadata: {
+          cloud: {
+            agentId: 'agent',
+            conversationId: 'conversation',
+            runId: 'run',
+            commandId: 'command',
+            status: 'awaiting-approval',
+            sequence: 1,
+            recordIds: [],
+          },
+        },
+      },
+    })
+    expect(activity.pendingEmptyTurnRecovery).toBe(false)
+    expect(activity.hasError).toBe(false)
+  })
+
   it('is active during an auto-retry backoff (retryCount > 0)', () => {
     const activity = getTurnActivity({ ...base, status: 'ready', lastMessage: userMessage, retryCount: 1 })
     expect(activity.isActive).toBe(true)

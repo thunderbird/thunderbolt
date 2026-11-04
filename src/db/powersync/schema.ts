@@ -23,10 +23,19 @@ export const syncedTables = {
   devices: tables.devicesTable,
   agents: tables.agentsTable,
   projects: tables.projectsTable,
+  cloud_agent_projections: tables.cloudAgentProjectionsTable,
 } satisfies Record<PowerSyncTableName, unknown>
 
 /** Local-only tables — created in SQLite but never synced via PowerSync. */
 export const localOnlyTables = {
+  cloud_agent_cache: {
+    tableDefinition: tables.cloudAgentCacheTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
+  cloud_agent_outbox: {
+    tableDefinition: tables.cloudAgentOutboxTable,
+    options: { localOnly: true },
+  } satisfies DrizzleTableWithPowerSyncOptions,
   models_secrets: {
     tableDefinition: tables.modelsSecretsTable,
     options: { localOnly: true },

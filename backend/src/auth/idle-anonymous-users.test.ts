@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { user } from '@/db/auth-schema'
-import type { QueryableDatabase } from '@/db/client'
+import type { db as DbType } from '@/db/client'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -73,10 +73,10 @@ describe('sweepIdleAnonymousUsers', () => {
     const err = new Error('database unavailable')
     const failingDb = {
       select: db.select.bind(db),
-      delete: () => {
+      transaction: () => {
         throw err
       },
-    } as unknown as QueryableDatabase
+    } as unknown as typeof DbType
 
     await sweepIdleAnonymousUsers(failingDb, { authAllowAnonymous: true, anonymousUserIdleDays: 30 }, log)
 

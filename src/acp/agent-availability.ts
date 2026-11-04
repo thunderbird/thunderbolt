@@ -16,7 +16,7 @@
  */
 
 import { isTauri as defaultIsTauri } from '@/lib/platform'
-import { isHostedAgent } from '@/defaults/agents'
+import { isCloudAgent, isHostedAgent, isPortableAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 
 export type IsAgentAvailableDeps = {
@@ -24,6 +24,9 @@ export type IsAgentAvailableDeps = {
 }
 
 export const isAgentAvailable = (agent: Agent, deps: IsAgentAvailableDeps = {}): boolean => {
+  if (isPortableAgent(agent)) {
+    return agent.enabled === 1 && !agent.deletedAt
+  }
   const isTauri = deps.isTauri ?? defaultIsTauri
 
   // `in-process` transport on a non-`built-in` agent implies a desktop-only
@@ -42,4 +45,4 @@ export const isAgentAvailable = (agent: Agent, deps: IsAgentAvailableDeps = {}):
  * and ignores dropped and pasted files; any already in the chat's history are
  * replaced with a note by `src/acp/managed-http-adapter.ts`.
  */
-export const agentAcceptsAttachments = (agent: Agent): boolean => !isHostedAgent(agent)
+export const agentAcceptsAttachments = (agent: Agent): boolean => !isHostedAgent(agent) && !isCloudAgent(agent)

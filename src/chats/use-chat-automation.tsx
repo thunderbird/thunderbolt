@@ -7,6 +7,7 @@ import { useCurrentChatSession } from './chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageBookkeepingThrottleMs } from './chat-throttle'
 import { isPrivateAutoRunBlocked } from './private-thread'
+import { isCloudAgent } from '@/defaults/agents'
 
 type UseChatAutomationProps = {
   useChat?: typeof useChat_default
@@ -35,6 +36,7 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
   // unasked. Switching it to the built-in agent re-runs the effect and sends.
   useEffect(() => {
     if (
+      !isCloudAgent(selectedAgent) &&
       !hasTriggeredRef.current &&
       !stopping &&
       chatInstance?.status === 'ready' &&

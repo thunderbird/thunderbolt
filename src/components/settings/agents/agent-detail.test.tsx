@@ -9,10 +9,10 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 
-import type { Agent } from '@/types/acp'
+import type { Agent, ProtocolAgent } from '@/types/acp'
 import { AgentDetail } from './agent-detail'
 
-const customAgent = (overrides: Partial<Agent> = {}): Agent => ({
+const customAgent = (overrides: Partial<ProtocolAgent> = {}): Agent => ({
   id: 'agent-1',
   name: 'My Agent',
   type: 'remote-acp',
@@ -131,13 +131,12 @@ describe('AgentDetail — custom agents', () => {
     expect(onUpdate).toHaveBeenCalledWith({ description: null })
   })
 
-  it('toggles enabled through onUpdate', () => {
+  it('keeps activation controls out of the aside', () => {
     const onUpdate = mock(async () => {})
     renderDetail(customAgent(), { onUpdate })
 
-    fireEvent.click(screen.getByRole('switch', { name: 'Disable My Agent' }))
-
-    expect(onUpdate).toHaveBeenCalledWith({ enabled: 0 })
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(onUpdate).not.toHaveBeenCalled()
   })
 
   it('removes the agent behind a confirm dialog, then notifies the parent', async () => {

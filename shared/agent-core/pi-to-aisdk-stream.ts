@@ -40,6 +40,9 @@
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 import { fauxAssistantMessage, type AssistantMessage, type Usage } from '@earendil-works/pi-ai'
 import { stoppedReplyText } from './stopped-reply.ts'
+import { paceStreamChunks, type ArrivingChunk, type PiStreamSmoothing } from './stream-pacing.ts'
+
+export type { PiStreamSmoothing } from './stream-pacing.ts'
 
 const encoder = new TextEncoder()
 
@@ -418,6 +421,7 @@ const abortAndKeepStoppedReply = (harness: Pick<AgentHarness, 'subscribe' | 'abo
  * @param metadata - initial, tool, and settled message metadata
  * @param signal - the request's abort signal; aborting it stops the run (Stop)
  * @param now - millisecond clock used for reasoning and tool durations
+ * @param smoothing - optional bounded presentation pacing for received provider bursts
  * @returns a `ReadableStream` of SSE-encoded AI SDK chunks for the `Response` body
  */
 export const piHarnessToUiMessageStream = (
@@ -426,17 +430,24 @@ export const piHarnessToUiMessageStream = (
   metadata: PiStreamMetadata = {},
   signal?: AbortSignal,
   now: () => number = Date.now,
+  smoothing?: PiStreamSmoothing,
 ): ReadableStream<Uint8Array> => {
   let unsubscribe: (() => void) | null = null
   let detachSignal: (() => void) | null = null
   let closed = false
+  const pacingAbort = new AbortController()
+  let abortPromise: Promise<unknown> | null = null
+  const abortHarness = (): Promise<unknown> => {
+    abortPromise ??= harness.abort()
+    return abortPromise
+  }
 
-  return new ReadableStream<Uint8Array>({
+  const source = new ReadableStream<ArrivingChunk>({
     start(controller) {
       const translator = createPiTranslator(
         (chunk) => {
           if (!closed) {
-            controller.enqueue(encodeChunk(chunk))
+            controller.enqueue({ chunk, receivedAt: Date.now() })
           }
         },
         metadata,
@@ -454,7 +465,6 @@ export const piHarnessToUiMessageStream = (
 
       const close = (): void => {
         closed = true
-        controller.enqueue(encodeDone())
         controller.close()
       }
 
@@ -480,6 +490,7 @@ export const piHarnessToUiMessageStream = (
        * Stop behind any tool that doesn't honor the run's signal.
        */
       const onAbort = (): void => {
+        pacingAbort.abort()
         if (!closed) {
           // Nothing has been emitted yet, so there is no assistant message to
           // settle. Closing silently leaves none behind — a synthetic
@@ -520,12 +531,43 @@ export const piHarnessToUiMessageStream = (
       })()
     },
     async cancel() {
+      pacingAbort.abort()
       closed = true
       detachSignal?.()
       detachSignal = null
       unsubscribe?.()
       unsubscribe = null
-      await harness.abort()
+      await abortHarness()
+    },
+  })
+  const chunks = smoothing
+    ? source.pipeThrough(paceStreamChunks(smoothing, pacingAbort.signal))
+    : source.pipeThrough(
+        new TransformStream<ArrivingChunk, AiSdkChunk>({
+          transform: ({ chunk }, controller) => controller.enqueue(chunk),
+        }),
+      )
+  const reader = chunks.getReader()
+  let cancelled = false
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { value, done } = await reader.read()
+      if (cancelled) {
+        return
+      }
+      if (done) {
+        controller.enqueue(encodeDone())
+        controller.close()
+        return
+      }
+      controller.enqueue(encodeChunk(value))
+    },
+    async cancel() {
+      cancelled = true
+      pacingAbort.abort()
+      // Await Pi directly: cancellation through transform pipes may settle the
+      // consumer before the underlying harness has removed its tool listeners.
+      await Promise.all([reader.cancel(), abortHarness()])
     },
   })
 }

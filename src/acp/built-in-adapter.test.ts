@@ -16,6 +16,7 @@ import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
+import { detectStreamChunk } from '@/ai/smooth-chunking'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
@@ -1215,6 +1216,7 @@ const createBudgetAdapter = (
   const registrations = new Set<unknown>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
     prepareConfig: prepareConfig ?? prepareFixtureConfig,
+    streamSmoothing: { chunking: detectStreamChunk, delayInMs: 0 },
     loadAgentCore: async () => ({
       ...realAgentCore,
       buildAppHarness: async (options) => {
@@ -1271,6 +1273,42 @@ const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) =>
   name: 'search',
   args: { query: `query-${index}`, max_results: 10 },
 }))
+
+describe('saved local agent Pi approvals', () => {
+  it('gates workspace and app tools, then refreshes the policy on the next turn', async () => {
+    const run = createBudgetAdapter([
+      [
+        { name: 'write', args: { path: 'notes.md', content: 'blocked' } },
+        { name: 'save_report', args: { text: 'blocked' } },
+      ],
+      'Those calls were not approved.',
+      [{ name: 'save_report', args: { text: 'approved' } }],
+      'Saved.',
+    ])
+    const denied = mock(async () => false)
+    run.context.agentConfiguration = {
+      instructions: 'Review the code.',
+      skills: [],
+      searchEnabled: false,
+      unavailableCapabilities: [],
+      requestToolApproval: denied,
+    }
+    try {
+      await run.send()
+      expect(denied).toHaveBeenCalledTimes(2)
+      expect(run.writes).toEqual([])
+      expect(JSON.stringify(run.requests[1].messages)).toContain('not approved')
+      const allowed = mock(async () => true)
+      run.context.agentConfiguration = { ...run.context.agentConfiguration, requestToolApproval: allowed }
+      await run.send()
+      expect(allowed).toHaveBeenCalledTimes(1)
+      expect(denied).toHaveBeenCalledTimes(2)
+      expect(run.writes).toEqual(['approved'])
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+})
 
 describe('real Pi web-budget payload', () => {
   it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {

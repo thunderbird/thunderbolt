@@ -12,10 +12,10 @@ import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
+import { agentsSystemTable, chatMessagesTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
-import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
+import { createChatThread, updateChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
 import { getModel, updateModel } from '@/dal/models'
@@ -26,6 +26,13 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 import { DatabaseProvider } from '@/contexts/database-context'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
+import { AuthProvider } from '@/contexts/auth-context'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createMockHttpClient } from '@/test-utils/http-client'
+import { cloudAgentSelectionId } from '@/cloud-agent/agent-inventory'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
+import { createCloudAgentClient, type CloudConversationView } from '@/cloud-agent/client'
+import { eq } from 'drizzle-orm'
 
 /**
  * Helper function to create a system model (required for getDefaultModelForThread)
@@ -145,7 +152,14 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
   return createElement(
     BrowserRouter,
     null,
-    createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
+    createElement(
+      queryWrapper,
+      null,
+      createElement(AuthProvider, {
+        authClient: createMockAuthClient(),
+        children: createElement(MCPProvider, null, children),
+      }),
+    ),
   )
 }
 
@@ -184,6 +198,276 @@ describe('useHydrateChatStore', () => {
     // Reset store state after each test
     resetStore()
     await resetTestDatabase()
+  })
+
+  describe('cloud identity hydration', () => {
+    const cloudId = '00000000-0000-4000-8000-000000000001'
+
+    it('keeps the last-used local agent when discovery arrives after new-chat hydration', async () => {
+      const modelId = await createTestModel()
+      const threadId = uuidv7()
+      const selectionId = `local:${cloudId}`
+      await updateSettings(getDb(), { selected_agent: selectionId })
+      const agent = cloudAgentViewFixture('owner', cloudId)
+      agent.config.localModelId = modelId
+      agent.config.model = null
+      const auth = createMockAuthClient({
+        session: { user: { id: 'owner', email: 'owner@example.com', isAnonymous: false } },
+      })
+      const queryWrapper = createQueryTestWrapper()
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(
+          BrowserRouter,
+          null,
+          createElement(
+            queryWrapper,
+            null,
+            createElement(AuthProvider, { authClient: auth, children: createElement(MCPProvider, null, children) }),
+          ),
+        )
+      const { result } = renderHook(
+        () =>
+          useHydrateChatStore(
+            { id: threadId, isNew: true },
+            {
+              createCloudClient: (...args) => ({ ...createCloudAgentClient(...args), agents: async () => [agent] }),
+            },
+          ),
+        { wrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(result.current.error).toBeNull()
+      expect(useChatStore.getState().sessions.get(threadId)?.selectedAgent.id).toBe(selectionId)
+      expect(useChatStore.getState().sessions.get(threadId)?.agentChosenByUser).toBe(true)
+      act(() => {
+        useChatStore.getState().applyDiscoveredDefaultAgent(builtInAgent, [builtInAgent], {
+          lastUsedAgentId: selectionId,
+        })
+      })
+      expect(useChatStore.getState().sessions.get(threadId)?.selectedAgent.id).toBe(selectionId)
+    })
+
+    it('restores a local selection and its local history without querying cloud conversation state', async () => {
+      const modelId = await createTestModel()
+      const threadId = await createTestThread(modelId)
+      await updateChatThread(getDb(), threadId, { agentId: `local:${cloudId}` })
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage({ parts: [{ type: 'text', text: 'Local history' }] }),
+      ])
+      const agent = cloudAgentViewFixture('owner', cloudId)
+      agent.config.localModelId = modelId
+      agent.config.model = null
+      const auth = createMockAuthClient({
+        session: { user: { id: 'owner', email: 'owner@example.com', isAnonymous: false } },
+      })
+      const queryWrapper = createQueryTestWrapper()
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(
+          BrowserRouter,
+          null,
+          createElement(
+            queryWrapper,
+            null,
+            createElement(AuthProvider, { authClient: auth, children: createElement(MCPProvider, null, children) }),
+          ),
+        )
+      const { result } = renderHook(
+        () =>
+          useHydrateChatStore(
+            { id: threadId, isNew: false },
+            {
+              createCloudClient: (...args) => ({
+                ...createCloudAgentClient(...args),
+                agents: async () => [agent],
+                getConversation: async () => {
+                  throw new Error('Local chats must not load cloud conversations')
+                },
+              }),
+            },
+          ),
+        { wrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(result.current.error).toBeNull()
+      const session = useChatStore.getState().sessions.get(threadId)!
+      expect(session.selectedAgent).toMatchObject({
+        id: `local:${cloudId}`,
+        executionEnvironment: 'local',
+        cloudAgentId: cloudId,
+      })
+      expect(session.selectedModel.id).toBe(modelId)
+      expect(session.chatInstance.messages[0].parts).toEqual([{ type: 'text', text: 'Local history' }])
+    })
+
+    it('hydrates the merged local history after import, preserving tombstones and an unacknowledged local prompt', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await updateChatThread(getDb(), threadId, { agentId: cloudAgentSelectionId(cloudId) })
+      await saveMessagesWithContextUpdate(getDb(), threadId, [
+        createTestMessage({
+          id: 'cloud-run:run',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Deleted answer' }],
+        }),
+        createTestMessage({ id: 'pending-command', parts: [{ type: 'text', text: 'Not yet acknowledged' }] }),
+      ])
+      await getDb()
+        .update(chatMessagesTable)
+        .set({ deletedAt: '2026-10-23T00:00:00Z', parts: null, content: null, metadata: null })
+        .where(eq(chatMessagesTable.id, 'cloud-run:run'))
+      const agent = cloudAgentViewFixture('owner', cloudId)
+      const serverMessages = (['user', 'assistant'] as const).map((role, index) => ({
+        record: {
+          id: `record-${index}`,
+          conversationId: threadId,
+          runId: 'run',
+          sequence: index + 1,
+          revision: 1,
+          keyEpoch: 1,
+          content: agent.record.config,
+          createdAt: agent.record.createdAt,
+        },
+        content: { role, text: role === 'user' ? 'Accepted prompt' : 'Deleted answer' },
+      }))
+      const projection: CloudConversationView = {
+        conversation: {
+          id: threadId,
+          agentId: cloudId,
+          ownerId: 'owner',
+          createdAt: agent.record.createdAt,
+          updatedAt: agent.record.updatedAt,
+          deletedAt: null,
+        },
+        runs: [
+          {
+            id: 'run',
+            conversationId: threadId,
+            commandId: 'accepted-command',
+            configVersion: 1,
+            status: 'completed',
+            errorCode: null,
+            createdAt: agent.record.createdAt,
+            updatedAt: agent.record.updatedAt,
+          },
+        ],
+        messages: serverMessages.map(({ record }) => record),
+        decryptedMessages: serverMessages,
+        approvals: [],
+        decryptedApprovals: [],
+        cursor: 2,
+      }
+      const auth = createMockAuthClient({
+        session: { user: { id: 'owner', email: 'owner@example.com', isAnonymous: false } },
+      })
+      const queryWrapper = createQueryTestWrapper()
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(
+          BrowserRouter,
+          null,
+          createElement(
+            queryWrapper,
+            null,
+            createElement(AuthProvider, { authClient: auth, children: createElement(MCPProvider, null, children) }),
+          ),
+        )
+      const { result } = renderHook(
+        () =>
+          useHydrateChatStore(
+            { id: threadId, isNew: false },
+            {
+              createCloudClient: (...args) => ({
+                ...createCloudAgentClient(...args),
+                agents: async () => [agent],
+                getConversation: async () => projection,
+              }),
+            },
+          ),
+        { wrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(result.current.error).toBeNull()
+      expect(result.current.isReady).toBe(true)
+      const session = useChatStore.getState().sessions.get(threadId)!
+      expect(session.chatInstance.messages.map(({ id }) => id)).toEqual(['accepted-command', 'pending-command'])
+      expect(session.chatInstance.messages.at(-1)?.parts).toEqual([{ type: 'text', text: 'Not yet acknowledged' }])
+      const deleted = await getDb()
+        .select()
+        .from(chatMessagesTable)
+        .where(eq(chatMessagesTable.id, 'cloud-run:run'))
+        .get()
+      expect(deleted).toMatchObject({ deletedAt: '2026-10-23T00:00:00Z', parts: null, content: null, metadata: null })
+    })
+
+    it('fails closed on a persisted cloud chat when the account is signed out', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await updateChatThread(getDb(), threadId, { agentId: cloudAgentSelectionId(cloudId) })
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(result.current.isReady).toBe(false)
+      expect(result.current.error?.message).toContain('Sign in')
+      expect(useChatStore.getState().sessions.has(threadId)).toBe(false)
+      expect((await getThread(getDb(), threadId))?.agentId).toBe(cloudAgentSelectionId(cloudId))
+    })
+
+    it('rejects malformed reserved cloud IDs in saved threads and explicit new-chat selections', async () => {
+      const threadId = await createTestThread(await createTestModel())
+      await updateChatThread(getDb(), threadId, { agentId: 'cloud:invalid' })
+      const saved = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), { wrapper: TestWrapper })
+      await act(async () => {
+        await saved.result.current.hydrateChatStore()
+      })
+      expect(saved.result.current.isReady).toBe(false)
+      expect(saved.result.current.error?.message).toContain('selection is invalid')
+      expect(useChatStore.getState().sessions.has(threadId)).toBe(false)
+      const newId = uuidv7()
+      const draft = renderHook(
+        () => useHydrateChatStore({ id: newId, isNew: true, selectedAgentId: 'cloud:invalid' }),
+        { wrapper: TestWrapper },
+      )
+      await act(async () => {
+        await draft.result.current.hydrateChatStore()
+      })
+      expect(draft.result.current.isReady).toBe(false)
+      expect(draft.result.current.error?.message).toContain('selection is invalid')
+      expect(useChatStore.getState().sessions.has(newId)).toBe(false)
+    })
+
+    it('keeps an unavailable explicit cloud selection from falling back to the discovered or built-in agent', async () => {
+      await seedDiscoveredDefault()
+      const threadId = uuidv7()
+      const queryWrapper = createQueryTestWrapper({ httpClient: createMockHttpClient({ agents: [] }) })
+      const auth = createMockAuthClient({
+        session: { user: { id: 'owner', email: 'owner@example.com', isAnonymous: false } },
+      })
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(
+          BrowserRouter,
+          null,
+          createElement(
+            queryWrapper,
+            null,
+            createElement(AuthProvider, { authClient: auth, children: createElement(MCPProvider, null, children) }),
+          ),
+        )
+      const { result } = renderHook(
+        () => useHydrateChatStore({ id: threadId, isNew: true, selectedAgentId: cloudAgentSelectionId(cloudId) }),
+        { wrapper },
+      )
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      expect(result.current.isReady).toBe(false)
+      expect(result.current.error?.message).toContain('unavailable')
+      expect(useChatStore.getState().sessions.has(threadId)).toBe(false)
+      expect(await getThread(getDb(), threadId)).toBeNull()
+    })
   })
 
   describe('isReady state', () => {
@@ -860,7 +1144,14 @@ describe('useHydrateChatStore', () => {
           MemoryRouter,
           { initialEntries: [initialPath] },
           createElement(LocationProbe),
-          createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
+          createElement(
+            queryWrapper,
+            null,
+            createElement(AuthProvider, {
+              authClient: createMockAuthClient(),
+              children: createElement(MCPProvider, null, children),
+            }),
+          ),
         )
       }
     }

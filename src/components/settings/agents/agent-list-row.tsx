@@ -24,6 +24,7 @@ type AgentListRowProps = {
   testId?: string
   subtitleTestId?: string
   chevronTestId?: string
+  trailing?: ReactNode
 }
 
 /**
@@ -42,6 +43,7 @@ export const AgentListRow = ({
   testId,
   subtitleTestId,
   chevronTestId,
+  trailing,
 }: AgentListRowProps) => (
   <div data-testid={testId}>
     <SettingsSelectableRow
@@ -52,12 +54,15 @@ export const AgentListRow = ({
       isDimmed={isDimmed}
       onSelect={onOpen}
       ariaLabel={ariaLabel}
+      trailing={trailing}
       trailingIcon={
-        <ChevronRight
-          className="size-4 shrink-0 text-muted-foreground"
-          aria-hidden="true"
-          data-testid={chevronTestId}
-        />
+        !trailing && (
+          <ChevronRight
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden="true"
+            data-testid={chevronTestId}
+          />
+        )
       }
     />
   </div>

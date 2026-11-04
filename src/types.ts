@@ -12,6 +12,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { CloudRunStatus } from '@shared/cloud-agent/contracts'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
@@ -167,6 +168,17 @@ export type AutomationRun = {
 }
 
 export type UIMessageMetadata = {
+  /** Durable cloud execution provenance, independent of the local renderer. */
+  cloud?: {
+    agentId: string
+    conversationId: string
+    runId: string
+    commandId: string
+    status: CloudRunStatus
+    recordIds: string[]
+    sequence: number
+    artifactIds?: string[]
+  }
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1

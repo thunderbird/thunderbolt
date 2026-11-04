@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { ChatComposerMenus } from './chat-composer-menus'
+import { agentInEnvironment } from '@/cloud-agent/agent-inventory'
+import { newChatSearchForAgent } from '@/chats/agent-switch'
+
 import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
-import { useCurrentChatSession } from '@/chats/chat-store'
+import { useCurrentChatSession, useChatStore } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { mergeIntoDraft, useConsumePendingPrompt } from '@/chats/pending-prompt-store'
 import { useCreateItem } from '@/components/create-item/context'
@@ -55,7 +59,6 @@ import {
   useState,
 } from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
-import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
 import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator } from '../context-usage-indicator'
@@ -73,8 +76,10 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { preloadChatMessageList } from './chat-messages-loader'
-import { isBuiltInAgent } from '@/defaults/agents'
 import { useAppName } from '@/lib/branding-selectors'
+import { isBuiltInAgent, isPortableAgent } from '@/defaults/agents'
+import { useCloudAgentInventory as useCloudAgentInventory_default } from '@/cloud-agent/use-cloud-agent-inventory'
+import { cloudComposerSkills } from '@/cloud-agent/composer-skills'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { ComposerAlert } from './composer-alert'
@@ -213,6 +218,7 @@ type ChatPromptInputProps = {
   useIsMobile?: typeof useIsMobile_default
   useLibrarySkills?: typeof useLibrarySkills_default
   useEnabledSkills?: typeof useEnabledSkills_default
+  useCloudAgentInventory?: typeof useCloudAgentInventory_default
   /** Inject for tests that need to drive the unavailable-agent fallback. */
   isAgentAvailable?: typeof isAgentAvailable_default
   useImageSupportCheck?: typeof useImageSupportCheck_default
@@ -231,6 +237,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useIsMobile = useIsMobile_default,
       useLibrarySkills = useLibrarySkills_default,
       useEnabledSkills = useEnabledSkills_default,
+      useCloudAgentInventory = useCloudAgentInventory_default,
       isAgentAvailable = isAgentAvailable_default,
       useImageSupportCheck = useImageSupportCheck_default,
       useWarmAcpCommands = useWarmAcpCommands_default,
@@ -257,6 +264,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       stopping,
       selectedAgent,
       selectedModel,
+      cloudApprovalMode,
     } = useCurrentChatSession()
     // Bound to a local so the catalog placeholder is named `{agentName}` — a
     // member expression inside a macro extracts as positional `{0}`.
@@ -273,8 +281,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       experimental_throttle: messageBookkeepingThrottleMs,
     })
 
-    const { skills: library } = useLibrarySkills()
-    const { isEnabled } = useEnabledSkills()
+    const { skills: skillLibrary } = useLibrarySkills()
+    const { isEnabled: isLibrarySkillEnabled } = useEnabledSkills()
+    const portable = isPortableAgent(selectedAgent)
+    const cloudInventory = useCloudAgentInventory({ enabled: portable })
+    const cloudConfig = cloudInventory.views.find(
+      ({ record }) => portable && record.id === selectedAgent.cloudAgentId,
+    )?.config
+    const availableSkills = useMemo(
+      () =>
+        portable ? cloudComposerSkills(skillLibrary, cloudConfig?.skills ?? [], isLibrarySkillEnabled) : undefined,
+      [portable, skillLibrary, cloudConfig, isLibrarySkillEnabled],
+    )
+    const availableSkillIds = useMemo(() => new Set(availableSkills?.map((skill) => skill.id)), [availableSkills])
+    const isEnabled = useCallback(
+      (id: string) => isLibrarySkillEnabled(id) && (!portable || availableSkillIds.has(id)),
+      [portable, availableSkillIds, isLibrarySkillEnabled],
+    )
+    const library = useMemo(
+      () => skillLibrary.map((skill) => availableSkills?.find(({ id }) => id === skill.id) ?? skill),
+      [skillLibrary, availableSkills],
+    )
     const trackSkillEvent = useSkillTelemetry()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
@@ -763,10 +790,39 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     }))
 
     const voice = useVoiceSession()
+    const menuSide = isNewChat && messages.length === 0 ? 'bottom' : 'top'
 
     const footerStartElements = (
       <div className="flex items-center gap-2">
-        <ChatAddMenu
+        <ChatComposerMenus
+          side={menuSide}
+          disabled={isBusy}
+          environment={
+            portable
+              ? {
+                  value: selectedAgent.executionEnvironment ?? 'cloud',
+                  locked: !!chatThread || messages.length > 0,
+                  onChange: (environment) => {
+                    const agent = agentInEnvironment(selectedAgent, environment)
+                    void useChatStore.getState().setSelectedAgent(chatThreadId, agent)
+                    if (location.pathname === '/chats/new') {
+                      navigate(
+                        {
+                          pathname: location.pathname,
+                          search: newChatSearchForAgent(location.search, agent),
+                          hash: location.hash,
+                        },
+                        { replace: true },
+                      )
+                    }
+                  },
+                }
+              : undefined
+          }
+          approvalMode={cloudApprovalMode ?? 'ask'}
+          onApprovalChange={(cloudApprovalMode) =>
+            useChatStore.getState().updateSession(chatThreadId, { cloudApprovalMode })
+          }
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
@@ -801,7 +857,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
+    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker side={menuSide} /> : undefined
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {
@@ -922,6 +978,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             {/* Chips keep their normal resting gap above the composer (pb-2). */}
             <div className="pointer-events-auto pb-2">
               <ChatSkillsBar
+                availableSkills={availableSkills}
                 onAddToChat={handleAddChipFromBar}
                 onAddInstruction={insertInstructionText}
                 // Pinning is a "starting a new chat" affordance — once the thread

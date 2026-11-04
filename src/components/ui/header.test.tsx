@@ -19,7 +19,7 @@ import type { ThunderboltUIMessage } from '@/types'
 import { Chat } from '@ai-sdk/react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import type { ReactNode } from 'react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
@@ -29,6 +29,10 @@ import * as embed from '@/lib/embed'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { Header } from './header'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useNewChatId } from '@/chats/detail'
 
 /** A custom (synced) agent the thread is pinned to. */
 const customAgent: Agent = {
@@ -282,6 +286,69 @@ describe('Header', () => {
       useConfigStore.setState({ config: {}, configLoaded: true })
     })
     expect(screen.getByTestId('agent-selector-trigger')).toBeInTheDocument()
+  })
+
+  it('replaces the explicit agent query on an empty chat while retaining its draft identity and project', async () => {
+    const view = cloudAgentViewFixture()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
+    queryClient.setQueryData(['cloud-agent-encryption', 'owner'], true)
+    queryClient.setQueryData(['cloud-agents', 'owner', 'capabilities'], { enabled: true })
+    queryClient.setQueryData(['cloud-agents', 'owner', 'agents'], [view])
+    const Provider = createTestProvider({
+      authClient: createMockAuthClient({
+        session: { user: { id: 'owner', email: 'owner@example.com', isAnonymous: false } },
+      }),
+    })
+    const DraftRouteProbe = () => {
+      const location = useLocation()
+      const params = new URLSearchParams(location.search)
+      const draftId = useNewChatId(location.pathname === '/chats/new', params.get('projectId'))
+      return (
+        <output data-testid="draft-route" data-draft-id={draftId}>
+          {location.pathname}
+          {location.search}
+          {location.hash}
+        </output>
+      )
+    }
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter
+        initialEntries={['/chats/new?agent=thunderbolt-built-in&projectId=project-a&draft=keep-me#composer']}
+      >
+        <Provider>
+          <QueryClientProvider client={queryClient}>
+            <SignInModalProvider>
+              <SidebarProvider>
+                <CreateItemProvider>
+                  {children}
+                  <DraftRouteProbe />
+                </CreateItemProvider>
+              </SidebarProvider>
+            </SignInModalProvider>
+          </QueryClientProvider>
+        </Provider>
+      </MemoryRouter>
+    )
+    setupWithAgent(builtInAgent, { withThread: false })
+    const instance = useChatStore.getState().sessions.get('thread-1')!.chatInstance
+    render(<Header />, { wrapper })
+    const draftId = screen.getByTestId('draft-route').getAttribute('data-draft-id')
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    fireEvent.click(await screen.findByText(view.config.name))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const next = new URL(screen.getByTestId('draft-route').textContent!, 'https://app.test')
+    expect(next.searchParams.get('agent')).toBe(`cloud:${view.record.id}`)
+    expect(next.searchParams.get('projectId')).toBe('project-a')
+    expect(next.searchParams.get('draft')).toBe('keep-me')
+    expect(next.hash).toBe('#composer')
+    expect(screen.getByTestId('draft-route')).toHaveAttribute('data-draft-id', draftId)
+    const session = useChatStore.getState().sessions.get('thread-1')!
+    expect(session.selectedAgent.id).toBe(`cloud:${view.record.id}`)
+    expect(session.chatInstance).toBe(instance)
+    expect(session.chatThread).toBeNull()
+    queryClient.clear()
   })
 
   it('opens agent creation over the current chat route', async () => {

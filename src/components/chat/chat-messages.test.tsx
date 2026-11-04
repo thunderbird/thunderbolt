@@ -459,7 +459,15 @@ describe('ChatMessages', () => {
         triggerData: null,
       })
 
-      return render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      const view = render(<ChatMessages useChat={mockUseChat} />, { wrapper: createTestWrapper() })
+      return {
+        ...view,
+        messages,
+        update: (nextStatus: 'submitted' | 'streaming' | 'ready', nextMessages = messages) => {
+          Object.assign(mockChatInstance, { status: nextStatus, messages: nextMessages })
+          view.rerender(<ChatMessages useChat={createMockUseChat(mockChatInstance)} />)
+        },
+      }
     }
 
     it('reserves viewport space for the active streaming response', () => {
@@ -469,11 +477,45 @@ describe('ChatMessages', () => {
       expect(lastAssistantMessage?.style.minHeight).toBe('72dvh')
     })
 
-    it('returns settled responses to their natural height', () => {
+    it('keeps the latest response space after completion so the pinned question does not jump', () => {
       const { container } = setupMultiTurnThread('ready')
 
       const lastAssistantMessage = container.querySelector<HTMLElement>('[data-message-id="assistant-2"]')
-      expect(lastAssistantMessage?.style.minHeight).toBe('')
+      expect(lastAssistantMessage?.style.minHeight).toBe('72dvh')
+      expect(container.querySelector<HTMLElement>('[data-message-id="assistant-1"]')?.style.minHeight).toBe('')
+    })
+
+    it('transfers the reserved space from pending to streaming to settled and then to the next turn', () => {
+      const { container, messages, update } = setupMultiTurnThread('ready')
+      const response = () => container.querySelector<HTMLElement>('[data-message-id="assistant-2"]')
+      const pending = () => screen.getByTestId('pending-response')
+
+      update('submitted', messages.slice(0, 3))
+      expect(response()).toBeNull()
+      expect(pending().style.minHeight).toBe('72dvh')
+
+      update('streaming')
+      expect(response()?.style.minHeight).toBe('72dvh')
+      expect(pending().style.minHeight).toBe('')
+
+      update('ready')
+      expect(response()?.style.minHeight).toBe('72dvh')
+
+      update('submitted', [
+        ...messages,
+        createTestMessage({ id: 'user-3', role: 'user', parts: [{ type: 'text', text: 'Third question' }] }),
+      ])
+      expect(response()?.style.minHeight).toBe('')
+      expect(pending().style.minHeight).toBe('72dvh')
+    })
+
+    it('keeps the first exchange at its natural height', () => {
+      const { container, messages, update } = setupMultiTurnThread('ready')
+      update('submitted', messages.slice(0, 1))
+      expect(screen.getByTestId('pending-response').style.minHeight).toBe('')
+
+      update('ready', messages.slice(0, 2))
+      expect(container.querySelector<HTMLElement>('[data-message-id="assistant-1"]')?.style.minHeight).toBe('')
     })
 
     it('should pass isStreaming to last assistant message when streaming', () => {

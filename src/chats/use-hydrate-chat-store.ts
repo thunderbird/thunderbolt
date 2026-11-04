@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultChatTitle } from '@/lib/constants'
+import { i18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 
-import { useDatabase, useHttpClient } from '@/contexts'
+import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import {
   composeAllAgents,
@@ -22,7 +24,13 @@ import {
   saveStreamingAssistantMessage,
 } from '@/dal'
 import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
-import { isHostedAgent } from '@/defaults/agents'
+import { isCloudAgent, isHostedAgent, isPortableAgent } from '@/defaults/agents'
+import { portableAgentResourceId, cloudAgentToAgent, cloudAgentSelectionId } from '@/cloud-agent/agent-inventory'
+import { createCloudAgentClient, type CloudConversationView } from '@/cloud-agent/client'
+import { createCloudOfflineStore } from '@/cloud-agent/offline'
+import { persistCloudConversation, sortCloudChatMessages, resumeCloudChat } from '@/cloud-agent/chat-history'
+import { isCloudRunActive } from '@/cloud-agent/protocol'
+import { HttpError } from '@/lib/http'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
@@ -30,8 +38,7 @@ import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
 import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
-import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
-import type { Agent } from '@/types/acp'
+import type { SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
@@ -39,11 +46,13 @@ import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
-import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { prewarmAgentModel } from '@/ai/prewarm-system-model'
 
 type UseHydrateChatStoreParams = {
   id: string
   isNew: boolean
+  selectedAgentId?: string | null
+  cloudAgentId?: string | null
   /** Project a brand-new chat starts in, taken from `?projectId=` by the route.
    *  Passed in rather than read from `window.location` so the value is part of
    *  this hook's inputs and can be tested. */
@@ -82,32 +91,28 @@ const trackChatReadyOnce = () => {
   }
 }
 
-/**
- * Warm the Tinfoil system enclave off the critical path so the first send skips
- * the attestation handshake. Built-in agent only — ACP agents route over the
- * wire and never touch the local model pipeline, so it's a no-op for them (and
- * {@link prewarmSystemModel} further no-ops unless `model` is a Tinfoil *system*
- * model). Fire-and-forget.
- */
-const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
-  if (agent.type === 'built-in') {
-    void prewarmSystemModel(model)
-  }
-}
-
-export const useHydrateChatStore = ({
-  id,
-  isNew,
-  projectId: newChatProjectId = null,
-  miniAppId: newChatMiniAppId = null,
-  onCreated,
-}: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = (
+  {
+    id,
+    isNew,
+    selectedAgentId = null,
+    cloudAgentId = null,
+    projectId: newChatProjectId = null,
+    miniAppId: newChatMiniAppId = null,
+    onCreated,
+  }: UseHydrateChatStoreParams,
+  deps: { createCloudClient?: typeof createCloudAgentClient } = {},
+) => {
   const db = useDatabase()
+  const auth = useAuth()
+  const { data: authSession } = auth.useSession()
+  const ownerId = authSession && !authSession.user.isAnonymous ? authSession.user.id : null
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
   const navigate = useNavigate()
 
   const [isReady, setIsReady] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
 
   const { getEnabledClients, reconnectClient } = useMCP()
 
@@ -152,13 +157,23 @@ export const useHydrateChatStore = ({
         miniAppId: session.miniAppId,
         // The hosted agent sends the chat to the backend unencrypted, so its threads
         // are never private chats, whatever the (unused) selected model is.
-        isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
+        isEncrypted: isHostedAgent(session.selectedAgent) || isCloudAgent(session.selectedAgent) ? 0 : undefined,
       })
       return { session, thread }
     })
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    if (isCloudAgent(session.selectedAgent)) {
+      // Cloud message IDs are durable command/run IDs, not time-ordered UUIDs.
+      // Preserve the displayed parent chain instead of inferring it from MAX(id).
+      const ordered = session.chatInstance.messages
+      for (const message of messages) {
+        const index = ordered.findIndex((candidate) => candidate.id === message.id)
+        await saveStreamingAssistantMessage(db, id, message, index > 0 ? ordered[index - 1].id : null)
+      }
+    } else {
+      await saveMessagesWithContextUpdate(db, id, messages)
+    }
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {
@@ -222,32 +237,85 @@ export const useHydrateChatStore = ({
       trackChatReadyOnce()
       // `sessions.has(id)` above guarantees the session is present.
       const existingSession = sessions.get(id)!
-      maybePrewarmBuiltInAgent(existingSession.selectedAgent, existingSession.selectedModel)
+      void prewarmAgentModel(existingSession.selectedAgent, existingSession.selectedModel)
 
       return
     }
 
     // New IDs are minted locally and have no history. Read the selected model
     // directly, and start independent reads together instead of gating on settings.
-    const [settings, defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
-      await Promise.all([
-        getSettings(db, { selected_model: String, selected_agent: String }),
-        isNew ? getSelectedModel(db) : getDefaultModelForThread(db, id),
-        isNew ? null : getChatThread(db, id),
-        isNew ? [] : getChatMessages(db, id),
-        getAvailableModels(db),
-        isNew ? null : getTriggerPromptForThread(db, id),
-        getAllAgents(db),
-        getAllSystemAgents(db),
-      ])
+    const [
+      settings,
+      defaultModel,
+      storedThread,
+      initialMessages,
+      models,
+      triggerData,
+      customAgentRows,
+      systemAgentRows,
+    ] = await Promise.all([
+      getSettings(db, { selected_model: String, selected_agent: String }),
+      isNew ? getSelectedModel(db) : getDefaultModelForThread(db, id),
+      isNew ? null : getChatThread(db, id),
+      isNew ? [] : getChatMessages(db, id),
+      getAvailableModels(db),
+      isNew ? null : getTriggerPromptForThread(db, id),
+      getAllAgents(db),
+      getAllSystemAgents(db),
+    ])
+
+    const requestedAgentId = isNew ? (selectedAgentId ?? settings.selectedAgent) : storedThread?.agentId
+    if (/^(cloud|local):/.test(requestedAgentId ?? '') && !portableAgentResourceId(requestedAgentId)) {
+      throw new Error(i18n._(msg`This cloud agent selection is invalid. Choose an agent again.`))
+    }
+    const cloudResourceId = isNew
+      ? portableAgentResourceId(selectedAgentId ?? settings.selectedAgent)
+      : (portableAgentResourceId(storedThread?.agentId) ?? (!storedThread ? cloudAgentId : null))
+    if (storedThread && cloudAgentId && storedThread.agentId !== cloudAgentSelectionId(cloudAgentId)) {
+      throw new Error(i18n._(msg`This cloud conversation does not belong to the selected chat.`))
+    }
+    const cloudClient =
+      cloudResourceId && ownerId
+        ? (deps.createCloudClient ?? createCloudAgentClient)(httpClient, ownerId, createCloudOfflineStore(db, ownerId))
+        : null
+    if (cloudResourceId && !cloudClient) {
+      throw new Error(i18n._(msg`Sign in and unlock encrypted sync to open this cloud agent.`))
+    }
+    const cloudView = cloudClient
+      ? (await cloudClient.agents()).find(({ record }) => record.id === cloudResourceId && record.ownerId === ownerId)
+      : undefined
+    if (cloudResourceId && !cloudView) {
+      throw new Error(i18n._(msg`This cloud agent is unavailable. Your chat has not been sent to another agent.`))
+    }
+    const loadProjection = async (): Promise<CloudConversationView | null> => {
+      if (isNew || requestedAgentId?.startsWith('local:') || !cloudClient || !cloudView) {
+        return null
+      }
+      try {
+        return await cloudClient.getConversation(cloudView.record, id)
+      } catch (error) {
+        // The first local save can precede conversation creation. Retrying that
+        // original command is safe; a deep link without a local row must exist.
+        if (storedThread && error instanceof HttpError && error.response.status === 404) {
+          return null
+        }
+        throw error
+      }
+    }
+    const projection = await loadProjection()
+    const importedThread = projection && cloudView ? await persistCloudConversation(db, cloudView, projection) : null
+    const chatThread = importedThread ?? storedThread
 
     // Built-in is implicit (lives in code); the DB rows are only customs + system.
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
     // and the dropdown agree on whether the built-in exists.
     const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
-    const allAgents = composeAllAgents(systemAgentRows.map(systemRowToAgent), customAgentRows.map(customRowToAgent), {
-      includeBuiltIn,
-    })
+    const allAgents = [
+      ...composeAllAgents(systemAgentRows.map(systemRowToAgent), customAgentRows.map(customRowToAgent), {
+        includeBuiltIn,
+      }),
+      ...(cloudView ? [cloudAgentToAgent(cloudView)] : []),
+    ]
     // Only a brand-new chat takes the discovered default; a persisted thread with
     // no agent of its own stays on the fallback chain. Read after the last await
     // so nothing can land between this and `createSession`. Once discovery has
@@ -266,7 +334,8 @@ export const useHydrateChatStore = ({
         ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
         : allAgents
     const selectedAgent = resolveSessionAgent(knownAgents, {
-      threadAgentId: chatThread?.agentId,
+      threadAgentId:
+        chatThread?.agentId ?? selectedAgentId ?? (cloudAgentId ? cloudAgentSelectionId(cloudAgentId) : null),
       lastUsedAgentId: settings.selectedAgent,
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
@@ -285,11 +354,17 @@ export const useHydrateChatStore = ({
       return
     }
 
-    const initialUiMessages = initialMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[]
+    const mergedMessages = importedThread ? await getChatMessages(db, id) : initialMessages
+    const initialUiMessages = sortCloudChatMessages(
+      mergedMessages.map(convertDbChatMessageToUIMessage) as ThunderboltUIMessage[],
+    )
     const chatInstance = createChatInstance(id, initialUiMessages, saveMessages, httpClient, getProxyFetch)
 
     const lastInitialMessage = initialUiMessages[initialUiMessages.length - 1]
-    const hydratedTrailingEmptyTurn = lastInitialMessage?.role === 'assistant' && !lastInitialMessage.parts?.length
+    const hydratedTrailingEmptyTurn =
+      lastInitialMessage?.role === 'assistant' &&
+      !lastInitialMessage.metadata?.cloud &&
+      !lastInitialMessage.parts?.length
 
     createSession({
       chatInstance,
@@ -305,7 +380,7 @@ export const useHydrateChatStore = ({
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,
-      agentChosenByUser: false,
+      agentChosenByUser: !!selectedAgentId || !!cloudAgentId || isPortableAgent(selectedAgent),
       selectedModel,
       projectId,
       miniAppId,
@@ -322,8 +397,20 @@ export const useHydrateChatStore = ({
 
     setIsReady(true)
     trackChatReadyOnce()
-    maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
+    void prewarmAgentModel(selectedAgent, selectedModel)
+    if (projection?.runs.some((run) => isCloudRunActive(run.status))) {
+      await resumeCloudChat(id)
+    }
   }
 
-  return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }
+  const hydrate = async () => {
+    setError(null)
+    try {
+      await hydrateChatStore()
+    } catch (failure) {
+      setError(failure instanceof Error ? failure : new Error(String(failure)))
+    }
+  }
+
+  return { hydrateChatStore: hydrate, isReady, error, saveMessages, saveStreamingMessage }
 }

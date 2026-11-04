@@ -8,9 +8,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
-import { iconForAgent } from '@/components/agent-icon'
+import { isPortableAgent } from '@/defaults/agents'
+import { agentInEnvironment } from '@/cloud-agent/agent-inventory'
+import { AgentGlyph } from '@/components/agent-glyph'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 export type AgentSelectorProps = {
@@ -18,6 +20,7 @@ export type AgentSelectorProps = {
   agents: Agent[]
   onSelect: (agent: Agent) => void
   onAddAgent?: () => void
+  onEditAgent?: (agent: Agent) => void
   disabled?: boolean
   /** Collapses the trigger into a circular icon-only button (the mobile
    *  header's top-right control, matching the sidebar toggle's muted circle).
@@ -35,13 +38,17 @@ type AgentItemData = {
 }
 
 const toMenuItem = (agent: Agent): SearchableMenuItem<AgentItemData> => {
-  const Icon = iconForAgent(agent)
   return {
     id: agent.id,
     label: agent.name,
     // The logo reads slightly smaller than the lucide glyphs at equal box
     // size, so it gets a half-step bump.
-    icon: <Icon className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')} />,
+    icon: (
+      <AgentGlyph
+        agent={agent}
+        className={cn('text-muted-foreground', agent.type === 'built-in' ? 'size-4' : 'size-3.5')}
+      />
+    ),
     data: { agent },
   }
 }
@@ -64,6 +71,9 @@ export const buildAgentItems = (agents: Agent[]): SearchableMenuItem<AgentItemDa
   const custom: SearchableMenuItem<AgentItemData>[] = []
 
   for (const agent of agents) {
+    if (agent.enabled !== 1 || agent.deletedAt) {
+      continue
+    }
     const item = toMenuItem(agent)
     if (agent.type === 'built-in') {
       builtIn.push(item)
@@ -82,6 +92,7 @@ export const AgentSelector = ({
   agents,
   onSelect,
   onAddAgent,
+  onEditAgent,
   disabled = false,
   collapsed = false,
   mobileJoined = false,
@@ -89,7 +100,17 @@ export const AgentSelector = ({
   align,
 }: AgentSelectorProps) => {
   const { t } = useLingui()
-  const items = useMemo(() => buildAgentItems(agents), [agents])
+  const items = useMemo(
+    () =>
+      buildAgentItems(
+        agents.map((agent) =>
+          isPortableAgent(agent) && isPortableAgent(selectedAgent)
+            ? agentInEnvironment(agent, selectedAgent.executionEnvironment ?? 'cloud')
+            : agent,
+        ),
+      ),
+    [agents, selectedAgent],
+  )
 
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
@@ -105,13 +126,13 @@ export const AgentSelector = ({
   // the hosted agent as the only agent on offer the menu stays as the one way
   // to switch. The chat's agent is deliberately not switched
   // for the user: that is a persisted write.
-  const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
-  const isLabel = !soleAgentIsOther && agents.length <= 1 && !onAddAgent
+  const soleAgentIsOther = items.length === 1 && items[0].id !== selectedAgent.id
+  const isLabel = !soleAgentIsOther && items.length <= 1 && !onAddAgent && !onEditAgent
   const dimmed = disabled && !isLabel
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {
     const agent = item.data?.agent
-    if (!agent) {
+    if (!agent || agent.enabled !== 1 || agent.deletedAt) {
       return
     }
     triggerSelection()
@@ -120,7 +141,6 @@ export const AgentSelector = ({
 
   const renderTrigger = (selected: SearchableMenuItem<AgentItemData> | undefined, isOpen: boolean) => {
     const triggerAgent = selected?.data?.agent ?? selectedAgent
-    const Icon = iconForAgent(triggerAgent)
     const triggerInner = (
       <div
         data-testid="agent-selector-trigger"
@@ -150,7 +170,8 @@ export const AgentSelector = ({
                   'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
         >
-          <Icon
+          <AgentGlyph
+            agent={triggerAgent}
             className={cn(
               'max-w-none shrink-0 text-muted-foreground',
               triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
@@ -185,7 +206,10 @@ export const AgentSelector = ({
               'max-md:rounded-l-full max-md:rounded-r-none max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:group-hover:bg-muted-foreground/10',
           )}
         >
-          <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
+          <AgentGlyph
+            agent={triggerAgent}
+            className="max-w-none size-[var(--icon-size-default)] text-muted-foreground"
+          />
         </div>
       </div>
     )
@@ -214,10 +238,20 @@ export const AgentSelector = ({
 
   return (
     <SearchableMenu
-      items={items}
+      items={items.map((item) => ({
+        ...item,
+        action:
+          onEditAgent && item.data
+            ? {
+                label: t`Settings for ${item.label}`,
+                icon: <Settings2 className="size-3.5" />,
+                onAction: () => onEditAgent(item.data!.agent),
+              }
+            : undefined,
+      }))}
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
-      searchable={agents.length > 10}
+      searchable={items.length > 10}
       searchPlaceholder={t`Search agents`}
       emptyMessage={t`No agents found`}
       mobileTitle={t`Choose agent`}

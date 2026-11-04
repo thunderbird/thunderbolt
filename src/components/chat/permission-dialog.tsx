@@ -16,6 +16,7 @@ type PermissionDialogProps = {
   onAlwaysAllowTool: () => void
   onRespond: (response: RequestPermissionResponse) => void
   request: RequestPermissionRequest
+  allowRemember?: boolean
 }
 
 const permissionRequired = msg`Permission Required`
@@ -84,11 +85,15 @@ export const PermissionDialog = ({
   onRespond,
   onAlwaysAllowTool,
   onAlwaysAllowAgent,
+  allowRemember = true,
 }: PermissionDialogProps) => {
   const { i18n, t } = useLingui()
   const [responded, setResponded] = useState(false)
 
-  const allowOption = findAllowOption(request.options)
+  const options = allowRemember
+    ? request.options
+    : request.options.filter((option) => option.kind === 'allow_once' || option.kind === 'reject_once')
+  const allowOption = findAllowOption(options)
   const toolCall = request.toolCall
   const title = toolCall?.title ?? i18n._(permissionRequired)
   const kind = toolCall?.kind
@@ -144,7 +149,7 @@ export const PermissionDialog = ({
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
-        {request.options.map((option) => (
+        {options.map((option) => (
           <Button
             key={option.optionId}
             variant={optionVariant(option.kind)}
@@ -157,7 +162,7 @@ export const PermissionDialog = ({
         ))}
       </div>
 
-      {allowOption && (
+      {allowRemember && allowOption && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="ghost" size="sm" disabled={responded} onClick={() => respondOnce(onAlwaysAllowTool)}>
             {i18n._(alwaysAllowKindLabel(kind))}

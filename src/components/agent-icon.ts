@@ -25,6 +25,9 @@ const systemAgentIcons = new Map<string, ComponentType<{ className?: string }>>(
  *  Settings agent list and the chat header selector so the two stay
  *  perceptually consistent. */
 export const iconForAgent = (agent: Agent): ComponentType<{ className?: string }> => {
+  if (agent.type === 'cloud') {
+    return AppLogo
+  }
   if (agent.type === 'built-in') {
     return AppLogo
   }

@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { isBuiltInAgent } from '@/defaults/agents'
 import type { Model } from '@/types'
+import type { Agent } from '@/types/acp'
 
 /**
  * Warm a managed Tinfoil model without pulling the AI provider pipeline into
@@ -22,5 +24,16 @@ export const prewarmSystemModel = async (
   } catch (error) {
     // WebKit rejects the import when a navigation cancels the chunk fetch mid-flight.
     console.warn('prewarmSystemModel: warm-up skipped', error)
+  }
+}
+
+/** Warm locally executed agents' model transport before a first send. */
+export const prewarmAgentModel = async (
+  agent: Agent,
+  model: Pick<Model, 'provider' | 'isSystem'> | null | undefined,
+  prewarm = prewarmSystemModel,
+): Promise<void> => {
+  if (isBuiltInAgent(agent)) {
+    await prewarm(model)
   }
 }

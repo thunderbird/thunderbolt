@@ -66,6 +66,52 @@ describe('agentProvenanceLine', () => {
 })
 
 describe('AgentList', () => {
+  it('includes saved Thunderbolt agents in Your agents using the same selectable rows and aside callbacks', () => {
+    const onOpenCloudAgent = mock(() => {})
+    render(
+      <AgentList
+        agents={[builtInAgent, systemAgent, customAgent]}
+        cloudAgents={[{ record: { id: 'cloud-agent', enabled: false }, config: { name: 'Research assistant' } }]}
+        selectedId="cloud-agent"
+        onOpenAgent={noop}
+        onOpenCloudAgent={onOpenCloudAgent}
+      />,
+    )
+    const yours = screen.getByTestId('agent-section-yours')
+    expect(yours).toHaveTextContent('Research assistant')
+    expect(yours).toHaveTextContent('Thunderbolt agent · Disabled')
+    expect(screen.getByTestId('agent-section-system')).not.toHaveTextContent('Research assistant')
+    const row = screen.getByRole('button', { name: 'Open Research assistant' })
+    expect(row).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    fireEvent.click(row)
+    expect(onOpenCloudAgent).toHaveBeenCalledWith('cloud-agent')
+  })
+
+  it('toggles owned and portable agents without opening their asides', () => {
+    const onOpen = mock(() => {})
+    const onToggle = mock(() => {})
+    const onToggleCloud = mock(() => {})
+    const props = {
+      agents: [builtInAgent, systemAgent, customAgent, { ...customAgent, id: 'other', userId: 'another-user' }],
+      cloudAgents: [{ record: { id: 'portable', enabled: true }, config: { name: 'Reviewer' } }],
+      currentUserId: customAgent.userId,
+      onOpenAgent: onOpen,
+      onOpenCloudAgent: onOpen,
+      onToggleAgent: onToggle,
+      onToggleCloudAgent: onToggleCloud,
+    }
+    const view = render(<AgentList {...props} />)
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('switch', { name: 'Disable My Remote Agent' }))
+    expect(onToggle).toHaveBeenCalledWith(customAgent, false)
+    fireEvent.click(screen.getByRole('switch', { name: 'Disable Reviewer' }))
+    expect(onToggleCloud).toHaveBeenCalledWith('portable', false)
+    expect(onOpen).not.toHaveBeenCalled()
+    view.rerender(<AgentList {...props} togglePending />)
+    expect(screen.getByRole('switch', { name: 'Disable Reviewer' })).toBeDisabled()
+  })
+
   it('renders every agent as a row with its provenance line', () => {
     render(<AgentList agents={[builtInAgent, systemAgent, customAgent]} onOpenAgent={noop} />)
 

@@ -3,7 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { prewarmSystemModel } from './prewarm-system-model'
+import { builtInAgent } from '@/defaults/agents'
+import { cloudAgentToAgent } from '@/cloud-agent/agent-inventory'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
+import { prewarmAgentModel, prewarmSystemModel } from './prewarm-system-model'
 
 const systemModel = { provider: 'tinfoil', isSystem: 1 } as const
 
@@ -39,5 +42,24 @@ describe('prewarmSystemModel', () => {
     await prewarmSystemModel(model, loadPrewarm)
 
     expect(loadPrewarm).not.toHaveBeenCalled()
+  })
+})
+
+describe('prewarmAgentModel', () => {
+  const cloudAgent = cloudAgentToAgent(cloudAgentViewFixture())
+
+  it.each([builtInAgent, { ...cloudAgent, executionEnvironment: 'local' as const }])(
+    'warms the model before a locally executed agent sends',
+    async (agent) => {
+      const prewarm = mock(async () => {})
+      await prewarmAgentModel(agent, systemModel, prewarm)
+      expect(prewarm).toHaveBeenCalledWith(systemModel)
+    },
+  )
+
+  it('does not attest a device model for cloud execution', async () => {
+    const prewarm = mock(async () => {})
+    await prewarmAgentModel(cloudAgent, systemModel, prewarm)
+    expect(prewarm).not.toHaveBeenCalled()
   })
 })

@@ -86,6 +86,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // live outside the map.
 const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
+  artifacts: () => import('@/routes/artifacts'),
   miniApp: () => import('@/mini-apps/mini-app-page'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
@@ -94,12 +95,15 @@ const routeChunkLoaders = {
   connections: () => import('@/settings/connections'),
   skills: () => import('@/settings/skills'),
   agents: () => import('@/routes/settings/agents'),
+  cloudAgentSync: () => import('@/cloud-agent/sync'),
+  legacyCloudAgents: () => import('@/settings/cloud-agents'),
   // The CLI device-authorization approval page is off the chat/landing
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
 }
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
+const ArtifactsPage = lazy(routeChunkLoaders.artifacts)
 const MiniAppPage = lazy(routeChunkLoaders.miniApp)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
@@ -108,6 +112,8 @@ const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
 const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
+const LegacyCloudAgentsRedirect = lazy(routeChunkLoaders.legacyCloudAgents)
+const CloudAgentSync = lazy(routeChunkLoaders.cloudAgentSync)
 const DeviceApproval = lazy(routeChunkLoaders.deviceApproval)
 
 // Voice settings is feature-flagged and hidden by default, so it's a
@@ -160,6 +166,9 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   return (
     <BrowserRouter>
       <AppRoutes initData={initData} />
+      <Suspense fallback={null}>
+        <CloudAgentSync />
+      </Suspense>
       <UpdateNotification />
       <PendingDeviceModal />
     </BrowserRouter>
@@ -231,6 +240,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               {/* Preserve existing project links after moving projects into the sidebar. */}
               <Route path="projects" element={<ProjectRedirect />} />
               <Route path="projects/:projectId" element={<ProjectRedirect />} />
+              <Route path="artifacts" element={<ArtifactsPage />} />
               <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
@@ -248,6 +258,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="integrations" element={<Navigate to="/settings/connections" replace />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="agents" element={<AgentsSettingsPage />} />
+              <Route path="cloud-agents" element={<LegacyCloudAgentsRedirect />} />
               {import.meta.env.DEV && <Route path="dev-settings" element={<DevSettingsPage />} />}
             </Route>
           </Route>

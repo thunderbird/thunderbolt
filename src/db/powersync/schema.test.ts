@@ -26,3 +26,13 @@ describe('MCP tables are local-only (not synced)', () => {
     expect(localOnlyOption(drizzleSchema.mcp_secrets)).toBe(true)
   })
 })
+
+describe('cloud state persistence boundary', () => {
+  it('syncs only server projections while keeping the cache and command outbox local', () => {
+    expect(powersyncTableNames).toContain('cloud_agent_projections')
+    expect(powersyncTableNames).not.toContain('cloud_agent_cache')
+    expect(powersyncTableNames).not.toContain('cloud_agent_outbox')
+    expect(drizzleSchema.cloud_agent_cache.options.localOnly).toBe(true)
+    expect(drizzleSchema.cloud_agent_outbox.options.localOnly).toBe(true)
+  })
+})

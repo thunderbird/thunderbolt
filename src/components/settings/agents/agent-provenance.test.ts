@@ -4,10 +4,10 @@
 
 import { describe, expect, it } from 'bun:test'
 
-import type { Agent } from '@/types/acp'
+import type { Agent, ProtocolAgent } from '@/types/acp'
 import { acpEndpointLabel, agentProvenanceLine } from './agent-provenance'
 
-const customAgent = (overrides: Partial<Agent> = {}): Agent => ({
+const customAgent = (overrides: Partial<ProtocolAgent> = {}): Agent => ({
   id: 'agent-1',
   name: 'My Agent',
   type: 'remote-acp',

@@ -54,7 +54,7 @@ export const CreateItemHost = () => {
           />
         )
       case 'agent':
-        return <CreateAgentPanel {...sharedProps} />
+        return <CreateAgentPanel {...sharedProps} agentId={renderedRequest.agentId} />
       case 'model':
         return <CreateModelPanel {...sharedProps} />
       default:

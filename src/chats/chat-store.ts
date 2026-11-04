@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { prewarmSystemModel } from '@/ai/prewarm-system-model'
+import { prewarmAgentModel, prewarmSystemModel } from '@/ai/prewarm-system-model'
 import { updateSettings } from '@/dal'
 import { updateChatThread } from '@/dal/chat-threads'
 import { getDb } from '@/db/database'
@@ -18,6 +18,7 @@ import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
 import { resolveSessionModel } from './resolve-session-model'
+import { agentSwitchNeedsNewChat } from './agent-switch'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -27,6 +28,8 @@ export type PendingPermission = {
   agentId: string
   requestId: string
   request: RequestPermissionRequest
+  /** False for durable cloud approvals, whose authority applies to this request only. */
+  allowRemember?: boolean
   resolve: (response: RequestPermissionResponse) => void
 }
 
@@ -95,6 +98,7 @@ export type ChatSession = {
    *  itself. The composer derives its transient "stopping" spinner by masking this
    *  with a live request (see `getTurnActivity`), so lingering is harmless there. */
   stopping: boolean
+  cloudApprovalMode?: 'ask' | 'full-access'
   selectedAgent: Agent
   /** The user picked `selectedAgent`, or a model (which only the built-in uses),
    *  in this chat, so a late-arriving discovered default must not replace it.
@@ -172,12 +176,12 @@ type ChatStoreActions = {
   enqueueMiniAppApproval(id: string, pending: PendingMiniAppApproval): boolean
   dequeueMiniAppApproval(id: string, pending: PendingMiniAppApproval): void
   cancelMiniAppApprovals(appId: string): void
-  setSelectedAgent(id: string, agent: Agent): Promise<void>
-  setSelectedModel(id: string, modelId: string | null, deps?: SetSelectedModelDeps): Promise<void>
+  setSelectedAgent(id: string, agent: Agent, deps?: ModelPrewarmDeps): Promise<void>
+  setSelectedModel(id: string, modelId: string | null, deps?: ModelPrewarmDeps): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
 }
 
-type SetSelectedModelDeps = {
+type ModelPrewarmDeps = {
   prewarmSystemModel?: typeof prewarmSystemModel
 }
 
@@ -419,13 +423,23 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     queuedForApp.forEach((pending) => pending.decide('unavailable'))
   },
 
-  setSelectedAgent: async (id, agent) => {
+  setSelectedAgent: async (id, agent, deps = {}) => {
     const { models, sessions } = get()
 
     const session = sessions.get(id)
 
     if (!session) {
       throw new Error('No session found')
+    }
+
+    if (
+      agentSwitchNeedsNewChat(
+        session.selectedAgent,
+        agent,
+        !!session.chatThread || session.chatInstance.messages.length > 0,
+      )
+    ) {
+      throw new Error('Start a new chat to change a cloud conversation’s agent')
     }
 
     const agentChanged = session.selectedAgent.id !== agent.id
@@ -443,6 +457,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     })
 
     set({ sessions: nextSessions })
+    void prewarmAgentModel(agent, selectedModel, deps.prewarmSystemModel)
 
     const db = getDb()
 

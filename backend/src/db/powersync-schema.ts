@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { getTableColumns } from 'drizzle-orm'
 import { user } from './auth-schema'
+import { cloudAgentProjections } from './cloud-agent-schema'
 
 /**
  * PowerSync tables - mirror of frontend SQLite schema.
@@ -320,6 +321,7 @@ export const agentsTable = powersyncSchema.table(
  * Must have an entry for every PowerSyncTableName (type-checked).
  */
 export const powersyncTablesByName = {
+  cloud_agent_projections: cloudAgentProjections,
   settings: settingsTable,
   chat_threads: chatThreadsTable,
   chat_messages: chatMessagesTable,
@@ -349,6 +351,7 @@ export const powersyncDbNameToSchemaKey: Record<PowerSyncTableName, Record<strin
  * Primary key column for each PowerSync table (for PATCH/DELETE where clauses).
  */
 export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
+  cloud_agent_projections: cloudAgentProjections.id,
   settings: settingsTable.key,
   chat_threads: chatThreadsTable.id,
   chat_messages: chatMessagesTable.id,
@@ -369,6 +372,7 @@ export const powersyncPkColumn: Record<PowerSyncTableName, AnyPgColumn> = {
  * so each user can have their own row with the same default ID. See docs/composite-primary-keys-and-default-data.md.
  */
 export const powersyncConflictTarget: Record<PowerSyncTableName, AnyPgColumn[]> = {
+  cloud_agent_projections: [cloudAgentProjections.id],
   settings: [settingsTable.key, settingsTable.userId],
   chat_threads: [chatThreadsTable.id],
   chat_messages: [chatMessagesTable.id],

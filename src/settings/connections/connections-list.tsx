@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Plug, Plus } from 'lucide-react'
+import { Cloud, Plug, Plus } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { EditDeleteContextMenuContent } from '@/components/settings/edit-delete-context-menu'
@@ -21,6 +21,7 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageSearch } from '@/components/ui/page-search'
 import { Switch } from '@/components/ui/switch'
+import type { CloudConnectionView } from '@/cloud-agent/client'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName, serverMatchesQuery } from './display'
 import type { Integration } from './types'
@@ -158,6 +159,8 @@ export const ConnectionsList = ({
   integrations,
   areIntegrationsReady,
   servers,
+  cloudConnections = [],
+  onSelectCloudConnection,
   serverStatus,
   activeKey,
   onAdd,
@@ -174,6 +177,8 @@ export const ConnectionsList = ({
    *  the loaded position instead of animating off→on. */
   areIntegrationsReady: boolean
   servers: McpServer[]
+  cloudConnections?: CloudConnectionView[]
+  onSelectCloudConnection?: (id: string) => void
   /** Live connection state for a server row's status dot. */
   serverStatus: (server: McpServer) => StatusState
   /** `integration:<id>` / `server:<id>` of the row whose detail panel is open, or null. */
@@ -198,7 +203,8 @@ export const ConnectionsList = ({
     }
   }, [integrations, servers, query])
 
-  const nothingMatches = filteredIntegrations.length === 0 && filteredServers.length === 0
+  const filteredCloud = cloudConnections.filter(({ config }) => serverMatchesQuery(config, query))
+  const nothingMatches = filteredIntegrations.length === 0 && filteredServers.length === 0 && filteredCloud.length === 0
 
   // md:min-w mirrors the skills/agents/models pages: once the detail aside
   // squeezes the list to this floor, the column stops sliding and tucks under
@@ -229,10 +235,10 @@ export const ConnectionsList = ({
           </ul>
         )}
 
-        {filteredServers.length > 0 && (
+        {(filteredServers.length > 0 || filteredCloud.length > 0) && (
           <div className="mt-5 flex flex-col gap-2">
             <SettingsSectionLabel>
-              <Trans>MCP servers</Trans>
+              <Trans>Your connections</Trans>
             </SettingsSectionLabel>
             <ul className="flex flex-col gap-4">
               {filteredServers.map((server) => (
@@ -247,11 +253,23 @@ export const ConnectionsList = ({
                   onDelete={() => onDeleteServer(server.id)}
                 />
               ))}
+              {filteredCloud.map((connection) => (
+                <li key={`cloud:${connection.record.id}`}>
+                  <ConnectionRow
+                    title={connection.config.name}
+                    subtitle={t`Authorized in cloud`}
+                    leading={<Cloud className="size-4" />}
+                    isActive={activeKey === `cloud:${connection.record.id}`}
+                    onSelect={() => onSelectCloudConnection?.(connection.record.id)}
+                    trailing={null}
+                  />
+                </li>
+              ))}
             </ul>
           </div>
         )}
 
-        {servers.length === 0 && !query && (
+        {servers.length === 0 && cloudConnections.length === 0 && !query && (
           <SettingsEmptyState
             className="mt-1"
             icon={<Plug className="size-8 text-muted-foreground" aria-hidden="true" />}

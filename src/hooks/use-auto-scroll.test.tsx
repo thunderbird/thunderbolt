@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { useAutoScroll } from './use-auto-scroll'
-import type { TouchEvent, WheelEvent } from 'react'
+import type { KeyboardEvent, PointerEvent, TouchEvent, WheelEvent } from 'react'
 
 describe('useAutoScroll', () => {
   afterEach(() => {
@@ -86,6 +86,24 @@ describe('useAutoScroll', () => {
   })
 
   describe('scrollToBottom', () => {
+    it('an instant scroll replaces an unfinished smooth scroll', () => {
+      const { result } = renderHook(() => useAutoScroll())
+      const container = createMockContainer(0, 1000, 500)
+      setupRefs(result, container, createMockTarget())
+
+      act(() => {
+        result.current.scrollToBottom(true, true)
+      })
+
+      Object.defineProperty(container, 'scrollHeight', { value: 1400, configurable: true })
+      act(() => {
+        result.current.scrollToBottom(false)
+        getClock().tick(500)
+      })
+
+      expect(container.scrollTop).toBe(900)
+    })
+
     it('should scroll container to bottom with instant scroll', () => {
       const { result } = renderHook(() => useAutoScroll({ isStreaming: true }))
 
@@ -577,6 +595,184 @@ describe('useAutoScroll', () => {
       } finally {
         globalThis.IntersectionObserver = realIntersectionObserver
       }
+    })
+  })
+
+  describe('pinned viewport', () => {
+    const originalObserver = globalThis.IntersectionObserver
+    const callbacks: IntersectionObserverCallback[] = []
+
+    beforeEach(() => {
+      callbacks.length = 0
+      class ControlledObserver {
+        constructor(callback: IntersectionObserverCallback) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords(): IntersectionObserverEntry[] {
+          return []
+        }
+      }
+      globalThis.IntersectionObserver = ControlledObserver as unknown as typeof IntersectionObserver
+    })
+
+    afterEach(() => {
+      globalThis.IntersectionObserver = originalObserver
+    })
+
+    const observeBottom = (isIntersecting: boolean) => {
+      act(() => {
+        callbacks.at(-1)?.([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver)
+      })
+    }
+
+    it('does not resume following when layout exposes the bottom after a viewport pin', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+      const container = createMockContainer(0, 1000, 500)
+      const message = document.createElement('div')
+      message.dataset.messageId = 'question'
+      Object.defineProperty(message, 'offsetTop', { value: 220 })
+      container.append(message)
+      setupRefs(result, container, createMockTarget())
+      observeBottom(false)
+
+      act(() => {
+        result.current.resetUserScroll()
+        result.current.disableAutoScroll()
+        result.current.scrollToElement('[data-message-id="question"]', 20, false, true)
+        getClock().tick(500)
+      })
+      expect(container.scrollTop).toBe(200)
+
+      observeBottom(true)
+      expect(result.current.isAtBottom).toBe(true)
+      act(() => rerender({ deps: ['b'] }))
+      flushFrame()
+
+      expect(container.scrollTop).toBe(200)
+    })
+
+    it.each(['wheel', 'touch', 'scrollbar', 'keyboard'] as const)(
+      'allows following after %s input returns to the bottom',
+      (input) => {
+        const { result, rerender } = renderHook(
+          ({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }),
+          {
+            initialProps: { deps: ['a'] },
+          },
+        )
+        const container = createMockContainer(200, 1000, 500)
+        setupRefs(result, container, createMockTarget())
+        observeBottom(false)
+
+        act(() => {
+          result.current.disableAutoScroll()
+          if (input === 'wheel') {
+            result.current.scrollHandlers.onWheel({ deltaY: 100 } as WheelEvent)
+          } else if (input === 'touch') {
+            result.current.scrollHandlers.onTouchStart({} as TouchEvent)
+          } else if (input === 'scrollbar') {
+            result.current.scrollHandlers.onPointerDown({
+              button: 0,
+              target: container,
+              currentTarget: container,
+            } as unknown as PointerEvent)
+          } else {
+            result.current.scrollHandlers.onKeyDown({ key: 'End', target: container } as unknown as KeyboardEvent)
+          }
+        })
+        observeBottom(true)
+        act(() => rerender({ deps: ['b'] }))
+        flushFrame()
+
+        expect(container.scrollTop).toBe(500)
+      },
+    )
+
+    it.each([
+      'message click',
+      'secondary click',
+      'text field',
+      'editable content',
+      'button activation',
+      'prevented key',
+      'unrelated key',
+    ] as const)('keeps the viewport pinned for %s', (input) => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+      const container = createMockContainer(200, 1000, 500)
+      setupRefs(result, container, createMockTarget())
+      observeBottom(false)
+
+      act(() => {
+        result.current.disableAutoScroll()
+        if (input === 'message click' || input === 'secondary click') {
+          result.current.scrollHandlers.onPointerDown({
+            button: input === 'secondary click' ? 2 : 0,
+            target: input === 'message click' ? document.createElement('div') : container,
+            currentTarget: container,
+          } as unknown as PointerEvent)
+          return
+        }
+        const target = document.createElement(
+          input === 'text field' ? 'textarea' : input === 'button activation' ? 'button' : 'div',
+        )
+        if (input === 'editable content') {
+          target.setAttribute('contenteditable', 'true')
+        }
+        result.current.scrollHandlers.onKeyDown({
+          key: input === 'button activation' ? ' ' : input === 'unrelated key' ? 'a' : 'End',
+          target,
+          defaultPrevented: input === 'prevented key',
+        } as unknown as KeyboardEvent)
+      })
+      observeBottom(true)
+      act(() => rerender({ deps: ['b'] }))
+      flushFrame()
+
+      expect(container.scrollTop).toBe(200)
+    })
+
+    it('allows an explicit reset to resume following a pinned viewport', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+      const container = createMockContainer(200, 1000, 500)
+      setupRefs(result, container, createMockTarget())
+      observeBottom(false)
+
+      act(() => {
+        result.current.disableAutoScroll()
+        result.current.resetUserScroll()
+        rerender({ deps: ['b'] })
+      })
+      flushFrame()
+
+      expect(container.scrollTop).toBe(500)
+    })
+
+    it('still resumes following when an ordinary paused viewport returns to the bottom', () => {
+      const { result, rerender } = renderHook(({ deps }) => useAutoScroll({ dependencies: deps, isStreaming: true }), {
+        initialProps: { deps: ['a'] },
+      })
+      const container = createMockContainer(200, 1000, 500)
+      setupRefs(result, container, createMockTarget())
+      observeBottom(false)
+
+      act(() => {
+        result.current.resetUserScroll()
+        result.current.scrollHandlers.onWheel({ deltaY: -100 } as WheelEvent)
+      })
+      observeBottom(true)
+      act(() => rerender({ deps: ['b'] }))
+      flushFrame()
+
+      expect(container.scrollTop).toBe(500)
     })
   })
 })

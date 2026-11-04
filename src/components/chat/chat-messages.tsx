@@ -21,6 +21,7 @@ import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
 import { selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
+import { responseViewportMinHeight } from './response-viewport'
 
 const ShareDebugTranscriptAction = lazy(async () => {
   const module = await import('@/components/share-debug-transcript')
@@ -167,7 +168,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         if (message.role === 'assistant') {
           // Hide empty assistant messages during errors — these are broken responses
           // that regenerate() will remove. Messages with parts are valid responses.
-          if ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length) {
+          if ((hasError || pendingEmptyTurnRecovery) && !message.parts?.length && !message.metadata?.cloud) {
             return null
           }
 
@@ -205,22 +206,29 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
         return null
       })}
 
-      {/* Keep a loading indicator up while remediation re-delivers + retries, so
-          the suppressed error doesn't leave a blank gap. */}
-      {(showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && <SyntheticLoadingPart isStreaming />}
-
-      {/* Show error message if there's an error and remediation isn't taking over */}
-      {hasError && !suppressError && (
-        <ErrorMessage
-          retryCount={retryCount}
-          retriesExhausted={retriesExhausted}
-          error={chatError}
-          onRetry={() => regenerate()}
-          deliveryExhausted={deliveryExhausted}
-          onTurnOffTools={canTurnOffTools ? () => turnOffTools(sessionId) : undefined}
-          isTurningOffTools={isTurningOffTools}
-        />
-      )}
+      {/* Reserve the same reply space before an assistant message exists. The
+          reserve transfers to that message and remains until the next send. */}
+      <div
+        data-testid="pending-response"
+        style={
+          lastMessage?.role === 'user' && shouldUseViewportPositioning(visibleMessages.length)
+            ? { minHeight: responseViewportMinHeight }
+            : undefined
+        }
+      >
+        {(showSubmittedLoading || suppressError || pendingEmptyTurnRecovery) && <SyntheticLoadingPart isStreaming />}
+        {hasError && !suppressError && (
+          <ErrorMessage
+            retryCount={retryCount}
+            retriesExhausted={retriesExhausted}
+            error={chatError}
+            onRetry={() => regenerate()}
+            deliveryExhausted={deliveryExhausted}
+            onTurnOffTools={canTurnOffTools ? () => turnOffTools(sessionId) : undefined}
+            isTurningOffTools={isTurningOffTools}
+          />
+        )}
+      </div>
 
       {/* Floating "Reply" button over any text selection within a response. */}
       <QuoteReplyButton />

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
+import { withAgentToolApprovals, type RequestAgentToolApproval } from '@/ai/agent-tool-approval'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
@@ -51,7 +52,7 @@ import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
+import { createToolset, getAvailableTools, webToolNames, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -138,6 +139,7 @@ type AiFetchStreamingResponseOptions = {
   webToolBudget?: WebToolBudget
   telemetry?: TurnTelemetry
   debugTranscript?: { threadId: string; traceId: string }
+  agentConfiguration?: BuiltInAgentConfiguration
   /** Returns the current proxy fetch. Production callers pass the getter from
    *  `ProxyFetchProvider` (`useProxyFetchGetter()`); non-React callers (eval
    *  scripts) build a `proxyFetch` directly and wrap it in `() => fn`. */
@@ -470,6 +472,15 @@ export type PreparedAiRequestConfig = {
   readonly embeddedSurface: EmbeddedSurfaceChoice
 }
 
+/** Saved agent choices applied identically to the Pi and legacy local engines. */
+export type BuiltInAgentConfiguration = {
+  readonly instructions: string
+  readonly skills: readonly SkillDefinition[]
+  readonly searchEnabled: boolean
+  readonly unavailableCapabilities: readonly string[]
+  readonly requestToolApproval?: RequestAgentToolApproval
+}
+
 export type PrepareAiRequestConfigOptions = {
   readonly modelId: string
   readonly mcpClients?: NamedMCPClient[]
@@ -480,6 +491,7 @@ export type PrepareAiRequestConfigOptions = {
    *  stable system prompt; omit for non-thread callers. */
   readonly chatThreadId?: string
   readonly telemetry?: TurnTelemetry
+  readonly agentConfiguration?: BuiltInAgentConfiguration
 }
 
 /** Register progressive skill loading only for models that support tools. */
@@ -515,6 +527,7 @@ export const prepareAiRequestConfig = async ({
   webToolBudget,
   chatThreadId,
   telemetry,
+  agentConfiguration,
 }: PrepareAiRequestConfigOptions): Promise<PreparedAiRequestConfig> => {
   telemetry?.startPhase('request_config')
   const db = getDb()
@@ -537,9 +550,9 @@ export const prepareAiRequestConfig = async ({
     throw new Error('Model not found')
   }
   const profile = await getModelProfile(db, modelId)
-  const storedSkills = await getAllSkills(db)
+  const storedSkills = agentConfiguration ? [] : await getAllSkills(db)
   telemetry?.endPhase('request_config')
-  const skills = selectEnabledSkillDefinitions(storedSkills)
+  const skills = agentConfiguration?.skills ?? selectEnabledSkillDefinitions(storedSkills)
   const supportsTools = model.toolUsage !== 0
   // Minimal mode offers no `skill` tool, so the widget contracts it keeps are
   // inlined into the prompt (as for non-tool models) instead of loaded on demand.
@@ -550,10 +563,19 @@ export const prepareAiRequestConfig = async ({
   const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
-    ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
+    ? await getAvailableTools(httpClient, sourceCollector, {
+        settings,
+        integrationStatus: agentConfiguration
+          ? { ...integrationStatus, googleEnabled: false, microsoftEnabled: false }
+          : integrationStatus,
+      })
     : []
   const appToolset = addSkillTool(
-    createToolset(availableTools, toolCallCache, webToolBudget),
+    createToolset(
+      availableTools.filter((tool) => agentConfiguration?.searchEnabled !== false || !webToolNames.has(tool.name)),
+      toolCallCache,
+      webToolBudget,
+    ),
     skills,
     loadsSkillsByTool,
     webToolBudget,
@@ -677,7 +699,7 @@ export const prepareAiRequestConfig = async ({
     integrationStatus: integrationStatuses.length > 0 ? integrationStatuses.join(', ') : 'READY',
     hasWebTools,
     mcpServersSummary: merged.summary,
-    skills: selectPromptSkillDefinitions(storedSkills, supportsTools),
+    skills: agentConfiguration?.skills ?? selectPromptSkillDefinitions(storedSkills, supportsTools),
     supportsTools: loadsSkillsByTool,
     // The resolved locale rather than a `language` settings read: it is synchronous, so
     // it cannot lag behind the watched-query hydration, and it already folds in browser
@@ -693,7 +715,21 @@ export const prepareAiRequestConfig = async ({
     toolset: merged.toolset,
     skills,
     mcpToolsMetadata: merged.mcpTools,
-    stableSystemPrompt: prompt.stablePrompt,
+    stableSystemPrompt: [
+      prompt.stablePrompt,
+      ...(agentConfiguration
+        ? [
+            `## Agent instructions\n${agentConfiguration.instructions}`,
+            'This agent is running locally. Use only the tools provided in this environment. If a requested capability is unavailable, explain that to the user instead of claiming access.',
+            ...(agentConfiguration.unavailableCapabilities.length
+              ? [`Unavailable in this environment: ${agentConfiguration.unavailableCapabilities.join(', ')}.`]
+              : []),
+            ...(agentConfiguration.searchEnabled && !hasWebTools
+              ? ['Web search is unavailable in this environment.']
+              : []),
+          ]
+        : []),
+    ].join('\n\n'),
     // The note rides the volatile prompt rather than a separate field so every
     // engine that composes stable + volatile (this file and the ACP harness)
     // carries it without knowing it exists.
@@ -761,6 +797,7 @@ export const aiFetchStreamingResponse = async ({
   webToolBudget,
   telemetry,
   debugTranscript,
+  agentConfiguration,
 }: AiFetchStreamingResponseOptions) => {
   const options = init as RequestInit & { body: string }
   const body = JSON.parse(options.body) as { messages: ThunderboltUIMessage[]; id: string }
@@ -778,7 +815,7 @@ export const aiFetchStreamingResponse = async ({
     profile,
     supportsTools,
     sourceCollector,
-    toolset,
+    toolset: preparedToolset,
     skills,
     mcpToolsMetadata,
     stableSystemPrompt,
@@ -794,7 +831,9 @@ export const aiFetchStreamingResponse = async ({
     // how this path knows which thread — and so which project — it is serving.
     chatThreadId: body.id,
     telemetry,
+    agentConfiguration,
   })
+  const toolset = withAgentToolApprovals(preparedToolset, agentConfiguration?.requestToolApproval)
   if (!supportsTools) {
     console.log('Model does not support tools, skipping tool setup')
   }

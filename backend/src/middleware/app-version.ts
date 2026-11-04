@@ -20,6 +20,7 @@ export const appVersionExemptPrefixes = [
   '/v1/api/auth/sso',
   '/v1/api/auth/error', // failed-SSO redirect target
   '/v1/api/auth/device',
+  '/v1/cloud-agents/oauth/callback', // browser redirect cannot attach X-App-Version
   '/v1/posthog',
   '/v1/proxy/ws',
   '/v1/debug-transcripts/intake', // server-to-server, no X-App-Version

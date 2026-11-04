@@ -9,12 +9,14 @@ import type { db } from '@/db/client'
 import type { ObservabilityRecorder } from '@/proxy/observability'
 import type { DnsLookup } from '@/utils/url-validation'
 import type { WaitlistEmailService } from '@/waitlist/routes'
+import type { CloudAgentModule } from '@/cloud-agent/bootstrap'
 
 /**
  * Standard dependencies for Elysia app creation
  * Allows injecting test implementations for integration testing
  */
 export type AppDeps = {
+  cloudAgents?: CloudAgentModule
   fetchFn?: typeof fetch
   database?: typeof db
   auth?: Auth

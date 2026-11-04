@@ -100,22 +100,28 @@ const DropdownMenuRadioGroup = ({ ...props }: ComponentProps<typeof DropdownMenu
 const DropdownMenuRadioItem = ({
   className,
   children,
+  showIndicator = true,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) => {
+}: ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & { showIndicator?: boolean }) => {
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-2 pl-9 md:pl-8 text-[length:var(--font-size-body)] outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-2 text-[length:var(--font-size-body)] outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        showIndicator
+          ? 'pl-9 md:pl-8'
+          : 'pl-2 focus:bg-accent/50 data-[state=checked]:bg-accent data-[state=checked]:font-medium',
         className,
       )}
       {...props}
     >
-      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
+      {showIndicator && (
+        <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+          <DropdownMenuPrimitive.ItemIndicator>
+            <CircleIcon className="size-2 fill-current" />
+          </DropdownMenuPrimitive.ItemIndicator>
+        </span>
+      )}
       {children}
     </DropdownMenuPrimitive.RadioItem>
   )

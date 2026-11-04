@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { i18n } from '@/i18n'
+import { AuthProvider, HttpClientProvider } from '@/contexts'
+import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createMockHttpClient } from '@/test-utils/http-client'
 import { createModel, getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -25,7 +28,11 @@ import { http } from '@/lib/http'
 const renderModelsPage = () =>
   renderWithReactivity(
     <MemoryRouter>
-      <ModelsPage />
+      <HttpClientProvider httpClient={createMockHttpClient()}>
+        <AuthProvider authClient={createMockAuthClient()}>
+          <ModelsPage />
+        </AuthProvider>
+      </HttpClientProvider>
     </MemoryRouter>,
     { tables: ['models'] },
   )

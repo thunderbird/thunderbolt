@@ -53,6 +53,9 @@ import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } f
 import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
+import { createCloudAgentModule, startCloudAgents } from '@/cloud-agent/bootstrap'
+import { createCloudAgentRoutes } from '@/cloud-agent/routes'
+import { createCloudOAuthRoutes } from '@/cloud-agent/oauth'
 
 /**
  * Create the main Elysia application
@@ -111,6 +114,7 @@ export const createApp = async (deps?: AppDeps) => {
     createAuthPluginIpRateLimit(database, { ...ipRateLimitSettings, anonymousSignIn: anonymousSignInLimit }),
   )
   const auth = deps?.auth ?? createdAuth
+  const cloudAgents = deps?.cloudAgents ?? createCloudAgentModule(database, settings)
 
   const appLogger = createStandaloneLogger(settings)
 
@@ -236,6 +240,8 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createEncryptionRoutes(auth, database, settings))
       .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
+      .use(createCloudAgentRoutes(auth, cloudAgents.service, cloudAgents.artifacts))
+      .use(createCloudOAuthRoutes(auth, cloudAgents.service))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )
 }
@@ -283,7 +289,12 @@ const startServer = async () => {
       )
     }
 
-    const app = await createApp({ brandingAssets })
+    const { db: cloudDatabase } = await import('@/db/client')
+    const cloudAgents = createCloudAgentModule(cloudDatabase, settings)
+    const cloudRuntime = await startCloudAgents(cloudAgents, settings, (code) =>
+      log.error({ code }, 'Cloud agent service error'),
+    )
+    const app = await createApp({ brandingAssets, cloudAgents })
 
     // Periodically purge expired/consumed E2EE challenge nonces (plan Track A A7), expired
     // solved captcha challenges and idle anonymous users. There is no cron infra, so a startup
@@ -350,6 +361,8 @@ const startServer = async () => {
       tinfoilKeepWarm.stop()
       clearInterval(sweepTimer)
       log.info('Received SIGINT, shutting down gracefully...')
+      await cloudRuntime.close()
+      await app.stop()
       process.exit(0)
     })
 
@@ -357,6 +370,8 @@ const startServer = async () => {
       tinfoilKeepWarm.stop()
       clearInterval(sweepTimer)
       log.info('Received SIGTERM, shutting down gracefully...')
+      await cloudRuntime.close()
+      await app.stop()
       process.exit(0)
     })
   } catch (error) {

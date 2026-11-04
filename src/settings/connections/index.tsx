@@ -35,6 +35,10 @@ import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
+import { CloudError } from '@/components/cloud-agent/common'
+import { CloudConnectionDetail } from './cloud-connection-detail'
+import { useCloudConnectionLibrary } from './use-cloud-connection-library'
+import { useCloudAgentLibrary } from '@/cloud-agent/use-cloud-agent-library'
 import { ConnectionsList } from './connections-list'
 import { IntegrationDetail } from './integration-detail'
 import { McpServerDetail } from './mcp-server-detail'
@@ -89,6 +93,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   // would re-run the reconciliation effect and double-register servers.
   const { servers: mcpServers, reconnectServer, updateServer } = useMCP()
   const location = useLocation()
+  const cloud = useCloudConnectionLibrary()
+  const library = useCloudAgentLibrary()
 
   const initialCallback = getConnectionsOAuthCallback(location.state)
   const [state, dispatch] = useReducer(
@@ -160,6 +166,14 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     formErrorSources.find((source): source is { title: string; body: string } => source.body != null) ?? null
 
   const { servers, credentialsById, serverTools } = useMcpServersData(db, mcpServers)
+
+  const unlinkedCloudConnections = (cloud.connections.data ?? []).filter(
+    ({ config }) =>
+      !config.libraryRef ||
+      (config.kind === 'mcp'
+        ? !servers.some((server) => server.id === config.libraryRef?.id)
+        : !library.models.some((model) => model.id === config.libraryRef?.id)),
+  )
 
   const integrationsController = useIntegrationsController({ db, dispatch })
 
@@ -268,6 +282,21 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const activeServer = selected?.kind === 'server' ? servers.find((s) => s.id === selected.id) : undefined
 
   const renderPanel = () => {
+    const cloudConnection =
+      selected?.kind === 'cloud' ? unlinkedCloudConnections.find(({ record }) => record.id === selected.id) : undefined
+    if (cloudConnection && cloud.client) {
+      return (
+        <CloudConnectionDetail
+          key={cloudConnection.record.id}
+          client={cloud.client}
+          connection={cloudConnection}
+          servers={servers}
+          available={cloud.available}
+          refresh={cloud.refresh}
+          onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+        />
+      )
+    }
     if (form.isAddFormOpen) {
       return (
         <DetailPanel
@@ -379,10 +408,22 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   return (
     <div className="relative flex h-full">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <CloudError error={cloud.connections.error ?? cloud.capabilities.error} />
+        {new URLSearchParams(location.search).has('cloudOAuth') && (
+          <p role="status" className="px-4 text-sm text-muted-foreground">
+            {new URLSearchParams(location.search).get('cloudOAuth') === 'connected' ? (
+              <Trans>Cloud connection authorized.</Trans>
+            ) : (
+              <Trans>Authorization was not completed. Try connecting again.</Trans>
+            )}
+          </p>
+        )}
         <ConnectionsList
           integrations={integrationsController.integrations}
           areIntegrationsReady={integrationsController.areIntegrationsReady}
           servers={servers}
+          cloudConnections={unlinkedCloudConnections}
+          onSelectCloudConnection={(id) => toggleSelection({ kind: 'cloud', id })}
           serverStatus={rowStatus}
           activeKey={panelOpen && selected && !form.isAddFormOpen ? `${selected.kind}:${selected.id}` : null}
           onAdd={openAddForm}

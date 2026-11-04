@@ -13,6 +13,8 @@ import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
+import { agentInEnvironment, cloudAgentToAgent } from '@/cloud-agent/agent-inventory'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
@@ -199,6 +201,33 @@ describe('createAgentRoutingFetch — connection status', () => {
 
   afterEach(() => {
     resetStore()
+  })
+
+  it('passes the newly persisted privacy lock to the local adapter on its first turn', async () => {
+    const agent = agentInEnvironment(cloudAgentToAgent(cloudAgentViewFixture()), 'local')
+    const savedThread = createMockChatThread({ id: sessionId, isEncrypted: 1, agentId: agent.id })
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: agent })
+    const saveMessages: SaveMessagesFunction = async () => {
+      useChatStore.getState().updateSession(sessionId, { chatThread: savedThread })
+    }
+    const observed: AgentAdapterContext['chatThread'][] = []
+    const adapter: AgentAdapter = {
+      ...makeAdapter(agent),
+      fetch: async (_init, context) => {
+        observed.push(context.chatThread)
+        return new Response('ok')
+      },
+    }
+    const fetch = createAgentRoutingFetch(sessionId, saveMessages, httpClient, getProxyFetch, {
+      getOrConnectAdapter: async () => adapter,
+    })
+    await fetch('https://backend.test', {
+      body: JSON.stringify({
+        messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text: 'Private task' }] }],
+      }),
+    })
+    expect(observed).toEqual([savedThread])
+    expect(observed[0]?.isEncrypted).toBe(1)
   })
 
   it.each([

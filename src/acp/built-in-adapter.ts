@@ -50,6 +50,9 @@ import {
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
+import { detectStreamChunk } from '@/ai/smooth-chunking'
+import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
+import type { RequestAgentToolApproval } from '@/ai/agent-tool-approval'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
@@ -68,7 +71,7 @@ import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
-import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
+import type { PiModelDescriptor, PiStreamSmoothing, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { inferenceModelHeader } from '@shared/inference-usage'
@@ -140,6 +143,8 @@ export type BuiltInAdapterOptions = {
   prepareConfig?: typeof prepareAiRequestConfig
   /** Attachment/history preparation injection for adapter-level tests. */
   prepareConversation?: typeof prepareBuiltInConversation
+  /** Allow stream timing to be controlled independently of provider behavior in tests. */
+  streamSmoothing?: PiStreamSmoothing
   /** Attested-client seams for adapter tests. */
   getSystemTinfoilClient?: typeof getSystemTinfoilClient
   getTinfoilClient?: typeof getTinfoilClient
@@ -617,6 +622,24 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
+/** Scope approval hooks to this send, including the harness's filesystem tools. */
+export const installAgentToolApprovals = (
+  harness: AgentHarness,
+  approve?: RequestAgentToolApproval,
+  signal?: AbortSignal,
+): (() => void) => {
+  if (!approve) {
+    return () => undefined
+  }
+  return harness.on('tool_call', async ({ toolName, toolCallId, input }) => {
+    if (toolName === 'skill') {
+      return undefined
+    }
+    const allowed = await approve({ toolName, toolCallId, input }, signal)
+    return allowed && !signal?.aborted ? undefined : { block: true, reason: 'This tool call was not approved.' }
+  })
+}
+
 /**
  * Supersede earlier Mini App `get_app_context` results in what the model sees
  * this send: the harness half of `supersedeAppContextResults`.
@@ -766,7 +789,7 @@ const fetchViaHarness = async (
   loadAgentCore: () => Promise<AgentCoreModule>,
   prepareConfig: typeof prepareAiRequestConfig,
   prepareConversation: typeof prepareBuiltInConversation,
-  tinfoilOptions: TinfoilClientOptions,
+  options: BuiltInAdapterOptions,
 ): Promise<Response> => {
   const debugTraceId = context.debugTranscriptTraceId
   // Sanctioned route-splitting exception (CLAUDE.md "Route-level Code Splitting").
@@ -792,8 +815,9 @@ const fetchViaHarness = async (
     // mid-thread rebuilds the harness on the next send by itself.
     chatThreadId: context.threadId,
     telemetry: context.telemetry,
+    agentConfiguration: context.agentConfiguration,
   })
-  const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
+  const resolved = await resolvePiModel(agentCore, context, config.profile, options)
   if (!resolved) {
     context.telemetry?.setDimensions({ engine: 'legacy' })
     return fallback()
@@ -845,6 +869,11 @@ const fetchViaHarness = async (
           throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
         }
         const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
+        const removeApprovals = installAgentToolApprovals(
+          harness,
+          context.agentConfiguration?.requestToolApproval,
+          init.signal ?? undefined,
+        )
         const removeAppContextSupersede =
           supersededCallIds.size > 0 ? installAppContextSupersede(harness, supersededCallIds) : () => undefined
         try {
@@ -852,6 +881,7 @@ const fetchViaHarness = async (
           await harness.waitForIdle()
         } finally {
           removeBudgetFloor()
+          removeApprovals()
           removeAppContextSupersede()
         }
       },
@@ -878,6 +908,8 @@ const fetchViaHarness = async (
       // in-browser, so unless it sees the signal the loop keeps calling the
       // model and executing tools after the user pressed the button.
       init.signal ?? undefined,
+      undefined,
+      options.streamSmoothing ?? { chunking: detectStreamChunk, delayInMs: smoothStreamWordDelayMs },
     ),
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   )
@@ -916,6 +948,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       turnBudget: context.turnBudget,
       webToolBudget: context.webToolBudget,
       telemetry: context.telemetry,
+      agentConfiguration: context.agentConfiguration,
       debugTranscript:
         context.debugTranscriptTraceId === undefined
           ? undefined

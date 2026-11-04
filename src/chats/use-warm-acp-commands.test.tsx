@@ -105,6 +105,24 @@ beforeEach(() => {
 })
 
 describe('useWarmAcpCommands', () => {
+  it('never opens ACP transport or sessions for scoped cloud agents', async () => {
+    const cloud: Agent = {
+      ...builtIn,
+      id: 'cloud:resource',
+      cloudAgentId: 'resource',
+      type: 'cloud',
+      transport: 'http',
+      url: null,
+      userId: 'owner',
+      isSystem: 0,
+    }
+    renderWarm({ id: 'thread-1', selectedAgent: cloud, chatThread: thread })
+    await flush()
+    expect(getOrConnectAdapter).not.toHaveBeenCalled()
+    expect(ensureSession).not.toHaveBeenCalled()
+    expect(updateChatThread).not.toHaveBeenCalled()
+  })
+
   it('skips built-in agents entirely', () => {
     renderWarm({ id: 'thread-1', selectedAgent: builtIn, chatThread: thread })
     expect(getOrConnectAdapter).not.toHaveBeenCalled()

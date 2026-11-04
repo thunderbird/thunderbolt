@@ -11,7 +11,7 @@ type SkillPanelRequestInput =
   | { kind: 'skill'; skillId: string; initialName?: never }
 
 /** The id-less input to `openCreateItem`; the provider assigns the id. */
-type CreateItemRequestInput = SkillPanelRequestInput | { kind: 'agent' } | { kind: 'model' }
+type CreateItemRequestInput = SkillPanelRequestInput | { kind: 'agent'; agentId?: string } | { kind: 'model' }
 
 // Derived from the input so a new kind is added in exactly one place; the
 // intersection distributes over the union, keeping `kind` narrowing intact.
@@ -27,10 +27,15 @@ export const createItemTitles: Record<CreateItemRequest['kind'], MessageDescript
 
 /** Title for the skill panel's edit mode, which the kind map can't express. */
 export const editSkillTitle = msg`Edit Skill`
+export const editAgentTitle = msg`Agent settings`
 
 /** Returns the route-preserving panel title for create and edit requests. */
 export const createItemTitle = (request: CreateItemRequest): MessageDescriptor =>
-  request.kind === 'skill' && request.skillId ? editSkillTitle : createItemTitles[request.kind]
+  request.kind === 'skill' && request.skillId
+    ? editSkillTitle
+    : request.kind === 'agent' && request.agentId
+      ? editAgentTitle
+      : createItemTitles[request.kind]
 
 type CreateItemContextValue = {
   request: CreateItemRequest | null

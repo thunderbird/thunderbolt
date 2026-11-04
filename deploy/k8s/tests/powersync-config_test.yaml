@@ -29,3 +29,10 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: journeyapps/powersync-service:1.27.0
+  - it: syncs cloud projections through the revocable owner stream
+    template: templates/configmaps.yaml
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "SELECT \\* FROM powersync.cloud_agent_projections WHERE user_id IN active_device_account OR"

@@ -59,6 +59,27 @@ describe('AgentsSettingsPage — availability', () => {
     localStorage.clear()
   })
 
+  it('persists activation from the row without opening an aside', async () => {
+    await createAgent(getDb(), {
+      id: 'toggle-agent',
+      name: 'Toggle agent',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://example.test/acp',
+      description: null,
+      enabled: 1,
+      userId: authedSession.user.id,
+    })
+    renderPage(createMockAuthClient({ session: authedSession }))
+    const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Toggle agent' }))
+    await act(async () => {
+      fireEvent.click(toggle)
+      await getClock().runAllAsync()
+    })
+    expect((await getAllAgents(getDb())).find((agent) => agent.id === 'toggle-agent')?.enabled).toBe(0)
+    expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull()
+  })
+
   it('renders for anonymous users', () => {
     const authClient = createMockAuthClient({ session: anonSession })
     renderPage(authClient)
@@ -119,6 +140,8 @@ describe('AgentsSettingsPage — transparent same-account enrollment', () => {
     const authClient = createMockAuthClient({ session: authedSession })
     renderPage(authClient, { loadAppNodeId: async () => appNodeId, enrollIroh })
     fireEvent.click(screen.getByRole('button', { name: /new agent/i }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Connect to ACP agent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'Laptop Bridge' } })
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), { target: { value: irohTarget } })
   }

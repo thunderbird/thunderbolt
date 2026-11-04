@@ -17,9 +17,9 @@ import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-rea
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
-import { act, cleanup, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import Sidebar from './index'
 import type { ReactNode } from 'react'
@@ -45,6 +45,7 @@ const createSidebarWrapper =
   )
 
 const SidebarTestWrapper = createSidebarWrapper()
+const SidebarLocationProbe = () => <output data-testid="sidebar-location">{useLocation().pathname}</output>
 
 describe('Sidebar reactivity', () => {
   // The chat list is virtualized (virtua) — give it real-looking measurements
@@ -154,6 +155,29 @@ describe('Sidebar reactivity', () => {
       renderWithReactivity(<Sidebar />, { tables: ['chat_threads'], wrapper: SidebarTestWrapper })
 
       expect(screen.getByLabelText('Settings')).toBeInTheDocument()
+    })
+
+    it.each([false, true])('opens the independent artifact library from the sidebar (mobile %s)', async (mobile) => {
+      if (mobile) {
+        forceMobileViewport()
+      }
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      renderWithReactivity(
+        <>
+          <Sidebar />
+          <SidebarLocationProbe />
+        </>,
+        {
+          tables: ['chat_threads'],
+          wrapper: SidebarTestWrapper,
+        },
+      )
+      const item = screen.getByRole('button', { name: 'Artifacts' })
+      fireEvent.click(item)
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(screen.getByTestId('sidebar-location')).toHaveTextContent('/artifacts')
     })
 
     it('offers Projects outside minimal mode and hides it in minimal mode', async () => {

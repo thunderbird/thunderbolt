@@ -35,6 +35,18 @@ describe('powersync upload gate (applyOperation)', () => {
   })
 
   describe('invalid / malformed operations', () => {
+    it('rejects every generic write to server-owned cloud projections', async () => {
+      for (const op of ['PUT', 'PATCH', 'DELETE'] as const) {
+        expect(
+          await applyOperation(
+            db,
+            { op, type: 'cloud_agent_projections', id: 'run:private', data: { payload: '{}' } },
+            userId,
+          ),
+        ).toBe(false)
+      }
+    })
+
     it('rejects an unknown table name', async () => {
       const ok = await applyOperation(db, { op: 'PUT', type: 'not_a_table', id: 'x', data: { foo: 1 } }, userId)
       expect(ok).toBe(false)

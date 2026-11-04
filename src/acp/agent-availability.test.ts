@@ -6,7 +6,7 @@ import '@/testing-library'
 
 import { describe, expect, it } from 'bun:test'
 import type { Agent } from '@/types/acp'
-import { isAgentAvailable } from './agent-availability'
+import { agentAcceptsAttachments, isAgentAvailable } from './agent-availability'
 
 const baseAgent: Agent = {
   id: 'a1',
@@ -23,6 +23,24 @@ const baseAgent: Agent = {
 }
 
 describe('isAgentAvailable', () => {
+  it('requires a live enabled cloud grant and never accepts cloud attachments', () => {
+    const cloud: Agent = {
+      ...baseAgent,
+      id: 'cloud:resource',
+      cloudAgentId: 'resource',
+      type: 'cloud',
+      transport: 'http',
+      url: null,
+      userId: 'owner',
+      isSystem: 0,
+    }
+    expect(isAgentAvailable(cloud)).toBe(true)
+    expect(isAgentAvailable({ ...cloud, enabled: 0 })).toBe(false)
+    expect(isAgentAvailable({ ...cloud, deletedAt: '2026-10-23' })).toBe(false)
+    expect(agentAcceptsAttachments(cloud)).toBe(false)
+    expect(agentAcceptsAttachments(baseAgent)).toBe(true)
+  })
+
   it('returns true for websocket agents on any platform', () => {
     expect(isAgentAvailable(baseAgent, { isTauri: () => false })).toBe(true)
     expect(isAgentAvailable(baseAgent, { isTauri: () => true })).toBe(true)

@@ -47,6 +47,8 @@ type EmojiPickerProps = {
   label: string
   /** Adjacent name input; the complete row anchors the desktop picker. */
   children?: ReactNode
+  fallbackIcon?: ReactNode
+  disabled?: boolean
 }
 
 const EmojiButton = ({
@@ -211,7 +213,7 @@ const EmojiPickerBody = ({
   )
 }
 
-export const EmojiPicker = ({ value, onChange, label, children }: EmojiPickerProps) => {
+export const EmojiPicker = ({ value, onChange, label, children, fallbackIcon, disabled }: EmojiPickerProps) => {
   const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const [open, setOpen] = useState(false)
@@ -227,6 +229,7 @@ export const EmojiPicker = ({ value, onChange, label, children }: EmojiPickerPro
   const trigger = (
     <Button
       type="button"
+      disabled={disabled}
       variant="outline"
       // Square so the glyph is optically centred; emoji have no consistent
       // baseline, so the fixed box beats padding around variable-width text.
@@ -249,7 +252,9 @@ export const EmojiPicker = ({ value, onChange, label, children }: EmojiPickerPro
           : undefined
       }
     >
-      {value ?? <Smile className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />}
+      {value ?? fallbackIcon ?? (
+        <Smile className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />
+      )}
     </Button>
   )
 

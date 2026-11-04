@@ -93,3 +93,4 @@ e2e/e2ee/attacks/scratch/
 
 # Red-team findings ledger — local run state, never committed (Linear is the shared record).
 .red-team/
+.cloud-local/

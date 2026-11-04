@@ -8,16 +8,23 @@ import { CreateItemPanelShell } from './create-item-panel-shell'
 
 type CreateModelPanelProps = {
   open: boolean
+  overlay?: boolean
   onClose: () => void
   onCloseComplete: () => void
 }
 
 /** Adds a model over the current screen without changing routes. */
-export const CreateModelPanel = ({ open, onClose, onCloseComplete }: CreateModelPanelProps) => {
+export const CreateModelPanel = ({ open, overlay, onClose, onCloseComplete }: CreateModelPanelProps) => {
   const addForm = useAddModelForm({ isOpen: open, onClose })
 
   return (
-    <CreateItemPanelShell kind="model" open={open} onClose={addForm.onCancel} onCloseComplete={onCloseComplete}>
+    <CreateItemPanelShell
+      kind="model"
+      open={open}
+      overlay={overlay}
+      onClose={addForm.onCancel}
+      onCloseComplete={onCloseComplete}
+    >
       <AddModelForm {...addForm} />
     </CreateItemPanelShell>
   )

@@ -121,6 +121,13 @@ describe('app-version gate', () => {
       expect((await app.handle(request('/v1/debug-transcripts'))).status).toBe(426)
     })
 
+    it('permits the headerless cloud OAuth callback while keeping authorization start gated', async () => {
+      const app = createTestApp('9.9.9')
+      expect((await app.handle(request('/v1/cloud-agents/oauth/callback?state=opaque&code=opaque'))).status).toBe(200)
+      expect((await app.handle(request('/v1/cloud-agents/connections/id/oauth/start'))).status).toBe(426)
+      expect((await app.handle(request('/v1/cloud-agents/oauth/callbackXYZ'))).status).toBe(426)
+    })
+
     it('lets each exempt prefix through even below the minimum', async () => {
       const app = createTestApp('9.9.9')
 

@@ -19,6 +19,7 @@ import {
   writeAgentWorkspaceFiles,
 } from './build-app-harness.ts'
 import { createReceiptLifecycle } from './confidential-model.ts'
+import { piHarnessToUiMessageStream } from './pi-to-aisdk-stream.ts'
 
 describe('workspaceDirFor', () => {
   it('roots a UUID-shaped thread under /workspace', () => {
@@ -88,6 +89,77 @@ describe('writeAgentWorkspaceFiles', () => {
 })
 
 describe('buildAppHarness confidential model', () => {
+  it('streams confidential provider fragments through Pi before the provider finishes', async () => {
+    const upstream = new TransformStream<Uint8Array, Uint8Array>()
+    const writer = upstream.writable.getWriter()
+    const encoder = new TextEncoder()
+    const threadId = crypto.randomUUID()
+    const harness = await buildAppHarness({
+      model: {
+        kind: 'confidential',
+        providerId: 'thunderbolt',
+        modelId: 'deepseek-v4-1-flash',
+        vendor: 'deepseek',
+        baseURL: 'https://cloud.example/v1/tinfoil',
+        apiKey: 'placeholder',
+        fetch: async () => new Response(upstream.readable, { headers: { 'content-type': 'text/event-stream' } }),
+        receipts: createReceiptLifecycle({ submit: async () => {}, reportError: () => {} }),
+        reasoning: true,
+        supportsImages: false,
+      },
+      systemPrompt: 'Answer briefly.',
+      thinkingLevel: 'off',
+      threadId,
+    })
+    const reader = piHarnessToUiMessageStream(harness, () => harness.prompt('hello')).getReader()
+    const sendContent = async (content: string): Promise<void> => {
+      const chunk = {
+        id: 'c',
+        object: 'chat.completion.chunk',
+        created: 1,
+        model: 'deepseek-v4-1-flash',
+        choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }],
+      }
+      await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+    }
+    const readUntilTextDelta = async (): Promise<string> => {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) {
+          throw new Error('Stream finished before its text delta')
+        }
+        const line = new TextDecoder().decode(value)
+        if (line.includes('"type":"text-delta"')) {
+          return line
+        }
+      }
+    }
+
+    try {
+      await sendContent('First ')
+      expect(await readUntilTextDelta()).toContain('"delta":"First "')
+
+      // This fragment is withheld until the app has consumed the previous one.
+      await sendContent('second.')
+      expect(await readUntilTextDelta()).toContain('"delta":"second."')
+
+      await writer.write(
+        encoder.encode(
+          'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"deepseek-v4-1-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        ),
+      )
+      await writer.close()
+      for (;;) {
+        if ((await reader.read()).done) {
+          break
+        }
+      }
+    } finally {
+      await reader.cancel()
+      await removeAgentWorkspace(threadId)
+    }
+  })
+
   it('attaches the receipt lifecycle to the harness terminal message', async () => {
     const submitted: unknown[] = []
     const receipts = createReceiptLifecycle({

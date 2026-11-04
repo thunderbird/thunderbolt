@@ -4,7 +4,7 @@
 
 import type { Settings } from '@/config/settings'
 import { deleteIdleAnonymousUsers } from '@/dal'
-import type { QueryableDatabase } from '@/db/client'
+import type { db as DbType } from '@/db/client'
 
 type SweepLogger = {
   info: (context: Record<string, unknown>, message: string) => void
@@ -17,7 +17,7 @@ type SweepLogger = {
  * failure instead of throwing, so the next sweep still runs.
  */
 export const sweepIdleAnonymousUsers = async (
-  database: QueryableDatabase,
+  database: typeof DbType,
   settings: Pick<Settings, 'authAllowAnonymous' | 'anonymousUserIdleDays'>,
   log: SweepLogger,
 ) => {

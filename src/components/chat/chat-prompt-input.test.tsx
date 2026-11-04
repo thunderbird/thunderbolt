@@ -25,6 +25,19 @@ import { builtInAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
 import type { ImageSupportCheck } from './use-image-support-check'
+import type { useCloudAgentInventory } from '@/cloud-agent/use-cloud-agent-inventory'
+import { cloudAgentViewFixture } from '@/cloud-agent/agent-inventory-fixture'
+import { cloudAgentToAgent } from '@/cloud-agent/agent-inventory'
+
+const noCloudInventory: typeof useCloudAgentInventory = () => ({
+  client: null,
+  ownerId: null,
+  enabled: false,
+  views: [],
+  agents: [],
+  isLoading: false,
+  error: null,
+})
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
@@ -136,21 +149,94 @@ describe('ChatPromptInput', () => {
     it('should render textarea with placeholder', () => {
       const { mockUseChat } = setupStore()
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
     })
+  })
+
+  it('offers only saved enabled cloud skills in slash suggestions and keeps voice available', () => {
+    useConfigStore.setState({ config: {}, configLoaded: true })
+    const { mockUseChat } = setupStore()
+    const selected = {
+      id: 'selected',
+      name: 'selected-skill',
+      label: 'Selected Skill',
+      description: '',
+      instruction: 'Unsaved local edit',
+      enabled: 1,
+      pinnedOrder: null,
+      deletedAt: null,
+      defaultHash: null,
+      userId: null,
+    }
+    const unselected = { ...selected, id: 'unselected', name: 'unselected-skill', label: 'Unselected Skill' }
+    const disabled = { ...selected, id: 'disabled', name: 'disabled-skill', label: 'Disabled Skill', enabled: 0 }
+    const view = cloudAgentViewFixture()
+    view.config.skills = [selected, disabled].map((skill) => ({
+      sourceId: skill.id,
+      name: skill.name,
+      description: '',
+      instruction: 'Saved cloud instruction',
+    }))
+    useChatStore.getState().updateSession('thread-1', { selectedAgent: cloudAgentToAgent(view) })
+    const ref = createRef<ChatPromptInputRef>()
+    render(
+      <ChatPromptInput
+        ref={ref}
+        useChat={mockUseChat}
+        useWarmAcpCommands={noWarmUp}
+        useIsMobile={createMockUseIsMobile()}
+        useCloudAgentInventory={() => ({ ...noCloudInventory(), ownerId: 'owner', enabled: true, views: [view] })}
+        useLibrarySkills={() => ({
+          skills: [selected, unselected, disabled],
+          isLoading: false,
+          createSkill: async () => selected,
+          updateSkill: async () => undefined,
+          softDeleteSkill: async () => undefined,
+        })}
+        useEnabledSkills={() => ({ isEnabled: (id) => id !== disabled.id, setEnabled: async () => undefined })}
+      />,
+      { wrapper: TestWrapper },
+    )
+    act(() => {
+      ref.current?.setInput('')
+    })
+    expect(screen.getByRole('button', { name: 'Start voice mode' })).toBeInTheDocument()
+    act(() => {
+      ref.current?.setInput('/')
+    })
+    const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+    textarea.setSelectionRange(1, 1)
+    fireEvent.select(textarea)
+    expect(screen.getByRole('listbox')).toHaveTextContent('Selected Skill')
+    expect(screen.getByRole('listbox')).not.toHaveTextContent('Unselected Skill')
+    expect(screen.getByRole('listbox')).not.toHaveTextContent('Disabled Skill')
   })
 
   describe('stop button', () => {
     it('shows the Stop button while the model is thinking (submitted)', () => {
       const { mockUseChat } = setupStore('submitted')
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
       expect(screen.queryByLabelText('Send message')).toBeNull()
@@ -159,9 +245,16 @@ describe('ChatPromptInput', () => {
     it('shows the Stop button while streaming', () => {
       const { mockUseChat } = setupStore('streaming')
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
     })
@@ -175,9 +268,16 @@ describe('ChatPromptInput', () => {
       ]
       const { mockUseChat } = setupStore('ready', messages)
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
     })
@@ -188,9 +288,16 @@ describe('ChatPromptInput', () => {
         useChatStore.getState().updateSession('thread-1', { retryCount: 1, retriesExhausted: false })
       })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
     })
@@ -201,9 +308,16 @@ describe('ChatPromptInput', () => {
         useChatStore.getState().updateSession('thread-1', { retryCount: 3, retriesExhausted: true })
       })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.queryByLabelText('Stop generating')).toBeNull()
     })
@@ -211,9 +325,16 @@ describe('ChatPromptInput', () => {
     it('calls stop on click', () => {
       const { mockUseChat, mockChatInstance } = setupStore('streaming')
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const stopButton = screen.getByLabelText('Stop generating') as HTMLButtonElement
       act(() => {
@@ -232,9 +353,16 @@ describe('ChatPromptInput', () => {
         useChatStore.getState().updateSession('thread-1', { stopping: true })
       })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const stopButton = screen.getByLabelText('Stopping') as HTMLButtonElement
       expect(stopButton.querySelector('.animate-spin')).not.toBeNull()
@@ -253,7 +381,11 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
 
       const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile(true)}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -266,7 +398,11 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
 
       const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(false)} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile(false)}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -280,6 +416,7 @@ describe('ChatPromptInput', () => {
 
       render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile(true)}
           useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
@@ -295,6 +432,7 @@ describe('ChatPromptInput', () => {
 
       render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile(false)}
           useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
@@ -311,9 +449,17 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       const ref = createRef<ChatPromptInputRef>()
 
-      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const focusSpy = mock(() => {})
@@ -333,9 +479,17 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       const ref = createRef<ChatPromptInputRef>()
 
-      render(<ChatPromptInput ref={ref} useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          ref={ref}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       act(() => {
         ref.current?.setInput('Test input')
@@ -351,7 +505,11 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
 
       const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile(true)} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile(true)}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -371,6 +529,7 @@ describe('ChatPromptInput', () => {
       const trackEvent = mock(() => {})
       const { container } = render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile()}
           useContextTracking={createMockUseContextTracking(true)}
@@ -433,6 +592,7 @@ describe('ChatPromptInput', () => {
       const ref = createRef<ChatPromptInputRef>()
       render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           ref={ref}
           useChat={mockUseChat}
           useIsMobile={createMockUseIsMobile()}
@@ -538,7 +698,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
 
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} isAgentAvailable={() => false} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          isAgentAvailable={() => false}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -552,9 +717,16 @@ describe('ChatPromptInput', () => {
     const renderWithModel = (selectedModel: Model) => {
       const { mockUseChat, mockChatInstance } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedModel })
-      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      const { container } = render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
       fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'hello' } })
       const submit = async () => {
         await act(async () => {
@@ -612,7 +784,12 @@ describe('ChatPromptInput', () => {
         })
       })
       const { container } = render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
       return { container, sendMessage: mockChatInstance.sendMessage }
@@ -669,9 +846,16 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { connectionStatus: 'connecting', connectionError: null })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByRole('status').textContent ?? '').toMatch(/Connecting to /)
     })
@@ -683,9 +867,16 @@ describe('ChatPromptInput', () => {
         connectionError: new Error('boom'),
       })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const alert = screen.getByRole('alert')
       expect(alert.textContent ?? '').toMatch(/Failed to connect to /)
@@ -699,9 +890,16 @@ describe('ChatPromptInput', () => {
         connectionError: new Error(JSON.stringify({ data: { message: 'agent offline' } })),
       })
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.getByRole('alert').querySelector('span[title]')?.getAttribute('title')).toBe('agent offline')
     })
@@ -709,9 +907,16 @@ describe('ChatPromptInput', () => {
     it('falls back to default selector when connectionStatus is idle', () => {
       const { mockUseChat } = setupStore()
 
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(screen.queryByRole('status')).toBeNull()
       expect(screen.queryByRole('alert')).toBeNull()
@@ -731,7 +936,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -749,7 +959,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -776,7 +991,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -801,7 +1021,12 @@ describe('ChatPromptInput', () => {
       useConfigStore.setState({ config: minimalMode ? { minimalMode } : {}, configLoaded: true })
       const { mockUseChat } = setupStore()
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -814,7 +1039,12 @@ describe('ChatPromptInput', () => {
     useConfigStore.setState({ config: {}, configLoaded: false })
     const { mockUseChat } = setupStore()
     render(
-      <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      <ChatPromptInput
+        useCloudAgentInventory={noCloudInventory}
+        useChat={mockUseChat}
+        useIsMobile={createMockUseIsMobile()}
+        useWarmAcpCommands={noWarmUp}
+      />,
       { wrapper: TestWrapper },
     )
 
@@ -846,9 +1076,16 @@ describe('ChatPromptInput', () => {
 
     it('attaches a pasted image file and prevents the default text paste', async () => {
       const { mockUseChat } = setupStore()
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], 'shot.png', { type: 'image/png' })
@@ -861,9 +1098,16 @@ describe('ChatPromptInput', () => {
 
     it('synthesizes a filename for a nameless clipboard image', async () => {
       const { mockUseChat } = setupStore()
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], '', { type: 'image/png' })
@@ -875,9 +1119,16 @@ describe('ChatPromptInput', () => {
 
     it('leaves a plain-text paste untouched (no attachment, no preventDefault)', () => {
       const { mockUseChat } = setupStore()
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
@@ -887,9 +1138,16 @@ describe('ChatPromptInput', () => {
 
     it('rejects an unsupported pasted file type with an error banner', async () => {
       const { mockUseChat } = setupStore()
-      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['<html>'], 'page.html', { type: 'text/html' })
@@ -903,7 +1161,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -923,7 +1186,12 @@ describe('ChatPromptInput', () => {
       const { mockUseChat } = setupStore()
       useChatStore.getState().updateSession('thread-1', { selectedAgent: agent })
       render(
-        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
         { wrapper: TestWrapper },
       )
 
@@ -942,7 +1210,12 @@ describe('ChatPromptInput', () => {
       const renderWithQueuedImageOnHostedAgent = async () => {
         const { mockUseChat, mockChatInstance } = setupStore()
         const { container } = render(
-          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          <ChatPromptInput
+            useCloudAgentInventory={noCloudInventory}
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useWarmAcpCommands={noWarmUp}
+          />,
           { wrapper: TestWrapper },
         )
         const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
@@ -990,6 +1263,7 @@ describe('ChatPromptInput', () => {
         const { mockUseChat, mockChatInstance } = setupStore()
         const { container } = render(
           <ChatPromptInput
+            useCloudAgentInventory={noCloudInventory}
             useChat={mockUseChat}
             useIsMobile={createMockUseIsMobile()}
             useImageSupportCheck={() => check}
@@ -1058,6 +1332,7 @@ describe('ChatPromptInput', () => {
       const navigate = mock(() => {})
       render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           useChat={mockUseChat}
           // Mobile viewport: mount-time autoFocus is off, so focus can only
           // come from the navigation request under test.
@@ -1107,9 +1382,16 @@ describe('ChatPromptInput', () => {
     it('should accept injected useChat', () => {
       const { mockUseChat } = setupStore()
 
-      const { container } = render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
-        wrapper: TestWrapper,
-      })
+      const { container } = render(
+        <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
+          useChat={mockUseChat}
+          useIsMobile={createMockUseIsMobile()}
+        />,
+        {
+          wrapper: TestWrapper,
+        },
+      )
 
       expect(container.querySelector('form')).not.toBeNull()
     })
@@ -1119,6 +1401,7 @@ describe('ChatPromptInput', () => {
 
       const { container } = render(
         <ChatPromptInput
+          useCloudAgentInventory={noCloudInventory}
           useChat={mockUseChat}
           useContextTracking={createMockUseContextTracking()}
           useIsMobile={createMockUseIsMobile()}

@@ -19,7 +19,8 @@ import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
-import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
+import { isBuiltInAgent, isCloudAgent, isHostedAgent, isPortableAgent } from '@/defaults/agents'
+import { createAgentChatTransport } from '@/cloud-agent/chat-routing'
 import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
@@ -91,7 +92,7 @@ const debugTranscriptEngineFor = (agent: Agent, telemetry: TurnTelemetry | undef
   if (isBuiltInAgent(agent)) {
     return telemetry?.getEngine() ?? 'legacy'
   }
-  return isHostedAgent(agent) ? 'hosted' : 'acp'
+  return isCloudAgent(agent) ? 'cloud' : isHostedAgent(agent) ? 'hosted' : 'acp'
 }
 
 const generatedContentPayloadSchema = z.object({
@@ -171,17 +172,37 @@ const requestPermissionViaStore = (
   sessionId: string,
   agentId: string,
   request: RequestPermissionRequest,
+  remember = true,
+  signal?: AbortSignal,
 ): Promise<RequestPermissionResponse> => {
   const toolKey = deriveToolKey(request)
   const allowOption = findAllowOption(request.options)
 
-  if (allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
+  if (signal?.aborted) {
+    return Promise.resolve({ outcome: { outcome: 'cancelled' } })
+  }
+  if (remember && allowOption && useChatStore.getState().isAlwaysAllowed(agentId, toolKey)) {
     return Promise.resolve({ outcome: { outcome: 'selected', optionId: allowOption.optionId } })
   }
 
   return new Promise<RequestPermissionResponse>((resolve) => {
     const requestId = uuidv7()
-    useChatStore.getState().setPendingPermission(sessionId, { agentId, requestId, request, resolve })
+    const finish = (response: RequestPermissionResponse) => {
+      signal?.removeEventListener('abort', abort)
+      if (useChatStore.getState().sessions.get(sessionId)?.pendingPermission?.requestId === requestId) {
+        useChatStore.getState().updateSession(sessionId, { pendingPermission: null })
+      }
+      resolve(response)
+    }
+    const abort = () => finish({ outcome: { outcome: 'cancelled' } })
+    signal?.addEventListener('abort', abort, { once: true })
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId,
+      requestId,
+      request,
+      resolve: finish,
+      ...(remember ? {} : { allowRemember: false }),
+    })
   })
 }
 
@@ -441,9 +462,17 @@ export const createAgentRoutingFetch = (
       const projectSection =
         isBuiltInAgent(selectedAgent) || !session.projectId ? undefined : await resolveAcpProjectSection(id)
       // Built-in auto-run is a product decision restoring pre-#1032 behavior for all tools, including network-capable tools.
-      const requestPermission = isBuiltInAgent(selectedAgent)
-        ? undefined
-        : (request: RequestPermissionRequest) => requestPermissionViaStore(id, selectedAgent.id, request)
+      const requestPermission =
+        isBuiltInAgent(selectedAgent) && !isPortableAgent(selectedAgent)
+          ? undefined
+          : (request: RequestPermissionRequest) =>
+              requestPermissionViaStore(
+                id,
+                selectedAgent.id,
+                request,
+                !isPortableAgent(selectedAgent),
+                init.signal ?? undefined,
+              )
 
       const turnBudget = getTurnBudget().consumer
       if (!turnBudget.tryConsumeRequest()) {
@@ -469,7 +498,8 @@ export const createAgentRoutingFetch = (
       }
       const response = await adapter.fetch(modelInit, {
         threadId: id,
-        chatThread,
+        // The first save creates the privacy lock before a portable definition is reloaded.
+        chatThread: useChatStore.getState().sessions.get(id)?.chatThread ?? chatThread,
         acpSessionId: chatThread?.acpSessionId ?? null,
         saveMessages,
         selectedModel,
@@ -486,6 +516,7 @@ export const createAgentRoutingFetch = (
         projectSection,
         onAcpSessionId: persistAcpSessionId,
         requestPermission,
+        agentApprovalMode: session.cloudApprovalMode ?? 'ask',
         onSessionSideEffect: applySessionSideEffect,
       })
       return wrapResponseForFirstContent(response, telemetry)
@@ -857,10 +888,20 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retriesExhausted: true })
   }
 
+  const routedTransport = createAgentChatTransport({
+    id,
+    httpClient,
+    saveMessages,
+    fallback: new DefaultChatTransport({ fetch: customFetch }),
+  })
+  const isCloudSession = () => {
+    const agent = useChatStore.getState().sessions.get(id)?.selectedAgent
+    return !!agent && isCloudAgent(agent)
+  }
   const instance = createChat({
     id,
     messages,
-    transport: new DefaultChatTransport({ fetch: customFetch }),
+    transport: routedTransport.transport,
     generateId: uuidv7,
     // Automatically send messages when the last one is a user message (used for
     // automations). The SDK evaluates this after every turn and gates it on
@@ -868,7 +909,7 @@ export const createChatInstance = (
     // message never materialized (Stop pressed while `submitted`) leaves the
     // user message trailing. The stopRequested guard prevents resending it.
     sendAutomaticallyWhen: ({ messages }) =>
-      !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
+      !isCloudSession() && !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
       const resetRetryStateIfUnswapped = () => {
@@ -951,6 +992,13 @@ export const createChatInstance = (
 
         emitTurnCompleted(finishedTurn, 'success', completedMessage)
         resetRetryStateIfUnswapped()
+        return
+      }
+
+      if (isCloudSession()) {
+        // The server owns durable retries and external effects. An empty or
+        // failed projection must never cause another model invocation here.
+        markRetriesExhausted(finishedTurn)
         return
       }
 
@@ -1154,7 +1202,12 @@ export const createChatInstance = (
 
     // The hosted agent doesn't use the selected model, and its threads are never
     // private, so the model/thread confidentiality lock doesn't apply to it.
-    if (chatThread && !isHostedAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)) {
+    if (
+      chatThread &&
+      !isHostedAgent(selectedAgent) &&
+      !isCloudAgent(selectedAgent) &&
+      !matchesThreadConfidentiality(selectedModel, chatThread)
+    ) {
       throw new Error(
         `This model is not available for ${chatThread.isEncrypted === 1 ? 'encrypted' : 'unencrypted'} conversations.`,
       )
@@ -1212,6 +1265,12 @@ export const createChatInstance = (
     // Voice mode also calls `stop` when nothing is running, so flag only a reply that was running or
     // waiting to retry. Flagged before the teardown, so a prompt sent meanwhile is never the one flagged.
     const stoppedPrompt = inFlight || retryTimeout !== null ? setPromptStopped(true) : undefined
+    try {
+      await routedTransport.stop()
+    } catch (error) {
+      useChatStore.getState().updateSession(id, { stopping: false })
+      throw error
+    }
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null

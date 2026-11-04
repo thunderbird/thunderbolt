@@ -68,6 +68,7 @@ data:
               - SELECT * FROM powersync.triggers WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.agents WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
               - SELECT * FROM powersync.projects WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
+              - SELECT * FROM powersync.cloud_agent_projections WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)
 
     client_auth:
       supabase: false

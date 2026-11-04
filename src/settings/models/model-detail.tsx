@@ -11,6 +11,8 @@ import { ModificationIndicator } from '@/components/modification-indicator'
 import { DetailActionsMenu, DetailEditDeleteMenuItems } from '@/components/settings/detail-actions-menu'
 import { DetailField } from '@/components/settings/detail-field'
 import { needsApiKey } from './model-policy'
+import { modelCloudEndpoint } from '@/cloud-agent/library'
+import { CloudLibraryAuthorization } from '@/settings/connections/cloud-library-authorization'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
@@ -32,6 +34,7 @@ type ModelDetailProps = {
 export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: ModelDetailProps) => {
   const { i18n, t } = useLingui()
   const appName = useAppName()
+  const cloudEndpoint = modelCloudEndpoint(model)
 
   return (
     <DetailPanel
@@ -77,6 +80,18 @@ export const ModelDetail = ({ model, onEdit, onDelete, onReset, onClose }: Model
             <Trans>API key not configured</Trans>
           </div>
         </>
+      )}
+
+      {cloudEndpoint && (
+        <CloudLibraryAuthorization
+          source={{
+            kind: 'model',
+            id: model.id,
+            name: model.name,
+            url: cloudEndpoint,
+            contextWindow: model.contextWindow ?? undefined,
+          }}
+        />
       )}
 
       {isModelModified(model) && (

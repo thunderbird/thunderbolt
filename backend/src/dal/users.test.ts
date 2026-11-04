@@ -5,17 +5,18 @@
 import { session, user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
 import { devicesTable } from '@/db/powersync-schema'
-import { createTestDb } from '@/test-utils/db'
+import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { deleteIdleAnonymousUsers, deleteUser, getUserByEmail, getUserById, markUserNotNew } from './users'
 
 describe('users DAL', () => {
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
+  const createdIds = new Set<string>()
 
   const insertUser = async (id: string, email: string, isNew = true) => {
     const now = new Date()
+    createdIds.add(id)
     await db.insert(user).values({
       id,
       name: 'Test User',
@@ -28,14 +29,15 @@ describe('users DAL', () => {
   }
 
   beforeEach(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
+    db = (await getSharedIsolatedTestDb()).db
+    createdIds.clear()
   })
 
   afterEach(async () => {
-    if (cleanup) {
-      await cleanup()
+    const ids = [...createdIds]
+    if (ids.length > 0) {
+      await db.delete(inferenceUsage).where(inArray(inferenceUsage.userId, ids))
+      await db.delete(user).where(inArray(user.id, ids))
     }
   })
 
@@ -79,6 +81,7 @@ describe('users DAL', () => {
     const daysAgo = (days: number) => new Date(Date.now() - days * dayMs)
 
     const insertAnonymousUser = async (id: string, lastActive: Date, isAnonymous = true) => {
+      createdIds.add(id)
       await db.insert(user).values({
         id,
         name: 'Anonymous',

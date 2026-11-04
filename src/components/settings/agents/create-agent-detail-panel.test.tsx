@@ -49,6 +49,8 @@ describe('CreateAgentDetailPanel', () => {
       { wrapper: TestProvider },
     )
 
+    fireEvent.click(screen.getByRole('radio', { name: 'Connect to ACP agent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     fireEvent.change(screen.getByPlaceholderText('My Agent'), { target: { value: 'New Chat Agent' } })
     fireEvent.change(screen.getByPlaceholderText(/paste an iroh ticket/i), {
       target: { value: 'a'.repeat(52) },

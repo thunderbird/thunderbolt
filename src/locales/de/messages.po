@@ -13,6 +13,10 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid " · Conflicting revision"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "\"{filename}\" is too large (max {maxMegabytes}MB)."
 msgstr "„{filename}“ ist zu groß (max. {maxMegabytes} MB)."
@@ -56,6 +60,13 @@ msgstr[1] "# Tools"
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
 msgid "{0} is only available on desktop"
+msgstr ""
+
+#. placeholder {0}: formatters.number(count)
+#. placeholder {0}: formatters.number(selectedCount)
+#: src/components/cloud-agent/agent-settings-section.tsx
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "{0} selected"
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
@@ -200,6 +211,10 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Ein Gerät möchte sich als Thunderbolt CLI in Ihrem Konto anmelden. Genehmigen Sie dies nur, wenn Sie es gerade selbst in Ihrem Terminal gestartet haben."
 
+#: src/cloud-agent/chat-transport.ts
+msgid "A different cloud message is still waiting to be sent. Review the queued message first."
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr ""
@@ -215,6 +230,10 @@ msgstr "Eine neue Version ist verfügbar!"
 #: src/settings/app-version-section.tsx
 msgid "A new version is available. See the update prompt to install."
 msgstr "Eine neue Version ist verfügbar. Zum Installieren die Update-Aufforderung öffnen."
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "A newer version exists. Your saved copy has been kept; discard it and reopen the agent to review the current version."
+msgstr ""
 
 #: src/projects/index.tsx
 #~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
@@ -256,6 +275,10 @@ msgstr "Kontomenü"
 #: src/components/chat/permission-dialog.tsx
 msgid "Action"
 msgstr "Aktion"
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Action outcome unknown"
+msgstr ""
 
 #: src/search/palette/search-palette.tsx
 msgid "Actions"
@@ -303,6 +326,16 @@ msgstr "Skill hinzufügen"
 msgid "Add Agent"
 msgstr "Agent hinzufügen"
 
+#: src/components/settings/agents/add-agent/create-connection-panel.tsx
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Add connection"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-detail.tsx
+msgid "Add definition to this device"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/create-connection-panel.tsx
 #: src/settings/connections/index.tsx
 msgid "Add failed"
 msgstr "Hinzufügen fehlgeschlagen"
@@ -314,6 +347,14 @@ msgstr "Anweisungen zum Chat hinzufügen"
 #: src/settings/connections/index.tsx
 msgid "Add MCP Server"
 msgstr "MCP-Server hinzufügen"
+
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Add MCP servers in Connections to use them here."
+msgstr ""
+
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Add model"
+msgstr ""
 
 #: src/components/create-item/context.tsx
 #: src/components/ui/model-selector/model-selector.tsx
@@ -327,9 +368,21 @@ msgstr "Modell hinzufügen"
 #~ msgid "Add passkey"
 #~ msgstr ""
 
+#: src/components/cloud-agent/schedules.tsx
+msgid "Add schedule"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Server hinzufügen"
+
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Add skill"
+msgstr ""
+
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Add skills in Settings to use them here."
+msgstr ""
 
 #: src/components/chat/chat-add-menu.tsx
 #: src/skills/suggestion-chip.tsx
@@ -363,6 +416,32 @@ msgstr "Wird hinzugefügt…"
 msgid "Advanced (JSON)"
 msgstr "Erweitert (JSON)"
 
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "Agent access"
+msgstr ""
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "Agent configuration waiting to save"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-name-field.tsx
+msgid "Agent name"
+msgstr ""
+
+#: src/components/create-item/edit-agent-panel.tsx
+#: src/routes/settings/agents/index.tsx
+msgid "Agent not found"
+msgstr ""
+
+#: src/components/create-item/context.tsx
+#: src/components/create-item/edit-agent-panel.tsx
+msgid "Agent settings"
+msgstr ""
+
+#: src/components/settings/agents/create-agent-detail-panel.tsx
+msgid "Agent type"
+msgstr ""
+
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/routes/settings/agents/index.tsx
 #: src/search/palette/entity-meta.ts
@@ -378,6 +457,10 @@ msgstr "KI-Nutzungslimit erreicht"
 msgid "All agents"
 msgstr "Alle Agenten"
 
+#: src/components/artifact/artifacts-page.tsx
+msgid "All artifacts"
+msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/index.tsx
 #~ msgid "All projects"
@@ -386,6 +469,19 @@ msgstr "Alle Agenten"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
 msgstr "Alle Skills sind angepinnt"
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Allow cloud use"
+msgstr ""
+
+#: src/acp/local-agent-adapter.ts
+#: src/cloud-agent/chat-routing.ts
+msgid "Allow once"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Allowed tools (optional)"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Always allow all actions of this kind"
@@ -414,6 +510,10 @@ msgstr "Immer alles von diesem Agenten zulassen"
 #: src/components/external-link-toggle-group.tsx
 msgid "Always ask"
 msgstr "Immer fragen"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "America/New_York"
+msgstr ""
 
 #: src/lib/sso-error-messages.ts
 msgid "An account with this email already exists but is not verified, so it cannot be linked to this sign-in. Ask your administrator for help."
@@ -466,6 +566,10 @@ msgstr "Für diesen Anbieter ist ein API-Schlüssel erforderlich"
 msgid "API key not configured"
 msgstr "API-Schlüssel nicht konfiguriert"
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "API key or bearer token"
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "App Version"
 msgstr "App-Version"
@@ -507,18 +611,32 @@ msgstr "Wird genehmigt…"
 msgid "Are you sure? You will lose any changes that you made."
 msgstr "Sind Sie sicher? Alle von Ihnen vorgenommenen Änderungen gehen verloren."
 
+#: src/components/artifact/artifacts-page.tsx
+#: src/components/artifact/message-artifact-details.tsx
+#: src/components/artifact/snapshot-artifacts.tsx
 #: src/components/chat/artifact-message-part.tsx
 msgid "Artifact"
 msgstr "Artefakt"
 
-#: src/projects/project-action-menu-items.tsx
-#: src/projects/project-actions.tsx
-#: src/projects/project-artifact-gallery.tsx
-#: src/projects/project-artifact-grid.tsx
-#: src/projects/project-artifact-workspace.tsx
-#: src/projects/project-artifacts-dialog.tsx
-#~ msgid "Artifacts"
-#~ msgstr "Artefakte"
+#. placeholder {0}: agent.config.name
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "Artifact access for {0}"
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Artifact file"
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+#: src/components/artifact/message-artifact-details.tsx
+#: src/components/artifact/snapshot-artifacts.tsx
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Artifacts"
+msgstr "Artefakte"
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Artifacts you create in chats and save to your account will appear here."
+msgstr ""
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -528,14 +646,24 @@ msgstr "Fragen"
 msgid "Ask about this"
 msgstr ""
 
+#: src/components/chat/cloud-approval-picker.tsx
+msgid "Ask for approval"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
 msgstr "Fragen Sie mich etwas…"
+
+#: src/components/cloud-agent/agent-models-field.tsx
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+msgid "At least one model required"
+msgstr ""
 
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 msgstr "Synchronisierte Daten sind derzeit nicht verschlüsselt. Wenn Sie die Synchronisierung aktivieren, werden Ihre Daten unverschlüsselt auf unseren Servern gespeichert. Möchten Sie fortfahren?"
 
+#: src/components/settings/agents/add-agent/create-connection-panel.tsx
 #: src/settings/connections/index.tsx
 msgid "Authorization error"
 msgstr "Autorisierungsfehler"
@@ -564,13 +692,25 @@ msgstr "Die Autorisierung wurde abgebrochen."
 msgid "Authorization was declined."
 msgstr "Die Autorisierung wurde abgelehnt."
 
+#: src/settings/connections/index.tsx
+msgid "Authorization was not completed. Try connecting again."
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Authorize"
 msgstr "Autorisieren"
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Authorize cloud use"
+msgstr ""
+
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Authorize this app on your bridge"
 msgstr "Diese App auf Ihrer Bridge autorisieren"
+
+#: src/settings/connections/connections-list.tsx
+msgid "Authorized in cloud"
+msgstr ""
 
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Authorized. Re-run the OAuth flow if access was revoked."
@@ -581,6 +721,10 @@ msgstr "Autorisiert. Führen Sie den OAuth-Ablauf erneut aus, wenn der Zugriff w
 msgid "Authorizing…"
 msgstr "Wird autorisiert…"
 
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Available only in its connected environment."
+msgstr ""
+
 #: src/components/available-tools.tsx
 msgid "Available Tools"
 msgstr "Verfügbare Tools"
@@ -588,6 +732,10 @@ msgstr "Verfügbare Tools"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Available tools:"
 msgstr "Verfügbare Tools:"
+
+#: src/components/settings/agents/add-agent/agent-form-footer.tsx
+msgid "Back"
+msgstr ""
 
 #: src/components/account-deleted.tsx
 #: src/components/device-revoked.tsx
@@ -638,11 +786,17 @@ msgstr "Kalender"
 
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
+#: src/components/artifact/snapshot-artifacts.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/cloud-agent/schedules.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/create-agent-detail-panel.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
@@ -735,6 +889,10 @@ msgstr "Backend-Protokolle prüfen"
 msgid "Check your email"
 msgstr "Prüfen Sie Ihre E-Mails"
 
+#: src/components/cloud-agent/cloud-agent-access.tsx
+msgid "Checking account encryption…"
+msgstr ""
+
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Checking automatically…"
 msgstr "Wird automatisch geprüft…"
@@ -766,6 +924,18 @@ msgstr "Ihre Sitzung wird geprüft."
 msgid "Checking…"
 msgstr "Wird geprüft…"
 
+#: src/settings/connections/import-cloud-connection.ts
+msgid "Choose a model from Models settings to link this authorization."
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-setup.tsx
+msgid "Choose a model."
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Choose a revision"
+msgstr ""
+
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
 msgstr "Agent auswählen"
@@ -793,6 +963,10 @@ msgstr "Eine Option wählen"
 #: src/projects/project-badge.tsx
 msgid "Choose project"
 msgstr "Projekt auswählen"
+
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "Choose which agents can use this artifact across their conversations. Access applies to its revision history."
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "Choose your email provider {displayReason}"
@@ -888,6 +1062,73 @@ msgstr "Navigation schließen"
 msgid "Close reorder"
 msgstr "Sortierung schließen"
 
+#: src/components/chat/agent-environment-picker.tsx
+#: src/components/settings/agents/agent-environment-field.tsx
+msgid "Cloud"
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-setup.tsx
+msgid "Cloud access not configured"
+msgstr ""
+
+#: src/cloud-agent/client.ts
+msgid "Cloud agents are not available on this server."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "Cloud agents cannot receive file attachments yet."
+msgstr ""
+
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Cloud agents require a public HTTPS server using HTTP transport. This connection is available on this device."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud agents use this library connection with separate authorization. Credentials saved on this device are never copied automatically."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud authentication"
+msgstr ""
+
+#: src/settings/connections/cloud-library-authorization.tsx
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "Cloud authorization"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud authorization required"
+msgstr ""
+
+#: src/settings/connections/index.tsx
+msgid "Cloud connection authorized."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud connection not tested"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud connection ready"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud connection unreachable"
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud credential"
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-create.tsx
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Cloud execution is not available on this server."
+msgstr ""
+
+#: src/cloud-agent/client.ts
+msgid "Cloud OAuth is not configured on this server. Contact your administrator."
+msgstr ""
+
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
 msgstr "Cloud-Synchronisierung"
@@ -911,6 +1152,10 @@ msgstr "Befehl / Argumente"
 #: src/components/ui/command.tsx
 msgid "Command Palette"
 msgstr "Befehlspalette"
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Compile a daily briefing on the news and topics I follow."
+msgstr ""
 
 #: src/tasks/index.tsx
 msgid "Complete {taskItem}"
@@ -937,6 +1182,10 @@ msgstr "Konfiguration"
 msgid "Configure {0}"
 msgstr "{0} konfigurieren"
 
+#: src/components/settings/agents/add-agent/agent-suggestion-status.tsx
+msgid "Configuring…"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
 msgstr "Bestätigen"
@@ -958,6 +1207,10 @@ msgstr "{providerName} verbinden"
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr "Verbinden Sie einen Remote-Agenten, der das Agent Client Protocol spricht."
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Connect cloud OAuth"
+msgstr ""
+
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Connect Google"
 msgstr "Google verbinden"
@@ -965,6 +1218,10 @@ msgstr "Google verbinden"
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Connect Microsoft"
 msgstr "Microsoft verbinden"
+
+#: src/components/settings/agents/create-agent-detail-panel.tsx
+msgid "Connect to ACP agent"
+msgstr ""
 
 #: src/settings/connections/integration-detail.tsx
 msgid "Connect your account to make these tools available to agents."
@@ -983,6 +1240,11 @@ msgstr "Verbunden"
 #: src/voice/engine/openai-compatible-engine.ts
 msgid "Connected — synthesis succeeded."
 msgstr "Verbunden – Synthese erfolgreich."
+
+#: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/agent-environment-field.tsx
+msgid "Connected environment"
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected to {connectedProviderName} Calendar"
@@ -1043,6 +1305,8 @@ msgid "Connection successful!"
 msgstr "Verbindung erfolgreich!"
 
 #: src/components/chat/chat-add-menu.tsx
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
@@ -1054,6 +1318,10 @@ msgstr "Verbindungen"
 msgid "Contact Support"
 msgstr "Support kontaktieren"
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Context window"
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
 msgstr "Kontextfenster überschritten"
@@ -1062,6 +1330,8 @@ msgstr "Kontextfenster überschritten"
 #: src/components/magic-link-verify.tsx
 #: src/components/onboarding/onboarding-action-buttons.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+#: src/components/settings/agents/create-agent-detail-panel.tsx
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
 #: src/components/sign-in/sign-in-success-step.tsx
@@ -1070,6 +1340,10 @@ msgstr "Kontextfenster überschritten"
 #: src/waitlist/waitlist-page.tsx
 msgid "Continue"
 msgstr "Weiter"
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Continue authorization"
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -1286,6 +1560,10 @@ msgstr "Der Passkey konnte nicht eingerichtet werden. Bitte versuchen Sie es ern
 msgid "Couldn't sign in with your passkey. Please try again or use your email."
 msgstr "Die Anmeldung mit Ihrem Passkey ist fehlgeschlagen. Bitte versuchen Sie es erneut oder verwenden Sie Ihre E-Mail-Adresse."
 
+#: src/components/settings/agents/add-agent/agent-suggestion-status.tsx
+msgid "Couldn’t suggest a setup."
+msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 #~ msgid "Couldn't unlock sync with your passkey."
 #~ msgstr ""
@@ -1299,8 +1577,8 @@ msgid "Couldn't unpin {name}."
 msgstr "{name} konnte nicht losgelöst werden."
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Couldn't update. Please try again."
-msgstr "Aktualisierung nicht möglich. Bitte versuchen Sie es erneut."
+#~ msgid "Couldn't update. Please try again."
+#~ msgstr "Aktualisierung nicht möglich. Bitte versuchen Sie es erneut."
 
 #: src/components/chat/error-message.tsx
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
@@ -1315,6 +1593,10 @@ msgstr ""
 #: src/skills/skill-form.tsx
 msgid "Create"
 msgstr "Erstellen"
+
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+msgid "Create agent"
+msgstr ""
 
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
@@ -1343,6 +1625,10 @@ msgstr "Projekt erstellen"
 msgid "Create Skill"
 msgstr "Skill erstellen"
 
+#: src/components/settings/agents/create-agent-detail-panel.tsx
+msgid "Create Thunderbolt agent"
+msgstr ""
+
 #: src/projects/index.tsx
 #~ msgid "Create your first project"
 #~ msgstr "Erstellen Sie Ihr erstes Projekt"
@@ -1351,6 +1637,7 @@ msgstr "Skill erstellen"
 msgid "Create your first skill"
 msgstr "Erstellen Sie Ihren ersten Skill"
 
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/lib/tool-metadata.ts
 #: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx
@@ -1369,6 +1656,7 @@ msgstr "Währung"
 msgid "Current version"
 msgstr "Aktuelle Version"
 
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/settings/models/model-presentation.tsx
 msgid "Custom"
 msgstr "Benutzerdefiniert"
@@ -1377,6 +1665,10 @@ msgstr "Benutzerdefiniert"
 msgid "Custom — OpenAI-compatible endpoint"
 msgstr "Benutzerdefiniert – OpenAI-kompatibler Endpunkt"
 
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+msgid "Custom system prompt"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Custom voice provider"
 msgstr "Benutzerdefinierter Sprachanbieter"
@@ -1384,6 +1676,10 @@ msgstr "Benutzerdefinierter Sprachanbieter"
 #: src/settings/models/model-detail.tsx
 msgid "Customized model"
 msgstr "Angepasstes Modell"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Daily"
+msgstr ""
 
 #: src/skills/skill-form.tsx
 msgid "Daily Brief"
@@ -1411,6 +1707,10 @@ msgstr "Die Daten werden sicher auf Ihrem Gerät gespeichert."
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
+msgstr ""
+
+#: src/components/cloud-agent/agent-model-row.tsx
+msgid "Default"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
@@ -1558,6 +1858,8 @@ msgstr "Dichter Nieselregen"
 msgid "Dense freezing drizzle"
 msgstr "Dichter gefrierender Nieselregen"
 
+#: src/acp/local-agent-adapter.ts
+#: src/cloud-agent/chat-routing.ts
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
@@ -1583,6 +1885,11 @@ msgstr "Wird abgelehnt…"
 msgid "Depositing rime fog"
 msgstr "Reifnebel"
 
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Describe what this agent should do and how it should work."
+msgstr ""
+
+#: src/components/cloud-agent/agent-editor.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/skills/skill-detail.tsx
@@ -1619,9 +1926,16 @@ msgstr "QR-Code zur Gerätekopplung"
 msgid "Devices"
 msgstr "Geräte"
 
+#. placeholder {0}: agent.config.name
+#. placeholder {0}: agent.name
+#: src/components/settings/agents/agent-list.tsx
+#: src/components/settings/agents/agent-row.tsx
+msgid "Disable {0}"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Disable {customAgentName}"
-msgstr "{customAgentName} deaktivieren"
+#~ msgid "Disable {customAgentName}"
+#~ msgstr "{customAgentName} deaktivieren"
 
 #: src/settings/connections/connections-list.tsx
 msgid "Disable {integrationName}"
@@ -1658,9 +1972,10 @@ msgid "Disabled"
 msgstr "Deaktiviert"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Disabled agents stay out of the chat agent picker."
-msgstr "Deaktivierte Agenten erscheinen nicht in der Agentenauswahl im Chat."
+#~ msgid "Disabled agents stay out of the chat agent picker."
+#~ msgstr "Deaktivierte Agenten erscheinen nicht in der Agentenauswahl im Chat."
 
+#: src/components/cloud-agent/outbox.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/skills/discard-create-dialog.tsx
 msgid "Discard"
@@ -1723,6 +2038,10 @@ msgstr "App herunterladen"
 msgid "Download App"
 msgstr "App herunterladen"
 
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Download file"
+msgstr ""
+
 #: src/components/artifact/artifact-actions.tsx
 msgid "Download HTML"
 msgstr "HTML herunterladen"
@@ -1776,6 +2095,10 @@ msgstr "Bearbeiten"
 msgid "Edit file"
 msgstr "Datei bearbeiten"
 
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Edit files"
+msgstr ""
+
 #: src/settings/connections/index.tsx
 msgid "Edit MCP Server"
 msgstr "MCP-Server bearbeiten"
@@ -1815,9 +2138,18 @@ msgstr "E-Mail"
 msgid "Email address"
 msgstr "E-Mail-Adresse"
 
+#. placeholder {0}: agent.config.name
+#. placeholder {0}: agent.name
+#. placeholder {0}: schedule.config.name
+#: src/components/cloud-agent/schedules.tsx
+#: src/components/settings/agents/agent-list.tsx
+#: src/components/settings/agents/agent-row.tsx
+msgid "Enable {0}"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Enable {customAgentName}"
-msgstr "{customAgentName} aktivieren"
+#~ msgid "Enable {customAgentName}"
+#~ msgstr "{customAgentName} aktivieren"
 
 #: src/settings/connections/connections-list.tsx
 msgid "Enable {integrationName}"
@@ -1852,8 +2184,8 @@ msgid "Enable Telemetry"
 msgstr "Telemetrie aktivieren"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "Enabled"
-msgstr "Aktiviert"
+#~ msgid "Enabled"
+#~ msgstr "Aktiviert"
 
 #: src/settings/preferences.tsx
 msgid "Enables location-based responses"
@@ -1870,6 +2202,10 @@ msgstr "Endpunkt"
 #: src/components/device-approval.tsx
 msgid "Enter a different code"
 msgstr "Anderen Code eingeben"
+
+#: src/cloud-agent/chat-transport.ts
+msgid "Enter a message for your cloud agent."
+msgstr ""
 
 #: src/lib/mcp-url-validation.ts
 msgid "Enter a valid URL"
@@ -1919,6 +2255,15 @@ msgstr "Geben Sie Ihren Namen ein"
 msgid "Enter your verification code"
 msgstr ""
 
+#: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/agent-environment-field.tsx
+msgid "Environment"
+msgstr ""
+
+#: src/components/chat/agent-environment-picker.tsx
+msgid "Execution environment"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
 msgstr "Sprachmodus beenden"
@@ -1951,6 +2296,10 @@ msgstr "Externe Links"
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "Fahrenheit"
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Failed"
+msgstr ""
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to change the recovery phrase"
@@ -2038,6 +2387,26 @@ msgstr "Die Integration konnte nicht aktualisiert werden"
 msgid "Failed to update MCP server"
 msgstr "Der MCP-Server konnte nicht aktualisiert werden"
 
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "File contents"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Find jobs"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Find jobs that match my experience and interests."
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Find your saved work across chats and agents."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Finish authorizing this connection in your browser."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Finish securing"
 msgstr ""
@@ -2063,8 +2432,18 @@ msgid "Food & drink"
 msgstr "Essen & Trinken"
 
 #. placeholder {0}: app.name
+#. placeholder {0}: item.chatTitle
+#: src/components/artifact/artifacts-page.tsx
 #: src/mini-apps/mini-app-chat-badge.tsx
 msgid "From {0}"
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "From a chat"
+msgstr ""
+
+#: src/components/chat/cloud-approval-picker.tsx
+msgid "Full access"
 msgstr ""
 
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -2231,6 +2610,7 @@ msgstr "Importieren"
 msgid "Import Data"
 msgstr "Daten importieren"
 
+#: src/components/settings/agents/add-agent/create-connection-panel.tsx
 #: src/settings/connections/index.tsx
 msgid "Import failed"
 msgstr "Import fehlgeschlagen"
@@ -2265,6 +2645,10 @@ msgstr "Um Vorschaufunktionen zu nutzen, bitten wir Sie, uns durch das Teilen vo
 msgid "In project: {0}"
 msgstr ""
 
+#: src/components/settings/agents/agent-detail.tsx
+msgid "In this app"
+msgstr ""
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "In your own words: what were you trying to do, and what did the agent do instead?"
 msgstr ""
@@ -2272,6 +2656,10 @@ msgstr ""
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Geben Sie das Versionspräfix mit an (z. B. /v1). Klicken Sie dann auf „Modelle laden“, um die Auswahlfelder unten zu füllen."
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Input cost per million tokens (USD)"
+msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
@@ -2293,6 +2681,7 @@ msgstr "Installiert: {currentVersion} · Mindestens erforderlich: {minVersion}"
 msgid "Installing…"
 msgstr "Wird installiert…"
 
+#: src/components/cloud-agent/agent-editor.tsx
 #: src/projects/project-form.tsx
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
@@ -2302,6 +2691,10 @@ msgstr "Anweisungen"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Integrations"
 msgstr "Integrationen"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Interval in minutes"
+msgstr ""
 
 #: src/lib/otp-error-messages.ts
 msgid "Invalid code. Please try again."
@@ -2397,6 +2790,10 @@ msgstr "Verlassen, ohne zu speichern?"
 msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
 msgstr ""
 
+#: src/settings/connections/cloud-connection-detail.tsx
+msgid "Library connection"
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
 msgstr "Hell"
@@ -2417,6 +2814,10 @@ msgstr "Leichter Eisregen"
 msgid "Light mode"
 msgstr "Heller Modus"
 
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Link this saved connection in Connections."
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Listening"
 msgstr "Höre zu"
@@ -2427,6 +2828,18 @@ msgstr "Modelle laden"
 
 #: src/components/embedded/surface-status.tsx
 msgid "Loading {name}…"
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-create.tsx
+msgid "Loading agent settings…"
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Loading artifact…"
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Loading artifacts…"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -2489,9 +2902,21 @@ msgstr "Abmeldung…"
 msgid "Mainly clear"
 msgstr "Überwiegend klar"
 
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Manage connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
 msgstr "Integrationen verwalten"
+
+#: src/components/cloud-agent/agent-models-field.tsx
+msgid "Manage models"
+msgstr ""
+
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Manage skills"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Managed by your deployment — always available, no setup needed."
@@ -2505,8 +2930,11 @@ msgstr "Karten können hier nicht angezeigt werden – WebGL ist in diesem Brows
 msgid "Maximize"
 msgstr "Maximieren"
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Maximum output tokens"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
-#: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP-Server"
 
@@ -2514,6 +2942,10 @@ msgstr "MCP-Server"
 #: src/search/commands/navigation.ts
 msgid "Message Simulator"
 msgstr "Nachrichtensimulator"
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "Message waiting to send"
+msgstr ""
 
 #: src/search/palette/entity-meta.ts
 msgid "Messages"
@@ -2558,12 +2990,20 @@ msgstr "Modell"
 msgid "Model name is required."
 msgstr "Ein Modellname ist erforderlich."
 
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/cloud-agent/agent-models-field.tsx
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+#: src/components/settings/agents/cloud-agent-setup.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/entity-meta.ts
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "Modelle"
+
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+msgid "Models & tools"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
@@ -2617,6 +3057,9 @@ msgstr ""
 msgid "My Agent"
 msgstr "Mein Agent"
 
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/cloud-agent/schedules.tsx
+#: src/components/settings/agents/add-agent/agent-name-field.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/projects/project-create-form.tsx
@@ -2636,6 +3079,10 @@ msgstr "Ein Name ist erforderlich."
 #: src/components/ui/mobile-sidebar.tsx
 msgid "Navigation"
 msgstr "Navigation"
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Needs attention"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Network"
@@ -2700,6 +3147,10 @@ msgstr "Neuer Tab"
 msgid "New Task"
 msgstr "Neue Aufgabe"
 
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "No access"
+msgstr ""
+
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
 msgstr "Keine Agenten gefunden"
@@ -2707,6 +3158,10 @@ msgstr "Keine Agenten gefunden"
 #: src/projects/project-detail-panel.tsx
 #~ msgid "No artifacts yet."
 #~ msgstr "Noch keine Artefakte."
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "No authentication"
+msgstr ""
 
 #: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/chat-menu-items.tsx
@@ -2745,9 +3200,14 @@ msgstr "Keine Protokolle und kein Training mit Ihren Daten"
 msgid "No longer accepts device connections"
 msgstr "Akzeptiert keine Geräteverbindungen mehr"
 
+#: src/components/settings/agents/add-agent/resource-section.tsx
 #: src/projects/emoji-picker.tsx
 msgid "No matches"
 msgstr "Keine Treffer"
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "No matching artifacts."
+msgstr ""
 
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
@@ -2823,9 +3283,18 @@ msgstr "Keine Aufgaben gefunden, die zu „{searchQuery}“ passen"
 msgid "No tasks yet"
 msgstr "Noch keine Aufgaben"
 
+#: src/components/cloud-agent/agent-settings-section.tsx
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "None"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "None of your models can be used in this chat. Choose another agent to send."
 msgstr "Keines deiner Modelle kann in diesem Chat verwendet werden. Wähle einen anderen Agenten, um zu senden."
+
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "None yet"
+msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Not available in private chats."
@@ -2884,6 +3353,10 @@ msgstr ""
 msgid "Nothing was changed. The device was not revoked."
 msgstr ""
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "OAuth"
+msgstr ""
+
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
 msgstr "OAuth-Aussteller stimmt nicht überein — Autorisierung abgelehnt."
@@ -2912,6 +3385,10 @@ msgstr ""
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Änderungen werden synchronisiert, sobald Sie wieder online sind."
 
+#: src/settings/connections/mcp-server-detail.tsx
+msgid "On this device"
+msgstr ""
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
 msgstr "Einrichtungsassistent"
@@ -2925,6 +3402,10 @@ msgstr "Eine App, alle KI-Modelle"
 msgid "One moment while we look up the code."
 msgstr "Einen Moment, wir suchen den Code."
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "One tool name per line. Leave blank to use all available tools."
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "OneDrive Access"
 msgstr "OneDrive-Zugriff"
@@ -2932,6 +3413,15 @@ msgstr "OneDrive-Zugriff"
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Only available in private chats."
 msgstr "Nur in privaten Chats verfügbar."
+
+#. placeholder {0}: agent.config.name
+#. placeholder {0}: agent.name
+#. placeholder {0}: item.title
+#: src/components/artifact/artifacts-page.tsx
+#: src/components/settings/agents/agent-list.tsx
+#: src/components/settings/agents/agent-row.tsx
+msgid "Open {0}"
+msgstr ""
 
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
@@ -2951,6 +3441,10 @@ msgstr "{title} öffnen"
 
 #: src/mini-apps/mini-app-chat-banner.tsx
 msgid "Open app"
+msgstr ""
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Open artifact"
 msgstr ""
 
 #: src/mini-apps/mini-app-page.tsx
@@ -2994,6 +3488,10 @@ msgstr ""
 msgid "Open Link"
 msgstr "Link öffnen"
 
+#: src/components/artifact/message-artifact-details.tsx
+msgid "Open original chat"
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "Open the store to check for updates."
 msgstr "Öffnen Sie den Store, um nach Updates zu suchen."
@@ -3006,6 +3504,7 @@ msgstr "Thunderbolt CLI öffnen"
 msgid "Opening…"
 msgstr "Wird geöffnet…"
 
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Optional"
@@ -3032,6 +3531,10 @@ msgstr "Oder klicken Sie auf den Magic Link in Ihrer E-Mail"
 msgid "Or enter the 8-digit code"
 msgstr "Oder geben Sie den 8-stelligen Code ein"
 
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Organization"
+msgstr ""
+
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "Organize chats with projects."
@@ -3040,6 +3543,10 @@ msgstr ""
 #: src/widgets/connect-integration/widget.tsx
 msgid "Outlook & Calendar"
 msgstr "Outlook & Kalender"
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Output cost per million tokens (USD)"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Overcast"
@@ -3087,6 +3594,10 @@ msgstr "Fügen Sie einen Kopplungscode ein oder laden Sie dessen QR-Bild hoch, u
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Paste an <0>mcpServers</0> config. Only remote (http/sse) servers are supported; non-Bearer auth headers are ignored."
 msgstr "Fügen Sie eine <0>mcpServers</0>-Konfiguration ein. Es werden nur Remote-Server (http/sse) unterstützt; Auth-Header ohne Bearer werden ignoriert."
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Paused"
+msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Peer-to-peer via iroh — the connection is verified when a chat starts."
@@ -3156,6 +3667,10 @@ msgstr "Einstellungen"
 msgid "Preferred Name"
 msgstr "Gewünschter Name"
 
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Prepare daily briefs"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview"
 msgstr "Vorschau"
@@ -3219,6 +3734,10 @@ msgstr "In der Web-App ist ein Proxy erforderlich, um CORS-Einschränkungen des 
 msgid "Q3 planning"
 msgstr "Planung Q3"
 
+#: src/components/chat/cloud-message-details.tsx
+msgid "Queued"
+msgstr ""
+
 #: src/lib/tray.tsx
 msgid "Quit"
 msgstr "Beenden"
@@ -3230,6 +3749,14 @@ msgstr "Erneut autorisieren"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Reachable {relative}"
 msgstr "Erreichbar {relative}"
+
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "Read"
+msgstr ""
+
+#: src/components/artifact/snapshot-artifact-access.tsx
+msgid "Read and write"
+msgstr ""
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Read your emails and compose drafts."
@@ -3272,6 +3799,10 @@ msgstr ""
 msgid "Recents"
 msgstr ""
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Reconnect cloud OAuth"
+msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
 msgstr "Wiederherstellung fehlgeschlagen"
@@ -3279,6 +3810,10 @@ msgstr "Wiederherstellung fehlgeschlagen"
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Recovery phrase"
 msgstr "Wiederherstellungsphrase"
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Refresh artifacts"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
@@ -3351,10 +3886,18 @@ msgstr "Chat umbenennen"
 msgid "Reorder"
 msgstr "Neu anordnen"
 
+#: src/components/cloud-agent/agent-model-row.tsx
+msgid "Reorder {name}"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/reorder-panel.tsx
 msgid "Reorder skills"
 msgstr "Skills neu anordnen"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Repeat at an interval"
+msgstr ""
 
 #: src/components/chat/quote-reply-button.tsx
 msgid "Reply"
@@ -3420,7 +3963,9 @@ msgstr "Zum Aktualisieren neu starten"
 msgid "Retrieving data…"
 msgstr "Daten werden abgerufen…"
 
+#: src/chats/detail.tsx
 #: src/components/chat/error-message.tsx
+#: src/components/settings/agents/add-agent/agent-suggestion-status.tsx
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
@@ -3428,13 +3973,58 @@ msgstr "Daten werden abgerufen…"
 msgid "Retry"
 msgstr "Erneut versuchen"
 
+#. placeholder {0}: formatters.relativeTime(schedule.record.retryAt)
+#: src/components/cloud-agent/schedules.tsx
+msgid "Retry {0}"
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retry connection"
 msgstr "Verbindung erneut versuchen"
 
+#: src/settings/connections/cloud-connection-detail.tsx
+msgid "Retry linking definition"
+msgstr ""
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "Retry queued changes"
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/cloud-agent/schedules.tsx
+#: src/components/settings/agents/cloud-agent-setup.tsx
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Retry save"
+msgstr ""
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Retry to confirm the same saved change, or cancel to review the current state."
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Retrying…"
 msgstr "Neuer Versuch…"
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Review code"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Review pull requests and catch bugs"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "Review pull requests for bugs, security issues, and maintainability."
+msgstr ""
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "Review saved configuration"
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Revision history"
+msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 #: src/settings/devices.tsx
@@ -3474,6 +4064,7 @@ msgstr "Befehl ausführen"
 msgid "Run this on the machine hosting the bridge, then add it — the connection is verified on first use."
 msgstr "Führen Sie dies auf dem Rechner aus, der die Bridge hostet, und fügen Sie sie dann hinzu – die Verbindung wird bei der ersten Nutzung verifiziert."
 
+#: src/components/cloud-agent/agent-editor.tsx
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
@@ -3495,9 +4086,22 @@ msgstr "Änderungen speichern"
 msgid "Save Changes"
 msgstr "Änderungen speichern"
 
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Save cloud authorization"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/create-connection-panel.tsx
 #: src/settings/connections/index.tsx
 msgid "Save failed"
 msgstr "Speichern fehlgeschlagen"
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "Save new revision"
+msgstr ""
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Save schedule"
+msgstr ""
 
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -3509,6 +4113,23 @@ msgstr ""
 msgid "Save your recovery phrase"
 msgstr "Speichern Sie Ihre Wiederherstellungsphrase"
 
+#: src/components/artifact/artifacts-page.tsx
+msgid "Saved artifact"
+msgstr ""
+
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Saved instructions"
+msgstr ""
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "Saved on this device"
+msgstr ""
+
+#: src/cloud-agent/client.ts
+msgid "Saved on this device. It will be sent when you reconnect."
+msgstr ""
+
+#: src/components/cloud-agent/agent-editor.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -3523,6 +4144,18 @@ msgstr "Sagen Sie etwas…"
 #: src/components/set-node-id-dialog.tsx
 msgid "Scan from image"
 msgstr "Aus Bild scannen"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Schedule a task for this agent to run while you are away."
+msgstr ""
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Scheduled tasks"
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-detail.tsx
+msgid "Schedules"
+msgstr ""
 
 #: src/components/chat/scroll-to-bottom-button.tsx
 msgid "Scroll to bottom"
@@ -3546,6 +4179,10 @@ msgstr "Agenten suchen"
 msgid "Search and work with your OneDrive files and documents."
 msgstr "Ihre OneDrive-Dateien und -Dokumente durchsuchen und bearbeiten."
 
+#: src/components/artifact/artifacts-page.tsx
+msgid "Search artifacts…"
+msgstr ""
+
 #: src/search/palette/search-palette.tsx
 msgid "Search chats, models, skills, agents…"
 msgstr "Chats, Modelle, Skills, Agenten suchen…"
@@ -3554,6 +4191,7 @@ msgstr "Chats, Modelle, Skills, Agenten suchen…"
 msgid "Search chats…"
 msgstr "Chats suchen…"
 
+#: src/components/settings/agents/add-agent/resource-section.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "Search connections"
 msgstr "Verbindungen suchen"
@@ -3578,6 +4216,10 @@ msgstr "Nach einem Befehl suchen…"
 msgid "Search locations…"
 msgstr "Orte suchen…"
 
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Search models"
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Search Models"
 msgstr "Modelle suchen"
@@ -3593,6 +4235,7 @@ msgid "Search projects"
 msgstr "Projekte suchen"
 
 #: src/components/chat/chat-skills-bar.tsx
+#: src/components/settings/agents/add-agent/resource-section.tsx
 #: src/skills/skills-list.tsx
 msgid "Search skills"
 msgstr "Skills suchen"
@@ -3740,9 +4383,23 @@ msgstr "Hell einstellen"
 msgid "Set up a passkey"
 msgstr "Passkey einrichten"
 
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Set up cloud access in Connections."
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+#: src/components/cloud-agent/cloud-agent-access.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
 msgstr "Verschlüsselte Synchronisierung einrichten"
+
+#: src/components/cloud-agent/cloud-agent-access.tsx
+msgid "Set up encrypted sync on this device to create and use saved agents."
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Set up encrypted sync on this device to open artifacts saved to your account."
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Set up pairing"
@@ -3764,10 +4421,20 @@ msgstr "Verschlüsselung wird eingerichtet…"
 msgid "Setting up…"
 msgstr "Wird eingerichtet…"
 
+#: src/components/settings/agents/cloud-agent-detail.tsx
 #: src/layout/sidebar/nav-toggle.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 msgid "Settings"
 msgstr "Einstellungen"
+
+#. placeholder {0}: item.label
+#: src/components/ui/agent-selector/agent-selector.tsx
+msgid "Settings for {0}"
+msgstr ""
+
+#: src/components/settings/agents/add-agent/agent-suggestion-status.tsx
+msgid "Setup suggested"
+msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-button.tsx
 msgid "Share debug transcript"
@@ -3847,7 +4514,9 @@ msgstr "Bereiche der Seitenleiste"
 msgid "Sign back in"
 msgstr "Erneut anmelden"
 
+#: src/components/artifact/artifacts-page.tsx
 #: src/components/device-approval.tsx
+#: src/components/settings/agents/cloud-agent-create.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr "Anmelden"
@@ -3856,6 +4525,10 @@ msgstr "Anmelden"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "Anmelden"
+
+#: src/chats/use-hydrate-chat-store.ts
+msgid "Sign in and unlock encrypted sync to open this cloud agent."
+msgstr ""
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -3870,13 +4543,25 @@ msgstr "Bei {appName} anmelden"
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
 
+#: src/settings/connections/cloud-library-authorization.tsx
+msgid "Sign in to authorize this connection for cloud agents."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Sign in to continue"
+msgstr ""
+
+#: src/components/settings/agents/cloud-agent-create.tsx
+msgid "Sign in to create a saved agent."
 msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
 msgstr "Melden Sie sich an, um den Cloud-Proxy zu aktivieren."
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "Sign in to see artifacts saved to your account."
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in to the CLI"
@@ -3939,6 +4624,8 @@ msgstr "Sie werden angemeldet…"
 msgid "Simple"
 msgstr "Einfach"
 
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -4013,6 +4700,10 @@ msgstr "Spreche"
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 msgstr "Sprache-zu-Text und Text-zu-Sprache laufen in der Confidential Enclave von Thunderbolt."
 
+#: src/components/chat/agent-environment-picker.tsx
+msgid "Start a new chat to choose another environment."
+msgstr ""
+
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Start Using {appName}"
 msgstr "{appName} jetzt nutzen"
@@ -4035,15 +4726,23 @@ msgid "Starting…"
 msgstr "Wird gestartet…"
 
 #: src/settings/connections/mcp-server-detail.tsx
-msgid "Status"
-msgstr "Status"
+#~ msgid "Status"
+#~ msgstr "Status"
 
 #: src/components/ui/prompt-input.tsx
 msgid "Stop generating"
 msgstr "Generierung stoppen"
 
+#: src/components/chat/cloud-message-details.tsx
+msgid "Stopped"
+msgstr ""
+
 #: src/components/ui/prompt-input.tsx
 msgid "Stopping"
+msgstr ""
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Stopping…"
 msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
@@ -4070,6 +4769,10 @@ msgstr "Antwort vom Modell erfolgreich erhalten."
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "Vorschläge"
+
+#: src/components/settings/agents/add-agent/agent-name-field.tsx
+msgid "Suggesting a name…"
+msgstr ""
 
 #: src/settings/models/supports-tools-switch.tsx
 msgid "Supports tools"
@@ -4103,6 +4806,10 @@ msgstr "System"
 msgid "System agents"
 msgstr "Systemagenten"
 
+#: src/components/settings/agents/add-agent/thunderbolt-agent-form.tsx
+msgid "System prompt"
+msgstr ""
+
 #: src/components/theme-toggle-group.tsx
 msgid "System theme"
 msgstr "Systemdesign"
@@ -4118,6 +4825,10 @@ msgstr "Sehen Sie sich die Wettervorhersage auf dem Bildschirm an."
 #: src/settings/app-version-section.tsx
 msgid "Tap to check for updates."
 msgstr "Tippen, um nach Updates zu suchen."
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Task"
+msgstr ""
 
 #: src/layout/sidebar/chat-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -4146,6 +4857,10 @@ msgstr "Temperatureinheit"
 #: src/widgets/weather-forecast/display.tsx
 msgid "Temperature Unit"
 msgstr "Temperatureinheit"
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Test cloud connection"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
@@ -4195,6 +4910,10 @@ msgstr "Dieser Code ist ungültig oder wurde bereits verwendet. Prüfen Sie Ihr 
 msgid "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
 msgstr ""
 
+#: src/cloud-agent/chat-transport.ts
+msgid "The action outcome is unknown. Review the result before starting another run."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
 msgstr "Die Verbindung zum Agenten wurde während des vorherigen Schritts unterbrochen. Ein neuer Versuch kann Aktionen wiederholen, die der Agent bereits ausgeführt hat."
@@ -4229,6 +4948,14 @@ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "The cloud run is no longer available."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "The cloud run needs attention ({code})."
 msgstr ""
 
 #: src/services/revoke-failure.ts
@@ -4271,9 +4998,22 @@ msgstr ""
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 msgstr "Die Anweisungen aus Ihren Skills oder Ihrem Projekt sind für diesen Agenten zu lang. Kürzen Sie einen langen Skill oder die Anweisungen des Projekts und versuchen Sie es dann erneut."
 
+#: src/components/cloud-agent/schedules.tsx
+msgid "The last attempt could not start."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "The library endpoint changed. Save a new cloud authorization before using this connection in cloud agents."
+msgstr ""
+
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
 msgstr "Die Karte konnte nicht geladen werden."
+
+#: src/components/artifact/artifact-error.tsx
+#: src/components/cloud-agent/common.tsx
+msgid "The request failed. Please try again."
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "The request was denied. You can safely close this page."
@@ -4282,6 +5022,14 @@ msgstr "Die Anfrage wurde abgelehnt. Sie können diese Seite schließen."
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "Der Server hat die Anmeldedaten abgelehnt. Prüfen Sie Ihren Bearer-Token oder API-Schlüssel."
+
+#: src/components/cloud-agent/outbox.tsx
+msgid "The server rejected this change. Review the current configuration before trying again."
+msgstr ""
+
+#: src/cloud-agent/client.ts
+msgid "The server returned an invalid authorization URL."
+msgstr ""
 
 #: src/lib/device-grant.ts
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
@@ -4310,6 +5058,30 @@ msgstr "Denke nach"
 msgid "This action cannot be undone. This will permanently delete this chat and all its messages."
 msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Dieser Chat und alle seine Nachrichten werden endgültig gelöscht."
 
+#: src/cloud-agent/client.ts
+msgid "This agent already has a queued save. Review or discard it before saving again."
+msgstr ""
+
+#: src/acp/local-agent-adapter.ts
+msgid "This agent is no longer available."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "This agent's model is not connected in the cloud. Connect it in Settings, or start a new chat on this device."
+msgstr ""
+
+#: src/acp/local-agent-adapter.ts
+msgid "This agent's model is unavailable on this device. Choose a model in the agent's settings."
+msgstr ""
+
+#: src/acp/local-agent-adapter.ts
+msgid "This agent's model no longer matches this chat's privacy setting. Start a new chat to use the updated model."
+msgstr ""
+
+#: src/components/artifact/artifacts-page.tsx
+msgid "This artifact is not available on this device."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "Das kann in privaten Fenstern passieren oder wenn Websitedaten blockiert werden. Aktivieren Sie den Speicher für diese Website und laden Sie neu."
@@ -4326,9 +5098,38 @@ msgstr ""
 msgid "This chat uses {agentName}, which is not available on this platform."
 msgstr "Dieser Chat nutzt {agentName}, was auf dieser Plattform nicht verfügbar ist."
 
+#: src/cloud-agent/chat-routing.ts
+msgid "This cloud agent is no longer available."
+msgstr ""
+
+#: src/chats/use-hydrate-chat-store.ts
+msgid "This cloud agent is unavailable. Your chat has not been sent to another agent."
+msgstr ""
+
+#: src/chats/use-hydrate-chat-store.ts
+#: src/cloud-agent/chat-routing.ts
+msgid "This cloud agent selection is invalid. Choose an agent again."
+msgstr ""
+
+#: src/settings/connections/cloud-connection-detail.tsx
+msgid "This cloud authorization is not linked to a connection in this device’s library. Link its definition to select it in an agent."
+msgstr ""
+
+#: src/chats/use-hydrate-chat-store.ts
+msgid "This cloud conversation does not belong to the selected chat."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "This cloud run is already being observed."
+msgstr ""
+
 #: src/lib/otp-error-messages.ts
 msgid "This code has expired. Please request a new one."
 msgstr "Dieser Code ist abgelaufen. Bitte fordern Sie einen neuen an."
+
+#: src/cloud-agent/chat-transport.ts
+msgid "This conversation belongs to a different cloud agent."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
@@ -4338,6 +5139,7 @@ msgstr "Diese Unterhaltung ist zu groß für das Kontextfenster des Modells. Sta
 msgid "This conversation will be sent to {agentName} unencrypted and will no longer be private."
 msgstr "Diese Unterhaltung wird unverschlüsselt an {agentName} gesendet und ist danach nicht mehr privat."
 
+#: src/components/chat/agent-environment-picker.tsx
 #: src/settings/devices.tsx
 msgid "This device"
 msgstr "Dieses Gerät"
@@ -4374,6 +5176,14 @@ msgstr "So können wir Ihr Erlebnis mit lokalen Einstellungen und Funktionen per
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
 msgstr "Das ist das erste Gerät in Ihrem Konto. Wir erstellen einen Verschlüsselungsschlüssel zum Schutz Ihrer Daten und geben Ihnen einen Wiederherstellungsschlüssel zum sicheren Aufbewahren."
 
+#: src/cloud-agent/client.ts
+msgid "This item is not available offline yet."
+msgstr ""
+
+#: src/settings/connections/import-cloud-connection.ts
+msgid "This library identifier is already in use. Link another existing connection instead."
+msgstr ""
+
 #: src/lib/otp-error-messages.ts
 msgid "This link has expired. Please request a new one."
 msgstr "Dieser Link ist abgelaufen. Bitte fordern Sie einen neuen an."
@@ -4385,6 +5195,14 @@ msgstr "Dieser Link ist ungültig. Bitte fordern Sie einen neuen an."
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "Diese Adresse kann von der App nicht geöffnet werden."
+
+#: src/cloud-agent/client.ts
+msgid "This MCP server does not support automatic OAuth registration."
+msgstr ""
+
+#: src/cloud-agent/chat-transport.ts
+msgid "This message has already started a cloud run. Send a new message to change the request."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4433,12 +5251,24 @@ msgstr "Dieser private Chat wird nicht mit {agentName} ausgeführt. Wechseln Sie
 msgid "this project"
 msgstr "dieses Projekt"
 
+#: src/cloud-agent/client.ts
+msgid "This queued change needs review before it can be sent."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
 msgstr "Damit wird die Verbindung nur aus {appName} entfernt. Auf dem Remote-Server wird nichts geändert."
 
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr ""
+
+#: src/cloud-agent/client.ts
+msgid "This revision exceeds your cloud artifact storage limit. Contact your administrator to increase it."
+msgstr ""
+
+#: src/components/artifact/snapshot-artifacts.tsx
+msgid "This revision was saved alongside another change. Both versions are preserved."
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
@@ -4526,6 +5356,15 @@ msgstr "Damit wird Ihr Verschlüsselungsschlüssel mit dem Gerät geteilt, sodas
 msgid "Thought for {duration}"
 msgstr "{duration} nachgedacht"
 
+#: src/components/settings/agents/agent-list.tsx
+#: src/components/settings/agents/cloud-agent-detail.tsx
+msgid "Thunderbolt agent"
+msgstr ""
+
+#: src/components/settings/agents/agent-list.tsx
+msgid "Thunderbolt agent · Disabled"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
 msgstr "Thunderbolt CLI"
@@ -4550,6 +5389,10 @@ msgstr "Gewitter mit starkem Hagel"
 msgid "Thunderstorm with slight hail"
 msgstr "Gewitter mit leichtem Hagel"
 
+#: src/components/cloud-agent/schedules.tsx
+msgid "Time"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Time format"
 msgstr "Zeitformat"
@@ -4557,6 +5400,10 @@ msgstr "Zeitformat"
 #: src/settings/preferences.tsx
 msgid "Time Format"
 msgstr "Zeitformat"
+
+#: src/components/cloud-agent/schedules.tsx
+msgid "Time zone"
+msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 #~ msgid "to access your calendar"
@@ -4595,6 +5442,10 @@ msgstr "Zu viele Versuche. Bitte fordern Sie einen neuen Code an."
 #: src/components/chat/error-message.tsx
 msgid "Too many requests. Please try again in a moment."
 msgstr "Zu viele Anfragen. Bitte versuchen Sie es in einem Moment erneut."
+
+#: src/components/chat/cloud-approval-picker.tsx
+msgid "Tool approvals"
+msgstr ""
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Tool input"
@@ -4668,6 +5519,10 @@ msgstr "Die Wettervorhersage konnte nicht geladen werden: {errorMessage}"
 #: src/widgets/weather-forecast/widget.tsx
 msgid "Unable to load weather forecast."
 msgstr "Die Wettervorhersage konnte nicht geladen werden."
+
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Unavailable on this device"
+msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Unfortunately, the local database encountered an error while being migrated to the latest version of this app. Deleting your local data will resolve the issue but you will permanently lose your settings and chat history. This action cannot be undone."
@@ -4768,6 +5623,17 @@ msgstr "URL"
 msgid "URL is required for Custom providers"
 msgstr "Für benutzerdefinierte Anbieter ist eine URL erforderlich"
 
+#. placeholder {0}: config.name
+#. placeholder {0}: entry.server.name
+#. placeholder {0}: server.name
+#: src/components/cloud-agent/agent-editor.tsx
+msgid "Use {0}"
+msgstr ""
+
+#: src/components/cloud-agent/agent-model-row.tsx
+msgid "Use {name}"
+msgstr ""
+
 #: src/lib/mcp-url-validation.ts
 msgid "Use an http:// or https:// URL"
 msgstr "Verwenden Sie eine http://- oder https://-URL"
@@ -4808,6 +5674,10 @@ msgstr "Melden Sie sich mit Fingerabdruck, Gesicht oder Geräte-PIN an statt mit
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
 #~ msgstr ""
+
+#: src/settings/connections/cloud-connection-authorization.tsx
+msgid "Use your provider’s current limits and prices for cloud run budgets."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "User Experience"
@@ -4880,6 +5750,7 @@ msgstr "Sprach-Engine"
 msgid "Voice mode: {status}"
 msgstr "Sprachmodus: {status}"
 
+#: src/components/chat/cloud-message-details.tsx
 #: src/components/pending-device-modal.tsx
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
@@ -4934,6 +5805,11 @@ msgstr "Wir haben eine E-Mail mit den nächsten Schritten an <0>{email}</0> gese
 msgid "Weather data provided by Open-Meteo.com"
 msgstr "Wetterdaten bereitgestellt von Open-Meteo.com"
 
+#: src/components/cloud-agent/agent-editor.tsx
+#: src/components/settings/agents/cloud-agent-setup.tsx
+msgid "Web search"
+msgstr ""
+
 #: src/components/welcome-dialog.tsx
 msgid "Welcome"
 msgstr "Willkommen"
@@ -4980,6 +5856,10 @@ msgstr "Wie sollen wir Sie nennen?"
 msgid "What the assistant should do…"
 msgstr "Was der Assistent tun soll…"
 
+#: src/components/settings/agents/add-agent/agent-basics-form.tsx
+msgid "What will this agent do?"
+msgstr ""
+
 #: src/components/logout-modal.tsx
 msgid "What would you like to do with your local data?"
 msgstr "Was möchten Sie mit Ihren lokalen Daten machen?"
@@ -5023,6 +5903,10 @@ msgstr "Fenstersteuerung"
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "word1 word2 word3 ..."
 msgstr "wort1 wort2 wort3 ..."
+
+#: src/components/chat/cloud-message-details.tsx
+msgid "Working"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to change the language to {suggestedLanguageLabel}?"
@@ -5098,6 +5982,10 @@ msgstr "Alles bereit! 🎉"
 msgid "You're now signed in."
 msgstr "Sie sind jetzt angemeldet."
 
+#: src/components/artifact/artifacts-page.tsx
+msgid "You’re offline. Previously downloaded artifacts are available."
+msgstr ""
+
 #: src/settings/app-version-section.tsx
 msgid "You're on the latest version."
 msgstr "Sie nutzen die neueste Version."
@@ -5171,6 +6059,11 @@ msgstr "Ihre Chats und Einstellungen bleiben für das nächste Mal auf diesem Ge
 #~ msgid "Your chats and settings will remain on this device for offline use."
 #~ msgstr "Ihre Chats und Einstellungen bleiben für die Offline-Nutzung auf diesem Gerät."
 
+#: src/components/settings/agents/add-agent/resource-section.tsx
+#: src/settings/connections/connections-list.tsx
+msgid "Your connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Server Ihrer Bereitstellung"
@@ -5182,6 +6075,10 @@ msgstr ""
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
 msgstr "Ihre Nachricht würde das Kontextfenster des Modells von {formattedMaxTokens} Tokens überschreiten."
+
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Your models"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Your name"
@@ -5222,6 +6119,10 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."
 msgstr "Ihre Anfrage, dieses Gerät zu synchronisieren, wurde von einem anderen Gerät abgelehnt. Sie können es erneut versuchen oder diesen Dialog schließen."
+
+#: src/components/settings/agents/add-agent/resource-section.tsx
+msgid "Your skills"
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Zero Logs"

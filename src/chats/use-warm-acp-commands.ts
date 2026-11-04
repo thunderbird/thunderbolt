@@ -5,6 +5,7 @@
 import { useEffect, useRef } from 'react'
 
 import { getOrConnectAdapter as defaultGetOrConnectAdapter } from '@/acp/adapter-cache'
+import { isCloudAgent } from '@/defaults/agents'
 import { useHttpClient } from '@/contexts'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getDb as defaultGetDb } from '@/db/database'
@@ -57,7 +58,7 @@ export const useWarmAcpCommands = (
   const warmedKey = useRef<string | null>(null)
 
   useEffect(() => {
-    if (selectedAgent.type === 'built-in') {
+    if (selectedAgent.type === 'built-in' || isCloudAgent(selectedAgent)) {
       return
     }
     const key = `${selectedAgent.id}:${id}`

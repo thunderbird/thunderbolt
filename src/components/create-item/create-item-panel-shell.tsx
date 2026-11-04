@@ -8,12 +8,14 @@ import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
+import { DetailPanelOverlay } from '@/components/detail-panel-overlay'
 import { createItemTitles, type CreateItemRequest } from './context'
 
 type CreateItemPanelShellProps = {
   kind: CreateItemRequest['kind']
   title?: MessageDescriptor
   open: boolean
+  overlay?: boolean
   onClose: () => void
   onCloseComplete: () => void
   children: ReactNode
@@ -28,17 +30,29 @@ export const CreateItemPanelShell = ({
   kind,
   title = createItemTitles[kind],
   open,
+  overlay = false,
   onClose,
   onCloseComplete,
   children,
 }: CreateItemPanelShellProps) => {
   const { i18n } = useLingui()
+  const content = (
+    <DetailPanel title={i18n._(title)} onClose={onClose}>
+      {children}
+    </DetailPanel>
+  )
+
+  if (overlay) {
+    return (
+      <DetailPanelOverlay title={i18n._(title)} open={open} onClose={onClose}>
+        {content}
+      </DetailPanelOverlay>
+    )
+  }
 
   return (
     <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-      <DetailPanel title={i18n._(title)} onClose={onClose}>
-        {children}
-      </DetailPanel>
+      {content}
     </DetailPanelSurface>
   )
 }

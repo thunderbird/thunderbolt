@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import ChatUI from '@/components/chat/chat-ui'
+import { Trans } from '@lingui/react/macro'
+import { Button } from '@/components/ui/button'
 import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
 import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
@@ -19,6 +21,8 @@ import { PageFallback } from '@/loading'
 type ChatHydrateHandlerProps = PropsWithChildren<{
   /** The thread from the route, or null for a chat that doesn't exist yet. */
   existingId: string | null
+  selectedAgentId?: string | null
+  cloudAgentId?: string | null
   /** Project this chat starts in, from `?projectId=`. New chats only. */
   projectId: string | null
   /**
@@ -48,6 +52,8 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
 export const ChatHydrateHandler = ({
   children,
   existingId,
+  selectedAgentId = null,
+  cloudAgentId = null,
   projectId,
   newChatId,
   miniAppId = null,
@@ -60,9 +66,11 @@ export const ChatHydrateHandler = ({
   // different chat arrives as a different key and remounts this.
   const [id] = useState(() => existingId ?? newChatId)
 
-  const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
+  const { hydrateChatStore, isReady, error, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,
     isNew,
+    selectedAgentId,
+    cloudAgentId,
     projectId,
     miniAppId,
     onCreated,
@@ -80,6 +88,16 @@ export const ChatHydrateHandler = ({
   // not a blank pane — is what shows while a long chat loads. New chats skip
   // it: their hydration is a few fast reads, and flashing a second spinner
   // right after the app-boot one reads as a glitch on first load.
+  if (error) {
+    return (
+      <div role="alert" className="m-auto flex max-w-lg flex-col items-center gap-4 p-6">
+        <p>{error.message}</p>
+        <Button onClick={() => void hydrateChatStore()}>
+          <Trans>Retry</Trans>
+        </Button>
+      </div>
+    )
+  }
   if (!isReady) {
     return isNew ? null : <PageFallback />
   }
@@ -197,6 +215,8 @@ export default function ChatDetailPage() {
   // remount, no re-hydration, and the session kept project X — silently filing
   // the first message under a project the user had just left.
   const projectId = isNew ? searchParams.get('projectId') : null
+  const selectedAgentId = isNew ? searchParams.get('agent') : null
+  const cloudAgentId = searchParams.get('cloudAgent')
   const requestedId = (location.state as { newChatRequestId?: string } | null)?.newChatRequestId
   const newChatId = useNewChatId(isNew, projectId, requestedId)
 
@@ -220,6 +240,8 @@ export default function ChatDetailPage() {
     <ChatHydrateHandler
       key={isNew ? newChatId : chatThreadId}
       existingId={isNew ? null : chatThreadId}
+      selectedAgentId={selectedAgentId}
+      cloudAgentId={cloudAgentId}
       newChatId={newChatId}
       projectId={projectId}
     >

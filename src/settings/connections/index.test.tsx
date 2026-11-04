@@ -5,7 +5,8 @@
 import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { HttpClientProvider } from '@/contexts'
+import { AuthProvider, HttpClientProvider } from '@/contexts'
+import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
@@ -38,7 +39,9 @@ const neverResolves = (_id: string, _url: string, _type: MCPTransportType): Prom
 const McpProviderWrapper = ({ children }: { children: ReactNode }) => (
   <MemoryRouter>
     <HttpClientProvider httpClient={createMockHttpClient()}>
-      <MCPProvider createClient={neverResolves}>{children}</MCPProvider>
+      <AuthProvider authClient={createMockAuthClient()}>
+        <MCPProvider createClient={neverResolves}>{children}</MCPProvider>
+      </AuthProvider>
     </HttpClientProvider>
   </MemoryRouter>
 )
@@ -116,6 +119,35 @@ describe('ConnectionsPage list', () => {
     })
 
     expect(screen.getByText('Second Server')).toBeInTheDocument()
+  })
+
+  it('places cloud authorization in the existing public MCP aside and explains local endpoint limits', async () => {
+    const db = getDb()
+    await createMcpServer(db, {
+      id: uuidv7(),
+      name: 'Public library tools',
+      url: 'https://tools.example.com/mcp',
+      type: 'http',
+      enabled: 0,
+    })
+    await createMcpServer(db, {
+      id: uuidv7(),
+      name: 'Device tools',
+      url: 'http://localhost:9000/mcp',
+      type: 'http',
+      enabled: 1,
+    })
+    renderWithReactivity(<ConnectionsPage />, { tables: ['mcp_servers'], wrapper: McpProviderWrapper })
+    await openServerDetail('Public library tools')
+    expect(screen.getByText('Cloud authorization')).toBeInTheDocument()
+    expect(screen.getByText('Sign in to authorize this connection for cloud agents.')).toBeInTheDocument()
+    expect(screen.getByText('On this device')).toBeInTheDocument()
+    await openServerDetail('Device tools')
+    expect(
+      screen.getByText(
+        'Cloud agents require a public HTTPS server using HTTP transport. This connection is available on this device.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('falls back to the cleaned URL for a server without a name', async () => {
@@ -690,10 +722,12 @@ const makeMcpWrapper = (createClient: CreateClientFn) => {
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter>
       <HttpClientProvider httpClient={createMockHttpClient()}>
-        <MCPProvider createClient={createClient}>
-          <CaptureMcpContext />
-          {children}
-        </MCPProvider>
+        <AuthProvider authClient={createMockAuthClient()}>
+          <MCPProvider createClient={createClient}>
+            <CaptureMcpContext />
+            {children}
+          </MCPProvider>
+        </AuthProvider>
       </HttpClientProvider>
     </MemoryRouter>
   )

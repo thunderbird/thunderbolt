@@ -58,7 +58,8 @@ export const getTurnActivity = ({
   const isStreaming = status === 'streaming'
   const isGenerating = status === 'submitted' || isStreaming
   const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
-  const emptyAssistantTurn = lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
+  const emptyAssistantTurn =
+    lastMessage?.role === 'assistant' && !lastMessage.metadata?.cloud && !lastMessage.parts?.length && !isStreaming
   const pendingEmptyTurnRecovery = emptyAssistantTurn && !hasChatError && !retriesExhausted
   const hasError = hasChatError || (emptyAssistantTurn && retriesExhausted)
   const isActive = isGenerating || pendingEmptyTurnRecovery || (retryCount > 0 && !retriesExhausted)

@@ -360,3 +360,37 @@ export const agentsSecretsTable = sqliteTable('agents_secrets', {
   apiKey: text('api_key'),
   authMethod: text('auth_method'),
 })
+
+/** Cloud execution projections are written only by the server; clients read them. */
+export const cloudAgentProjectionsTable = sqliteTable('cloud_agent_projections', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  kind: text('kind').notNull(),
+  parentId: text('parent_id'),
+  payload: text('payload').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  deletedAt: text('deleted_at'),
+})
+
+/** Opaque encrypted API responses and downloaded artifacts remain available offline. */
+export const cloudAgentCacheTable = sqliteTable('cloud_agent_cache', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  resourceKey: text('resource_key').notNull(),
+  payload: text('payload').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
+/** Exact encrypted command bodies survive process exit before an HTTP acknowledgement. */
+export const cloudAgentOutboxTable = sqliteTable('cloud_agent_outbox', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  kind: text('kind').notNull(),
+  resourceId: text('resource_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  payload: text('payload').notNull(),
+  status: text('status').notNull(),
+  errorCode: text('error_code'),
+  createdAt: text('created_at').notNull(),
+  deletedAt: text('deleted_at'),
+})

@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
+import { CloudMessageDetails } from './cloud-message-details'
 import {
-  artifactRendersStandalone,
   filterMessageParts,
   type GroupedUIPart,
   groupMessageParts,
@@ -22,6 +21,7 @@ import { CopyMessageButton } from './copy-message-button'
 import { ReasoningGroup } from './reasoning-group'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { TextPart } from './text-part'
+import { responseViewportMinHeight } from './response-viewport'
 
 type AssistantMessageProps = {
   message: ThunderboltUIMessage
@@ -30,11 +30,6 @@ type AssistantMessageProps = {
   isLastAssistantMessage?: boolean
   lastAssistantAction?: ReactNode
 }
-
-// While an answer streams, reserve enough room to keep the preceding user
-// message pinned near the top. Settled answers return to their natural height
-// so short threads do not retain artificial overflow.
-const lastMessageMinHeight = '72dvh'
 
 // Stable empty default so a message without reasoning timings keeps a constant
 // reference across renders (a fresh `{}` each render would defeat memoization).
@@ -174,16 +169,6 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
-    // An artifact is a tall block of its own, so it doesn't need the last-message
-    // height reserve — and applying it would leave empty space that pushes the
-    // artifact toward the middle of the viewport ("floating" too far down). Match the
-    // same condition that actually lifts the card out (streaming or verified-ok), so a
-    // last message whose only render_html call FAILED still gets the normal reserve.
-    const hasArtifact = useMemo(
-      () => message.parts.some((part) => isRenderHtmlPart(part) && artifactRendersStandalone(part)),
-      [message.parts],
-    )
-
     const lastPartIsReasoningGroup = useMemo(() => {
       const lastPart = groupedParts[groupedParts.length - 1]
       if (!lastPart) {
@@ -200,7 +185,7 @@ export const AssistantMessage = memo(
         data-message-id={message.id}
         data-quotable-message-id={message.id}
         className={showCopyOnHover ? 'group/assistant-message' : undefined}
-        style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
+        style={isLastMessage ? { minHeight: responseViewportMinHeight } : undefined}
       >
         {partElements.map((partElement, index) => (
           // Skip the animation on the *second* (index === 1) partElement so that it replaces the loading part *in-place* without an animation
@@ -209,6 +194,7 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
+        <CloudMessageDetails cloud={metadata?.cloud} />
         {!isStreaming && (copyText || lastAssistantAction) && (
           <div
             className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}

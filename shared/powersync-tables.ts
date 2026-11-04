@@ -25,6 +25,7 @@ export const powersyncTableNames = [
   'devices',
   'agents',
   'projects',
+  'cloud_agent_projections',
 ] as const
 
 export type PowerSyncTableName = (typeof powersyncTableNames)[number]
@@ -74,4 +75,5 @@ export const powersyncTableToQueryKeys: {
   // Would cover the chat sidebar grouping as well as the project list, if the
   // map above were ever wired up.
   projects: [['projects'], ['chatThreads']],
+  cloud_agent_projections: [['cloud-agents']],
 }

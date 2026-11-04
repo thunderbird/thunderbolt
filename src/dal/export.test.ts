@@ -9,6 +9,9 @@ import {
   agentsTable,
   chatMessagesTable,
   chatThreadsTable,
+  cloudAgentCacheTable,
+  cloudAgentOutboxTable,
+  cloudAgentProjectionsTable,
   devicesTable,
   integrationsSecretsTable,
   mcpSecretsTable,
@@ -133,12 +136,31 @@ describe('Export DAL', () => {
       fetchedAt: '2026-06-01T00:00:00.000Z',
     })
 
+    await db
+      .insert(cloudAgentCacheTable)
+      .values({ id: 'cache', userId: 'user-1', resourceKey: 'agents', payload: '{}', updatedAt: '2026' })
+    await db
+      .insert(cloudAgentProjectionsTable)
+      .values({ id: 'projection', userId: 'user-1', kind: 'agent', payload: '{}', updatedAt: '2026' })
+    await db.insert(cloudAgentOutboxTable).values({
+      id: 'command',
+      userId: 'user-1',
+      kind: 'message',
+      resourceId: 'chat',
+      endpoint: 'messages',
+      payload: '{}',
+      status: 'pending',
+      createdAt: '2026',
+    })
     const exported = await exportUserData(db, { id: 'user-1', email: null })
     const tableKeys = Object.keys(exported.tables) as Array<keyof typeof exported.tables>
 
     expect(tableKeys).not.toContain('devices')
     expect(tableKeys).not.toContain('integrations_secrets')
     expect(tableKeys).not.toContain('agents_system')
+    expect(tableKeys).not.toContain('cloud_agent_cache')
+    expect(tableKeys).not.toContain('cloud_agent_outbox')
+    expect(tableKeys).not.toContain('cloud_agent_projections')
   })
 
   it('preserves chat message JSON columns (parts / metadata / cache) as parsed objects', async () => {

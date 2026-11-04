@@ -6,9 +6,10 @@ import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
+import { agentInEnvironment } from '@/cloud-agent/agent-inventory'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { getClock } from '@/testing-library'
-import type { Agent } from '@/types/acp'
+import type { Agent, CloudAgent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
 const systemAgent: Agent = {
@@ -39,12 +40,34 @@ const customAgent: Agent = {
   userId: 'user-42',
 }
 
+const cloudAgent: CloudAgent = {
+  ...customAgent,
+  id: 'cloud:00000000-0000-4000-8000-000000000001',
+  cloudAgentId: '00000000-0000-4000-8000-000000000001',
+  name: 'My Cloud Assistant',
+  type: 'cloud',
+  transport: 'http',
+  url: null,
+  isSystem: 0,
+  userId: 'user-42',
+}
+
 afterEach(() => {
   cleanup()
   restoreViewport()
 })
 
 describe('buildAgentItems', () => {
+  it('includes cloud summaries but excludes disabled and deleted agents', () => {
+    const items = buildAgentItems([
+      builtInAgent,
+      cloudAgent,
+      { ...customAgent, enabled: 0 },
+      { ...cloudAgent, id: 'deleted-cloud', deletedAt: '2026-10-23' },
+    ])
+    expect(items.map((item) => item.id)).toEqual([builtInAgent.id, cloudAgent.id])
+  })
+
   it('flattens every flavor into one list in canonical order', () => {
     const items = buildAgentItems([customAgent, systemAgent, builtInAgent])
 
@@ -60,6 +83,39 @@ describe('buildAgentItems', () => {
 })
 
 describe('AgentSelector', () => {
+  it('shows one definition while preserving the chosen local runtime on selection', () => {
+    const select = mock<(agent: Agent) => void>(() => {})
+    const local = agentInEnvironment(cloudAgent, 'local')
+    render(<AgentSelector selectedAgent={local} agents={[builtInAgent, cloudAgent]} onSelect={select} />)
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    const rows = screen.getAllByText('My Cloud Assistant')
+    expect(rows).toHaveLength(2)
+    fireEvent.click(rows[1])
+    expect(select.mock.calls[0]?.[0]).toMatchObject({
+      id: local.id,
+      cloudAgentId: cloudAgent.cloudAgentId,
+      executionEnvironment: 'local',
+    })
+  })
+  it('selects a cloud agent through the ordinary composer menu', () => {
+    const select = mock<(agent: Agent) => void>(() => {})
+    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent, cloudAgent]} onSelect={select} />)
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    fireEvent.click(screen.getByText('My Cloud Assistant'))
+    expect(select.mock.calls[0]?.[0]).toBe(cloudAgent)
+  })
+
+  it('keeps a disabled selected cloud label while offering only available replacements', () => {
+    const select = mock<(agent: Agent) => void>(() => {})
+    const disabled = { ...cloudAgent, enabled: 0 as const }
+    render(<AgentSelector selectedAgent={disabled} agents={[builtInAgent, disabled]} onSelect={select} />)
+    expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent(cloudAgent.name)
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    expect(screen.getAllByText(cloudAgent.name)).toHaveLength(1)
+    fireEvent.click(screen.getByText('Thunderbolt'))
+    expect(select.mock.calls[0]?.[0]).toBe(builtInAgent)
+  })
+
   it('renders the trigger with the selected agent name', () => {
     const onSelect = mock(() => {})
     render(<AgentSelector selectedAgent={systemAgent} agents={[builtInAgent, systemAgent]} onSelect={onSelect} />)
@@ -133,6 +189,26 @@ describe('AgentSelector', () => {
 
     // Dropdown contents are not in the DOM (Popover is closed)
     expect(screen.queryByText('RAG Chat')).not.toBeInTheDocument()
+  })
+
+  it('opens settings without selecting the agent and closes the menu first', () => {
+    const onSelect = mock(() => {})
+    const onEditAgent = mock(() => {})
+    render(
+      <AgentSelector
+        selectedAgent={builtInAgent}
+        agents={[builtInAgent, cloudAgent]}
+        onSelect={onSelect}
+        onEditAgent={onEditAgent}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+    const settings = screen.getByRole('button', { name: 'Settings for My Cloud Assistant' })
+    expect(settings.parentElement?.closest('button')).toBeNull()
+    fireEvent.click(settings)
+    expect(onEditAgent).toHaveBeenCalledWith(cloudAgent)
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByTestId('agent-selector-trigger').closest('button')).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('exposes the Add Agent footer that invokes its callback', () => {

@@ -16,6 +16,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import type { OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import type { McpServer } from '@/types'
+import { getCloudMcpBinding } from '@/cloud-agent/connection-library'
+import { CloudLibraryAuthorization } from './cloud-library-authorization'
 import { cleanServerUrl, serverDisplayName } from './display'
 
 const statusLabels: Record<string, MessageDescriptor> = {
@@ -103,7 +105,7 @@ export const McpServerDetail = ({
     >
       <div className="flex shrink-0 flex-col gap-2">
         <DetailSectionTitle>
-          <Trans>Status</Trans>
+          <Trans>On this device</Trans>
         </DetailSectionTitle>
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-base text-foreground">
@@ -184,6 +186,23 @@ export const McpServerDetail = ({
           <Trans>Transport: {transportLabel}</Trans>
         </p>
       </div>
+
+      {getCloudMcpBinding(server, []).eligible ? (
+        <CloudLibraryAuthorization source={{ kind: 'mcp', id: server.id, name: server.name, url: server.url ?? '' }} />
+      ) : (
+        <>
+          <DetailDivider />
+          <DetailSectionTitle>
+            <Trans>Cloud authorization</Trans>
+          </DetailSectionTitle>
+          <p className="text-sm text-muted-foreground">
+            <Trans>
+              Cloud agents require a public HTTPS server using HTTP transport. This connection is available on this
+              device.
+            </Trans>
+          </p>
+        </>
+      )}
 
       {isEnabled && tools.length > 0 && (
         <>

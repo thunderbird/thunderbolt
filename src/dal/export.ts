@@ -18,6 +18,9 @@ type AllTableName = keyof typeof syncedTables | keyof typeof localOnlyTables
  * - `integrations_secrets`: third-party OAuth tokens (Google / Microsoft).
  *   The importing user re-authenticates instead.
  * - `agents_system`: backend-hydrated catalog, not user content.
+ * - Cloud projections and downloaded ciphertext: server-owned state, refreshed by
+ *   sync rather than restored through client writes.
+ * - Cloud outbox: restoring executable commands could replay old work.
  *
  * Typed against {@link AllTableName} so a future schema rename/removal trips
  * the compiler. Anything not in this list is included.
@@ -26,6 +29,9 @@ const excludedFromExport = [
   'devices',
   'integrations_secrets',
   'agents_system',
+  'cloud_agent_projections',
+  'cloud_agent_cache',
+  'cloud_agent_outbox',
 ] as const satisfies readonly AllTableName[]
 type ExcludedTableName = (typeof excludedFromExport)[number]
 export type IncludedTableName = Exclude<AllTableName, ExcludedTableName>

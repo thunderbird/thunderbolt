@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
-import { CheckSquare, MessageCirclePlus } from 'lucide-react'
+import { CheckSquare, Files, MessageCirclePlus } from 'lucide-react'
 import { lazy, Suspense, type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import {
@@ -69,6 +69,7 @@ type ChatSidebarContentProps = {
   onCreateNewChat: () => void
   onTasksClick: () => void
   onMiniAppClick: (appId: string) => void
+  onArtifactsClick: () => void
   onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
@@ -88,6 +89,20 @@ const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
         <CheckSquare className="size-[var(--icon-size-default)]" />
         <span>
           <Trans>Tasks</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
+
+const ArtifactsMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
+  const { t } = useLingui()
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick} tooltip={t`Artifacts`} className="cursor-pointer" isActive={isActive}>
+        <Files className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Artifacts</Trans>
         </span>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -136,6 +151,7 @@ export const ChatSidebarContent = ({
   onCreateNewChat,
   onTasksClick,
   onMiniAppClick,
+  onArtifactsClick,
   onChatClick,
   onRename,
   onSearchClick,
@@ -271,6 +287,7 @@ export const ChatSidebarContent = ({
                         </span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
+                    <ArtifactsMenuItem isActive={location.pathname === '/artifacts'} onClick={onArtifactsClick} />
                     {showTasks && (
                       <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                     )}
@@ -302,6 +319,7 @@ export const ChatSidebarContent = ({
               mobileSecondaryNavigation={
                 <SidebarMenu className="mt-2 flex-shrink-0">
                   {showProjects && <SidebarMenuItem>{projectTree}</SidebarMenuItem>}
+                  <ArtifactsMenuItem isActive={location.pathname === '/artifacts'} onClick={onArtifactsClick} />
                   {showTasks && (
                     <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                   )}

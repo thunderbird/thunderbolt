@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { builtInAgent } from '@/defaults/agents'
+import { builtInAgent, isPortableAgent } from '@/defaults/agents'
+import { agentInEnvironment, portableAgentResourceId } from '@/cloud-agent/agent-inventory'
 import type { Agent } from '@/types/acp'
 
 /**
@@ -37,8 +38,20 @@ export const resolveSessionAgent = (
   allAgents: Agent[],
   candidates: AgentPreference & { threadAgentId?: string | null; discoveredDefaultAgent?: Agent },
 ): Agent => {
-  const findAgent = (agentId: string | null | undefined) =>
-    agentId ? allAgents.find((a) => a.id === agentId) : undefined
+  const findAgent = (agentId: string | null | undefined) => {
+    if (!agentId) {
+      return undefined
+    }
+    const exact = allAgents.find((agent) => agent.id === agentId)
+    if (exact) {
+      return exact
+    }
+    const definitionId = portableAgentResourceId(agentId)
+    const definition = allAgents.find((agent) => isPortableAgent(agent) && agent.cloudAgentId === definitionId)
+    return definition && isPortableAgent(definition)
+      ? agentInEnvironment(definition, agentId.startsWith('local:') ? 'local' : 'cloud')
+      : undefined
+  }
   return (
     findAgent(candidates.threadAgentId) ??
     findAgent(candidates.lastUsedAgentId) ??

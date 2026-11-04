@@ -70,7 +70,7 @@ type OnboardingLocationStepProps = {
 }
 
 export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
-  const { i18n } = useLingui()
+  const { i18n, t } = useLingui()
   const [isInitialized, setIsInitialized] = useState(false)
   const locationFormSchema = createLocationFormSchema(i18n)
 
@@ -173,7 +173,12 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
             render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormControl>
-                  <LocationSearchCombobox value={field.value} onSelect={handleSelectLocation} autoOpen />
+                  <LocationSearchCombobox
+                    value={field.value}
+                    onSelect={handleSelectLocation}
+                    autoOpen
+                    aria-label={t`Location`}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -11,9 +11,10 @@ export {
   isCliDeviceId,
   isTrustedAppDevice,
   getDeviceById,
-  upsertDevice,
+  touchDevice,
   upsertCliDevice,
   revokeDevice,
+  requireMigrationSiblingApproval,
   denyDevice,
   markDeviceTrusted,
   registerDevice,
@@ -28,7 +29,7 @@ export {
 } from './devices'
 
 // Users
-export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
+export { getUserById, getUserByEmail, deleteUser, deleteIdleAnonymousUsers, markUserNotNew } from './users'
 
 // Sessions
 export { getActivePersistedSession, linkSessionToDevice, revokeDeviceSessions } from './sessions'
@@ -78,3 +79,7 @@ export {
   consumeChallengeNonce,
   deleteExpiredOrConsumedNonces,
 } from './encryption'
+export type { PasskeySlot } from './encryption'
+
+// Passkeys
+export { userHasPasskey, passkeyHoldsSyncSlot, isUserPasskeyCredential } from './passkeys'

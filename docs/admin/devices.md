@@ -25,22 +25,33 @@ Sign in on the new device with the same account. If the setup wizard does not op
 
 ## Approving a device
 
-A pending device shows an "Approve this device" screen and polls for the result, so nothing has to be re-entered once you approve it. There are two ways to clear it:
+A pending device shows an "Approve this device" screen with a fingerprint and polls for the result. Choose one of the available ways to unlock it:
 
-- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. The trusted device hands the new one a copy of the account's encryption key, wrapped so that only the new device can open it.
-- **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the 24 word phrase saved at first setup. This is the path when no other device is available.
+- **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. Enter the fingerprint from the new device's screen or a separate channel you trust. Approval stops if it does not match; there is no override. The trusted device then wraps the account's encryption key to the verified device keys.
+- **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the current recovery phrase. This is the path when no other device is available.
+- **Use an available passkey.** If the account has an enrolled passkey that can unlock sync, choose **Unlock with passkey** on the pending device.
 
 **Deny** dismisses the request without revoking anything, and that device can ask again; a pending device can also withdraw its own request. The approving device has to be trusted and not revoked, and cannot be a CLI device or a device that is itself still pending. Revoking is stricter: only a regular app device can do that.
 
+### After a legacy encryption upgrade
+
+Among regular app devices, only the device running the upgrade stays trusted. Save the new recovery phrase it shows; the previous phrase stops working. Other trusted app devices return to pending approval; existing pending or denied requests keep their state. They can unlock through verified approval, the new recovery phrase or a passkey enrolled for sync. CLI and bridge entries are unchanged. Existing encrypted data is preserved.
+
+### Approval limits
+
+Fingerprint verification requires trusted code on both the approving device and the new device. A web host can modify the approving device's checks or the new device's displayed fingerprint and keys. Independently distributed desktop/mobile builds provide the stronger boundary. Older approvers lack the check. A pending client from a release before fingerprint approval shows no fingerprint. Update it before approving it from an updated device. The current recovery phrase or a passkey enrolled for sync remains an alternative where the client supports that unlock method. On an honest deployment, `MIN_APP_VERSION` can require headers declaring the release introducing fingerprint approval or later on every gated API request; a malicious server can ignore that policy. These checks protect future approvals and do not repair an account key exposed by a past approval.
+
 ## The recovery key
 
-At first setup on an account, Thunderbolt generates the account's encryption keys and shows a 24 word recovery phrase that can unlock them. Sync starts once the person confirms they saved it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
+At first setup on an account, Thunderbolt generates the account's encryption keys and shows a 24 word recovery phrase that can unlock them. Sync starts once the person confirms they saved it. The phrase is shown **once**; there is no way to view it again later. Keep it safe so you can unlock sync if every trusted device is lost or wiped.
 
 To replace a lost or exposed phrase, choose **Change Recovery Phrase** under **Settings → Preferences → Data** on a trusted device and enter the code emailed to the account. The old phrase stops working.
 
-> Without it and without a trusted device, synced message content is not recoverable. The server holds ciphertext for that content; ids, timestamps, relationships and device names stay readable. See [Security and privacy](security-and-privacy.md) for the full list.
+> Without a recovery phrase, a trusted device or an available passkey that unlocks sync, the app cannot recover synced message content. The server holds ciphertext for that content; ids, timestamps, relationships and device names stay readable. See [Security and privacy](security-and-privacy.md) for the full list.
 
-The one exception is [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow): on a deployment that runs it, the operator can decrypt an account's data offline.
+### Organizational key escrow
+
+On a deployment with [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) enabled, an operator holding its private key can decrypt an account's data offline.
 
 ## Revoking a device
 
@@ -48,7 +59,7 @@ Use this when a device is lost or stolen, or when someone should no longer have 
 
 ### What revoking does
 
-Uploads and sync-token renewal are refused at once, and the device's sign-in sessions are deleted. Downstream sync stops when the device's current sync token expires, within `POWERSYNC_TOKEN_EXPIRY_SECONDS` (5 minutes by default); rotate `POWERSYNC_JWT_SECRET` to cut it off sooner.
+Uploads and sync-token renewal are refused at once, and the device's sign-in sessions are deleted. Downstream sync stops as soon as the revocation reaches the sync service, without waiting for the device's current sync token to expire.
 
 - The revoking device replaces the account key and the key used for new writes, and hands the new account key only to the devices that remain. The revoked device cannot read anything written afterwards, and the recovery phrase keeps working. If that step fails, every trusted device shows **Finish securing** on the revoked entry until someone completes it.
 - Its pairing identity is cleared, so other devices on the account stop accepting direct connections from it.
@@ -58,9 +69,9 @@ Uploads and sync-token renewal are refused at once, and the device's sign-in ses
 
 Personal access tokens are unaffected by any revocation. They are not tied to a device, so they keep working until they expire or the user deletes them.
 
-If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
+The device signs out and clears its local copy on its own the next time it connects. A device that never comes back online is never reached and keeps what it has. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
 
-> Revoking is not a remote wipe. Data already on that device stays there, so for a stolen device assume the local copy is still readable.
+> Revoking is not a remote wipe. A device that never comes back online keeps its data, so for a stolen device assume the local copy is still readable.
 
 If the device never reconnects, it stops syncing and keeps what it had.
 
@@ -79,12 +90,12 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 | Action             | Server-side effect                                          | Local data on the device                                                                                      | Other devices        |
 | ------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
 | **Sign out**       | Ends that session                                           | Kept or deleted, the user chooses                                                                             | Unaffected           |
-| **Revoke**         | Sessions ended, sync and decryption blocked for that device | Kept or deleted, the person holding it chooses                                                                | Unaffected           |
+| **Revoke**         | Sessions ended, sync and decryption blocked for that device | Cleared the next time it connects; kept on a device that never comes back online                              | Unaffected           |
 | **Delete account** | Account and all synced data removed                         | Deleted on devices with sync on that reconnect while their token is live; others sign out and keep their copy | All of them sign out |
 
 The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again once the device is approved. Signing out does not revoke the device on the server, so its entry stays in the trusted list and holds one of the ten slots until someone revokes it. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again.
 
-A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local database and nothing else.
+A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local data: the database, attachments and browser storage.
 
 ## Deleting an account
 

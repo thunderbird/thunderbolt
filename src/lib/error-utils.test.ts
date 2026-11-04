@@ -12,9 +12,12 @@ import {
   getErrorRetryable,
   getErrorStatusCode,
   getInferenceQuotaWindow,
+  isAgentInstructionsTooLargeError,
+  isAgentRunInProgressError,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
+  isToolSupportRejectionError,
 } from './error-utils'
 import type { HandleErrorCode } from '@/types/handle-errors'
 
@@ -614,5 +617,133 @@ describe('isContextOverflowError', () => {
 
   it('returns false for null', () => {
     expect(isContextOverflowError(null)).toBe(false)
+  })
+})
+
+describe('hosted agent refusals', () => {
+  /** A refusal as the managed-http adapter serializes the endpoint's coded response. */
+  const agentError = (code: string, status: number) =>
+    new Error(JSON.stringify({ error: JSON.stringify({ error: { code } }), status }))
+
+  it('reads a stream error part for an upstream 429 as a plain rate limit, not a run in progress or a spending cap', () => {
+    const error = new Error(JSON.stringify({ error: 'Too many requests', status: 429 }))
+    expect(isRateLimitError(error)).toBe(true)
+    expect(isAgentRunInProgressError(error)).toBe(false)
+    expect(getInferenceQuotaWindow(error)).toBeUndefined()
+  })
+
+  it('recognizes oversized instructions only on the coded 400', () => {
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(true)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentInstructionsTooLargeError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(
+      false,
+    )
+    expect(isAgentInstructionsTooLargeError(null)).toBe(false)
+  })
+
+  it('keeps oversized instructions out of attachment remediation', () => {
+    expect(isContentRejectionError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 400))).toBe(false)
+    expect(isContentRejectionError(agentError('AGENT_FILES_UNSUPPORTED', 400))).toBe(true)
+  })
+
+  it('recognizes a run in progress only on the coded 429', () => {
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 429))).toBe(true)
+    expect(isAgentRunInProgressError(agentError('AGENT_INSTRUCTIONS_TOO_LARGE', 429))).toBe(false)
+    expect(isAgentRunInProgressError(agentError('AGENT_RUN_IN_PROGRESS', 400))).toBe(false)
+  })
+})
+
+describe('tool-support rejections', () => {
+  const ollamaBody = '{"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'
+  const vllmBody =
+    '{"object":"error","message":"\\"auto\\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set","code":400}'
+  const openRouterBody = '{"error":{"message":"No endpoints found that support tool use.","code":404}}'
+
+  it.each([
+    [
+      'serialized envelope with its kind',
+      JSON.stringify({ error: ollamaBody, status: 400, kind: 'tools-unsupported' }),
+    ],
+    ['legacy JSON without a kind', JSON.stringify({ error: ollamaBody, status: 400 })],
+    ['Pi Ollama 400', `400: ${ollamaBody}`],
+    ['Pi vLLM 400 with escaped quotes', `400: ${vllmBody}`],
+    ['Pi OpenRouter 404', `404: ${openRouterBody}`],
+    ['Pi llama.cpp 500', '500: tools param requires --jinja flag'],
+    ['prefixed Pi error', `openai (400): ${ollamaBody}`],
+  ])('recognizes a %s', (_label, message) => {
+    const error = new Error(message)
+
+    expect(getChatErrorKind(error)).toBe('tools-unsupported')
+    expect(isToolSupportRejectionError(error)).toBe(true)
+    expect(isContentRejectionError(error)).toBe(false)
+  })
+
+  it.each([
+    ['Ollama', '400: {"error":{"message":"gemma3:4b does not support tools"}}'],
+    ['DeepSeek', '400: {"error":{"message":"deepseek-reasoner does not support Function Calling"}}'],
+    [
+      'OpenAI',
+      `400: {"error":{"message":"Unsupported parameter: 'tools' is not supported with this model.","param":"tools","code":"unsupported_parameter"}}`,
+    ],
+    ['Groq', '400: {"error":{"message":"tool calling is not supported with this model"}}'],
+    ['Gemini', '400: {"error":{"message":"Function calling is not enabled for models/gemma-3-27b-it"}}'],
+    [
+      'Gemini, combined tools',
+      '400: {"error":{"message":"Tool use with function calling is unsupported by the model."}}',
+    ],
+    ['AI SDK client-side refusal', `{"error":"'tools' functionality not supported.","isRetryable":false}`],
+    ['contracted', '400: {"error":{"message":"This model doesn\'t support tool calling"}}'],
+    ['plural subject', '400: {"error":{"message":"Do not support tools for this model; tools are not supported"}}'],
+    ['standalone tool use', '400: {"error":{"message":"tool use is not supported by this deployment"}}'],
+  ])('recognizes the %s wording', (_provider, message) => {
+    expect(getChatErrorKind(new Error(message))).toBe('tools-unsupported')
+  })
+
+  it.each([
+    [
+      'an unsupported parallel_tool_calls option',
+      `400: {"error":{"message":"Unsupported parameter: 'parallel_tool_calls' is not supported with this model."}}`,
+    ],
+    ['a refused forced tool call', `400: {"error":{"message":"tool_choice 'required' is not supported"}}`],
+    [
+      'a failed tool call (Groq)',
+      '400: {"error":{"code":"tool_use_failed","message":"Failed to call a function. Please adjust your prompt."}}',
+    ],
+    [
+      'an invalid tool schema',
+      `400: {"error":{"message":"Invalid schema for function 'search': 'additionalProperties' is required"}}`,
+    ],
+    ['an unrelated unsupported input', '400: {"error":{"message":"Image input is not supported for this model"}}'],
+    ['a tool count limit', '400: {"error":{"message":"maximum number of items is 128","param":"tools"}}'],
+    ['one named tool', '400: {"error":{"message":"the code_interpreter tool is not supported with this model"}}'],
+    ['a refused tool_choice value in prose', '400: {"error":{"message":"this model does not support tool choice"}}'],
+  ])('does not treat %s as a tool-support rejection', (_label, message) => {
+    expect(isToolSupportRejectionError(new Error(message))).toBe(false)
+  })
+
+  it('classifies a raw provider error before its status code', () => {
+    expect(classifyErrorKind({ statusCode: 500, responseBody: 'tools param requires --jinja flag' })).toBe(
+      'tools-unsupported',
+    )
+    expect(classifyErrorKind({ statusCode: 404, responseBody: openRouterBody })).toBe('tools-unsupported')
+  })
+
+  it('keeps a rate limit a rate limit even when its body mentions tools', () => {
+    expect(classifyErrorKind({ statusCode: 429, responseBody: 'tools are not supported on the free tier' })).toBe(
+      'rate-limit',
+    )
+  })
+
+  it('leaves invalid tool definitions and other rejections alone', () => {
+    const toolParameterError = new Error(
+      '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+    )
+    const fileRejection = new Error('400: invalid file content')
+
+    expect(isToolSupportRejectionError(toolParameterError)).toBe(false)
+    expect(getChatErrorKind(toolParameterError)).toBe('provider')
+    expect(isToolSupportRejectionError(fileRejection)).toBe(false)
+    expect(isContentRejectionError(fileRejection)).toBe(true)
   })
 })

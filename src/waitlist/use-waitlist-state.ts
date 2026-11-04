@@ -12,11 +12,13 @@ import { msg } from '@lingui/core/macro'
 import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
+import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
 const joinFailed = msg`Something went wrong. Please try again.`
 const verifyFailed = msg`Verification failed. Please try again.`
+const passkeyFailed = msg`Couldn't sign in with your passkey. Please try again or use your email.`
 
 type WaitlistStatus = 'idle' | 'joining' | 'checkEmail' | 'verifying' | 'error'
 
@@ -26,6 +28,7 @@ type State = {
   challengeToken: string
   status: WaitlistStatus
   errorMessage: string
+  passkeyPending: boolean
 }
 
 type Action =
@@ -37,6 +40,9 @@ type Action =
   | { type: 'START_VERIFYING' }
   | { type: 'VERIFY_ERROR'; payload: string }
   | { type: 'RESET' }
+  | { type: 'PASSKEY_START' }
+  | { type: 'PASSKEY_ERROR'; payload: string }
+  | { type: 'PASSKEY_CANCEL' }
 
 const initialState: State = {
   email: '',
@@ -44,6 +50,7 @@ const initialState: State = {
   challengeToken: '',
   status: 'idle',
   errorMessage: '',
+  passkeyPending: false,
 }
 
 const reducer = (state: State, action: Action): State => {
@@ -64,6 +71,12 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'checkEmail', otp: '', errorMessage: action.payload }
     case 'RESET':
       return initialState
+    case 'PASSKEY_START':
+      return { ...state, status: 'idle', passkeyPending: true, errorMessage: '' }
+    case 'PASSKEY_ERROR':
+      return { ...state, status: 'error', passkeyPending: false, errorMessage: action.payload }
+    case 'PASSKEY_CANCEL':
+      return { ...state, status: 'idle', passkeyPending: false, errorMessage: '' }
     default:
       return state
   }
@@ -71,17 +84,17 @@ const reducer = (state: State, action: Action): State => {
 
 type UseWaitlistStateOptions = {
   authClient: AuthClient
-  onVerified?: () => void
 }
 
 /**
  * State hook for the unified waitlist flow.
  * Handles email submission via the waitlist API, then OTP verification for approved users.
+ * AuthGate owns the signed-in redirect; post-sign-in work can finish after this page unmounts.
  *
  * Privacy note: The API always returns { success: true } regardless of user status.
  * Approved users receive an OTP email; others receive waitlist status emails.
  */
-export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
+export const useWaitlistState = ({ authClient }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
   const [state, dispatch] = useReducer(reducer, initialState)
@@ -137,10 +150,30 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
       }
-      onVerified?.()
     } catch (error) {
       console.error('OTP verification error:', error)
       dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
+    }
+  }
+
+  const handlePasskeySignIn = async () => {
+    // Disable the button before any await, so a double tap can't start a second ceremony.
+    dispatch({ type: 'PASSKEY_START' })
+    await analytics.captureAnonId(authClient)
+
+    try {
+      const { userId } = await signInWithPasskey(authClient)
+
+      analytics.onPromotionSuccess(userId)
+
+      useWelcomeStore.getState().trigger()
+    } catch (error) {
+      if (isPasskeyCancellation(error)) {
+        dispatch({ type: 'PASSKEY_CANCEL' })
+        return
+      }
+      console.error('Passkey sign-in error:', error)
+      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
     }
   }
 
@@ -154,6 +187,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
     actions: {
       handleSubmit,
       handleOtpComplete,
+      handlePasskeySignIn,
       setEmail,
       setOtp,
       reset,

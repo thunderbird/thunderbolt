@@ -5,11 +5,11 @@ Who can sign in to your deployment, and how you change that. The full list of se
 
 ## Pick where access is decided
 
-| Mode       | `AUTH_MODE` | Users sign in with                  | You control access from                                                    |
-| ---------- | ----------- | ----------------------------------- | -------------------------------------------------------------------------- |
+| Mode       | `AUTH_MODE` | Users sign in with                  | You control access from                                                   |
+| ---------- | ----------- | ----------------------------------- | ------------------------------------------------------------------------- |
 | Email code | `consumer`  | An 8-digit code sent to their email | Approved email domains and the `waitlist` table ([below](#first-sign-in)) |
-| OIDC SSO   | `oidc`      | Your identity provider              | Your identity provider                                                     |
-| SAML SSO   | `saml`      | Your identity provider              | Your identity provider                                                     |
+| OIDC SSO   | `oidc`      | Your identity provider              | Your identity provider                                                    |
+| SAML SSO   | `saml`      | Your identity provider              | Your identity provider                                                    |
 
 An unset `AUTH_MODE` falls back to `consumer`, but the packaged Docker Compose and Kubernetes
 deployments both set `oidc` and ship a demo identity provider, so a stock install is on SSO until you
@@ -34,10 +34,10 @@ An email address without an account is let in only once it is approved. Until th
 puts the address on a waitlist and sends it a waitlist email instead of a code. Anyone who already has
 an account always gets a code.
 
-| To let in                       | Do this                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| Everyone at your email domains  | List them in `WAITLIST_AUTO_APPROVE_DOMAINS`, comma-separated, and restart the API          |
-| One address outside them        | Set its row in the `waitlist` table to `status = 'approved'`; there is no screen or command |
+| To let in                      | Do this                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| Everyone at your email domains | List them in `WAITLIST_AUTO_APPROVE_DOMAINS`, comma-separated, and restart the API          |
+| One address outside them       | Set its row in the `waitlist` table to `status = 'approved'`; there is no screen or command |
 
 A domain entry must equal everything after the `@`, so `example.com` does not cover
 `mail.example.com`. `WAITLIST_ENABLED` has no effect: the waitlist always applies.
@@ -113,7 +113,15 @@ provider's job.
 - Add the provider's origin to `TRUSTED_ORIGINS`, not `CORS_ORIGINS`. Containerized deployments
   usually need two entries: the origin the browser sees and the internal hostname the API uses.
 - An identity from your provider is linked onto an existing account with the same email address, so a
-  deployment can move from email codes to SSO without stranding accounts.
+  deployment can move from email codes to SSO without stranding accounts. The existing account's email
+  must be verified, or the account must already have an identity from your provider. Otherwise the
+  sign-in fails with "account not linked". It also fails when an OIDC provider reports the email as
+  not verified (`email_verified` false), so mark addresses verified at the provider. See
+  [Authentication](../self-hosting/authentication.md#what-single-sign-on-looks-like-to-the-user).
+- A failed or cancelled sign-in returns the user to the app with a message and a "Try again" button.
+- Under SAML, a login that starts at your provider's dashboard is refused by default. Point the
+  dashboard icon at your app's address, or read the risk of `SAML_ALLOW_IDP_INITIATED` in
+  [Authentication](../self-hosting/authentication.md#logging-in-from-the-providers-dashboard).
 
 There is no SCIM endpoint and no provisioning ahead of first use; an account exists once the person
 signs in for the first time.
@@ -133,8 +141,7 @@ device with sync off only sees its session fail and is asked to sign in again, a
 copy; so does a device that stays offline. Treat device recovery as a separate step for a high-stakes
 departure.
 
-Revoking a single device stops that device syncing and cuts its sessions, and the person is asked
-whether to keep or erase the local copy.
+Revoking a single device stops that device syncing and cuts its sessions. It clears its local copy the next time it connects; one that never comes back online keeps it.
 
 ## Programmatic access
 

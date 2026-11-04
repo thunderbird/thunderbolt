@@ -50,7 +50,7 @@ POWERSYNC AND STORAGE
   that reads them (src/search/fts-setup.ts) is intentionally coupled to an
   undocumented internal shape and is documented as such.
 - The `powersync-web-internal` Vite alias points at a non-public `@powersync/web`
-  path on purpose, for the custom SharedWorker.
+  path on purpose, for the custom sync worker.
 - The FTS index is deliberately locale-independent and holds user content in
   plaintext in local SQLite — same known gap as above.
 

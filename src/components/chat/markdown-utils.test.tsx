@@ -18,6 +18,7 @@ import {
   citationMarkdownComponents,
   ExternalLinkDialogProvider,
   markdownComponents,
+  markdownUrlTransform,
   useOpenExternalLink,
 } from './markdown-utils'
 
@@ -275,6 +276,52 @@ describe('ExternalLinkDialogProvider (single dialog for multiple links)', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Open Link' }))
     expect(mockWindowOpen).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
     window.open = originalOpen
+  })
+})
+
+describe('SafeLink contact and unsupported links', () => {
+  const renderMarkdown = (markdown: string) =>
+    render(
+      <ExternalLinkDialogProvider>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={markdownUrlTransform}>
+          {markdown}
+        </ReactMarkdown>
+      </ExternalLinkDialogProvider>,
+    )
+
+  test('a bare email renders a mailto anchor with no target', () => {
+    const { container } = renderMarkdown('Write to help@example.com today')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('mailto:help@example.com')
+    expect(link?.hasAttribute('target')).toBe(false)
+  })
+
+  test('a tel link renders an anchor with no target and opens no dialog', () => {
+    const { container } = renderMarkdown('[call](tel:+15551234567)')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('tel:+15551234567')
+    expect(link?.hasAttribute('target')).toBe(false)
+    fireEvent.click(link!)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  test('a javascript link renders as plain text', () => {
+    const { container } = renderMarkdown('[click](javascript:alert(1))')
+    expect(container.querySelector('a')).toBeNull()
+    expect(container.textContent).toContain('click')
+  })
+
+  test('no anchor carries a node attribute', () => {
+    const { container } = renderMarkdown('help@example.com and [site](https://example.com)')
+    container.querySelectorAll('a').forEach((a) => expect(a.hasAttribute('node')).toBe(false))
+  })
+
+  test('an https link keeps its target and opens the dialog', () => {
+    const { container } = renderMarkdown('[site](https://example.com)')
+    const link = container.querySelector('a')
+    expect(link?.getAttribute('target')).toBe('_blank')
+    fireEvent.click(link!)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 })
 

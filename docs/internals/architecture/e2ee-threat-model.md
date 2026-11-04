@@ -112,14 +112,24 @@ falsify, not a fact.
   closed a follower TOCTOU — `followToV2` verified one keyring and persisted a re-fetched one, via a
   call that could itself adopt a fresh AK and un-set the AK just verified.
 
-  **Residuals.** (1) A device's FIRST adoption is trust-on-first-use and cannot be otherwise: a new
-  device shares no secret with the account and its only channel is the adversary. At approval there
-  is nothing to check against; at phrase recovery the AK is wrapped *to* the recovery slot's public
-  halves, which the server stores, so it can wrap its own AK to them. Authenticating that wrap
-  under the phrase seed would close it and would break silent re-escrow on rotation — which is why
-  THU-865 built an attestation instead, and that attestation is signed with a key this very attack
-  controls. The real close is out-of-band device verification, a POC non-goal (see C11's first
-  residual, which is the same wall). (2) **Rollback passes the witness by construction** — an old
+  **Approval recipient binding.** Before wrapping the AK, an approver
+  matches the pending device's locally computed 256-bit account/id/P-256/ML-KEM
+  fingerprint. The dialog snapshots that tuple, so a changed row cannot retarget
+  the wrap. An honest backend also verifies the submitted attestation against the
+  locked target row. This backend check is race defense: A2 can replace its stored
+  metadata and verification key, so it cannot establish the malicious-server boundary.
+  First receivers check their local recipient tuple before any key-state writes.
+  The pre-wrap comparison is the disclosure control; receiver verification cannot
+  protect an AK already disclosed. The substitution case in `multi-device.spec.ts`
+  and focused fingerprint, service and upgrade tests guard these paths.
+
+  **Residuals.** (1) A device's FIRST account-key adoption remains trust-on-first-use:
+  it has no previous witness to the account's key material. Fingerprint verification
+  binds the recipient, not an anonymous AK supplied by the server. At phrase recovery
+  the AK is wrapped *to* the recovery slot's public halves, which the server stores,
+  so it can wrap its own AK to them. A server-supplied AK/canary can also produce a
+  self-consistent recipient attestation. Authenticating the account key itself needs
+  an additional independent trust root. (2) **Rollback passes the witness by construction** — an old
   honest envelope with its matching old keyring verifies, because DEK `"0"` is immutable. The
   replayed set includes the canary, `signing_public_key` and `key_version`, so the device is
   returned wholesale to an epoch a revoked device holds and whose old envelope is valid for: that
@@ -156,7 +166,7 @@ falsify, not a fact.
   is a wire-format change rather than a comment someone implements. (2) A2 never holds another
   account's AK in openable form: only wrappings to that account's own device public keys, plus the
   org-escrow envelope, which is C11's deliberate operator concession. (3) A `user_id` never changes
-  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:414`) deletes the anonymous user
+  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:641`) deletes the anonymous user
   outright, so no ciphertext survives an id change. Any change to (1) or (2) invalidates this claim
   and must revisit the AAD. **Adding the account id to the AAD was considered and rejected**
   (THU-891, cancelled): it closes nothing reachable, and against the one path that *is* reachable —
@@ -259,6 +269,16 @@ falsify, not a fact.
   account's leftover CK on the same browser (a wipe that threw and was logged-and-continued) fails
   the comparison and blocks the migration loudly — preferred over poisoning the keyring for every
   device on the account.
+  **Migration recipients.** The only device envelope is for the migrator's local keys.
+  The recovery slot and any pinned organizational escrow key also receive wrapped
+  copies of the new account key.
+  Under the existing advisory lock, the backend removes obsolete envelopes for all
+  non-revoked normal app siblings, including pending
+  and denied siblings. Only trusted siblings are demoted and lose node bindings;
+  pending/denied row state and CLI/bridge/revoked rows remain unchanged. Every change
+  rolls back together on failure. The migrator shows a new recovery phrase, replacing
+  the previous one. Siblings regain access through verified approval, that new phrase
+  or a passkey enrolled for sync.
 - **C8 — Possession proof is meaningful against A4/A5.** `hash(canarySecret) == canary_secret_hash`
   proves CK possession to an adversary that cannot rewrite the DB — a stolen session (A5) or a
   key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2, who
@@ -315,9 +335,11 @@ falsify, not a fact.
   untagged: the attacker dies at the gate with the anchor unmoved) and the gate matrix in
   `backend/src/api/encryption-v2.test.ts`. **Boundary + residuals:** full device/OS compromise is
   out of scope — the guarantee is that a TRANSIENT, ORIGIN-LEVEL compromise cannot become permanent
-  takeover. The interim step-up factor is an email OTP, defeatable by an attacker who also reads the
-  victim's inbox in the same browser; the factor upgrades to a passkey/PRF assertion when THU-790
-  lands (recorded there), and the notification remains the net beneath the gate either way.
+  takeover **through the recovery anchor**. The passkey slot is the exception: enrolling it has no
+  step-up (see [Known and accepted](#known-and-accepted)). The interim step-up factor is an email
+  OTP, defeatable by an attacker who also reads the victim's inbox in the same browser; upgrading it
+  to a passkey/PRF assertion is a follow-up, and the notification remains the net beneath the gate
+  either way.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.
@@ -335,14 +357,16 @@ falsify, not a fact.
   **Two residuals.** (1) A build-time pin is a full trust root only where the bundle ships out of
   band — the Tauri desktop/mobile builds. For the **web** build A2 also serves the JS, so it can
   serve a bundle carrying a different pin; what the pin buys there is a change of kind, turning an
-  invisible per-request JSON lie into a persistent, cacheable, diffable bundle modification. Closing
-  that needs out-of-band fingerprint verification by the user, which the POC lists as a non-goal.
+  invisible per-request JSON lie into a persistent, cacheable, diffable bundle modification.
+  Protection against that code replacement requires an independently obtained, trusted client build.
   (2) A build pinning the wrong key escrows to something the operator cannot open, and nothing
   detects it — the server holds no key to compare against, by design. Catching that would need the
   client to declare its wrap target and the server to hold a key again, trading a silent
   misconfiguration for a restored steering surface; the POC accepts the former.
-- **C12 — Rollout gate holds.** `MIN_APP_VERSION` prevents a below-min client from syncing a flipped
-  account, including via exempt routes, long-TTL PowerSync tokens, and `X-App-Version` spoofing.
+- **C12 — Header-based rollout gate on an honest server.** With `MIN_APP_VERSION` set, a gated
+  request gets 426 when its `X-App-Version` header is missing, unparseable or below the minimum.
+  The value is client-supplied, and A2 can ignore this server policy. The gate applies to all
+  non-exempt requests; it does not establish what code a client is running.
 - **C13 — Multi-tab / worker key plumbing.** The key-request `BroadcastChannel` and SharedWorker path
   cannot be driven by A6 to exfiltrate keys, stage attacker-supplied keyring material, or fail open
   on an unknown `key_id`.
@@ -413,7 +437,28 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
   build pinned to the wrong escrow key (THU-866 residual — see C11).
 - **Decrypt-failure handling and keys-before-data ordering** are deferred (planning gaps G2/G3);
   PowerSync retries make naive fail-closed poison the sync loop.
-- **Device fingerprint verification at approval** (Signal-style code compare) is deferred (G5).
+- **Older approvers and a malicious web host.** Updated clients require fingerprint
+  verification before approving another device. During migration, the only device
+  envelope is wrapped to the migrating device's local keys.
+  Both the approver and the new device must run trusted client code. A web host can
+  alter either side's JavaScript, including the new device's displayed fingerprint
+  and keys. An honest deployment can enforce `MIN_APP_VERSION` on all gated requests
+  at the release introducing fingerprint approval; A2 can ignore that gate. Independently distributed
+  desktop/mobile bundles provide the stronger boundary. Previously compromised AKs
+  remain compromised; this does not repair them.
+- **Whoever controls the passkey can unlock the account's data.** The passkey slot is a virtual
+  device keyed by the passkey's PRF output, so anyone who can use the passkey — including anyone in
+  control of the account at its synced provider (iCloud Keychain, Google Password Manager, a password
+  manager) — can unlock sync on a new device. Same trade as Tinfoil and 1Password; the recovery
+  phrase and device approval remain as independent ways in.
+- **Enrolling a passkey slot has no step-up.** Unlike a recovery-phrase change, a rotation that adds
+  the slot needs only the `rotate` proof, so A6 on a trusted device can plant a slot for keys it
+  controls and keep receiving the AK through later rotations, revocations included. And it isn't
+  reliably visible: the server only checks that the slot names one of the user's passkeys, so a
+  planted slot can sit under the user's real passkey and Preferences looks the same. Removing the
+  passkey (from a device with sync on) rotates the slot away and mints a new primary DEK, which
+  stops future unlocks; any device that already unlocked through the slot must still be revoked.
+  A step-up gate is a follow-up.
 
 ## Consumers
 

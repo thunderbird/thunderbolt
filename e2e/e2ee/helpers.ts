@@ -132,7 +132,7 @@ export const getDeviceId = async (page: Page): Promise<string> => {
 }
 
 /** Backend origin the frontend bundle points at (VITE_THUNDERBOLT_CLOUD_URL). */
-const backendBaseUrl = 'http://localhost:8004/v1'
+export const backendBaseUrl = 'http://localhost:8004/v1'
 
 export type EncryptionApiResponse = { status: number; body: unknown }
 
@@ -674,12 +674,15 @@ export const completeStepUpCode = async (page: Page, email: string): Promise<voi
  * the notification, then a confirmation. Extracted from multi-device.spec.ts so
  * attack specs can reach full trust without restating the sequence.
  */
-export const approvePendingDevice = async (adminPage: Page): Promise<void> => {
+export const approvePendingDevice = async (adminPage: Page, pendingPage: Page): Promise<void> => {
+  const fingerprint = pendingPage.getByLabel('Device fingerprint', { exact: true })
+  await expect(fingerprint).toHaveText(/^(?:[A-F0-9]{4}-){15}[A-F0-9]{4}$/)
   const notification = adminPage.getByRole('dialog').filter({ hasText: 'New device waiting' })
   await expect(notification).toBeVisible({ timeout: 30_000 })
   await notification.getByRole('button', { name: 'Approve' }).click()
   const confirmation = adminPage.getByRole('alertdialog')
   await expect(confirmation.getByText('Approve this device?')).toBeVisible()
+  await confirmation.getByLabel('Device fingerprint', { exact: true }).fill((await fingerprint.textContent())!)
   await confirmation.getByRole('button', { name: 'Approve' }).click()
 }
 
@@ -710,7 +713,7 @@ export const trustAdditionalDevice = async (
   const deviceId = await getDeviceId(device.page)
   await waitForDeviceState(userId, deviceId, (state) => state.approvalPending && !state.trusted)
 
-  await approvePendingDevice(adminPage)
+  await approvePendingDevice(adminPage, device.page)
   await waitForConsumedChallenge(userId, 'approve')
   await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
   await finishAdditionalDeviceSetup(device.page)
@@ -719,12 +722,12 @@ export const trustAdditionalDevice = async (
 }
 
 /**
- * A4 — a device that held full trust and was then revoked, with its browser
- * context left open so it keeps whatever key material it cached.
+ * A4 — a device that held full trust and was then revoked, held offline so it
+ * keeps whatever key material and token it cached.
  *
  * That retention is the point: revocation deletes the server envelope and
- * rotates AK and DEK, but it cannot reach into this context's IndexedDB. What
- * the device can still *do* with what it kept is claim C5.
+ * rotates AK and DEK, but it cannot reach a device that never hears about it.
+ * What the device can still *do* with what it kept is claim C5.
  */
 export const revokedDeviceContext = async (
   browser: Browser,
@@ -732,6 +735,8 @@ export const revokedDeviceContext = async (
   options: AdditionalDeviceOptions,
 ): Promise<TrustedDevice> => {
   const device = await trustAdditionalDevice(browser, adminPage, options)
+  // A revoked device that hears about it wipes itself; an attacker keeps it offline.
+  await device.context.setOffline(true)
   await revokeTrustedDevice(adminPage, device.label)
   await waitForConsumedChallenge(options.userId, 'revoke')
   await waitForDeviceState(options.userId, device.deviceId, (state) => state.revokedAt !== null)

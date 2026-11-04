@@ -174,6 +174,7 @@ describe('inference usage ledger', () => {
            and column_name in (
              'input_nano_usd_per_token',
              'output_nano_usd_per_token',
+             'cache_read_nano_usd_per_token',
              'prompt_tokens',
              'completion_tokens',
              'total_tokens',
@@ -185,6 +186,7 @@ describe('inference usage ledger', () => {
       expect(types).toEqual({
         input_nano_usd_per_token: 'bigint',
         output_nano_usd_per_token: 'bigint',
+        cache_read_nano_usd_per_token: 'bigint',
         prompt_tokens: 'integer',
         completion_tokens: 'integer',
         total_tokens: 'integer',
@@ -233,6 +235,17 @@ describe('inference usage ledger', () => {
             model: 'negative-output',
             inputNanoUsdPerToken: 0n,
             outputNanoUsdPerToken: -1n,
+          }),
+        ),
+      ).rejects.toThrow()
+      await expect(
+        Promise.resolve(
+          database.insert(inferencePrices).values({
+            provider: 'test',
+            model: 'negative-cache-read',
+            inputNanoUsdPerToken: 0n,
+            outputNanoUsdPerToken: 0n,
+            cacheReadNanoUsdPerToken: -1n,
           }),
         ),
       ).rejects.toThrow()
@@ -290,6 +303,20 @@ describe('inference usage ledger', () => {
       ).toBe(308_750n)
     })
 
+    it('prefers a row cache-read rate over the Anthropic tenth-of-input rule', () => {
+      expect(
+        calculateInferenceCost(
+          { promptTokens: 60, completionTokens: 4, totalTokens: 64, cacheReadTokens: 30 },
+          {
+            ...opusIdentity,
+            inputNanoUsdPerToken: 5_000n,
+            outputNanoUsdPerToken: 25_000n,
+            cacheReadNanoUsdPerToken: 400n,
+          },
+        ),
+      ).toBe(262_000n)
+    })
+
     it('accepts the signed PostgreSQL bigint maximum and rejects overflow', () => {
       const counts = { promptTokens: 1, completionTokens: 0, totalTokens: 1 }
 
@@ -313,6 +340,13 @@ describe('inference usage ledger', () => {
   describe('fireworks', () => {
     const limits = { fiveHourCents: 100, sevenDayCents: 1_000 }
 
+    const clearCacheReadPrice = async (identity: ManagedInferenceIdentity) => {
+      await database
+        .update(inferencePrices)
+        .set({ cacheReadNanoUsdPerToken: null })
+        .where(and(eq(inferencePrices.provider, identity.provider), eq(inferencePrices.model, identity.model)))
+    }
+
     it('admits seeded fireworks models with their list prices', async () => {
       await insertUser(database, 'fireworks-admission-user')
 
@@ -320,17 +354,71 @@ describe('inference usage ledger', () => {
         await checkManagedInferenceAdmission(database, fireworksGlmIdentity, 'fireworks-admission-user', limits),
       ).toEqual({
         outcome: 'allowed',
-        price: { ...fireworksGlmIdentity, inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
+        price: {
+          ...fireworksGlmIdentity,
+          inputNanoUsdPerToken: 1_400n,
+          outputNanoUsdPerToken: 4_400n,
+          cacheReadNanoUsdPerToken: 260n,
+        },
       })
       expect(
         await checkManagedInferenceAdmission(database, fireworksMinimaxIdentity, 'fireworks-admission-user', limits),
       ).toEqual({
         outcome: 'allowed',
-        price: { ...fireworksMinimaxIdentity, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
+        price: {
+          ...fireworksMinimaxIdentity,
+          inputNanoUsdPerToken: 300n,
+          outputNanoUsdPerToken: 1_200n,
+          cacheReadNanoUsdPerToken: 60n,
+        },
       })
     })
 
-    it('records provider and cost without applying anthropic cache multipliers', async () => {
+    it('omits the cache-read rate when the row has none', async () => {
+      await clearCacheReadPrice(fireworksGlmIdentity)
+
+      expect(await loadInferencePrice(database, fireworksGlmIdentity)).toEqual({
+        ...fireworksGlmIdentity,
+        inputNanoUsdPerToken: 1_400n,
+        outputNanoUsdPerToken: 4_400n,
+      })
+    })
+
+    it('bills cached prompt tokens at the cache-read rate', () => {
+      expect(
+        calculateInferenceCost(
+          { promptTokens: 1_000, completionTokens: 500, totalTokens: 1_500, cacheReadTokens: 800 },
+          {
+            ...fireworksMinimaxIdentity,
+            inputNanoUsdPerToken: 300n,
+            outputNanoUsdPerToken: 1_200n,
+            cacheReadNanoUsdPerToken: 60n,
+          },
+        ),
+      ).toBe(708_000n)
+    })
+
+    it('ignores cache creation counts for non-anthropic providers', () => {
+      expect(
+        calculateInferenceCost(
+          {
+            promptTokens: 1_000,
+            completionTokens: 0,
+            totalTokens: 1_000,
+            cacheCreationTokens: 900,
+            cacheReadTokens: 100,
+          },
+          {
+            ...fireworksMinimaxIdentity,
+            inputNanoUsdPerToken: 300n,
+            outputNanoUsdPerToken: 1_200n,
+            cacheReadNanoUsdPerToken: 60n,
+          },
+        ),
+      ).toBe(276_000n)
+    })
+
+    it('records cached prompt tokens at the seeded cache-read rate', async () => {
       const userId = 'fireworks-record-user'
       await insertUser(database, userId)
       const price = await loadRequiredPrice(database, fireworksGlmIdentity)
@@ -349,8 +437,52 @@ describe('inference usage ledger', () => {
       expect(row).toMatchObject({
         provider: 'fireworks',
         model: fireworksGlmIdentity.model,
-        costNanoUsd: 1_000n * 1_400n + 500n * 4_400n,
+        costNanoUsd: 2_688_000n,
       })
+    })
+
+    it('bills cached prompt tokens at the input rate when the row has no cache-read rate', async () => {
+      const userId = 'fireworks-unpriced-cache-user'
+      await insertUser(database, userId)
+      await clearCacheReadPrice(fireworksGlmIdentity)
+      const price = await loadRequiredPrice(database, fireworksGlmIdentity)
+
+      await recordInferenceUsage(
+        database,
+        usageInput('fireworks-unpriced-cache-usage', userId, price, {
+          promptTokens: 1_000,
+          completionTokens: 500,
+          totalTokens: 1_500,
+          cacheReadTokens: 800,
+        }),
+      )
+
+      const [row] = await database
+        .select()
+        .from(inferenceUsage)
+        .where(eq(inferenceUsage.id, 'fireworks-unpriced-cache-usage'))
+      expect(row.costNanoUsd).toBe(3_600_000n)
+    })
+
+    it('rejects cached prompt tokens above the prompt total before insertion', async () => {
+      const userId = 'fireworks-excess-cache-user'
+      await insertUser(database, userId)
+      const price = await loadRequiredPrice(database, fireworksGlmIdentity)
+
+      await expect(
+        recordInferenceUsage(
+          database,
+          usageInput('fireworks-excess-cache-usage', userId, price, {
+            promptTokens: 1_000,
+            completionTokens: 500,
+            totalTokens: 1_500,
+            cacheReadTokens: 1_001,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(InferenceTokenCountOutOfRangeError)
+      expect(
+        await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, 'fireworks-excess-cache-usage')),
+      ).toHaveLength(0)
     })
   })
 

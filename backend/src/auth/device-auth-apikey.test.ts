@@ -90,6 +90,11 @@ describe('Device Authorization Grant (RFC 8628)', () => {
   it('exposes an approved device credential that authenticates protected routes as the approving account', async () => {
     const { device_code: deviceCode, user_code: userCode } = await requestDeviceCode()
 
+    // The frontend /device page claims the code for the signed-in user before approving it.
+    const claimRes = await harness.app.handle(
+      new Request(`${authBase}/device?user_code=${userCode}`, { headers: authHeaders(harness.bearerToken) }),
+    )
+    expect(claimRes.status).toBe(200)
     const approveRes = await postJson(harness.app, '/device/approve', { userCode }, authHeaders(harness.bearerToken))
     expect(approveRes.status).toBe(200)
 

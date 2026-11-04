@@ -67,7 +67,13 @@ export type SearchStatement = {
  * a UUIDv7, which sorts lexicographically by creation time (see `uuidv7ToDate`
  * in `src/lib/utils.ts`) — so that is newest-first for free.
  */
-export const buildSearchStatement = (plan: SearchQueryPlan): SearchStatement => {
+export const buildSearchStatement = (
+  plan: SearchQueryPlan,
+  excludeTypes: readonly SearchEntityType[] = [],
+): SearchStatement => {
+  // Excluded in the query, not after it: the LIMIT below would otherwise let
+  // hidden types fill every slot and starve the rows the caller can show.
+  const excludeSql = excludeTypes.length > 0 ? `entity_type NOT IN (${excludeTypes.map(() => '?').join(', ')})` : ''
   const likeSql = plan.substrings.map(() => likeClause).join(' AND ')
   const likeParameters = plan.substrings.flatMap((term) => {
     const pattern = toLikePattern(term)
@@ -80,9 +86,9 @@ export const buildSearchStatement = (plan: SearchQueryPlan): SearchStatement => 
     return {
       sql:
         `SELECT id, entity_type, parent_id, title, ${matchSnippetSql} AS snippet ` +
-        `FROM search_index WHERE search_index MATCH ?${likeSql ? ` AND ${likeSql}` : ''} ` +
+        `FROM search_index WHERE search_index MATCH ?${likeSql ? ` AND ${likeSql}` : ''}${excludeSql ? ` AND ${excludeSql}` : ''} ` +
         `ORDER BY ${bm25Sql}, id LIMIT ${resultLimit}`,
-      parameters: [plan.match ?? '', ...likeParameters],
+      parameters: [plan.match ?? '', ...likeParameters, ...excludeTypes],
     }
   }
 
@@ -90,9 +96,9 @@ export const buildSearchStatement = (plan: SearchQueryPlan): SearchStatement => 
   return {
     sql:
       `SELECT id, entity_type, parent_id, title, ${substringSnippetSql} AS snippet ` +
-      `FROM search_index WHERE ${likeSql} ` +
+      `FROM search_index WHERE ${likeSql}${excludeSql ? ` AND ${excludeSql}` : ''} ` +
       `ORDER BY id DESC LIMIT ${resultLimit}`,
-    parameters: [snippetTerm, snippetTerm, snippetTerm, ...likeParameters],
+    parameters: [snippetTerm, snippetTerm, snippetTerm, ...likeParameters, ...excludeTypes],
   }
 }
 
@@ -119,12 +125,12 @@ const toResult = (row: SearchRow): SearchResult => {
  * empty/whitespace query. Debouncing is the caller's concern — this tolerates
  * rapid calls but does not delay them.
  */
-export const useSearch: UseSearch = (query) => {
+export const useSearch: UseSearch = (query, { excludeTypes = [] } = {}) => {
   const plan = planSearchQuery(query)
   const enabled = plan.match !== null || plan.substrings.length > 0
-  const statement = buildSearchStatement(plan)
+  const statement = buildSearchStatement(plan, excludeTypes)
   const { data, isLoading } = useQuery<SearchRow>({
-    queryKey: ['search', plan.match, plan.substrings],
+    queryKey: ['search', plan.match, plan.substrings, excludeTypes],
     query: statement.sql,
     parameters: statement.parameters,
     enabled,

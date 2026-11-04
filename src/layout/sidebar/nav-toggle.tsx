@@ -93,18 +93,14 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
         {/* z-10 keeps both icons above the sliding thumb: the thumb mounts
             inside the newly-active segment, and when that segment is a later
             DOM sibling it would otherwise paint over the other icon mid-slide. */}
-        <Icon className="relative z-10 size-[var(--icon-size-default)]" />
+        <Icon className={cn('relative z-10 size-[var(--icon-size-default)]', vertical && 'text-muted-foreground')} />
       </button>
     )
   }
 
   if (vertical) {
-    // Segments match the rail's 32px square buttons (size-8) so the active
-    // thumb reads as the same control as the rail items below. -mt-2 cancels
-    // the group's top padding; mb-2 pads the space below to match the 16px
-    // above the pill (header row + gap).
     return (
-      <nav aria-label={t`Sidebar sections`} className="-mt-2 mb-2 flex justify-center">
+      <nav aria-label={t`Sidebar sections`} className="flex justify-center">
         <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
       </nav>
     )
@@ -116,7 +112,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
           the row reads as one line. Mobile is full-bleed so the thumb's
           diameter matches those controls exactly; desktop keeps a 2px
           inset for a more compact thumb in the header. Square segments +
-          gap-0.5 mirror the ChatActions search/clear-all pair, so both icon
+          gap-0.5 keep the section controls compact, so both icon
           duos sit the same distance apart. */}
       <div className="flex h-[var(--touch-height-lg)] w-fit items-center gap-0.5 md:h-[var(--touch-height-default)] md:p-0.5">
         {sections.map(renderSegment)}

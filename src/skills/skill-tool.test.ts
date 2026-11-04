@@ -11,12 +11,14 @@ import { createSkillTool, selectEnabledSkillDefinitions } from './skill-tool'
 const toolCallOptions: ToolCallOptions = { toolCallId: 'skill-call', messages: [] }
 const storedSkills = [
   {
+    id: 'daily-brief',
     name: 'daily-brief',
     description: 'Use for a daily rundown.',
     instruction: 'Gather weather, news, email, and calendar details.',
     enabled: 1,
   },
   {
+    id: 'disabled-skill',
     name: 'disabled-skill',
     description: 'Unavailable.',
     instruction: 'Never expose this instruction.',
@@ -76,7 +78,7 @@ it('notifies synchronously with the resolved name only after a successful load',
   const loaded: string[] = []
   const skills = selectEnabledSkillDefinitions([
     ...storedSkills,
-    { name: 'research', description: 'Research', instruction: 'Research instructions', enabled: 1 },
+    { id: 'research', name: 'research', description: 'Research', instruction: 'Research instructions', enabled: 1 },
   ])
   const skill = createSkillTool(skills, (name) => loaded.push(name))
   const first = skill.execute!({ name: 'daily-brief' }, toolCallOptions)
@@ -93,7 +95,9 @@ it.each(['', '   '])('does not notify for disabled or empty instructions (%j)', 
   for (const enabled of [0, 1]) {
     const loaded: string[] = []
     const skill = createSkillTool(
-      selectEnabledSkillDefinitions([{ name: 'research', description: 'Research', instruction, enabled }]),
+      selectEnabledSkillDefinitions([
+        { id: 'research', name: 'research', description: 'Research', instruction, enabled },
+      ]),
       (name) => loaded.push(name),
     )
     if (enabled) {

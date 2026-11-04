@@ -23,6 +23,7 @@ export type CompanyMcpServer = {
 }
 export type CompanyModel = Pick<Model, 'id' | 'name' | 'model' | 'provider' | 'url' | 'enabled'> & {
   deletedAt: number | null
+  supportsTools?: boolean
 }
 export type AgentPolicy = {
   personalAgentsAllowed: boolean

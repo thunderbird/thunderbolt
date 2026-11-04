@@ -22,6 +22,8 @@ import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
 import { RailDivider } from './rail-divider'
 import { SidebarHeader } from './sidebar-header'
+import { SidebarHeaderActions } from './sidebar-header-actions'
+import { useSearchPalette } from '@/search/search-palette-context'
 import type { SidebarSection } from './types'
 
 export type SectionNavItem = {
@@ -38,6 +40,7 @@ export const SectionSidebar = ({
   isCollapsed,
   onSectionChange,
   onNavigate,
+  onSearchClick,
   activeSection,
   groups,
   footer = <SidebarFooter />,
@@ -45,6 +48,7 @@ export const SectionSidebar = ({
   isCollapsed: boolean
   onSectionChange: (section: SidebarSection) => void
   onNavigate: (path: string) => void
+  onSearchClick?: () => void
   activeSection: SidebarSection
   groups: SectionNavGroup[]
   footer?: ReactNode
@@ -52,15 +56,18 @@ export const SectionSidebar = ({
   const { i18n } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
+  const { open: openSearchPalette } = useSearchPalette()
+  const headerControls = (
+    <SidebarHeaderActions onSearchClick={onSearchClick ?? openSearchPalette}>
+      <SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />
+    </SidebarHeaderActions>
+  )
   const isItemActive = ({ path, matchPrefix }: SectionNavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
 
   return (
     <SidebarContent className="flex flex-col h-full">
-      <SidebarHeader
-        onToggle={toggleSidebar}
-        navToggle={<SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />}
-      />
+      <SidebarHeader onToggle={toggleSidebar} navToggle={headerControls} />
 
       {isCollapsed && (
         // pb-0: the next group's own top padding provides the 8px gap,
@@ -68,7 +75,9 @@ export const SectionSidebar = ({
         // the toggle the same 8px above as the rail leaves on its sides.
         <SidebarGroup className="pt-2 pb-0">
           <SidebarGroupContent>
-            <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />
+            <SidebarHeaderActions vertical onSearchClick={onSearchClick ?? openSearchPalette}>
+              <SidebarNavToggle vertical activeSection={activeSection} onSectionChange={onSectionChange} />
+            </SidebarHeaderActions>
           </SidebarGroupContent>
         </SidebarGroup>
       )}
@@ -88,9 +97,7 @@ export const SectionSidebar = ({
             )}
           >
             {isMobile && index === 0 && (
-              <div className="flex h-[var(--touch-height-lg)] items-center">
-                <SidebarNavToggle activeSection={activeSection} onSectionChange={onSectionChange} />
-              </div>
+              <div className="flex h-[var(--touch-height-lg)] items-center">{headerControls}</div>
             )}
             <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
               {i18n._(group.label)}

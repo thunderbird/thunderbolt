@@ -29,7 +29,14 @@ import {
   type KeyringAnchor,
   type StoredKeyPair,
 } from '@/crypto'
-import { deriveSigningKeyPair, mintCanary, signDeviceAttestation, signRecoveryAttestation } from '@/crypto/canary'
+import {
+  deriveSigningKeyPair,
+  mintCanary,
+  signDeviceAttestation,
+  signPasskeyAttestation,
+  signRecoveryAttestation,
+  unwrapCanaryKey,
+} from '@/crypto/canary'
 import {
   decodeRecoveryKey,
   deriveRecoveryKeyPairFromSeed,
@@ -37,6 +44,8 @@ import {
   generateKdfSalt,
   generateRecoverySeed,
 } from '@/crypto/recovery-key'
+import { derivePasskeyKeyPair } from '@/crypto/passkey-key'
+import { createDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
 
@@ -50,6 +59,7 @@ const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
 let storedKeyringAnchor: KeyringAnchor | null = null
+const keyWrites = { ak: 0, dek: 0, primary: 0, version: 0, witness: 0 }
 /** Simulates a persistent IndexedDB write failure inside `storeAK` (post-commit staging). */
 let failStoreAK = false
 /** Simulates a TRANSIENT storeAK failure: the next call throws, the one after succeeds. */
@@ -77,6 +87,7 @@ mock.module('@/crypto/key-storage', () => ({
   },
   getKeyPair: async () => storedKeyPair,
   storeAK: async (ak: CryptoKey) => {
+    keyWrites.ak += 1
     if (failStoreAK) {
       throw new Error('IndexedDB unavailable')
     }
@@ -89,10 +100,12 @@ mock.module('@/crypto/key-storage', () => ({
   getAK: async () => storedAK,
   getLegacyCK: async () => storedLegacyCK,
   storeDEK: async (keyId: KeyId, wrapped: string) => {
+    keyWrites.dek += 1
     storedDEKs.set(keyId, wrapped)
   },
   getDEK: async (keyId: KeyId) => storedDEKs.get(keyId) ?? null,
   stageWrappedDEKs: async (entries: Array<{ keyId: KeyId; wrappedKey: string }>) => {
+    keyWrites.dek += 1
     for (const entry of entries) {
       storedDEKs.set(entry.keyId, entry.wrappedKey)
     }
@@ -103,6 +116,7 @@ mock.module('@/crypto/key-storage', () => ({
   // module was Map-backed, so the prune ran against fake-indexeddb and its
   // mirror of the server keyring was never observed here.
   pruneStagedDEKs: async (keepKeyIds: KeyId[]) => {
+    keyWrites.dek += 1
     const keep = new Set(keepKeyIds)
     for (const keyId of [...storedDEKs.keys()]) {
       if (!keep.has(keyId)) {
@@ -111,14 +125,17 @@ mock.module('@/crypto/key-storage', () => ({
     }
   },
   storePrimaryKeyId: async (keyId: KeyId) => {
+    keyWrites.primary += 1
     storedPrimaryKeyId = keyId
   },
   getPrimaryKeyId: async () => storedPrimaryKeyId,
   storeKeyVersion: async (version: number) => {
+    keyWrites.version += 1
     storedKeyVersion = version
   },
   getKeyVersion: async () => storedKeyVersion,
   storeKeyringAnchor: async (anchor: KeyringAnchor) => {
+    keyWrites.witness += 1
     storedKeyringAnchor = anchor
   },
   getKeyringAnchor: async () => storedKeyringAnchor,
@@ -136,12 +153,17 @@ mock.module('@/crypto/key-storage', () => ({
 const {
   ensureSessionBound,
   registerThisDevice,
+  getThisDeviceApprovalFingerprint,
   completeFirstDeviceSetup,
   buildOrgEnvelope,
   approveDevice,
   stageKeyring,
   checkApprovalAndUnwrap,
   recoverWithKey,
+  unlockWithPasskey,
+  enrollPasskey,
+  removePasskeySlot,
+  PasskeyAnchorError,
   rotateAccountKey,
   changeRecoveryPhrase,
   revokeDeviceAndRotate,
@@ -171,10 +193,24 @@ type MetaState = {
   recoveryMlkemPublicKey: string | null
   recoveryWrappedAk: string | null
   recoveryAttestation: string | null
+  passkeyCredentialId?: string | null
+  passkeyEcdhPublicKey?: string | null
+  passkeyMlkemPublicKey?: string | null
+  passkeyWrappedAk?: string | null
+  passkeyAttestation?: string | null
   keyVersion: number
   primaryKeyId: KeyId
   schemeVersion: 1 | 2
 }
+
+/** Pull the passkey slot off a rotate body — absent fields clear it, like the server. */
+const passkeySlotFrom = (body: Record<string, unknown>) => ({
+  passkeyCredentialId: (body.passkeyCredentialId as string | undefined) ?? null,
+  passkeyEcdhPublicKey: (body.passkeyEcdhPublicKey as string | undefined) ?? null,
+  passkeyMlkemPublicKey: (body.passkeyMlkemPublicKey as string | undefined) ?? null,
+  passkeyWrappedAk: (body.passkeyWrappedAK as string | undefined) ?? null,
+  passkeyAttestation: (body.passkeyAttestation as string | undefined) ?? null,
+})
 
 /** Pull the recovery slot off a request body into its stored shape. */
 const recoverySlotFrom = (
@@ -303,6 +339,11 @@ const createFakeServer = (): FakeServer => {
             recovery_mlkem_public_key: server.metadata.recoveryMlkemPublicKey,
             recovery_wrapped_ak: server.metadata.recoveryWrappedAk,
             recovery_attestation: server.metadata.recoveryAttestation,
+            passkey_credential_id: server.metadata.passkeyCredentialId ?? null,
+            passkey_ecdh_public_key: server.metadata.passkeyEcdhPublicKey ?? null,
+            passkey_mlkem_public_key: server.metadata.passkeyMlkemPublicKey ?? null,
+            passkey_wrapped_ak: server.metadata.passkeyWrappedAk ?? null,
+            passkey_attestation: server.metadata.passkeyAttestation ?? null,
             key_version: server.metadata.keyVersion,
             primary_key_id: server.metadata.primaryKeyId,
             scheme_version: server.metadata.schemeVersion,
@@ -328,11 +369,16 @@ const createFakeServer = (): FakeServer => {
       if (!env) {
         return jsonResponse({ error: 'not found' }, 404)
       }
-      return jsonResponse({ trusted: server.deviceTrusted.get(callerDeviceId) ?? false, wrappedCK: env })
+      return jsonResponse({
+        trusted: server.deviceTrusted.get(callerDeviceId) ?? false,
+        wrappedCK: env,
+        attestation: seededDeviceAttestations.get(callerDeviceId) ?? null,
+      })
     }
     if (path.endsWith('/envelope') && method === 'POST') {
       const deviceId = decodeURIComponent(path.split('/')[2])
       server.envelopes.set(deviceId, body!.wrappedCK as string)
+      seededDeviceAttestations.set(deviceId, body!.attestation as string)
       server.deviceTrusted.set(deviceId, true)
       if (body!.canaryIv) {
         server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
@@ -418,8 +464,11 @@ const createFakeServer = (): FakeServer => {
         return jsonResponse({ error: 'stale' }, server.rotateStatus)
       }
       server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
-      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
+      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string; attestation: string }>) {
         server.envelopes.set(env.deviceId, env.wrappedCK)
+        // The real server stores the re-signed attestation with the envelope, so
+        // the next rotation verifies against this epoch.
+        seededDeviceAttestations.set(env.deviceId, env.attestation)
       }
       // A rotation may mint one new primary DEK (THU-871). Mirror the server's
       // conflict check: a key_id that already exists aborts the whole rotation,
@@ -443,6 +492,7 @@ const createFakeServer = (): FakeServer => {
         kdfSalt: body!.kdfSalt as string,
         signingPublicKey: body!.signingPublicKey as string,
         ...recoverySlotFrom(body!),
+        ...passkeySlotFrom(body!),
         keyVersion: server.metadata!.keyVersion + 1,
       }
       return jsonResponse({ key_version: server.metadata.keyVersion })
@@ -460,8 +510,9 @@ const createFakeServer = (): FakeServer => {
       for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
         server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
       }
-      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
+      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string; attestation: string }>) {
         server.envelopes.set(env.deviceId, env.wrappedCK)
+        seededDeviceAttestations.set(env.deviceId, env.attestation)
       }
       server.metadata = {
         canaryIv: body!.canaryIv as string,
@@ -640,6 +691,7 @@ const seedV1Account = async (
 describe('encryption service (v2)', () => {
   beforeEach(() => {
     localStorage.setItem(deviceIdKey, 'test-device-id')
+    Object.assign(keyWrites, { ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
     localStorage.setItem(authTokenKey, 'test-token')
     setCachedSession({ user: { id: testUserId }, session: { expiresAt: new Date(Date.now() + 3_600_000) } })
     storedKeyPair = null
@@ -711,6 +763,49 @@ describe('encryption service (v2)', () => {
       localStorage.setItem(authTokenKey, 'a-fresh-session-token')
       await ensureSessionBound(client)
       expect(server.requests.length).toBeGreaterThan(afterFirst)
+    })
+
+    it('shares one handshake between concurrent callers', async () => {
+      const server = createFakeServer()
+      localStorage.setItem(authTokenKey, 'concurrent-session-token')
+      storedKeyPair = await generateFullKeyPair()
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+      const client = clientFor(server)
+
+      // The session-change effect and a re-authentication flow both bind right
+      // after a new sign-in; two challenges at once would race each other.
+      await Promise.all([ensureSessionBound(client), ensureSessionBound(client)])
+
+      expect(server.requests.filter((r) => r === 'GET /devices/me/bind-challenge')).toHaveLength(1)
+      expect(server.boundDeviceId).toBe('test-device-id')
+    })
+
+    it('starts a fresh handshake after a shared one fails', async () => {
+      const server = createFakeServer()
+      localStorage.setItem(authTokenKey, 'retry-session-token')
+      storedKeyPair = await generateFullKeyPair()
+      const otherDevice = await generateFullKeyPair()
+      // Sealed to another device: this attempt cannot open the nonce.
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(otherDevice.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(otherDevice.mlkemPublicKey),
+      })
+      const client = clientFor(server)
+
+      const results = await Promise.allSettled([ensureSessionBound(client), ensureSessionBound(client)])
+      expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+      await ensureSessionBound(client)
+
+      expect(server.requests.filter((r) => r === 'GET /devices/me/bind-challenge')).toHaveLength(2)
+      expect(server.boundDeviceId).toBe('test-device-id')
     })
 
     it('fails rather than binding when the challenge was sealed to another device', async () => {
@@ -793,7 +888,11 @@ describe('encryption service (v2)', () => {
     })
 
     afterEach(() => {
-      env.VITE_ORG_ESCROW_PUBLIC_KEY = savedPin
+      if (savedPin === undefined) {
+        delete env.VITE_ORG_ESCROW_PUBLIC_KEY
+      } else {
+        env.VITE_ORG_ESCROW_PUBLIC_KEY = savedPin
+      }
     })
 
     /** Pin a freshly minted operator escrow key into this build's env (THU-866). */
@@ -822,7 +921,7 @@ describe('encryption service (v2)', () => {
     const makeAK = () => generateAK(true)
 
     it('buildOrgEnvelope escrows nothing when this build pins no key', async () => {
-      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
+      delete env.VITE_ORG_ESCROW_PUBLIC_KEY
       expect(await buildOrgEnvelope(await makeAK())).toBeUndefined()
     })
 
@@ -836,7 +935,7 @@ describe('encryption service (v2)', () => {
     it('completeFirstDeviceSetup omits orgEnvelope when this build pins no key', async () => {
       const server = createFakeServer()
       await serveHostileOrgKey(server)
-      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
+      delete env.VITE_ORG_ESCROW_PUBLIC_KEY
       storedKeyPair = await generateFullKeyPair()
 
       await completeFirstDeviceSetup(clientFor(server))
@@ -884,9 +983,7 @@ describe('encryption service (v2)', () => {
       await pinOrgEscrowKey()
       await serveHostileOrgKey(server)
 
-      const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-      })
+      const result = await migrateToV2(clientFor(server))
 
       expect(result.outcome).toBe('migrated')
       expect(typeof server.lastOrgEnvelope).toBe('string')
@@ -895,6 +992,88 @@ describe('encryption service (v2)', () => {
   })
 
   describe('approveDevice', () => {
+    it('refuses a substituted own served envelope despite a valid recipient fingerprint and genuine witness', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const before = {
+        ak: storedAK,
+        keys: [...storedDEKs],
+        primary: storedPrimaryKeyId,
+        version: storedKeyVersion,
+        anchor: storedKeyringAnchor,
+      }
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, storedAK!, '0')
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+      server.envelopes.set(
+        'test-device-id',
+        await wrapAK(await generateAK(true), kp.ecdhPublicKey, kp.mlkemPublicKey, '0'),
+      )
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+      const fingerprint = await createDeviceApprovalFingerprint({
+        userId: testUserId,
+        deviceId: 'pending-dev',
+        ecdhPublicKey,
+        mlkemPublicKey,
+      })
+
+      await expect(
+        approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+      ).rejects.toBeInstanceOf(AKAnchorError)
+      expect(server.requests).not.toContain('POST /devices/pending-dev/envelope')
+      expect(server.envelopes.has('pending-dev')).toBe(false)
+      expect(storedAK).toBe(before.ak)
+      expect([...storedDEKs]).toEqual(before.keys)
+      expect(storedPrimaryKeyId).toBe(before.primary)
+      expect(storedKeyVersion).toBe(before.version)
+      expect(storedKeyringAnchor).toBe(before.anchor)
+    })
+
+    it('refuses a missing, wrong, or substituted-recipient fingerprint before any request', async () => {
+      const server = createFakeServer()
+      const pending = await generateFullKeyPair()
+      const ecdhPublicKey = await exportPublicKey(pending.ecdhPublicKey)
+      const mlkemPublicKey = exportMlKemPublicKey(pending.mlkemPublicKey)
+      const correct = await createDeviceApprovalFingerprint({
+        userId: testUserId,
+        deviceId: 'pending-dev',
+        ecdhPublicKey,
+        mlkemPublicKey,
+      })
+      for (const fingerprint of ['', '0000-0000-0000-0000-0000-0000-0000-0000', correct.replace(/[0-9A-F]/, 'Z')]) {
+        await expect(
+          approveDevice(clientFor(server), 'pending-dev', ecdhPublicKey, mlkemPublicKey, fingerprint),
+        ).rejects.toMatchObject({ reason: 'fingerprint-mismatch' })
+      }
+      const other = await generateFullKeyPair()
+      await expect(
+        approveDevice(
+          clientFor(server),
+          'pending-dev',
+          await exportPublicKey(other.ecdhPublicKey),
+          mlkemPublicKey,
+          correct,
+        ),
+      ).rejects.toThrow('fingerprint')
+      expect(server.requests).toEqual([])
+      expect(server.envelopes.size).toBe(0)
+    })
+    it('displays a fingerprint from authenticated identity and local transport keys only', async () => {
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      expect(await getThisDeviceApprovalFingerprint()).toBe(
+        await createDeviceApprovalFingerprint({
+          userId: 'test-user',
+          deviceId: 'test-device-id',
+          ecdhPublicKey: await exportPublicKey(kp.ecdhPublicKey),
+          mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+        }),
+      )
+    })
     it('rewraps the AK for the pending device and sends an approve proof', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
@@ -911,14 +1090,80 @@ describe('encryption service (v2)', () => {
         'pending-dev',
         await exportPublicKey(pending.ecdhPublicKey),
         exportMlKemPublicKey(pending.mlkemPublicKey),
+        await createDeviceApprovalFingerprint({
+          userId: testUserId,
+          deviceId: 'pending-dev',
+          ecdhPublicKey: await exportPublicKey(pending.ecdhPublicKey),
+          mlkemPublicKey: exportMlKemPublicKey(pending.mlkemPublicKey),
+        }),
       )
 
       // The pending device now has an envelope it can unwrap.
       expect(server.envelopes.has('pending-dev')).toBe(true)
+      const opened = await unwrapAK(
+        server.envelopes.get('pending-dev')!,
+        pending.ecdhPrivateKey,
+        pending.mlkemSecretKey,
+      )
+      expect(await unwrapDEK(server.wrappedKeys.get('0')!, opened.ak, '0')).toBeInstanceOf(CryptoKey)
+      const other = await generateFullKeyPair()
+      await expect(
+        unwrapAK(server.envelopes.get('pending-dev')!, other.ecdhPrivateKey, other.mlkemSecretKey),
+      ).rejects.toThrow()
     })
   })
 
   describe('checkApprovalAndUnwrap', () => {
+    it('rejects missing, malformed, wrong-account, wrong-device, and changed-key attestations without staging', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const ak = await seedV2Account(server, kp, await generateDEK(true))
+      const canary = await unwrapCanaryKey(ak, testUserId, server.metadata!.canaryIv!, server.metadata!.canaryCtext!)
+      const anchor = {
+        userId: testUserId,
+        deviceId: 'test-device-id',
+        ecdhPublicKey: await exportPublicKey(kp.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+      }
+      const other = await generateFullKeyPair()
+      const invalid = [
+        null,
+        'malformed',
+        await signDeviceAttestation(canary, { ...anchor, userId: 'other-user' }),
+        await signDeviceAttestation(canary, { ...anchor, deviceId: 'other-device' }),
+        await signDeviceAttestation(canary, { ...anchor, ecdhPublicKey: await exportPublicKey(other.ecdhPublicKey) }),
+        await signDeviceAttestation(canary, { ...anchor, mlkemPublicKey: exportMlKemPublicKey(other.mlkemPublicKey) }),
+        await signDeviceAttestation((await mintCanary(await generateAK(true), testUserId)).canaryKey, anchor),
+      ]
+      for (const attestation of invalid) {
+        if (attestation) {
+          seededDeviceAttestations.set(anchor.deviceId, attestation)
+        } else {
+          seededDeviceAttestations.delete(anchor.deviceId)
+        }
+        await expect(checkApprovalAndUnwrap(clientFor(server))).rejects.toMatchObject({
+          reason: 'recipient-unverified',
+        })
+        expect(storedAK).toBeNull()
+        expect(storedDEKs.size).toBe(0)
+        expect(storedPrimaryKeyId).toBeNull()
+        expect(storedKeyVersion).toBeNull()
+        expect(storedKeyringAnchor).toBeNull()
+      }
+    })
+    it('classifies a candidate-canary open failure as receiver verification failure without staging', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await seedV2Account(server, storedKeyPair, await generateDEK(true))
+      server.metadata!.canaryCtext = 'AAAA'
+      await expect(checkApprovalAndUnwrap(clientFor(server))).rejects.toMatchObject({ reason: 'recipient-unverified' })
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
+      expect(storedPrimaryKeyId).toBeNull()
+      expect(storedKeyringAnchor).toBeNull()
+    })
+
     it('unwraps + stores the AK and stages the keyring when approved', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
@@ -1579,6 +1824,176 @@ describe('encryption service (v2)', () => {
     })
   })
 
+  describe('passkey slot', () => {
+    const credentialId = 'passkey-credential'
+    const prfOutput = new Uint8Array(32).fill(7)
+
+    /** An established device on a seeded v2 account, holding the AK. */
+    const establishedDevice = async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const listTrustedDevices = async () => [await deviceKeysFor(kp, 'test-device-id')]
+      return { server, listTrustedDevices }
+    }
+
+    it('enrolls: the passkey opens the new AK and the phrase survives', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      const recoveryEcdhBefore = server.metadata!.recoveryEcdhPublicKey
+
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+
+      expect(server.metadata!.passkeyCredentialId).toBe(credentialId)
+      expect(server.metadata!.passkeyAttestation).toBeTruthy()
+      expect(server.metadata!.recoveryEcdhPublicKey).toBe(recoveryEcdhBefore)
+      const passkeyKeyPair = await derivePasskeyKeyPair(prfOutput)
+      const { ak } = await unwrapAK(
+        server.metadata!.passkeyWrappedAk!,
+        passkeyKeyPair.ecdhPrivateKey,
+        passkeyKeyPair.mlkemSecretKey,
+      )
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, ak, '0')
+      expect(dek0.algorithm.name).toBe('AES-GCM')
+    })
+
+    it('re-anchors the slot on a silent rotation — same keys, new wrapped AK', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      const before = { ...server.metadata! }
+
+      await rotateAccountKey(clientFor(server), { listTrustedDevices })
+
+      expect(server.metadata!.passkeyCredentialId).toBe(credentialId)
+      expect(server.metadata!.passkeyEcdhPublicKey).toBe(before.passkeyEcdhPublicKey)
+      expect(server.metadata!.passkeyWrappedAk).not.toBe(before.passkeyWrappedAk)
+    })
+
+    it('aborts the re-anchor when the server substitutes the passkey public keys', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      const keyVersion = server.metadata!.keyVersion
+
+      const attacker = await derivePasskeyKeyPair(new Uint8Array(32).fill(9))
+      server.metadata!.passkeyEcdhPublicKey = await exportPublicKey(attacker.ecdhPublicKey)
+      server.metadata!.passkeyMlkemPublicKey = exportMlKemPublicKey(attacker.mlkemPublicKey)
+
+      await expect(rotateAccountKey(clientFor(server), { listTrustedDevices })).rejects.toThrow(PasskeyAnchorError)
+      expect(server.metadata!.keyVersion).toBe(keyVersion)
+    })
+
+    // Another device rotated between reading our canary key and reading the slot:
+    // the slot is signed by a newer epoch. That's a retry, not a bad passkey.
+    it('asks for a retry, not a passkey removal, when the slot is from a newer epoch', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      server.metadata!.passkeyAttestation = 'signed-by-a-newer-epoch'
+      server.metadata!.keyVersion += 1
+      const keyVersion = server.metadata!.keyVersion
+
+      await expect(rotateAccountKey(clientFor(server), { listTrustedDevices })).rejects.toBeInstanceOf(
+        RotationStaleError,
+      )
+      expect(server.metadata!.keyVersion).toBe(keyVersion)
+      expect(storedKeyVersion).toBe(keyVersion)
+    })
+
+    it('removes the slot with a rotation that never reads it', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      server.metadata!.passkeyAttestation = 'tampered'
+
+      const primaryBefore = server.metadata!.primaryKeyId
+      await removePasskeySlot(clientFor(server), { listTrustedDevices })
+
+      expect(server.metadata!.passkeyCredentialId).toBeNull()
+      expect(server.metadata!.passkeyWrappedAk).toBeNull()
+      // Like a device revocation: whoever opened the slot must not read later writes.
+      expect(server.metadata!.primaryKeyId).not.toBe(primaryBefore)
+    })
+
+    it('keeps a valid slot through device revocation, re-wrapped to the new AK', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      const before = { ...server.metadata! }
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', { listTrustedDevices })
+
+      expect(server.metadata!.passkeyCredentialId).toBe(credentialId)
+      expect(server.metadata!.passkeyEcdhPublicKey).toBe(before.passkeyEcdhPublicKey)
+      expect(server.metadata!.passkeyWrappedAk).not.toBe(before.passkeyWrappedAk)
+    })
+
+    it('never lets an unverifiable slot block device revocation — the slot is dropped', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      server.metadata!.passkeyAttestation = 'tampered'
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', { listTrustedDevices })
+
+      expect(server.requests).toContain('POST /account/devices/other-device/revoke')
+      expect(server.metadata!.passkeyCredentialId).toBeNull()
+      expect(server.metadata!.passkeyWrappedAk).toBeNull()
+    })
+
+    // A trusted device can sign a slot over keys nobody can wrap to. That must not
+    // turn into a way to stop every later revocation.
+    it('drops a validly signed slot whose keys cannot be used, instead of blocking revocation', async () => {
+      const { server } = await establishedDevice()
+      const metadata = server.metadata!
+      const canaryKey = await unwrapCanaryKey(storedAK!, testUserId, metadata.canaryIv!, metadata.canaryCtext!)
+      const anchor = {
+        userId: testUserId,
+        credentialId: 'planted-credential',
+        passkeyEcdhPublicKey: await exportPublicKey((await generateFullKeyPair()).ecdhPublicKey),
+        passkeyMlkemPublicKey: exportMlKemPublicKey(new Uint8Array(1184).fill(0xff)),
+      }
+      Object.assign(metadata, {
+        passkeyCredentialId: anchor.credentialId,
+        passkeyEcdhPublicKey: anchor.passkeyEcdhPublicKey,
+        passkeyMlkemPublicKey: anchor.passkeyMlkemPublicKey,
+        passkeyWrappedAk: 'unusable',
+        passkeyAttestation: await signPasskeyAttestation(canaryKey, anchor),
+      })
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(storedKeyPair!, 'test-device-id')],
+      })
+
+      expect(server.requests).toContain('POST /account/devices/other-device/revoke')
+      expect(server.metadata!.passkeyCredentialId).toBeNull()
+    })
+
+    it('unlocks a fresh device with the passkey and self-approves', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
+
+      await unlockWithPasskey(clientFor(server), { credentialId, prfOutput })
+
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('0')).toBe(true)
+      expect(server.requests).toContain('POST /devices/test-device-id/envelope')
+    })
+
+    it('rejects a different passkey on the public-key comparison, before any further request', async () => {
+      const { server, listTrustedDevices } = await establishedDevice()
+      await enrollPasskey(clientFor(server), { credentialId, prfOutput }, { listTrustedDevices })
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
+      server.requests.length = 0
+
+      await expect(
+        unlockWithPasskey(clientFor(server), { credentialId, prfOutput: new Uint8Array(32).fill(1) }),
+      ).rejects.toThrow('cannot unlock sync')
+      expect(server.requests).toEqual(['GET /encryption/canary'])
+    })
+  })
+
   describe('finishDeviceLockout', () => {
     it('tags its failure post-cut, so the UI cannot report "nothing was changed"', async () => {
       // This function only ever runs after a revocation already committed, so a
@@ -1788,6 +2203,30 @@ describe('encryption service (v2)', () => {
   })
 
   describe('migrateToV2', () => {
+    it('wraps only to local self keys despite forged self and sibling keys from the server', async () => {
+      const server = createFakeServer()
+      const local = await generateFullKeyPair()
+      const substituted = await generateFullKeyPair()
+      storedKeyPair = local
+      await seedV1Account(server, local)
+      const forged = {
+        publicKey: await exportPublicKey(substituted.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(substituted.mlkemPublicKey),
+      }
+      server.devicePublicKeys.set('test-device-id', forged)
+      server.devicePublicKeys.set('injected-sibling', forged)
+      server.deviceTrusted.set('injected-sibling', true)
+      const result = await migrateToV2(clientFor(server))
+      expect(result.outcome).toBe('migrated')
+      expect(server.requests).not.toContain('GET /encryption/envelope-targets')
+      expect([...server.envelopes.keys()]).toEqual(['test-device-id'])
+      await expect(
+        unwrapAK(server.envelopes.get('test-device-id')!, local.ecdhPrivateKey, local.mlkemSecretKey),
+      ).resolves.toHaveProperty('primaryKeyId', '0')
+      await expect(
+        unwrapAK(server.envelopes.get('test-device-id')!, substituted.ecdhPrivateKey, substituted.mlkemSecretKey),
+      ).rejects.toThrow()
+    })
     it('absorbs the v1 CK, mints a fresh primary, and migrates — legacy data still decrypts', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
@@ -1796,9 +2235,7 @@ describe('encryption service (v2)', () => {
       // A real legacy value on the wire, encrypted with the v1 CK and NO AAD.
       const legacyValue = await encrypt('hello legacy', legacyCK)
 
-      const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-      })
+      const result = await migrateToV2(clientFor(server))
 
       expect(result.outcome).toBe('migrated')
       if (result.outcome !== 'migrated') {
@@ -1822,32 +2259,13 @@ describe('encryption service (v2)', () => {
       expect(await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')).toBeDefined()
     })
 
-    it('covers this device from local keys even when the synced devices table is empty', async () => {
-      const server = createFakeServer()
-      const kp = await generateFullKeyPair()
-      storedKeyPair = kp
-      await seedV1Account(server, kp)
-
-      // Simulate PowerSync replication lag: the synced `devices` table has not
-      // surfaced this (freshly trusted) device yet. The migrator must still cover
-      // itself from local key material — otherwise `envelopes` is empty and the
-      // upgrade is rejected (this is the CI-only failure mode).
-      const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [],
-      })
-
-      expect(result.outcome).toBe('migrated')
-      expect(server.envelopes.has('test-device-id')).toBe(true)
-    })
-
-    it('falls through to the follower path on a 409 CAS-loss (candidate AK discarded)', async () => {
+    it('follows after a 409 only when this device already has a valid recipient envelope', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
       storedKeyPair = kp
       const { legacyCK } = await seedV1Account(server, kp)
 
-      // The winning migrator's committed v2 state — built on a throwaway server
-      // and swapped in when this migrator's /upgrade loses the CAS (409).
+      // Model an approval that issued a valid envelope before the losing device follows.
       const winnerState = createFakeServer()
       await seedV2Account(winnerState, kp, legacyCK)
       server.winner = {
@@ -1858,12 +2276,34 @@ describe('encryption service (v2)', () => {
       server.upgradeConflict = true
 
       const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         getLegacyV1Sample: async () => null,
       })
 
       expect(result.outcome).toBe('followed')
       expect(storedAK).not.toBeNull() // obtained via the follower path
+    })
+
+    it('waits for verified approval after a 409 when the winner covered only itself', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      const winnerState = createFakeServer()
+      await seedV2Account(winnerState, await generateFullKeyPair(), legacyCK)
+      winnerState.envelopes.set('winning-device', winnerState.envelopes.get('test-device-id')!)
+      winnerState.envelopes.delete('test-device-id')
+      server.winner = {
+        metadata: winnerState.metadata!,
+        envelopes: winnerState.envelopes,
+        wrappedKeys: winnerState.wrappedKeys,
+      }
+      server.upgradeConflict = true
+
+      expect((await migrateToV2(clientFor(server))).outcome).toBe('awaiting-approval')
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
+      expect(storedPrimaryKeyId).toBeNull()
+      expect(isRecoveryPhrasePending()).toBe(false)
     })
 
     it('still returns the recovery phrase when post-commit local staging fails', async () => {
@@ -1879,9 +2319,7 @@ describe('encryption service (v2)', () => {
       await seedV1Account(server, kp)
       failStoreAK = true
 
-      const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-      })
+      const result = await migrateToV2(clientFor(server))
 
       expect(result.outcome).toBe('migrated')
       if (result.outcome !== 'migrated') {
@@ -1905,9 +2343,7 @@ describe('encryption service (v2)', () => {
       // Every device joining a v1 account passes through this state.
       server.envelopes.delete('test-device-id')
 
-      const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-      })
+      const result = await migrateToV2(clientFor(server))
 
       expect(result.outcome).toBe('awaiting-approval')
       expect(server.metadata!.schemeVersion).toBe(1)
@@ -1921,11 +2357,7 @@ describe('encryption service (v2)', () => {
       await seedV1Account(server, kp)
       server.failEnvelopeFetchWith = 503
 
-      await expect(
-        migrateToV2(clientFor(server), {
-          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-        }),
-      ).rejects.toThrow(/503/)
+      await expect(migrateToV2(clientFor(server))).rejects.toThrow(/503/)
     })
   })
 
@@ -1949,7 +2381,6 @@ describe('encryption service (v2)', () => {
 
       await expect(
         migrateToV2(clientFor(server), {
-          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
           getLegacyV1Sample: async () => legacySample,
         }),
       ).rejects.toThrow(/cannot decrypt this account's own legacy/)
@@ -1973,7 +2404,6 @@ describe('encryption service (v2)', () => {
 
       await expect(
         migrateToV2(clientFor(server), {
-          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
           getLegacyV1Sample: async () => null,
         }),
       ).rejects.toThrow(/does not match the one this device kept from v1/)
@@ -1991,7 +2421,6 @@ describe('encryption service (v2)', () => {
       storedLegacyCK = legacyCK
 
       const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         getLegacyV1Sample: async () => legacyValue,
       })
 
@@ -2014,7 +2443,6 @@ describe('encryption service (v2)', () => {
       storedLegacyCK = await generateDEK(true)
 
       const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         getLegacyV1Sample: async () => legacyValue,
       })
 
@@ -2030,7 +2458,6 @@ describe('encryption service (v2)', () => {
       await forgeEnvelopeAndCanary(server, kp)
 
       const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         getLegacyV1Sample: async () => null,
       })
 
@@ -2069,7 +2496,6 @@ describe('encryption service (v2)', () => {
 
       await expect(
         migrateToV2(clientFor(server), {
-          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
           getLegacyV1Sample: orphanRow,
         }),
       ).rejects.toThrow(/cannot decrypt this account's own legacy/)
@@ -2094,7 +2520,6 @@ describe('encryption service (v2)', () => {
       storedLegacyCK = legacyCK
 
       const result = await migrateToV2(clientFor(server), {
-        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         getLegacyV1Sample: orphanRow,
       })
 
@@ -2105,6 +2530,34 @@ describe('encryption service (v2)', () => {
   })
 
   describe('followToV2', () => {
+    it.each([
+      ['missing', null],
+      ['invalid', 'invalid-attestation'],
+    ] as const)(
+      'rejects %s attestation on an otherwise-valid first adoption without any key writes',
+      async (_label, attestation) => {
+        const server = createFakeServer()
+        const kp = await generateFullKeyPair()
+        storedKeyPair = kp
+        await seedV2Account(server, kp, await generateDEK(true))
+        if (attestation === null) {
+          seededDeviceAttestations.delete('test-device-id')
+        } else {
+          seededDeviceAttestations.set('test-device-id', attestation)
+        }
+
+        await expect(followToV2(clientFor(server), { getLegacyV1Sample: async () => null })).rejects.toMatchObject({
+          reason: 'recipient-unverified',
+        })
+        expect(keyWrites).toEqual({ ak: 0, dek: 0, primary: 0, version: 0, witness: 0 })
+        expect(storedAK).toBeNull()
+        expect(storedDEKs.size).toBe(0)
+        expect(storedPrimaryKeyId).toBeNull()
+        expect(storedKeyVersion).toBeNull()
+        expect(storedKeyringAnchor).toBeNull()
+      },
+    )
+
     it('unwraps the AK, stages the keyring, and passes the continuity check', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()

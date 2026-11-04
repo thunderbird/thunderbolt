@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { stepUpOtpLength } from '@/lib/constants'
@@ -22,6 +22,23 @@ type StepUpCodeDialogProps = {
   otp: string
   isBusy: boolean
   error: string | null
+  /** What the code is about to authorize — each flow says it in its own words. */
+  description: string
+  submitLabel: string
+  submitLoadingLabel: string
+  submitVariant?: 'default' | 'destructive'
+  /**
+   * Whether the SUBMIT action is in flight, as opposed to `isBusy`, which also
+   * covers a resend. Defaults to `isBusy`; pass it when the submit label is
+   * destructive, so resending a code does not claim the action has started.
+   */
+  isSubmitting?: boolean
+  /**
+   * Fire `onSubmit` as soon as the last digit lands. Off by default so a
+   * destructive action always waits for a deliberate click; the
+   * recovery-phrase flow opts in.
+   */
+  submitOnComplete?: boolean
   onOtpChange: (otp: string) => void
   onResend: () => void
   onSubmit: () => void
@@ -29,21 +46,26 @@ type StepUpCodeDialogProps = {
 }
 
 /**
- * Emailed step-up code entry (THU-875) — the server refuses a recovery-phrase
- * change without it. Shared by the settings "Change recovery phrase" flow and
- * the unsaved-phrase prompt, which both end in the same gated rotation.
+ * Emailed step-up code entry — the server refuses a gated action without it.
+ * The copy is required rather than defaulted: every flow states the action it
+ * is about to take, and a default would quietly let one borrow another's words.
  */
 export const StepUpCodeDialog = ({
   open,
   otp,
   isBusy,
   error,
+  description,
+  submitLabel,
+  submitLoadingLabel,
+  submitVariant,
+  isSubmitting,
+  submitOnComplete = false,
   onOtpChange,
   onResend,
   onSubmit,
   onCancel,
 }: StepUpCodeDialogProps) => {
-  const { t } = useLingui()
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && !isBusy && onCancel()}>
       {/* sm:max-w-md matches the sign-in modal, so the OTP slots render at the
@@ -53,16 +75,14 @@ export const StepUpCodeDialog = ({
           <AlertDialogTitle>
             <Trans>Enter your verification code</Trans>
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            <Trans>We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.</Trans>
-          </AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <InputOTP
           maxLength={stepUpOtpLength}
           pattern={REGEXP_ONLY_DIGITS}
           value={otp}
           onChange={onOtpChange}
-          onComplete={onSubmit}
+          onComplete={submitOnComplete ? onSubmit : undefined}
           disabled={isBusy}
           autoFocus
           autoComplete="one-time-code"
@@ -71,7 +91,7 @@ export const StepUpCodeDialog = ({
           data-form-type="other"
           containerClassName="w-full"
         >
-          <InputOTPSlots />
+          <InputOTPSlots length={stepUpOtpLength} />
         </InputOTP>
         {error && (
           <p className="text-sm text-destructive text-center" role="alert">
@@ -81,12 +101,16 @@ export const StepUpCodeDialog = ({
         <AlertDialogFooter className="flex-col sm:flex-col">
           <Button
             className="w-full"
+            variant={submitVariant}
             onClick={onSubmit}
-            isLoading={isBusy}
-            loadingLabel={t`Generating…`}
-            disabled={otp.length !== stepUpOtpLength}
+            isLoading={isSubmitting ?? isBusy}
+            loadingLabel={submitLoadingLabel}
+            // Disable on `isBusy`, not just `isSubmitting`: a resend in flight is
+            // about to replace the code in the box, so submitting it would only
+            // burn an attempt.
+            disabled={isBusy || otp.length !== stepUpOtpLength}
           >
-            <Trans>Generate new phrase</Trans>
+            {submitLabel}
           </Button>
           <Button className="w-full" variant="ghost" onClick={onResend} disabled={isBusy}>
             <Trans>Resend code</Trans>

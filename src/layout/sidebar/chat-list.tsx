@@ -3,24 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { Flame, Plus } from 'lucide-react'
 import { DeleteAllChatsDialog } from '@/components/delete-all-chats-dialog'
 import { DeleteChatDialog } from '@/components/delete-chat-dialog'
-import { MobileSidebarScrim } from '@/components/ui/scrim'
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@/components/ui/sidebar'
+import { SidebarGroup, SidebarMenu, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar'
+import { useLocalStorage } from '@/hooks/use-local-storage'
+import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { cn } from '@/lib/utils'
-import { Flame, Loader2, Search } from 'lucide-react'
-import { useLayoutEffect, useRef, useState, type Ref } from 'react'
+import { type Ref, type RefObject } from 'react'
 import { Virtualizer, type CustomContainerComponentProps, type CustomItemComponentProps } from 'virtua'
-import { ChatActions } from './chat-actions'
 import { ChatListItem } from './chat-list-item'
-import { RailDivider } from './rail-divider'
 import type { ChatListProps } from './types'
+import { recentChatsPreviewCount, useSidebarPreviewState } from './use-sidebar-preview-state'
+import { useSharedChatListMetrics } from './use-shared-chat-list-metrics'
+import { SidebarListToggle } from './sidebar-list-toggle'
+import { SidebarSectionToggle } from './sidebar-section-toggle'
+import { RecentChatsMenu } from './recent-chats-menu'
 
 /** Virtua's list container, rendered as the semantic `ul` the rows live in. */
 const VirtualChatMenu = ({ style, children, ref }: CustomContainerComponentProps) => (
@@ -39,48 +37,6 @@ const VirtualChatRow = ({ style, children, ref }: CustomItemComponentProps) => (
   </li>
 )
 
-/**
- * Measures the mobile sticky chrome (pinned header + list label) so virtua
- * can offset its rows below the non-virtual content. Both measured elements
- * are always mounted while `isMobile` is true, so the observer never watches
- * a detached node.
- */
-const useMobileListMetrics = (isMobile: boolean) => {
-  const headerRef = useRef<HTMLDivElement>(null)
-  const labelRef = useRef<HTMLDivElement>(null)
-  const [metrics, setMetrics] = useState({ headerHeight: 0, startMargin: 0 })
-
-  useLayoutEffect(() => {
-    if (!isMobile) {
-      return
-    }
-
-    const header = headerRef.current
-    const label = labelRef.current
-    if (!header || !label) {
-      throw new Error('useMobileListMetrics: measured mobile chrome is not mounted')
-    }
-    const updateStartMargin = () => {
-      const headerHeight = header.offsetHeight
-      const startMargin = header.offsetHeight + label.offsetHeight
-      setMetrics((currentMetrics) =>
-        currentMetrics.headerHeight === headerHeight && currentMetrics.startMargin === startMargin
-          ? currentMetrics
-          : { headerHeight, startMargin },
-      )
-    }
-    const resizeObserver = new ResizeObserver(updateStartMargin)
-
-    resizeObserver.observe(header)
-    resizeObserver.observe(label)
-    updateStartMargin()
-
-    return () => resizeObserver.disconnect()
-  }, [isMobile])
-
-  return { headerRef, labelRef, metrics }
-}
-
 export const ChatList = ({
   chatThreads,
   currentChatThreadId,
@@ -96,154 +52,120 @@ export const ChatList = ({
   onChatClick,
   onRename,
   onMoveToProject,
-  onSearchClick,
-}: ChatListProps) => {
+  scrollRef,
+}: ChatListProps & { scrollRef: RefObject<HTMLDivElement | null> }) => {
   const { t } = useLingui()
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const {
-    headerRef: mobileHeaderRef,
-    labelRef: mobileLabelRef,
-    metrics: mobileListMetrics,
-  } = useMobileListMetrics(isMobile)
+  const createNewChat = useCreateNewChat()
+  const { closeMobileSidebar } = useSidebar()
+  const shared = useSharedChatListMetrics(isCollapsed ? undefined : scrollRef)
+  const preview = useSidebarPreviewState(chatThreads, currentChatThreadId, recentChatsPreviewCount)
+  const [storedExpanded, setSectionExpanded] = useLocalStorage('sidebar.recents.expanded', 'true')
+  const sectionExpanded = storedExpanded !== 'false'
   const hasListContent = chatThreads.length > 0
-
-  const chatActions = (
-    <ChatActions
-      isCollapsed={isCollapsed}
-      showClearAll={hasListContent}
-      deleteAllChatsMutation={deleteAllChatsMutation}
-      deleteAllChatsDialogRef={deleteAllChatsDialogRef}
-      onSearchClick={onSearchClick}
+  const sectionToggle = (
+    <SidebarSectionToggle
+      expanded={sectionExpanded}
+      onToggle={() => setSectionExpanded(sectionExpanded ? 'false' : 'true')}
+      controls="sidebar-recent-chats-content"
+      label={t`Recents`}
+      optionsLabel={t`Recent chat options`}
+      actions={[
+        {
+          label: t`New chat`,
+          icon: <Plus className="size-4" />,
+          onSelect: async () => {
+            await closeMobileSidebar()
+            createNewChat()
+          },
+        },
+        {
+          label: t`Delete chats`,
+          icon: <Flame className="size-4" />,
+          disabled: deleteAllChatsMutation.isPending,
+          onSelect: () => deleteAllChatsDialogRef.current?.open(),
+        },
+      ]}
     />
   )
 
-  // Mobile: a pinned, measured header floats over the list (nav toggle,
-  // actions and secondary nav) and the list starts below it.
   const mobileChrome = (
-    <div
-      ref={mobileHeaderRef}
-      data-slot="mobile-sidebar-header"
-      className="absolute inset-x-0 top-0 z-10 px-2 pt-[calc(var(--header-safe-area-top)+0.5rem)]"
-    >
-      <MobileSidebarScrim data-slot="mobile-sidebar-header-scrim" />
-      <div className="relative z-10">
-        <div className="flex h-[var(--touch-height-lg)] flex-shrink-0 items-center justify-between">
-          {mobileNavToggle}
-          {chatActions}
-        </div>
-        {mobileSecondaryNavigation}
-      </div>
+    <div data-slot="mobile-sidebar-header" className="relative z-10 pt-[calc(var(--header-safe-area-top)+0.5rem)]">
+      <div className="flex h-[var(--touch-height-lg)] shrink-0 items-center">{mobileNavToggle}</div>
+      {mobileSecondaryNavigation}
     </div>
   )
 
-  // Desktop: an in-flow label row while expanded, or the icon rail while
-  // collapsed. Search is always shown; the clear-all action, rail divider, and
-  // "Recent Chats" label only appear once there are chats.
+  // Collapsed navigation keeps all recent chats behind one rail button.
   const desktopChrome = isCollapsed ? (
     <SidebarMenu className="flex-shrink-0">
       <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={onSearchClick}
-          tooltip={t`Search`}
-          className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-        >
-          <Search className="size-[var(--icon-size-default)]" />
-        </SidebarMenuButton>
+        <RecentChatsMenu
+          chatThreads={chatThreads}
+          currentChatThreadId={currentChatThreadId}
+          onChatClick={onChatClick}
+          deleteAllChatsMutation={deleteAllChatsMutation}
+          deleteAllChatsDialogRef={deleteAllChatsDialogRef}
+        />
       </SidebarMenuItem>
-      {hasListContent && (
-        <>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={() => deleteAllChatsDialogRef.current?.open()}
-              disabled={deleteAllChatsMutation.isPending}
-              tooltip={t`Clear all chats`}
-              className="cursor-pointer text-muted-foreground hover:text-sidebar-foreground"
-            >
-              {deleteAllChatsMutation.isPending ? (
-                <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
-              ) : (
-                <Flame className="size-[var(--icon-size-default)]" />
-              )}
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {/* my-1.5 + the menu's gap-0.5 ≈ the 8px rhythm of the rail's other dividers. */}
-          <li aria-hidden>
-            <RailDivider className="my-1.5" />
-          </li>
-        </>
-      )}
     </SidebarMenu>
-  ) : (
-    <div className="flex items-center justify-between flex-shrink-0">
-      {hasListContent ? (
-        <SidebarGroupLabel>
-          <Trans>Recent Chats</Trans>
-        </SidebarGroupLabel>
-      ) : (
-        <span aria-hidden />
-      )}
-      {chatActions}
-    </div>
-  )
+  ) : hasListContent ? (
+    sectionToggle
+  ) : null
 
   return (
     <>
-      <SidebarGroup className={cn('flex-1 flex flex-col min-h-0 pb-0', (isMobile || isCollapsed) && 'pt-0')}>
+      <SidebarGroup className={cn('flex shrink-0 flex-col pb-0', (isMobile || isCollapsed) && 'pt-0')}>
         {isMobile ? mobileChrome : desktopChrome}
-        <div
-          ref={scrollContainerRef}
-          data-slot="chat-list-scroll"
-          className={cn(
-            'mt-0 -mx-2 w-[calc(100%+1rem)] flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 scrollbar-hide touch-pan-y [overflow-anchor:none] md:mt-2 group-data-[collapsible=icon]:mt-0',
-            // Bottom padding = footer control height + the footer's 0.5rem
-            // gap above it + the safe-area inset, so the last row clears the
-            // pinned footer.
-            isMobile && 'pb-[calc(var(--touch-height-lg)+0.5rem+var(--mobile-sidebar-footer-inset))]',
-          )}
-        >
-          {/* The measured spacer keeps rows below the pinned header; the label
-              scrolls with the list. (The sidebar is never collapsed on mobile,
-              so no isCollapsed check here.) */}
-          {isMobile && (
-            <>
-              <div
-                aria-hidden="true"
-                data-slot="mobile-sidebar-header-spacer"
-                style={{ height: mobileListMetrics.headerHeight }}
-              />
-              <SidebarGroupLabel ref={mobileLabelRef} className="mt-1">
-                {hasListContent ? <Trans>Recent Chats</Trans> : <Trans>No chats yet</Trans>}
-              </SidebarGroupLabel>
-            </>
-          )}
+        <div hidden={isCollapsed} id="sidebar-recent-chats" data-slot="chat-list">
+          {isMobile &&
+            (hasListContent ? (
+              sectionToggle
+            ) : (
+              <p className="px-2 py-2 text-xs text-muted-foreground">
+                <Trans>No chats yet</Trans>
+              </p>
+            ))}
           {/* No ssrCount here: virtua serves the unclamped [0, ssrCount) range
               until the first scroll event, so deleting rows below ssrCount
               before scrolling crashes it. Tests stub measurement instead
               (see test-utils/mock-virtua-measurement.ts). */}
-          {chatThreads.length > 0 && (
-            <Virtualizer
-              scrollRef={scrollContainerRef}
-              startMargin={isMobile ? mobileListMetrics.startMargin : undefined}
-              as={VirtualChatMenu}
-              item={VirtualChatRow}
-            >
-              {chatThreads.map((thread) => (
-                <ChatListItem
-                  key={thread.id}
-                  thread={thread}
-                  isActive={thread.id === currentChatThreadId}
-                  isCollapsed={isCollapsed}
-                  isMobile={isMobile}
-                  deleteChatMutation={deleteChatMutation}
-                  threadIdRef={threadIdRef}
-                  deleteChatDialogRef={deleteChatDialogRef}
-                  onChatClick={onChatClick}
-                  onRename={onRename}
-                  onMoveToProject={onMoveToProject}
-                />
-              ))}
-            </Virtualizer>
-          )}
+          <div ref={shared.listRef} id="sidebar-recent-chats-content" hidden={!sectionExpanded}>
+            {!isCollapsed && chatThreads.length > 0 && (
+              <Virtualizer
+                scrollRef={scrollRef}
+                startMargin={shared.startMargin}
+                as={VirtualChatMenu}
+                item={VirtualChatRow}
+              >
+                {preview.items.map((thread) => (
+                  <ChatListItem
+                    key={thread.id}
+                    thread={thread}
+                    isActive={thread.id === currentChatThreadId}
+                    isMobile={isMobile}
+                    deleteChatMutation={deleteChatMutation}
+                    threadIdRef={threadIdRef}
+                    deleteChatDialogRef={deleteChatDialogRef}
+                    onChatClick={onChatClick}
+                    onRename={onRename}
+                    onMoveToProject={onMoveToProject}
+                  />
+                ))}
+              </Virtualizer>
+            )}
+            {!isCollapsed && preview.hasOverflow && (
+              <SidebarMenu className="mt-1">
+                <SidebarMenuItem>
+                  <SidebarListToggle
+                    showAll={preview.showAll}
+                    onToggle={preview.toggle}
+                    controls="sidebar-recent-chats"
+                    label={preview.showAll ? t`Show fewer recent chats` : t`Show more recent chats`}
+                  />
+                </SidebarMenuItem>
+              </SidebarMenu>
+            )}
+          </div>
         </div>
       </SidebarGroup>
 

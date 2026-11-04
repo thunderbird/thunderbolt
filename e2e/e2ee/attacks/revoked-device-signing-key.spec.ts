@@ -233,6 +233,8 @@ test.describe.serial('THU-872 — revoked device re-derives the current signing 
       const signingKeyBefore = await getSigningPublicKey(userId)
       expect(signingKeyBefore).not.toBeNull()
 
+      // A revoked device that hears about it wipes itself; an attacker keeps it offline.
+      await victim.context.setOffline(true)
       await revokeTrustedDevice(page, victim.label)
       await waitForConsumedChallenge(userId, 'revoke')
       await waitForDeviceState(userId, victim.deviceId, (state) => state.revokedAt !== null)

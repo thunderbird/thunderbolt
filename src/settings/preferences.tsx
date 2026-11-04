@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
 import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
@@ -13,7 +14,6 @@ import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { privacyPolicyUrl } from '@/lib/constants'
 import { clearLocalData } from '@/lib/cleanup'
 import { trackEvent, useTelemetryAvailable } from '@/lib/posthog'
 import { isTauri } from '@/lib/platform'
@@ -40,6 +40,8 @@ import {
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { AppVersionSection } from './app-version-section'
 import { ChangeRecoveryKeySection } from './encryption/change-recovery-key-section'
+import { PasskeySection } from './encryption/passkey-section'
+import { DeleteAccountSection } from './account/delete-account-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -67,7 +69,6 @@ type PendingImport = { payload: unknown } & ExportSummary
 
 type PreferencesState = {
   isResetting: boolean
-  isDeletingAccount: boolean
   isExporting: boolean
   isImporting: boolean
   exportError: string | null
@@ -75,7 +76,6 @@ type PreferencesState = {
   importSuccess: string | null
   pendingImport: PendingImport | null
   resetDialogOpen: boolean
-  deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: RegionUnitDefaults | null
   languageDialogOpen: boolean
@@ -84,7 +84,6 @@ type PreferencesState = {
 
 type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
-  | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'SET_IS_EXPORTING'; payload: boolean }
   | { type: 'SET_IS_IMPORTING'; payload: boolean }
   | { type: 'SET_EXPORT_ERROR'; payload: string | null }
@@ -92,7 +91,6 @@ type PreferencesAction =
   | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
   | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
   | { type: 'SET_RESET_DIALOG_OPEN'; payload: boolean }
-  | { type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN'; payload: boolean }
   | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | {
@@ -104,7 +102,6 @@ type PreferencesAction =
 
 export const initialPreferencesState: PreferencesState = {
   isResetting: false,
-  isDeletingAccount: false,
   isExporting: false,
   isImporting: false,
   exportError: null,
@@ -112,7 +109,6 @@ export const initialPreferencesState: PreferencesState = {
   importSuccess: null,
   pendingImport: null,
   resetDialogOpen: false,
-  deleteAccountDialogOpen: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
   languageDialogOpen: false,
@@ -123,8 +119,6 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
   switch (action.type) {
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
-    case 'SET_IS_DELETING_ACCOUNT':
-      return { ...state, isDeletingAccount: action.payload }
     case 'SET_IS_EXPORTING':
       return { ...state, isExporting: action.payload }
     case 'SET_IS_IMPORTING':
@@ -139,8 +133,6 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
       return { ...state, pendingImport: action.payload }
     case 'SET_RESET_DIALOG_OPEN':
       return { ...state, resetDialogOpen: action.payload }
-    case 'SET_DELETE_ACCOUNT_DIALOG_OPEN':
-      return { ...state, deleteAccountDialogOpen: action.payload }
     case 'CLEAR_IMPORT_FEEDBACK':
       return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
@@ -178,12 +170,13 @@ const distanceUnitOptions = ['metric', 'imperial'] as const
 const temperatureUnitOptions = ['c', 'f'] as const
 const timeFormatOptions = ['12h', '24h'] as const
 
-export default function PreferencesSettingsPage() {
+const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: () => boolean }) => {
   const { t } = useLingui()
+  const links = useBrandingLinks()
+  const appName = useAppName()
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
-    isDeletingAccount,
     isExporting,
     isImporting,
     exportError,
@@ -191,7 +184,6 @@ export default function PreferencesSettingsPage() {
     importSuccess,
     pendingImport,
     resetDialogOpen,
-    deleteAccountDialogOpen,
     localizationDialogOpen,
     pendingCountryUnits,
     languageDialogOpen,
@@ -204,17 +196,17 @@ export default function PreferencesSettingsPage() {
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
-  const runningInTauri = isTauri()
+  const runningInTauri = isStandalone()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
     () => proxyEnabledStr,
   )
-  const proxyDisabled = !runningInTauri || !isAuthenticated
+  const proxyDisabled = !runningInTauri || (!isAuthenticated && !effectiveProxyEnabled)
   const proxyTooltipReason = !runningInTauri
     ? t`Proxying is required in the web app to bypass browser CORS restrictions.`
     : t`Sign in to enable cloud proxy.`
-  const proxyChecked = proxyDisabled && runningInTauri ? false : effectiveProxyEnabled
 
   const telemetryRequiredModalRef = useRef<TelemetryRequiredModalRef>(null)
   const telemetryWarningModalRef = useRef<TelemetryWarningModalRef>(null)
@@ -422,7 +414,6 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
   }
 
-  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
   const importFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleImportClick = () => {
@@ -442,7 +433,7 @@ export default function PreferencesSettingsPage() {
       const payload = await readJsonFile(file)
       const summary = summarizeExportEnvelope(payload, session?.user?.email ?? null)
       if (!summary) {
-        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a Thunderbolt export.` })
+        dispatch({ type: 'SET_IMPORT_ERROR', payload: t`This file doesn't look like a ${appName} export.` })
         return
       }
       dispatch({ type: 'SET_PENDING_IMPORT', payload: { payload, ...summary } })
@@ -533,22 +524,6 @@ export default function PreferencesSettingsPage() {
     } catch (error) {
       console.error('Failed to reset database:', error)
       dispatch({ type: 'SET_IS_RESETTING', payload: false })
-    }
-  }
-
-  const handleDeleteAccount = async () => {
-    setDeleteAccountError(null)
-    dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
-
-    try {
-      await httpClient.delete('account')
-      await clearLocalData()
-      window.location.reload()
-    } catch (error) {
-      console.error('Failed to delete account:', error)
-      setDeleteAccountError(error instanceof Error ? error.message : t`Failed to delete account.`)
-    } finally {
-      dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
   }
 
@@ -729,7 +704,7 @@ export default function PreferencesSettingsPage() {
               }}
             />
             <p className="text-sm text-muted-foreground">
-              <Trans>How Thunderbolt salutes you</Trans>
+              <Trans>How {appName} salutes you</Trans>
             </p>
           </div>
         </div>
@@ -941,7 +916,7 @@ export default function PreferencesSettingsPage() {
 
       <div className="h-6" />
 
-      <SectionCard title={t`Help Thunderbolt Improve`}>
+      <SectionCard title={t`Help ${appName} Improve`}>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <label className="text-sm font-medium">
@@ -1006,8 +981,9 @@ export default function PreferencesSettingsPage() {
                     Read more about our{' '}
                     <a
                       className="text-primary underline-offset-4 hover:underline"
-                      href={privacyPolicyUrl}
+                      href={links.privacyPolicy}
                       target="_blank"
+                      rel="noopener noreferrer"
                     >
                       privacy policy
                     </a>
@@ -1039,32 +1015,33 @@ export default function PreferencesSettingsPage() {
               <Trans>Use Cloud Proxy</Trans>
             </label>
             <p className="text-sm text-muted-foreground">
-              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
+              <Trans>
+                Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s
+                backend. Local (loopback) models always connect directly.
+              </Trans>
             </p>
           </div>
-          {proxyDisabled ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span tabIndex={0} aria-label={proxyTooltipReason}>
-                  <Switch
-                    checked={proxyChecked}
-                    disabled
-                    aria-label={t`Use Cloud Proxy`}
-                    className="pointer-events-none"
-                  />
-                </span>
-              </TooltipTrigger>
+          <Tooltip open={proxyDisabled && tooltipOpen} onOpenChange={setTooltipOpen}>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={proxyDisabled ? 0 : undefined}
+                aria-label={proxyDisabled ? proxyTooltipReason : undefined}
+              >
+                <Switch
+                  checked={effectiveProxyEnabled}
+                  onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
+                  disabled={proxyDisabled}
+                  aria-label={t`Use Cloud Proxy`}
+                  className={proxyDisabled ? 'pointer-events-none' : undefined}
+                />
+              </span>
+            </TooltipTrigger>
+            {proxyDisabled && (
               <TooltipContent side="top">
                 <p>{proxyTooltipReason}</p>
               </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Switch
-              checked={proxyChecked}
-              onCheckedChange={(checked) => setProxyEnabledStr(checked ? 'true' : 'false')}
-              aria-label={t`Use Cloud Proxy`}
-            />
-          )}
+            )}
+          </Tooltip>
         </div>
       </SectionCard>
 
@@ -1096,6 +1073,8 @@ export default function PreferencesSettingsPage() {
               </Button>
             </div>
           )}
+
+          {isFullUser && <PasskeySection />}
 
           {isFullUser && syncEnabled && <ChangeRecoveryKeySection />}
 
@@ -1204,46 +1183,7 @@ export default function PreferencesSettingsPage() {
             </>
           )}
 
-          {isFullUser && (
-            <>
-              <div className="h-px bg-border -mx-6" />
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">
-                  <Trans>Delete Your Account</Trans>
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  <Trans>Permanently delete your account and all data on our servers and this device.</Trans>
-                </p>
-                {deleteAccountError && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {deleteAccountError}
-                  </p>
-                )}
-                {/* Secondary on the page; the red danger styling lives on the
-                    confirm button inside the dialog. */}
-                <Button
-                  variant="secondary"
-                  disabled={isDeletingAccount}
-                  onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
-                >
-                  {isDeletingAccount ? t`Deleting…` : t`Delete My Account`}
-                </Button>
-                <ConfirmActionDialog
-                  open={deleteAccountDialogOpen}
-                  title={t`Delete your account?`}
-                  description={t`This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone.`}
-                  confirmLabel={t`Delete account`}
-                  isPending={isDeletingAccount}
-                  onConfirm={() => {
-                    dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })
-                    void handleDeleteAccount()
-                  }}
-                  onCancel={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })}
-                />
-              </div>
-            </>
-          )}
+          {isFullUser && <DeleteAccountSection />}
         </div>
       </SectionCard>
 
@@ -1350,3 +1290,5 @@ export default function PreferencesSettingsPage() {
     </SettingsPageShell>
   )
 }
+
+export default PreferencesSettingsPage

@@ -79,7 +79,7 @@ const persistentWebkit = base.extend({
       }
       page.on('worker', (worker) => {
         const path = new URL(worker.url()).pathname
-        if (!path.startsWith('/@powersync/worker/') || diagnostics.length >= 20) {
+        if (!path.startsWith('/@powersync/') || diagnostics.length >= 20) {
           return
         }
         diagnostics.push(`worker started ${path}`)
@@ -98,7 +98,7 @@ const persistentWebkit = base.extend({
           return
         }
         if (
-          !url.pathname.startsWith('/@powersync/worker/') &&
+          !url.pathname.startsWith('/@powersync/') &&
           (response.request().resourceType() !== 'script' || response.status() < 400)
         ) {
           return
@@ -160,4 +160,22 @@ export const test = browserTest.extend({
     await isolateProviderRequests(context, testInfo.project.name)
     await use(context)
   },
+})
+
+/**
+ * `test` in a German browser. The `locale` option alone is not enough in
+ * Chromium: it only reaches pages Playwright is attached to, so the page a
+ * navigation leaves reads the host's languages (`en-US` on CI) while its last
+ * effects still run, and can mirror or seed English for the page that replaces
+ * it. `--accept-lang` makes the browser itself German; Firefox and WebKit ignore
+ * the flag. The flag is added to the project's launch options, so its browser
+ * executable still applies. Overriding a launch option starts its own worker.
+ */
+export const deTest = test.extend({
+  locale: 'de-DE',
+  launchOptions: [
+    async ({ launchOptions }, use) =>
+      use({ ...launchOptions, args: [...(launchOptions.args ?? []), '--accept-lang=de-DE,de'] }),
+    { scope: 'worker' },
+  ],
 })

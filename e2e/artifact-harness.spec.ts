@@ -65,6 +65,9 @@ const askElementAt = (
             return
           }
           if (data.type === 'artifact-ready') {
+            // Firefox can leave a new iframe at 0x0 until the parent reflows, and this message can land
+            // first, so `elementFromPoint` finds nothing. Reading the frame's box forces the reflow.
+            iframe.getBoundingClientRect()
             // `'*'` for the same reason the host uses it (see
             // `sandboxed-html-frame.tsx`): `sandbox="allow-scripts"` without
             // `allow-same-origin` gives the document an opaque origin, which
@@ -102,7 +105,8 @@ test.describe('artifact harness (real browser)', () => {
     const types = messages.map((m) => m.type)
     expect(types).toContain('artifact-ready')
     expect(types).not.toContain('artifact-error')
-    const height = messages.find((m) => m.type === 'artifact-height')
+    // Chrome can report zero before the first layout; the host consumes the latest height.
+    const height = messages.findLast((m) => m.type === 'artifact-height')
     expect(height?.height ?? 0).toBeGreaterThan(0)
   })
 

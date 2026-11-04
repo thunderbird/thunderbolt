@@ -43,6 +43,7 @@ export const useCompanyModelEditorState = ({
       customModel: model?.model ?? '',
       url: model?.url ?? '',
       apiKey: '',
+      supportsTools: model?.supportsTools ?? true,
     },
   })
   const provider = form.watch('provider')
@@ -60,6 +61,7 @@ export const useCompanyModelEditorState = ({
       customModel: '',
       url: provider === 'custom' ? 'http://localhost:11434/v1' : '',
       apiKey: '',
+      supportsTools: true,
     })
     setSelectedModelId(provider === 'thunderbolt' ? '' : 'custom')
     changed()
@@ -72,6 +74,7 @@ export const useCompanyModelEditorState = ({
       return
     }
     const selected = catalog.find((candidate) => candidate.id === id)
+    form.setValue('supportsTools', selected?.supports_tools !== false, { shouldDirty: true })
     form.setValue('model', id, { shouldDirty: true, shouldValidate: true })
     form.setValue('name', selected?.name ?? generateModelName(id), { shouldDirty: true, shouldValidate: true })
     form.setValue('customModel', '')
@@ -96,6 +99,7 @@ export const useCompanyModelEditorState = ({
         model: values.model,
         url,
         enabled: model?.enabled ?? 1,
+        supportsTools: values.supportsTools,
         deletedAt: null,
       },
     })

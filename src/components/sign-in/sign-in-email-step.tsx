@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SiGithub } from '@icons-pack/react-simple-icons'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { EyeOff, Loader2, Mail } from 'lucide-react'
+import { EyeOff, Fingerprint, Loader2, Mail } from 'lucide-react'
 import { useRef, type FormEvent, type RefObject } from 'react'
 
 type SignInEmailStepProps = {
@@ -18,6 +18,10 @@ type SignInEmailStepProps = {
   onEmailChange: (email: string) => void
   variant: 'modal' | 'page'
   emailInputRef?: RefObject<HTMLInputElement | null>
+  /** Show the "Sign in with passkey" button (deployment enabled + browser capable). */
+  passkeyAvailable?: boolean
+  passkeyPending?: boolean
+  onPasskeySignIn?: () => void
 }
 
 /**
@@ -36,6 +40,9 @@ export const SignInEmailStep = ({
   onEmailChange,
   variant,
   emailInputRef,
+  passkeyAvailable,
+  passkeyPending,
+  onPasskeySignIn,
 }: SignInEmailStepProps) => {
   const { t } = useLingui()
   const localRef = useRef<HTMLInputElement>(null)
@@ -64,16 +71,16 @@ export const SignInEmailStep = ({
         <div className="flex flex-1 items-center">
           <div className="flex w-full flex-col gap-4 rounded-xl bg-secondary px-3 py-4 text-left">
             <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
-                <SiGithub className="size-6 text-emerald-600 dark:text-[#DCE875]" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/15 dark:bg-transparent">
+                <SiGithub className="size-6 text-brand" />
               </div>
               <p className="text-base text-muted-foreground">
                 <Trans>Thunderbolt is open-source</Trans>
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
-                <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-2/15 dark:bg-transparent">
+                <EyeOff className="size-6 text-brand-2" />
               </div>
               <p className="text-base text-muted-foreground">
                 <Trans>No logs or training on your data</Trans>
@@ -123,7 +130,7 @@ export const SignInEmailStep = ({
               ? 'w-full rounded-xl'
               : 'h-[46px] w-full rounded-xl bg-foreground text-background text-base font-medium hover:bg-foreground/90'
           }
-          disabled={isLoading || !isValidEmail}
+          disabled={isLoading || passkeyPending || !isValidEmail}
         >
           {isLoading ? (
             <>
@@ -136,6 +143,34 @@ export const SignInEmailStep = ({
             <Trans>Continue</Trans>
           )}
         </Button>
+
+        {passkeyAvailable && onPasskeySignIn && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">
+                <Trans>or</Trans>
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size={variant === 'modal' ? 'lg' : undefined}
+              className={variant === 'modal' ? 'w-full rounded-xl' : 'h-[46px] w-full rounded-xl text-base font-medium'}
+              disabled={isLoading || passkeyPending}
+              onClick={onPasskeySignIn}
+            >
+              {passkeyPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Fingerprint className="mr-2 h-4 w-4" />
+              )}
+              <Trans>Sign in with passkey</Trans>
+            </Button>
+          </>
+        )}
       </div>
     </form>
   )

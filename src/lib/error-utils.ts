@@ -6,7 +6,15 @@ import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 import { z } from 'zod'
 
-const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network', 'connection-lost'] as const
+const chatErrorKinds = [
+  'attestation',
+  'timeout',
+  'rate-limit',
+  'provider',
+  'network',
+  'connection-lost',
+  'tools-unsupported',
+] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
 const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
 export type InferenceQuotaWindow = z.infer<typeof inferenceQuotaWindowSchema>
@@ -16,7 +24,7 @@ const inferenceQuotaErrorSchema = z.object({
 })
 const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
 const serializedErrorSchema = z.object({ error: z.string() })
-const agentRunInProgressBodySchema = z.object({ error: z.object({ code: z.literal('AGENT_RUN_IN_PROGRESS') }) })
+const agentErrorBodySchema = z.object({ error: z.object({ code: z.string() }) })
 const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
 const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
 
@@ -32,6 +40,38 @@ const parseJson = (str: string): Record<string, unknown> | undefined => {
 const providerErrorNames = new Set(['KeyConfigMismatchError', 'ProtocolError', 'DecryptionError'])
 const timeoutMarkers = [tinfoilUpstreamTimeoutMessage, tinfoilUpstreamIdleTimeoutMessage]
 const networkErrorMarkers = ['failed to fetch', 'load failed', 'networkerror']
+
+/** Names for tool support as a whole. Singular `tool` is left out so one named tool
+ *  doesn't read as all tools; snake_case options like `tool_choice` fail the word boundaries. */
+const toolSupportTermPattern = String.raw`(?:tools|tool use|tool calling|function calling)`
+
+/**
+ * Provider messages for "this model can't take a request with tools". Each
+ * provider rejects with its own status (Ollama and vLLM 400, OpenRouter 404,
+ * llama.cpp 500), so the wording is the only common signal. Matched by sentence
+ * shape rather than exact text, so a reworded or new provider message still
+ * classifies; anything that merely mentions tools does not.
+ */
+const toolSupportRejectionPatterns = [
+  // "does not support tools" (Ollama), "does not support Function Calling" (DeepSeek)
+  new RegExp(String.raw`\b(?:does not|doesn't|do not) support\s+${toolSupportTermPattern}\b`, 'i'),
+  // "'tools' is not supported" (OpenAI), "tool calling is not supported" (Groq),
+  // "Function calling is not enabled" and "… is unsupported" (Gemini),
+  // "'tools' functionality not supported." (the AI SDK's own client-side refusal)
+  new RegExp(
+    String.raw`\b${toolSupportTermPattern}\b['"]?(?: functionality)?\s+(?:(?:is|are)\s+)?(?:not (?:supported|enabled)|unsupported)`,
+    'i',
+  ),
+  // A server started without tool support: "tools param requires --jinja" (llama.cpp),
+  // "tool choice requires --enable-auto-tool-choice" (vLLM)
+  /\b(?:tools param|tool choice) requires --/i,
+  // OpenRouter, when none of a model's providers accepts tools
+  /\bno endpoints found that support tool use\b/i,
+]
+
+/** Whether a provider error message says the model rejected the request's tools. */
+const isToolSupportRejectionMessage = (message: string): boolean =>
+  toolSupportRejectionPatterns.some((pattern) => pattern.test(message))
 
 type ErrorClassificationFields = {
   name?: string
@@ -77,7 +117,7 @@ const getErrorClassificationFields = (error: unknown): ErrorClassificationFields
  * The error `Response` an agent adapter hands the AI SDK in place of a stream:
  * `{ error, status, kind }`, which `DefaultChatTransport` throws as the error
  * message and the chat error UI parses back (`getChatErrorKind`,
- * `getInferenceQuotaWindow`, `isAgentRunInProgressError`).
+ * `getInferenceQuotaWindow`, and the `isAgent*Error` helpers).
  */
 export const createChatErrorResponse = (
   message: string,
@@ -110,6 +150,10 @@ export const classifyErrorKind = (error: unknown): ChatErrorKind | undefined => 
   }
   if (status === 408 || (normalizedMessage && timeoutMarkers.some((marker) => normalizedMessage.includes(marker)))) {
     return 'timeout'
+  }
+  // Ahead of `provider`, which would claim its 400 or 500; a 404 matches nothing else.
+  if (message && isToolSupportRejectionMessage(message)) {
+    return 'tools-unsupported'
   }
   // ChatErrorKind has no content-rejection bucket, so use its existing provider class.
   if ((name && providerErrorNames.has(name)) || isContentRejectionStatus || (status !== undefined && status >= 500)) {
@@ -147,6 +191,14 @@ export const getChatErrorKind = (error?: Error | null): ChatErrorKind | undefine
     message: firstString(parsed.error),
   })
 }
+
+/**
+ * Whether the model rejected the turn because it can't take tools. Identical
+ * input fails again until tools are turned off for the model, so it is neither
+ * retried nor treated as an attachment problem.
+ */
+export const isToolSupportRejectionError = (error?: Error | null): boolean =>
+  getChatErrorKind(error) === 'tools-unsupported'
 
 /** Return an error-like value's string name, when present. */
 export const getErrorName = (error: unknown): string | undefined => {
@@ -215,13 +267,27 @@ export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWin
  * managed-http adapter serializes it). Unlike a rate limit it clears on its own
  * once that run finishes, so the chat retries it after a delay.
  */
-export const isAgentRunInProgressError = (error?: Error | null): boolean => {
-  if (!error?.message || getErrorStatusCode(error) !== 429) {
-    return false
+export const isAgentRunInProgressError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 429) === 'AGENT_RUN_IN_PROGRESS'
+
+/**
+ * Whether the hosted agent refused the turn because the project and skill
+ * instructions sent with it are over its cap (`400 AGENT_INSTRUCTIONS_TOO_LARGE`
+ * from `POST /v1/agent/chat`). Skill instructions have no length cap of their
+ * own, so one long skill is enough to trip it.
+ */
+export const isAgentInstructionsTooLargeError = (error?: Error | null): boolean =>
+  getAgentErrorCode(error, 400) === 'AGENT_INSTRUCTIONS_TOO_LARGE'
+
+/** The `error.code` of a hosted agent refusal with the given status, as the managed-http adapter serializes it. */
+const getAgentErrorCode = (error: Error | null | undefined, status: number): string | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== status) {
+    return undefined
   }
   const serializedError = serializedErrorSchema.safeParse(parseJson(error.message))
   const responseBody = serializedError.success ? parseJson(serializedError.data.error) : undefined
-  return agentRunInProgressBodySchema.safeParse(responseBody).success
+  const agentError = agentErrorBodySchema.safeParse(responseBody)
+  return agentError.success ? agentError.data.error.code : undefined
 }
 
 /**
@@ -293,12 +359,19 @@ const isToolParameterError = (message: string): boolean => {
  * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
  * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
  * (401/403), not-found (404), timeouts (408), rate limits (429), context overflow,
- * and structured tool-parameter errors — none of which attachment remediation
- * can fix by re-delivering as text/images. This is the ONLY signal that should
+ * structured tool-parameter errors, tool-support rejections, and the hosted
+ * agent's oversized-instructions 400. Attachment remediation can fix none of
+ * these by re-delivering as text/images. This is the ONLY signal that should
  * trigger remediation.
  */
 export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (!error?.message || isRateLimitError(error) || isContextOverflowError(error)) {
+  if (
+    !error?.message ||
+    isRateLimitError(error) ||
+    isContextOverflowError(error) ||
+    isAgentInstructionsTooLargeError(error) ||
+    isToolSupportRejectionError(error)
+  ) {
     return false
   }
   const status = getErrorStatusCode(error)

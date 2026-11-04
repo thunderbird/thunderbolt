@@ -52,6 +52,76 @@ Version numbers are not frozen, either. The images are rebuilt and republished u
 >
 > The Helm chart ships `latest` as its default image tag with a pull policy of `IfNotPresent`. On a node that already holds an image tagged `latest`, an upgrade will reuse the old one and appear to do nothing. This is the most common cause of "the upgrade ran but nothing changed".
 
+## Single sign-on changes
+
+If you run SAML or OIDC and upgrade to a release after 0.1.144, four things change. The [rate limiting changes](#rate-limiting-changes) below apply to you as well.
+
+1. **SAML logins that start at the provider's dashboard are refused.** The user lands on the app's sign-in error page and signs in again from the app. Point the dashboard icon at your app's address, or set `SAML_ALLOW_IDP_INITIATED=true` after reading the risk. See [Authentication](./authentication.md#logging-in-from-the-providers-dashboard).
+2. **A failed or cancelled sign-in returns to the app.** The user sees a message and a "Try again" button instead of a plain error page on the API address.
+3. **A new identity from your provider links to an existing account only in two cases.** Either the account's email is verified (its owner signed in with an emailed code), or the account already has an identity from your provider. That second case covers switching `AUTH_MODE` between `oidc` and `saml`, moving to a different provider, and a provider that changes a user's subject or NameID. Any other account with the same address gets "account not linked". Under OIDC, a user whose provider reports `email_verified` as false is never linked, so mark the address verified at the provider. Keycloak sets it only when the realm makes users confirm the address ("Verify email") or an admin ticks "Email verified". SAML has no such claim. See [Authentication](./authentication.md#what-single-sign-on-looks-like-to-the-user).
+4. **Only the provider you configured can sign anyone in.** Earlier releases let any signed-in user add another provider through the API. Those rows stay in the `sso_provider` table, but they can no longer sign anyone in, create accounts, or be edited. We recommend deleting them, and the accounts linked through them. List the rows first:
+
+   ```sql
+   SELECT provider_id, issuer, domain, user_id, created_at FROM sso_provider WHERE provider_id <> 'sso';
+   ```
+
+   Before this release, the owner of such a row could sign in through it with an identity provider they ran. An email address with no account yet got a new account, and they were signed in to it. The address of an existing account got "account not linked". But if the real owner of an address later signed in through your provider, they were linked to the account the row had created, and the row's owner could sign in to it too.
+
+   To see whether a row was used, list the accounts linked through it:
+
+   ```sql
+   SELECT user_id, provider_id, created_at FROM account
+   WHERE provider_id IN (SELECT provider_id FROM sso_provider WHERE provider_id <> 'sso');
+   ```
+
+   An empty result does not prove a row was never used. Its owner could have deleted it through the API, which left its accounts behind. Nothing ties `account.provider_id` to `sso_provider`, so look for names you don't recognize among every provider in use:
+
+   ```sql
+   SELECT provider_id, count(*) FROM account GROUP BY provider_id;
+   ```
+
+   If the accounts query returned rows, deleting those accounts does not undo what the row's owner set up while signed in. List the open sessions, API keys and passkeys of those users, with the `user_id` values it returned:
+
+   ```sql
+   SELECT user_id, created_at, expires_at FROM session WHERE expires_at > now() AND user_id IN ('<user_id>');
+   SELECT reference_id, name, created_at FROM apikey WHERE reference_id IN ('<user_id>');
+   SELECT user_id, name, created_at FROM passkey WHERE user_id IN ('<user_id>');
+   ```
+
+   Consider deleting the ones the person does not recognize. Leave other users' sessions alone.
+
+   End-to-end encryption is a fourth thing the row's owner may hold. If the owner signed in to an account the row created, they could have set up encryption, approved their own device and seen the recovery key, a 24-word phrase shown once. Deleting the `account` rows below does not take any of that back. List the devices that can still open the account's data:
+
+   ```sql
+   SELECT user_id, id, name, device_type, trusted, created_at, last_seen
+   FROM powersync.devices WHERE revoked_at IS NULL AND user_id IN ('<user_id>');
+   SELECT device_id, user_id, created_at FROM envelopes WHERE user_id IN ('<user_id>');
+   SELECT user_id, created_at FROM encryption_metadata WHERE user_id IN ('<user_id>');
+   ```
+
+   Each row in `envelopes` is a copy of the account key sealed to one device, and the recovery phrase has its own slot. No `encryption_metadata` row means the account never set up encryption. A row with no envelopes means every device was revoked. The recovery phrase, and a passkey if one was enrolled, still opens the data.
+
+   You cannot revoke a device for the user from the database or the API. Revoking needs a signature made with the account's keys, so only a trusted device of that account can do it. Deleting the `envelopes` row, or setting `revoked_at`, would not change the keys the device already holds, and it would skip the key rotation that locks the device out. The supported path is for the person who owns the account to open **Settings > Devices** on a trusted device, revoke each device they do not recognize, and then run **Change recovery phrase** (it asks for an 8-digit code sent to their email). Revoking replaces the account key and the data keys. Changing the phrase makes the old phrase stop working. Neither re-encrypts any data.
+
+   If nobody legitimate uses the account, which is the usual case when the row's owner created it, delete the account instead. Deleting the `user` row cascades to its devices, envelopes and synced data. That is a hard delete and none of it comes back, so do it only for an account you know nobody uses.
+
+   Then delete the accounts, before the rows they point to:
+
+   ```sql
+   DELETE FROM account WHERE provider_id IN (SELECT provider_id FROM sso_provider WHERE provider_id <> 'sso');
+   DELETE FROM sso_provider WHERE provider_id <> 'sso';
+   ```
+
+   Thunderbolt itself writes only `sso` accounts. Any other name in the `GROUP BY` result came from a provider row that is gone. Check and delete its accounts the same way, naming it in place of the subquery.
+
+## Rate limiting changes
+
+These apply to every sign-in mode, email codes included, when you upgrade to a release after 0.1.144.
+
+The built-in authentication limiter keys each request on the client address it reads from a header: the one `TRUSTED_PROXY` names, or `X-Forwarded-For` when it is empty. Before, a request without that header skipped the limit, and an `X-Forwarded-For` holding several addresses counted against the first one. Now both share one bucket per route with every other request the limiter cannot place. The header is missing when nothing in front of the API adds it. It holds several addresses when the request crossed two or more proxies.
+
+A shared bucket fills fast. Entering an emailed sign-in code (`/sign-in/email-otp`) allows 3 requests per 60 seconds, so behind such a proxy only three people a minute can finish signing in with a code. Requesting the code itself (`/email-otp/send-verification-otp`) has the same limit when a client calls it directly. Many users then get `429` at the same time. Set `TRUSTED_PROXY` to `cloudflare` or `akamai` if one of them sits in front of the API. See [Configuration](./configuration.md#rate-limiting) for the other buckets.
+
 ## Order of upgrade
 
 Within a single version, apply in this order:
@@ -154,6 +224,8 @@ The sync service decides which data reaches a device, and it reads that from a c
 | Docker Compose | A file in your checkout, mounted into the container | Updating the source updates the rules |
 | Kubernetes     | The Helm chart                                      | Upgrading the chart updates the rules |
 | AWS            | Built into the packaged sync-service image          | Moving the version updates the rules  |
+
+The rules are written as PowerSync Sync Streams (`edition: 3`), which need sync service 1.20 or later; an older service rejects them and no device syncs. Versions 1.20 to 1.25 carry a Sync Streams advisory (GHSA-hfrf-pvrg-5c3h) fixed in 1.26; the configs are tested on 1.27.0. Every deployment path pins the sync service version, so an upgrade brings the matching one, unless you set `powersync.image.tag` yourself or upgrade the chart with `--reuse-values`, which keeps the previous release's tag. The move from the older Sync Rules format makes every device download its data once more, in full, on its next connection.
 
 A rule change takes effect only when the sync service restarts. On Kubernetes, changing the configuration does not trigger that, so roll the sync deployment by hand after a chart upgrade that changes the rules.
 

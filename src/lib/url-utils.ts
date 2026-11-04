@@ -17,6 +17,19 @@ export const isSafeUrl = (url: string): boolean => {
   }
 }
 
+/**
+ * True only for parseable `mailto:` and `tel:` URLs. Kept apart from `isSafeUrl`, which
+ * guards navigation targets (webview, SSO redirect, previews) and must stay http/https only.
+ */
+export const isContactUrl = (url: string): boolean => {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'mailto:' || protocol === 'tel:'
+  } catch {
+    return false
+  }
+}
+
 /** Remove only trailing slashes from a backend URL. */
 export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, '')
 

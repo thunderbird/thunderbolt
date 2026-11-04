@@ -12,12 +12,9 @@
  *
  * Stateless like the endpoint it calls: no handshake, no session to warm, no
  * transport to close. The agent picks its own model, so `selectedModel` and
- * the other built-in-only context fields are ignored.
- *
- * Not sent yet: `skillInstructions` and `projectSection`, which the chat layer
- * builds for every non-built-in agent. The endpoint drops client system
- * messages, so `/slug` skills and project instructions do nothing on this
- * agent until they are folded into the request.
+ * the other built-in-only context fields are ignored. The endpoint drops
+ * client system messages, so `skillInstructions` and `projectSection` travel
+ * in the body's `instructions` field, which it appends to its system prompt.
  */
 
 import { isAttachmentPart, undeliverableAttachmentsNote } from '@/lib/attachments'
@@ -109,6 +106,20 @@ export const toManagedHttpBody = (body: string): { id: string; messages: HostedA
   return { id, messages: history }
 }
 
+/**
+ * Join the project section and `/slug` skill instructions into the body's
+ * `instructions`, in the order and with the separator `composeAcpPrompt` uses
+ * for ACP agents. Undefined when there is nothing to send, so the field is
+ * left out of the body.
+ */
+const toHostedAgentInstructions = (
+  skillInstructions: string[] | undefined,
+  projectSection: string | undefined,
+): string | undefined => {
+  const blocks = [projectSection, ...(skillInstructions ?? [])].filter(Boolean)
+  return blocks.length > 0 ? blocks.join('\n\n') : undefined
+}
+
 /** Build the adapter for a `managed-http` agent. */
 export const createManagedHttpAdapter = (agent: Agent): AgentAdapter => {
   if (!agent.url) {
@@ -119,11 +130,14 @@ export const createManagedHttpAdapter = (agent: Agent): AgentAdapter => {
   return {
     agent,
     capabilities: null,
-    fetch: async (init, { httpClient }) => {
+    fetch: async (init, { httpClient, skillInstructions, projectSection }) => {
       if (typeof init.body !== 'string') {
         throw new Error('Managed HTTP adapter expects string body on init')
       }
-      const json = toManagedHttpBody(init.body)
+      const json = {
+        ...toManagedHttpBody(init.body),
+        instructions: toHostedAgentInstructions(skillInstructions, projectSection),
+      }
       try {
         return await httpClient.post(resolveAgentUrl(url), { json, signal: init.signal ?? undefined })
       } catch (error) {

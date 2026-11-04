@@ -125,6 +125,17 @@ export const searchEntities: SearchEntityConfig[] = [
   },
 ]
 
+/** Whether a route belongs to a section minimal mode hides: Settings or Projects. */
+export const isMinimalModeHiddenPath = (path: string): boolean =>
+  path.startsWith('/settings/') || path === '/projects' || path.startsWith('/projects/')
+
+/** Entity types whose result route minimal mode hides (see {@link isMinimalModeHiddenPath}). */
+export const minimalModeHiddenEntityTypes: ReadonlySet<SearchEntityType> = new Set(
+  searchEntities
+    .filter((cfg) => isMinimalModeHiddenPath(cfg.route({ id: 'x', parentId: null })))
+    .map((cfg) => cfg.type),
+)
+
 /**
  * Monotonic schema version for the search index. Bump whenever the registry or
  * FTS schema changes so consumers rebuild the index instead of reading a stale

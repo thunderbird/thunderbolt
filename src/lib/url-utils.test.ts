@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { deriveFaviconUrl, isSafeUrl, normalizeBackendUrl, resolveAbsoluteBackendUrl } from './url-utils'
+import { deriveFaviconUrl, isContactUrl, isSafeUrl, normalizeBackendUrl, resolveAbsoluteBackendUrl } from './url-utils'
 
 describe('isSafeUrl', () => {
   it('accepts http URLs', () => {
@@ -24,6 +24,16 @@ describe('isSafeUrl', () => {
 
   it('rejects invalid URLs', () => {
     expect(isSafeUrl('not a url')).toBe(false)
+  })
+})
+
+describe('isContactUrl', () => {
+  it('accepts mailto: and tel: only', () => {
+    expect(isContactUrl('mailto:help@example.com')).toBe(true)
+    expect(isContactUrl('tel:+15551234567')).toBe(true)
+    expect(isContactUrl('https://example.com')).toBe(false)
+    expect(isContactUrl('javascript:alert(1)')).toBe(false)
+    expect(isContactUrl('help@example.com')).toBe(false)
   })
 })
 

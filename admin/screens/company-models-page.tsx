@@ -2,6 +2,7 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Trash2 } from 'lucide-react'
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -20,6 +21,7 @@ import { useResourcePageState } from './use-resource-page-state'
 
 export const CompanyModelsPage = ({ preview }: { preview: AdminPreview }) => {
   const { i18n, t } = useLingui()
+  const appName = useAppName()
   const page = useResourcePageState()
   const model = preview.companyModels.find((item) => item.id === page.selectedId)
   const open = page.selectedId === 'new' || !!model
@@ -57,7 +59,7 @@ export const CompanyModelsPage = ({ preview }: { preview: AdminPreview }) => {
           <DetailPanel
             title={model ? t`Edit Model` : t`Add Model`}
             onClose={page.close}
-            subtitle={model ? getProviderDisplay(i18n, { ...model, isSystem: 0 }) : t`Thunderbolt agent`}
+            subtitle={model ? getProviderDisplay(i18n, { ...model, isSystem: 0 }, appName) : t`Thunderbolt agent`}
             icon={model && <ModelProviderIconTile model={{ ...model, isSystem: 0 }} />}
             actions={
               model && (

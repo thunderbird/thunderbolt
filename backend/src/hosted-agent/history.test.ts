@@ -4,7 +4,12 @@
 
 import { describe, expect, it } from 'bun:test'
 import { maxHostedAgentHistoryMessages as maxHistoryMessages } from '@shared/hosted-agent-history'
-import { parseAgentChatRequest, type AgentChatParseResult, type AgentChatRequest } from './history'
+import {
+  maxAgentInstructionsLength,
+  parseAgentChatRequest,
+  type AgentChatParseResult,
+  type AgentChatRequest,
+} from './history'
 
 const userMessage = (text: string, id = 'm1') => ({ id, role: 'user', parts: [{ type: 'text', text }] })
 const body = (messages: unknown[]) => ({ id: 'chat-1', messages, trigger: 'submit-message' })
@@ -153,5 +158,37 @@ describe('parseAgentChatRequest', () => {
     const parts = [{ type: 'text', text: 'Hi' }]
     expect(parseAgentChatRequest(body([{ id: 'm1', role: 'tool', parts }]))).toEqual(invalid)
     expect(parseAgentChatRequest(body([]))).toEqual(invalid)
+  })
+
+  describe('instructions', () => {
+    const withInstructions = (instructions: unknown) => ({ ...body([userMessage('Hi')]), instructions })
+    const instructionsOf = (result: AgentChatParseResult) => (result.ok ? result.value.instructions : undefined)
+
+    it('leaves instructions undefined when the body has none', () => {
+      expect(instructionsOf(parseAgentChatRequest(body([userMessage('Hi')])))).toBeUndefined()
+    })
+
+    it('passes instructions through, up to the cap', () => {
+      const atCap = 'x'.repeat(maxAgentInstructionsLength)
+      expect(instructionsOf(parseAgentChatRequest(withInstructions('# Project: Atlas')))).toBe('# Project: Atlas')
+      expect(instructionsOf(parseAgentChatRequest(withInstructions(atCap)))).toBe(atCap)
+    })
+
+    it('refuses instructions over the cap with their own reason', () => {
+      expect(parseAgentChatRequest(withInstructions('x'.repeat(maxAgentInstructionsLength + 1)))).toEqual({
+        ok: false,
+        reason: 'instructions_too_large',
+      })
+    })
+
+    it('reports a body that is also otherwise invalid as invalid', () => {
+      const toolMessage = { id: 'm1', role: 'tool', parts: [{ type: 'text', text: 'Hi' }] }
+      const oversized = { ...body([toolMessage]), instructions: 'x'.repeat(maxAgentInstructionsLength + 1) }
+      expect(parseAgentChatRequest(oversized)).toEqual(invalid)
+    })
+
+    it('rejects instructions that are not a string', () => {
+      expect(parseAgentChatRequest(withInstructions(['Be brief']))).toEqual(invalid)
+    })
   })
 })

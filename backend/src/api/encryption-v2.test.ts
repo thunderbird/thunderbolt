@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
-import { session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
+import { passkey as passkeyTable, session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
 import {
   challengeNoncesTable,
   encryptionMetadataTable,
@@ -13,10 +13,16 @@ import {
 } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
 import { maxActiveDevicesPerUser } from '@/dal'
-import { createTestDb } from '@/test-utils/db'
+import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import { createTestSettings } from '@/test-utils/settings'
-import { deviceBindHkdfInfo, initialKeyId, legacyKeyId } from '@shared/e2ee-types'
+import {
+  deviceBindHkdfInfo,
+  initialKeyId,
+  legacyKeyId,
+  encodeDeviceAttestationPayload,
+  ecdsaSignAlgorithm,
+} from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -55,7 +61,7 @@ const hashSecret = async (secret: string): Promise<string> => {
 }
 
 describe('Encryption API (v2)', () => {
-  let app: ReturnType<typeof createEncryptionRoutes>
+  let app: Pick<ReturnType<typeof createEncryptionRoutes>, 'handle'>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let auth: ReturnType<typeof createAuth>
   /** Every security email the routes attempted, in order (THU-875). */
@@ -78,7 +84,8 @@ describe('Encryption API (v2)', () => {
   }
 
   /** Mint a step-up code server-side, exactly as `POST /encryption/step-up/request` does. */
-  const mintStepUpCode = (userId: string): Promise<string> => mintStepUpOtp(db, `${userId}@test.com`)
+  const mintStepUpCode = (userId: string): Promise<string> =>
+    mintStepUpOtp(db, 'recovery-phrase-change', `${userId}@test.com`)
 
   /** Notifications are fired post-response via a floating promise — let it settle. */
   const flushNotifications = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -213,6 +220,30 @@ describe('Encryption API (v2)', () => {
     return (await res.json()).nonce
   }
 
+  const deviceAttestationFor = async (keypair: CryptoKeyPair, deviceId: string) => {
+    const [device] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+    return Buffer.from(
+      await crypto.subtle.sign(
+        ecdsaSignAlgorithm,
+        keypair.privateKey,
+        new Uint8Array(
+          encodeDeviceAttestationPayload(device.userId, device.id, device.publicKey!, device.mlkemPublicKey!),
+        ),
+      ),
+    ).toString('base64')
+  }
+
+  /** Real route rollbacks require committed fixtures, outside createTestDb's outer BEGIN. */
+  const useCommittedDatabase = async () => {
+    await cleanup()
+    db = (await getSharedIsolatedTestDb()).db
+    cleanup = async () => {
+      await db.delete(userTable).where(eq(userTable.id, p('u')))
+    }
+    auth = createAuth(db)
+    app = new Elysia().use(createEncryptionRoutes(auth, db, createTestSettings(), mockNotifications))
+  }
+
   beforeEach(async () => {
     const rid = ++(globalThis as Record<symbol, number>)[counterKey]
     p = (id: string) => `v2-${rid}-${id}`
@@ -221,9 +252,7 @@ describe('Encryption API (v2)', () => {
     cleanup = testEnv.cleanup
     auth = createAuth(db)
     sentEmails = []
-    app = new Elysia().use(
-      createEncryptionRoutes(auth, db, createTestSettings(), mockNotifications),
-    ) as unknown as ReturnType<typeof createEncryptionRoutes>
+    app = new Elysia().use(createEncryptionRoutes(auth, db, createTestSettings(), mockNotifications))
   })
 
   afterEach(async () => {
@@ -400,7 +429,40 @@ describe('Encryption API (v2)', () => {
   // ─── Approve via challenge signature ────────────────────────────────
 
   describe('POST /devices/:deviceId/envelope — approval (challenge proof)', () => {
-    it('approves a pending device with a valid rotate/approve signature', async () => {
+    it('rejects a confirmed tuple after the pending row keys change, preserving pending state', async () => {
+      await useCommittedDatabase()
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      await insertDevice(p('caller'), p('u'), { trusted: true })
+      await insertEnvelope(p('caller'), p('u'))
+      await insertDevice(p('target'), p('u'))
+      const [target] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('target')))
+      const attestation = Buffer.from(
+        await crypto.subtle.sign(
+          ecdsaSignAlgorithm,
+          keypair.privateKey,
+          new Uint8Array(encodeDeviceAttestationPayload(p('u'), target.id, target.publicKey!, target.mlkemPublicKey!)),
+        ),
+      ).toString('base64')
+      await db.update(devicesTable).set({ publicKey: 'replacement-key' }).where(eq(devicesTable.id, target.id))
+      const proof = await proofFor(p('tok'), p('caller'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${target.id}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation, proof }),
+        }),
+      )
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toBe('Device approval attestation does not match the current device tuple')
+      expect((await db.select().from(devicesTable).where(eq(devicesTable.id, target.id)))[0].trusted).toBe(false)
+      expect(await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, target.id))).toEqual([])
+    })
+    it('approves a pending device with an approve proof and matching recipient attestation', async () => {
       const keypair = await generateSigningKeypair()
       await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
@@ -413,7 +475,11 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
+          body: JSON.stringify({
+            wrappedCK: 'target-ak',
+            attestation: await deviceAttestationFor(keypair, p('target')),
+            proof,
+          }),
         }),
       )
 
@@ -520,7 +586,11 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('trusted-0')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
+          body: JSON.stringify({
+            wrappedCK: 'target-ak',
+            attestation: await deviceAttestationFor(keypair, p('target')),
+            proof,
+          }),
         }),
       )
 
@@ -551,7 +621,11 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('trusted-0')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
+          body: JSON.stringify({
+            wrappedCK: 'target-ak',
+            attestation: await deviceAttestationFor(keypair, p('target')),
+            proof,
+          }),
         }),
       )
 
@@ -640,7 +714,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('t1')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'ak1', attestation: 'att', proof }),
+          body: JSON.stringify({ wrappedCK: 'ak1', attestation: await deviceAttestationFor(keypair, p('t1')), proof }),
         }),
       )
       expect(first.status).toBe(200)
@@ -1157,7 +1231,7 @@ describe('Encryption API (v2)', () => {
         }),
       )
       expect(res.status).toBe(400)
-      expect((await res.json()).error).toContain('every envelope-capable device')
+      expect((await res.json()).error).toContain('Missing expected envelope recipients')
     })
 
     it('re-anchors the recovery slot to the same phrase on a silent rotation', async () => {
@@ -1314,6 +1388,148 @@ describe('Encryption API (v2)', () => {
         expect(res.status).toBe(422)
       },
     )
+
+    describe('passkey slot', () => {
+      const appWith = (passkeyEnabled: boolean) =>
+        new Elysia().use(
+          createEncryptionRoutes(
+            auth,
+            db,
+            createTestSettings({ passkeyEnabled, passkeyRpId: 'localhost' }),
+            mockNotifications,
+          ),
+        ) as unknown as ReturnType<typeof createEncryptionRoutes>
+
+      beforeEach(() => {
+        app = appWith(true)
+      })
+
+      // Credential ids are unique across the shared test DB, so scope them per test.
+      const passkeySlot = () => ({
+        passkeyCredentialId: p('cred-1'),
+        passkeyEcdhPublicKey: 'passkey-ecdh',
+        passkeyMlkemPublicKey: 'passkey-mlkem',
+        passkeyWrappedAK: 'passkey-wrapped-ak',
+        passkeyAttestation: 'passkey-attestation',
+      })
+
+      const insertPasskeyRow = async (userId: string, credentialId: string) =>
+        db.insert(passkeyTable).values({
+          id: p(`pk-${credentialId}`),
+          userId,
+          publicKey: 'pk',
+          credentialID: credentialId,
+          counter: 0,
+          deviceType: 'multiDevice',
+          backedUp: true,
+        })
+
+      const rotate = async (body: Record<string, unknown>) =>
+        app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(body),
+          }),
+        )
+
+      const readMetadata = async () =>
+        db
+          .select()
+          .from(encryptionMetadataTable)
+          .where(eq(encryptionMetadataTable.userId, p('u')))
+          .then((rows) => rows[0])
+
+      it('enrolls the slot on a rotation that carries it — no step-up', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBe(p('cred-1'))
+        expect(metadata.passkeyEcdhPublicKey).toBe('passkey-ecdh')
+        expect(metadata.passkeyMlkemPublicKey).toBe('passkey-mlkem')
+        expect(metadata.passkeyWrappedAk).toBe('passkey-wrapped-ak')
+        expect(metadata.passkeyAttestation).toBe('passkey-attestation')
+
+        const canary = await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        const served = await canary.json()
+        expect(served.passkey_credential_id).toBe(p('cred-1'))
+        expect(served.passkey_wrapped_ak).toBe('passkey-wrapped-ak')
+        expect(served.passkey_attestation).toBe('passkey-attestation')
+      })
+
+      it('clears the slot on a rotation that omits it (removal)', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        const res = await rotate(await rotateBody(keypair, [initialKeyId]))
+        expect(res.status).toBe(200)
+
+        const metadata = await readMetadata()
+        expect(metadata.passkeyCredentialId).toBeNull()
+        expect(metadata.passkeyEcdhPublicKey).toBeNull()
+        expect(metadata.passkeyMlkemPublicKey).toBeNull()
+        expect(metadata.passkeyWrappedAk).toBeNull()
+        expect(metadata.passkeyAttestation).toBeNull()
+      })
+
+      it('rejects a partial slot — and nothing moves', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        const { passkeyAttestation: _omitted, ...partial } = passkeySlot()
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...partial })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('must be supplied together')
+        expect((await readMetadata()).keyVersion).toBe(1)
+      })
+
+      // The delete hook's check and Better Auth's delete aren't atomic, so a
+      // delete racing an enrollment relies on the foreign key to fail.
+      it('refuses to delete a passkey row while its slot exists', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        await expect(
+          db
+            .delete(passkeyTable)
+            .where(eq(passkeyTable.userId, p('u')))
+            .execute(),
+        ).rejects.toThrow()
+        expect((await readMetadata()).passkeyCredentialId).toBe(p('cred-1'))
+      })
+
+      it('drops the slot and stops serving it once passkeys are turned off', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await insertPasskeyRow(p('u'), p('cred-1'))
+        expect((await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })).status).toBe(200)
+
+        app = appWith(false)
+        const canary = await (
+          await app.handle(new Request(`${baseUrl}/encryption/canary`, { headers: authHeaders(p('tok')) }))
+        ).json()
+        expect(canary.passkey_wrapped_ak).toBeNull()
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(200)
+        expect((await readMetadata()).passkeyCredentialId).toBeNull()
+      })
+
+      it("rejects a slot naming a passkey that isn't on the account", async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        await createUserAndSession(p('other'), p('other-tok'))
+        await insertPasskeyRow(p('other'), p('cred-1'))
+
+        const res = await rotate({ ...(await rotateBody(keypair, [initialKeyId])), ...passkeySlot() })
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain('does not name a passkey on this account')
+      })
+    })
   })
 
   // ─── v1→v2 upgrade ──────────────────────────────────────────────────
@@ -1351,6 +1567,47 @@ describe('Encryption API (v2)', () => {
         ...overrides,
       }
     }
+
+    it('rejects an untrusted v1 caller at the trust gate despite a valid possession proof and nonce', async () => {
+      await useCommittedDatabase()
+      await setupV1()
+      await db
+        .update(devicesTable)
+        .set({ trusted: false, approvalPending: true })
+        .where(eq(devicesTable.id, p('caller')))
+      const body = await upgradeBody()
+      const [before] = await db
+        .select()
+        .from(encryptionMetadataTable)
+        .where(eq(encryptionMetadataTable.userId, p('u')))
+      expect(await hashSecret(body.possessionProof)).toBe(before.canarySecretHash!)
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toBe('Only trusted devices can upgrade encryption')
+      expect(
+        (
+          await db
+            .select()
+            .from(encryptionMetadataTable)
+            .where(eq(encryptionMetadataTable.userId, p('u')))
+        )[0].schemeVersion,
+      ).toBe(1)
+      expect(
+        await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(eq(wrappedKeysTable.userId, p('u'))),
+      ).toEqual([])
+      expect(
+        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, body.nonce)))[0].consumed,
+      ).toBe(false)
+    })
 
     it('flips scheme 1→2, persists keyring "0"+"v1", and registers the signing key', async () => {
       await setupV1()
@@ -1459,10 +1716,24 @@ describe('Encryption API (v2)', () => {
       expect((await res.json()).error).toContain(legacyKeyId)
     })
 
-    it('rejects envelopes missing a trusted device', async () => {
+    it('migrates only the caller, clears active regular sibling envelopes and preserves already-pending row state', async () => {
       await setupV1()
-      await insertDevice(p('other'), p('u'), { trusted: true })
-      await insertEnvelope(p('other'), p('u'))
+      for (const id of ['other', 'keyless', 'cli', 'bridge', 'pending', 'revoked']) {
+        await insertDevice(p(id), p('u'), {
+          trusted: id !== 'pending' && id !== 'revoked',
+          keyless: id === 'keyless' || id === 'bridge',
+          revokedAt: id === 'revoked' ? now : undefined,
+        })
+        await db
+          .update(devicesTable)
+          .set({
+            deviceType: id === 'cli' ? 'cli' : id === 'bridge' ? 'bridge' : 'normal',
+            nodeId: `${id}-node`,
+            nodeIdAttestedAt: now,
+          })
+          .where(eq(devicesTable.id, p(id)))
+        await insertEnvelope(p(id), p('u'))
+      }
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/upgrade`, {
           method: 'POST',
@@ -1470,8 +1741,241 @@ describe('Encryption API (v2)', () => {
           body: JSON.stringify(await upgradeBody()), // envelopes only cover caller
         }),
       )
+      expect(res.status).toBe(200)
+      const [caller] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('caller')))
+      expect(caller.trusted).toBe(true)
+      expect(caller.approvalPending).toBe(false)
+      for (const id of ['other', 'keyless']) {
+        const [device] = await db
+          .select()
+          .from(devicesTable)
+          .where(eq(devicesTable.id, p(id)))
+        expect(device.trusted).toBe(false)
+        expect(device.approvalPending).toBe(true)
+        expect(device.nodeId).toBeNull()
+        expect(device.nodeIdAttestedAt).toBeNull()
+        expect(
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p(id))),
+        ).toEqual([])
+      }
+      for (const id of ['cli', 'bridge', 'pending', 'revoked']) {
+        const [device] = await db
+          .select()
+          .from(devicesTable)
+          .where(eq(devicesTable.id, p(id)))
+        expect(device.trusted).toBe(id === 'cli' || id === 'bridge')
+        expect(device.nodeId).toBe(`${id}-node`)
+        expect(
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p(id))),
+        ).toHaveLength(id === 'pending' ? 0 : 1)
+      }
+    })
+
+    it('clears normal pending or denied sibling envelopes without changing those rows', async () => {
+      await useCommittedDatabase()
+      await setupV1()
+      for (const id of ['trusted', 'pending', 'denied', 'revoked']) {
+        await insertDevice(p(id), p('u'), {
+          trusted: id === 'trusted',
+          approvalPending: id === 'pending',
+          revokedAt: id === 'revoked' ? now : undefined,
+        })
+        await db
+          .update(devicesTable)
+          .set({ nodeId: 'sibling-node' })
+          .where(eq(devicesTable.id, p(id)))
+        await insertEnvelope(p(id), p('u'), 'old-v1-envelope')
+      }
+      const before = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.userId, p('u')))
+      const response = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await upgradeBody()),
+        }),
+      )
+      expect(response.status).toBe(200)
+      for (const id of ['trusted', 'pending', 'denied', 'revoked']) {
+        const [device] = await db
+          .select()
+          .from(devicesTable)
+          .where(eq(devicesTable.id, p(id)))
+        if (id === 'trusted') {
+          expect(device.trusted).toBe(false)
+          expect(device.approvalPending).toBe(true)
+          expect(device.nodeId).toBeNull()
+        } else {
+          expect(device).toEqual(before.find((row) => row.id === p(id))!)
+        }
+        const envelopes = await db
+          .select()
+          .from(envelopesTable)
+          .where(eq(envelopesTable.deviceId, p(id)))
+        expect(envelopes).toHaveLength(id === 'revoked' ? 1 : 0)
+      }
+    })
+
+    it('rolls back removal of normal pending envelopes when a later migration write fails', async () => {
+      await useCommittedDatabase()
+      await setupV1()
+      await insertDevice(p('pending'), p('u'))
+      await db
+        .update(devicesTable)
+        .set({ nodeId: 'old-node' })
+        .where(eq(devicesTable.id, p('pending')))
+      await insertEnvelope(p('pending'), p('u'), 'pending-v1-envelope')
+      const [before] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('pending')))
+      const escrow = new Elysia().use(
+        createEncryptionRoutes(auth, db, createTestSettings({ orgEscrowEnabled: true }), mockNotifications),
+      )
+      const response = await escrow.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(await upgradeBody()),
+        }),
+      )
+      expect(response.status).toBe(400)
+      expect((await response.json()).error).toBe('orgEnvelope is required when org escrow is enabled')
+      expect(
+        (
+          await db
+            .select()
+            .from(devicesTable)
+            .where(eq(devicesTable.id, p('pending')))
+        )[0],
+      ).toEqual(before)
+      expect(
+        (
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p('pending')))
+        )[0].wrappedCk,
+      ).toBe('pending-v1-envelope')
+    })
+
+    it('rejects a sibling envelope even when the server lists that sibling as trusted', async () => {
+      await setupV1()
+      await insertDevice(p('other'), p('u'), { trusted: true })
+      const body = await upgradeBody()
+      body.envelopes.push({ deviceId: p('other'), wrappedCK: 'sibling-ak', attestation: 'att' })
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(body),
+        }),
+      )
       expect(res.status).toBe(400)
-      expect((await res.json()).error).toContain('every envelope-capable device')
+      expect((await res.json()).error).toContain('Unexpected envelope recipients')
+    })
+
+    it('rolls back sibling demotion, bindings, envelopes and nonce when a late migration write fails', async () => {
+      await useCommittedDatabase()
+      await setupV1()
+      await insertDevice(p('other'), p('u'), { trusted: true })
+      await db
+        .update(devicesTable)
+        .set({ nodeId: 'old-node', nodeIdAttestedAt: now })
+        .where(eq(devicesTable.id, p('other')))
+      await insertEnvelope(p('other'), p('u'), 'old-envelope')
+      const body = await upgradeBody()
+      const escrow = new Elysia().use(
+        createEncryptionRoutes(auth, db, createTestSettings({ orgEscrowEnabled: true }), mockNotifications),
+      )
+      const res = await escrow.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('orgEnvelope is required when org escrow is enabled')
+      const [sibling] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('other')))
+      expect(sibling.trusted).toBe(true)
+      expect(sibling.nodeId).toBe('old-node')
+      expect(sibling.nodeIdAttestedAt).toEqual(now)
+      expect(
+        (
+          await db
+            .select()
+            .from(envelopesTable)
+            .where(eq(envelopesTable.deviceId, p('other')))
+        )[0].wrappedCk,
+      ).toBe('old-envelope')
+      expect(
+        (
+          await db
+            .select()
+            .from(encryptionMetadataTable)
+            .where(eq(encryptionMetadataTable.userId, p('u')))
+        )[0].schemeVersion,
+      ).toBe(1)
+      expect(
+        await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(eq(wrappedKeysTable.userId, p('u'))),
+      ).toEqual([])
+      expect(
+        (await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.nonce, body.nonce)))[0].consumed,
+      ).toBe(false)
+    })
+
+    it('answers a demoted concurrent loser with 409 before trust, nonce or key insert checks', async () => {
+      await useCommittedDatabase()
+      await setupV1()
+      await insertDevice(p('loser'), p('u'), { trusted: true })
+      const body = await upgradeBody()
+      expect(
+        (
+          await app.handle(
+            new Request(`${baseUrl}/encryption/upgrade`, {
+              method: 'POST',
+              headers: authHeaders(p('tok'), p('caller')),
+              body: JSON.stringify(body),
+            }),
+          )
+        ).status,
+      ).toBe(200)
+      await bindSession(p('u'), p('loser'))
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('loser')),
+          body: JSON.stringify({
+            ...body,
+            envelopes: [{ deviceId: p('loser'), wrappedCK: 'losing-ak', attestation: 'att' }],
+          }),
+        }),
+      )
+      expect(res.status).toBe(409)
+      expect(
+        await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(eq(wrappedKeysTable.userId, p('u'))),
+      ).toHaveLength(2)
     })
 
     it('a second concurrent migrator loses the CAS (409)', async () => {
@@ -1605,7 +2109,10 @@ describe('Encryption API (v2)', () => {
       }
     }
 
-    const bootstrap = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+    const bootstrap = async (
+      target: Pick<ReturnType<typeof createEncryptionRoutes>, 'handle'>,
+      body: Awaited<ReturnType<typeof bootstrapBody>>,
+    ) =>
       target.handle(
         new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
           method: 'POST',
@@ -1662,7 +2169,11 @@ describe('Encryption API (v2)', () => {
           new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
             method: 'POST',
             headers: authHeaders(p('tok'), p('caller')),
-            body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
+            body: JSON.stringify({
+              wrappedCK: 'target-ak',
+              attestation: await deviceAttestationFor(keypair, p('target')),
+              proof,
+            }),
           }),
         )
 
@@ -1694,7 +2205,10 @@ describe('Encryption API (v2)', () => {
         ...extra,
       })
 
-      const rotate = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+      const rotate = async (
+        target: Pick<ReturnType<typeof createEncryptionRoutes>, 'handle'>,
+        body: Awaited<ReturnType<typeof rotateBody>>,
+      ) =>
         target.handle(
           new Request(`${baseUrl}/encryption/rotate`, {
             method: 'POST',
@@ -1761,7 +2275,10 @@ describe('Encryption API (v2)', () => {
         }
       }
 
-      const upgrade = async (target: ReturnType<typeof createEncryptionRoutes>, body: Record<string, unknown>) =>
+      const upgrade = async (
+        target: Pick<ReturnType<typeof createEncryptionRoutes>, 'handle'>,
+        body: Awaited<ReturnType<typeof upgradeBody>>,
+      ) =>
         target.handle(
           new Request(`${baseUrl}/encryption/upgrade`, {
             method: 'POST',
@@ -2082,7 +2599,11 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
+          body: JSON.stringify({
+            wrappedCK: 'target-ak',
+            attestation: await deviceAttestationFor(keypair, p('target')),
+            proof,
+          }),
         }),
       )
       expect(response.status).toBe(200)
@@ -2168,13 +2689,15 @@ describe('Encryption API (v2)', () => {
       )
       expect(res.status).toBe(200)
       expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
-      const { code, email } = sentEmails[0]!.params as { code: string; email: string }
+      const { action, code, email } = sentEmails[0]!.params as { action: string; code: string; email: string }
       expect(email).toBe(`${p('u')}@test.com`)
       expect(code).toMatch(/^\d{8}$/)
+      // The email must name the action it authorizes, or it carries the wrong copy.
+      expect(action).toBe('recovery-phrase-change')
 
       // And the minted code actually opens the rotate gate: verified end-to-end
       // by the rotate suite; here just confirm the row exists via a check call.
-      expect(await verifyStepUpOtp(db, `${p('u')}@test.com`, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', `${p('u')}@test.com`, code)).toBe('valid')
     })
 
     /**
@@ -2205,7 +2728,7 @@ describe('Encryption API (v2)', () => {
       const rows = await db
         .select()
         .from(verification)
-        .where(eq(verification.identifier, stepUpIdentifier(email)))
+        .where(eq(verification.identifier, stepUpIdentifier('recovery-phrase-change', email)))
       expect(rows).toHaveLength(1)
       expect(rows[0]!.value).toBe(`${code}:0`)
 
@@ -2221,7 +2744,7 @@ describe('Encryption API (v2)', () => {
           .checkVerificationOTP({ body: { email, type: 'email-verification', otp: '00000000' } })
           .catch(() => {})
       }
-      expect(await verifyStepUpOtp(db, email, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', email, code)).toBe('valid')
     })
 
     it('cools down repeat requests (429) and refuses untrusted devices (403)', async () => {

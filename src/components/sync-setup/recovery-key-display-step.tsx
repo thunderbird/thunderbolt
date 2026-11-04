@@ -92,11 +92,11 @@ export const RecoveryKeyDisplayStep = ({
 
         <Button
           className="w-full"
-          onClick={() => {
+          onClick={async () => {
             try {
-              navigator.clipboard.writeText('')
+              await navigator.clipboard.writeText('')
             } catch {
-              // Best-effort clipboard clear
+              // Best-effort clear; awaited so a denied permission lands here, not as an uncaught rejection.
             }
             // The single choke point for "the user acknowledged saving a phrase" —
             // every surface that displays one (setup wizard, migration, revoke

@@ -25,7 +25,10 @@ type Recorded = { url: string; language: unknown }
  */
 const createFakeHttpClient = (recorded: Recorded[], { fails = false } = {}): HttpClient => {
   const get = (url: string, options?: RequestOptions): ResponsePromise => {
-    recorded.push({ url, language: (options?.searchParams as Record<string, unknown> | undefined)?.language })
+    // The AuthProvider's startup session check is not a lookup.
+    if (url !== 'api/auth/get-session') {
+      recorded.push({ url, language: (options?.searchParams as Record<string, unknown> | undefined)?.language })
+    }
     // Only the body rejects, not the returned thenable: callers reach the
     // payload through `.json()`, so rejecting the outer promise as well would
     // leave one nobody awaits and fail the run as an unhandled rejection.

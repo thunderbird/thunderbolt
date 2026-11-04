@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@testing-library/jest-dom'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { builtInAgent } from '@/defaults/agents'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import type { Agent } from '@/types/acp'
 import { AgentSelector, buildAgentItems } from './agent-selector'
 
@@ -154,7 +155,7 @@ describe('AgentSelector', () => {
     expect(onAddAgent).toHaveBeenCalledTimes(1)
   })
 
-  it('closes the mobile agent drawer before invoking Add Agent', () => {
+  it('closes the mobile agent drawer when invoking Add Agent', async () => {
     forceMobileViewport()
     const onAddAgent = mock(() => {})
     render(
@@ -172,15 +173,42 @@ describe('AgentSelector', () => {
     fireEvent.click(screen.getByText('Add Agent'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the add flow opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(onAddAgent).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 
-  it('renders without crashing when only the built-in agent is available', () => {
-    const onSelect = mock(() => {})
-    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={onSelect} />)
+  it('is a plain label, with no menu, when there is one agent and no way to add another', () => {
+    render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} disabled />)
 
-    expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent('Thunderbolt')
+    const trigger = screen.getByTestId('agent-selector-trigger')
+    expect(trigger).toHaveTextContent('Thunderbolt')
+    expect(trigger.closest('button')).toBeNull()
+    // Not dimmed by `disabled`: there is no switch to hold back during a reply.
+    expect(trigger).not.toHaveClass('opacity-60')
+
+    fireEvent.click(trigger)
+
+    expect(screen.getAllByText('Thunderbolt')).toHaveLength(1)
+  })
+
+  describe('when the only available agent is not the selected one', () => {
+    // A chat created before hosted-agent discovery finished keeps the built-in
+    // fallback, so the hosted agent is the one choice and must stay reachable.
+    const openAndPick = () => {
+      const onSelect = mock()
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[systemAgent]} onSelect={onSelect} />)
+      fireEvent.click(screen.getByTestId('agent-selector-trigger'))
+      return onSelect
+    }
+
+    it('keeps the menu', () => {
+      const onSelect = openAndPick()
+
+      fireEvent.click(screen.getByText('RAG Chat'))
+      expect(onSelect).toHaveBeenCalledWith(systemAgent)
+    })
   })
 })

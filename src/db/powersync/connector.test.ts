@@ -7,9 +7,10 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import { resetCodecState } from '@/db/encryption'
-import { SyncStatus, type AbstractPowerSyncDatabase } from '@powersync/web'
+import type { CommonPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import * as syncTracker from './sync-tracker'
 import {
   handleCredentialsInvalidIfNeeded,
   isCreateOnlyWrite,
@@ -19,11 +20,25 @@ import {
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
+const env: { VITE_AUTH_MODE?: string } = import.meta.env
 
 const createFetchStub = (fetchMock: ReturnType<typeof mock>): typeof fetch =>
   Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init), {
     preconnect: globalThis.fetch.preconnect,
   })
+
+/** Queue a write that needs no encrypted payload, with observable acknowledgement. */
+const createQueuedUpload = () => {
+  const complete = mock(async () => {})
+  const database = {
+    currentStatus: { hasSynced: true },
+    getNextCrudTransaction: async () => ({
+      crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
+      complete,
+    }),
+  } as unknown as CommonPowerSyncDatabase
+  return { database, complete }
+}
 
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof spyOn>
@@ -140,7 +155,7 @@ describe('ThunderboltConnector', () => {
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     fetchMock = mock()
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
@@ -153,7 +168,11 @@ describe('ThunderboltConnector', () => {
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     dispatchSpy.mockRestore()
     // Clear the auth token/device id so the last test's value can't leak into
     // the next test file and trigger AuthProvider's mount get-session call.
@@ -225,15 +244,17 @@ describe('ThunderboltConnector', () => {
     })
 
     it(`uploadData uses the exact upload endpoint for ${connectorUrl}`, async () => {
+      setAuthToken(authToken)
       // A verified primary key_id lets the v2 upload gate proceed; without it
       // uploadData defers (throws) before reaching the endpoint under test.
       await storePrimaryKeyId('0')
       const complete = mock(() => Promise.resolve())
-      const database = Object.create(null) as AbstractPowerSyncDatabase
-      database.getNextCrudTransaction = async () => ({ crud: [], haveMore: false, complete })
-      // `currentStatus` is non-optional on the real class, so the stub has to
+      // `currentStatus` is non-optional on the real database, so the stub has to
       // carry it — `uploadData` reads it to classify create-only writes.
-      database.currentStatus = new SyncStatus({})
+      const database = {
+        getNextCrudTransaction: async () => ({ crud: [], haveMore: false, complete }),
+        currentStatus: {},
+      } as unknown as CommonPowerSyncDatabase
       fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
       const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
 
@@ -245,6 +266,118 @@ describe('ThunderboltConnector', () => {
       expect(complete).toHaveBeenCalledTimes(1)
     })
   }
+
+  for (const hasPrimaryKey of [false, true]) {
+    it(`uploadData preserves queued writes while signed out (primary key present: ${hasPrimaryKey})`, async () => {
+      if (hasPrimaryKey) {
+        await storePrimaryKeyId('0')
+      }
+      const { database, complete } = createQueuedUpload()
+      fetchMock.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }))
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+      await expect(connector.uploadData(database)).rejects.toThrow('Not signed in — deferring sync')
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(dispatchSpy).not.toHaveBeenCalled()
+      expect(complete).not.toHaveBeenCalled()
+
+      setAuthToken(authToken)
+      await storePrimaryKeyId('0')
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+      await connector.uploadData(database)
+      expect(complete).toHaveBeenCalledTimes(1)
+    })
+  }
+
+  it('uploadData defers if the token disappears while the encryption probe is pending', async () => {
+    setAuthToken(authToken)
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockImplementation(async () => {
+      clearAuthToken()
+      return Response.json({ error: 'Encryption not set up' }, { status: 404 })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await expect(connector.uploadData(database)).rejects.toThrow('Not signed in — deferring sync')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)
+    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('fetchCredentials defers if the token disappears while the encryption probe is pending', async () => {
+    setAuthToken(authToken)
+    await clearAllKeys()
+    fetchMock.mockImplementation(async () => {
+      clearAuthToken()
+      return Response.json({ error: 'Encryption not set up' }, { status: 404 })
+    })
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    expect(await connector.fetchCredentials()).toBeNull()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${backendUrl}/encryption/canary`)
+    expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports auth loss during key lookup without misclassifying it as missing encryption keys', async () => {
+    setAuthToken(authToken)
+    await clearAllKeys()
+    const syncEventSpy = spyOn(syncTracker, 'trackSyncEvent').mockImplementation(() => {})
+    try {
+      const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+      const credentials = connector.fetchCredentials()
+      clearAuthToken()
+
+      expect(await credentials).toBeNull()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(dispatchSpy).not.toHaveBeenCalled()
+      expect(syncEventSpy).toHaveBeenCalledWith('sync_credentials_error', {
+        had_token: true,
+        error: 'Error: Not signed in — deferring sync',
+      })
+      expect(syncEventSpy).not.toHaveBeenCalledWith(
+        'sync_credentials_error',
+        expect.objectContaining({ error_code: 'KEYRING_MISSING' }),
+      )
+    } finally {
+      syncEventSpy.mockRestore()
+    }
+  })
+
+  it('uploadData uses SSO cookies when no bearer token is stored', async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = 'sso'
+    await storePrimaryKeyId('0')
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await connector.uploadData(database)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${backendUrl}/powersync/upload`,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('uploadData still reports an expired bearer session without completing queued writes', async () => {
+    setAuthToken(authToken)
+    await storePrimaryKeyId('0')
+    const { database, complete } = createQueuedUpload()
+    fetchMock.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchMock))
+
+    await expect(connector.uploadData(database)).rejects.toThrow('Upload failed: 401')
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+    )
+    expect(complete).not.toHaveBeenCalled()
+  })
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
     setAuthToken(authToken)
@@ -363,7 +496,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
 
   // A DELETE op keeps `encodeForUpload` a no-op, so uploadData exercises only the
   // primary-key-load path we're testing (encryption of a real column is Track C's concern).
-  const makeDatabase = (): AbstractPowerSyncDatabase =>
+  const makeDatabase = (): CommonPowerSyncDatabase =>
     ({
       // The real database always carries `currentStatus`; `uploadData` reads it
       // before reaching the primary-key path under test. DELETE is never
@@ -373,7 +506,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
         crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
         complete: async () => {},
       }),
-    }) as unknown as AbstractPowerSyncDatabase
+    }) as unknown as CommonPowerSyncDatabase
 
   const okResponse = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -382,14 +515,18 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     fetchMock = mock(() => Promise.resolve(okResponse({})))
     await clearAllKeys()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     clearAuthToken()
     clearDeviceId()
@@ -458,7 +595,7 @@ describe('ThunderboltConnector upload encryption gate', () => {
           completed = true
         },
       }),
-    } as unknown as AbstractPowerSyncDatabase
+    } as unknown as CommonPowerSyncDatabase
     return { database, wasCompleted: () => completed }
   }
 
@@ -476,14 +613,18 @@ describe('ThunderboltConnector upload encryption gate', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()
@@ -610,7 +751,7 @@ describe('ThunderboltConnector download encryption gate', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     await clearAllKeys()
@@ -618,7 +759,11 @@ describe('ThunderboltConnector download encryption gate', () => {
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     dispatchSpy.mockRestore()
     await clearAllKeys()
     resetCodecState()
@@ -764,7 +909,7 @@ describe('ThunderboltConnector.uploadData', () => {
     ({
       currentStatus: { hasSynced },
       getNextCrudTransaction: async () => ({ crud, complete: async () => {} }),
-    }) as unknown as AbstractPowerSyncDatabase
+    }) as unknown as CommonPowerSyncDatabase
 
   /**
    * These tests are about the create-only tag, not encryption, so the account
@@ -794,14 +939,18 @@ describe('ThunderboltConnector.uploadData', () => {
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    delete env.VITE_AUTH_MODE
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
   })
 
   afterEach(async () => {
-    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    if (savedAuthMode === undefined) {
+      delete env.VITE_AUTH_MODE
+    } else {
+      env.VITE_AUTH_MODE = savedAuthMode
+    }
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()

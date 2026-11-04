@@ -8,7 +8,7 @@
       "@/*": ["./src/*"],
       "@/src/*": ["./src/*"],
       "@shared/*": ["./shared/*"],
-      "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/src/*"]
+      "powersync-web-internal/*": ["./node_modules/@powersync/web/lib/*"]
     },
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "types": ["bun"]

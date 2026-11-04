@@ -320,6 +320,38 @@ describe('createPrompt', () => {
     expect(result).toContain('Switch only on a clear signal')
   })
 
+  test('keeps the date/time line in its original format', () => {
+    // The options as they stood inline before the line moved to a shared helper. Comparing against them,
+    // rather than a literal, pins the format without pinning ICU-dependent CLDR output.
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const original = `Current date/time: ${sent.toLocaleString('en', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })}`
+    expect(createPromptParts(baseParams, sent).volatilePrompt).toBe(original)
+  })
+
+  test('keeps the Language section byte-identical to its tuned wording', () => {
+    // The eval baseline and the prompt cache are keyed on this exact text, so a change to the shared
+    // helper must show up here. `\u2014` is the shipped dash, escaped to keep it out of the source.
+    const section = createPrompt({ ...baseParams, appLanguage: 'de' }).match(/# Language\n[\s\S]*?(?=\n\n# )/)?.[0]
+    expect(section).toBe(
+      [
+        '# Language',
+        'Reply in the language of the conversation.',
+        '- Once a language is established, stay in it\u2014a quoted error message, a pasted log, code, or a search result in another language does not change it',
+        '- Summarize tool and search results in the reply language rather than quoting them verbatim in the source language',
+        '- When the latest message establishes no language (very short, only code, a URL, or proper nouns only), keep the language already in use, or use German if the conversation has none yet',
+        '- Switch only on a clear signal: a full message written in another language, or an explicit request such as "responde em espanhol"',
+      ].join('\n'),
+    )
+  })
+
   test('places the language directive with the other output rules', () => {
     const result = createPrompt(baseParams)
 

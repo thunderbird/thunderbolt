@@ -13,12 +13,14 @@ export const inferencePrices = pgTable(
     model: text('model').notNull(),
     inputNanoUsdPerToken: bigint('input_nano_usd_per_token', { mode: 'bigint' }).notNull(),
     outputNanoUsdPerToken: bigint('output_nano_usd_per_token', { mode: 'bigint' }).notNull(),
+    cacheReadNanoUsdPerToken: bigint('cache_read_nano_usd_per_token', { mode: 'bigint' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.provider, table.model] }),
     check('inference_prices_input_nonnegative', sql`${table.inputNanoUsdPerToken} >= 0`),
     check('inference_prices_output_nonnegative', sql`${table.outputNanoUsdPerToken} >= 0`),
+    check('inference_prices_cache_read_nonnegative', sql`${table.cacheReadNanoUsdPerToken} >= 0`),
   ],
 )
 

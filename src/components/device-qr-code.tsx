@@ -59,6 +59,7 @@ const DeviceQrCode = ({ value, size = 160, encode = QRCode.toDataURL }: DeviceQr
       alt={t`Device pairing QR code`}
       width={size}
       height={size}
+      // Scanners need a light quiet zone, so this stays white under every theme.
       className="rounded-md bg-white p-2"
       style={{ width: size, height: size }}
     />

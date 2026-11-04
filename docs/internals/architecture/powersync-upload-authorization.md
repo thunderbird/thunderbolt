@@ -4,13 +4,13 @@
 
 ## Two credentials, two directions
 
-| Direction | Endpoint                                  | Credential                                     | Isolation mechanism                                                                      |
-| --------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Download  | The PowerSync service's own sync stream   | Short-lived JWT from `GET /v1/powersync/token` | Sync rules: every bucket is `... WHERE user_id = bucket.user_id` off `request.user_id()` |
-| Upload    | `PUT /v1/powersync/upload` on the backend | The ordinary app session                       | `applyOperation` (this document)                                                         |
+| Direction | Endpoint                                  | Credential                                     | Isolation mechanism                                   |
+| --------- | ----------------------------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| Download  | The PowerSync service's own sync stream   | Short-lived JWT from `GET /v1/powersync/token` | Sync streams: every row is scoped to `auth.user_id()` |
+| Upload    | `PUT /v1/powersync/upload` on the backend | The ordinary app session                       | `applyOperation` (this document)                      |
 
 - Upload resolves its user with `auth.api.getSession` in the Elysia `.derive` ([backend/src/api/powersync.ts:173-179](../../../backend/src/api/powersync.ts)); the PowerSync JWT plays no part in a write.
-- The download-side sync rules are duplicated across three configs ([powersync-service/config/config.yaml](../../../powersync-service/config/config.yaml), [deploy/config/powersync-config.yaml](../../../deploy/config/powersync-config.yaml), [deploy/k8s/templates/configmaps.yaml](../../../deploy/k8s/templates/configmaps.yaml)), so nothing in `backend/` enforces read isolation.
+- The download-side sync streams are duplicated across three configs ([powersync-service/config/config.yaml](../../../powersync-service/config/config.yaml), [deploy/config/powersync-config.yaml](../../../deploy/config/powersync-config.yaml), [deploy/k8s/templates/configmaps.yaml](../../../deploy/k8s/templates/configmaps.yaml)), so nothing in `backend/` enforces read isolation.
 - Uploads arrive as generic row operations (table name, row id, bag of columns) assembled on a device the user controls, so none of it is trustworthy.
 - The endpoint around the gate (origin check, anonymous rejection, device validation, reset status codes) is in [powersync-account-devices.md](powersync-account-devices.md#powersync-upload-put-powersyncupload).
 
@@ -47,11 +47,11 @@ Every denied column is written by server code only, each by a small fixed set of
 | `public_key`, `mlkem_public_key` | `registerDevice`, on `POST /v1/devices` ([backend/src/api/encryption.ts](../../../backend/src/api/encryption.ts)); the only route that sets a key value                                |
 | `trusted`, `approval_pending`    | `registerDevice` (pending), `markDeviceTrusted`, `denyDevice` and `revokeDevice` ([backend/src/dal/devices.ts](../../../backend/src/dal/devices.ts))                                   |
 | `revoked_at`                     | `revokeDevice` only, via `POST /v1/account/devices/:id/revoke`                                                                                                                         |
-| `app_version`                    | `upsertDevice` from the `X-App-Version` header on the token route, and `upsertCliDevice` on CLI registration                                                                           |
+| `app_version`                    | `touchDevice` from the `X-App-Version` header on the token route, and `upsertCliDevice` on CLI registration                                                                            |
 | `device_type`                    | The bridge and CLI registration routes; `normal` is the column default, so any other upsert produces one. Discriminates a bridge from a normal device and drives the account allowlist |
 | `node_id`, `node_id_attested_at` | The canary-gated `POST /v1/devices/:deviceId/node-id`, the session-pinned `POST /v1/devices/me/node-id`, and bridge registration; revoke, deny and re-registration clear them          |
 
-Only `name`, `last_seen` and `created_at` stay client-writable on a device's own row, which is what makes `devices` safe to sync. An uploaded `name` arrives as ciphertext: `devices.name` is in `encryptedColumnsMap` ([src/db/encryption/config.ts](../../../src/db/encryption/config.ts)) and `encodeForUpload` encrypts it in the connector. The backend still writes the plaintext name itself, at registration and from `X-Device-Name` on every token request, so device names stay readable server-side.
+Only `name`, `last_seen` and `created_at` stay client-writable on a device's own row, which is what makes `devices` safe to sync. An uploaded `name` arrives as ciphertext: `devices.name` is in `encryptedColumnsMap` ([src/db/encryption/config.ts](../../../src/db/encryption/config.ts)) and `encodeForUpload` encrypts it in the connector. The backend still writes the plaintext name itself, at registration and from `X-Device-Name` on token requests, so device names stay readable server-side.
 
 See also [e2e-encryption.md](e2e-encryption.md) (server-set `device_type` is load-bearing for the bridge allowlist) and [delete-account-and-revoke-device.md](delete-account-and-revoke-device.md) (the revoke path the delete ban forces writes through).
 

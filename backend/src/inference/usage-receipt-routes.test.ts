@@ -156,7 +156,7 @@ describe('inference usage receipt routes', () => {
     const response = await postJson(unauthenticatedApp, { receipt: issueReceipt(), ...defaultCounts })
 
     expect(response.status).toBe(401)
-    expect(await response.text()).toBe('Unauthorized')
+    expect(await response.json()).toEqual({ code: 'UNAUTHENTICATED' })
   })
 
   it('rejects an authenticated x-api-key before parsing the request body', async () => {

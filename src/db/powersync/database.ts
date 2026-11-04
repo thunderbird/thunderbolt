@@ -5,17 +5,17 @@
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { appVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isAppVersionUnsupported } from '@/lib/app-version'
-import type { AbstractPowerSyncDatabase } from '@powersync/common'
-import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
+import type { CommonPowerSyncDatabase } from '@powersync/common'
+import { SyncStreamConnectionMethod, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
 import { isSyncEnabled } from './sync-state'
+import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { getPlatform, getWebBrowser } from '@/lib/platform'
+import { deleteIndexedDbDatabase, getPlatform, getWebBrowser, hasIndexedDbDatabase, hasOpfsFile } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
-import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
 import {
   getMsSinceLastDownload,
   sanitizeErrorForTracking,
@@ -30,7 +30,7 @@ export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
 /**
  * Determines which PowerSync database config to use based on platform and browser.
  * - default: Non-Safari web — PowerSync's default setup works well.
- * - safari-tauri: Safari web or Tauri — full WASQLiteOpenFactory with OPFSCoopSyncVFS required.
+ * - safari-tauri: Safari web or Tauri — OPFSCoopSyncVFS in dedicated DB and sync workers.
  */
 export const getPowerSyncDatabaseConfig = (
   platform: ReturnType<typeof getPlatform> = getPlatform(),
@@ -48,34 +48,74 @@ export const getPowerSyncDatabaseConfig = (
 const initialSyncTimeoutMs = 10_000
 
 /**
- * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
- * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
- * settings, models, model_profiles, devices, chat_threads. Lower-priority buckets
- * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
+ * Sync stream priority we block app init on. Covers `user_essentials` (settings, models,
+ * model_profiles, devices, chat_threads) and `device_self` in
+ * `powersync-service/config/config.yaml`. The lower-priority `user_data` stream (chat_messages, tasks,
+ * etc.) streams in the background after the app is interactive.
  *
- * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
+ * `device_self` is here so priority 1 is never empty: a revoked device loses every other
+ * stream, and that one row is how it learns it was revoked.
+ *
+ * Falls back to global `hasSynced` if the deployed sync config doesn't declare priorities
  * (see `SyncStatus.statusForPriority`).
  */
 const initialSyncPriority = 1
 
 /**
+ * Resolve once this device's own row is in the local `devices` table.
+ *
+ * The account streams are gated on that row, so until it reaches the sync service a
+ * just-trusted device gets a priority-1 checkpoint that is complete but empty. The row
+ * arrives through `device_self` at the same moment the gated streams unlock.
  * @internal Exported for testing
- * @param opfsAvailable - Whether OPFS (`navigator.storage.getDirectory`) is actually usable on this
- * platform. Only affects the 'safari-tauri' config's VFS choice — see the comment below.
  */
-export const getPowerSyncOptions = (
+export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, signal: AbortSignal): Promise<void> => {
+  for await (const result of powerSync.watch('SELECT 1 FROM devices WHERE id = ?', [getDeviceId()], { signal })) {
+    if (result.array.length) {
+      return
+    }
+  }
+}
+
+/** The database filename PowerSync opens: the OPFS file, or the IndexedDB database name. */
+const toDbFilename = (path: string) => (path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path)
+
+/**
+ * OPFS when usable, except on a `default`-config device whose data already lives in IndexedDB:
+ * it stays there, so switching never drops local-only rows or queued uploads, until a reset
+ * leaves an OPFS database file behind (`resetAppDir`).
+ * @internal Exported for testing
+ */
+export const shouldUseOpfs = async (
   path: string,
-  config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig(),
-  opfsAvailable = true,
-) => {
-  const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
+  config: PowerSyncDatabaseConfig,
+  storage: { opfsRoot?: Pick<FileSystemDirectoryHandle, 'getFileHandle'>; idb?: Pick<IDBFactory, 'databases'> } = {},
+): Promise<boolean> => {
+  // `getDatabasePath` returns this sentinel when OPFS is unavailable.
+  if (path === ':memory:') {
+    return false
+  }
+  const dbFilename = toDbFilename(path)
+  if (config === 'safari-tauri' || (await hasOpfsFile(dbFilename, storage.opfsRoot))) {
+    return true
+  }
+  return !(await hasIndexedDbDatabase(dbFilename, storage.idb))
+}
+
+/**
+ * @internal Exported for testing
+ * @param useOpfs - `OPFSCoopSyncVFS` rather than `IDBBatchAtomicVFS` (see `shouldUseOpfs`). On
+ * 'safari-tauri' it also decides whether sync runs in a worker or in the tab.
+ */
+export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig, useOpfs: boolean) => {
+  const dbFilename = toDbFilename(path)
+  const vfs = useOpfs ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS
 
   if (config === 'default') {
     return {
-      database: { dbFilename },
+      database: { dbFilename, vfs },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-      transformers: [encryptionMiddleware],
-      // Always use the custom SharedWorker that embeds TransformableBucketStorage with encryption middleware.
+      // Always use the custom SharedWorker that runs sync data through the encryption middleware.
       // The middleware is data-driven (checks __enc: prefix per-value), so it safely passes through plaintext
       // when E2EE is disabled. This avoids a hard dependency on the /config endpoint at init time — if the
       // fetch fails, encrypted sync data is still decrypted correctly instead of being stored as ciphertext.
@@ -90,50 +130,47 @@ export const getPowerSyncOptions = (
   }
 
   /**
-   * Safari (web) + Tauri (iOS/Desktop): full WASQLiteOpenFactory required.
+   * Safari (web) + Tauri (iOS/Desktop).
    * OPFSCoopSyncVFS avoids IDBBatchAtomicVFS + Asyncify ("Maximum call stack size exceeded"
    * on Safari/iOS) and SharedArrayBuffer + SharedWorker (iOS WKWebView black-screen crash).
    * Falls back to IDBBatchAtomicVFS when OPFS is unavailable (e.g. WebKitGTK on Tauri Linux).
-   * The DB runs in a dedicated Worker via an explicit UMD path (import.meta.url fails under
-   * tauri:// for node_modules workers).
    *
-   * Sync runs in a dedicated Worker too: the PowerSyncDatabase-level
-   * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the
-   * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker.
+   * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the sync
+   * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker,
+   * keeping the sync stream off the UI thread.
+   *
+   * The DB worker is PowerSync's prebuilt worker, loaded from an absolute path because
+   * `import.meta.url` fails under tauri:// for node_modules workers. It must be a URL, not a
+   * factory: PowerSync posts the DB options to the sync worker, and a function can't be cloned.
+   * With a URL PowerSync opens OPFS in a dedicated worker, but the IndexedDB fallback in a
+   * SharedWorker whenever `enableMultiTabs` is on — so the fallback turns it off and syncs in
+   * the tab instead.
    *
    * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
    */
   return {
-    database: new WASQLiteOpenFactory({
-      dbFilename: dbFilename,
-      vfs: opfsAvailable ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS,
-      worker: '/@powersync/worker/WASQLiteDB.umd.js',
-      flags: { enableMultiTabs: false },
-    }),
+    database: {
+      dbFilename,
+      vfs,
+      enableMultiTabs: useOpfs,
+      worker: '/@powersync/worker.js',
+    },
     schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-    flags: { enableMultiTabs: true },
     sync: { worker: () => createDedicatedSyncWorker(dbFilename) },
-    transformers: [encryptionMiddleware],
   }
 }
 
 /**
  * Builds the dedicated Worker that hosts the sync stream on iOS/Safari.
  *
- * SharedWebStreamingSyncImplementation reads `.port` off this factory's result and drives it
- * over Comlink; on dispose it calls `.close()`. A dedicated Worker is a valid Comlink endpoint
- * but exposes `.terminate()` rather than `.close()`, so map one to the other. The result is
- * shaped as a SharedWorker to satisfy PowerSync's factory type — only `.port` is read at runtime.
+ * PowerSync drives a dedicated Worker directly as its Comlink endpoint and terminates it on
+ * dispose; only the factory's declared return type is SharedWorker, hence the cast.
  */
-const createDedicatedSyncWorker = (dbFilename: string): SharedWorker => {
-  const worker = new Worker(new URL('./worker/ThunderboltDedicatedSyncImplementation.worker.ts', import.meta.url), {
+const createDedicatedSyncWorker = (dbFilename: string): SharedWorker =>
+  new Worker(new URL('./worker/ThunderboltDedicatedSyncImplementation.worker.ts', import.meta.url), {
     type: 'module',
     name: `dedicated-sync-${dbFilename}`,
-  })
-  const port = worker as unknown as MessagePort
-  port.close = () => worker.terminate()
-  return { port } as unknown as SharedWorker
-}
+  }) as unknown as SharedWorker
 
 /**
  * PowerSync database implementation.
@@ -147,6 +184,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private hiddenAt: number | null = null
   private _isReconnecting = false
   private versionBlockHandler: (() => void) | null = null
+  private vfs: WASQLiteVFS | null = null
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -173,19 +211,32 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already initialized
     }
 
-    // `getDatabasePath` (called before `initialize`) already probes real OPFS availability and
-    // returns the ':memory:' sentinel when it's unavailable — reuse that instead of re-probing.
-    const opfsAvailable = path !== ':memory:'
-    const options = getPowerSyncOptions(path, getPowerSyncDatabaseConfig(), opfsAvailable)
+    const config = getPowerSyncDatabaseConfig()
+    const options = getPowerSyncOptions(path, config, await shouldUseOpfs(path, config))
+    this.vfs = options.database.vfs
+    console.info(
+      this.vfs === WASQLiteVFS.OPFSCoopSyncVFS
+        ? `[PowerSync] Storage: OPFS /${options.database.dbFilename}`
+        : `[PowerSync] Storage: IndexedDB database "${options.database.dbFilename}"`,
+    )
+    // A reset deletes the IndexedDB database, but another tab holding it open can delay that.
+    if (
+      this.vfs === WASQLiteVFS.OPFSCoopSyncVFS &&
+      config === 'default' &&
+      (await hasIndexedDbDatabase(options.database.dbFilename))
+    ) {
+      void deleteIndexedDbDatabase(options.database.dbFilename).catch((error) =>
+        console.error('[PowerSync] Failed to delete the old IndexedDB database:', error),
+      )
+    }
 
-    // Always use ThunderboltPowerSyncDatabase with TransformableBucketStorage + encryption middleware.
+    // Always use ThunderboltPowerSyncDatabase so sync data runs through the encryption middleware.
     // The middleware is data-driven (checks __enc: prefix), so it's a no-op when E2EE is disabled.
     // This removes the hard dependency on /config at init — if the fetch fails, sync still works correctly.
     this.powerSync = new ThunderboltPowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
-    // Cast instance: drizzle-driver expects AbstractPowerSyncDatabase from root @powersync/common; PowerSyncDatabase is from @powersync/web (nested common).
-    this._db = wrapPowerSyncWithDrizzle(this.powerSync as unknown as AbstractPowerSyncDatabase, {
+    this._db = wrapPowerSyncWithDrizzle(this.powerSync, {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 
@@ -308,7 +359,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       this._isConnected = true
       console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
       this.logFullSyncWhenReady(connectStartedAt)
-      startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig())
+      startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig(), this.vfs)
       trackSyncEvent('sync_connect')
       this.startVisibilityReconnect()
     } catch (error) {
@@ -458,9 +509,10 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
-   * settings, models, model_profiles, devices, chat_threads). Lower-priority data
-   * (chat_messages, tasks, etc.) continues streaming in the background.
+   * Wait for PowerSync's priority-1 streams to complete their initial sync (`user_essentials` —
+   * settings, models, model_profiles, devices, chat_threads — and `device_self`). Lower-priority data
+   * (chat_messages, tasks, etc.) continues streaming in the background. Also waits for this
+   * device's own row, without which priority 1 can complete empty (see `waitForOwnDeviceRow`).
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).
    */
@@ -478,14 +530,18 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     const timeoutPromise = new Promise<void>((resolve) => {
       timeoutId = setTimeout(() => {
         timedOut = true
-        console.warn(`[PowerSync] Priority-${initialSyncPriority} sync timed out after ${initialSyncTimeoutMs / 1000}s`)
+        console.warn(`[PowerSync] Initial sync timed out after ${initialSyncTimeoutMs / 1000}s`)
         resolve()
       }, initialSyncTimeoutMs)
     })
 
     try {
+      const powerSync = this.powerSync
       await Promise.race([
-        this.powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority }),
+        (async () => {
+          await powerSync.waitForFirstSync({ signal: abortController.signal, priority: initialSyncPriority })
+          await waitForOwnDeviceRow(powerSync, abortController.signal)
+        })(),
         timeoutPromise,
       ])
       if (timedOut) {
@@ -514,6 +570,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     stopSyncStatusListener()
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()
+      // Releases the storage too, so a reset can delete the OPFS file or the IndexedDB database.
+      await this.powerSync.close()
       this.powerSync = null
       this._db = null
     }

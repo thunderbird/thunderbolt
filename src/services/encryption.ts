@@ -15,6 +15,7 @@ import {
   importPublicKey,
   exportMlKemPublicKey,
   importMlKemPublicKey,
+  isUsableMlKemPublicKey,
   wrapAK,
   rewrapAK,
   unwrapAK,
@@ -57,6 +58,9 @@ import { clearRecoveryPhrasePending, markRecoveryPhrasePending } from '@/lib/rec
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
+import { DeviceApprovalError } from '@/crypto/errors'
+import { createDeviceApprovalFingerprint, matchesDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
+import { StepUpVerificationError, stepUpRefusalCode } from '@/lib/step-up'
 import {
   bindSession,
   fetchBindChallenge,
@@ -92,6 +96,7 @@ import {
   type ChallengeOperation,
   type ChallengeProof,
   type KeyId,
+  type PasskeySlotRequest,
   type RecoverySlotRequest,
   type WrappedKeyEntry,
 } from '@shared/e2ee-types'
@@ -104,6 +109,7 @@ import {
  */
 const loadCanary = () => import('@/crypto/canary')
 const loadRecoveryKey = () => import('@/crypto/recovery-key')
+const loadPasskeyKey = () => import('@/crypto/passkey-key')
 
 // =============================================================================
 // Errors
@@ -115,20 +121,11 @@ const loadRecoveryKey = () => import('@/crypto/recovery-key')
  * been refreshed (`refreshAK`); the caller should simply retry the rotation.
  */
 /**
- * Thrown when POST /encryption/rotate refuses a recovery re-anchor without a
- * valid step-up code (THU-875). NOT staleness — local state is fine and nothing
- * is refreshed; the caller re-prompts for the emailed code.
- * `step_up_required`: no code accompanied the request. `step_up_invalid`: the
- * code was wrong, expired, or burned its attempt budget.
+ * Re-exported from `@/lib/step-up`, where every gated action shares it. On a
+ * rotate this means the recovery re-anchor was refused: NOT staleness — local
+ * state is fine and nothing is refreshed; the caller re-prompts for the code.
  */
-export class StepUpVerificationError extends Error {
-  code: 'step_up_required' | 'step_up_invalid'
-  constructor(code: 'step_up_required' | 'step_up_invalid', options?: ErrorOptions) {
-    super(`Recovery re-anchor refused: ${code}`, options)
-    this.name = 'StepUpVerificationError'
-    this.code = code
-  }
-}
+export { StepUpVerificationError } from '@/lib/step-up'
 
 export class RotationStaleError extends Error {
   constructor(options?: ErrorOptions) {
@@ -225,6 +222,23 @@ export class RecoveryAnchorError extends Error {
       options,
     )
     this.name = 'RecoveryAnchorError'
+  }
+}
+
+/**
+ * The passkey-slot counterpart of `RecoveryAnchorError`: the served passkey
+ * public keys do not carry a valid attestation, or can't be wrapped to, so a
+ * rotation refuses to re-wrap the AK to them. Removing the passkey (a rotation that drops the slot without
+ * reading it) is the way out.
+ */
+export class PasskeyAnchorError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(
+      'The passkey keys the server supplied could not be verified against this device — ' +
+        'refusing to re-anchor the account key. This may indicate tampering.',
+      options,
+    )
+    this.name = 'PasskeyAnchorError'
   }
 }
 
@@ -523,6 +537,109 @@ const readStoredRecoveryPlan = async (httpClient: HttpClient, canaryKey: CryptoK
 }
 
 // =============================================================================
+// Passkey slot — the account's passkey as a second, optional virtual device
+// =============================================================================
+
+/**
+ * How a rotation treats the passkey slot: re-anchor the stored one, anchor a
+ * newly enrolled one (both carry the credential and its PRF-derived public keys),
+ * or write none — which is also how a slot is removed.
+ */
+type PasskeyPlan = { mode: 'none' } | { mode: 'slot'; credentialId: string; publicKeys: RecoveryPublicKeys }
+
+/**
+ * Wrap `ak` for the passkey's virtual device and sign its anchor with THIS
+ * write's canary key — the passkey counterpart of `buildRecoverySlot`. A 'none'
+ * plan contributes no fields, which is what clears the slot server-side.
+ */
+const buildPasskeySlot = async (
+  ak: CryptoKey,
+  plan: PasskeyPlan,
+  canaryKey: CryptoKey,
+  primaryKeyId: KeyId,
+): Promise<Partial<PasskeySlotRequest>> => {
+  if (plan.mode === 'none') {
+    return {}
+  }
+  const passkeyEcdhPublicKey = await exportPublicKey(plan.publicKeys.ecdhPublicKey)
+  const passkeyMlkemPublicKey = exportMlKemPublicKey(plan.publicKeys.mlkemPublicKey)
+  const { signPasskeyAttestation } = await loadCanary()
+  return {
+    passkeyCredentialId: plan.credentialId,
+    passkeyEcdhPublicKey,
+    passkeyMlkemPublicKey,
+    passkeyWrappedAK: await wrapAK(ak, plan.publicKeys.ecdhPublicKey, plan.publicKeys.mlkemPublicKey, primaryKeyId),
+    passkeyAttestation: await signPasskeyAttestation(canaryKey, {
+      userId: getUserId(),
+      credentialId: plan.credentialId,
+      passkeyEcdhPublicKey,
+      passkeyMlkemPublicKey,
+    }),
+  }
+}
+
+/**
+ * Re-anchor whatever passkey slot the account has: none stays none, and a stored
+ * slot is re-wrapped to its SAME public keys — but only after its attestation
+ * verifies against `canaryKey`, exactly as `readStoredRecoveryPlan` guards the
+ * recovery slot. A substituted slot fails closed rather than receiving the AK.
+ */
+const readStoredPasskeyPlan = async (httpClient: HttpClient, canaryKey: CryptoKey): Promise<PasskeyPlan> => {
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (!metadata.passkey_credential_id) {
+    return { mode: 'none' }
+  }
+  if (!metadata.passkey_ecdh_public_key || !metadata.passkey_mlkem_public_key || !metadata.passkey_attestation) {
+    throw new PasskeyAnchorError()
+  }
+  const { verifyPasskeyAttestation } = await loadCanary()
+  const verified = await verifyPasskeyAttestation(canaryKey, metadata.passkey_attestation, {
+    userId: getUserId(),
+    credentialId: metadata.passkey_credential_id,
+    passkeyEcdhPublicKey: metadata.passkey_ecdh_public_key,
+    passkeyMlkemPublicKey: metadata.passkey_mlkem_public_key,
+  })
+  if (!verified) {
+    await throwIfRotatedElsewhere(httpClient, metadata.key_version)
+    throw new PasskeyAnchorError()
+  }
+  // The signature proves who wrote the keys, not that they're usable. Unusable
+  // keys fail as an anchor error too, so revocation drops the slot instead of
+  // failing at the wrap.
+  const publicKeys = await importSlotPublicKeys(metadata.passkey_ecdh_public_key, metadata.passkey_mlkem_public_key)
+  if (!publicKeys) {
+    throw new PasskeyAnchorError()
+  }
+  return { mode: 'slot', credentialId: metadata.passkey_credential_id, publicKeys }
+}
+
+/**
+ * A slot signed by a newer epoch than ours means another device rotated since we
+ * read our canary key, not that the slot is bad. Refresh and let the caller retry,
+ * instead of telling the user to remove a working passkey.
+ */
+const throwIfRotatedElsewhere = async (httpClient: HttpClient, serverKeyVersion: number): Promise<void> => {
+  const localKeyVersion = await getKeyVersion()
+  if (localKeyVersion === null || serverKeyVersion <= localKeyVersion) {
+    return
+  }
+  await refreshAKForRotation(httpClient)
+  throw new RotationStaleError()
+}
+
+/** Import a slot's public keys, or null when either can't be used to wrap the AK. */
+const importSlotPublicKeys = async (ecdh: string, mlkem: string): Promise<RecoveryPublicKeys | null> => {
+  try {
+    const mlkemPublicKey = importMlKemPublicKey(mlkem)
+    return isUsableMlKemPublicKey(mlkemPublicKey)
+      ? { ecdhPublicKey: await importPublicKey(ecdh), mlkemPublicKey }
+      : null
+  } catch {
+    return null
+  }
+}
+
+// =============================================================================
 // Detecting step — register device and store key pair
 // =============================================================================
 
@@ -553,6 +670,9 @@ export const registerThisDevice = async (httpClient: HttpClient): Promise<Regist
 /** Bearer token of the last successfully bound session — dedupes repeat calls. */
 let lastBoundToken: string | null = null
 
+/** The handshake in flight, so concurrent callers share it instead of racing two challenges. */
+let inflightBind: { token: string | null; promise: Promise<void> } | null = null
+
 /**
  * Prove to the backend that this session belongs to THIS device, so every trust
  * route can resolve its caller from `session.deviceId` instead of the
@@ -582,10 +702,24 @@ export const ensureSessionBound = async (httpClient: HttpClient): Promise<void> 
   if (token && token === lastBoundToken) {
     return
   }
-  const { sealed } = await fetchBindChallenge(httpClient)
-  const nonce = await openBindNonce(keyPair.ecdhPrivateKey, sealed)
-  await bindSession(httpClient, { deviceId: getDeviceId(), nonce })
-  lastBoundToken = token
+  if (inflightBind?.token === token) {
+    return inflightBind.promise
+  }
+  const bind = async () => {
+    const { sealed } = await fetchBindChallenge(httpClient)
+    const nonce = await openBindNonce(keyPair.ecdhPrivateKey, sealed)
+    await bindSession(httpClient, { deviceId: getDeviceId(), nonce })
+    lastBoundToken = token
+  }
+  const entry = { token, promise: bind() }
+  inflightBind = entry
+  try {
+    await entry.promise
+  } finally {
+    if (inflightBind === entry) {
+      inflightBind = null
+    }
+  }
 }
 
 // =============================================================================
@@ -759,10 +893,44 @@ const unwrapEnvelopeAK = async (wrappedCK: string): Promise<OpenedAkEnvelope> =>
  * reads 404 as "not approved yet" narrows that catch itself.
  */
 const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<{ keyring: FetchedKeyring; primaryKeyId: KeyId }> => {
-  const { wrappedCK } = await fetchMyEnvelope(httpClient)
+  const { wrappedCK, attestation } = await fetchMyEnvelope(httpClient)
   const envelope = await unwrapEnvelopeAK(wrappedCK)
+  await assertFirstEnvelopeRecipient(httpClient, envelope.ak, attestation)
   const keyring = await acceptCandidateAK(httpClient, envelope.ak)
   return { keyring, primaryKeyId: envelope.primaryKeyId }
+}
+
+/** Authenticate the first envelope's recipient before any key state becomes durable. */
+const assertFirstEnvelopeRecipient = async (
+  httpClient: HttpClient,
+  ak: CryptoKey,
+  attestation: string | null,
+): Promise<void> => {
+  if (await getAK()) {
+    return
+  }
+  const keyPair = await getKeyPair()
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (!keyPair || !attestation || !metadata.canary_iv || !metadata.canary_ctext) {
+    throw new DeviceApprovalError('recipient-unverified')
+  }
+  const { unwrapCanaryKey, verifyDeviceAttestation } = await loadCanary()
+  try {
+    const canaryKey = await unwrapCanaryKey(ak, getUserId(), metadata.canary_iv, metadata.canary_ctext)
+    if (
+      await verifyDeviceAttestation(canaryKey, attestation, {
+        userId: getUserId(),
+        deviceId: getDeviceId(),
+        ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+      })
+    ) {
+      return
+    }
+  } catch (cause) {
+    throw new DeviceApprovalError('recipient-unverified', { cause })
+  }
+  throw new DeviceApprovalError('recipient-unverified')
 }
 
 /**
@@ -1037,18 +1205,41 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
 // Flow D (trusted device) — Approve / deny / revoke / node-id
 // =============================================================================
 
+/** Compute the pending device's confirmation from local keys, never a served device row. */
+export const getThisDeviceApprovalFingerprint = async (): Promise<string> => {
+  const keyPair = await getKeyPair()
+  if (!keyPair) {
+    throw new Error('Key pair not found in IndexedDB')
+  }
+  return createDeviceApprovalFingerprint({
+    userId: getUserId(),
+    deviceId: getDeviceId(),
+    ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+  })
+}
+
 /**
- * Approve a pending device by rewrapping the AK with its public keys and storing the envelope.
- * Fetches this device's own envelope from the server and rewraps — the locally stored
- * non-extractable AK is never touched, preserving its security properties.
- * Gated by an 'approve' challenge proof (replaces the v1 canary-secret body).
+ * Approve a captured recipient after fingerprint confirmation. Verify this device's
+ * served AK against the local witness, then rewrap its envelope for that recipient.
+ * The stored non-extractable AK is never exported. An 'approve' proof gates the POST.
  */
 export const approveDevice = async (
   httpClient: HttpClient,
   pendingDeviceId: string,
   pendingEcdhPublicKeyBase64: string,
   pendingMlkemPublicKeyBase64: string,
+  fingerprint: string,
 ): Promise<void> => {
+  const anchor = {
+    userId: getUserId(),
+    deviceId: pendingDeviceId,
+    ecdhPublicKey: pendingEcdhPublicKeyBase64,
+    mlkemPublicKey: pendingMlkemPublicKeyBase64,
+  }
+  if (!(await matchesDeviceApprovalFingerprint(anchor, fingerprint))) {
+    throw new DeviceApprovalError('fingerprint-mismatch')
+  }
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found in IndexedDB')
@@ -1060,6 +1251,9 @@ export const approveDevice = async (
   ])
   const pendingEcdhPub = await importPublicKey(pendingEcdhPublicKeyBase64)
   const pendingMlkemPub = importMlKemPublicKey(pendingMlkemPublicKeyBase64)
+  await reconcileKeyringAnchor()
+  const candidate = await unwrapAK(myWrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+  await assertCandidateAKIsOurs(candidate.ak, await fetchKeyring(httpClient))
   const wrappedCK = await rewrapAK(
     myWrappedCK,
     keyPair.ecdhPrivateKey,
@@ -1068,18 +1262,8 @@ export const approveDevice = async (
     pendingMlkemPub,
   )
 
-  // The approver attests the keys it just wrapped to, so the NEXT rotation can
-  // tell this device apart from a row the server invented. Note what this does
-  // NOT prove: the pending device's public keys arrived from the server, so an
-  // approval-time substitution is signed in good faith. Closing that needs
-  // out-of-band fingerprint comparison — a POC non-goal, tracked separately.
   const { signDeviceAttestation } = await loadCanary()
-  const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), {
-    userId: getUserId(),
-    deviceId: pendingDeviceId,
-    ecdhPublicKey: pendingEcdhPublicKeyBase64,
-    mlkemPublicKey: pendingMlkemPublicKeyBase64,
-  })
+  const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), anchor)
 
   await storeEnvelope(httpClient, { deviceId: pendingDeviceId, wrappedCK, attestation, proof })
 }
@@ -1171,6 +1355,7 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
   }
 
   const opened = await unwrapEnvelopeAK(envelope.wrappedCK)
+  await assertFirstEnvelopeRecipient(httpClient, opened.ak, envelope.attestation)
   await applyKeyring(await acceptCandidateAK(httpClient, opened.ak), opened.primaryKeyId)
   return true
 }
@@ -1220,10 +1405,76 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     throw new ValidationError('Invalid recovery key')
   }
 
+  await selfApproveWithVirtualDevice(httpClient, {
+    wrappedAK: metadata.recovery_wrapped_ak,
+    keyPair: recoveryKeyPair,
+    canaryIv: metadata.canary_iv,
+    canaryCtext: metadata.canary_ctext,
+    invalidMessage: 'Invalid recovery key',
+  })
+}
+
+/**
+ * Unlock sync on this device with the account's passkey — Flow E with the
+ * passkey's PRF output in place of the phrase. Same ladder: re-derive the
+ * passkey keypair, check it matches the stored slot, open the slot to get the AK,
+ * verify it against the canary, then self-approve.
+ */
+export const unlockWithPasskey = async (
+  httpClient: HttpClient,
+  { credentialId, prfOutput }: { credentialId: string; prfOutput: Uint8Array },
+): Promise<void> => {
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (
+    metadata.passkey_credential_id !== credentialId ||
+    metadata.passkey_ecdh_public_key == null ||
+    metadata.passkey_mlkem_public_key == null ||
+    metadata.passkey_wrapped_ak == null ||
+    !metadata.canary_iv ||
+    !metadata.canary_ctext
+  ) {
+    throw new ValidationError('This passkey cannot unlock sync for this account.')
+  }
+
+  const { derivePasskeyKeyPair } = await loadPasskeyKey()
+  const passkeyKeyPair = await derivePasskeyKeyPair(prfOutput)
+  if (
+    (await exportPublicKey(passkeyKeyPair.ecdhPublicKey)) !== metadata.passkey_ecdh_public_key ||
+    exportMlKemPublicKey(passkeyKeyPair.mlkemPublicKey) !== metadata.passkey_mlkem_public_key
+  ) {
+    throw new ValidationError('This passkey cannot unlock sync for this account.')
+  }
+
+  await selfApproveWithVirtualDevice(httpClient, {
+    wrappedAK: metadata.passkey_wrapped_ak,
+    keyPair: passkeyKeyPair,
+    canaryIv: metadata.canary_iv,
+    canaryCtext: metadata.canary_ctext,
+    invalidMessage: 'This passkey cannot unlock sync for this account.',
+  })
+}
+
+/**
+ * The tail every virtual device shares once its keypair is re-derived and
+ * matched against the stored public keys: open the slot to get the AK, verify it
+ * against DEK '0' and the canary, then self-approve this device with a challenge
+ * proof (pending devices may fetch wrapped keys and challenges — the signature
+ * is the gate).
+ */
+const selfApproveWithVirtualDevice = async (
+  httpClient: HttpClient,
+  {
+    wrappedAK,
+    keyPair: virtualKeyPair,
+    canaryIv,
+    canaryCtext,
+    invalidMessage,
+  }: { wrappedAK: string; keyPair: StoredKeyPair; canaryIv: string; canaryCtext: string; invalidMessage: string },
+): Promise<void> => {
   const { ak, primaryKeyId: sealedPrimaryKeyId } = await unwrapAK(
-    metadata.recovery_wrapped_ak,
-    recoveryKeyPair.ecdhPrivateKey,
-    recoveryKeyPair.mlkemSecretKey,
+    wrappedAK,
+    virtualKeyPair.ecdhPrivateKey,
+    virtualKeyPair.mlkemSecretKey,
   )
 
   // Register first: the keys/challenge endpoints require a registered
@@ -1241,35 +1492,35 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
   })
 
   // Verify the recovered AK against the account: unwrap DEK '0' and decrypt the
-  // canary. Catches a recovery slot that no longer matches the live keyring.
+  // canary. Catches a slot that no longer matches the live keyring.
   const { wrapped_key: wrappedDEK0 } = await fetchWrappedKey(httpClient, initialKeyId)
   const dek0 = await unwrapDEK(wrappedDEK0, ak, initialKeyId).catch(() => null)
   if (!dek0) {
-    throw new ValidationError('Invalid recovery key')
+    throw new ValidationError(invalidMessage)
   }
-  // The canary is wrapped under the CURRENT AK (THU-872), so a recovery slot
-  // that no longer matches the live epoch fails to open it. DEK '0' is unwrapped
+  // The canary is wrapped under the CURRENT AK, so a slot that no longer
+  // matches the live epoch fails to open it. DEK '0' is unwrapped
   // separately, ONLY for the keyring witness below — the two paths share no
   // variable.
   const { unwrapCanaryKey } = await loadCanary()
-  const canaryKey = await unwrapCanaryKey(ak, getUserId(), metadata.canary_iv, metadata.canary_ctext).catch(() => null)
+  const canaryKey = await unwrapCanaryKey(ak, getUserId(), canaryIv, canaryCtext).catch(() => null)
   if (!canaryKey) {
-    throw new ValidationError('Invalid recovery key')
+    throw new ValidationError(invalidMessage)
   }
 
-  // Self-approve: re-wrap the recovery envelope for our own keys (the stored AK
+  // Self-approve: re-wrap the slot's envelope for our own keys (the stored AK
   // stays non-extractable) and prove key possession.
   const wrappedCK = await rewrapAK(
-    metadata.recovery_wrapped_ak,
-    recoveryKeyPair.ecdhPrivateKey,
-    recoveryKeyPair.mlkemSecretKey,
+    wrappedAK,
+    virtualKeyPair.ecdhPrivateKey,
+    virtualKeyPair.mlkemSecretKey,
     keyPair.ecdhPublicKey,
     keyPair.mlkemPublicKey,
   )
   const proof = await buildProof(httpClient, 'approve', canaryKey)
   // Self-attested, like bootstrap: the keys being signed are this device's own,
   // so the server had no hand in them. The canary key comes from the AK the
-  // phrase just opened, which is what makes the signature current.
+  // slot just opened, which is what makes the signature current.
   const { signDeviceAttestation } = await loadCanary()
   const attestation = await signDeviceAttestation(canaryKey, {
     userId: getUserId(),
@@ -1282,16 +1533,17 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
   // DELIBERATELY NOT gated by the DEK "0" witness check: the phrase is the
   // account's break-glass, and one the thing it rescues you from can disable is
   // not a break-glass. A device re-established from the phrase must be able to
-  // come back.
+  // come back. The passkey slot shares this path and the same rule: it opens a
+  // virtual device exactly like the phrase does.
   //
   // It re-mints the witness ONLY when this device held no AK — the fresh-device
   // and re-establishment case, where any surviving anchor is necessarily stale
   // (e.g. the previous account's, left behind because `clearLocalData` logs and
   // continues when `handleFullWipe` throws) and where trust-on-first-use applies
   // regardless. On a device that still HOLDS an AK, the witness is left alone:
-  // the phrase does not authenticate the AK — `wrapAK` needs only the recovery
-  // slot's PUBLIC halves, which the server stores, so a malicious server can
-  // wrap an AK of its own to them and the phrase still opens it. Re-minting
+  // neither the phrase nor the passkey authenticates the AK — `wrapAK` needs only
+  // a slot's PUBLIC halves, which the server stores, so a malicious server can
+  // wrap an AK of its own to them and the slot still opens it. Re-minting
   // there would turn "talk the user into a recovery" into a witness bypass.
   // An established device with a poisoned witness recovers by signing out, which
   // wipes the store outright.
@@ -1321,15 +1573,14 @@ export type TrustedDevicePublicKeys = {
 }
 
 /**
- * The devices this rotation/upgrade must cover, read from the SERVER rather than
+ * The recipients this rotation must cover, read from the server rather than
  * the local synced `devices` table.
  *
  * The server validates coverage against its own device rows, so deriving the set
  * from a PowerSync-replicated copy meant the two could disagree: a peer that had
  * not replicated locally yet was silently omitted, and the whole payload came
- * back 400 "must cover every envelope-capable device". Two devices migrating at
- * once hit this simultaneously and neither could ever win — the account stayed on
- * v1. Asking the server removes the class of bug rather than narrowing the race.
+ * back a coverage error. The server list keeps rotation coverage current;
+ * the rotating client separately verifies recipient attestations before wrapping.
  *
  * Devices that cannot hold an envelope (no public keys — bridges, and v1 devices
  * that never published v2 keys) are excluded by the endpoint itself, using the
@@ -1494,6 +1745,9 @@ export type RotateAKOptions = {
  */
 type ResolveRecoveryPlan = (canaryKey: CryptoKey) => Promise<RecoveryPlan>
 
+/** Resolves the passkey slot for one rotation, with the same OLD-epoch canary key. */
+type ResolvePasskeyPlan = (canaryKey: CryptoKey) => Promise<PasskeyPlan>
+
 /**
  * The one AK rotation (0 rows re-encrypted): generate a random new AK, re-wrap
  * EVERY DEK on the live keyring under it, re-issue an envelope for every live
@@ -1502,6 +1756,8 @@ type ResolveRecoveryPlan = (canaryKey: CryptoKey) => Promise<RecoveryPlan>
  *
  * `resolveRecovery` decides whether the phrase survives: 'keep' re-anchors to
  * the stored recovery public keys, 'new' anchors to a freshly minted phrase.
+ * `resolvePasskey` does the same for the optional passkey slot, and by default
+ * re-anchors whatever the account has — enrollment and removal pass their own.
  *
  * On a 4xx (stale local state, e.g. a concurrent rotation) the local AK/keyring
  * are refreshed and a retryable `RotationStaleError` is thrown.
@@ -1510,6 +1766,7 @@ const runAKRotation = async (
   httpClient: HttpClient,
   resolveRecovery: ResolveRecoveryPlan,
   opts: RotateAKOptions,
+  resolvePasskey: ResolvePasskeyPlan = (canaryKey) => readStoredPasskeyPlan(httpClient, canaryKey),
 ): Promise<void> => {
   // Recovered once and used twice: the 'rotate' proof and the recovery-anchor
   // verification both need the OLD epoch's signing key. Deriving it from local
@@ -1526,6 +1783,7 @@ const runAKRotation = async (
   }
 
   const recovery = await resolveRecovery(oldCanaryKey)
+  const passkey = await resolvePasskey(oldCanaryKey)
   // Random and machine-only — wrapping it to the recovery public keys needs no
   // private key, which is what makes a phrase-preserving rotation possible.
   const newAK = await generateAK(true)
@@ -1624,6 +1882,7 @@ const runAKRotation = async (
     canaryKey,
     sealedPrimaryKeyId,
   )
+  const passkeySlot = await buildPasskeySlot(newAK, passkey, canaryKey, sealedPrimaryKeyId)
 
   // Built OUTSIDE the try below: a malformed escrow pin is a build
   // misconfiguration and must surface as-is, not masquerade as a stale-rotation 4xx.
@@ -1649,20 +1908,19 @@ const runAKRotation = async (
       signingPublicKey: publicKeySpki,
       kdfSalt: recovery.kdfSalt,
       ...recoverySlot,
+      ...passkeySlot,
       orgEnvelope,
       stepUpOtp: opts.stepUpOtp,
     })
     committedKeyVersion = keyVersion
   } catch (err) {
-    if (err instanceof HttpError && err.response.status === 403) {
-      // Step-up refusal (THU-875) is NOT staleness: local state is fine and a
-      // refresh would be noise — surface it so the caller prompts for the code.
-      const body = (await err.response.json().catch(() => null)) as { code?: string } | null
-      if (body?.code === 'step_up_required' || body?.code === 'step_up_invalid') {
-        // Refused at the gate: nothing committed, so no phrase is owed.
-        clearRecoveryPhrasePending()
-        throw new StepUpVerificationError(body.code, { cause: err })
-      }
+    // A step-up refusal is NOT staleness: local state is fine and a refresh
+    // would be noise — surface it so the caller prompts for the code.
+    const refusal = await stepUpRefusalCode(err)
+    if (refusal) {
+      // Refused at the gate: nothing committed, so no phrase is owed.
+      clearRecoveryPhrasePending()
+      throw new StepUpVerificationError(refusal, { cause: err })
     }
     if (err instanceof HttpError && rotationStaleStatuses.has(err.response.status)) {
       // Stale local state (concurrent rotation / device change) — re-fetch our
@@ -1733,10 +1991,11 @@ const runAKRotation = async (
 }
 
 /**
- * Silent AK rotation: re-anchors the recovery slot to the account's EXISTING
- * recovery public keys, so the user's 24-word phrase keeps working and is never
- * shown. This is what device revocation uses — rotating the AK is the only step
- * that cryptographically locks a revoked device out of the keyring.
+ * Silent AK rotation: re-anchors the recovery slot (and the passkey slot, if any)
+ * to the account's EXISTING public keys, so the user's 24-word phrase keeps
+ * working and is never shown. Fails closed on either anchor. Device revocation
+ * does NOT use this: it goes through `rotateForLockout`, which drops an
+ * unverifiable passkey slot rather than refusing to lock a device out.
  *
  * Throws if the account has no stored recovery slot (see `readStoredRecoveryPlan`);
  * throws a retryable `RotationStaleError` when the server rejects a stale payload.
@@ -1762,6 +2021,80 @@ export const changeRecoveryPhrase = async (
 }
 
 /**
+ * Enroll the account's passkey as a sync-unlock slot: an AK rotation that anchors
+ * a passkey slot to the keypair derived from its PRF output, keeping the
+ * recovery phrase. Unlike a phrase change there is no step-up — the rotate proof
+ * is the gate.
+ */
+export const enrollPasskey = async (
+  httpClient: HttpClient,
+  { credentialId, prfOutput }: { credentialId: string; prfOutput: Uint8Array },
+  opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
+): Promise<void> => {
+  const { derivePasskeyKeyPair } = await loadPasskeyKey()
+  const publicKeys = await derivePasskeyKeyPair(prfOutput)
+  await runAKRotation(
+    httpClient,
+    (canaryKey) => readStoredRecoveryPlan(httpClient, canaryKey),
+    opts,
+    async () => ({
+      mode: 'slot',
+      credentialId,
+      publicKeys,
+    }),
+  )
+}
+
+/**
+ * Remove the passkey slot: an AK rotation that drops it, so the passkey can no
+ * longer unlock the new AK. The served slot is never read, which is also the way
+ * out of a `PasskeyAnchorError`. Run BEFORE deleting the passkey itself — the
+ * server refuses to delete a passkey that still holds the slot.
+ */
+export const removePasskeySlot = (
+  httpClient: HttpClient,
+  opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
+): Promise<void> =>
+  // A fresh primary DEK too: someone who unwrapped the slot without enrolling a
+  // device holds the current primary and must not read later writes. A device
+  // that already unlocked through the slot is a trusted device, and keeps access
+  // until it is revoked separately.
+  runAKRotation(
+    httpClient,
+    (canaryKey) => readStoredRecoveryPlan(httpClient, canaryKey),
+    { ...opts, mintNewPrimary: true },
+    async () => ({ mode: 'none' }),
+  )
+
+/**
+ * The rotation that locks a revoked device out (new AK + new primary DEK).
+ *
+ * The optional passkey slot must never block it: revocation is the emergency
+ * action, and an unverifiable slot is exactly what an attacker would want to
+ * leave behind. So a slot whose anchor fails verification is dropped instead of
+ * re-wrapped — which only removes access — while the mandatory recovery slot still
+ * fails closed as everywhere else. The drop is logged, not surfaced: the user only
+ * notices that their passkey no longer unlocks sync, and can enroll it again.
+ */
+const rotateForLockout = (httpClient: HttpClient, opts: RotateAKOptions): Promise<void> =>
+  runAKRotation(
+    httpClient,
+    (canaryKey) => readStoredRecoveryPlan(httpClient, canaryKey),
+    { ...opts, mintNewPrimary: true },
+    async (canaryKey) => {
+      try {
+        return await readStoredPasskeyPlan(httpClient, canaryKey)
+      } catch (err) {
+        if (!(err instanceof PasskeyAnchorError)) {
+          throw err
+        }
+        console.error('[e2ee] dropping an unverifiable passkey slot during device lockout:', err)
+        return { mode: 'none' }
+      }
+    },
+  )
+
+/**
  * Device revocation: cut server access, then rotate the AK AND mint a new
  * primary DEK in ONE atomic request. The AK rotation locks the removed device
  * out of the keyring (its envelope is gone and never re-issued); the new DEK
@@ -1783,7 +2116,7 @@ export const changeRecoveryPhrase = async (
  * device — while replacing the AK is the half that can fail. Making them one
  * atomic operation was tried and rejected: it puts the emergency behind the
  * failure-prone step, and two consequences were proved against it. A device
- * with a live session can deny its own revocation by looping `rotateAccountKey`
+ * with a live session can deny its own revocation by looping a rotation
  * (every rotation replaces the signing key, invalidating the admin's in-flight
  * proof), and two devices whose public keys will not import wedge revocation
  * permanently, because revoking either still requires wrapping an envelope for
@@ -1832,7 +2165,7 @@ export const revokeDeviceAndRotate = async (
   // device is revoked but not locked out — tagged rather than propagated raw so
   // the UI can say which of the two happened instead of hedging both.
   try {
-    await rotateAccountKey(httpClient, { ...opts, excludeDeviceIds: [deviceId], mintNewPrimary: true })
+    await rotateForLockout(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
   } catch (err) {
     throw new LockoutIncompleteError({ cause: err })
   }
@@ -1861,7 +2194,7 @@ export const finishDeviceLockout = async (httpClient: HttpClient): Promise<void>
   // unknown error and is reported as "Nothing was changed. The device was not
   // revoked." — false on every run of this function.
   try {
-    await rotateAccountKey(httpClient, { mintNewPrimary: true })
+    await rotateForLockout(httpClient, {})
   } catch (err) {
     throw new LockoutIncompleteError({ cause: err })
   }
@@ -1879,8 +2212,6 @@ export type MigrateResult =
   | { outcome: 'not-eligible' }
 
 export type MigrateToV2Options = {
-  /** Dependency seam for the synced-devices read (tests). */
-  listTrustedDevices?: () => Promise<TrustedDevicePublicKeys[]>
   /** Forwarded to the follower path taken on a 409 CAS-loss (tests). */
   getLegacyV1Sample?: () => Promise<LegacyV1Sample | null>
 }
@@ -2007,20 +2338,22 @@ const resolveLegacyCK = async (
 }
 
 /**
- * Migrate this v1 account to v2 (WS4). Eligibility: `scheme_version == 1`, this
+ * Migrate this v1 account to v2. Eligibility: `scheme_version == 1`, this
  * device holds the legacy CK (its v1 envelope unwraps and decrypts the canary),
  * and it is trusted. The migrator:
  *  1. absorbs the CK into the keyring as the reserved `"v1"` slot,
  *  2. mints a fresh primary DEK `"0"` + a fresh random AK + a new recovery phrase,
  *  3. wraps the keyring (both `"0"` and `"v1"`) under the new AK,
- *  4. writes a new-AK envelope for every trusted device and for the phrase,
+ *  4. writes the only device envelope for the migrator's local keys; the recovery
+ *     slot and any pinned organizational escrow key also receive wrapped copies
+ *     of the new account key,
  *  5. registers the signing key + kdf_salt + recovery slot + new canary,
  *  6. recovers the D1 possession proof (v1 CK decrypt of the canary, NO AAD),
  *  7. POSTs `/upgrade`, which CAS-flips `scheme_version 1→2` as its last step.
  *
  * The candidate AK/DEK/phrase are persisted ONLY on HTTP 200. On a 409 CAS-loss
- * (another device migrated first) nothing local is written and the flow falls
- * through to the follower path.
+ * (another device migrated first) nothing local is written. The follower path
+ * waits for verified approval unless this device already has a valid recipient envelope.
  */
 export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}): Promise<MigrateResult> => {
   const metadata = await fetchEncryptionMetadata(httpClient)
@@ -2066,11 +2399,6 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   const { canaryIv, canaryCtext, canaryKey } = await mintCanary(newAK, getUserId())
   const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
 
-  // Always cover THIS device from local key material — never rely solely on the
-  // synced `devices` table, which may not have replicated this (freshly trusted)
-  // device yet. Without self here, a migrator whose own row hasn't synced sends
-  // an empty `envelopes` array and the upgrade is rejected (422 minItems).
-  const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
   const self: TrustedDevicePublicKeys = {
     id: getDeviceId(),
     publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
@@ -2078,17 +2406,8 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     // Self: nothing to verify, and nothing has attested it yet.
     attestation: null,
   }
-  const devicesToCover = trustedDevices.some((device) => device.id === self.id)
-    ? trustedDevices
-    : [self, ...trustedDevices]
-  // NO verification here, and it is not an oversight: a v1 account has no prior
-  // epoch to check against — attestations begin existing at this write. So the
-  // migration is trust-on-first-use for the whole device set, the same way a
-  // brand-new device's first adoption is. A server that injects a row before an
-  // account migrates gets it attested by the migrator. Narrowing that needs
-  // out-of-band verification, not a signature; what this DOES establish is the
-  // epoch every later rotation checks against.
-  const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover, initialKeyId, canaryKey)
+  // Siblings must re-enter fingerprint-verified approval; no server-selected key receives this AK.
+  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, canaryKey)
   const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys, recovery.kdfSalt, canaryKey, initialKeyId)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
@@ -2336,6 +2655,7 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
   )
 
   const fetched = await fetchKeyring(httpClient)
+  await assertFirstEnvelopeRecipient(httpClient, ak, envelope.attestation)
   const keyring: WrappedKeyEntry[] = fetched.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
   await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 

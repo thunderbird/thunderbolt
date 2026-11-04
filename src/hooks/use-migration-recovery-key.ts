@@ -8,8 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
  * Custom event carrying the NEW 24-word recovery phrase produced by the
  * seamless v1→v2 migration (WS6, run headlessly at app init). App init has no
  * render surface of its own, so it dispatches this event and a globally-mounted
- * listener shows the blocking recovery-phrase dialog — mirroring the
- * `show_revoked_device_modal` pattern.
+ * listener shows the blocking recovery-phrase dialog.
  */
 export const migrationRecoveryKeyEvent = 'e2ee_migration_recovery_key'
 

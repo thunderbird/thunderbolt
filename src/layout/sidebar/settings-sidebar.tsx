@@ -38,12 +38,14 @@ type SettingsSidebarContentProps = {
   isCollapsed: boolean
   onSectionChange: (section: SidebarSection) => void
   onSettingsNavigate: (path: string) => void
+  onSearchClick?: () => void
 }
 
 export const SettingsSidebarContent = ({
   isCollapsed,
   onSectionChange,
   onSettingsNavigate,
+  onSearchClick,
 }: SettingsSidebarContentProps) => {
   const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
 
@@ -60,6 +62,7 @@ export const SettingsSidebarContent = ({
       groups={groups}
       onSectionChange={onSectionChange}
       onNavigate={onSettingsNavigate}
+      onSearchClick={onSearchClick}
     />
   )
 }

@@ -21,6 +21,7 @@ import { type ReactNode, useState, useTransition } from 'react'
 
 import type { User } from '@shared/types/auth'
 
+import { selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { LogoutModal } from '@/components/logout-modal'
 import { BrandGradientIcon } from '@/components/ui/brand-gradient-icon'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
@@ -166,6 +167,8 @@ export const syncStatusText = (
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { i18n, t } = useLingui()
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configLoaded = useConfigStore(selectConfigSettled)
   const formatters = useFormatters()
   const authClient = useAuth()
   const { isMobile, closeMobileSidebar, setOpenMobile, state } = useSidebar()
@@ -331,6 +334,30 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     }
     return <div className="min-w-0">{renderAccountControl()}</div>
   })()
+
+  // Minimal mode has no account or cloud control, and with it goes the dev menu;
+  // the control also waits for `/config` so it never paints and then vanishes.
+  // The mobile footer keeps its New Chat button, which nothing else on mobile offers.
+  if (minimalMode || !configLoaded) {
+    if (!isMobile) {
+      return null
+    }
+    return (
+      <ShadcnSidebarFooter
+        className={cn('relative !gap-0 bg-transparent z-10 pb-[var(--mobile-sidebar-footer-inset)]', className)}
+      >
+        <MobileSidebarScrim data-slot="mobile-sidebar-footer-scrim" edge="bottom" />
+        <div className="relative z-10 flex w-full justify-end">
+          <Button type="button" size="lg" onClick={handleNewChat} className="rounded-full">
+            <MessageCirclePlus className={iconSize} />
+            <span>
+              <Trans>New Chat</Trans>
+            </span>
+          </Button>
+        </div>
+      </ShadcnSidebarFooter>
+    )
+  }
 
   // Popover layout (placement + width) differs wholesale between mobile
   // (centered over the sidebar) and desktop (anchored to the pill).

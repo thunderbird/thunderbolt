@@ -16,7 +16,7 @@ import { GradientLock } from '@/components/ui/gradient-lock'
 import { PrivateBadge } from '@/components/ui/private-badge'
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
-import { needsApiKey } from '@/settings/models/model-policy'
+import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
@@ -70,7 +70,7 @@ export const categorizeModels = (
   const disabledStandard: SearchableMenuItem<ModelItemData>[] = []
 
   for (const model of models) {
-    const isDisabledByEncryption = chatThread ? chatThread.isEncrypted !== model.isConfidential : false
+    const isDisabledByEncryption = !matchesThreadConfidentiality(model, chatThread)
     const isDisabled = isDisabledByEncryption || needsApiKey(model)
     const item = toMenuItem(model, isDisabled, isDisabledByEncryption)
 
@@ -146,7 +146,7 @@ export const ModelSelector = ({
       )}
     >
       {selected?.data?.model && needsApiKey(selected.data.model) ? (
-        <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
       ) : selected?.data?.model.isConfidential === 1 ? (
         <GradientLock className="size-3.5 shrink-0" />
       ) : null}
@@ -178,7 +178,7 @@ export const ModelSelector = ({
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (
-          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-amber-500" />
+          <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
         ) : item.icon ? (
           <span className="ml-auto flex-shrink-0">{item.icon}</span>
         ) : null}

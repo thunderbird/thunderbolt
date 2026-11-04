@@ -132,6 +132,8 @@ Request lines use the Apache common log format with a response time appended:
 203.0.113.7 - "POST /v1/proxy HTTP/1.1" 200 OK 412ms
 ```
 
+The response time runs to the moment the response headers are ready. A streamed body, such as a chat completion, keeps flowing after that, so a chat request logged at 40ms says how quickly the stream started, not how long the whole run took.
+
 The client address is the connecting socket unless `TRUSTED_PROXY` is set to `cloudflare` or `akamai`. Behind a load balancer and without it, every line shows the balancer's address. Don't set it unless you know exactly what sits in front of the server. Trusting the wrong header lets any client claim any IP and walk straight past the rate limits.
 
 Requests to `/v1/health`, to static assets, and to the analytics proxy under `/v1/posthog/` (its config request aside) are not access-logged, so load balancer traffic will not drown the log. The deep probes under `/v1/health/` are logged like any other request.

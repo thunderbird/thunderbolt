@@ -32,7 +32,7 @@ Releases are cut from `main` as a single unified `v{version}` tag covering deskt
 
 Two channels carry fixes sooner, without a stability guarantee:
 
-- **Nightly app builds.** The scheduled run of `release.yml` tags `{version}-nightly.YYYYMMDD` (`.github/workflows/version-bump.yml`) and publishes it as a GitHub prerelease. Nightlies are deliberately withheld from the desktop auto-updater, so installed stable builds never roll onto one (`.github/workflows/desktop-release.yml`).
+- **Daily app releases.** The daily pipeline runs E2E at 04:00 UTC and, only if it passes, publishes a patch release (`vX.Y.Z`) marked Latest that also ships to the desktop auto-updater, TestFlight and the Play internal track. Releases carry a "may be unstable" warning.
 - **Container images.** `images-publish.yml` pushes to GHCR on every `main` push touching `deploy/**`, `backend/**`, `src/**`, `package.json` or the two `shared/` modules in its `paths` filter, and `nightly-images.yml` rebuilds daily at 05:00 UTC to pick up upstream base-image updates. A self-hosted deployment tracking `:latest` gets fixes without waiting for an app release.
 
 Thunderbolt is [undergoing a security audit and is not yet intended for production use](./docs/self-hosting/README.md). That caveat is about our own readiness; please still report what you find.

@@ -14,6 +14,8 @@ If an external agent is handling the conversation, the picker is hidden and noth
 
 Some models are marked **Private**. These run in a hardware enclave the app verifies before sending, so the server relaying the request cannot read it. A chat started on one is locked to that mode: ordinary models are greyed out inside it, and private models are greyed out in an ordinary chat. Start a new chat to switch modes. See [Models and providers](../customize.md#models).
 
+The lock covers models, not agents. Moving a private chat to any agent other than Thunderbolt from the chat header asks first, because that agent receives the conversation unencrypted and the chat is no longer private. An automation that runs on a private model will not send its prompt to another agent. The chat says so above the composer and holds new messages until you switch it to Thunderbolt, which runs it. On a deployment that turns Thunderbolt off, the notice only says the chat won't run on that agent.
+
 Models that show their working display a collapsible **Thought for …** block above the answer. The reasoning is part of the saved message.
 
 ## Skills and slash commands
@@ -57,11 +59,11 @@ Three consequences follow:
 
 - Attachments do not follow a conversation to your other devices. The message and the filename sync; the file itself does not. On a second device the model is told a file was attached and that it is unavailable there.
 - Attachments are not included in a data export. Export carries your conversations, not the files you attached to them.
-- Nothing inside the app removes an attached file once it has been sent. Deleting the conversation, signing out and deleting your account all leave it in local storage. Clearing site data (browser) or removing the app (desktop and mobile) is what clears it.
+- Deleting the conversation leaves an attached file in local storage. Signing out with **Delete data from device**, deleting your account, or having the device revoked clears it, as does clearing site data (browser) or removing the app (desktop and mobile).
 
 ### How a file reaches the model
 
-Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document. A model with tool usage turned off in its tuning is the exception: it takes an older path that can send a PDF as a file.
+Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document. A model with **Supports tools** turned off under **Settings → Models** is the exception: it takes an older path that can send a PDF as a file.
 
 A scanned PDF is the case to watch. It has no text layer to extract and there is no text recognition (OCR) step, so the assistant receives the filename and nothing else. Screenshot the page you care about and attach that instead.
 
@@ -87,14 +89,15 @@ An artifact runs in an isolated frame that cannot fetch data, load a remote scri
 
 ## When a reply fails
 
-| What you see                | What it means                                                                                                                                                                                 |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reply retries on its own    | A transient failure. Thunderbolt retries up to 3 times with a growing delay                                                                                                                   |
-| **Retry** button            | Automatic retries are done or were not appropriate. Click to run the turn again                                                                                                               |
-| **Too many requests**       | The provider rate-limited you. Retrying immediately makes it worse                                                                                                                            |
-| **Context Window Exceeded** | The conversation plus your message is larger than the model's limit. Start a new chat, remove some attachments, or switch to a model with a larger window                                     |
-| **AI usage limit reached**  | Your allowance on a metered deployment is spent. The message names the window, 5 hours or 7 days. Both windows roll continuously, so the allowance frees up gradually as older usage ages out |
-| Agent connection lost       | An external agent dropped mid-turn. Thunderbolt does not retry it for you: the agent may already have carried out part of the work, and a retry can repeat it                                 |
+| What you see                         | What it means                                                                                                                                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reply retries on its own             | A transient failure. Thunderbolt retries up to 3 times with a growing delay                                                                                                                   |
+| **Retry** button                     | Automatic retries are done or were not appropriate. Click to run the turn again                                                                                                               |
+| **Too many requests**                | The provider rate-limited you. Retrying immediately makes it worse                                                                                                                            |
+| **Context Window Exceeded**          | The conversation plus your message is larger than the model's limit. Start a new chat, remove some attachments, or switch to a model with a larger window                                     |
+| **AI usage limit reached**           | Your allowance on a metered deployment is spent. The message names the window, 5 hours or 7 days. Both windows roll continuously, so the allowance frees up gradually as older usage ages out |
+| Agent connection lost                | An external agent dropped mid-turn. Thunderbolt does not retry it for you: the agent may already have carried out part of the work, and a retry can repeat it                                 |
+| **This model doesn't support tools** | The model refused a request that included tools. **Turn off tools and retry** switches off **Supports tools** for that model in **Settings → Models**, on all your devices, and resends       |
 
 The **context window** is the amount of text a model can hold in mind at once, and a long conversation is sent back to it in full on every turn. On desktop, a small ring in the composer shows how much of it the conversation has used; hover it for the figure. If your next message would not fit, Thunderbolt says so before sending rather than failing mid-reply.
 

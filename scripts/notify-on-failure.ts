@@ -8,6 +8,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 export type NotificationInput = {
   workflowName: string
+  /** Names the incident when one workflow raises several; defaults to the workflow name. */
+  incidentName?: string
   runId: number
   runAttempt: number
   conclusion: string
@@ -33,6 +35,8 @@ type AlertState = {
   version: 1
   repository: string
   workflowName: string
+  /** Absent in incidents created before named incidents; those belong to the workflow's default incident. */
+  incident?: string
   latestFailure: RunOrder
   pendingOpening: boolean
   openingRecipientsHash: string
@@ -43,29 +47,50 @@ type Label = { id: string; name: string; team: { id: string } | null }
 /** A JSON value, as sent in GraphQL variables. */
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
-/** Report only trusted API context, never response content or network error text. */
+/**
+ * Report only trusted API context, never response content or network error text. A caller that passes `errorDetail`
+ * gets the failed response's body in the error, as text it must clean itself.
+ */
 const requestJson = async <T>(
   service: string,
   operation: string,
   request: () => Promise<Response>,
+  errorDetail?: (body: string) => string,
 ): Promise<{ body: T; status: number }> => {
   const context = `${service} ${operation}`
   const response = await request().catch(() => {
     throw new Error(`${context} request failed`)
   })
-  if (!response.ok) {throw new Error(`${context} HTTP ${response.status}`)}
+  if (!response.ok) {
+    const detail = errorDetail ? `: ${errorDetail(await response.text())}` : ''
+    throw new Error(`${context} HTTP ${response.status}${detail}`)
+  }
   const body = (await response.json().catch(() => {
     throw new Error(`${context} HTTP ${response.status} invalid JSON`)
   })) as T
   return { body, status: response.status }
 }
 
-/** Query Linear and reject GraphQL errors, including partial 200 responses. */
+/** Linear's GraphQL error messages, or the whole body when it holds none. */
+const graphqlMessages = (body: string): string => {
+  try {
+    const { errors } = JSON.parse(body) as { errors?: { message: string }[] }
+    return errors?.map((error) => error.message).join('; ') || body
+  } catch {
+    return body
+  }
+}
+
+/**
+ * Query Linear and reject GraphQL errors, including partial 200 responses. With `errorDetail` the error also carries
+ * Linear's own messages, raw: the caller must clean them before they reach a log.
+ */
 export const linear = async <T>(
   fetchFn: typeof fetch,
   key: string,
   query: string,
   variables?: { [name: string]: Json },
+  { errorDetail = false } = {},
 ): Promise<T> => {
   const operation = /^(?:query|mutation) (\w+)/.exec(query)?.[1] ?? 'GraphQL'
   const { body: result, status } = await requestJson<{ data?: T; errors?: { message: string }[] }>(
@@ -77,8 +102,12 @@ export const linear = async <T>(
         headers: { Authorization: key, 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, variables }),
       }),
+    errorDetail ? graphqlMessages : undefined,
   )
-  if (result.errors?.length) {throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors`)}
+  if (result.errors?.length) {
+    const detail = errorDetail ? `: ${result.errors.map((error) => error.message).join('; ')}` : ''
+    throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors${detail}`)
+  }
   if (!result.data) {throw new Error(`Linear ${operation} HTTP ${status} returned no data`)}
   return result.data
 }
@@ -125,6 +154,9 @@ const sendEmail = async (
   )
 }
 
+/** The incident this run reports on: the explicit name, else the workflow name. */
+const incidentOf = (input: NotificationInput): string => input.incidentName || input.workflowName
+
 const stateMarker = '\n\nCI notifier state: '
 
 /** Bind editable incident state to the existing server-side Linear secret. */
@@ -161,7 +193,8 @@ const readState = (issue: Incident, input: NotificationInput) => {
     !state ||
     state.version !== 1 ||
     state.repository !== input.repository ||
-    state.workflowName !== input.workflowName
+    state.workflowName !== input.workflowName ||
+    (state.incident ?? state.workflowName) !== incidentOf(input)
   ) {
     throw new Error('Invalid incident state; manual repair required')
   }
@@ -289,7 +322,8 @@ export const notify = async (
     throw new Error('Invalid workflow run identity')
   }
   const runUrl = `https://github.com/${input.repository}/actions/runs/${input.runId}`
-  const title = `CI failing: ${input.workflowName}`
+  const incidentName = incidentOf(input)
+  const title = `CI failing: ${incidentName}`
 
   const teams = await linear<{ teams: { nodes: { id: string; name: string }[] } }>(
     fetchFn,
@@ -316,7 +350,7 @@ export const notify = async (
   if (data.issues.nodes.length > 1) {throw new Error(`Multiple open incidents for ${title}`)}
   const incident = data.issues.nodes[0]
   if (input.conclusion === 'success' && !incident) {
-    return log(`No open incident for ${input.workflowName}; nothing to recover`)
+    return log(`No open incident for ${incidentName}; nothing to recover`)
   }
   const currentRun = await runOrder(fetchFn, input)
 
@@ -374,8 +408,8 @@ export const notify = async (
     await sendEmail(
       fetchFn,
       input,
-      `CI recovered: ${input.workflowName}`,
-      `${input.workflowName} recovered.\nIncident: ${incident.url}`,
+      `CI recovered: ${incidentName}`,
+      `${incidentName} recovered.\nIncident: ${incident.url}`,
       `ci-recovery/${incident.id}/${state.latestFailure.runId}/${state.latestFailure.attempt}`,
     )
     const closed = await linear<{ issueUpdate: { success: boolean } }>(
@@ -430,6 +464,7 @@ export const notify = async (
       version: 1,
       repository: input.repository,
       workflowName: input.workflowName,
+      incident: incidentName,
       latestFailure: currentRun,
       pendingOpening: true,
       openingRecipientsHash: recipientsHash(input),
@@ -464,6 +499,7 @@ if (import.meta.main) {
   }
   await notify({
     workflowName: required('WORKFLOW_NAME'),
+    incidentName: env.INCIDENT_NAME,
     runId: Number(required('WORKFLOW_RUN_ID')),
     runAttempt: Number(required('GITHUB_RUN_ATTEMPT')),
     conclusion: required('WORKFLOW_CONCLUSION'),

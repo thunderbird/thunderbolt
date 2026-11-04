@@ -43,9 +43,7 @@ runs:
             DETECTED="$VERSION_TYPE_INPUT"
           fi
 
-          # Strip any prerelease suffix (e.g., "0.5.0-nightly.20260206" → "0.5.0")
-          BASE_VERSION="${CURRENT_VERSION%%-*}"
-          IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
           case "$DETECTED" in
             major)
               BUILD_VERSION="$((major + 1)).0.0";;

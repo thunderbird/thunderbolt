@@ -51,7 +51,7 @@ describe('startSsoFlowLoopback', () => {
     )
   })
 
-  it('throws when callback URL contains error', async () => {
+  it('throws the error code, never the free-text description, when the callback carries an error', async () => {
     listenSpy.mockImplementation(async (_event: string, cb: (event: { payload: { url: string } }) => void) => {
       queueMicrotask(() =>
         cb({ payload: { url: 'http://localhost:17421/?error=access_denied&error_description=User+denied' } }),
@@ -59,7 +59,10 @@ describe('startSsoFlowLoopback', () => {
       return unlistenFn
     })
 
-    await expect(startSsoFlowLoopback('http://localhost:8000')).rejects.toThrow('User denied')
+    await expect(startSsoFlowLoopback('http://localhost:8000')).rejects.toMatchObject({
+      code: 'access_denied',
+      message: 'access_denied',
+    })
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 

@@ -68,7 +68,7 @@ Sync and authentication stay inside your deployment, and prompts go wherever you
 | A cloud provider with your key      | That provider                                                                                    |
 | A system-managed confidential model | A hardware-isolated enclave outside your network, which neither the vendor nor you can read into |
 
-Provider calls do not go straight from the app. They are relayed through your own backend, which forwards the bytes and hands back the response. Browsers cannot call most provider APIs directly, and the published desktop and mobile builds take the same path. The user's key passes through untouched and is never stored, and your access logs record the destination hostname but not the request path.
+Desktop and mobile call providers directly from the device by default. **Settings → Preferences → Network → Use Cloud Proxy** opts into routing non-loopback requests through your backend. Models, HTTP/SSE MCP servers and external agents on the same device (loopback) always connect directly in desktop and mobile. The web app always uses the backend because browsers cannot call most provider APIs directly, except for custom loopback models, which connect directly. For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy. When relaying, the backend forwards the user's key untouched without storing it, and access logs record the destination hostname but not the request path.
 
 ### Are file attachments stored on the server?
 
@@ -78,7 +78,7 @@ One exception: if you connect an external coding agent that stages files on its 
 
 ### Do you collect analytics?
 
-Events from the app, only while the user has the toggle under _Settings → Preferences_ turned on. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
+Events from the app, unless the user turns off the toggle under _Settings → Preferences_, which is on by default. Turning it off covers every device that syncs the account. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
 
 ## Models
 
@@ -124,7 +124,7 @@ Override them with `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYM
 
 ### Are user API keys visible to the server?
 
-Not stored, no. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync, so no central copy exists and a user who signs in on a second device has to enter it again there, or bring it across in a data export. The key does pass through your server on each request, because the browser cannot call most provider APIs directly: it is forwarded and discarded, never written down, and access logs record only the destination hostname. A user's own Tinfoil key is the exception, going straight to the enclave.
+Not stored, no. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync, so no central copy exists and a user who signs in on a second device has to enter it again there, or bring it across in a data export. The key passes through your server in the web app and for non-loopback targets when **Use Cloud Proxy** is on in the desktop or mobile app: it is forwarded and discarded, never written down, and access logs record only the destination hostname. With the switch off (the default in desktop and mobile), provider requests go directly from the device. With your own Tinfoil key, Thunderbolt verifies Tinfoil's protected server before sending requests directly to it.
 
 ## Running it
 
@@ -164,9 +164,9 @@ Ten active devices. Devices awaiting approval do not count against the limit.
 
 ### What happens if a device is lost or stolen?
 
-Revoke it from _Settings → Devices_ on another device. It can no longer ask for a new sync token, so an online device is cut off within 5 minutes and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
+Revoke it from _Settings → Devices_ on another device. An online device is cut off as soon as the revocation reaches the sync service, and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
 
-Revocation is not a remote wipe. The next time the revoked device runs, it shows a message the user cannot dismiss, offering to keep or delete its local copy of the data. Whatever was already on that device stays readable until its holder chooses to delete it, or until you wipe the device through whatever endpoint management you already use.
+Revocation is not a remote wipe. The device signs out and clears its local copy the next time it connects. One that never comes back online is never reached: whatever was on it stays readable until you wipe it through whatever endpoint management you already use.
 
 ### What if all devices are lost?
 

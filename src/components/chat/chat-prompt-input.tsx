@@ -16,7 +16,12 @@ import { trackEvent as trackEvent_default } from '@/lib/posthog'
 import { appendSlashToken } from '@/skills/compose-chat-input'
 import { buildDisplayNameToSlug, tokenForSkill } from '@/skills/display'
 import { renderHighlightedSkillTokens, type SkillStatusClassifier } from '@/skills/highlight-skill-tokens'
-import { deleteSkillTokenAt, normalizeSkillTokensToSlugs } from '@/skills/parse-skill-tokens'
+import {
+  chipMarker,
+  deleteSkillTokenAt,
+  foldPendingSigils,
+  normalizeSkillTokensToSlugs,
+} from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
@@ -34,11 +39,13 @@ import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import { getTurnActivity } from '@/chats/turn-activity'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDraftInput } from '@/hooks/use-draft-input'
-import { AnimatePresence, m } from 'framer-motion'
-import { AlertCircle, Loader2, X } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   type ClipboardEvent,
+  type KeyboardEvent,
   forwardRef,
   useCallback,
   useEffect,
@@ -65,8 +72,12 @@ import { VoiceModeButton } from '@/voice/ui/voice-mode-button'
 import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
-import { loadChatMessageList } from './chat-messages-loader'
+import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
+import { useAppName } from '@/lib/branding-selectors'
+import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
@@ -111,6 +122,29 @@ const acceptedAttachmentExtensions = [
 
 /** `accept` attribute string for the file picker. */
 const attachmentAcceptAttr = [...acceptedAttachmentMimeTypes, ...acceptedAttachmentExtensions].join(',')
+
+/** True for ArrowRight at the end of the text or ArrowLeft at the start, where the caret cannot move. */
+const isArrowAtBoundary = (key: string, ta: HTMLTextAreaElement): boolean => {
+  if (ta.selectionStart !== ta.selectionEnd) {
+    return false
+  }
+  if (key === 'ArrowRight') {
+    return ta.selectionStart === ta.value.length
+  }
+  return key === 'ArrowLeft' && ta.selectionStart === 0
+}
+
+/** Caret target when an unmodified arrow would step onto a chip marker (zero-width, so the step is invisible). */
+const caretPastChipMarker = (e: KeyboardEvent<HTMLTextAreaElement>, ta: HTMLTextAreaElement): number | null => {
+  if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || ta.selectionStart !== ta.selectionEnd) {
+    return null
+  }
+  const caret = ta.selectionStart
+  if (e.key === 'ArrowRight' && ta.value[caret] === chipMarker) {
+    return Math.min(ta.value.length, caret + 2)
+  }
+  return e.key === 'ArrowLeft' && ta.value[caret - 1] === chipMarker ? Math.max(0, caret - 2) : null
+}
 
 const isAcceptedAttachment = (file: File): boolean =>
   acceptedAttachmentMimeTypes.has(file.type) ||
@@ -242,6 +276,11 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
     const trackSkillEvent = useSkillTelemetry()
+    // Minimal mode treats `/` as ordinary text: no popup, token resolution,
+    // highlighting or token-aware editing (resolution is gated in
+    // `resolveSkillTokenInstructions`).
+    const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+    const configSettled = useConfigStore(selectConfigSettled)
     const skillBySlug = useMemo(() => new Map(library.map((s) => [s.name, s])), [library])
     // Display-title → slug, for the whole library (disabled skills still
     // highlight as amber chips). The composer shows `/Daily Brief`; the model
@@ -326,7 +365,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Files queued before the chat landed on an agent that takes none (discovery moved
     // it, or the user switched) stay visible so they can be removed, but hold the send.
     const queuedAttachmentsBlockSend = !acceptsAttachments && attachments.length > 0
-    const sendBlocked = imageSupportBlocksSend || queuedAttachmentsBlockSend
+    // Only when no model fits the thread's confidentiality lock: otherwise
+    // `resolveSessionModel` already swapped one in for the built-in.
+    const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
+    // `useChatAutomation` holds back the unanswered last turn of a private chat
+    // on a non-built-in agent. Say so, and hold a typed send too: it would carry
+    // the private history to that agent unencrypted.
+    const privateAutoRunBlocked = isPrivateAutoRunBlocked({
+      chatThread,
+      agent: selectedAgent,
+      status,
+      stopping,
+      lastRole: messages.at(-1)?.role,
+    })
+    const builtInAgentName = useAppName()
+    const builtInAgentEnabled = useConfigStore((state) => selectBuiltInAgentEnabled(state.config))
+    const sendBlocked =
+      imageSupportBlocksSend || queuedAttachmentsBlockSend || noModelForThread || privateAutoRunBlocked
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -343,7 +398,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
      * behaviour and it silently ate whatever the user had typed when an app
      * decided to propose something.
      */
-    useConsumePendingPrompt(chatThreadId, (prompt) => setInput(mergeIntoDraft(inputRef.current, prompt)))
+    useConsumePendingPrompt(chatThreadId, (prompt) =>
+      setInput(mergeIntoDraft(foldPendingSigils(inputRef.current), prompt)),
+    )
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set
@@ -359,7 +416,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       }
       hasPreloadedSendDependencies.current = true
       preloadAgentConnection()
-      void loadChatMessageList()
+      preloadChatMessageList()
     }, [])
 
     const getTextarea = (): HTMLTextAreaElement | null => {
@@ -381,6 +438,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       setHighlightedIdx,
       selectItem: selectItemFromPopup,
       handleKeyDown: handleSlashKeyDown,
+      handleChange: handleSlashChange,
+      handleSelect: handleSlashSelect,
     } = useSlashCommand({
       value: input,
       setValue: setInput,
@@ -388,6 +447,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       library,
       isEnabled: isValidSkillSlug,
       agentCommands,
+      enabled: !minimalMode,
     })
 
     const addSkillChip = useCallback(
@@ -400,7 +460,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         // so the token stays resolvable at send time.
         const skill = typeof skillOrSlug === 'string' ? skillBySlug.get(skillOrSlug) : skillOrSlug
         const fallbackSlug = typeof skillOrSlug === 'string' ? skillOrSlug : skillOrSlug.name
-        const next = appendSlashToken(inputRef.current, skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug)
+        const next = appendSlashToken(
+          foldPendingSigils(inputRef.current),
+          skill ? tokenForSkill(skill, displayNameToSlug) : fallbackSlug,
+        )
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
         // may still point inside a `/slug` token, briefly flashing the slash
@@ -419,11 +482,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const insertInstructionText = useCallback(
       (text: string) => {
         const ta = getTextarea()
-        const start = ta?.selectionStart ?? input.length
-        const end = ta?.selectionEnd ?? input.length
-        const needsSpace = start > 0 && input[start - 1] !== ' '
+        const current = foldPendingSigils(input)
+        const start = ta?.selectionStart ?? current.length
+        const end = ta?.selectionEnd ?? current.length
+        const needsSpace = start > 0 && current[start - 1] !== ' '
         const insert = needsSpace ? ` ${text}` : text
-        const next = input.slice(0, start) + insert + input.slice(end)
+        const next = current.slice(0, start) + insert + current.slice(end)
         const pos = start + insert.length
         // Update value AND cursor in the same commit. Otherwise the re-render
         // between `setInput` and the rAF runs with a stale `cursorPos` that
@@ -448,7 +512,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // back/forward doesn't re-trigger; the ref guard keeps StrictMode's
     // double-render from inserting the token twice.
     const consumedRunSkillRef = useRef<string | null>(null)
-    const runSkill = (location.state as { runSkill?: string } | null)?.runSkill
+    const runSkill = minimalMode ? undefined : (location.state as { runSkill?: string } | null)?.runSkill
     if (!runSkill) {
       consumedRunSkillRef.current = null
     } else if (consumedRunSkillRef.current !== runSkill) {
@@ -517,8 +581,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // One memo feeds both the estimate and the send so they agree by
     // construction.
     const normalizedInput = useMemo(
-      () => normalizeSkillTokensToSlugs(input, displayNameToSlug),
-      [input, displayNameToSlug],
+      () => (minimalMode ? foldPendingSigils(input) : normalizeSkillTokensToSlugs(input, displayNameToSlug)),
+      [minimalMode, input, displayNameToSlug],
     )
 
     const additionalInputTokens = useMemo(() => {
@@ -704,7 +768,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <div className="flex items-center gap-2">
         <ChatAddMenu
           onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
-          onOpenConnections={() => navigate('/settings/connections')}
+          onOpenConnections={minimalMode ? undefined : () => navigate('/settings/connections')}
         />
         {isConnecting ? (
           <div
@@ -753,7 +817,19 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       (e: Parameters<typeof handleSlashKeyDown>[0]) => {
         const ta = e.currentTarget
         const caretCollapsed = ta.selectionStart === ta.selectionEnd
-        if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
+        const skipTo = caretPastChipMarker(e, ta)
+        if (skipTo !== null) {
+          e.preventDefault()
+          ta.setSelectionRange(skipTo, skipTo)
+          setCursorPos(skipTo)
+          return
+        }
+        if (isArrowAtBoundary(e.key, ta)) {
+          // WKWebView inserts the arrow's private-use codepoint as text when the caret can't move.
+          e.preventDefault()
+          return
+        }
+        if (!minimalMode && e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey && caretCollapsed) {
           const deletion = deleteSkillTokenAt(inputRef.current, ta.selectionStart, displayNameToSlug)
           if (deletion) {
             e.preventDefault()
@@ -769,7 +845,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         }
         handleSlashKeyDown(e)
       },
-      [displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
+      [minimalMode, displayNameToSlug, setInput, setCursorPos, handleSlashKeyDown],
     )
 
     const handleSelectFromSlashPopup = useCallback(
@@ -855,51 +931,30 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </div>
             <AnimatePresence initial={false}>
               {attachError && (
-                <m.div
-                  key="attach-error"
-                  // marginBottom pulls the banner's bottom -12px below the composer's
-                  // top edge so it's hidden behind the composer's opaque z-10 body
-                  // (the "emerges from behind" look). Animated in lockstep with height
-                  // so dismiss collapses cleanly without over-pulling the chips.
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive">
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">{attachError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAttachError(null)}
-                      aria-label={t`Dismiss`}
-                      className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attach-error" onDismiss={() => setAttachError(null)}>
+                  {attachError}
+                </ComposerAlert>
               )}
               {queuedAttachmentsBlockSend && (
-                <m.div
-                  key="attachments-unsupported"
-                  initial={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  animate={{ height: 'auto', opacity: 1, marginBottom: -12 }}
-                  exit={{ height: 0, opacity: 0, marginBottom: 0 }}
-                  transition={{ type: 'tween', ease: [0.2, 0.9, 0.1, 1], duration: 0.25 }}
-                  className="pointer-events-auto overflow-hidden"
-                >
-                  <div
-                    role="alert"
-                    className="flex items-center gap-1.5 rounded-t-2xl bg-destructive/10 px-3 pb-4 pt-2 text-[length:var(--font-size-xs)] text-destructive"
-                  >
-                    <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
-                    </span>
-                  </div>
-                </m.div>
+                <ComposerAlert key="attachments-unsupported">
+                  <Trans>{agentName} can&apos;t take attachments. Remove the attached files to send.</Trans>
+                </ComposerAlert>
+              )}
+              {noModelForThread && (
+                <ComposerAlert key="no-model-for-thread">
+                  <Trans>None of your models can be used in this chat. Choose another agent to send.</Trans>
+                </ComposerAlert>
+              )}
+              {privateAutoRunBlocked && (
+                <ComposerAlert key="private-auto-run-blocked">
+                  {builtInAgentEnabled ? (
+                    <Trans>
+                      This private chat won&apos;t run on {agentName}. Switch to {builtInAgentName} to run it.
+                    </Trans>
+                  ) : (
+                    <Trans>This private chat won&apos;t run on {agentName}.</Trans>
+                  )}
+                </ComposerAlert>
               )}
               {imageSupport.notice && (
                 <ImageSupportNotice
@@ -948,7 +1003,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               if (value.length > 0) {
                 preloadSendDependencies()
               }
-              setInput(value)
+              handleSlashChange(value, getTextarea()?.selectionStart ?? value.length)
             }}
             placeholder={t`Ask me anything…`}
             showSubmitButton
@@ -973,11 +1028,22 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
-            // Empty + idle composer shows the voice-mode trigger in the send
-            // slot; it swaps back to Send as soon as there's text or an attachment.
-            emptyStateAction={<VoiceModeButton onStart={voice.start} />}
-            renderOverlay={(value) =>
-              renderHighlightedSkillTokens(value, classifySkill, { displayNameToSlug, onCreateSkill: openCreateSkill })
+            // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send
+            // once there's input); withheld in minimal mode and until config settles.
+            emptyStateAction={
+              minimalMode || !configSettled ? undefined : (
+                <VoiceModeButton onStart={voice.start} disabled={privateAutoRunBlocked} />
+              )
+            }
+            // No overlay at all in minimal mode: its presence makes the textarea text transparent.
+            renderOverlay={
+              minimalMode
+                ? undefined
+                : (value) =>
+                    renderHighlightedSkillTokens(value, classifySkill, {
+                      displayNameToSlug,
+                      onCreateSkill: openCreateSkill,
+                    })
             }
             popoverSlot={
               popupOpen ? (
@@ -991,7 +1057,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               ) : null
             }
             onTextareaKeyDown={handleTextareaKeyDown}
-            onTextareaSelect={(e) => setCursorPos(e.currentTarget.selectionStart)}
+            onTextareaSelect={(e) => handleSlashSelect(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)}
             onTextareaPaste={handlePaste}
           />
           {/* Voice mode morphs the composer in-place: the overlay covers the

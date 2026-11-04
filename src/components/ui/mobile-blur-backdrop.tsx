@@ -24,7 +24,7 @@ export const MobileBlurBackdrop = ({ onClick, className, disablePortal = false }
       type="button"
       aria-label={t`Dismiss`}
       className={cn(
-        'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
+        'fixed inset-0 z-40 cursor-default bg-background/30 backdrop-blur-md backdrop-saturate-[.25]',
         className,
       )}
       onClick={onClick}

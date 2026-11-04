@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { HttpError } from '@/lib/http'
+import { DeviceApprovalError } from '@/crypto/errors'
 
 type UseApprovalPollingOptions = {
   enabled: boolean
@@ -11,13 +12,16 @@ type UseApprovalPollingOptions = {
   onApproved: () => void
   onRevoked?: () => void
   onDenied?: () => void
+  onVerificationFailed?: () => void
   intervalMs?: number
 }
 
 /**
  * Polls to detect when this device has been approved by a trusted device.
  * Calls `checkApproval` at a regular interval; on success, fires `onApproved`.
- * If a 403 is received (device revoked), fires `onRevoked` and stops polling.
+ * A 403 carrying `DEVICE_DISCONNECTED` (device revoked) fires `onRevoked` and stops polling.
+ * Any other 403 — a session not yet bound to this device — is transient and keeps polling.
+ * Receiver verification failures notify the waiting UI and keep polling so an honest retry can recover.
  * Other errors are silently ignored — the manual Continue button serves as fallback.
  */
 export const useApprovalPolling = ({
@@ -26,6 +30,7 @@ export const useApprovalPolling = ({
   onApproved,
   onRevoked,
   onDenied,
+  onVerificationFailed,
   intervalMs = 3000,
 }: UseApprovalPollingOptions) => {
   const [isPolling, setIsPolling] = useState(false)
@@ -36,6 +41,8 @@ export const useApprovalPolling = ({
   onRevokedRef.current = onRevoked
   const onDeniedRef = useRef(onDenied)
   onDeniedRef.current = onDenied
+  const onVerificationFailedRef = useRef(onVerificationFailed)
+  onVerificationFailedRef.current = onVerificationFailed
   const checkApprovalRef = useRef(checkApproval)
   checkApprovalRef.current = checkApproval
 
@@ -64,8 +71,23 @@ export const useApprovalPolling = ({
           onApprovedRef.current()
         }
       } catch (err) {
+        if (err instanceof DeviceApprovalError && err.reason === 'recipient-unverified' && !cancelled) {
+          onVerificationFailedRef.current?.()
+          return
+        }
         if (err instanceof HttpError && !cancelled) {
-          if (err.response.status === 403) {
+          const body =
+            err.response.status === 403
+              ? ((await err.response
+                  .clone()
+                  .json()
+                  .catch(() => null)) as { code?: string } | null)
+              : null
+          // Reading the body awaited, so the effect may have been cleaned up meanwhile.
+          if (cancelled) {
+            return
+          }
+          if (body?.code === 'DEVICE_DISCONNECTED') {
             clearInterval(intervalId)
             setIsPolling(false)
             onRevokedRef.current?.()

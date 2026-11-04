@@ -90,6 +90,31 @@ const importEcdhPrivateKey = async (privateScalar: Uint8Array, publicKeyRaw: Uin
   )
 
 /**
+ * Derive a hybrid keypair (ECDH P-256 + ML-KEM-768) from an HKDF master key, one
+ * HKDF-SHA256 sub-seed per key type. Shared by every virtual device: the
+ * recovery phrase and the passkey slot differ only in where the master secret
+ * comes from and in their `info` labels, which keep their keypairs independent.
+ */
+export const deriveHybridKeyPair = async (
+  masterKey: CryptoKey,
+  labels: { ecdh: Uint8Array; mlkem: Uint8Array },
+): Promise<StoredKeyPair> => {
+  const ecdhSeed = await expandSubSeed(masterKey, labels.ecdh, ecdhSeedLength)
+  const ecdhPrivateScalar = p256.utils.randomSecretKey(ecdhSeed)
+  const ecdhPublicKeyRaw = p256.getPublicKey(ecdhPrivateScalar, false)
+
+  const mlkemSeed = await expandSubSeed(masterKey, labels.mlkem, mlkemSeedLength)
+  const { publicKey: mlkemPublicKey, secretKey: mlkemSecretKey } = ml_kem768.keygen(mlkemSeed)
+
+  return {
+    ecdhPrivateKey: await importEcdhPrivateKey(ecdhPrivateScalar, ecdhPublicKeyRaw),
+    ecdhPublicKey: await importPublicKey(uint8ArrayToBase64(ecdhPublicKeyRaw)),
+    mlkemPublicKey,
+    mlkemSecretKey,
+  }
+}
+
+/**
  * Deterministically derive the recovery slot's hybrid keypair from the recovery
  * seed — the recovery phrase is a virtual device, and this is its key material.
  * Same shape as `StoredKeyPair`, so it drops straight into `wrapAK`/`unwrapAK`.
@@ -116,20 +141,7 @@ export const deriveRecoveryKeyPairFromSeed = async (seed: Uint8Array, saltBase64
       masterSecretLength * 8,
     )
     const masterKey = await crypto.subtle.importKey('raw', master, 'HKDF', false, ['deriveBits'])
-
-    const ecdhSeed = await expandSubSeed(masterKey, ecdhHkdfInfo, ecdhSeedLength)
-    const ecdhPrivateScalar = p256.utils.randomSecretKey(ecdhSeed)
-    const ecdhPublicKeyRaw = p256.getPublicKey(ecdhPrivateScalar, false)
-
-    const mlkemSeed = await expandSubSeed(masterKey, mlkemHkdfInfo, mlkemSeedLength)
-    const { publicKey: mlkemPublicKey, secretKey: mlkemSecretKey } = ml_kem768.keygen(mlkemSeed)
-
-    return {
-      ecdhPrivateKey: await importEcdhPrivateKey(ecdhPrivateScalar, ecdhPublicKeyRaw),
-      ecdhPublicKey: await importPublicKey(uint8ArrayToBase64(ecdhPublicKeyRaw)),
-      mlkemPublicKey,
-      mlkemSecretKey,
-    }
+    return await deriveHybridKeyPair(masterKey, { ecdh: ecdhHkdfInfo, mlkem: mlkemHkdfInfo })
   } catch (err) {
     throw new KeyDerivationError('Failed to derive recovery keypair from recovery seed', { cause: err })
   }

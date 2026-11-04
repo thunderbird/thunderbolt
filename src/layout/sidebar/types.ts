@@ -22,18 +22,12 @@ export type ChatThread = {
   miniAppId: string | null
 }
 
-export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>
+export type DeleteChatMutationType = Pick<
+  UseMutationResult<void, Error, { id: string }, unknown>,
+  'mutate' | 'isPending'
+>
 
-export type DeleteAllChatsMutationType = UseMutationResult<void, Error, void, unknown>
-
-export type ChatActionsProps = {
-  isCollapsed: boolean
-  /** Whether to render the "Clear all chats" action — hidden when there are no chats. */
-  showClearAll: boolean
-  deleteAllChatsMutation: DeleteAllChatsMutationType
-  deleteAllChatsDialogRef: RefObject<DeleteAllChatsDialogRef | null>
-  onSearchClick: () => void
-}
+export type DeleteAllChatsMutationType = Pick<UseMutationResult<void, Error, void, unknown>, 'mutate' | 'isPending'>
 
 export type ChatListProps = {
   chatThreads: ChatThread[]
@@ -51,13 +45,11 @@ export type ChatListProps = {
   onRename: (threadId: string, title: string) => void
   /** Open the project picker for a chat. The sidebar owns the dialog. */
   onMoveToProject: (threadId: string, currentProjectId: string | null) => void
-  onSearchClick: () => void
 }
 
 export type ChatListItemProps = {
   thread: ChatThread
   isActive: boolean
-  isCollapsed: boolean
   isMobile: boolean
   deleteChatMutation: DeleteChatMutationType
   threadIdRef: RefObject<string | null>

@@ -19,6 +19,7 @@ import {
 } from './db'
 import { expect, test } from './fixtures'
 import {
+  approvePendingDevice,
   completeFirstDeviceSetup,
   completeStepUpCode,
   createE2eeEmail,
@@ -139,10 +140,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       const deviceId = await getDeviceId(device.page)
       await waitForDeviceState(userId, deviceId, (state) => state.approvalPending)
 
-      const notification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(notification).toBeVisible({ timeout: 30_000 })
-      await notification.getByRole('button', { name: 'Approve' }).click()
-      await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, device.page)
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(device.page)
       await waitForTasksPreference(device.page, userId)
@@ -154,10 +152,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       const remainingDeviceId = await getDeviceId(remainingDevice.page)
       await waitForDeviceState(userId, remainingDeviceId, (state) => state.approvalPending)
 
-      const remainingNotification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(remainingNotification).toBeVisible({ timeout: 30_000 })
-      await remainingNotification.getByRole('button', { name: 'Approve' }).click()
-      await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, remainingDevice.page)
       await waitForDeviceState(userId, remainingDeviceId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(remainingDevice.page)
       await waitForTasksPreference(remainingDevice.page, userId)
@@ -238,10 +233,7 @@ test.describe('PowerSync E2EE key rotation', () => {
       const doomedId = await getDeviceId(doomed.page)
       await waitForDeviceState(userId, doomedId, (state) => state.approvalPending)
 
-      const notification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(notification).toBeVisible({ timeout: 30_000 })
-      await notification.getByRole('button', { name: 'Approve' }).click()
-      await page.getByRole('alertdialog').getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, doomed.page)
       await waitForDeviceState(userId, doomedId, (state) => state.trusted && state.hasEnvelope)
       await finishAdditionalDeviceSetup(doomed.page)
 
@@ -292,7 +284,9 @@ test.describe('PowerSync E2EE key rotation', () => {
       // "1" — the key the post-revoke row above is written under — never lands in
       // its keyring.
       await expect(doomed.page.getByText('Device access revoked', { exact: true })).toBeVisible({ timeout: 30_000 })
-      expect(await getEncryptionKeyNames(doomed.page)).not.toContain('thunderbolt_dek_1')
+      // The screen only appears after the wipe, so the key store must be empty: no DEK "1",
+      // and nothing it held before either.
+      expect(await getEncryptionKeyNames(doomed.page)).toEqual([])
 
       await loginViaConsumerOtp(recovered.page, email)
       const setupDialog = await startAdditionalDeviceSetup(recovered.page)

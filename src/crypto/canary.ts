@@ -10,6 +10,7 @@ import {
   ecdsaSignAlgorithm,
   encodeChallengePayload,
   encodeDeviceAttestationPayload,
+  encodePasskeyAttestationPayload,
   encodeRecoveryAttestationPayload,
   signingPublicKeyFormat,
   type ChallengeOperation,
@@ -309,6 +310,65 @@ export const verifyDeviceAttestation = async (
       publicKey,
       base64ToUint8Array(attestation),
       new Uint8Array(encodeDeviceAnchor(anchor)),
+    )
+  } catch {
+    return false
+  }
+}
+
+/** The passkey anchor a rotation must authenticate before re-wrapping the AK to it. */
+export type PasskeyAnchor = {
+  userId: string
+  credentialId: string
+  passkeyEcdhPublicKey: string
+  passkeyMlkemPublicKey: string
+}
+
+const encodePasskeyAnchor = (anchor: PasskeyAnchor): Uint8Array =>
+  encodePasskeyAttestationPayload(
+    anchor.userId,
+    anchor.credentialId,
+    anchor.passkeyEcdhPublicKey,
+    anchor.passkeyMlkemPublicKey,
+  )
+
+/**
+ * Sign the passkey anchor with the signing key derived from THIS write's canary
+ * key — the passkey-slot counterpart of `signRecoveryAttestation`, called on
+ * enrollment and on every rotation that keeps the slot.
+ */
+export const signPasskeyAttestation = async (canaryKey: CryptoKey, anchor: PasskeyAnchor): Promise<string> => {
+  const { privateKey } = await deriveSigningKeyPair(canaryKey)
+  return uint8ArrayToBase64(p256.sign(encodePasskeyAnchor(anchor), privateKey))
+}
+
+/**
+ * Verify a served passkey anchor against the caller's OWN key material, exactly
+ * as `verifyRecoveryAttestation` does for the recovery slot: a server that
+ * swapped in its own public keys cannot produce this signature, so a rotation
+ * never re-wraps the AK to them.
+ *
+ * Returns false on malformed key or signature bytes rather than throwing.
+ */
+export const verifyPasskeyAttestation = async (
+  canaryKey: CryptoKey,
+  attestation: string,
+  anchor: PasskeyAnchor,
+): Promise<boolean> => {
+  const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+  try {
+    const publicKey = await crypto.subtle.importKey(
+      signingPublicKeyFormat,
+      base64ToUint8Array(publicKeySpki),
+      ecdsaKeyAlgorithm,
+      false,
+      ['verify'],
+    )
+    return await crypto.subtle.verify(
+      ecdsaSignAlgorithm,
+      publicKey,
+      base64ToUint8Array(attestation),
+      new Uint8Array(encodePasskeyAnchor(anchor)),
     )
   } catch {
     return false

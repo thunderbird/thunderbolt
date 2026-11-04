@@ -10,18 +10,19 @@
  *     unauthenticated direct connect only when no `httpClient` is wired.
  *   - `remote-acp` on Web routes through the universal proxy
  *     (subprotocol-tunnelled, bearer-authenticated).
- *   - `remote-acp` on Tauri Standalone uses a native WebSocket.
+ *   - `remote-acp` on Tauri follows Use Cloud Proxy, except loopback stays direct.
  *
  * The proxy-vs-native decision is inspected at the layer below `openTransport`
  * — we install a fake global `WebSocket` constructor and read what
  * `new WebSocket(url, protocols)` is called with. No `mock.module()` is
- * required (DI for `isStandalone` / `readProxyEnabled` / `getAuthToken`).
+ * required (DI for `isStandalone` / `getAuthToken`).
  */
 
 import '@/testing-library'
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { wsTargetPrefix } from '@shared/proxy-protocol'
+import { encodeBase64Url } from '@shared/base64url'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { openTransport } from './index'
@@ -66,9 +67,17 @@ class FakeBrowserSocket {
   }
 }
 
-const originalWebSocket = globalThis.WebSocket
+let originalWebSocket: typeof WebSocket
+let originalCloudUrl: string
+let originalProxyEnabled: string | null
+let originalStoredSettings: string | null
 
 beforeEach(() => {
+  originalWebSocket = globalThis.WebSocket
+  originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+  originalStoredSettings = localStorage.getItem('thunderbolt-local-settings')
+  originalProxyEnabled = localStorage.getItem('proxy_enabled')
+  localStorage.removeItem('proxy_enabled')
   FakeBrowserSocket.reset()
   // Cast through unknown — FakeBrowserSocket only implements the surface the
   // transport uses, not the full DOM `WebSocket` interface.
@@ -78,6 +87,17 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.WebSocket = originalWebSocket
+  useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+  for (const [key, value] of [
+    ['proxy_enabled', originalProxyEnabled],
+    ['thunderbolt-local-settings', originalStoredSettings],
+  ] as const) {
+    if (value === null) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, value)
+    }
+  }
 })
 
 // A minimal HttpClient stub — its mere presence signals an authenticated cloud
@@ -97,7 +117,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
       httpClient: stubHttpClient,
       getAuthToken: () => 'token-abc',
     })
@@ -124,7 +143,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => true,
-      readProxyEnabled: () => 'false',
       httpClient: stubHttpClient,
       getAuthToken: () => 'tauri-token-456',
     })
@@ -143,7 +161,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
@@ -163,7 +180,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
       httpClient: stubHttpClient,
       getAuthToken: () => null,
     })
@@ -175,14 +191,23 @@ describe('openTransport — agent-type routing', () => {
     transport.close()
   })
 
-  it('remote-acp on Web routes through the universal proxy (subprotocol tunnel)', async () => {
+  it.each([
+    [false, null],
+    [false, 'false'],
+    [false, 'true'],
+    [true, 'true'],
+  ] as const)('remote-acp (Tauri=%s) with proxy setting %s uses the tunnel', async (standalone, stored) => {
+    if (stored === null) {
+      localStorage.removeItem('proxy_enabled')
+    } else {
+      localStorage.setItem('proxy_enabled', stored)
+    }
     const transport = await openTransport({
       url: 'wss://agent.example.com/acp',
       transport: 'websocket',
       agentType: 'remote-acp',
       signal: new AbortController().signal,
-      isStandalone: () => false,
-      readProxyEnabled: () => null,
+      isStandalone: () => standalone,
       // Browser WS can't attach `Authorization` headers — the proxy upgrade is
       // authenticated by the bearer token as a Sec-WebSocket-Protocol entry.
       httpClient: stubHttpClient,
@@ -192,28 +217,38 @@ describe('openTransport — agent-type routing', () => {
     expect(FakeBrowserSocket.instances).toHaveLength(1)
     const socket = FakeBrowserSocket.instances[0]
     expect(socket.url).toBe('ws://cloud.test/v1/proxy/ws')
-    expect(socket.protocols).toContain('thunderbolt.v1')
-    expect(socket.protocols).toContain(`thunderbolt.bearer.${encodeWsBearer('proxy-token-xyz')}`)
-    const target = socket.protocols.find((p) => p.startsWith(wsTargetPrefix))
-    expect(target).toBeDefined()
+    expect(socket.protocols).toEqual([
+      'thunderbolt.v1',
+      `thunderbolt.bearer.${encodeWsBearer('proxy-token-xyz')}`,
+      `${wsTargetPrefix}${encodeBase64Url('wss://agent.example.com/acp')}`,
+    ])
 
     transport.close()
   })
 
-  it('remote-acp on Tauri Standalone uses a native WebSocket (no proxy)', async () => {
+  it.each([
+    [null, 'wss://agent.example.com/acp'],
+    ['false', 'wss://agent.example.com/acp'],
+    ['true', 'ws://127.0.0.1:8839/?token=bridge-token'],
+  ])('remote-acp on Tauri with proxy setting %s connects directly to %s', async (stored, url) => {
+    if (stored === null) {
+      localStorage.removeItem('proxy_enabled')
+    } else {
+      localStorage.setItem('proxy_enabled', stored)
+    }
     const transport = await openTransport({
-      url: 'wss://agent.example.com/acp',
+      url,
       transport: 'websocket',
       agentType: 'remote-acp',
       signal: new AbortController().signal,
       isStandalone: () => true,
-      readProxyEnabled: () => null,
+      getAuthToken: () => 'backend-only-token',
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
     const socket = FakeBrowserSocket.instances[0]
-    expect(socket.url).toBe('wss://agent.example.com/acp')
-    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
+    expect(socket.url).toBe(url)
+    expect(socket.protocols).toEqual([])
 
     transport.close()
   })

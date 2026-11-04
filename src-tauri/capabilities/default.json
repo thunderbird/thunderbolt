@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Main-webview permissions. Arbitrary HTTP(S) destinations are intentional for user-configured providers and MCP servers, including LAN endpoints. Accepted risk: scripts executing in this privileged webview can invoke native HTTP directly and read reachable public, loopback, private and link-local services, including metadata endpoints. Cloud Proxy and createProxyFetch are routing policy, not IPC security boundaries. Preview webviews receive no permission from this capability.",
+  "webviews": ["main"],
   "permissions": [
     "core:default",
     "core:app:allow-default-window-icon",
@@ -10,6 +10,7 @@
     "os:default",
     "deep-link:default",
     "updater:default",
+    "passkey:default",
     "core:event:default",
     "core:window:allow-hide",
     "core:window:allow-show",
@@ -39,31 +40,10 @@
       "identifier": "http:default",
       "allow": [
         {
-          "url": "http://localhost:11434"
+          "url": "http://*:*/*"
         },
         {
-          "url": "http://localhost:3001"
-        },
-        {
-          "url": "https://api.openai.com"
-        },
-        {
-          "url": "https://router.huggingface.co"
-        },
-        {
-          "url": "https://accounts.google.com"
-        },
-        {
-          "url": "https://www.googleapis.com"
-        },
-        {
-          "url": "https://login.microsoftonline.com"
-        },
-        {
-          "url": "https://graph.microsoft.com"
-        },
-        {
-          "url": "http://localhost:8000"
+          "url": "https://*:*/*"
         }
       ]
     },

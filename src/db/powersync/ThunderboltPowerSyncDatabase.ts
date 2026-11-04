@@ -2,42 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { BucketStorageAdapter } from '@powersync/common'
-import { PowerSyncDatabase } from '@powersync/web'
-import type { WebPowerSyncDatabaseOptions } from '@powersync/web'
-import { TransformableBucketStorage } from './TransformableBucketStorage'
-import type { DataTransformMiddleware } from './TransformableBucketStorage'
-
-export type ThunderboltPowerSyncOptions = WebPowerSyncDatabaseOptions & {
-  transformers?: DataTransformMiddleware[]
-}
+import type { BucketStorageAdapter } from '@powersync/shared-internals'
+import { WebPowerSyncDatabase } from '@powersync/web'
+import { syncTransformers } from './middleware'
+import { installSyncTransformers } from './sync-transform'
 
 /**
- * PowerSync database with optional data transformation middleware.
+ * PowerSync database whose main-thread bucket storage runs sync data through `syncTransformers`.
  *
- * Extends PowerSyncDatabase to use TransformableBucketStorage instead of SqliteBucketStorage,
- * enabling middleware to transform sync data before it is written to the local database.
+ * Extends `WebPowerSyncDatabase` (`@internal` upstream) rather than `PowerSyncDatabase`, which
+ * is only a typed constructor alias and hides the protected hook.
+ *
+ * This adapter is on the sync path only when sync runs in the tab (`enableMultiTabs` resolves
+ * false, e.g. Android or the IndexedDB fallback); otherwise the sync worker builds its own (see
+ * `ThunderboltSharedSyncImplementation`).
  */
-export class ThunderboltPowerSyncDatabase extends PowerSyncDatabase {
-  constructor(options: ThunderboltPowerSyncOptions) {
-    super(options)
-  }
-
-  /**
-   * Override: Returns TransformableBucketStorage instead of SqliteBucketStorage.
-   *
-   * Why: PowerSyncDatabase creates a plain SqliteBucketStorage by default. We need our
-   * TransformableBucketStorage so we can intercept control() and run middleware.
-   *
-   * What it does: Creates TransformableBucketStorage, registers any transformers from
-   * options.transformers, and returns it. The adapter is used for all sync operations.
-   */
-  protected generateBucketStorageAdapter(): BucketStorageAdapter {
-    const storage = new TransformableBucketStorage(this.database)
-    const transformers = (this.options as ThunderboltPowerSyncOptions).transformers ?? []
-    for (const t of transformers) {
-      storage.addTransformer(t)
-    }
-    return storage
+export class ThunderboltPowerSyncDatabase extends WebPowerSyncDatabase {
+  protected override generateBucketStorageAdapter(): BucketStorageAdapter {
+    const adapter = super.generateBucketStorageAdapter()
+    installSyncTransformers(adapter, syncTransformers)
+    return adapter
   }
 }

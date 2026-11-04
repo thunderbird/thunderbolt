@@ -2,25 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
-import type { ReactNode } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { useState, type ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
 import { useCreateItem } from '@/components/create-item/context'
 import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { useSidebar } from '@/components/ui/sidebar'
 import { useAllAgents } from '@/dal'
 import { builtInAgent } from '@/defaults/agents'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { isEmbedded } from '@/lib/embed'
 import { isMacDesktop, isTauriDesktop } from '@/lib/platform'
+import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
-import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
+import { exposesPrivateThread } from '@/chats/private-thread'
+import {
+  selectAllowCustomAgents,
+  selectBrandLogo,
+  selectConfigSettled,
+  selectMinimalMode,
+  useConfigStore,
+} from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
@@ -45,14 +55,12 @@ type HeaderAgentSelectorProps = {
   onAddAgent?: () => void
   /** Mobile-only presentation. When set, the selector renders inside its own
    *  absolutely positioned wrapper: centered as a labeled pill on an empty new
-   *  chat, and docked top-right as a circular icon button once the thread
+   *  chat, and docked beside the project as a circular icon button once the thread
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
   mobile?: { hasThread: boolean; dragProps: TauriDragProps }
-  /** Rendered immediately left of the selector, inside its positioned wrapper on
-   *  mobile so it docks with the pill instead of being laid out against a header
-   *  column the pill has left. */
-  leading?: ReactNode
+  /** Mobile project control that shares a capsule with the docked agent picker. */
+  projectControl?: (joined: boolean) => ReactNode
 }
 
 const HeaderAgentSelector = ({
@@ -62,14 +70,14 @@ const HeaderAgentSelector = ({
   onSelect,
   onAddAgent,
   mobile,
-  leading,
+  projectControl,
 }: HeaderAgentSelectorProps) => {
   const { status } = useChat({ chat: chatInstance, experimental_throttle: statusOnlyThrottleMs })
   const isReplying = status === 'streaming' || status === 'submitted'
   // `status` flips to `submitted` synchronously on send, so the transition starts
   // the moment the user submits — before the thread row lands in the store.
   // Existing chats mount with `hasThread` already true, so they render docked
-  // top-right with no transition (CSS transitions don't run on first paint).
+  // in place with no transition (CSS transitions don't run on first paint).
   const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
 
   const selector = (
@@ -80,6 +88,7 @@ const HeaderAgentSelector = ({
       onAddAgent={onAddAgent}
       disabled={isReplying}
       collapsed={collapsed}
+      mobileJoined={collapsed && !!projectControl}
     />
   )
 
@@ -88,34 +97,54 @@ const HeaderAgentSelector = ({
   }
 
   return (
-    // Absolutely positioned so the macOS traffic-light clearance on the left
-    // column can't push the centered state off-center. Docked: a translate of
-    // half the header width (50cqw — the header is a size container) minus the
-    // pill's own width pins the right edge flush with the content edge (cqw is
-    // content-box based, so the header's px-2 padding provides the gap).
-    //
-    // Only `translate` transitions — `left` stays fixed. Animating `left`
-    // re-runs layout on the main thread every frame, and this slide fires at
-    // the busiest main-thread moment in the app (first send mounts the message
-    // list), which made it visibly stutter. A translate-only transition runs
-    // on the compositor and stays smooth regardless of main-thread load.
-    //
-    // The trigger width stays fixed throughout. Its labeled pill and logo-only
-    // circle crossfade internally (see AgentSelector), so this wrapper only
-    // animates translate and both directions remain compositor-driven.
-    <div
-      {...mobile.dragProps}
-      className={cn(
-        'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-        collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
+    <>
+      {projectControl && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute top-2 right-2 h-[var(--touch-height-lg)] w-[calc(var(--touch-height-lg)*2)] overflow-hidden rounded-full transition-[clip-path] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            mobileHeaderControlFillClass,
+            // Clip a fixed-size surface; animating width would cause layout on every frame.
+            collapsed
+              ? '[clip-path:inset(0_0_0_0_round_var(--touch-height-lg))]'
+              : '[clip-path:inset(0_0_0_50%_round_var(--touch-height-lg))]',
+          )}
+        >
+          <div
+            className={cn(
+              'absolute right-[var(--touch-height-lg)] inset-y-3 border-l border-border/50 transition-opacity duration-300 motion-reduce:transition-none',
+              collapsed ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        </div>
       )}
-    >
-      {/* Inside the wrapper, so the docked translate (which pins the group's
-          right edge to the content edge) accounts for it and the two circles
-          travel together. */}
-      {leading}
-      {selector}
-    </div>
+      {projectControl && (
+        <div {...mobile.dragProps} className="absolute top-2 right-2 z-10">
+          {projectControl(collapsed)}
+        </div>
+      )}
+      {/* Keep the first-send slide translate-only: layout/custom-property animations
+          compete with mounting the message list. The outer rail moves by its own
+          width and the inner trigger by its own half-width. Percentage endpoints
+          stay unchanged on resize, so resizing does not start another transition. */}
+      <div
+        {...mobile.dragProps}
+        className={cn(
+          'pointer-events-none absolute top-2 left-1/2 z-20 flex justify-end transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+          projectControl ? 'right-[calc(0.5rem+var(--touch-height-lg))]' : 'right-2',
+          collapsed ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div
+          className={cn(
+            'flex w-max shrink-0 items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none',
+            collapsed ? 'translate-x-0' : 'translate-x-1/2',
+          )}
+        >
+          {selector}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -172,6 +201,7 @@ const HistoryNavButtons = () => {
  * selection lives in the chat composer (next to the mode picker), not here.
  */
 export const Header = () => {
+  const { t } = useLingui()
   const { toggleSidebar, state: sidebarState, forceCollapsed } = useSidebar()
   const { isMobile } = useIsMobile()
   // Both desktop apps hide the native title bar (macOS overlays it with traffic
@@ -188,8 +218,13 @@ export const Header = () => {
   const location = useLocation()
   const allAgents = useAllAgents()
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const configSettled = useConfigStore(selectConfigSettled)
+  // Derived outside the store selector: it returns a fresh object, which zustand would see as a changed snapshot every render.
+  const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
+  const resolvedTheme = useResolvedTheme()
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, hasThread } = useChatStore(
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, chatThread } = useChatStore(
     useShallow((state) => {
       const session = state.sessions.get(state.currentSessionId ?? '')
 
@@ -198,7 +233,7 @@ export const Header = () => {
         selectedAgent: session?.selectedAgent,
         setSelectedAgent: state.setSelectedAgent,
         chatThreadId: session?.id,
-        hasThread: session?.chatThread != null,
+        chatThread: session?.chatThread,
       }
     }),
   )
@@ -209,19 +244,78 @@ export const Header = () => {
   // loading and the list is empty. Fall back to built-in only when the thread
   // has no agent.
   const effectiveAgent = selectedAgent ?? builtInAgent
+  const hasThread = chatThread != null
+  // A switch that would send a private chat off the device waits here for the
+  // user to confirm it. Guarded in this handler rather than in `setSelectedAgent`
+  // so the store action stays a plain write. The agent outlives `open` so the
+  // dialog keeps its name through the close animation.
+  const [privateSwitch, setPrivateSwitch] = useState<{ agent: Agent; threadId: string; open: boolean } | null>(null)
+  const agentName = privateSwitch?.agent.name ?? ''
+  // The header outlives chat navigation, so a prompt raised in one chat closes
+  // when the user moves to another: its confirm must never land on the chat now
+  // shown. Adjusted during render, React's pattern for state that follows a prop.
+  if (privateSwitch?.open && privateSwitch.threadId !== chatThreadId) {
+    setPrivateSwitch({ ...privateSwitch, open: false })
+  }
 
   const isChatRoute = location.pathname.startsWith('/chats')
-  const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
+  // Wait for `/config` so a first visit never flashes the pill before minimal mode is known.
+  const showAgentSelector =
+    isChatRoute && chatInstance !== undefined && allAgents.length > 0 && configSettled && !minimalMode
+
+  // The operator's logo takes the selector's place for direct visitors. Inside a native app's WebView the app's own chrome carries the branding.
+  const showBrandLogo = minimalMode && brandLogo !== null && !isEmbedded()
+  // Centered against the header on both layouts, so it never competes with the left-hand controls
+  // (traffic lights, expand toggle, history arrows). Mobile rows sit at the top (`items-start` header).
+  const brandLogoImage = showBrandLogo && (
+    <div
+      className={cn(
+        'pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center',
+        isMobile ? 'top-2 h-[var(--touch-height-lg)]' : 'inset-y-0',
+      )}
+    >
+      <img
+        src={resolvedTheme === 'dark' ? brandLogo.dark : brandLogo.light}
+        alt={brandLogo.alt || effectiveAgent.name}
+        draggable={false}
+        className="h-6 w-auto max-w-full object-contain"
+      />
+    </div>
+  )
 
   const handleAddAgent = () => {
     openCreateItem({ kind: 'agent' })
   }
 
-  const handleAgentSelect = (agent: Agent) => {
-    if (chatThreadId) {
-      setSelectedAgent(chatThreadId, agent).catch(console.error)
+  const switchAgent = (threadId: string | undefined, agent: Agent) => {
+    if (threadId) {
+      setSelectedAgent(threadId, agent).catch(console.error)
     }
   }
+
+  const handleAgentSelect = (agent: Agent) => {
+    if (chatThreadId && agent.id !== effectiveAgent.id && exposesPrivateThread(chatThread, agent)) {
+      setPrivateSwitch({ agent, threadId: chatThreadId, open: true })
+      return
+    }
+    switchAgent(chatThreadId, agent)
+  }
+
+  const privateSwitchDialog = (
+    <ConfirmActionDialog
+      open={privateSwitch?.open ?? false}
+      title={t`Send this private chat to ${agentName}?`}
+      description={t`This conversation will be sent to ${agentName} unencrypted and will no longer be private.`}
+      confirmLabel={t`Switch Agent`}
+      onConfirm={() => {
+        if (privateSwitch) {
+          switchAgent(privateSwitch.threadId, privateSwitch.agent)
+        }
+        setPrivateSwitch((current) => current && { ...current, open: false })
+      }}
+      onCancel={() => setPrivateSwitch((current) => current && { ...current, open: false })}
+    />
+  )
 
   const agentSelector = showAgentSelector && chatInstance && (
     <HeaderAgentSelector
@@ -230,7 +324,20 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
-      leading={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
+      projectControl={
+        isChatRoute
+          ? (joined) => (
+              <ProjectBadge
+                chatThreadId={chatThreadId ?? null}
+                iconOnly
+                className={cn(
+                  'max-md:bg-transparent max-md:dark:bg-transparent max-md:backdrop-blur-none max-md:hover:bg-muted-foreground/10',
+                  joined && 'max-md:rounded-l-none max-md:rounded-r-full',
+                )}
+              />
+            )
+          : undefined
+      }
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
@@ -242,9 +349,7 @@ export const Header = () => {
     return (
       <header
         {...dragProps}
-        // `@container` lets the agent pill's docked translate use 50cqw (half
-        // the header width) so its slide can be translate-only (see above).
-        className="@container relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
+        className="relative flex h-[var(--touch-height-xl)] w-full items-start justify-between px-2 pt-2 flex-shrink-0"
       >
         <div {...dragProps} className={cn('flex flex-1 items-center', isMacDesktop() && 'pl-20')}>
           {/* The same panel glyph as the desktop toggle, so one icon means
@@ -267,6 +372,8 @@ export const Header = () => {
         </div>
 
         {agentSelector}
+        {brandLogoImage}
+        {privateSwitchDialog}
 
         {/* Empty right column — keeps the header row a drag surface on the
             Tauri desktop app. */}
@@ -303,11 +410,12 @@ export const Header = () => {
         )}
         {isTauriDesktop() && <HistoryNavButtons />}
         {agentSelector}
-        {/* Beside the agent selector rather than centred: it groups with the other
-            "what this chat is" controls. Desktop only — the mobile header positions
-            the agent pill absolutely and has no room next to it. */}
+        {/* Desktop keeps the project name beside the selector; mobile has an
+            independently positioned icon-only control. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
+      {brandLogoImage}
+      {privateSwitchDialog}
     </header>
   )
 }

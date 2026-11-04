@@ -26,6 +26,7 @@ import {
   InMemorySessionRepo,
   type AgentHarnessOptions,
   type AgentTool,
+  type FileError,
   type ThinkingLevel,
 } from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
@@ -144,6 +145,45 @@ export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
   const workspaceDir = workspaceDirFor(threadId)
   const env = new BrowserExecutionEnv({ cwd: workspaceDir })
   await env.remove(workspaceDir, { recursive: true, force: true })
+}
+
+/** A file to place in a thread's workspace, at a workspace-relative path. */
+export type WorkspaceFile = {
+  readonly path: string
+  readonly content: string
+}
+
+/** A workspace file that could not be written, and why. */
+export type WorkspaceWriteFailure = {
+  readonly path: string
+  readonly error: FileError
+}
+
+/**
+ * Write files into a thread's workspace, overwriting what is there so any edit
+ * the model made is undone. A file that fails to write is returned, not thrown,
+ * so one bad file can't fail every turn.
+ *
+ * @param threadId - the thread whose workspace receives the files
+ * @param files - workspace-relative paths and their text content
+ * @returns the files that could not be written
+ */
+export const writeAgentWorkspaceFiles = async (
+  threadId: string,
+  files: readonly WorkspaceFile[],
+): Promise<WorkspaceWriteFailure[]> => {
+  await mountAgentFs()
+  const workspaceDir = workspaceDirFor(threadId)
+  const env = new BrowserExecutionEnv({ cwd: workspaceDir })
+  const encoder = new TextEncoder()
+  const failures: WorkspaceWriteFailure[] = []
+  for (const file of files) {
+    const written = await env.writeFile(file.path, encoder.encode(file.content))
+    if (!written.ok) {
+      failures.push({ path: file.path, error: written.error })
+    }
+  }
+  return failures
 }
 
 /**

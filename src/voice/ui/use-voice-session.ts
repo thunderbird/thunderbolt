@@ -7,24 +7,79 @@
  * from the current chat's `Chat` instance so a voice turn is a real chat turn,
  * and exposes the state/transcripts the overlay renders.
  */
-import { useCurrentChatSession } from '@/chats/chat-store'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
+import { isPrivateAutoRunBlocked } from '@/chats/private-thread'
 import { useDatabase } from '@/contexts'
+import { builtInAgent } from '@/defaults/agents'
 import { getSettings } from '@/dal'
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReplyChat } from '@/voice/chat-reply'
 import type { SessionState, VoiceSession } from '@/voice/session'
 import { setVoiceModeActive } from '@/voice/voice-mode'
 import type { Chat } from '@ai-sdk/react'
+import { i18n, type MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { useEffect, useMemo, useReducer, useRef } from 'react'
+
+/** Thrown by a voice send the private auto-run hold refuses; `toVoiceOverlayError` translates it. */
+class PrivateChatHeldError extends Error {
+  readonly agentName: string
+
+  constructor(agentName: string) {
+    super(`This private chat won't run on ${agentName}`)
+    this.name = 'PrivateChatHeldError'
+    this.agentName = agentName
+  }
+}
+
+// The composer notice's copy, so the overlay and the notice read alike in every locale.
+const privateChatHeldMessage = (agentName: string, builtInAgentName: string | null): MessageDescriptor =>
+  builtInAgentName
+    ? msg`This private chat won't run on ${agentName}. Switch to ${builtInAgentName} to run it.`
+    : msg`This private chat won't run on ${agentName}.`
+
+/**
+ * The line the voice overlay shows for a session error. A held private chat gets
+ * the composer notice's translated copy, resolved now because the overlay stores
+ * a string; any other error is shown as thrown.
+ */
+export const toVoiceOverlayError = (error: unknown): string => {
+  if (!(error instanceof PrivateChatHeldError)) {
+    return String(error)
+  }
+  const builtInAgentName = selectBuiltInAgentEnabled(useConfigStore.getState().config) ? builtInAgent.name : null
+  return i18n._(privateChatHeldMessage(error.agentName, builtInAgentName))
+}
 
 /**
  * Adapt the AI SDK `Chat` to the structural `ReplyChat` slice the voice session
  * needs. `Chat` provides `sendMessage`/`messages`/`stop`, but its broader method
  * signatures mean TS won't infer the match — an explicit adapter keeps chat-reply
  * decoupled from the SDK and avoids an `as unknown as` cast at the call site.
+ *
+ * Each send re-checks the private auto-run hold against the live session, so a
+ * voice session already running when the hold applies cannot carry a private
+ * chat to a non-built-in agent either. The rejection lands in the session's
+ * error state.
  */
-const toReplyChat = (chat: Chat<ThunderboltUIMessage>): ReplyChat => ({
-  sendMessage: (message) => chat.sendMessage(message),
+export const toReplyChat = (chat: Chat<ThunderboltUIMessage>, chatThreadId: string): ReplyChat => ({
+  sendMessage: async (message) => {
+    const session = useChatStore.getState().sessions.get(chatThreadId)
+    if (
+      session &&
+      isPrivateAutoRunBlocked({
+        chatThread: session.chatThread,
+        agent: session.selectedAgent,
+        status: chat.status,
+        stopping: session.stopping,
+        lastRole: chat.messages.at(-1)?.role,
+      })
+    ) {
+      throw new PrivateChatHeldError(session.selectedAgent.name)
+    }
+    await chat.sendMessage(message)
+  },
   get messages() {
     return chat.messages
   },
@@ -97,11 +152,11 @@ export const useVoiceSession = () => {
         engine: createVoiceEngine(experimentalFeatureVoice),
         // The transcript + reply render as normal chat bubbles via sendMessage, so
         // the UI itself only needs the session state.
-        reply: createChatReply(toReplyChat(session.chatInstance)),
+        reply: createChatReply(toReplyChat(session.chatInstance, session.id)),
         onState: (state) => patch({ state }),
         onError: (error) => {
           console.error('[voice]', error)
-          patch({ error: String(error) })
+          patch({ error: toVoiceOverlayError(error) })
         },
         onLevel: (level) => {
           levelRef.current = level

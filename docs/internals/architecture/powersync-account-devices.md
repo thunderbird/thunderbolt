@@ -10,6 +10,8 @@ Offline-first sync between the backend (PostgreSQL) and clients (SQLite), scoped
 
 The frontend never hard-codes the PowerSync URL; `/powersync/token` returns it, so URL changes stay transparent.
 
+PowerSync's Postgres storage never compacts parameter history: every write to a row a stream lookup reads (here `devices`) adds a version, and each checkpoint scans them all. To rebuild the storage from scratch, bump `PS_SYNC_CONFIG_VERSION` on the Render `powersync` service and redeploy; it feeds `version_label` in `deploy/config/powersync-config.yaml`. Every device then downloads its data again.
+
 ---
 
 ## 2. Synced Tables
@@ -30,7 +32,7 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
 2. Backend schema: add only `index('idx_[table]_user_id').on(table.userId)` ([why](#indexes-and-foreign-keys)).
 3. Register in [src/db/powersync/schema.ts](../../../src/db/powersync/schema.ts) (`drizzleSchema`).
 4. Add the name and query keys to `powersyncTableNames` and `powersyncTableToQueryKeys` in [shared/powersync-tables.ts](../../../shared/powersync-tables.ts). The query-key entry only satisfies the map's type; reactivity comes from PowerSync.
-5. Update **all three** sync-rule configs so local, preview, prod, and enterprise-k8s stay in parity:
+5. Update **all three** sync configs so local, preview, prod, and enterprise-k8s stay in parity:
 
    | Config                                                                                | Used by                                                                 |
    | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -38,7 +40,9 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
    | [deploy/config/powersync-config.yaml](../../../deploy/config/powersync-config.yaml)   | baked into the `thunderbolt-powersync` image: preview (Pulumi) and prod |
    | [deploy/k8s/templates/configmaps.yaml](../../../deploy/k8s/templates/configmaps.yaml) | Helm-rendered config for enterprise k8s                                 |
 
-   In each, add a line under `sync_rules.content` in `bucket_definitions.user_essentials.data` (latency-sensitive, priority 1) or `bucket_definitions.user_data.data` (the rest, priority 2), e.g. `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
+   In each, add a line under `sync_config.content` to the `queries` of the `user_essentials` stream (latency-sensitive, priority 1) or the `user_data` stream (the rest, priority 2), copying the gate the other lines carry, e.g. `- SELECT * FROM powersync.my_table WHERE user_id IN active_device_account OR (user_id = auth.user_id() AND auth.parameter('device_id') IS NULL)`.
+
+   Never add a table to `device_self`. That stream delivers one row — the requesting device's own — to a device whose other streams revocation has removed, so anything else put there would keep syncing to revoked devices.
 
 6. Run `bun db generate` and confirm `backend/drizzle/meta/_journal.json` gained the entry. Drizzle finds migrations through the journal, so an SQL file without one never runs.
 
@@ -52,7 +56,7 @@ Two PRs, to avoid sync rule mismatches.
 
 ### Adding Columns to an Existing Synced Table
 
-Sync rules are all `SELECT *`, so no rule edit is needed, but the column replicates only after the migration runs against the database `powersync` replicates from. Frontend-first leaves it null across devices while local tests pass. One PR is fine (e.g. `devices.node_id`) if the feature tolerates null; still run the migration before relying on it cross-device.
+Every stream query is `SELECT *`, so no sync-config edit is needed, but the column replicates only after the migration runs against the database `powersync` replicates from. Frontend-first leaves it null across devices while local tests pass. One PR is fine (e.g. `devices.node_id`) if the feature tolerates null; still run the migration before relying on it cross-device.
 
 ### Removing a Synced Table
 
@@ -80,9 +84,15 @@ POWERSYNC_JWT_KID=powersync-dev
 POWERSYNC_TOKEN_EXPIRY_SECONDS=300
 ```
 
-`POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to `300`. It is not just a refresh interval: PowerSync
-verifies the JWT locally and never calls back to the backend, so a revoked device keeps reading the
-sync stream until its current token expires. The TTL **is** the post-revocation read window.
+`POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to `300`. PowerSync verifies the JWT locally and never
+calls back to the backend, so the TTL used to be the entire post-revocation read window.
+
+It no longer is. The data buckets match only while the requesting device's row is unrevoked, and
+PowerSync re-resolves that as the `revoked_at` write replicates, so a connected device loses its
+buckets — and the rows in them — within replication latency. The TTL now only bounds how long a
+device can keep re-establishing a stream.
+
+This still is not a remote wipe: a device that never comes back online never finds out.
 
 The local `config/config.yaml` uses HS256 with the same secret (base64) and kid, so backend-issued tokens are accepted.
 
@@ -100,16 +110,16 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid,
 
 Defined in [backend/src/db/powersync-schema.ts](../../../backend/src/db/powersync-schema.ts), mirrored in [src/db/tables.ts](../../../src/db/tables.ts) with booleans as SQLite integers and without `app_version` (server-written for operators, never read back).
 
-| Column                           | Meaning                                                                                     |
-| -------------------------------- | ------------------------------------------------------------------------------------------- |
-| `id`, `user_id`                  | device id and owner; the `bridge-` and `cli-` id namespaces are server-reserved             |
-| `name`, `app_version`            | from `X-Device-Name` and `X-App-Version` on the token request, length-capped                |
-| `last_seen`, `created_at`        | `last_seen` refreshed by `upsertDevice` on every token request; `created_at` only on insert |
-| `trusted`, `approval_pending`    | drive the approve/deny queue in Settings > Devices                                          |
-| `public_key`, `mlkem_public_key` | public keys for envelope wrapping ([e2e-encryption.md](e2e-encryption.md))                  |
-| `revoked_at`                     | soft revoke; set by the revoke route, never cleared                                         |
-| `device_type`                    | `normal`, `bridge` or `cli`, one shared revocation lifecycle                                |
-| `node_id`, `node_id_attested_at` | iroh P2P identity, written only by the section 6 routes, never by a sync upload             |
+| Column                           | Meaning                                                                            |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `id`, `user_id`                  | device id and owner; the `bridge-` and `cli-` id namespaces are server-reserved    |
+| `name`, `app_version`            | from `X-Device-Name` and `X-App-Version` on the token request, length-capped       |
+| `last_seen`, `created_at`        | `last_seen` refreshed by `touchDevice` at most hourly; `created_at` only on insert |
+| `trusted`, `approval_pending`    | drive the approve/deny queue in Settings > Devices                                 |
+| `public_key`, `mlkem_public_key` | public keys for envelope wrapping ([e2e-encryption.md](e2e-encryption.md))         |
+| `revoked_at`                     | soft revoke; set by the revoke route, never cleared                                |
+| `device_type`                    | `normal`, `bridge` or `cli`, one shared revocation lifecycle                       |
+| `node_id`, `node_id_attested_at` | iroh P2P identity, written only by the section 6 routes, never by a sync upload    |
 
 **There is no `status` column.** State is three independent fields, so every check spells out the combination:
 
@@ -124,7 +134,9 @@ Bridge and CLI rows share the shape and lifecycle, so the DAL guards carry the d
 
 Trust-sensitive columns are server-managed. `revoked_at`, `trusted`, `approval_pending`, `public_key`, `mlkem_public_key`, `app_version`, `device_type`, `node_id` and `node_id_attested_at` sit in `uploadDenyColumns`, stripped from any `PUT`/`PATCH`; `devices` sits in `uploadDenyDelete`, so a sync `DELETE` is rejected and a row goes only through the section 6 route ([backend/src/dal/powersync.ts](../../../backend/src/dal/powersync.ts), full gate in [powersync-upload-authorization.md](powersync-upload-authorization.md)). How `trusted`, `approval_pending` and `public_key` feed encryption setup and device approval: [e2e-encryption.md](e2e-encryption.md).
 
-Three routes write `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+Three routes set `node_id` / `node_id_attested_at`: canary-gated `POST /devices/:deviceId/node-id`, session-pinned `POST /devices/me/node-id`, and bridge registration (`registerBridgeDevice`). Revoke and deny clear them so a removed device stops being dialable.
+
+During a legacy encryption upgrade through `POST /encryption/upgrade`, trusted, non-revoked regular app devices other than the migrator return to pending approval, and their node IDs and attestation timestamps are cleared. Other device states remain unchanged.
 
 ### Settings > Devices
 
@@ -144,7 +156,7 @@ Account-first onboarding, stable `cli-<uuid>` installation; contract in [CLI Dev
 
 Both live in `localStorage` under fixed keys ([src/lib/auth-token.ts](../../../src/lib/auth-token.ts)).
 
-- **Auth token:** fixed key so `getAuthToken()` stays synchronous, as Better Auth requires. Not synced. Cleared by `clearAuthToken()` on session expiry, or via `clearLocalData()` for a full reset. Nothing calls `localStorage.clear()`.
+- **Auth token:** fixed key so `getAuthToken()` stays synchronous, as Better Auth requires. Not synced. Cleared by `clearAuthToken()` on session expiry, or via `clearLocalData()` for a full reset, which also clears the rest of `localStorage` once the token is gone.
 - **Device id:** created on first read, sent as `X-Device-ID` with `X-Device-Name` on PowerSync requests so the backend can update the row and enforce revocation. A missing name becomes `Unknown device`.
 
 ---
@@ -153,7 +165,7 @@ Both live in `localStorage` under fixed keys ([src/lib/auth-token.ts](../../../s
 
 ### PowerSync Token (`GET /powersync/token`)
 
-- **Session path:** `validateDeviceForSync` validates, then the route issues a JWT and upserts the device (id, user_id, name, last_seen, `app_version` from `X-App-Version`).
+- **Session path:** `validateDeviceForSync` validates, then the route issues a JWT and `touchDevice` updates the device's name, `last_seen` and `app_version` (from `X-App-Version`). It skips the write unless the name or version changed or `last_seen` is over an hour old: every device-row write adds a version to PowerSync's parameter history, which its Postgres storage never compacts.
 - **Bearer token only (e.g. credential refresh):** the signed token resolves to a persisted session. A missing user row (account deleted) gives **410 Gone** `ACCOUNT_DELETED`; otherwise validation and issuance run as above.
 - `X-Device-ID` is required on both paths, so a revoked device cannot buy a token by omitting the header.
 - With `POWERSYNC_JWT_SECRET` unset, `createPowerSyncRoutes` returns an empty Elysia instance and mounts neither route, so requests 404. Secret set, `POWERSYNC_URL` empty: `/token` answers **503**.
@@ -167,18 +179,18 @@ Both routes answer **403** `ORIGIN_NOT_ALLOWED` for a cross-origin request whose
 
 Only rows with a client reason change app state ([src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts) maps status and code to a `CredentialsInvalidReason`, section 7). Otherwise `fetchCredentials` returns `null` and PowerSync retries on its own schedule.
 
-| Status | Code                       | Meaning                                                 | Client reason                          |
-| ------ | -------------------------- | ------------------------------------------------------- | -------------------------------------- |
-| 410    | `ACCOUNT_DELETED`          | the user row is gone                                    | `account_deleted`: full reset          |
-| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                      | `device_revoked`: revoked-device modal |
-| 403    | `DEVICE_NOT_BOUND`         | the session is not bound to this `X-Device-ID`          | none: sync waits for the bind          |
-| 403    | `DEVICE_NOT_TRUSTED`       | a `cli-` prefixed id, or an unknown or untrusted device | none (expected while approval pends)   |
-| 403    | `ANONYMOUS_SYNC_FORBIDDEN` | anonymous session                                       | `sync_not_permitted`: sync disabled    |
-| 403    | `ORIGIN_NOT_ALLOWED`       | `Origin` outside the CORS allowlist                     | none                                   |
-| 409    | `DEVICE_ID_TAKEN`          | the id is registered to another user                    | `device_id_taken`: full reset          |
-| 400    | `DEVICE_ID_REQUIRED`       | no `X-Device-ID` header                                 | `device_id_required`: full reset       |
-| 401    | (none)                     | missing, unsigned, or expired bearer token              | `session_expired`: sign-in modal       |
-| 503    | (none)                     | `/token` only: secret set but `POWERSYNC_URL` empty     | none                                   |
+| Status | Code                       | Meaning                                                 | Client reason                        |
+| ------ | -------------------------- | ------------------------------------------------------- | ------------------------------------ |
+| 410    | `ACCOUNT_DELETED`          | the user row is gone                                    | `account_deleted`: full reset        |
+| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                      | `device_revoked`: full reset         |
+| 403    | `DEVICE_NOT_BOUND`         | the session is not bound to this `X-Device-ID`          | none: sync waits for the bind        |
+| 403    | `DEVICE_NOT_TRUSTED`       | a `cli-` prefixed id, or an unknown or untrusted device | none (expected while approval pends) |
+| 403    | `ANONYMOUS_SYNC_FORBIDDEN` | anonymous session                                       | `sync_not_permitted`: sync disabled  |
+| 403    | `ORIGIN_NOT_ALLOWED`       | `Origin` outside the CORS allowlist                     | none                                 |
+| 409    | `DEVICE_ID_TAKEN`          | the id is registered to another user                    | `device_id_taken`: full reset        |
+| 400    | `DEVICE_ID_REQUIRED`       | no `X-Device-ID` header                                 | `device_id_required`: full reset     |
+| 401    | (none)                     | missing, unsigned, or expired bearer token              | `session_expired`: sign-in modal     |
+| 503    | (none)                     | `/token` only: secret set but `POWERSYNC_URL` empty     | none                                 |
 
 #### Create-only writes (`ifAbsent`)
 
@@ -312,6 +324,6 @@ Encryption setup, device approval, iroh pairing, key recovery. Mounted on `/v1` 
 
 ## 7. Frontend: Credentials-Invalid and Reset
 
-`getCredentialsInvalidReason` ([src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts)) turns the status and code above into one of six reasons, each given a different consequence by `usePowerSyncCredentialsInvalidListener` ([src/hooks/use-powersync-credentials-invalid-listener.ts](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)). Only three destroy local data: a session expiry or device revocation must not cost the user their offline database. A seventh path watches the current device's synced `devices` row, so a revocation lands without waiting for the next token refresh.
+`getCredentialsInvalidReason` ([src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts)) turns the status and code above into one of six reasons, each given a different consequence by `usePowerSyncCredentialsInvalidListener` ([src/hooks/use-powersync-credentials-invalid-listener.ts](../../../src/hooks/use-powersync-credentials-invalid-listener.ts)). Four destroy local data: account deletion, a taken or missing device id, and device revocation. A session expiry must not cost the user their offline database. A seventh path watches the current device's synced `devices` row, so a revocation lands without waiting for the next token refresh.
 
 Per-reason consequences, the watcher's cold-start guard, what `clearLocalData` ([src/lib/cleanup.ts](../../../src/lib/cleanup.ts)) tears down, and a side-by-side of both flows: [delete-account-and-revoke-device.md](delete-account-and-revoke-device.md#frontend).

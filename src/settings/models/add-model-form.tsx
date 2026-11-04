@@ -15,15 +15,14 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusCard } from '@/components/ui/status-card'
 import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
+import type { ToolSupport } from '@/hooks/use-model-connection-test'
+import { useAppName } from '@/lib/branding-selectors'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
-import { customProviderLabel, providerLabels } from './model-presentation'
+import { getProviderLabel, providerPickerOrder } from './model-presentation'
+import { SupportsToolsSwitch } from './supports-tools-switch'
 import type { AddModelFormValues } from './use-add-model-form'
-
-/** Provider picker options, derived from the exhaustive labels Record so a new
- *  provider added to `Model['provider']` shows up here by construction. */
-const providerOptions = Object.keys(providerLabels) as Model['provider'][]
 
 type AddModelFormProps = {
   mode?: 'create' | 'edit'
@@ -34,11 +33,11 @@ type AddModelFormProps = {
   selectedModelId: string | null
   isLoadingCatalog: boolean
   catalogError: string | null
-  supportsTools: boolean
   isPending: boolean
   isTesting: boolean
   connectionStatus: 'idle' | 'success' | 'error'
   connectionError: string | null
+  toolSupport: ToolSupport | null
   submitError: string | null
   onSubmit: (values: AddModelFormValues) => void
   onCancel: () => void
@@ -57,11 +56,11 @@ export const AddModelForm = ({
   selectedModelId,
   isLoadingCatalog,
   catalogError,
-  supportsTools,
   isPending,
   isTesting,
   connectionStatus,
   connectionError,
+  toolSupport,
   submitError,
   onSubmit,
   onCancel,
@@ -73,21 +72,23 @@ export const AddModelForm = ({
   const { i18n, t } = useLingui()
   const configurationOnly = connectionMode === 'configuration'
   const { isDirty, isValid } = form.formState
+  const appName = useAppName()
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
   const model = form.watch('model')
+  const supportsTools = form.watch('supportsTools')
 
   // The user just chose "New Model" / "Add Model" — land ready to pick a
   // provider (the form's first control).
   const providerTriggerRef = useAutofocusOnMount<HTMLButtonElement>()
 
+  // Stays visible when the catalog fails: its "Custom" entry is the manual fallback.
   const showModelSelection =
-    !catalogError &&
-    (configurationOnly ||
-      providerAutoFetchesCatalog(provider) ||
-      Boolean(apiKey) ||
-      (provider === 'custom' && Boolean(url)))
+    configurationOnly ||
+    providerAutoFetchesCatalog(provider) ||
+    Boolean(apiKey) ||
+    (provider === 'custom' && Boolean(url))
 
   return (
     <Form {...form}>
@@ -113,14 +114,13 @@ export const AddModelForm = ({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {providerOptions.map((provider) => (
+                  {providerPickerOrder.map((provider) => (
                     <SelectItem key={provider} value={provider}>
-                      {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
+                      {getProviderLabel(i18n, provider, appName)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-
               <FormMessage />
             </FormItem>
           )}
@@ -252,13 +252,6 @@ export const AddModelForm = ({
             )}
           />
         )}
-        {!supportsTools && (model || selectedModelId === 'custom') && (
-          <StatusCard
-            icon={<X className="h-4 w-4 text-warning" />}
-            title={t`Model may not be compatible`}
-            description={t`This model does not seem to support tool usage.`}
-          />
-        )}
         {!configurationOnly && (
           <ConnectionTestSection
             provider={provider}
@@ -268,6 +261,14 @@ export const AddModelForm = ({
             onTest={onTestConnection}
             status={connectionStatus}
             error={connectionError}
+            toolSupport={toolSupport}
+          />
+        )}
+        {provider !== 'thunderbolt' && (
+          <SupportsToolsSwitch
+            checked={supportsTools}
+            onCheckedChange={(checked) => form.setValue('supportsTools', checked, { shouldDirty: true })}
+            disabled={isTesting}
           />
         )}
         {submitError && (

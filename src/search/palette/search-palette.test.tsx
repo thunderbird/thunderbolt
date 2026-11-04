@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getClock } from '@/testing-library'
+import { useConfigStore } from '@/api/config-store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { createModel } from '@/dal'
 import { getDb } from '@/db/database'
@@ -17,7 +18,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { type ReactNode, useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
-import type { SearchResult } from '../types'
+import type { SearchResult, UseSearch } from '../types'
 import { SearchPalette } from './search-palette'
 
 // The palette's data/analytics dependencies are injected as props (no shared
@@ -26,6 +27,7 @@ import { SearchPalette } from './search-palette'
 const mockTrackEvent = mock((_event: string, _props?: Record<string, unknown>) => {})
 let buildCommands: (opts: UseCommandsOptions) => PaletteCommand[] = () => []
 let searchResults: SearchResult[] = []
+let lastSearchOptions: Parameters<UseSearch>[1]
 
 const LocationProbe = () => {
   const location = useLocation()
@@ -55,7 +57,10 @@ const renderPalette = () => {
       open
       onOpenChange={() => {}}
       useCommands={(opts) => buildCommands(opts)}
-      useSearch={() => ({ results: searchResults, isLoading: false })}
+      useSearch={(_query, options) => {
+        lastSearchOptions = options
+        return { results: searchResults, isLoading: false }
+      }}
       trackEvent={mockTrackEvent}
     />,
     { wrapper: Wrapper },
@@ -74,6 +79,7 @@ describe('SearchPalette commands', () => {
   beforeEach(async () => {
     await resetTestDatabase()
     mockTrackEvent.mockClear()
+    useConfigStore.setState({ config: {}, configLoaded: false })
     buildCommands = () => []
     searchResults = []
   })
@@ -81,6 +87,61 @@ describe('SearchPalette commands', () => {
   afterEach(() => {
     cleanup()
     restoreViewport()
+    useConfigStore.setState({ config: {}, configLoaded: false })
+  })
+
+  describe('in minimal mode', () => {
+    const settingsHits: SearchResult[] = [
+      { id: 'm1', entityType: 'model', title: 'Settings thing', snippet: '', to: '/settings/models' },
+      { id: 's1', entityType: 'skill', title: 'Settings thing', snippet: '', to: '/settings/skills' },
+      { id: 'p1', entityType: 'project', title: 'Settings thing project', snippet: '', to: '/projects/p1' },
+      { id: 'c1', entityType: 'chat', title: 'Settings thing chat', snippet: '', to: '/chats/c1' },
+    ]
+    const search = async () => {
+      searchResults = settingsHits
+      renderPalette()
+      fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'settings' } })
+      await act(async () => {
+        await getClock().tickAsync(debounceMs)
+      })
+    }
+
+    it('excludes nothing from the query by default and lists every result', async () => {
+      await search()
+
+      expect(lastSearchOptions?.excludeTypes).toEqual([])
+      expect(screen.getAllByRole('option')).toHaveLength(4)
+    })
+
+    it('excludes Settings and Projects types in the query itself', async () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      await search()
+
+      expect([...(lastSearchOptions?.excludeTypes ?? [])].sort()).toEqual([
+        'agent',
+        'device',
+        'mcp',
+        'model',
+        'project',
+        'skill',
+      ])
+    })
+  })
+
+  describe('input placeholder', () => {
+    it('lists every entity type by default', () => {
+      useConfigStore.setState({ config: {}, configLoaded: true })
+      renderPalette()
+
+      expect(screen.getByPlaceholderText('Search chats, models, skills, agents…')).toBeInTheDocument()
+    })
+
+    it('only mentions chats in minimal mode', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderPalette()
+
+      expect(screen.getByPlaceholderText('Search chats…')).toBeInTheDocument()
+    })
   })
 
   it('renders commands grouped by section', () => {

@@ -46,6 +46,7 @@ it('validates custom endpoints locally and never saves credentials or requests a
         provider: 'custom',
         url: 'http://localhost:11434/v1',
         enabled: 1,
+        supportsTools: true,
         deletedAt: null,
       },
     })
@@ -69,7 +70,11 @@ it('keeps identity and disabled state when editing an external provider without 
   const { result, dispatch } = setup(model)
   await act(async () => {
     result.current.form.setValue('name', 'New name')
+    result.current.form.setValue('supportsTools', false)
     await result.current.form.handleSubmit(result.current.onSubmit)()
   })
-  expect(dispatch).toHaveBeenCalledWith({ type: 'save-model', model: { ...model, name: 'New name' } })
+  expect(dispatch).toHaveBeenCalledWith({
+    type: 'save-model',
+    model: { ...model, name: 'New name', supportsTools: false },
+  })
 })

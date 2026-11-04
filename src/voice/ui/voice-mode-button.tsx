@@ -14,9 +14,11 @@ import { AudioLines } from 'lucide-react'
 
 type VoiceModeButtonProps = {
   onStart: () => void
+  /** Set while the composer holds every send, so voice cannot get around it. */
+  disabled?: boolean
 }
 
-export const VoiceModeButton = ({ onStart }: VoiceModeButtonProps) => {
+export const VoiceModeButton = ({ onStart, disabled = false }: VoiceModeButtonProps) => {
   const { t } = useLingui()
 
   return (
@@ -24,6 +26,7 @@ export const VoiceModeButton = ({ onStart }: VoiceModeButtonProps) => {
       type="button"
       variant="default"
       onClick={onStart}
+      disabled={disabled}
       aria-label={t`Start voice mode`}
       title={t`Start voice mode`}
       className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"

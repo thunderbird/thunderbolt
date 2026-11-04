@@ -181,3 +181,41 @@ describe('search statements end-to-end against real SQLite', () => {
     db.close()
   })
 })
+
+describe('buildSearchStatement excluded types', () => {
+  const insertRow = `INSERT INTO search_index(id, entity_type, parent_id, title, body) VALUES (?, ?, NULL, ?, '')`
+  const hiddenTypes = ['model', 'skill'] as const
+
+  it('binds the excluded types after the other parameters, on both paths', () => {
+    const match = buildSearchStatement(planSearchQuery('hello'), hiddenTypes)
+    expect(match.sql).toContain('AND entity_type NOT IN (?, ?)')
+    expect(match.parameters).toEqual(['"hello"*', 'model', 'skill'])
+
+    const substring = buildSearchStatement(planSearchQuery('東京の天気'), hiddenTypes)
+    expect(substring.sql).toContain('AND entity_type NOT IN (?, ?)')
+    expect(substring.parameters.slice(-2)).toEqual(['model', 'skill'])
+  })
+
+  it('leaves the statement alone when nothing is excluded', () => {
+    expect(buildSearchStatement(planSearchQuery('hello')).sql).not.toContain('NOT IN')
+  })
+
+  it('still returns the one visible match when more than the limit of hidden rows match', () => {
+    const db = new Database(':memory:')
+    db.run(buildCreateSql())
+    for (let i = 0; i < 60; i++) {
+      db.run(insertRow, [`01900000-0000-7000-8000-${String(i).padStart(12, '0')}`, 'model', 'report model'])
+    }
+    db.run(insertRow, ['01900000-0000-7000-8000-ffffffffffff', 'chat', 'report chat'])
+
+    const run = (exclude: readonly ('model' | 'skill')[]) => {
+      const statement = buildSearchStatement(planSearchQuery('report'), exclude)
+      return db.query(statement.sql).all(...statement.parameters) as { id: string }[]
+    }
+
+    // Unfiltered, the cap is spent on hidden rows and the chat is not guaranteed a slot.
+    expect(run([])).toHaveLength(50)
+    expect(run(hiddenTypes).map((row) => row.id)).toEqual(['01900000-0000-7000-8000-ffffffffffff'])
+    db.close()
+  })
+})

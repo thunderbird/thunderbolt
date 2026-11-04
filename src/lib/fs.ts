@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetDatabase } from '@/db/database'
-import { getDatabasePath, getDatabaseType, isOpfsAvailable, isTauri } from './platform'
+import { deleteIndexedDbDatabase, getDatabasePath, isOpfsAvailable, isTauri, powerSyncDbFilename } from './platform'
 import { withTimeout } from './timeout'
 
 // Only import Tauri APIs when in Tauri environment
@@ -91,18 +91,23 @@ export const resetAppDir = async (): Promise<void> => {
   await withTimeout(resetDatabase(), 10_000, 'DatabaseSingleton.reset')
 
   const appDataDirPath = await createAppDir()
-  const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(databaseType, appDataDirPath)
+  const dbPath = await getDatabasePath(appDataDirPath)
 
   // Only delete file if it's not an in-memory database
   if (dbPath === ':memory:') {
     return
   }
 
-  if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
-    // Both wa-sqlite and PowerSync use OPFS
-    await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
-  } else {
-    throw new Error(`Unsupported database type: ${databaseType}`)
+  await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
+
+  // The data is wiped, so the next start can move to OPFS. An empty OPFS database file tells it
+  // to, even while another tab keeps the IndexedDB database open and its delete pending.
+  const root = await navigator.storage.getDirectory()
+  await root.getFileHandle(powerSyncDbFilename, { create: true })
+  // Cleanup only: a later OPFS start retries it (see `PowerSyncDatabaseImpl.initialize`).
+  try {
+    await withTimeout(deleteIndexedDbDatabase(powerSyncDbFilename), 10_000, 'deleteIndexedDbDatabase')
+  } catch (error) {
+    console.error('[resetAppDir] Failed to delete the IndexedDB database:', error)
   }
 }

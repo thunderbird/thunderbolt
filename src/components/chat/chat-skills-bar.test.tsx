@@ -2,18 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
+import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { defaultSkillWeather } from '@/defaults/skills'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
+import { getClock } from '@/testing-library'
 import type { Skill } from '@/types'
 import { ChatSkillsBar } from './chat-skills-bar'
+// Load the lazy ReorderPanel chunk up front: waitForElement only advances the fake
+// clock, so a cold import() can still be loading when its 2s budget runs out.
+import '@/skills/reorder-panel'
 
 const skill = (id: string, name: string): Skill => ({
   id,
@@ -75,6 +80,10 @@ const renderBar = (props: Partial<Parameters<typeof ChatSkillsBar>[0]> = {}, sho
 }
 
 describe('ChatSkillsBar', () => {
+  beforeEach(() => {
+    useConfigStore.setState({ config: {}, configLoaded: true })
+  })
+
   afterEach(() => {
     cleanup()
     restoreViewport()
@@ -172,7 +181,7 @@ describe('ChatSkillsBar', () => {
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
   })
 
-  it('closes the mobile skill drawer before opening creation', () => {
+  it('closes the mobile skill drawer when opening creation', async () => {
     forceMobileViewport()
     const a = skill('a', 'daily-brief')
     renderBar(
@@ -190,9 +199,11 @@ describe('ChatSkillsBar', () => {
     fireEvent.click(screen.getByText('New Skill'))
 
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    // The mobile card drawer must be gone before the create surface opens.
-    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
   })
 
   it('opens the add-skill menu as a mobile bottom drawer', () => {
@@ -312,6 +323,50 @@ describe('ChatSkillsBar', () => {
 
     expect(screen.getByTestId('create-request')).toHaveTextContent('/|skill')
     expect(screen.getByTestId('create-request')).toHaveAttribute('data-skill-id', 'a')
+  })
+
+  describe('in minimal mode', () => {
+    const a = skill('a', 'daily-brief')
+    const renderPinned = () =>
+      renderBar({
+        usePinnedSkills: fakeUsePinnedSkills({ pinned: [a] }),
+        useLibrarySkills: fakeUseLibrarySkills([a]),
+        useEnabledSkills: fakeUseEnabledSkills(new Set(['a'])),
+      })
+
+    it('shows the pinned chips outside minimal mode', () => {
+      renderPinned()
+
+      expect(screen.getByText('Daily Brief')).toBeTruthy()
+    })
+
+    it('renders from a persisted config before the fetch answers', () => {
+      useConfigStore.setState({ config: { minimalMode: false }, configLoaded: false })
+      renderPinned()
+
+      expect(screen.getByText('Daily Brief')).toBeTruthy()
+    })
+
+    it('renders nothing from a persisted minimal config before the fetch answers', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: false })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
+
+    it('renders nothing until the config has loaded', () => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
+
+    it('renders nothing in minimal mode', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      const { container } = renderPinned()
+
+      expect(container.firstChild).toBeNull()
+    })
   })
 
   // The chip's click → onAddToChat path is exercised end-to-end at the

@@ -39,6 +39,7 @@ export const CompanyModelEditor = ({
         isTesting={false}
         connectionStatus="idle"
         connectionError={null}
+        toolSupport={null}
         onCancel={onClose}
         onCatalogInvalidated={editor.changed}
         onTestConnection={() => {}}

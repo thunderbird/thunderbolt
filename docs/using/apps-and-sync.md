@@ -32,7 +32,7 @@ Every install holds a full local database. Reads and writes go there first, so t
 
 Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**, and repeated as **Cloud Sync** in the sidebar account menu. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app runs a short setup step on that device, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
 
-Synced data is always end-to-end encrypted. The first device you set up shows a 24 word recovery phrase once; save it, because it is the only way back in if you lose every device. Each later device has to be approved before it can read anything.
+Synced data is always end-to-end encrypted. Save the current 24 word recovery phrase shown during setup. A later device unlocks through fingerprint approval from a trusted device, the current recovery phrase, or an available passkey enrolled for sync.
 
 Encryption covers the columns that hold your content, including the names, addresses and descriptions of the external agents you add. Structural fields and device names are stored readable.
 
@@ -67,8 +67,9 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
-- Approve it from an already trusted device under **Settings → Devices**, or
-- Enter the 24 word recovery key you saved when you first set up sync.
+- Approve it from an already trusted device under **Settings → Devices**, entering the fingerprint shown on the new device's screen or received through a separate trusted channel.
+- Enter the current 24 word recovery phrase. Use the new phrase if it was replaced during migration or a phrase change.
+- Choose **Unlock with passkey** if the account has an available passkey enrolled for sync.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 
@@ -85,13 +86,13 @@ Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Win
 | **Revoke**  | Any other trusted device  | Sessions on it are ended, it stops syncing, and it can no longer decrypt synced data |
 | **Remove**  | A revoked bridge only     | Deletes the record so the same bridge can be paired again                            |
 
-The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out.
+The device signs out and clears everything stored on it the next time it connects. A device that never comes back online keeps what is already on it.
 
 Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
 
 > Revoking is not reversible. To bring a device back, sign in again and approve it as new.
 
-Deleting the account is separate and wider, but it does not reach every device on its own. A device with sync on that reconnects soon after clears its local data and shows an account-deleted screen. A device with sync off, or one that comes back after too long a gap, is signed out instead and keeps its local copy, so wipe those by hand. Attached files are never cleared either, as above.
+Deleting the account is separate and wider, but it does not reach every device on its own. A device with sync on that reconnects soon after clears its local data and shows an account-deleted screen. A device with sync off, or one that comes back after too long a gap, is signed out instead and keeps its local copy, so wipe those by hand.
 
 Full detail on approval, recovery keys, and revocation is in [Devices and Accounts](../admin/devices.md).
 

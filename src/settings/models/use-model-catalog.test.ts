@@ -2,8 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
-import { catalogToComboboxItems, initialModelCatalogState, modelCatalogReducer } from './use-model-catalog'
+import { ProxyFetchProvider } from '@/lib/proxy-fetch-context'
+import { act, renderHook } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
+import { createElement, type ReactNode } from 'react'
+import {
+  catalogToComboboxItems,
+  initialModelCatalogState,
+  modelCatalogReducer,
+  useModelCatalog,
+} from './use-model-catalog'
 
 describe('modelCatalogReducer', () => {
   it('ignores stale catalog results after a newer request starts', () => {
@@ -39,5 +47,21 @@ describe('catalogToComboboxItems', () => {
       { id: 'gpt-4', label: 'GPT-4', description: 'gpt-4' },
       { id: 'bare-id', label: 'bare-id', description: undefined },
     ])
+  })
+})
+
+describe('useModelCatalog', () => {
+  it('fetches custom catalogs through the proxy from context', async () => {
+    const proxyFetch = Object.assign(
+      mock(async () => Response.json({ data: [] })),
+      { preconnect: async () => false },
+    )
+    const { result } = renderHook(() => useModelCatalog(), {
+      wrapper: ({ children }: { children: ReactNode }) => createElement(ProxyFetchProvider, { proxyFetch, children }),
+    })
+
+    await act(() => result.current.fetchCatalog({ provider: 'custom', url: 'https://api.otari.ai/api/v1' }))
+
+    expect(proxyFetch).toHaveBeenCalledTimes(1)
   })
 })

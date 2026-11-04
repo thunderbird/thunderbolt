@@ -6,6 +6,7 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import {
   createMockChatInstance,
   createMockChatThread,
+  createMockModel,
   createMockUseChat,
   hydrateStore,
   resetStore,
@@ -20,7 +21,9 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { ChatMessages } from './chat-messages'
 import { ExternalLinkDialogProvider } from './markdown-utils'
+import { builtInAgent } from '@/defaults/agents'
 import type { ThunderboltUIMessage } from '@/types'
+import type { Agent } from '@/types/acp'
 import { type ReactNode } from 'react'
 
 const createTestWrapper = () => {
@@ -266,6 +269,60 @@ describe('ChatMessages', () => {
 
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument()
       expect(screen.getByText('Retry')).toBeInTheDocument()
+    })
+
+    describe('a model that rejects tools', () => {
+      const toolsError = new Error(
+        '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}',
+      )
+      const hostedAgent: Agent = {
+        ...builtInAgent,
+        id: 'hosted-agent',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+      }
+
+      const failedModel = createMockModel({ id: 'gemma-model' })
+
+      /** Renders a turn that the failed model rejected, with the given agent and model selected now. */
+      const renderToolsRejection = (selectedAgent: Agent, selectedModel = failedModel) => {
+        const mockChatInstance = createMockChatInstance([createTestMessage({ metadata: { modelId: failedModel.id } })])
+        hydrateStore({
+          chatInstance: mockChatInstance,
+          chatThread: createMockChatThread(),
+          id: 'thread-1',
+          mcpClients: [],
+          models: [],
+          selectedModel,
+          triggerData: null,
+        })
+        useChatStore.getState().updateSession('thread-1', { retriesExhausted: true, selectedAgent })
+        render(<ChatMessages useChat={createMockUseChat(mockChatInstance, toolsError)} />, {
+          wrapper: createTestWrapper(),
+        })
+      }
+
+      it('offers to turn tools off for the built-in agent', () => {
+        renderToolsRejection(builtInAgent)
+
+        expect(screen.getByText('Turn off tools and retry')).toBeInTheDocument()
+        expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+      })
+
+      it('offers Retry instead once the user has picked another model', () => {
+        renderToolsRejection(builtInAgent, createMockModel({ id: 'llama-model' }))
+
+        expect(screen.queryByText('Turn off tools and retry')).not.toBeInTheDocument()
+        expect(screen.getByText('Retry')).toBeInTheDocument()
+      })
+
+      it('offers no fix for an external agent, whose model Settings → Models does not reach', () => {
+        renderToolsRejection(hostedAgent)
+
+        expect(screen.queryByText('Turn off tools and retry')).not.toBeInTheDocument()
+        expect(screen.getByText('Retry')).toBeInTheDocument()
+      })
     })
 
     it('should show error message when last message is assistant with no parts and not streaming', () => {

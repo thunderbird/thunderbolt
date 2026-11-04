@@ -14,6 +14,7 @@ import {
   getChatMessages,
   getChatThread,
   getDefaultModelForThread,
+  getSelectedModel,
   getSettings,
   getTriggerPromptForThread,
   isChatThreadDeleted,
@@ -34,8 +35,10 @@ import type { Agent } from '@/types/acp'
 import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
+import { withChatThreadWrite } from './chat-thread-write'
 import { createChatInstance } from './chat-instance'
 import { resolveSessionAgent } from './resolve-session-agent'
+import { resolveSessionModel } from './resolve-session-model'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 
 type UseHydrateChatStoreParams = {
@@ -125,27 +128,33 @@ export const useHydrateChatStore = ({
   }
 
   const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
-    const { sessions, updateSession } = useChatStore.getState()
+    const { updateSession } = useChatStore.getState()
+    // Read the session inside the queue so a move that ran before creation is
+    // included in the insert; a later move waits until the row exists.
+    const { session, thread } = await withChatThreadWrite(id, async () => {
+      const { sessions } = useChatStore.getState()
 
-    const session = sessions.get(id)
+      const session = sessions.get(id)
 
-    if (!session) {
-      throw new Error('No session found')
-    }
+      if (!session) {
+        throw new Error('No session found')
+      }
 
-    // Fetch thread info to check if we need to generate a title.
-    // Pass `selectedAgent.id` so a brand-new thread is created with the user's
-    // currently-selected agent — otherwise the row would default to `null`
-    // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
-      agentId: session.selectedAgent.id,
-      // Stamped here rather than at navigation time: the row is created lazily
-      // on this first save, so both must ride the session to reach it.
-      projectId: session.projectId,
-      miniAppId: session.miniAppId,
-      // The hosted agent sends the chat to the backend unencrypted, so its threads
-      // are never private chats, whatever the (unused) selected model is.
-      isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
+      // Fetch thread info to check if we need to generate a title.
+      // Pass `selectedAgent.id` so a brand-new thread is created with the user's
+      // currently-selected agent — otherwise the row would default to `null`
+      // and a reload would silently fall back to the built-in agent.
+      const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
+        agentId: session.selectedAgent.id,
+        // Stamped here rather than at navigation time: the row is created lazily
+        // on this first save, so both must ride the session to reach it.
+        projectId: session.projectId,
+        miniAppId: session.miniAppId,
+        // The hosted agent sends the chat to the backend unencrypted, so its threads
+        // are never private chats, whatever the (unused) selected model is.
+        isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
+      })
+      return { session, thread }
     })
 
     // Save messages and update context size using DAL
@@ -191,7 +200,7 @@ export const useHydrateChatStore = ({
       useChatStore.getState()
 
     // Check if this ID belongs to a deleted chat - redirect to 404 if so
-    const isDeleted = await isChatThreadDeleted(db, id)
+    const isDeleted = !isNew && (await isChatThreadDeleted(db, id))
     if (isDeleted) {
       navigate('/not-found', { replace: true })
       return
@@ -218,16 +227,16 @@ export const useHydrateChatStore = ({
       return
     }
 
-    // If the session does not exist, create it below
-    const settings = await getSettings(db, { selected_model: String, selected_agent: String })
-
-    const [defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
+    // New IDs are minted locally and have no history. Read the selected model
+    // directly, and start independent reads together instead of gating on settings.
+    const [settings, defaultModel, chatThread, initialMessages, models, triggerData, customAgentRows, systemAgentRows] =
       await Promise.all([
-        getDefaultModelForThread(db, id, settings.selectedModel ?? undefined),
-        getChatThread(db, id),
-        getChatMessages(db, id),
+        getSettings(db, { selected_model: String, selected_agent: String }),
+        isNew ? getSelectedModel(db) : getDefaultModelForThread(db, id),
+        isNew ? null : getChatThread(db, id),
+        isNew ? [] : getChatMessages(db, id),
         getAvailableModels(db),
-        getTriggerPromptForThread(db, id),
+        isNew ? null : getTriggerPromptForThread(db, id),
         getAllAgents(db),
         getAllSystemAgents(db),
       ])
@@ -262,6 +271,7 @@ export const useHydrateChatStore = ({
       hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
     })
+    const selectedModel = resolveSessionModel(selectedAgent, chatThread, defaultModel, models)
 
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
@@ -296,7 +306,7 @@ export const useHydrateChatStore = ({
       // agent when the persisted id no longer matches).
       selectedAgent,
       agentChosenByUser: false,
-      selectedModel: defaultModel,
+      selectedModel,
       projectId,
       miniAppId,
       triggerData,
@@ -312,7 +322,7 @@ export const useHydrateChatStore = ({
 
     setIsReady(true)
     trackChatReadyOnce()
-    maybePrewarmBuiltInAgent(selectedAgent, defaultModel)
+    maybePrewarmBuiltInAgent(selectedAgent, selectedModel)
   }
 
   return { hydrateChatStore, isReady, saveMessages, saveStreamingMessage }

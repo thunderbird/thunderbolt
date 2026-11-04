@@ -3,8 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { EncryptionMetadataResponse } from '@shared/e2ee-types'
-import { describe, expect, it } from 'bun:test'
-import { classifyEncryptionMetadata, reducer, initialState } from './use-sync-setup'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { classifyEncryptionMetadata, reducer, initialState, useSyncSetup } from './use-sync-setup'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import 'fake-indexeddb/auto'
+import { clearAllKeys, generateAK, generateKeyPair, generateMlKemKeyPair, getAK, storeKeyPair, wrapAK } from '@/crypto'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
+import { createSpyHttpClient } from '@/test-utils/http-client-spy'
+import { clearCachedSession, setCachedSession } from '@/lib/session-cache'
 
 const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   canary_iv: 'iv',
@@ -15,9 +21,71 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
   recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
+  passkey_credential_id: null,
+  passkey_ecdh_public_key: null,
+  passkey_mlkem_public_key: null,
+  passkey_wrapped_ak: null,
+  passkey_attestation: null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,
+})
+
+describe('receiver verification failure', () => {
+  afterEach(async () => {
+    cleanup()
+    await clearAllKeys()
+    clearCachedSession()
+    localStorage.removeItem('thunderbolt_device_id')
+  })
+
+  const receiverWrapper = async () => {
+    await clearAllKeys()
+    const ecdh = await generateKeyPair()
+    const mlkem = generateMlKemKeyPair()
+    await storeKeyPair(ecdh.privateKey, ecdh.publicKey, mlkem.publicKey, mlkem.secretKey)
+    localStorage.setItem('thunderbolt_device_id', 'receiver')
+    setCachedSession({ user: { id: 'account-1' } })
+    const wrappedCK = await wrapAK(await generateAK(true), ecdh.publicKey, mlkem.publicKey, '0')
+    const { httpClient } = createSpyHttpClient(async (request) => {
+      const path = new URL(request.url).pathname
+      if (path.endsWith('/devices')) {
+        return Response.json({ trusted: false })
+      }
+      if (path.endsWith('/envelope')) {
+        return Response.json({ trusted: true, wrappedCK, attestation: null })
+      }
+      if (path.endsWith('/keys')) {
+        return Response.json({ keys: [] })
+      }
+      return Response.json({ ...metadata(2), passkey_credential_id: 'available-passkey' })
+    })
+    return createQueryTestWrapper({ httpClient })
+  }
+
+  it('offers retry and available-option guidance instead of raw attestation diagnostics', async () => {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: await receiverWrapper() })
+    await act(async () => {
+      expect(await result.current.confirmApproval()).toBe(false)
+    })
+    expect(result.current.approvalError).toBe(
+      "Couldn't verify this device's approval. Select Check now to try again, or choose another option below.",
+    )
+    expect(result.current.isLoading).toBe(false)
+    expect(await getAK()).toBeNull()
+  })
+
+  it('routes a receiver-verification failure at detection to existing recovery and passkey choices', async () => {
+    const { result } = renderHook(() => useSyncSetup(), { wrapper: await receiverWrapper() })
+    await act(async () => {
+      expect((await result.current.continueIntro()).outcome).toBe('additional-device')
+    })
+    expect(result.current.step).toBe('approval-waiting')
+    expect(result.current.passkeySlotCredentialId).toBe('available-passkey')
+    expect(result.current.approvalError).toContain('Check now')
+    expect(result.current.approvalError).toContain('another option below')
+    expect(await getAK()).toBeNull()
+  })
 })
 
 describe('classifyEncryptionMetadata', () => {
@@ -35,6 +103,12 @@ describe('classifyEncryptionMetadata', () => {
 })
 
 describe('useSyncSetup reducer', () => {
+  it('retains the locally computed fingerprint while entering approval and clears it on reset', () => {
+    const prepared = reducer(initialState, { type: 'SET_APPROVAL_FINGERPRINT', payload: 'local-fingerprint' })
+    const waiting = reducer(prepared, { type: 'DETECTED_ADDITIONAL_DEVICE' })
+    expect(waiting.approvalFingerprint).toBe('local-fingerprint')
+    expect(reducer(waiting, { type: 'RESET' }).approvalFingerprint).toBe('')
+  })
   it('routes a migration into the recovery-key display step', () => {
     const next = reducer(initialState, { type: 'SET_RECOVERY_KEY', payload: 'word '.repeat(24).trim() })
     expect(next.step).toBe('recovery-key-display')
@@ -58,6 +132,20 @@ describe('useSyncSetup reducer', () => {
     const waiting = reducer(initialState, { type: 'DETECTED_ADDITIONAL_DEVICE' })
     const next = reducer({ ...waiting, isLoading: true }, { type: 'DEVICE_DENIED' })
     expect(next.step).toBe('denied')
+    expect(next.isLoading).toBe(false)
+  })
+
+  it('remembers the account passkey slot found at detection', () => {
+    const next = reducer(initialState, { type: 'SET_PASSKEY_SLOT', payload: 'cred-1' })
+    expect(next.passkeySlotCredentialId).toBe('cred-1')
+    expect(next.step).toBe('intro')
+  })
+
+  it('routes into the passkey step and records where to go next', () => {
+    const loading = { ...initialState, step: 'recovery-key-display' as const, isLoading: true }
+    const next = reducer(loading, { type: 'GO_TO_PASSKEY_ENROLL', payload: 'close' })
+    expect(next.step).toBe('passkey-enroll')
+    expect(next.afterPasskey).toBe('close')
     expect(next.isLoading).toBe(false)
   })
 

@@ -73,6 +73,16 @@ EXA_API_KEY=
 
 `EXA_API_KEY` enables web search rather than a chat model, and `FIREWORKS_API_KEY` only serves the [hosted agent](./configuration.md#hosted-agent) when `AGENT_MODEL` names a Fireworks model. The [Configuration](./configuration.md) page lists every provider setting.
 
+## Brand it
+
+To show your own name and colors, set `BRANDING` in `deploy/.env` and restart. Keep the JSON on one line and wrap it in single quotes, or the `#` of a hex color starts a comment:
+
+```bash
+BRANDING='{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"light":{"primary":"#4f46e5"}}}'
+```
+
+[Branding](./configuration.md#branding) lists every field. `debugTranscriptRecipient` names your team in the copy users see when they share a debug transcript, and defaults to Thunderbolt.
+
 ## Verify it works
 
 ```bash

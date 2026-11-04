@@ -9,7 +9,7 @@
 # of under QEMU emulation for the target platform — faster, and sidesteps any
 # arch-specific quirks in bun's/rollup's native build tooling. Only the final
 # nginx stage below is built per target platform.
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 
@@ -25,6 +25,8 @@ COPY index.html ./
 # lingui.config.ts is load-bearing: @lingui/vite-plugin resolves it at build
 # time to locate and compile the .po catalogs (THU-806).
 COPY vite.config.ts lingui.config.ts tsconfig.json tsconfig.node.json ./
+# vite.config.ts imports it to copy the PowerSync worker assets into public/.
+COPY scripts/copy-powersync-assets.ts ./scripts/
 COPY components.json ./
 COPY .storybook ./.storybook
 

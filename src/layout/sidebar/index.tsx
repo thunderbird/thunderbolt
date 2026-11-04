@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { selectMinimalMode, useConfigStore } from '@/api/config-store'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { Sidebar as SidebarRoot, useSidebar } from '@/components/ui/sidebar'
@@ -9,7 +10,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
-import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
+import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
@@ -18,7 +19,7 @@ import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { Suspense, lazy, useCallback, useMemo, useRef } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { isAdminDesignPreview, loadAdminDesignPreview } from '@/lib/admin-preview'
 import { PageFallback } from '@/loading'
 import type { SidebarSection } from './types'
@@ -45,12 +46,19 @@ export default function Sidebar() {
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
 
-  const { chatThreadId: currentChatThreadId } = useParams()
+  const { chatThreadId } = useParams()
+  const [searchParams] = useSearchParams()
+  const currentChatThreadId = chatThreadId ?? searchParams.get('chat') ?? undefined
 
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
 
-  const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
+  const { activeSection: routeSection, setActiveSection } = useSidebarSection(location.pathname)
+  // Subscribed here rather than in `ChatSidebarContent`, which is unmounted
+  // while the Settings section is open: a minimal-mode `/config` answer that
+  // lands then must still pull the sidebar back to chats.
+  const minimalMode = useConfigStore((state) => selectMinimalMode(state.config))
+  const activeSection = minimalMode ? 'chats' : routeSection
 
   const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
@@ -94,7 +102,7 @@ export default function Sidebar() {
     [renameMutate],
   )
 
-  const deleteAllChats = useDeleteAllChats()
+  const deleteAllChats = useDeleteNonProjectChats()
   const deleteAllChatsMutation = useMutation({
     mutationFn: deleteAllChats,
     onSuccess: () => {
@@ -164,6 +172,7 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             onSectionChange={handleSectionChange}
             onSettingsNavigate={handleNavigate}
+            onSearchClick={openSearchPalette}
           />
         ) : (
           <ChatSidebarContent
@@ -185,7 +194,6 @@ export default function Sidebar() {
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
-            onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

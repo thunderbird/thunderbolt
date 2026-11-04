@@ -540,6 +540,62 @@ describe('notify-on-failure', () => {
     expect((error as Error).message).not.toContain(secret)
   })
 
+  test('a named incident is searched, created and recovered under its own title', async () => {
+    const named = { ...input, incidentName: 'CI E2E' }
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify(named, fetchFn)
+    const search = calls.find((call) => call.body.includes('query Incident'))
+    expect(JSON.parse(search?.body ?? '').variables.title).toBe('CI failing: CI E2E')
+    const create = calls.find((call) => call.body.includes('mutation CreateIssue'))
+    expect(JSON.parse(create?.body ?? '').variables.input.title).toBe('CI failing: CI E2E')
+    calls.length = 0
+    await notify({ ...named, conclusion: 'success', runId: 43 }, fetchFn)
+    const recovery = calls.find((call) => call.url === 'https://api.resend.com/emails')
+    expect(JSON.parse(recovery?.body ?? '').subject).toBe('CI recovered: CI E2E')
+  })
+
+  test('state signed for one incident of a workflow is rejected for another', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify({ ...input, incidentName: 'CI E2E' }, fetchFn)
+    calls.length = 0
+    await expect(notify({ ...input, incidentName: 'CI Release', runId: 43 }, fetchFn)).rejects.toThrow(
+      'Invalid incident state',
+    )
+    expect(calls.filter((call) => call.body.includes('mutation') || call.url.includes('resend'))).toHaveLength(0)
+  })
+
+  test('legacy state without an incident belongs to the default incident only', async () => {
+    const body = 'Workflow: CI'
+    const payload = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        workflowName: 'CI',
+        repository: input.repository,
+        latestFailure: { createdAt: new Date(2026, 0, 42).getTime(), runId: 42, attempt: 1, workflowId: 7 },
+        pendingOpening: false,
+        openingRecipientsHash: 'hash',
+      }),
+    ).toString('base64url')
+    const signature = createHmac('sha256', input.linearApiKey).update(`${body}\n${payload}`).digest('base64url')
+    const legacy = (): FakeState => ({
+      created: true,
+      description: `${body}\n\nCI notifier state: ${payload}.${signature}`,
+      failEmailCount: 0,
+      failMarkCount: 0,
+    })
+    const success = { ...input, conclusion: 'success', runId: 43 }
+    const calls: Call[] = []
+    await notify(success, fakeFetch(true, calls, legacy()))
+    expect(calls.some((call) => call.body.includes('mutation CloseIssue'))).toBe(true)
+    await expect(notify({ ...success, incidentName: 'CI E2E' }, fakeFetch(true, [], legacy()))).rejects.toThrow(
+      'Invalid incident state',
+    )
+  })
+
   test('edited pending description cannot redirect the opening email or forge authority', async () => {
     const state: FakeState = { created: false, description: '', failEmailCount: 1, failMarkCount: 0 }
     const calls: Call[] = []

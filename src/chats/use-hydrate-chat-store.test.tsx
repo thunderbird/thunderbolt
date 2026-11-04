@@ -6,17 +6,19 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { moveChatToProject } from '@/projects/use-move-chat-to-project'
+import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, modelsTable } from '@/db/tables'
+import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
 import { updateSettings } from '@/dal/settings'
-import { getModel } from '@/dal/models'
+import { getModel, updateModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
@@ -357,6 +359,30 @@ describe('useHydrateChatStore', () => {
       })
     }
 
+    it('restores the selected model for a new chat without creating a thread', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+
+      await hydrateNewChat()
+
+      const session = getCurrentSession()
+      expect(session?.selectedModel.id).toBe(modelId)
+      expect(session?.chatThread).toBeNull()
+      expect(session?.chatInstance.messages).toEqual([])
+      expect(session?.triggerData).toBeNull()
+    })
+
+    it('falls back to a system model when the selected model is disabled', async () => {
+      const modelId = await createTestModel()
+      await updateSettings(getDb(), { selected_model: modelId })
+      await updateModel(getDb(), modelId, { enabled: 0 })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedModel.isSystem).toBe(1)
+      expect(getCurrentSession()?.selectedModel.id).not.toBe(modelId)
+    })
+
     it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
       await createAgent(getDb(), {
         id: 'custom-last-used',
@@ -459,6 +485,58 @@ describe('useHydrateChatStore', () => {
       await hydrateNewChat()
 
       expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
+    })
+  })
+
+  describe('model for a thread that falls back to the built-in agent', () => {
+    /** A system Tinfoil model: confidential, and server-keyed so the picker enables it. */
+    const createConfidentialModel = async () => {
+      const modelId = uuidv7()
+      await getDb().insert(modelsTable).values({
+        id: modelId,
+        provider: 'tinfoil',
+        name: 'Confidential Model',
+        model: 'kimi-k2',
+        isSystem: 1,
+        enabled: 1,
+        isConfidential: 1,
+        toolUsage: 1,
+        startWithReasoning: 0,
+      })
+      return modelId
+    }
+
+    /** Hydrates a persisted thread on a device whose `selected_model` is confidential. */
+    const hydrateThread = async (thread: { agentId?: string; isEncrypted: 0 | 1 }) => {
+      const confidentialModelId = await createConfidentialModel()
+      await updateSettings(getDb(), { selected_model: confidentialModelId })
+      const threadId = uuidv7()
+      await createChatThread(
+        getDb(),
+        { id: threadId, title: 'Synced', contextSize: null, triggeredBy: null, wasTriggeredByAutomation: 0, ...thread },
+        (await getModel(getDb(), confidentialModelId))!,
+      )
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: false }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      return getCurrentSession()
+    }
+
+    it('swaps in a non-confidential model when a hosted thread opens before discovery seeds its agent', async () => {
+      // Fresh device: the thread synced, `agents_system` has no hosted row yet.
+      const session = await hydrateThread({ agentId: 'hosted-agent', isEncrypted: 0 })
+
+      expect(session?.selectedAgent.id).toBe(builtInAgent.id)
+      expect(session?.selectedModel).toMatchObject({ name: 'System Model', isConfidential: 0 })
+    })
+
+    it('keeps the model of a thread whose confidentiality already matches it', async () => {
+      const session = await hydrateThread({ isEncrypted: 1 })
+
+      expect(session?.selectedModel).toMatchObject({ name: 'Confidential Model', isConfidential: 1 })
     })
   })
 
@@ -577,6 +655,95 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.type).toBe(onHostedAgent ? 'managed-http' : 'built-in')
       expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
     })
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts first',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const wroteProject = Promise.withResolvers<void>()
+        const releaseMove = Promise.withResolvers<void>()
+        await act(async () => {
+          const moving = moveChatToProject(
+            { chatThreadId: id, projectId },
+            {
+              db: getDb(),
+              setProject: async (...args) => {
+                const assigned = await setChatThreadProject(...args)
+                wroteProject.resolve()
+                await releaseMove.promise
+                return assigned
+              },
+              updateOpenSession: (chatThreadId, nextProjectId) =>
+                useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+              refreshChatList: async () => {},
+            },
+          )
+          await wroteProject.promise
+          const saving = result.current.saveMessages({ id, messages: [createTestMessage()] })
+          releaseMove.resolve()
+          await Promise.all([moving, saving])
+        })
+        expect((await getThread(getDb(), id))?.projectId).toBe(projectId)
+        expect(getCurrentSession()?.projectId).toBe(projectId)
+      },
+    )
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts during insertion',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const moved = Promise.withResolvers<void>()
+        const db = getDb()
+        const insert = db.insert.bind(db)
+        // Start the move after saveMessages has read the old project but before
+        // the thread's insert is executed, so an uncoordinated UPDATE finds no row.
+        const insertSpy = spyOn(db, 'insert').mockImplementation((table) => {
+          if (Object.is(table, chatThreadsTable)) {
+            moved.resolve(
+              moveChatToProject(
+                { chatThreadId: id, projectId },
+                {
+                  db,
+                  setProject: setChatThreadProject,
+                  updateOpenSession: (chatThreadId, nextProjectId) =>
+                    useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+                  refreshChatList: async () => {},
+                },
+              ),
+            )
+          }
+          return insert(table)
+        })
+        try {
+          await act(async () => {
+            await result.current.saveMessages({ id, messages: [createTestMessage()] })
+            await moved.promise
+          })
+          expect((await getThread(db, id))?.projectId).toBe(projectId)
+          expect(getCurrentSession()?.projectId).toBe(projectId)
+        } finally {
+          insertSpy.mockRestore()
+        }
+      },
+    )
 
     it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()

@@ -499,8 +499,8 @@ describe('Rate Limiting', () => {
           parse: 'none',
         })
 
-    const authRequest = (path: string, ip: string) =>
-      new Request(`http://localhost/v1/api/auth${path}`, { method: 'POST', headers: { 'cf-connecting-ip': ip } })
+    const authRequest = (path: string, ip: string, method = 'POST') =>
+      new Request(`http://localhost/v1/api/auth${path}`, { method, headers: { 'cf-connecting-ip': ip } })
 
     it('applies the configured limit and window to anonymous sign-in', async () => {
       const app = createPluginApp(pluginSettings)
@@ -530,10 +530,42 @@ describe('Rate Limiting', () => {
       const app = createPluginApp(pluginSettings)
 
       for (let i = 0; i < 10; i++) {
-        await app.handle(authRequest('/get-session', '10.5.0.3'))
+        await app.handle(authRequest('/sign-out', '10.5.0.3'))
       }
-      expect((await app.handle(authRequest('/get-session', '10.5.0.3'))).status).toBe(429)
+      expect((await app.handle(authRequest('/sign-out', '10.5.0.3'))).status).toBe(429)
       expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.3'))).status).toBe(200)
+    })
+
+    it('exempts GET get-session from the auth tier while POST and other auth routes still hit it', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 15; i++) {
+        const response = await app.handle(authRequest('/get-session', '10.5.0.8', 'GET'))
+        expect(response.status).toBe(200)
+        expect(response.headers.get('ratelimit-limit')).toBeNull()
+      }
+      for (let i = 0; i < 10; i++) {
+        expect((await app.handle(authRequest('/get-session', '10.5.0.8'))).status).toBe(200)
+      }
+      expect((await app.handle(authRequest('/get-session', '10.5.0.8'))).status).toBe(429)
+      expect((await app.handle(authRequest('/sign-out', '10.5.0.8'))).status).toBe(429)
+      expect((await app.handle(authRequest('/get-session', '10.5.0.8', 'GET'))).status).toBe(200)
+    })
+
+    it('keeps a query string on GET get-session exempt', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/get-session?x=1', '10.5.0.10', 'GET'))
+      expect(response.headers.get('ratelimit-limit')).toBeNull()
+    })
+
+    it('draws GET get-session lookalikes from the fixed auth bucket', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (const path of ['/get-session/', '/get-session-x', '/x/get-session', '/get%2Dsession']) {
+        const response = await app.handle(authRequest(path, '10.5.0.9', 'GET'))
+        expect(response.headers.get('ratelimit-limit')).toBe('10')
+      }
     })
 
     it('draws a trailing-slash path from the fixed auth bucket, since Better Auth 404s it', async () => {

@@ -40,7 +40,9 @@ rule for changing a default).
 
 Each hash fingerprints **only user-editable fields**. Reconcile recomputes it from the stored row and
 compares against the `default_hash` column: equal means untouched and updatable in place, different
-means user-edited and left alone permanently.
+means user-edited and left alone permanently. The exception is a row that already holds what the bundle
+now ships, a value the user chose before it became the default: reconcile takes it and re-stamps
+`default_hash`, so a later edit back to the old default still reads as an edit.
 
 - **`hashValues` is a wire contract** ([`shared/lib/hash.ts:16`](../../../shared/lib/hash.ts)). Stored
   hashes depend on its output byte for byte across frontend, backend and shared code; changing it
@@ -111,11 +113,11 @@ options; the latter two default to `canOverwrite`.
 Listed fields keep the existing row's value on update, and the stored hash reflects that post-freeze
 state so later passes still read the row as unedited.
 
-| Field                    | Table         | Why frozen                                                                                                                                                                                                                                                                         |
-| ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isConfidential`         | models        | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:70`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1083`](../../../src/chats/chat-instance.ts)); flipping it strands every thread bound to that id |
-| `provider`               | models        | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                              |
-| `enabled`, `pinnedOrder` | widget skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                        |
+| Field                    | Table         | Why frozen                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `isConfidential`         | models        | A thread binds `isEncrypted` to it at creation ([`src/dal/chat-threads.ts:85`](../../../src/dal/chat-threads.ts)) and sending throws on disagreement ([`src/chats/chat-instance.ts:1114`](../../../src/chats/chat-instance.ts)); `resolveSessionModel` ([`src/chats/resolve-session-model.ts`](../../../src/chats/resolve-session-model.ts)) swaps the built-in onto a matching model when one exists; flipping it strands every thread bound to that id |
+| `provider`               | models        | Routes inference; flipping it under an existing id misroutes silently                                                                                                                                                                                                                                                                                                                                                                                    |
+| `enabled`, `pinnedOrder` | widget skills | Counterpart to their content-only hash: the contract text updates, the user's on/off and pin state does not                                                                                                                                                                                                                                                                                                                                              |
 
 **To change a frozen field on a model, ship a fresh model id.** Freezing applies to updates only;
 inserts use the default as-is.

@@ -11,6 +11,15 @@ import type { ThunderboltUIMessage } from '@/types'
 
 import { nextRemediationTarget, useAttachmentRemediation } from './use-attachment-remediation'
 
+/** The hosted agent's oversized-instructions 400, as the managed-http adapter serializes it. */
+const agentInstructionsTooLarge = JSON.stringify({
+  error: JSON.stringify({ error: { code: 'AGENT_INSTRUCTIONS_TOO_LARGE' } }),
+  status: 400,
+})
+
+/** Ollama's rejection of a request with tools, as the Pi engine flattens it. */
+const toolSupportRejection = '400: {"error":{"message":"registry.ollama.ai/library/gemma3:4b does not support tools"}}'
+
 describe('useAttachmentRemediation', () => {
   test.each([
     {
@@ -25,6 +34,34 @@ describe('useAttachmentRemediation', () => {
       label: 'tool-schema rejection does not claim the file delivery ladder was exhausted',
       message:
         '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection keeps the error visible without converting or regenerating',
+      message: toolSupportRejection,
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'tool-support rejection does not claim the file delivery ladder was exhausted',
+      message: toolSupportRejection,
+      delivery: 'images' as const,
+      expectedDelivery: 'images',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'oversized hosted-agent instructions keep their error without converting or regenerating',
+      message: agentInstructionsTooLarge,
+      delivery: 'text' as const,
+      expectedDelivery: 'text',
+      expectedRegenerations: 0,
+    },
+    {
+      label: 'oversized hosted-agent instructions are not replaced by file guidance once the ladder is spent',
+      message: agentInstructionsTooLarge,
       delivery: 'images' as const,
       expectedDelivery: 'images',
       expectedRegenerations: 0,

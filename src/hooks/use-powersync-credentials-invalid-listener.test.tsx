@@ -7,18 +7,13 @@ import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/da
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { devicesTable } from '@/db/tables'
 import { getAuthToken, setAuthToken } from '@/lib/auth-token'
-import { createTestProvider } from '@/test-utils/test-provider'
+import { createClient } from '@/lib/http'
+import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { getClock } from '@/testing-library'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { eq } from 'drizzle-orm'
-import { type ReactNode } from 'react'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { AuthProvider, DatabaseProvider, HttpClientProvider } from '@/contexts'
-import { createMockAuthClient } from '@/test-utils/auth-client'
-import { createMockHttpClient } from '@/test-utils/http-client'
-import { PowerSyncMockProvider } from '@/test-utils/powersync-mock'
-import { showRevokedDeviceModalEvent, showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
+import { showSignInModalEvent, signInSuccessEvent } from './use-credential-events'
 import { usePowerSyncCredentialsInvalidListener } from './use-powersync-credentials-invalid-listener'
 import { getDb } from '@/db/database'
 
@@ -39,6 +34,8 @@ mock.module('@/db/powersync/sync-state', () => ({
   setSyncEnabled: mockSetSyncEnabled,
 }))
 
+// No createTestProvider here: its AuthProvider mounts a second copy of this hook with the real
+// clearLocalData, which can call window.location.replace after its test has ended.
 describe('usePowerSyncCredentialsInvalidListener', () => {
   let mockReplace: ReturnType<typeof spyOn>
 
@@ -59,8 +56,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     localStorage.clear()
   })
 
-  // Mirror the beforeEach cleanup so the last test's auth token can't leak into
-  // the next test file (AuthProvider's mount effect fires get-session on any token).
+  // Mirror the beforeEach cleanup so the last test's auth token can't leak into the next test file.
   afterEach(() => {
     localStorage.clear()
   })
@@ -96,7 +92,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   describe('event-driven: powersyncCredentialsInvalid', () => {
     it('redirects to /account-deleted when reason is account_deleted', async () => {
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -111,27 +107,26 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       expect(mockReplace).toHaveBeenCalledWith('/account-deleted')
     })
 
-    it('dispatches showRevokedDeviceModalEvent when reason is device_revoked', () => {
-      const revokedModalListener = mock()
-      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
-
+    it('clears local data and redirects to /device-revoked when reason is device_revoked', async () => {
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
         dispatchCredentialsInvalid('device_revoked')
       })
 
-      expect(revokedModalListener).toHaveBeenCalled()
-      expect(mockReplace).not.toHaveBeenCalled()
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
 
-      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
+      expect(mockClearLocalData).toHaveBeenCalledTimes(1)
+      expect(mockReplace).toHaveBeenCalledWith('/device-revoked')
     })
 
     it('redirects to / when reason is device_id_taken', async () => {
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -147,7 +142,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
 
     it('redirects to / when reason is device_id_required', async () => {
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -167,7 +162,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -182,13 +177,37 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       window.removeEventListener(showSignInModalEvent, signInModalListener)
     })
 
+    it('asks the session check once on session_expired, so a revoked device can still find out', async () => {
+      const requestedUrls: string[] = []
+      const httpClient = createClient({
+        prefixUrl: 'http://test-api.local',
+        fetch: async (input) => {
+          requestedUrls.push(input instanceof Request ? input.url : String(input))
+          return new Response('null', { status: 200, headers: { 'Content-Type': 'application/json' } })
+        },
+      })
+
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
+        wrapper: createQueryTestWrapper({ httpClient }),
+      })
+
+      act(() => {
+        dispatchCredentialsInvalid('session_expired')
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+
+      expect(requestedUrls).toEqual(['http://test-api.local/api/auth/get-session'])
+    })
+
     it('does not re-dispatch showSignInModalEvent for repeated session_expired events', () => {
       setAuthToken(authToken)
       const signInModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -212,7 +231,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       window.addEventListener(showSignInModalEvent, signInModalListener)
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -236,12 +255,10 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     it('does not dispatch showSignInModalEvent when device_revoked has already fired', () => {
       setAuthToken(authToken)
       const signInModalListener = mock()
-      const revokedModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
-      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -249,23 +266,20 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
         dispatchCredentialsInvalid('session_expired')
       })
 
-      expect(revokedModalListener).toHaveBeenCalled()
       expect(signInModalListener).not.toHaveBeenCalled()
+      expect(getAuthToken()).toBe(authToken)
 
       window.removeEventListener(showSignInModalEvent, signInModalListener)
-      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
     })
 
     it("calls setSyncEnabled(false) when reason is 'sync_not_permitted' and does NOT clear data or dispatch modals", () => {
       setAuthToken(authToken)
       const signInModalListener = mock()
-      const revokedModalListener = mock()
       window.addEventListener(showSignInModalEvent, signInModalListener)
-      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
       mockSetSyncEnabled.mockClear()
 
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       act(() => {
@@ -277,33 +291,26 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       expect(mockClearLocalData).not.toHaveBeenCalled()
       expect(mockReplace).not.toHaveBeenCalled()
       expect(signInModalListener).not.toHaveBeenCalled()
-      expect(revokedModalListener).not.toHaveBeenCalled()
 
       window.removeEventListener(showSignInModalEvent, signInModalListener)
-      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
     })
   })
 
   describe('device table: revoked', () => {
-    it('dispatches showRevokedDeviceModalEvent when device has revokedAt', async () => {
+    it('clears local data and redirects to /device-revoked when device has revokedAt', async () => {
       const revokedAt = new Date().toISOString()
       await setupAuthAndDevice({ revokedAt })
 
-      const revokedModalListener = mock()
-      window.addEventListener(showRevokedDeviceModalEvent, revokedModalListener)
-
       renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: createTestProvider(),
+        wrapper: createQueryTestWrapper(),
       })
 
       await act(async () => {
         await getClock().runAllAsync()
       })
 
-      expect(revokedModalListener).toHaveBeenCalled()
-      expect(mockReplace).not.toHaveBeenCalled()
-
-      window.removeEventListener(showRevokedDeviceModalEvent, revokedModalListener)
+      expect(mockClearLocalData).toHaveBeenCalledTimes(1)
+      expect(mockReplace).toHaveBeenCalledWith('/device-revoked')
     })
   })
 
@@ -311,25 +318,9 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     it('redirects to /account-deleted when device disappears after being present', async () => {
       await setupAuthAndDevice()
       const db = getDb()
+      const wrapper = createQueryTestWrapper()
 
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
-      })
-      const WrapperWithQueryClient = ({ children }: { children: ReactNode }) => (
-        <DatabaseProvider db={getDb()}>
-          <PowerSyncMockProvider>
-            <QueryClientProvider client={queryClient}>
-              <HttpClientProvider httpClient={createMockHttpClient([])}>
-                <AuthProvider authClient={createMockAuthClient()}>{children}</AuthProvider>
-              </HttpClientProvider>
-            </QueryClientProvider>
-          </PowerSyncMockProvider>
-        </DatabaseProvider>
-      )
-
-      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), {
-        wrapper: WrapperWithQueryClient,
-      })
+      renderHook(() => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }), { wrapper })
 
       await act(async () => {
         await getClock().runAllAsync()
@@ -338,12 +329,13 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       expect(await getDevice(db, deviceId)).not.toBeNull()
 
       await db.delete(devicesTable).where(eq(devicesTable.id, deviceId))
-      await queryClient.invalidateQueries({ queryKey: ['devices', deviceId] })
+      await wrapper.queryClient.invalidateQueries({ queryKey: ['devices', deviceId] })
 
       await act(async () => {
         await getClock().runAllAsync()
       })
 
+      expect(mockReplace).toHaveBeenCalledTimes(1)
       expect(mockReplace).toHaveBeenCalledWith('/account-deleted')
     })
   })
@@ -356,7 +348,7 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
       const { unmount } = renderHook(
         () => usePowerSyncCredentialsInvalidListener({ clearLocalData: mockClearLocalData }),
         {
-          wrapper: createTestProvider(),
+          wrapper: createQueryTestWrapper(),
         },
       )
 

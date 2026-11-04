@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { DataTransformMiddleware, SyncDataBucket } from '../TransformableBucketStorage'
+import type { DataTransformMiddleware, SyncDataBucket } from '../sync-transform'
 import { codec as defaultCodec, hasStagedAK } from '@/db/encryption/codec'
 import { isEncryptedValue } from '@/db/encryption/wire-format'
 import { encryptedColumnsMap, type EncryptionCodec, type EncryptionContext } from '@shared/e2ee-types'

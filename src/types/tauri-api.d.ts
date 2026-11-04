@@ -46,4 +46,5 @@ declare module '@tauri-apps/plugin-os' {
 
   export const arch: () => Arch
   export function platform(): Platform
+  export function version(): string
 }

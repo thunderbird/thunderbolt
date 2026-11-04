@@ -28,6 +28,7 @@ jobs:
       agent-core: ${{ steps.filter.outputs.agent-core }}
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
+      wasm-provenance: ${{ steps.filter.outputs.wasm-provenance }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
       localization: ${{ steps.filter.outputs.localization }}
       miniapps: ${{ steps.filter.outputs.miniapps }}
@@ -43,16 +44,21 @@ jobs:
         with:
           filters: |
             rust:
+              - 'scripts/check-glib-variantstriter*.sh'
+              - '.github/workflows/ci.yml'
               - 'src-tauri/**/*.rs'
               - 'src-tauri/**/Cargo.toml'
               - 'src-tauri/**/Cargo.lock'
               - 'src-tauri/build.rs'
               - 'src-tauri/rust-toolchain.toml'
               - 'src-tauri/.cargo/**'
+              - 'src-tauri/capabilities/**'
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
               - 'scripts/agent-core-browser-check.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'
@@ -70,6 +76,9 @@ jobs:
               - 'bun.lock'
             wasm-artifact:
               - 'src/acp/iroh/pkg/**'
+            wasm-provenance:
+              - 'crates/thunderbolt-acp-client/source-manifest.test.sh'
+              - '.github/workflows/ci.yml'
             # Inputs that change the compiled wasm (README.md excluded — it doesn't).
             # Pairs with the wasm-artifact staleness gate: touching any of these MUST
             # ship a regenerated src/acp/iroh/pkg in the same PR.
@@ -80,6 +89,8 @@ jobs:
               - 'crates/thunderbolt-acp-client/rust-toolchain.toml'
               - 'crates/thunderbolt-acp-client/.cargo/**'
               - 'crates/thunderbolt-acp-client/build.sh'
+              - 'crates/thunderbolt-acp-client/build.rs'
+              - 'crates/thunderbolt-acp-client/source-manifest.sh'
             # Anything that can change extraction output or the pseudo-locale
             # build: app source (strings + catalogs), shared/ (imported by the
             # frontend build), build/i18n config, deps, and this workflow.
@@ -97,6 +108,8 @@ jobs:
               # gated by the same `i18n:check`. Without these the check never runs
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
+              # Also scanned by the email catalog: it authors step-up prose outside a template.
+              - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
             helm:
               - 'deploy/k8s/**'
@@ -104,11 +117,16 @@ jobs:
             qa:
               - '.github/qa/**'
               - 'scripts/notify-on-failure.ts'
+              - 'scripts/chrome.ts'
+              - 'scripts/install-chrome.ts'
               - 'e2e/helpers.ts'
               - 'shared/tsconfig.base.json'
               - 'shared/defaults/models.ts'
               - 'bunfig.toml'
               - '.github/workflows/qa-weekly.yml'
+              # Decide what the dev servers write when they start, checked by the qa job.
+              - 'vite.config.ts'
+              - 'scripts/copy-powersync-assets.ts'
               - 'package.json'
               - 'bun.lock'
               - '.github/workflows/ci.yml'
@@ -139,7 +157,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -240,7 +258,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -333,7 +351,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -352,7 +370,10 @@ jobs:
         run: bun run test:agent-core:5x
 
       - name: Install browser engines
-        run: bunx playwright install --with-deps chromium webkit
+        # WebKit needs apt packages the runner image lacks, so --with-deps stays;
+        # the timeout makes a slow-mirror stall fail fast instead.
+        timeout-minutes: 10
+        run: bun run browsers:install --with-deps && bunx playwright install --with-deps webkit
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
@@ -368,7 +389,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (miniapps)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -411,21 +432,22 @@ jobs:
       - name: Test miniapps
         run: cd miniapps && bun run test
 
-  # The weekly QA agent in .github/qa/ is CI tooling, not app code. Its tests and
-  # type check sit outside `bun run test` and the root tsconfig, so they run here,
-  # only when the agent or a file it depends on changes.
+  # The weekly QA agent's tests and type check sit outside `bun run test` and the
+  # root tsconfig, so they run here when it or a file it depends on changes.
   qa:
     needs: detect-changes
     if: needs.detect-changes.outputs.qa == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      QA_TEST_USER: qa-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -438,13 +460,55 @@ jobs:
             bun-
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
 
       - name: Type check the QA scripts
         run: bunx tsc -p .github/qa
 
+      # The weekly gate runs a patch's tests as another user, who cannot write to the checkout. With this user the QA
+      # tests run a snapshot test that way; without it they skip that test.
+      - name: Create the user the QA tests run snapshot tests as
+        run: |
+          sudo useradd --create-home "$QA_TEST_USER"
+          # Lets that user reach bun without listing this user's home.
+          sudo chmod o+x "$HOME"
+
       - name: Run QA tests (5x)
         run: bun run test:qa --rerun-each 5
+
+      - name: Install Chrome for Testing
+        run: bun run browsers:install --with-deps
+
+      # The layout probe's static pages; they need no stack.
+      - name: Run the layout probe tests
+        run: bunx playwright test --config .github/qa/playwright.config.ts --project probe
+
+      # The weekly fix job runs the dev servers as another user, who cannot write to the checkout. A dependency bump
+      # can make a Vite plugin write somewhere new when the config loads or a page is served.
+      - name: Start the dev stack as another user
+        env:
+          QA_BACKEND_USER: qa-dev
+        run: |
+          .github/qa/scripts/stack.sh start dev
+          # `playwright screenshot` takes no executable path, so this loads each page in Chrome for Testing directly.
+          for port in 1424 1425; do
+            bun -e "
+              import { chromium } from '@playwright/test'
+              import { getChromeLaunchOptions } from './scripts/chrome'
+              const browser = await chromium.launch(getChromeLaunchOptions())
+              await (await browser.newPage()).goto(Bun.argv[1])
+              await Bun.sleep(5000)
+              await browser.close()
+            " "http://localhost:$port" || failed=1
+          done
+          .github/qa/scripts/stack.sh stop || failed=1
+          if grep -iE 'EACCES|EPERM|permission denied' "$RUNNER_TEMP/qa-stack.log"; then
+            echo "::error::A dev server could not write a file as another user."
+            exit 1
+          fi
+          [ -z "${failed:-}" ] || { cat "$RUNNER_TEMP/qa-stack.log"; exit 1; }
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`
@@ -460,7 +524,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (cli)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -506,13 +570,14 @@ jobs:
   # two ways without rebuilding or needing a wasm toolchain:
   #   1. Staleness gate — a change to the crate source MUST ship a regenerated pkg/ in
   #      the same PR, so editing the crate can't silently leave the committed wasm stale
-  #      (the `rust` job host-compiles the crate but never touches the binary).
+  #      (the `rust` job host-compiles the crate but never touches the binary). Its
+  #      SOURCES.txt must also match every current source path and digest.
   #   2. Tamper-evidence — the committed pkg/ must match its CHECKSUMS.txt manifest.
   # Reproduce a bit-identical artifact locally on the pinned toolchain with
   # `crates/thunderbolt-acp-client/build.sh --verify` (see that crate's README).
   wasm-artifact:
     needs: detect-changes
-    if: needs.detect-changes.outputs.wasm-artifact == 'true' || needs.detect-changes.outputs.crate-src == 'true'
+    if: needs.detect-changes.outputs.wasm-artifact == 'true' || needs.detect-changes.outputs.crate-src == 'true' || needs.detect-changes.outputs.wasm-provenance == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -527,8 +592,15 @@ jobs:
           echo "Rebuild and commit the artifact in the same change: crates/thunderbolt-acp-client/build.sh (then commit src/acp/iroh/pkg)."
           exit 1
 
+      - name: Test source provenance guard
+        run: bash crates/thunderbolt-acp-client/source-manifest.test.sh
+
+      - name: Verify committed wasm source provenance
+        shell: bash
+        run: |
+          bash crates/thunderbolt-acp-client/source-manifest.sh | diff -u src/acp/iroh/pkg/SOURCES.txt -
+
       - name: Verify committed wasm artifacts match checksums manifest
-        if: needs.detect-changes.outputs.wasm-artifact == 'true'
         run: |
           cd src/acp/iroh/pkg
           diff -u \
@@ -564,7 +636,10 @@ jobs:
       # (GHSA-wrw7-89jp-8q8g) ever gains a caller in our code or any dependency.
       # Cheap (cargo metadata + grep, no build), so it runs before the build.
       - name: Guard glib VariantStrIter unsoundness (RUSTSEC-2024-0429)
-        run: ./scripts/check-glib-variantstriter.sh
+        run: |
+          bash scripts/check-glib-variantstriter.test.sh
+          ./scripts/check-glib-variantstriter.sh x86_64-unknown-linux-gnu
+          ./scripts/check-glib-variantstriter.sh aarch64-unknown-linux-gnu
 
       - name: Cache cargo build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -596,8 +671,21 @@ jobs:
         run: |
           cd src-tauri
           cargo build --all-targets
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+          # --workspace also covers the local plugins (default-members is the app only).
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+
+      # The passkey plugin's Windows backend (src/win.rs) only compiles for Windows,
+      # so the build above never sees it. clippy doesn't link, so it runs here
+      # without the MSVC toolchain.
+      - name: Check the passkey plugin for Windows
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cd src-tauri
+          cargo clippy -p tauri-plugin-passkey --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 
       # crates/ holds the standalone thunderbolt-acp-client crate (own Cargo.toml
       # and Cargo.lock, not a src-tauri workspace member), so the src-tauri build
@@ -620,17 +708,26 @@ jobs:
     # 15min cap = >6x headroom over the worst legitimate run (even with the 5x
     # rerun gate) while killing a starved run ~24x sooner than the 360min default.
     timeout-minutes: 15
+    # Only the binary smoke step uses it: inside a compiled binary PGlite can't find its pglite.data.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Bun
-        # Pinned to 1.3.13 to match main (green). The 1.3.14 bump (a5bbd883) was for
-        # the frontend --isolate work that Option A dropped; on the backend job 1.3.14
-        # correlated with intermittent hard hangs inside PGlite's WASM (the 5s test
-        # timeout couldn't even fire — 94s/10min stalls), never seen on main's 1.3.13.
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies (backend)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -678,3 +775,35 @@ jobs:
           retry_wait_seconds: 5
           retry_on: error
           command: bun run test:backend:ws
+
+      # Render runs the compiled ./server, whose bundle can fail at boot while every test
+      # (run from source) passes. bun build bakes NODE_ENV in, so it is set for the build too.
+      # The second boot turns tracing on (against a dummy collector): the OTEL packages load only then.
+      # It gets its own port, so a worker of the first boot that is still exiting cannot answer for it.
+      - name: Smoke backend binary
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          BETTER_AUTH_SECRET: ci-smoke-secret
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          WEB_CONCURRENCY: 1
+        run: |
+          bun run build
+          bun -e 'Bun.serve({ port: 4318, fetch: () => new Response() })' &
+          boot() {
+            ./server > server.log 2>&1 &
+            local server_pid=$!
+            for _ in $(seq 30); do
+              if curl -fsS --max-time 2 "http://localhost:$PORT/v1/health"; then
+                kill "$server_pid"
+                return 0
+              fi
+              kill -0 "$server_pid" 2>/dev/null || break
+              sleep 1
+            done
+            cat server.log
+            return 1
+          }
+          PORT=8000 boot
+          PORT=8001 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces boot
+          test "$(grep -cF 'OpenTelemetry traces exporting to' server.log)" -eq 1 || { cat server.log; exit 1; }

@@ -27,12 +27,12 @@ Built on [PowerSync](https://powersync.com). Every device holds a local SQLite d
 
 ## Two Sync Paths
 
-Both run the transform off the UI thread in a worker hosting the same `ThunderboltSharedSyncImplementation`; only the worker _kind_ differs.
+Both run the transform off the UI thread in a worker hosting the same `ThunderboltSharedSyncImplementation`; only the worker _kind_ differs. Where multi-tab is off (Android, and the IndexedDB fallback when OPFS is unavailable), sync runs in the tab instead, through the same transformers.
 
-| Runtime                 | Path                                                  | Why this path                                                                                          |
-| ----------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Chrome · Edge · Firefox | Custom **SharedWorker**                               | One sync connection shared across tabs; the content key stays in the worker                            |
-| Safari · iOS · Tauri    | Dedicated **Worker** standing in for the SharedWorker | OPFSCoopSyncVFS and `tauri://` rule out SharedWorker, so a dedicated Worker hosts the same sync stream |
+| Runtime                 | Path                                                  | Why this path                                                                                        |
+| ----------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Chrome · Edge · Firefox | Custom **SharedWorker**                               | One sync connection shared across tabs; the content key stays in the worker                          |
+| Safari · iOS · Tauri    | Dedicated **Worker** standing in for the SharedWorker | `tauri://` and iOS WKWebView rule out SharedWorker, so a dedicated Worker hosts the same sync stream |
 
 The Vite alias `powersync-web-internal` lets the custom SharedWorker reach `@powersync/web`'s `@internal` classes; see [powersync-sync-middleware.md](powersync-sync-middleware.md).
 

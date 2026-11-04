@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { clearAllKeys } from '@/crypto'
+import { clearAllKeys, generateKeyPair, generateMlKemKeyPair, exportPublicKey, exportMlKemPublicKey } from '@/crypto'
+import { getCachedSession, setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import type { Device } from '@/dal'
@@ -145,6 +146,53 @@ describe('DevicesSettingsPage reactivity', () => {
     })
 
     expect(screen.getByText('Revoked')).toBeInTheDocument()
+  })
+
+  it('keeps approval errors in the translated dialog and removes diagnostics after cancel', async () => {
+    const previousSession = getCachedSession()
+    setCachedSession({ user: { id: 'user-1' } })
+    try {
+      const ecdh = await generateKeyPair()
+      const mlkem = generateMlKemKeyPair()
+      await getDb()
+        .insert(devicesTable)
+        .values([
+          { id: deviceId1, userId: 'user-1', name: 'This Device', trusted: 1 },
+          {
+            id: deviceId2,
+            userId: 'user-1',
+            name: 'Pending Phone',
+            trusted: 0,
+            approvalPending: 1,
+            publicKey: await exportPublicKey(ecdh.publicKey),
+            mlkemPublicKey: exportMlKemPublicKey(mlkem.publicKey),
+          },
+        ])
+      renderDevicesPage()
+      await waitForElement(() => screen.queryByText('Pending Phone'))
+      fireEvent.click(screen.getByRole('button', { name: 'Approve Pending Phone' }))
+      const dialog = screen.getByRole('alertdialog')
+      fireEvent.change(within(dialog).getByLabelText('Device fingerprint'), {
+        target: { value: Array(16).fill('0000').join('-') },
+      })
+      await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' })))
+      await waitForElement(() => within(dialog).queryByRole('alert'))
+      expect(within(dialog).getByRole('alert')).toHaveTextContent(
+        "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again.",
+      )
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      expect(screen.queryByText('Device fingerprint does not match')).not.toBeInTheDocument()
+    } finally {
+      if (previousSession) {
+        setCachedSession(previousSession)
+      } else {
+        clearCachedSession()
+      }
+    }
   })
 
   it('distinguishes a bridge device and keeps its revoke path available', async () => {

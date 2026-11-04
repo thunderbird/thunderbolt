@@ -51,6 +51,7 @@ const powersyncSettings: Settings = {
   powersyncTokenExpirySeconds: 3600,
   authMode: 'consumer' as const,
   authAllowAnonymous: false,
+  anonymousUserIdleDays: 30,
   oidcClientId: '',
   oidcClientSecret: '',
   oidcIssuer: '',
@@ -61,6 +62,10 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   orgEscrowEnabled: false,
+  passkeyEnabled: false,
+  passkeyRpId: '',
+  passkeyRpName: '',
+  passkeyAndroidOrigins: '',
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',
@@ -86,9 +91,14 @@ const powersyncSettings: Settings = {
   samlEntityId: '',
   samlIdpIssuer: '',
   samlCert: '',
+  samlAllowIdpInitiated: false,
   enabledAgents: '',
   allowCustomAgents: true,
   disableBuiltInAgent: false,
+  minimalMode: false,
+  brandLogoUrl: '',
+  brandLogoDarkUrl: '',
+  brandLogoAlt: '',
   haystackBaseUrl: '',
   haystackApiKey: '',
   haystackWorkspace: '',
@@ -96,11 +106,13 @@ const powersyncSettings: Settings = {
   agentEnabled: false,
   agentModel: '',
   agentMaxSteps: 8,
+  agentFireworksServiceTier: 'standard',
   agentSystemPrompt: '',
   agentMcpServers: '',
   agentName: 'Assistant',
   agentDescription: '',
   agentIcon: '',
+  agentTimezone: 'UTC',
   allowAnonymousAgentDiscovery: false,
   minAppVersion: '',
 }
@@ -1085,6 +1097,45 @@ describe('PowerSync API', () => {
 
       const devices = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-app-version-keep'))
       expect(devices[0]?.appVersion).toBe('0.1.80')
+    })
+
+    it('leaves a fresh device row untouched when nothing changed', async () => {
+      const userId = 'user-device-fresh'
+      const now = new Date()
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Fresh Device User',
+        email: 'device-fresh@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-device-fresh',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-device-fresh',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'device-fresh',
+      })
+      await insertTrustedDevice('device-fresh', userId)
+      const [before] = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-fresh'))
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-device-fresh')}`,
+            'x-device-id': 'device-fresh',
+            'x-device-name': 'Test Device',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+
+      const [after] = await db.select().from(devicesTable).where(eq(devicesTable.id, 'device-fresh'))
+      expect(after?.lastSeen).toEqual(before?.lastSeen)
     })
 
     it('ignores X-App-Version when value exceeds 64 characters', async () => {

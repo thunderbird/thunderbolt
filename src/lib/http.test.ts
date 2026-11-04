@@ -285,7 +285,11 @@ describe('createAuthenticatedClient', () => {
     })
 
     afterEach(() => {
-      env.VITE_APP_VERSION = savedVersion
+      if (savedVersion === undefined) {
+        delete env.VITE_APP_VERSION
+      } else {
+        env.VITE_APP_VERSION = savedVersion
+      }
     })
 
     it('injects X-App-Version for app backend requests when set', async () => {
@@ -311,7 +315,7 @@ describe('createAuthenticatedClient', () => {
     })
 
     it('omits X-App-Version when VITE_APP_VERSION is unset', async () => {
-      env.VITE_APP_VERSION = undefined
+      delete env.VITE_APP_VERSION
       const fetch = mockFetch()
       const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
 
@@ -345,6 +349,29 @@ describe('createAuthenticatedClient', () => {
       const event = dispatchSpy.mock.calls[0][0] as CustomEvent
       expect(event.type).toBe('powersync_credentials_invalid')
       expect(event.detail).toEqual({ reason: 'session_expired' })
+    })
+
+    it('dispatches device_revoked on a DEVICE_DISCONNECTED 403 from the app backend', async () => {
+      const fetch = mock<FetchFn>(() =>
+        Promise.resolve(new Response(JSON.stringify({ code: 'DEVICE_DISCONNECTED' }), { status: 403 })),
+      )
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('api/auth/get-session')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      expect((dispatchSpy.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'device_revoked' })
+    })
+
+    it('does not dispatch on a 403 carrying any other code', async () => {
+      const fetch = mock<FetchFn>(() =>
+        Promise.resolve(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })),
+      )
+      const client = createAuthenticatedClient('https://api.example.com', () => 'app-token', { fetch })
+
+      await expect(client.get('data')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
     })
 
     it('does not dispatch on 401 from external API even with caller-provided Authorization header (Google/MS OAuth)', async () => {

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
+import { finalStepNudge } from '@shared/final-step-nudge'
 import type { WebToolBudgetProbe } from './web-tool-budget'
 
 type Step = { finishReason: string }
@@ -79,7 +80,7 @@ export type NudgeMessages = Readonly<Record<NudgeKey, string>>
 
 /** Nudge messages used during the agentic loop */
 export const nudgeMessages: NudgeMessages = {
-  finalStep: 'RESPOND NOW with the information gathered. Do not ask questions.',
+  finalStep: finalStepNudge,
   preventive: 'Synthesize your tool results and respond now.',
   retry: 'Respond now with the information gathered. No more tools.',
   webBudget: 'Web tool budget for this turn is spent. Respond now using the results already gathered.',

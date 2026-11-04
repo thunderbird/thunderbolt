@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test, type Page } from './test'
+import { deTest, expect, test, type Page } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
@@ -35,10 +35,8 @@ const openLocalizationSettings = async (page: Page) => {
   await expect(page.getByTestId('distance-unit')).toBeVisible({ timeout: 30_000 })
 }
 
-test.describe('localization — unit defaults', () => {
-  test.use({ locale: 'de-DE' })
-
-  test('seeds German units from the browser region and renders them translated', async ({ page }) => {
+deTest.describe('localization — unit defaults', () => {
+  deTest('seeds German units from the browser region and renders them translated', async ({ page }) => {
     const errors = collectPageErrors(page)
 
     await loginViaOidc(page)
@@ -55,7 +53,7 @@ test.describe('localization — unit defaults', () => {
     expect(errors).toEqual([])
   })
 
-  test('never falls back to US units', async ({ page }) => {
+  deTest('never falls back to US units', async ({ page }) => {
     // Previously, no location meant an authenticated round trip
     // that defaulted to `US`, so a German browser landed on imperial and
     // Fahrenheit whatever the locale said.
@@ -67,7 +65,7 @@ test.describe('localization — unit defaults', () => {
     await expect(page.getByTestId('currency')).not.toContainText('Dollar')
   })
 
-  test('retires the date format row', async ({ page }) => {
+  deTest('retires the date format row', async ({ page }) => {
     await loginViaOidc(page)
     await openLocalizationSettings(page)
 

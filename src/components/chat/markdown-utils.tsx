@@ -14,7 +14,7 @@ import {
   type ComponentProps,
   type MouseEvent,
 } from 'react'
-import type { Components } from 'react-markdown'
+import { defaultUrlTransform, type Components } from 'react-markdown'
 
 import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
@@ -22,7 +22,7 @@ import { useSetPreviewHidden, useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
 import { resolveLinkAction } from '@/lib/external-link-behavior'
 import { isDesktop } from '@/lib/platform'
-import { isSafeUrl } from '@/lib/url-utils'
+import { isContactUrl, isSafeUrl } from '@/lib/url-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationMap } from '@/types/citation'
 
@@ -259,13 +259,18 @@ ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
  * All components are memoized to prevent unnecessary re-renders during streaming.
  */
 
+/** react-markdown's default URL filter drops `tel:`; keep it so SafeLink can render phone links. */
+export const markdownUrlTransform = (url: string): string =>
+  url.toLowerCase().startsWith('tel:') ? url : defaultUrlTransform(url)
+
 /**
  * Validates and renders markdown links with external link confirmation.
  * Always uses ExternalLinkDialogContext provided by ExternalLinkDialogProvider.
  * Memoized to prevent unnecessary re-renders during streaming.
  */
 const SafeLink = memo((props: ComponentProps<'a'>) => {
-  const { href, children, ...restProps } = props
+  // react-markdown passes `node`; spreading it would put an [object Object] attribute on the anchor
+  const { href, children, node: _node, ...restProps } = props as ComponentProps<'a'> & { node?: unknown }
   const context = useContext(ExternalLinkDialogContext)
 
   if (!context) {
@@ -274,18 +279,26 @@ const SafeLink = memo((props: ComponentProps<'a'>) => {
     )
   }
 
-  const safeHref = href && isSafeUrl(href) ? href : undefined
+  // The global link interceptor opens mailto:/tel: (the browser on web, the OS opener under Tauri)
+  if (href && isContactUrl(href)) {
+    return (
+      <a {...restProps} href={href}>
+        {children}
+      </a>
+    )
+  }
+
+  if (!href || !isSafeUrl(href)) {
+    return <span>{children}</span>
+  }
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
-    if (!safeHref) {
-      return
-    }
-    context.openExternalLink(safeHref)
+    context.openExternalLink(href)
   }
 
   return (
-    <a {...restProps} href={safeHref ?? '#'} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
+    <a {...restProps} href={href} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
       {children}
     </a>
   )

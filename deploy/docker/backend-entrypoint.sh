@@ -17,8 +17,10 @@ fi
 # per-pr stack passes:
 #   - DATABASE_URL: postgres://...:.../pr_846
 #   - POSTGRES_ADMIN_URL: postgres://postgres:.../postgres   (admin on default DB)
-# We connect to admin first, ensure the per-stack DB exists, then proceed with
-# the normal wait + migrate + start flow against DATABASE_URL.
+# We connect to admin first, ensure the per-stack DB and its PowerSync storage DB
+# (`<db>_ps_storage`) exist, then proceed with the normal wait + migrate + start
+# flow against DATABASE_URL. After migrating we create the `powersync`
+# publication the PR's own PowerSync replicates from.
 #
 # Legacy stacks (POSTGRES_ADMIN_URL unset) skip this entirely: they have a
 # dedicated Postgres container with the target DB pre-created at boot.
@@ -43,7 +45,7 @@ done
 echo "Database server is ready."
 
 if [ -n "$POSTGRES_ADMIN_URL" ]; then
-  echo "Ensuring per-stack database exists..."
+  echo "Ensuring per-stack databases exist..."
   bun -e "
     import postgres from 'postgres'
     const target = new URL(process.env.DATABASE_URL)
@@ -53,12 +55,14 @@ if [ -n "$POSTGRES_ADMIN_URL" ]; then
       process.exit(1)
     }
     const admin = postgres(process.env.POSTGRES_ADMIN_URL)
-    const r = await admin\`SELECT 1 FROM pg_database WHERE datname = \${dbName}\`
-    if (r.length === 0) {
-      console.log('  creating', dbName)
-      await admin.unsafe('CREATE DATABASE \"' + dbName + '\"')
-    } else {
-      console.log('  already exists:', dbName)
+    for (const name of [dbName, dbName + '_ps_storage']) {
+      const r = await admin\`SELECT 1 FROM pg_database WHERE datname = \${name}\`
+      if (r.length === 0) {
+        console.log('  creating', name)
+        await admin.unsafe('CREATE DATABASE \"' + name + '\"')
+      } else {
+        console.log('  already exists:', name)
+      }
     }
     await admin.end()
   "
@@ -66,6 +70,17 @@ fi
 
 echo "Running database migrations..."
 bun drizzle-kit migrate
+
+if [ -n "$POSTGRES_ADMIN_URL" ]; then
+  echo "Ensuring PowerSync publication exists..."
+  bun -e "
+    import postgres from 'postgres'
+    const sql = postgres(process.env.DATABASE_URL)
+    const r = await sql\`SELECT 1 FROM pg_publication WHERE pubname = 'powersync'\`
+    if (r.length === 0) await sql\`CREATE PUBLICATION powersync FOR ALL TABLES\`
+    await sql.end()
+  "
+fi
 
 echo "Starting server..."
 exec bun run src/index.ts

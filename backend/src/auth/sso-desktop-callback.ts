@@ -4,8 +4,10 @@
 
 import { randomBytes } from 'crypto'
 import type { Settings } from '@/config/settings'
+import { resolveAppName } from '@shared/branding'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
+import { configuredSsoProviderId } from './paths'
 
 const sessionCookieName = 'better-auth.session_token'
 const nonceCookieName = 'thunderbolt_desktop_sso_nonce'
@@ -24,8 +26,9 @@ const parseCookieValue = (cookieHeader: string, name: string): string | undefine
   return undefined
 }
 
-const errorHtml = (message: string) =>
-  `<html><head><title>Thunderbolt</title></head>` +
+// The charset is declared because the app name may be any script and the responses send a bare text/html.
+const errorHtml = (message: string, appName: string) =>
+  `<html><head><meta charset="utf-8"><title>${Bun.escapeHTML(appName)}</title></head>` +
   `<body style="font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5">` +
   `<div style="text-align:center;padding:2rem">` +
   `<h2>Authentication Error</h2>` +
@@ -49,12 +52,14 @@ const errorHtml = (message: string) =>
  * Mounted under `/api/auth/sso/` so cookies share the same path as
  * Better Auth's SSO callback endpoints.
  */
-export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
+export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: typeof fetch = globalThis.fetch) => {
   // Only mount in SSO mode — in consumer mode these endpoints are unused
   // and desktop-initiate would fail with a confusing 502.
   if (settings.authMode === 'consumer') {
     return new Elysia({ prefix: '/api/auth/sso' })
   }
+
+  const errorPage = (message: string) => errorHtml(message, resolveAppName(settings.branding))
 
   return (
     new Elysia({ prefix: '/api/auth/sso' })
@@ -66,7 +71,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
         async ({ query, request }) => {
           const port = Number(query.loopback_port)
           if (!allowedLoopbackPorts.has(port)) {
-            return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
+            return new Response(errorPage('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
             })
@@ -78,16 +83,17 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // Call Better Auth's SSO sign-in endpoint via HTTP. Uses the configured
           // betterAuthUrl which works behind reverse proxies. A direct internal API call
           // would avoid the network hop but couples tightly to Better Auth internals.
-          const ssoResponse = await fetch(`${baseUrl}/v1/api/auth/sign-in/sso`, {
+          const ssoResponse = await fetchFn(`${baseUrl}/v1/api/auth/sign-in/sso`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId: 'sso', callbackURL }),
+            // Without errorCallbackURL, Better Auth sends a failed login to its own error page on the API host.
+            body: JSON.stringify({ providerId: configuredSsoProviderId, callbackURL, errorCallbackURL: callbackURL }),
           })
 
           if (!ssoResponse.ok) {
             const text = await ssoResponse.text().catch(() => 'unknown error')
             console.error('SSO initiate failed:', ssoResponse.status, text)
-            return new Response(errorHtml('Failed to initiate SSO. Please try again.'), {
+            return new Response(errorPage('Failed to initiate SSO. Please try again.'), {
               status: 502,
               headers: { 'content-type': 'text/html' },
             })
@@ -128,7 +134,7 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
         ({ request, query }) => {
           const port = Number(query.loopback_port)
           if (!allowedLoopbackPorts.has(port)) {
-            return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
+            return new Response(errorPage('Invalid loopback port. Please try signing in again from the app.'), {
               status: 400,
               headers: { 'content-type': 'text/html' },
             })
@@ -143,15 +149,30 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // validation would require a session store for negligible security gain.
           const nonce = parseCookieValue(cookieHeader, nonceCookieName)
           if (!nonce) {
-            return new Response(errorHtml('Invalid request. Please start the sign-in flow from the app.'), {
+            return new Response(errorPage('Invalid request. Please start the sign-in flow from the app.'), {
               status: 403,
               headers: { 'content-type': 'text/html' },
             })
           }
 
+          // Clear the nonce cookie so it can't be replayed
+          const redirectToApp = (search: string) =>
+            new Response(null, {
+              status: 302,
+              headers: [
+                ['location', `http://127.0.0.1:${port}/?${search}`],
+                ['set-cookie', `${nonceCookieName}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
+              ],
+            })
+
+          // A failed login arrives here too (see errorCallbackURL in desktop-initiate): hand the code to the app.
+          if (query.error) {
+            return redirectToApp(`error=${encodeURIComponent(query.error)}`)
+          }
+
           const encodedToken = parseCookieValue(cookieHeader, sessionCookieName)
           if (!encodedToken) {
-            return new Response(errorHtml('Session not found. Please try signing in again from the app.'), {
+            return new Response(errorPage('Session not found. Please try signing in again from the app.'), {
               status: 401,
               headers: { 'content-type': 'text/html' },
             })
@@ -161,18 +182,12 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // and may be URL-encoded by the browser. Decode it before forwarding.
           const bearerToken = decodeURIComponent(encodedToken)
 
-          // Clear the nonce cookie so it can't be replayed
-          return new Response(null, {
-            status: 302,
-            headers: [
-              ['location', `http://127.0.0.1:${port}/?token=${encodeURIComponent(bearerToken)}`],
-              ['set-cookie', `${nonceCookieName}=; HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=0`],
-            ],
-          })
+          return redirectToApp(`token=${encodeURIComponent(bearerToken)}`)
         },
         {
           query: t.Object({
             loopback_port: t.String(),
+            error: t.Optional(t.String()),
           }),
         },
       )

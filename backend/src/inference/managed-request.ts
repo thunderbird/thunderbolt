@@ -25,7 +25,7 @@ type AdmitManagedRequestOptions = {
   settings: Parameters<typeof getInferenceQuotaLimits>[0]
   identity: ManagedInferenceIdentity
   user: ManagedRequestUser
-  /** The route's `ctx.set`. The access log reads its status, which a returned raw Response does not touch. */
+  /** The route's `ctx.set`, given the rejection status too. The access log reads the status from the returned Response. */
   set: Pick<Context['set'], 'status'>
   logger?: InferenceLogger
   checkAdmission?: typeof checkManagedInferenceAdmission
@@ -108,7 +108,7 @@ export const createUsageCallbacks = ({
 type UsageCallbacks = ReturnType<typeof createUsageCallbacks>
 
 /** Map AI SDK usage, summed across steps, onto the ledger's token counts; null when the provider sent none. */
-const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null => {
+export const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null => {
   if (usage.inputTokens === undefined) {
     return null
   }
@@ -123,9 +123,20 @@ const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null =
 }
 
 /**
+ * Write token counts through the callbacks. A failed write is reported rather than thrown: an AI SDK run
+ * records from a callback or a detached promise, where a throw is swallowed or goes unhandled.
+ */
+export const recordTokenCounts = async (callbacks: UsageCallbacks, counts: InferenceTokenCounts) => {
+  try {
+    await callbacks.onUsage(counts)
+  } catch (error) {
+    callbacks.onUsageError(error)
+  }
+}
+
+/**
  * Record an AI SDK run's usage through the callbacks, as the SSE helpers do for a raw stream: no usage skips
- * the ledger, and a failed write is reported rather than thrown, because the AI SDK swallows errors thrown
- * from `onFinish`.
+ * the ledger, and a failed write is reported rather than thrown (see {@link recordTokenCounts}).
  */
 export const recordLanguageModelUsage = async (callbacks: UsageCallbacks, usage: LanguageModelUsage) => {
   const counts = toTokenCounts(usage)
@@ -133,9 +144,5 @@ export const recordLanguageModelUsage = async (callbacks: UsageCallbacks, usage:
     callbacks.onUsageMissing()
     return
   }
-  try {
-    await callbacks.onUsage(counts)
-  } catch (error) {
-    callbacks.onUsageError(error)
-  }
+  await recordTokenCounts(callbacks, counts)
 }

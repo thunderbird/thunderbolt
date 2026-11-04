@@ -5,7 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   selectAllowCustomAgents,
+  selectBrandLogo,
   selectBuiltInAgentEnabled,
+  selectConfigSettled,
   selectDebugTranscriptsEnabled,
   useConfigStore,
 } from './config-store'
@@ -13,7 +15,12 @@ import {
 const storageKey = 'thunderbolt-config'
 
 const resetStore = () => {
-  useConfigStore.setState({ config: {}, forceUpgrade: undefined, forceUpgradeMinVersion: undefined })
+  useConfigStore.setState({
+    config: {},
+    configLoaded: false,
+    forceUpgrade: undefined,
+    forceUpgradeMinVersion: undefined,
+  })
   localStorage.removeItem(storageKey)
 }
 
@@ -95,6 +102,25 @@ describe('selectAllowCustomAgents', () => {
   })
 })
 
+describe('selectBrandLogo', () => {
+  it('is null when the light URL is unset', () => {
+    expect(selectBrandLogo({})).toBeNull()
+    expect(selectBrandLogo({ brandLogoDarkUrl: 'https://example.com/dark.svg' })).toBeNull()
+  })
+
+  it('falls back to the light URL for dark, and carries the alt text', () => {
+    const light = 'https://example.com/logo.svg'
+    expect(selectBrandLogo({ brandLogoUrl: light })).toEqual({ light, dark: light, alt: '' })
+    expect(
+      selectBrandLogo({ brandLogoUrl: light, brandLogoDarkUrl: 'data:image/png;base64,AA==', brandLogoAlt: 'Example' }),
+    ).toEqual({
+      light,
+      dark: 'data:image/png;base64,AA==',
+      alt: 'Example',
+    })
+  })
+})
+
 describe('selectDebugTranscriptsEnabled', () => {
   it('defaults to disabled when the server flag is absent', () => {
     expect(selectDebugTranscriptsEnabled({})).toBe(false)
@@ -103,5 +129,19 @@ describe('selectDebugTranscriptsEnabled', () => {
   it('is enabled only when the server explicitly accepts uploads', () => {
     expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: true })).toBe(true)
     expect(selectDebugTranscriptsEnabled({ debugTranscriptsEnabled: false })).toBe(false)
+  })
+})
+
+describe('selectConfigSettled', () => {
+  it('is false for an empty config that has not loaded', () => {
+    expect(selectConfigSettled({ config: {}, configLoaded: false })).toBe(false)
+  })
+
+  it('is true for a persisted config before the fetch answers', () => {
+    expect(selectConfigSettled({ config: { minimalMode: false }, configLoaded: false })).toBe(true)
+  })
+
+  it('is true once the fetch has answered, even with an empty config', () => {
+    expect(selectConfigSettled({ config: {}, configLoaded: true })).toBe(true)
   })
 })

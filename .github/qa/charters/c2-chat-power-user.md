@@ -11,10 +11,11 @@ Start state: fresh user, fake AI (select "Opus 5.5").
    Stop within a few words, then send a plain message. The stopped reply keeps the words it showed, the new message
    gets exactly one full reply, and both stay as they were after a reload. Never wait for a slow reply to finish (it
    takes 30 s). Then send a message with `qa:cut` and a word you have not used before: the fake drops the connection
-   after three words, and the app must retry or offer Retry until one full reply takes the partial one's place. In a
-   spec, add `${Date.now()}` to that message, since the fake cuts each text only once. On a device, check only the
-   new message's reply and the retried reply: replay rewrites a flow's partial fake reply to the full one, so a flow
-   cannot assert the stopped words. Functions: `stop-reply`, `retry-partial`.
+   after three words, and the app must retry or offer Retry until one full reply takes the partial one's place. The
+   fake cuts each text only once, so a repro must change it on every run: a spec adds `${Date.now()}` to the message,
+   and a flow types the message, then `${EMAIL}` (a fresh address per run) as its own `inputText`, before sending. On
+   a device, check only the new message's reply and the retried reply: replay rewrites a flow's partial fake reply to
+   the full one, so a flow cannot assert the stopped words. Functions: `stop-reply`, `retry-partial`.
 3. Start several chats. Rename one (also to an empty and a 300-character name), delete one, then clear all chats.
    Reload after each change. Functions: `chat-rename`, `chat-delete`, `chat-clear-all`.
 4. Search: open the search palette, search for words from earlier messages, open a result. Function: `search`.

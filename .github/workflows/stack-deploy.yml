@@ -131,7 +131,7 @@ on:
 jobs:
   deploy:
     if: inputs.action == 'deploy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Tag deploys with the `preview` environment so env-scoped secrets (EXA_API_KEY)
     # flow through alongside repo-level secrets. No required reviewers configured,
     # so enterprise workflow_dispatch deploys are unaffected. The dynamic lookup
@@ -168,6 +168,10 @@ jobs:
       - name: Install Pulumi dependencies
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
+
+      # ubuntu-26.04 ships without the Pulumi CLI; with no `command` the action only installs it.
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Ensure Pulumi stack exists
         working-directory: deploy/pulumi
@@ -275,7 +279,7 @@ jobs:
 
   destroy:
     if: inputs.action == 'destroy'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
       contents: read
@@ -294,6 +298,10 @@ jobs:
       - name: Install Pulumi dependencies
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
+
+      # ubuntu-26.04 ships without the Pulumi CLI; with no `command` the action only installs it.
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       # Destroy must be idempotent: the stack may already be gone (manual destroy,
       # a prior run that tore it down but still failed, or a PR that never deployed).

@@ -950,7 +950,7 @@ It signs in, then checks, each on its own row of the run summary:
 
 A failed check fails the job, which `notify` sees, and leaves a screenshot in `qa-desktop-shell` with the
 driver and stack logs. Nothing is filed. The dev config has no updater endpoints, so the lane dismisses the "Update
-failed" toast every launch shows. Run it on Linux with the services up and the app built as in the job:
+failed" toast every launch shows before it measures the layout. Run it on Linux with the services up and the app built as in the job:
 `xvfb-run -a bun .github/qa/scripts/desktop.ts --out qa-out/desktop`.
 
 What it cannot see: WebKit answers the file chooser itself while a page is under automation, so the GTK dialog never

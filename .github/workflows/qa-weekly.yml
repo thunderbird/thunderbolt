@@ -2289,14 +2289,14 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      # The nightly native-linux job's packages, plus xclip to read the X clipboard.
+      # The nightly native-linux job's packages, plus xclip to read the X clipboard and xdotool to type through X.
       - name: Install the desktop build and driver tools
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
             build-essential curl wget file pkg-config libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
-            webkit2gtk-driver xvfb xclip
+            webkit2gtk-driver xvfb xclip xdotool
           cargo install tauri-driver --locked
       - name: Check the desktop shell
         env:

@@ -119,10 +119,6 @@ const signIn = async (browser: Browser) => {
   await otp.waitForDisplayed({ timeout: 30_000 })
   await otp.setValue('12345678')
   await (await browser.$('textarea')).waitForDisplayed({ timeout: 60_000 })
-  // The dev config has no updater endpoints, so every launch shows "Update failed", which covers the composer at 500px.
-  const dismiss = await browser.$('button[aria-label="Dismiss"]')
-  await dismiss.waitForDisplayed({ timeout: 30_000 })
-  await dismiss.click()
 }
 
 /** The layout probe's confirmed problems on the current screen. */
@@ -209,6 +205,9 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
       if (!(await browser.execute(() => document.documentElement.classList.contains('force-desktop'))))
         throw new Error('<html> lost force-desktop')
       await waitForText(browser, fakeProviderReply, 10_000)
+      // The dev config has no updater endpoints, so launches show "Update failed", which covers the composer here.
+      const dismiss = await browser.$('button[aria-label="Dismiss"]')
+      if (await dismiss.isDisplayed()) await dismiss.click()
       const problems = await layoutProblems(browser)
       if (problems.length > 0) throw new Error(problems.map((p) => `${p.kind} ${p.target}`).join('; '))
     })

@@ -661,7 +661,7 @@ QA_BACKEND_PORT to a free port`. So stop any `bun run e2e` first, or move the st
 
 # The stack: fake AI, pglite, the normal build on the frontend port and the onboarding build on the onboarding port.
 # Leave it running. The tee keeps the log replay reads for the fake provider's lines.
-.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding | tee /tmp/qa-stack.log
+.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding 2>&1 | tee /tmp/qa-stack.log
 
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control

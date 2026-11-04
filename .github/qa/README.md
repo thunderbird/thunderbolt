@@ -546,7 +546,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    on the native platform, or the flow still fails there"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any
    platform, never gets a PR either: the fix job and `verify-native-run` start no Postgres or PowerSync, so they
    cannot verify it, and its ticket gets `Human Required`. A fix PR gets an automatic preview deploy like any other
-   PR.
+   PR. Its title is the fix agent's `fix/<fp>.title`, a short description of the change, when that is a Conventional
+   Commits title with a type Title Lint accepts (`lint-pr-title.yml`); otherwise it is `fix: <finding title>`. Either
+   is cut at a word to 100 characters, and a security fix keeps its fixed title. The description says what the
+   passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it

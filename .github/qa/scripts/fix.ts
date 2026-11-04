@@ -953,14 +953,68 @@ const stoppedReasons = {
 const reviewNotice =
   'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, approves or marks PRs ready.'
 
-const intro = 'Draft fix by the weekly QA agent.'
-
 /** Why the PR adds no regression spec, for each reason of `whyNoSpec` but security and native. */
 const noSpecText = {
-  onboarding:
-    'The repro runs on the onboarding build, which the Playwright config of e2e/ does not serve, so the PR adds no regression spec.',
-  real: 'The repro passed on the real AI providers, and the consumer project of e2e/ runs on the fake provider, so the PR adds no regression spec.',
-  unit: 'The unit test in this patch guards the fix. The bug shows without a real browser, so the PR adds no end-to-end spec.',
+  onboarding: 'The repro runs on the onboarding build, which e2e/ does not serve, so the PR adds no regression spec.',
+  real: 'The consumer project of e2e/ runs on the fake provider, so the PR adds no regression spec.',
+  unit: 'The bug shows without a real browser, so the PR adds no end-to-end spec.',
+}
+
+/** The longest PR title and commit line publish writes. */
+const maxLine = 100
+
+/** `text` cut to `max` characters at the last space that fits; a single longer word is cut where it must be. */
+export const clip = (text: string, max = maxLine) => {
+  if (text.length <= max) return text
+  const cut = text.lastIndexOf(' ', max)
+  return text.slice(0, cut > 0 ? cut : max).trimEnd()
+}
+
+/** `text` wrapped at spaces into lines of at most `width` characters, as a commit body wants. */
+export const wrap = (text: string, width = maxLine) =>
+  text
+    .split(' ')
+    .reduce<string[]>((lines, word) => {
+      const last = lines.at(-1)
+      if (last !== undefined && last.length + 1 + word.length <= width) lines[lines.length - 1] = `${last} ${word}`
+      else lines.push(word)
+      return lines
+    }, [])
+    .join('\n')
+
+/** The Conventional Commits types `.github/workflows/lint-pr-title.yml` accepts, with an optional scope. */
+const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|style)(\([\w-]+\))?: \S/
+
+/**
+ * The PR title: the fix agent's `fix/<fp>.title`, a Conventional Commits title of the change, when it has that shape,
+ * else `fix: <finding title>`. Both are cut at a word.
+ */
+const titleOf = async (outDir: string, task: FixTask) => {
+  const file = Bun.file(join(outDir, 'fix', `${task.fp}.title`))
+  const written = (await file.exists()) ? oneLine((await file.text()).split('\n')[0]) : ''
+  const usable = conventionalTitle.test(written) && !secretPattern.test(written)
+  return clip(usable ? written : `fix: ${oneLine(task.finding.title)}`)
+}
+
+/** What the checks a published fix passed showed (see `missingPasses`), one paragraph. */
+const evidenceOf = (task: FixTask, spec: { path: string } | undefined) => {
+  if ('flow' in task) {
+    // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
+    const flow = task.kind === 'spec' ? "The finding's Maestro flow" : "The fix agent's Maestro check"
+    return `${flow} passed three times on the ${task.platform} app built with this patch. The PR adds no regression spec.`
+  }
+  const proof =
+    task.kind === 'visual'
+      ? "The fix agent's check failed three times without this patch and passed three times with it."
+      : task.real
+        ? 'The repro spec passed three times on the real AI providers with the patched frontend.'
+        : 'The repro spec that confirmed the bug passed three times on the patched code.'
+  const why = whyNoSpec(task)
+  if (why || !spec) {
+    const unit = "The patch's unit tests fail without the fix and pass with it."
+    return `${proof} ${noSpecText[why === 'onboarding' || why === 'real' ? why : 'unit']} ${unit}`
+  }
+  return `${proof} It is added with its assertions unchanged as \`${spec.path}\`.`
 }
 
 /**
@@ -968,38 +1022,15 @@ const noSpecText = {
  * The description leaves the ticket out: the branch name links the PR to it. The repo is public and a security fix's
  * PR shows up before the fix ships, so that PR's title names only the ticket and nothing says "security".
  */
-const draftOf = (task: FixTask, spec: { path: string } | undefined) => {
-  const why = whyNoSpec(task)
-  if (why === 'security') {
+const draftOf = async (outDir: string, task: FixTask, spec: { path: string } | undefined) => {
+  if (whyNoSpec(task) === 'security') {
     const title = `fix: QA finding ${task.identifier ?? task.fp}`
-    const body = [intro, 'The finding stays out of this PR, and so does any regression spec.', reviewNotice].join(
-      '\n\n',
-    )
+    const body = ['The finding stays out of this PR, and so does any regression spec.', reviewNotice].join('\n\n')
     return { title, commit: title, body }
   }
-  const title = `fix: ${oneLine(task.finding.title)}`.slice(0, 100).trimEnd()
-  // A code span, so a model-written title cannot @mention anyone.
-  const findingLine = `**Finding:** \`${oneLine(task.finding.title).replaceAll('`', "'")}\` · ${task.finding.area} · ${task.severity}`
-  if (why === 'native') {
-    // A Maestro flow needs the QA stack and a fresh address per run, so it does not become a regression spec.
-    const checked = `Checked on ${task.platform} with ${task.kind === 'spec' ? "the finding's Maestro flow" : "the fix agent's Maestro check"}`
-    const body = [intro, findingLine, `${checked}. The PR adds no regression spec.`, reviewNotice].join('\n\n')
-    return { title, commit: `${title}\n\n${checked}.`, body }
-  }
-  if (why || !spec) {
-    const text = noSpecText[why ?? 'unit']
-    const body = [intro, findingLine, text, reviewNotice].join('\n\n')
-    return { title, commit: `${title}\n\n${text}`, body }
-  }
-  const [origin, proof] =
-    task.kind === 'spec'
-      ? ["the QA agent's repro", 'The repro spec, which the replay confirmed, is added with its assertions unchanged']
-      : [
-          "the fix agent's visual check",
-          "The fix agent's check, which failed without this patch and passes with it, is added",
-        ]
-  const body = [intro, findingLine, `${proof} as \`${spec.path}\`.`, reviewNotice].join('\n\n')
-  return { title, commit: `${title}\n\nKeeps ${origin} as the regression test ${spec.path}.`, body }
+  const title = await titleOf(outDir, task)
+  const evidence = evidenceOf(task, spec)
+  return { title, commit: `${title}\n\n${wrap(evidence.replaceAll('`', ''))}`, body: `${evidence}\n\n${reviewNotice}` }
 }
 
 /**
@@ -1141,7 +1172,7 @@ export const publish = async ({
   const { branch } = task
   if (!live) {
     const spec = await promotedSpec(outDir, task)
-    const { commit, body } = draftOf(task, spec)
+    const { commit, body } = await draftOf(outDir, task, spec)
     log(`[dry run] would push ${branch} with:\n${commit}\n\nand open a draft PR:\n${body}`)
     return { outcome: 'pr', branch, files, spec: spec?.path, commit }
   }
@@ -1150,7 +1181,7 @@ export const publish = async ({
   const git = noHooksGit(run)
   await git(['switch', '--create', branch])
   const spec = await stage(run, outDir, task, repoDir)
-  const { title, commit, body } = draftOf(task, spec)
+  const { title, commit, body } = await draftOf(outDir, task, spec)
   await git(['commit', '--no-verify', '--quiet', '--message', commit])
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
   // An empty expected value in the lease means the remote branch must not exist yet.

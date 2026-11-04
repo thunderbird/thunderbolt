@@ -151,4 +151,10 @@ picks it up from the ticket. When a diagnosis exists, any code you changed is di
 
 ## Finish
 
+When you fixed the bug, write `qa-out/fix/<fp>.title`, using the task's `fp`: one line that becomes the PR title. It is
+a Conventional Commits title of your change, `<type>: <what the change does>`, with `type` one of `fix`, `feat`,
+`refactor`, `perf`, `test`, `docs`, `style`, `build`, `ci` or `chore`, in the imperative and in lower case, at most 100
+characters. Describe the change, not the symptom: `fix: name the file preview's download and close buttons`, not
+`fix: download button has no accessible name`. Without the file, or in another form, the title is the finding's title.
+
 End with two or three sentences: what was wrong, what you changed, and the result of the three commands.

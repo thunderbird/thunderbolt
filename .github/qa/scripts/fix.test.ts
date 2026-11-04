@@ -12,6 +12,7 @@ import type { Area, RawFinding, Severity } from './findings'
 import {
   asUser,
   checkPatch,
+  clip,
   checkTests,
   type FixPlan,
   type FixTask,
@@ -26,6 +27,7 @@ import {
   runGate,
   testRuns,
   whyNoSpec,
+  wrap,
 } from './fix'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -890,6 +892,16 @@ describe('whyNoSpec', () => {
   })
 })
 
+describe('clip and wrap', () => {
+  test('cut a title at a word and wrap a body at spaces, past a word longer than the line', () => {
+    expect(clip('fix: keep the title', 12)).toBe('fix: keep')
+    expect(clip('fix: keep', 12)).toBe('fix: keep')
+    expect(clip('x'.repeat(20), 12)).toBe('x'.repeat(12))
+    expect(wrap('one two three four', 9)).toBe('one two\nthree\nfour')
+    expect(wrap(`a ${'x'.repeat(12)} b`, 9)).toBe(`a\n${'x'.repeat(12)}\nb`)
+  })
+})
+
 describe('checkPatch', () => {
   const fp = 'ab12cd34'
   let repo: string
@@ -1733,7 +1745,8 @@ describe('publish', () => {
       spec: 'e2e/consumer-qa-ab12cd34.spec.ts',
       commit:
         'fix: Renaming a chat loses its title\n\n' +
-        "Keeps the QA agent's repro as the regression test e2e/consumer-qa-ab12cd34.spec.ts.",
+        'The repro spec that confirmed the bug passed three times on the patched code. It is added with its\n' +
+        'assertions unchanged as e2e/consumer-qa-ab12cd34.spec.ts.',
     })
     expect(runs.map((r) => r.cmd.slice(0, 2).join(' '))).toEqual(['git read-tree', 'git apply', 'git diff'])
     expect(runs[1].cmd).toContain('--cached')
@@ -1785,7 +1798,14 @@ describe('publish', () => {
     expect(pr.env).toEqual({ GH_TOKEN: 'app-token' })
     // The branch name links the PR to the ticket, so the description does not name it.
     expect(pr.stdin).not.toContain('THB-1')
-    expect(pr.stdin).toContain('**Finding:** `Renaming a chat loses its title` · chat · High')
+    expect(argAfter(pr.cmd, '--title')).toBe('fix: Renaming a chat loses its title')
+    // What the checks showed and who wrote it, without the pipeline's own labels.
+    expect(pr.stdin).toBe(
+      'The repro spec that confirmed the bug passed three times on the patched code. It is added with its ' +
+        'assertions unchanged as `e2e/consumer-qa-ab12cd34.spec.ts`.\n\n' +
+        'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, ' +
+        'approves or marks PRs ready.',
+    )
     expect(runs.flatMap((r) => r.cmd).some((arg) => /^(merge|ready|review)$/.test(arg))).toBe(false)
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       (await regressionSpec('c2-chat', fp, spec)).source,
@@ -1857,7 +1877,7 @@ describe('publish', () => {
     expect(await readFile(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts'), 'utf8')).toBe(
       (await regressionSpec('c2-chat', fp, check)).source,
     )
-    expect(runs.at(-1)?.stdin).toContain('failed without this patch and passes with it')
+    expect(runs.at(-1)?.stdin).toContain('failed three times without this patch and passed three times with it')
   })
 
   test('a real-AI web visual fix is never published, even when its check passed on the fake AI', async () => {
@@ -1935,7 +1955,7 @@ describe('publish', () => {
     expect(result).toMatchObject({ outcome: 'pr', spec: undefined })
     expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
-    expect(runs.at(-1)?.stdin).toContain("Checked on ios with the finding's Maestro flow")
+    expect(runs.at(-1)?.stdin).toContain("The finding's Maestro flow passed three times on the ios app")
   })
 
   test('an onboarding fix PR adds no regression spec, since e2e/ does not serve the onboarding build', async () => {
@@ -1964,7 +1984,7 @@ describe('publish', () => {
     expect(runs.at(-1)?.stdin).toContain('runs on the fake provider')
   })
 
-  test('a fix a unit test can show adds no spec, and its PR says the unit test guards it', async () => {
+  test('a fix a unit test can show adds no spec, and its PR says the unit tests failed without the fix', async () => {
     await setup({ extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } })
 
     const { repoDir, runs, result } = await publishLive()
@@ -1973,10 +1993,46 @@ describe('publish', () => {
     expect(runs.some((r) => r.cmd.includes('add'))).toBe(false)
     expect(await Bun.file(join(repoDir, 'e2e', 'consumer-qa-ab12cd34.spec.ts')).exists()).toBe(false)
     const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
-    for (const text of [runs.at(-1)?.stdin ?? '', commit]) {
-      expect(text).toContain('The unit test in this patch guards the fix.')
+    for (const text of [(runs.at(-1)?.stdin ?? '').replaceAll('\n', ' '), commit.replaceAll('\n', ' ')]) {
+      expect(text).toContain("The patch's unit tests fail without the fix and pass with it.")
       expect(text).not.toMatch(/is added as|Keeps .* as the regression test|e2e\/consumer-qa-/)
     }
+  })
+
+  test("titles the PR with the fix agent's description of the change when Title Lint would accept it", async () => {
+    const titled = async (written?: string) => {
+      await setup()
+      if (written !== undefined) await put(join(outDir, 'fix', `${fp}.title`), written)
+      const { runs } = await publishLive()
+      const pr = runs.find((r) => r.cmd[0] === 'gh')
+      const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
+      expect(commit.split('\n')[0]).toBe(argAfter(pr?.cmd ?? [], '--title'))
+      return argAfter(pr?.cmd ?? [], '--title')
+    }
+    expect(await titled('fix(chat): keep a renamed title after a reload\nmore text\n')).toBe(
+      'fix(chat): keep a renamed title after a reload',
+    )
+    // Not a Title Lint type, a breaking marker, no type at all, or a secret: the finding's title instead.
+    for (const written of ['feature: keep the title', 'fix!: keep the title', 'Keep the title', 'fix: lin_api_x', ''])
+      expect({ written, title: await titled(written) }).toEqual({
+        written,
+        title: 'fix: Renaming a chat loses its title',
+      })
+    expect(await titled()).toBe('fix: Renaming a chat loses its title')
+  })
+
+  test('cuts a long title at a word and keeps every commit line within 100 characters', async () => {
+    const long =
+      'Choosing the Custom provider logs console errors for a model fetch to a URL the user never entered in the form'
+    await setup({ extra: { title: long, oracle: { type: 'assert-failed', evidence: 'x' } } })
+    const { runs } = await publishLive()
+    const commit = argAfter(runs.find((r) => r.cmd.includes('commit'))?.cmd ?? [], '--message')
+    const [title, ...rest] = commit.split('\n')
+    expect(title).toBe(
+      'fix: Choosing the Custom provider logs console errors for a model fetch to a URL the user never',
+    )
+    expect(rest.filter((line) => line.length > 100)).toEqual([])
+    expect(rest.length).toBeGreaterThan(2)
   })
 
   test('a patch without the PR checks pass leaves the ticket and the repository alone and says so', async () => {

@@ -855,6 +855,7 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
@@ -1697,6 +1698,7 @@ msgstr "完了"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "ダウンロード"
 
@@ -2453,6 +2455,7 @@ msgstr "ローカルストレージ"
 msgid "Localization"
 msgstr "地域と言語"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "位置情報"
@@ -4284,6 +4287,7 @@ msgstr ""
 msgid "Theme"
 msgstr "テーマ"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx

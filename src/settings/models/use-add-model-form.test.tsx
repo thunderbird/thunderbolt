@@ -185,6 +185,28 @@ describe('useAddModelForm', () => {
     }
   })
 
+  it('does not fetch a catalog when Custom is chosen before a URL is entered', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+
+    try {
+      act(() => {
+        result.current.onProviderChange('custom')
+      })
+      await act(async () => {
+        getClock().tick(1000)
+        await getClock().runAllAsync()
+      })
+
+      expect(result.current.form.getValues('url')).toBe('')
+      expect(getSpy).not.toHaveBeenCalled()
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
   it('saves a model that rejects tools with tool usage off after the connection test', async () => {
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: mock(() => {}) }), {
       wrapper: createTestProvider({ proxyFetch: toollessProxyFetch }),

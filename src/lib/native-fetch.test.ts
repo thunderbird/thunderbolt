@@ -242,3 +242,22 @@ it('stops and detaches the relay when the caller aborts between hops', async () 
     removed.mockRestore()
   }
 })
+
+it.each(['string', 'URL', 'Request'] as const)(
+  'asks the plugin to drop its webview Origin for %s input and keeps the other headers',
+  async (kind) => {
+    const url = 'https://mcp.example.com/mcp'
+    const init = { method: 'POST', headers: { authorization: 'Bearer token' } }
+    const input = kind === 'string' ? url : kind === 'URL' ? new URL(url) : new Request(url, init)
+    const sent: (RequestInit | undefined)[] = []
+    await nativeFetch(input, kind === 'Request' ? undefined : init, async (_input, options) => {
+      sent.push(options)
+      return new Response(null, { status: 204 })
+    })
+    // The plugin removes an empty Origin (with `unsafe-headers`) instead of adding tauri://localhost.
+    const headers = new Headers(sent[0]?.headers)
+    expect(headers.has('origin')).toBe(true)
+    expect(headers.get('origin')).toBe('')
+    expect(headers.get('authorization')).toBe('Bearer token')
+  },
+)

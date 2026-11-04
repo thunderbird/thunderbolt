@@ -79,6 +79,9 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
   const downloadAction = (
     <Button onClick={handleDownload} disabled={!blobUrl} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
       <Download className="size-4" />
+      <span className="sr-only">
+        <Trans>Download</Trans>
+      </span>
     </Button>
   )
 

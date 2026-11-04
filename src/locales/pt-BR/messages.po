@@ -3524,6 +3524,10 @@ msgstr "Redefinir o banco de dados"
 msgid "Reset Local Database?"
 msgstr "Redefinir o banco de dados local?"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reset reasoning effort"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "Restaurar o padrão"

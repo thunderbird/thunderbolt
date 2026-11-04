@@ -3524,6 +3524,10 @@ msgstr "Réinitialiser la base de données"
 msgid "Reset Local Database?"
 msgstr "Réinitialiser la base de données locale ?"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reset reasoning effort"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "Rétablir la valeur par défaut"

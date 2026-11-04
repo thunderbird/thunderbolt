@@ -47,14 +47,27 @@ afterEach(() => {
 afterAll(teardownTestDatabase)
 
 describe('effort selector state', () => {
-  it('renders the actual Radix selector with supported choices', async () => {
+  it('opens the slider, previews supported levels, commits on release, and resets', async () => {
     renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
-    const trigger = await waitForElement(() => screen.queryByRole('combobox', { name: 'Reasoning effort' }))
+    const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
     expect(trigger.textContent).toContain('Default')
     await act(async () => {
-      fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+      fireEvent.click(trigger)
     })
-    expect(await waitForElement(() => screen.queryByRole('option', { name: 'High' }))).toBeDefined()
+    const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    await act(async () => {
+      fireEvent.change(slider, { target: { value: '2' } })
+    })
+    expect(slider.getAttribute('aria-valuetext')).toBe('High')
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    await act(async () => {
+      fireEvent.pointerUp(slider)
+    })
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reset reasoning effort' }))
+    })
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
   })
 
   it('offers only supported levels and persists the conversation preference without editing the model', async () => {

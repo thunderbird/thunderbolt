@@ -3512,6 +3512,10 @@ msgstr "Datenbank zurücksetzen"
 msgid "Reset Local Database?"
 msgstr "Lokale Datenbank zurücksetzen?"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reset reasoning effort"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "Auf Standard zurücksetzen"

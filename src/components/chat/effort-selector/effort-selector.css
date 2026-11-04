@@ -1,0 +1,43 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.effort-track {
+  background: linear-gradient(
+    to right,
+    var(--color-blue-500) var(--effort-progress),
+    var(--color-accent) var(--effort-progress)
+  );
+}
+
+.effort-slider {
+  appearance: none;
+  height: 2.25rem;
+  background: transparent;
+  outline: none;
+}
+
+.effort-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--color-foreground);
+  border: 2px solid var(--color-popover);
+  box-shadow: 0 1px 4px #0002;
+}
+
+.effort-slider::-moz-range-thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-foreground);
+  border: 2px solid var(--color-popover);
+  box-shadow: 0 1px 4px #0002;
+}
+
+.effort-slider:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}

@@ -3500,6 +3500,10 @@ msgstr "データベースをリセット"
 msgid "Reset Local Database?"
 msgstr "ローカルデータベースをリセットしますか？"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reset reasoning effort"
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
 msgstr "既定値に戻す"

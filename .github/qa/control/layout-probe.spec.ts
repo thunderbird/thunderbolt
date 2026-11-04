@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
+import type axe from 'axe-core'
 import { axePath, layoutProblems } from '../layout'
 
 const probePath = resolve(import.meta.dirname, '../layout-probe.js')
@@ -92,6 +93,27 @@ test('a control axe cannot settle a name for goes to review, never into a proble
   expect(await page.evaluate(() => window.__qaLayout.review())).toEqual([
     { kind: 'unnamed-control', target: 'button "after Terms"' },
   ])
+})
+
+test('a problem after a change is confirmed within layoutProblems wait, though axe takes 150 ms a run', async ({
+  page,
+}) => {
+  await page.addInitScript({ path: axePath })
+  await page.addInitScript(() => {
+    const run = window.axe.run.bind(window.axe)
+    Object.assign(window.axe, {
+      run: async (context: axe.ElementContext, options: axe.RunOptions) => {
+        await new Promise((done) => setTimeout(done, 150))
+        return run(context, options)
+      },
+    })
+  })
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture('covered.html'))
+  await page.evaluate(() => document.getElementById('footer')?.remove())
+  expect(await layoutProblems(page)).toEqual([])
+  await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="footer">Footer</div>'))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Continue"' }])
 })
 
 test('without axe-core the probe never reports ready, so the page counts as unmeasured', async ({ page }) => {

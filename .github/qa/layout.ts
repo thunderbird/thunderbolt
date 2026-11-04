@@ -4,6 +4,7 @@
 
 import { resolve } from 'node:path'
 import type { Page } from '@playwright/test'
+import type axe from 'axe-core'
 
 /** `target` is `<role> "<accessible name>"`, or for an `unnamed-control` `<role> "<which control>"`. */
 export type LayoutProblem = {
@@ -25,6 +26,8 @@ declare global {
     // Undefined until the probe loads; reading it before then throws, which is what a repro spec should do. `review`
     // holds the controls axe-core could not settle a name for: a person checks them, they are never findings.
     __qaLayout: { problems: () => LayoutProblem[]; review: () => LayoutProblem[] }
+    // axe-core, loaded before the probe.
+    axe: typeof axe
   }
 }
 

@@ -374,8 +374,10 @@
     if (measuring) return schedule(debounceMs)
     pendingSince = undefined
     measuring = true
-    const problems = await measure().finally(() => (measuring = false))
+    // The page is measured when the check starts, and the next one is due confirmMs after that, however long axe
+    // takes, so layoutProblems' 1 s wait still sees a problem confirmed.
     const now = performance.now()
+    const problems = await measure().finally(() => (measuring = false))
     const current = new Map(problems.map((problem) => [`${problem.kind} ${problem.target}`, problem]))
     for (const key of firstSeen.keys()) if (!current.has(key)) firstSeen.delete(key)
     for (const key of current.keys()) if (!firstSeen.has(key)) firstSeen.set(key, now)
@@ -385,7 +387,7 @@
       logged.add(key)
       console.error(`[qa-layout] ${key}`)
     }
-    if (confirmedKeys.length < current.size) schedule(confirmMs + 10)
+    if (confirmedKeys.length < current.size) schedule(now + confirmMs + 10 - performance.now())
   }
 
   const schedule = (delay) => {

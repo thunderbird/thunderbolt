@@ -5,7 +5,7 @@
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
 import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
-import { and, count, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, count, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
 
 export { cliDeviceIdPrefix, isCliDeviceId }
@@ -53,34 +53,38 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * Devices are never inserted trusted — trust is granted only by `markDeviceTrusted` once an
- * envelope exists for them.
- * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
- * which client version each device is running. */
-export const upsertDevice = async (
+/**
+ * How stale `lastSeen` may get before a sync token request rewrites it. Every write to a device row
+ * adds a version to PowerSync's parameter history (the row feeds `active_device_account`), which
+ * PowerSync's Postgres storage never compacts, so a write per token refresh slows every checkpoint.
+ */
+export const deviceLastSeenRefreshMs = 60 * 60 * 1000
+
+/**
+ * Records a sync token request on the device's own row: sets `lastSeen`, `name` and, when given,
+ * `appVersion`, but only when `name` or `appVersion` changed or `lastSeen` is older than
+ * {@link deviceLastSeenRefreshMs}. Returns the updated rows, empty when nothing needed writing.
+ */
+export const touchDevice = (
   database: QueryableDatabase,
-  device: {
-    id: string
-    userId: string
-    name: string
-    lastSeen: Date
-    createdAt: Date
-    appVersion?: string
-  },
+  device: { id: string; userId: string; name: string; appVersion?: string },
+  now = new Date(),
 ) =>
   database
-    .insert(devicesTable)
-    .values({ ...device, trusted: false })
-    .onConflictDoUpdate({
-      target: devicesTable.id,
-      set: {
-        lastSeen: device.lastSeen,
-        name: device.name,
-        ...(device.appVersion ? { appVersion: device.appVersion } : {}),
-      },
-      setWhere: eq(devicesTable.userId, device.userId),
-    })
+    .update(devicesTable)
+    .set({ lastSeen: now, name: device.name, ...(device.appVersion ? { appVersion: device.appVersion } : {}) })
+    .where(
+      and(
+        eq(devicesTable.id, device.id),
+        eq(devicesTable.userId, device.userId),
+        or(
+          isNull(devicesTable.lastSeen),
+          lt(devicesTable.lastSeen, new Date(now.getTime() - deviceLastSeenRefreshMs)),
+          sql`${devicesTable.name} IS DISTINCT FROM ${device.name}`,
+          ...(device.appVersion ? [sql`${devicesTable.appVersion} IS DISTINCT FROM ${device.appVersion}`] : []),
+        ),
+      ),
+    )
     .returning()
 
 /** Create or touch a server-owned CLI device without converting collisions or reviving tombstones. */

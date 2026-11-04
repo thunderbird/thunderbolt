@@ -11,7 +11,7 @@ export {
   isCliDeviceId,
   isTrustedAppDevice,
   getDeviceById,
-  upsertDevice,
+  touchDevice,
   upsertCliDevice,
   revokeDevice,
   requireMigrationSiblingApproval,

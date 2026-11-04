@@ -1,0 +1,30 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Reachable</title>
+  </head>
+  <body>
+    <!-- Tab and a screen reader reach a control whatever its pointer-events or opacity. -->
+    <p>Reply</p>
+    <!-- The loading placeholder of #1481: its wrapper stops clicks, and the button inherits that. -->
+    <div style="pointer-events: none">
+      <button><svg class="lucide lucide-loader-circle" width="16" height="16"></svg></button>
+    </div>
+    <p>Composer</p>
+    <!-- Disabled the way ui/button.tsx disables: out of the Tab order, still read by a screen reader. -->
+    <button disabled style="pointer-events: none"><svg class="lucide lucide-send" width="16" height="16"></svg></button>
+    <p>Message</p>
+    <!-- An action that shows only on hover. -->
+    <button style="opacity: 0"><svg class="lucide lucide-ellipsis" width="16" height="16"></svg></button>
+    <!-- Hidden from every user: none of these counts. -->
+    <button hidden></button>
+    <button style="visibility: hidden"></button>
+    <div style="display: none"><button></button></div>
+    <div aria-hidden="true"><button></button></div>
+    <div inert><button></button></div>
+  </body>
+</html>

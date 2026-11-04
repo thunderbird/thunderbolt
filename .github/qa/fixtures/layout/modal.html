@@ -8,13 +8,18 @@
     <title>Modal</title>
   </head>
   <!-- An open modal the way Radix leaves the page: the body stops taking clicks and the background is hidden from
-       assistive tech or inert. Each background part takes one of the three routes on its own. -->
+       assistive tech or inert. Each background part takes one of the three routes on its own. The unnamed buttons
+       sit where no one reaches them: under aria-hidden and inert. -->
   <body style="pointer-events: none">
     <main aria-hidden="true" style="pointer-events: auto">
       <button>New chat</button>
       <a href="#settings">Settings</a>
+      <button><svg class="lucide lucide-pencil" width="16" height="16"></svg></button>
     </main>
-    <nav inert style="pointer-events: auto"><button>Menu</button></nav>
+    <nav inert style="pointer-events: auto">
+      <button>Menu</button>
+      <button><svg class="lucide lucide-x" width="16" height="16"></svg></button>
+    </nav>
     <aside><button>Help</button></aside>
     <div style="position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); pointer-events: auto"></div>
     <div role="dialog" aria-label="Rename" style="position: fixed; top: 40%; left: 40%; pointer-events: auto">

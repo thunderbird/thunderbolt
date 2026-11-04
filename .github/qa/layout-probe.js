@@ -96,6 +96,10 @@
   const inheritsNoPointer = (el) =>
     getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el.parentElement).pointerEvents === 'none'
   const isCandidate = (el) => isVisible(el) && !el.closest('[aria-hidden=true], [inert]') && !inheritsNoPointer(el)
+  // Tab and a screen reader reach a control whatever its pointer-events or opacity (a hover-only action, the #1481
+  // placeholder in a wrapper that stops clicks). Only a hidden, aria-hidden or inert one is out of their reach.
+  const isReachable = (el) =>
+    el.checkVisibility({ visibilityProperty: true }) && !el.closest('[aria-hidden=true], [inert]')
 
   // The math of src/hooks/use-keyboard-inset.ts.
   const keyboardOpen = (vv) => innerHeight - vv.height - vv.offsetTop > 100
@@ -336,7 +340,7 @@
           ].filter(Boolean)
         : []
     const unnamed = [...document.querySelectorAll(controls)]
-      .filter((el) => !accessibleName(el) && isCandidate(el))
+      .filter((el) => !accessibleName(el) && isReachable(el))
       .map((el) => ({ kind: 'unnamed-control', target: `${roleOf(el)} "${whereOf(el).slice(0, 80)}"` }))
     return [...found, ...keyboard, ...focus, ...unnamed, ...overflows()]
   }

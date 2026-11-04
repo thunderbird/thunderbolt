@@ -200,6 +200,10 @@ msgstr "{verbPhrase}…"
 msgid "{wordCount}/24 words"
 msgstr "{wordCount}/24 mots"
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "<0>Connect a model provider</0> or <1>add a model</1> to enable chat."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr "⚠ Cet export a été réalisé par un autre compte ({importSourceEmail}). L'importer ici mélangera ces données avec celles de votre compte. Ne confirmez que si c'est votre intention."
@@ -294,6 +298,7 @@ msgstr "Ajouter et autoriser"
 msgid "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgstr "Ajoutez <0>~/.local/bin</0> à votre PATH, puis redémarrez votre shell :"
 
+#: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Add a model"
 msgstr ""
@@ -321,8 +326,8 @@ msgid "Add Agent"
 msgstr "Ajouter un agent"
 
 #: src/components/chat/chat-prompt-input.tsx
-msgid "Add and select a model in Settings to start chatting."
-msgstr ""
+#~ msgid "Add and select a model in Settings to start chatting."
+#~ msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Add failed"
@@ -1074,6 +1079,14 @@ msgstr "Connecter {providerName}"
 msgid "Connect a local model or use an API key."
 msgstr ""
 
+#: src/components/chat/chat-model-setup.tsx
+msgid "Connect a model provider or add your own model to start chatting."
+msgstr ""
+
+#: src/components/chat/chat-model-setup.tsx
+msgid "Connect a provider"
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr "Connectez un agent distant qui parle l'Agent Client Protocol."
@@ -1087,7 +1100,6 @@ msgid "Connect Microsoft"
 msgstr "Connecter Microsoft"
 
 #: src/components/server-connection/server-connection-form.tsx
-#: src/settings/preferences.tsx
 msgid "Connect to server"
 msgstr ""
 
@@ -1124,6 +1136,7 @@ msgstr "Connectez votre compte pour rendre ces outils disponibles aux agents."
 msgid "Connect your account to power your agents."
 msgstr ""
 
+#: src/components/chat/chat-model-setup.tsx
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Connect your AI"
 msgstr ""
@@ -4999,8 +5012,8 @@ msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro n'est pas encore disponible. Restez à l'écoute !"
 
 #: src/settings/preferences.tsx
-msgid "Thunderbolt Server"
-msgstr ""
+#~ msgid "Thunderbolt Server"
+#~ msgstr ""
 
 #: src/components/server-connection/server-connection-form.tsx
 msgid "Thunderbolt server address"
@@ -5294,8 +5307,8 @@ msgid "Use {name}"
 msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "Use a server for sign-in, sync, and cloud features."
-msgstr ""
+#~ msgid "Use a server for sign-in, sync, and cloud features."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Use an API key instead"

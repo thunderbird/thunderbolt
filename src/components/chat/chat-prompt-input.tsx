@@ -77,9 +77,8 @@ import { preloadChatMessageList } from './chat-messages-loader'
 import { isBuiltInAgent } from '@/defaults/agents'
 import { useAppName } from '@/lib/branding-selectors'
 import { selectBuiltInAgentEnabled, selectConfigSettled, selectMinimalMode, useConfigStore } from '@/api/config-store'
-import { isModelAvailable, matchesThreadConfidentiality } from '@/settings/models/model-policy'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { useLocalProviders } from '@/hooks/use-local-providers'
+import { matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { useModelNeedsSetup } from './use-model-needs-setup'
 import { ComposerAlert } from './composer-alert'
 import { ImageSupportNotice } from './image-support-notice'
 import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
@@ -371,10 +370,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // Only when no model fits the thread's confidentiality lock: otherwise
     // `resolveSessionModel` already swapped one in for the built-in.
     const noModelForThread = isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(selectedModel, chatThread)
-    const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
-    const needsOwnModel = useLocalProviders()
-    const modelNeedsSetup =
-      isBuiltInAgent(selectedAgent) && !isModelAvailable(selectedModel, needsOwnModel ? '' : cloudUrl)
+    const modelNeedsSetup = useModelNeedsSetup()
     // `useChatAutomation` holds back the unanswered last turn of a private chat
     // on a non-built-in agent. Say so, and hold a typed send too: it would carry
     // the private history to that agent unencrypted.
@@ -952,8 +948,25 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                 </ComposerAlert>
               )}
               {modelNeedsSetup && (
-                <ComposerAlert key="model-needs-setup">
-                  <Trans>Add and select a model in Settings to start chatting.</Trans>
+                <ComposerAlert key="model-needs-setup" tone="info">
+                  <Trans>
+                    <button
+                      type="button"
+                      className="cursor-pointer underline underline-offset-2"
+                      onClick={() => navigate('/settings/connections')}
+                    >
+                      Connect a model provider
+                    </button>{' '}
+                    or{' '}
+                    <button
+                      type="button"
+                      className="cursor-pointer underline underline-offset-2"
+                      onClick={() => openCreateItem({ kind: 'model' })}
+                    >
+                      add a model
+                    </button>{' '}
+                    to enable chat.
+                  </Trans>
                 </ComposerAlert>
               )}
               {noModelForThread && (
@@ -1036,12 +1049,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // but not on existing chats, where popping the keyboard over the
             // history the user came to read would be hostile. Mobile web keeps no
             // autofocus: browsers won't show the keyboard for it anyway.
-            autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
+            autoFocus={!modelNeedsSetup && (!isMobile || (isPlatformMobile() && isNewChat))}
             submitOnEnter={!isBusy && !shouldInsertNewlineOnEnter}
             // Voice mode covers the composer with an overlay; make the underlying
             // input non-interactive so Tab/Enter can't reach the hidden textarea.
             inert={voice.active}
-            className="relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border bg-sidebar p-2 shadow-glow dark:shadow-none transition-colors"
+            className="composer-surface relative z-10 flex flex-col w-full gap-0 rounded-3xl border border-transparent focus-within:border-border p-2 shadow-glow dark:shadow-none transition-colors"
             footerStartElements={footerStartElements}
             footerEndElements={footerEndElements}
             // Empty + idle composer shows the voice-mode trigger in the send slot (swaps back to Send

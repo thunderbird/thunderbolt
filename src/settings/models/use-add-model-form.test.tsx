@@ -108,14 +108,14 @@ describe('useAddModelForm', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('defaults to a local endpoint and selects the added model in standalone mode', async () => {
+  it('starts with a blank endpoint and selects the added model in standalone mode', async () => {
     useLocalSettingsStore.setState({ cloudUrl: '' })
     const onClose = mock(() => {})
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
       wrapper: createTestProvider(),
     })
     expect(result.current.form.getValues('provider')).toBe('custom')
-    expect(result.current.form.getValues('url')).toBe('http://localhost:11434/v1')
+    expect(result.current.form.getValues('url')).toBe('')
 
     await act(async () => {
       result.current.onSubmit({
@@ -364,6 +364,24 @@ describe('useAddModelForm', () => {
       })
 
       expect(getSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
+
+  it('does not request a local server when the standalone add-model panel opens', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
+    const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
+    try {
+      const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+        wrapper: createTestProvider(),
+      })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.form.getValues('provider')).toBe('custom')
+      expect(result.current.form.getValues('url')).toBe('')
+      expect(getSpy).not.toHaveBeenCalled()
     } finally {
       getSpy.mockRestore()
     }

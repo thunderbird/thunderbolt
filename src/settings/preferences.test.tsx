@@ -72,7 +72,6 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     expect(screen.getByRole('button', { name: 'Export Your Data' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Import Your Data' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reset Database' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Connect to server' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('City or region')).toBeInTheDocument()
   })
 

@@ -14,15 +14,13 @@ pub struct OAuthCallbackPayload {
     pub url: String,
 }
 
-const RESPONSE_HTML: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html>\
-<head><title>Thunderbolt</title></head>\
-<body style=\"font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5\">\
-<div style=\"text-align:center;padding:2rem\">\
-<h2>Authentication Complete</h2>\
-<p>You can close this tab and return to Thunderbolt.</p>\
-</div>\
-</body>\
-</html>";
+const RESPONSE_HEADERS: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
+
+/// Embed the shared logo so the one-shot callback page needs no asset requests.
+fn completion_page() -> String {
+    include_str!("oauth_complete.html")
+        .replace("{{logo}}", include_str!("../../src/assets/logo.svg"))
+}
 
 /// Try to bind to one of the given ports in order. Returns the listener and the bound port.
 /// Returns an error if none of the given ports are available — no silent fallback to a
@@ -115,7 +113,8 @@ pub fn start(app: tauri::AppHandle, ports: &[u16]) -> Result<u16, String> {
         let request = String::from_utf8_lossy(&buf[..n]);
 
         // Send the "Authentication Complete" page and close the connection
-        let _ = stream.write_all(RESPONSE_HTML.as_bytes());
+        let _ = stream.write_all(RESPONSE_HEADERS.as_bytes());
+        let _ = stream.write_all(completion_page().as_bytes());
         let _ = stream.flush();
         drop(stream);
 

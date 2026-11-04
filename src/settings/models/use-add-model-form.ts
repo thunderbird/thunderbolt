@@ -129,7 +129,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       name: '',
       model: '',
       customModel: '',
-      url: isStandalone ? 'http://localhost:11434/v1' : '',
+      url: '',
       apiKey: '',
       supportsTools: true,
     },

@@ -172,7 +172,7 @@ const HistoryNavButtons = () => {
       <Button
         variant="ghost"
         size="icon"
-        className={headerIconButtonClass}
+        className={cn(headerIconButtonClass, 'rounded-full')}
         disabled={!canGoBack}
         onClick={() => void navigate(-1)}
       >
@@ -184,7 +184,7 @@ const HistoryNavButtons = () => {
       <Button
         variant="ghost"
         size="icon"
-        className={headerIconButtonClass}
+        className={cn(headerIconButtonClass, 'rounded-full')}
         disabled={!canGoForward}
         onClick={() => void navigate(1)}
       >

@@ -10,6 +10,8 @@ import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { useScrollToMessage } from '@/chats/use-scroll-to-message'
 import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
+import { useModelNeedsSetup } from './use-model-needs-setup'
+import { ChatModelSetup } from './chat-model-setup'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
@@ -47,6 +49,7 @@ const EmptyChatGreeting = () => {
 export default function ChatUI() {
   const { i18n } = useLingui()
   const { chatInstance, miniAppApprovalQueue } = useCurrentChatSession()
+  const modelNeedsSetup = useModelNeedsSetup()
 
   // ChatUI only needs the structural "are there any messages" signal (to switch
   // between the empty-state logo and the message list), not per-token content —
@@ -109,6 +112,15 @@ export default function ChatUI() {
     }
   }, [hasMessages, scrollToBottom])
 
+  if (modelNeedsSetup && !hasMessages) {
+    return (
+      <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
+        <ChatModelSetup />
+        <ChatContentReady />
+      </div>
+    )
+  }
+
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
       <div className={cn('flex flex-col h-full overflow-hidden w-full', isMobile && 'pb-0')}>
@@ -150,7 +162,7 @@ export default function ChatUI() {
           ) : isMobile ? (
             <m.div
               key="logo"
-              className="flex flex-1 flex-col items-center justify-center gap-4 text-center"
+              className={cn('flex flex-1 flex-col items-center justify-center gap-4 text-center')}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               // Fast exit: with `mode="wait"` the logo's fade-out gates the

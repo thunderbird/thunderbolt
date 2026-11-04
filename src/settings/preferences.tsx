@@ -22,7 +22,6 @@ import { useHttpClient } from '@/contexts'
 import { useMemo, useReducer, useRef, useState, type ChangeEvent } from 'react'
 
 import { LocationSearchCombobox } from '@/components/location-search-combobox'
-import { ChangeServerButton } from '@/components/server-connection'
 import { ModificationIndicator } from '@/components/modification-indicator'
 import { ExternalLinkToggleGroup } from '@/components/external-link-toggle-group'
 import { ThemeToggleGroup } from '@/components/theme-toggle-group'
@@ -1024,23 +1023,6 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
       <div className="h-6" />
 
       <SectionCard title={t`Network`}>
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">
-              <Trans>Thunderbolt Server</Trans>
-            </label>
-            <p className="break-all text-sm text-muted-foreground">
-              {cloudUrl || <Trans>Use a server for sign-in, sync, and cloud features.</Trans>}
-            </p>
-          </div>
-          {cloudUrl ? (
-            <ChangeServerButton />
-          ) : (
-            <Button variant="secondary" onClick={openSignInModal}>
-              <Trans>Connect to server</Trans>
-            </Button>
-          )}
-        </div>
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">

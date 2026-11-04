@@ -11,6 +11,7 @@
  *  - No bearer in `Sec-WebSocket-Protocol` → close 4001.
  *  - Invalid / garbage bearer → close 4001.
  *  - Anonymous user's bearer → close 4001.
+ *  - Session lookup throws → close 1013, with no frame sent.
  *  - Valid bearer → ws opens, initialize succeeds, only `thunderbolt.v1` echoed.
  *
  * The session-cookie fallback that used to live in `beforeHandle` was removed:
@@ -20,6 +21,7 @@
  * is validated via the same Better Auth path REST uses (HMAC + DB lookup).
  */
 
+import { wsCloseAuthUnavailable } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createApp } from '@/index'
 import { wsCloseCodes } from '@/proxy/ws'
@@ -29,7 +31,7 @@ import { clearSettingsCache } from '@/config/settings'
 import { createGatedAuth } from '@/test-utils/mock-auth'
 import { createTestSettings } from '@/test-utils/settings'
 import { encodeWsBearer } from '@shared/ws-bearer'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { createHmac } from 'crypto'
 import { Elysia } from 'elysia'
 import type { HaystackAcpDeps } from './acp-server'
@@ -109,8 +111,8 @@ const bearerProtocols = (bearerToken: string): string[] => [
 
 const initializeFrame = (id: number) => JSON.stringify({ jsonrpc: '2.0', id, method: 'initialize' })
 
-/** Mount only the Haystack routes, with no database. The bearer check waits for `releaseAuth()`, so
- *  a test can hold `open()` mid-auth. */
+/** Mount only the Haystack routes, with no database. The bearer check waits for `releaseAuth()`, or
+ *  throws on `failAuth()`, so a test can hold `open()` mid-auth. */
 const startGatedHaystack = async (deps?: HaystackAcpDeps) => {
   const authGate = Promise.withResolvers<void>()
   const settings = createTestSettings({
@@ -125,6 +127,7 @@ const startGatedHaystack = async (deps?: HaystackAcpDeps) => {
   return {
     url: `ws://127.0.0.1:${app.server?.port}/haystack/ws?pipeline=rag`,
     releaseAuth: () => authGate.resolve(),
+    failAuth: () => authGate.reject(new Error('database down')),
     stop: async () => {
       await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
     },
@@ -135,6 +138,19 @@ const openGatedClient = async (url: string): Promise<WebSocket> => {
   const client = new WebSocket(url, bearerProtocols('gated-bearer'))
   await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
   return client
+}
+
+/** Route deps that count the Haystack servers built. The route reads only `fetchFn` from its deps, and
+ *  each `HaystackAcpServer` reads `generateSessionId` once, when built. */
+const countServersBuilt = () => {
+  let built = 0
+  const deps: HaystackAcpDeps = {
+    get generateSessionId() {
+      built++
+      return () => crypto.randomUUID()
+    },
+  }
+  return { deps, built: () => built }
 }
 
 describe('WS /v1/haystack/ws — auth gating', () => {
@@ -332,14 +348,8 @@ describe('WS /v1/haystack/ws — auth gating', () => {
   }, 15000)
 
   it('builds no Haystack server for a client that closes before the bearer check finishes', async () => {
-    // The route reads only `fetchFn` from its deps; each HaystackAcpServer reads this once, when built.
-    let serversBuilt = 0
-    const gated = await startGatedHaystack({
-      get generateSessionId() {
-        serversBuilt++
-        return () => crypto.randomUUID()
-      },
-    })
+    const servers = countServersBuilt()
+    const gated = await startGatedHaystack(servers.deps)
     cleanups.push(gated.stop)
 
     const early = await openGatedClient(gated.url)
@@ -356,8 +366,50 @@ describe('WS /v1/haystack/ws — auth gating', () => {
     const reply = nextMessage(late)
     late.send(initializeFrame(2))
     expect(JSON.parse(await reply).id).toBe(2)
-    expect(serversBuilt).toBe(1)
+    expect(servers.built()).toBe(1)
     late.close()
+  }, 15000)
+
+  it('closes 1013 without sending a frame when the bearer check throws', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const servers = countServersBuilt()
+    const gated = await startGatedHaystack(servers.deps)
+    cleanups.push(gated.stop)
+
+    const client = await openGatedClient(gated.url)
+    const frames: string[] = []
+    client.addEventListener('message', (event: MessageEvent) => frames.push(String(event.data)))
+    const term = observeWsTermination(client)
+    client.send(initializeFrame(1))
+    await pingRoundTrip(client)
+    gated.failAuth()
+
+    expect((await term).code).toBe(wsCloseAuthUnavailable)
+    expect(frames).toEqual([])
+    expect(servers.built()).toBe(0)
+    errorSpy.mockRestore()
+  }, 15000)
+
+  it('builds no Haystack server for a client that closes before the bearer check throws', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const servers = countServersBuilt()
+    const gated = await startGatedHaystack(servers.deps)
+    cleanups.push(gated.stop)
+
+    const early = await openGatedClient(gated.url)
+    early.send(initializeFrame(1))
+    await pingRoundTrip(early)
+    const closed = observeWsTermination(early)
+    early.close()
+    await closed
+    // Both bearer checks wait on one gate and fail in order, so the late close means the early `open()` is done.
+    const late = await openGatedClient(gated.url)
+    const lateTerm = observeWsTermination(late)
+    gated.failAuth()
+
+    expect((await lateTerm).code).toBe(wsCloseAuthUnavailable)
+    expect(servers.built()).toBe(0)
+    errorSpy.mockRestore()
   }, 15000)
 
   it('closes 4001 when the ?pipeline= slug is not in HAYSTACK_PIPELINES', async () => {

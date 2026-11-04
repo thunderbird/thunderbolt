@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { createApp } from '@/index'
-import { wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
+import { wsCloseAuthUnavailable, wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
 import { createTestApp, pingRoundTrip, type TestAppHandle } from '@/test-utils/e2e'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
@@ -621,8 +621,8 @@ describe('Universal proxy WS observability — error_type per close path', () =>
   }, 15_000)
 })
 
-/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, so a
- *  test can hold `open()` mid-auth. */
+/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, or
+ *  throws on `failAuth()`, so a test can hold `open()` mid-auth. */
 const startRelay = async (upstreamPort: number, observability?: ObservabilityRecorder) => {
   const authGate = Promise.withResolvers<void>()
   const app = new Elysia().use(
@@ -638,6 +638,7 @@ const startRelay = async (upstreamPort: number, observability?: ObservabilityRec
   return {
     url: `ws://127.0.0.1:${app.server?.port}/proxy/ws`,
     releaseAuth: () => authGate.resolve(),
+    failAuth: () => authGate.reject(new Error('database down')),
     stop: async () => {
       await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
     },
@@ -747,6 +748,51 @@ describe('Universal proxy WS relay — frames during auth and unsendable close c
     // The relay logs the close as the last step of `open()`; an upstream dial would show up instead.
     await waitFor(() => logs.length > 0 || upstreamConnections.length > 0, { label: 'relay log or upstream dial' })
     expect(upstreamConnections).toEqual([])
+  }, 15_000)
+
+  it('closes with 1013, logs the error and dials nothing when the bearer check throws', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const upstreamConnections: unknown[] = []
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const closed = waitForClose(client)
+    client.send('queued')
+    await pingRoundTrip(client)
+    relay.failAuth()
+
+    expect((await closed).code).toBe(wsCloseAuthUnavailable)
+    expect(upstreamConnections).toEqual([])
+    expect(errorSpy.mock.calls.map(([line]) => line)).toContain('WebSocket bearer check failed — database down')
+    errorSpy.mockRestore()
+  }, 15_000)
+
+  it('dials nothing for a client that closes before the bearer check throws', async () => {
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const upstreamConnections: unknown[] = []
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const early = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => early.addEventListener('open', () => resolve()))
+    early.send('queued')
+    await pingRoundTrip(early)
+    const earlyClosed = waitForClose(early)
+    early.close()
+    await earlyClosed
+    // Both bearer checks wait on one gate and fail in order, so the late close means the early `open()` is done.
+    const late = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => late.addEventListener('open', () => resolve()))
+    const lateClosed = waitForClose(late)
+    relay.failAuth()
+
+    expect((await lateClosed).code).toBe(wsCloseAuthUnavailable)
+    expect(upstreamConnections).toEqual([])
+    errorSpy.mockRestore()
   }, 15_000)
 
   it('closes the upstream with 1000 when the client closes without a status code', async () => {

@@ -21,6 +21,7 @@
  */
 
 import type { Auth } from '@/auth/elysia-plugin'
+import { getSafeLogMessage } from '@/middleware/error-handling'
 import type { User } from '@shared/types/auth'
 import { decodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
 
@@ -29,6 +30,11 @@ import { decodeWsBearer, wsBearerSubprotocolPrefix } from '@shared/ws-bearer'
  *  "the server refused me" (re-login flow) from "I never reached the server"
  *  (network-error toast). */
 export const wsCloseUnauthorized = 4001
+
+/** Close code 1013 (Try Again Later) for a socket whose bearer could not be checked, for example
+ *  because the database is down. The app retries it. 1011 would stop the app from reconnecting
+ *  (`terminalCloseCodes` in `src/acp/transports/websocket.ts`). */
+export const wsCloseAuthUnavailable = 1013
 
 /**
  * Extract and decode the bearer token from a comma-separated
@@ -49,25 +55,42 @@ export const extractBearerSubprotocol = (header: string | null): string | null =
   return null
 }
 
+/** Outcome of {@link authorizeWsBearer}: the user, or the code and reason to close the socket with. */
+export type WsBearerAuthorization = { ok: true; user: User } | { ok: false; closeCode: number; closeReason: string }
+
+const unauthorized: WsBearerAuthorization = { ok: false, closeCode: wsCloseUnauthorized, closeReason: 'unauthorized' }
+
 /**
  * Resolve and authorize a WebSocket upgrade from its offered subprotocols.
  *
- * Returns the authenticated regular user on success, or `null` when the bearer
- * is missing/invalid OR the resolved user is anonymous. Anonymous users must
+ * Returns the authenticated regular user on success. A missing or invalid
+ * bearer, or an anonymous user, gets a 4001 close. Anonymous users must
  * never open a managed-ACP/proxy WebSocket — this preserves the same invariant
  * the REST routes enforce.
+ *
+ * A session lookup that throws (for example, the database is down) is logged
+ * and gets a 1013 close. Letting it reach the route's `open()` would leave the socket
+ * open: Elysia catches the rejection and does not close it.
  */
-export const authorizeWsBearer = async (auth: Auth, subprotocolHeader: string | null): Promise<User | null> => {
+export const authorizeWsBearer = async (
+  auth: Auth,
+  subprotocolHeader: string | null,
+): Promise<WsBearerAuthorization> => {
   const token = extractBearerSubprotocol(subprotocolHeader)
   if (!token) {
-    return null
+    return unauthorized
   }
-  const session = await auth.api.getSession({
-    headers: new Headers({ Authorization: `Bearer ${token}` }),
-  })
-  const user = session?.user as User | undefined
-  if (!user || user.isAnonymous) {
-    return null
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ Authorization: `Bearer ${token}` }),
+    })
+    const user = session?.user as User | undefined
+    if (!user || user.isAnonymous) {
+      return unauthorized
+    }
+    return { ok: true, user }
+  } catch (error) {
+    console.error(`WebSocket bearer check failed — ${getSafeLogMessage(error)}`)
+    return { ok: false, closeCode: wsCloseAuthUnavailable, closeReason: 'auth unavailable' }
   }
-  return user
 }

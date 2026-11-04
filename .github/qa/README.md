@@ -608,6 +608,22 @@ the outcome must survive a reload. A function that spans two areas has one owner
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 Every charter runs on desktop and phone. The layout probe covers screen fit, so no function lists it.
 
+Transitions, a change made while something is still in flight, are charter steps with the outcome they must reach.
+c2 covers stop then send and a retry after a reply broke off, on the fake AI, which has two triggers in
+`e2e/fake-provider.ts`, read from the text of the latest user message. With `qa:slow` (`slowReplyTrigger`) the reply
+streams one word every 3 s, so the explorer, and a spec that replays it, has time to press Stop. With `qa:cut`
+(`cutReplyTrigger`) the first request with that exact text loses its connection after three words and a retry gets the
+whole reply, so each run must use a fresh text. Replay rewrites a flow's partial fake reply to the full one, so on a
+device c2 checks only the replies that follow. c3 covers a model switch while a reply streams and the next turn
+after a stopped reply on the real providers, where the reply's content shows whether the stopped turn leaked into it.
+c5 stops the weather prompt while its tool runs. The free session's `mind-changer` case stops and switches the model
+mid-reply in one person's style. The steps fit each charter's existing message cap.
+
+Not covered: offline edits, background and resume, an upgrade over existing data and IME composition. The browser tools
+have no offline switch (`--caps network` is off in `mcp.json`), the Maestro allow list keeps the app in the
+foreground, the pipeline builds only the current app, and `drivers/playwright.md` allows `browser_evaluate` only to
+read the page, so no composition event can be sent.
+
 Coverage counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
 attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
 change.
@@ -615,7 +631,8 @@ Text the explorer typed never counts, and a session without a transcript covers 
 was seen at the right moment, not that it shows the outcome: sample covered functions by hand.
 
 The free session plays one case from `journeys.json` (a person, a goal with no steps, and `facts` the explorer
-uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI.
+uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI. It has no message target:
+it sends at most 15 chat messages and stops once every item of its list, and each risk the list names, was tried.
 
 - `explore.sh journey` picks the case: weeks since 1970 modulo the number of cases, so every case runs once before
   any repeats. A dispatch's `journey` input forces one; `charters: free` runs only the free session.

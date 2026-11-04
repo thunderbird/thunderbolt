@@ -9,8 +9,10 @@ saying a tool, a search, the file or the MCP server failed is a finding (`ai-rep
 1. Widgets, one prompt each: "What's the weather like in Berlin this weekend?", "Plot Seattle, Portland, and San
    Francisco together so I can compare their locations.", "Quiz me with one multiple-choice question about email
    protocols." (answer it), "Find me three beginner-friendly TypeScript tutorials." (open a link preview and a
-   citation if shown). Check each widget renders and reacts to clicks. Functions: `weather-widget`, `map-widget`,
-   `quiz-widget`, `search-sources`.
+   citation if shown). Check each widget renders and reacts to clicks. Send the weather prompt first, press Stop
+   while its tool step still runs, then send it again: the stopped step does not spin forever, and the second one
+   renders the widget. Functions: `weather-widget`, `map-widget`, `quiz-widget`, `search-sources`,
+   `tool-interrupted`.
 2. Files: attach `.github/qa/fixtures/sample.pdf` with `browser_file_upload`, ask what it says, and open it in the
    viewer. The reply must state the file's real content. Function: `pdf-read`.
 3. Artifacts: ask for "a small HTML page with a button that counts clicks", open it and click the button.

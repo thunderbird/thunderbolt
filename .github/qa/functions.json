@@ -42,12 +42,19 @@
       "id": "long-thread",
       "outcome": "A thread of 12 or more messages, with a 2,000-character prompt and one with Markdown and code, shows every message in order with Markdown and code rendered"
     },
-    { "id": "stop-reply", "outcome": "Stopping a reply mid-stream ends it, and the next message gets a full reply" },
+    {
+      "id": "stop-reply",
+      "outcome": "A reply stopped mid-stream keeps the words it showed, and the next message gets exactly one full reply; both replies are unchanged after a reload",
+      "reload": true
+    },
     {
       "id": "sidebar-toggle",
       "outcome": "The sidebar opens and closes: a drawer on a phone, a collapsible panel on a wide screen"
     },
-    { "id": "regenerate", "outcome": "Retrying or regenerating a reply gives a new reply in its place" },
+    {
+      "id": "retry-partial",
+      "outcome": "After a reply's connection drops mid-stream, the app retries or offers Retry, and one full reply takes the partial one's place"
+    },
     { "id": "chat-rename", "outcome": "A renamed chat shows its new name in the sidebar", "reload": true },
     {
       "id": "chat-delete",
@@ -79,16 +86,20 @@
     },
     { "id": "model-persists", "outcome": "The model selected in a thread is still the selected one", "reload": true },
     {
+      "id": "switch-while-streaming",
+      "outcome": "Switching the model while a reply streams ends that reply once, never doubled, and the follow-up's reply comes from the new model and follows the thread"
+    },
+    {
       "id": "multi-turn-opus-5-5",
-      "outcome": "In three turns with \"Opus 5.5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+      "outcome": "In three turns with \"Opus 5.5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"
     },
     {
       "id": "multi-turn-deepseek-v4-1-flash",
-      "outcome": "In three turns with \"DeepSeek V4.1 Flash\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+      "outcome": "In three turns with \"DeepSeek V4.1 Flash\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"
     },
     {
       "id": "multi-turn-glm-5-3",
-      "outcome": "In three turns with \"GLM 5.3\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+      "outcome": "In three turns with \"GLM 5.3\" each reply follows the earlier turns, and after a stopped reply the next message gets a full reply to it alone, without repeating the stopped answer"
     },
     {
       "id": "model-disable",
@@ -202,7 +213,11 @@
       "id": "mcp-broken-url",
       "outcome": "Changing the server's URL to port 9 is refused or shows a connection error, and a chat that needs the tool says it failed without hanging"
     },
-    { "id": "mcp-remove", "outcome": "A removed MCP server is gone from the list", "reload": true }
+    { "id": "mcp-remove", "outcome": "A removed MCP server is gone from the list", "reload": true },
+    {
+      "id": "tool-interrupted",
+      "outcome": "A reply stopped while its tool step runs leaves no step spinning, and the same question sent again gets an answer with its widget"
+    }
   ],
   "c6-settings-data": [
     { "id": "pref-name", "outcome": "A changed preferred name shows in Settings → Preferences", "reload": true },

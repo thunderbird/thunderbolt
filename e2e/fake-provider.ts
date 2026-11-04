@@ -15,12 +15,43 @@ export const fakeProviderReply = 'Hello from the fake provider, one word at a ti
  */
 export const unsupportedRequestMarker = '[fake-provider] unsupported'
 
+/**
+ * In the latest user message: the reply streams one word every 3 s instead of every 150 ms, so the QA agent has time
+ * to stop it or switch the model while it streams.
+ */
+export const slowReplyTrigger = 'qa:slow'
+
+/**
+ * In the latest user message: the first request with that exact text loses its connection after three words, and the
+ * same text again (a retry) gets the whole reply.
+ */
+export const cutReplyTrigger = 'qa:cut'
+
 const replyWords = fakeProviderReply.match(/\S+\s*/g)!
 
-/** Writes each word of the reply after a pause; stops early once the client has gone (a stopped reply). */
-const streamWords = async (res: ServerResponse, write: (text: string) => void) => {
-  for (const text of replyWords) {
-    await setTimeout(150)
+type Pace = { pauseMs: number; cutAfter?: number }
+
+/**
+ * How the fake streams its reply to a request whose latest user message reads `text`. `cut` holds the texts already
+ * cut off, so that a retry of one gets the whole reply.
+ */
+export const paceOf = (text: string, cut: Set<string>): Pace => {
+  const pauseMs = text.includes(slowReplyTrigger) ? 3000 : 150
+  if (!text.includes(cutReplyTrigger) || cut.has(text)) {
+    return { pauseMs }
+  }
+  cut.add(text)
+  return { pauseMs, cutAfter: 3 }
+}
+
+/** Writes each word of the reply after a pause; stops early once the client has gone (a stopped reply) or at a cut. */
+const streamWords = async (res: ServerResponse, pace: Pace, write: (text: string) => void) => {
+  for (const [index, text] of replyWords.entries()) {
+    if (index === pace.cutAfter) {
+      res.destroy()
+      return false
+    }
+    await setTimeout(pace.pauseMs)
     if (res.destroyed) {
       return false
     }
@@ -30,7 +61,7 @@ const streamWords = async (res: ServerResponse, write: (text: string) => void) =
 }
 
 /** The native Anthropic Messages stream, which the backend's `/chat/v1/messages` route relays. */
-const streamMessages = async (res: ServerResponse) => {
+const streamMessages = async (res: ServerResponse, pace: Pace) => {
   /** Write a native Messages event with its SSE event name. */
   const writeEvent = (event: RawMessageStreamEvent) => {
     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
@@ -61,7 +92,7 @@ const streamMessages = async (res: ServerResponse) => {
     },
   })
   writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
-  const finished = await streamWords(res, (text) =>
+  const finished = await streamWords(res, pace, (text) =>
     writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }),
   )
   if (!finished) {
@@ -83,14 +114,14 @@ type ChunkUsage = { prompt_tokens: number; completion_tokens: number; total_toke
  * The OpenAI-compatible chat completions stream, which the backend's `/chat/completions` route relays for a managed
  * model without the Anthropic vendor. It ends with the usage chunk the backend's ledger reads.
  */
-const streamChatCompletion = async (res: ServerResponse, model: string) => {
+const streamChatCompletion = async (res: ServerResponse, model: string, pace: Pace) => {
   const id = `chatcmpl-${crypto.randomUUID()}`
   const created = Math.floor(Date.now() / 1000)
   const writeChunk = (choices: ChunkChoice[], usage: ChunkUsage | null = null) => {
     res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model, choices, usage })}\n\n`)
   }
   writeChunk([{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }])
-  const finished = await streamWords(res, (content) =>
+  const finished = await streamWords(res, pace, (content) =>
     writeChunk([{ index: 0, delta: { content }, finish_reason: null }]),
   )
   if (!finished) {
@@ -101,7 +132,26 @@ const streamChatCompletion = async (res: ServerResponse, model: string) => {
   res.write('data: [DONE]\n\n')
 }
 
-const requestSchema = z.object({ stream: z.boolean().optional(), model: z.string().default('fake-model') })
+const textPart = z.object({ type: z.literal('text'), text: z.string() })
+
+/** What the user typed in a message, in either API's shape; a tool result's blocks carry no text part. */
+const userText = z
+  .object({
+    role: z.literal('user'),
+    content: z.union([
+      z.string(),
+      z.array(z.unknown()).transform((parts) => parts.flatMap((part) => textPart.safeParse(part).data?.text ?? [])),
+    ]),
+  })
+  .transform(({ content }) => [content].flat().join('\n'))
+
+const requestSchema = z
+  .object({
+    stream: z.boolean().optional(),
+    model: z.string().default('fake-model'),
+    messages: z.array(z.unknown()).default([]),
+  })
+  .transform(({ messages, ...request }) => ({ ...request, latestText: userText.safeParse(messages.at(-1)).data ?? '' }))
 
 /** The fields the fake reads from a JSON request body, or undefined when it is not JSON or has another shape. */
 const readRequest = async (req: IncomingMessage) => {
@@ -133,19 +183,20 @@ const requestProblem = (method: string | undefined, body: z.infer<typeof request
  * Anything else gets a 404 and an `unsupportedRequestMarker` line on stderr.
  */
 export const createFakeProvider = async (port: number): Promise<Server> => {
+  const cut = new Set<string>()
   const server = createServer(async (req, res) => {
     const { pathname } = new URL(req.url!, `http://localhost:${port}`)
     const body = req.method === 'POST' ? await readRequest(req) : undefined
     const stream = body?.stream === true
     if (stream && pathname === '/v1/messages') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-      await streamMessages(res)
+      await streamMessages(res, paceOf(body.latestText, cut))
       res.end()
       return
     }
     if (stream && pathname === '/v1/chat/completions') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-      await streamChatCompletion(res, body.model)
+      await streamChatCompletion(res, body.model, paceOf(body.latestText, cut))
       res.end()
       return
     }

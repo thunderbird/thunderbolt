@@ -7,7 +7,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { streamText } from 'ai'
 import { z } from 'zod'
-import { createFakeProvider, fakeProviderReply, unsupportedRequestMarker } from './fake-provider'
+import {
+  createFakeProvider,
+  fakeProviderReply,
+  cutReplyTrigger,
+  paceOf,
+  slowReplyTrigger,
+  unsupportedRequestMarker,
+} from './fake-provider'
 
 /** Runs `use` against a fresh fake provider on a free port. */
 const withFakeProvider = async (use: (origin: string) => Promise<void>) => {
@@ -68,3 +75,57 @@ test.each([
     }
   }),
 )
+
+test('the triggers set the pace, and a cut text is cut only once', () => {
+  const cut = new Set<string>()
+  expect(paceOf('Write a story', cut)).toEqual({ pauseMs: 150 })
+  expect(paceOf(`Write a story ${slowReplyTrigger}`, cut)).toEqual({ pauseMs: 3000 })
+  expect(paceOf(`Write a story ${cutReplyTrigger} 1`, cut)).toEqual({ pauseMs: 150, cutAfter: 3 })
+  expect(paceOf(`Write a story ${cutReplyTrigger} 1`, cut)).toEqual({ pauseMs: 150 })
+  expect(paceOf(`Write a story ${cutReplyTrigger} 2`, cut)).toEqual({ pauseMs: 150, cutAfter: 3 })
+})
+
+/** A Messages request whose history holds `history` and whose latest user turn is `latest`. */
+const request = (latest: Anthropic.MessageParam['content'], history = 'Hello') => ({
+  model: 'test-model',
+  max_tokens: 100,
+  messages: [
+    { role: 'user' as const, content: history },
+    { role: 'assistant' as const, content: fakeProviderReply },
+    { role: 'user' as const, content: latest },
+  ],
+})
+
+test('only text the user typed in the latest message slows the reply', () =>
+  withFakeProvider(async (origin) => {
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: origin, maxRetries: 0 })
+    const toolResult = [{ type: 'tool_result' as const, tool_use_id: 'tool-1', content: slowReplyTrigger }]
+    for (const latest of ['Plain again', toolResult]) {
+      const started = performance.now()
+      const message = await client.messages.stream(request(latest, `Earlier ${slowReplyTrigger}`)).finalMessage()
+      expect(message.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+      expect(performance.now() - started).toBeLessThan(2_900)
+    }
+  }))
+
+test('a slow reply streams its first word after 3 s', () =>
+  withFakeProvider(async (origin) => {
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: origin, maxRetries: 0 })
+    const started = performance.now()
+    const latest = [{ type: 'text' as const, text: `Again ${slowReplyTrigger}` }]
+    for await (const event of client.messages.stream(request(latest))) {
+      if (event.type === 'content_block_delta') {
+        break
+      }
+    }
+    expect(performance.now() - started).toBeGreaterThanOrEqual(2_900)
+  }))
+
+test('a cut reply loses its connection mid-stream, and the same request again gets the whole reply', () =>
+  withFakeProvider(async (origin) => {
+    const client = new Anthropic({ apiKey: 'test-key', baseURL: origin, maxRetries: 0 })
+    const cutRequest = request(`Tell me more ${cutReplyTrigger}`)
+    await expect(client.messages.stream(cutRequest).finalMessage()).rejects.toThrow()
+    const retried = await client.messages.stream(cutRequest).finalMessage()
+    expect(retried.content).toMatchObject([{ type: 'text', text: fakeProviderReply }])
+  }))

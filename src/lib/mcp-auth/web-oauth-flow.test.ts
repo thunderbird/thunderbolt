@@ -204,15 +204,41 @@ describe('startMcpOAuthFlow', () => {
     expect(startedWith?.state).toBe(handshake.stateNonce ?? undefined)
     expect(handshake.clientInfo ?? '').toContain('dcr-client')
 
-    // DCR client_id is persisted per-AS into the oauth credential blob.
-    const cred = await getMcpServerCredentials(db, serverId)
-    expect(cred?.type).toBe('oauth')
-    if (cred?.type === 'oauth') {
-      expect(cred.clientId).toBe('dcr-client')
-    }
+    // The client_id travels in the handshake; nothing reaches the credential store before the code exchange.
+    expect(await getMcpServerCredentials(db, serverId)).toBeNull()
 
     // The browser is redirected to the authorization URL after the handshake is saved.
     expect(redirectedTo).toBe(`${authServerUrl}/authorize?x=1`)
+  })
+
+  it('leaves the stored credentials untouched when a re-authorization is abandoned', async () => {
+    const db = getDb()
+    const existing = {
+      type: 'oauth',
+      access_token: 'a1',
+      refresh_token: 'r1',
+      expires_at: 1_700_000_000_000,
+      clientId: 'old-client',
+      issuer: authServerUrl,
+      tokenEndpoint: `${authServerUrl}/token`,
+    } as const
+    await setMcpServerCredentials(db, serverId, existing)
+
+    await startMcpOAuthFlow(
+      { db, serverId, serverUrl, fetchFn: noFetch, origin, isBackendConnected: () => false },
+      {
+        ...happyDiscovery(metadata()),
+        registerClient: async () =>
+          ({ client_id: 'new-client', redirect_uris: [`${origin}/oauth/callback`] }) as OAuthClientInformationFull,
+        startAuthorization: async () => ({
+          authorizationUrl: new URL(`${authServerUrl}/authorize`),
+          codeVerifier: 'verifier-1',
+        }),
+      },
+    )
+
+    // The user never returns: the old refresh token must still pair with its own client.
+    expect(await getMcpServerCredentials(db, serverId)).toEqual(existing)
   })
 
   it('requests the resource-advertised scopes_supported on registration and authorization', async () => {
@@ -821,10 +847,8 @@ describe('startMcpOAuthFlow — desktop loopback', () => {
 
     // No stuck handshake blocks a retry.
     expect(getMcpOAuthState().serverId).toBeNull()
-    // DCR ran, so the placeholder oauth blob (client_id, empty token) exists — but
-    // no real access token was issued, exactly as in the web flow before callback.
-    const cred = await getMcpServerCredentials(db, serverId)
-    expect(cred?.type === 'oauth' && cred.access_token).toBe('')
+    // DCR ran, but an unfinished flow writes no credential, exactly as in the web flow before callback.
+    expect(await getMcpServerCredentials(db, serverId)).toBeNull()
   })
 
   it('surfaces an error returned by the loopback callback without exchanging', async () => {

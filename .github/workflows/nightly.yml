@@ -205,7 +205,7 @@ jobs:
 
   native-linux:
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,13 +214,14 @@ jobs:
         with:
           bun-version: 1.4.4
 
+      # webkitgtk-webdriver is the 26.04 name of webkit2gtk-driver; it provides WebKitWebDriver.
       - name: Install Linux drivers and dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
             build-essential curl wget file pkg-config libxdo-dev libssl-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
-            webkit2gtk-driver xvfb ffmpeg
+            webkitgtk-webdriver xvfb ffmpeg
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
           cargo install tauri-driver --locked

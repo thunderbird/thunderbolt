@@ -4311,6 +4311,7 @@ msgstr ""
 msgid "Theme"
 msgstr "Thème"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx

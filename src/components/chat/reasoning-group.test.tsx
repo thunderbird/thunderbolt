@@ -160,6 +160,23 @@ describe('ReasoningGroup', () => {
       expect(status.textContent?.trim().length ?? 0).toBeGreaterThan(0)
     })
 
+    it('names the trigger while reasoning streams before any tool call', () => {
+      const reasoningPart = createMockReasoningPart('streaming')
+      const parts: ReasoningGroupItem[] = [{ type: 'reasoning', content: reasoningPart, id: 'reasoning-0' }]
+      render(
+        <ReasoningGroup
+          parts={parts}
+          isStreaming={true}
+          isLastPartInMessage={true}
+          hasTextPart={false}
+          reasoningTime={testReasoningTime}
+        />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.getByRole('button', { name: 'Thinking' })).toBeInTheDocument()
+    })
+
     it('should not expose the active tool status once streaming completes', () => {
       const toolPart = createMockToolPart('search')
       const parts: ReasoningGroupItem[] = [{ type: 'tool', content: toolPart, id: toolPart.toolCallId }]

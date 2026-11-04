@@ -42,6 +42,7 @@ type SearchRow =
   | readonly [parentId: string | null, snippet: string | null]
   | { parent_id: string | null; snippet: string | null }
 
+/** Distinguishes positional result rows from keyed row objects. */
 const isSearchRowTuple = (row: SearchRow): row is readonly [string | null, string | null] => Array.isArray(row)
 
 const maxHits = 8

@@ -6,10 +6,11 @@ import { useDatabase } from '@/contexts'
 import { defaultSettings } from '@/defaults/settings'
 import { isSettingModified } from '@/defaults/utils'
 import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { deserializeValue, inferTypeFromSchema } from '@/lib/serialization'
 import { camelCased } from '@/lib/utils'
 import type { Setting } from '@/types'
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { usePowerSync } from '@powersync/react'
 import { useEffect, useMemo } from 'react'
 import { subscribeToSettingsChanges } from './settings-subscription'
@@ -111,6 +112,33 @@ type UseSettingsSchemaResult<T extends SettingSchema, CamelCase extends boolean 
     }
 
 /**
+ * Reload every cached settings query that holds a just-persisted key.
+ *
+ * The change notification refetches these queries too, but a later write's
+ * notification cancels that refetch. A hook that writes when its cached value
+ * is still unset (seeding) would then see the stale value as soon as the write
+ * resolves and write again, and each write cancels the refetch that would stop
+ * it. Running this before the mutation settles means `isSaving` only clears
+ * once the cache matches the database.
+ */
+const refreshSettingQueries = async (db: AnyDrizzleDatabase, queryClient: QueryClient, key: string) => {
+  const filters = {
+    queryKey: ['settings'],
+    predicate: ({ queryKey }: { queryKey: readonly unknown[] }) => queryKey.includes(key),
+  }
+  // An in-flight refetch may have read the row before the write and would overwrite it on landing.
+  await queryClient.cancelQueries(filters)
+  // Reload all of each query's keys: the cancelled refetch may have been carrying another key's write.
+  const queries = queryClient.getQueryCache().findAll(filters)
+  await Promise.all(
+    queries.map(async ({ queryKey }) => {
+      const [, ...keys] = queryKey as string[]
+      queryClient.setQueryData(queryKey, await getSettingsRecords(db, keys))
+    }),
+  )
+}
+
+/**
  * Hook for managing multiple settings with modification tracking and reset capability
  *
  * Returns an object where each key is a setting, allowing clean destructuring.
@@ -192,6 +220,7 @@ export function useSettings<T extends SettingSchema>(
       value: string | number | boolean | null
       options?: { recomputeHash?: boolean; updateHashOnly?: boolean }
     }) => updateSettings(db, { [key]: value }, options),
+    onSuccess: (_, { key }) => refreshSettingQueries(db, queryClient, key),
   })
 
   const resetMutation = useMutation({
@@ -202,6 +231,7 @@ export function useSettings<T extends SettingSchema>(
       }
       await resetSettingToDefault(db, key, defaultSetting)
     },
+    onSuccess: (_, key) => refreshSettingQueries(db, queryClient, key),
   })
 
   // Create lookup by key

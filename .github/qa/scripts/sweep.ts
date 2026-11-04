@@ -68,14 +68,14 @@ const dimensions = {
  * The app keeps the language it is switched to, so the German state runs last.
  */
 export const nativeSweepStates = [
-  { name: 'composer-keyboard', flow: 'composer-keyboard' },
+  { name: 'composer-keyboard', flow: 'composer-keyboard', keyboard: true },
   { name: 'sidebar', flow: 'sidebar' },
   { name: 'sheet', flow: 'sheet' },
   { name: 'settings', flow: 'settings' },
   { name: 'dialog', flow: 'dialog' },
   { name: 'reply', flow: 'reply' },
   // Android's WebView scales its text with the system font size, iOS's does not, so these run on Android only.
-  { name: 'composer-keyboard-large', flow: 'composer-keyboard', large: true },
+  { name: 'composer-keyboard-large', flow: 'composer-keyboard', large: true, keyboard: true },
   { name: 'settings-large', flow: 'settings', large: true },
   { name: 'settings-de', flow: 'settings-de' },
 ] as const

@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { nativeStatesFor } from './sweep'
-import { probeLines, summarize, type StateResult } from './sweep-native'
+import { probeLines, stateProblems, summarize, type StateResult } from './sweep-native'
 
 describe('probeLines', () => {
   const log = [
@@ -27,6 +29,30 @@ describe('probeLines', () => {
       '[qa-layout] focus-covered textbox "Ask me anything…"',
       '[qa-layout] unnamed-control link "after Docs"',
     ]))
+})
+
+describe('stateProblems', () => {
+  // Recorded on the simulator: the sign-in name field with the keyboard up, and the welcome screen without it.
+  const fixture = (name: string) => readFileSync(resolve(import.meta.dirname, '../fixtures/native', name), 'utf8')
+  const withKeyboard = fixture('hier-name-kb.json')
+  const ready = '... CONSOLE LOG [qa-layout] ready'
+
+  test('a measured screen with nothing wrong has no problem', () =>
+    expect(stateProblems({ log: ready, tree: withKeyboard, platform: 'ios', keyboard: true })).toEqual([]))
+
+  test('fails a state whose measurement never ran, instead of passing it clean', () => {
+    expect(stateProblems({ log: '', tree: withKeyboard, platform: 'ios', keyboard: false })).toEqual([
+      '[qa-sweep] the layout probe never reported ready',
+    ])
+    expect(stateProblems({ log: ready, tree: undefined, platform: 'ios', keyboard: false })).toEqual([
+      '[qa-sweep] maestro hierarchy failed',
+    ])
+  })
+
+  test('fails a keyboard state whose keyboard never opened', () =>
+    expect(
+      stateProblems({ log: ready, tree: fixture('hier-00-welcome.json'), platform: 'ios', keyboard: true }),
+    ).toEqual(['[qa-sweep] the keyboard is not open']))
 })
 
 describe('summarize', () => {

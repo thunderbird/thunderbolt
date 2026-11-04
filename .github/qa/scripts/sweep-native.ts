@@ -36,6 +36,30 @@ export const probeLines = (log: string, platform: 'ios' | 'android') => [
 
 // shortcut: a screen-wide similarity threshold, so a change smaller than 3% of the screen (one word of the chat's
 // greeting, which follows the hour) passes; crop per state once Maestro's cropOn can name a WebView region.
+/**
+ * A state's problems: the probe's lines, the tree's rules, and whatever kept them from measuring, so a dead log
+ * stream, a failed `maestro hierarchy` or a keyboard that never opened fails the state instead of passing it clean.
+ * `tree` is the hierarchy's JSON, undefined when Maestro could not dump it.
+ */
+export const stateProblems = (opts: {
+  log: string
+  tree: string | undefined
+  platform: 'ios' | 'android'
+  keyboard: boolean
+}) => {
+  const measure = opts.tree === undefined ? undefined : measureNative(parseHierarchy(opts.tree), opts.platform)
+  const gaps: [boolean, string][] = [
+    [!opts.log.includes('[qa-layout] ready'), '[qa-sweep] the layout probe never reported ready'],
+    [measure === undefined, '[qa-sweep] maestro hierarchy failed'],
+    [opts.keyboard && measure !== undefined && measure.keyboard === undefined, '[qa-sweep] the keyboard is not open'],
+  ]
+  return [
+    ...probeLines(opts.log, opts.platform),
+    ...(measure?.problems ?? []),
+    ...gaps.filter(([gap]) => gap).map(([, line]) => line),
+  ]
+}
+
 const compareFlow = (baseline: string) =>
   `- assertScreenshot:\n    path: ${JSON.stringify(baseline)}\n    thresholdPercentage: 97\n`
 // Maestro writes a screenshot only inside the run's --test-output-dir.
@@ -113,8 +137,11 @@ const main = async () => {
     const baseline = resolve(qaDir, 'sweep-baselines', platform, `${name}.png`)
     if (existsSync(baseline)) {
       if (await maestro(`${name}.screenshot`, compareFlow(baseline))) return 'matches'
-      // Maestro writes its diff beside the baseline; it belongs with the run's output.
-      await rename(baseline.replace(/\.png$/, '_diff.png'), resolve(out, 'diffs', `${name}.png`))
+      // Maestro writes its diff beside the baseline, and only when it compared: a flow that failed before (a driver
+      // that never started) left none, and says nothing about the screen.
+      const diff = baseline.replace(/\.png$/, '_diff.png')
+      if (!existsSync(diff)) return 'none'
+      await rename(diff, resolve(out, 'diffs', `${name}.png`))
       return 'differs'
     }
     if (!(await maestro(`${name}.screenshot`, candidateFlow(name)))) return 'none'
@@ -141,17 +168,25 @@ const main = async () => {
     await Bun.sleep(2000)
     const log = (await Bun.file(webviewLog).text()).slice(offset)
     const tree = await Bun.$`maestro --udid ${device} hierarchy`.nothrow().quiet()
-    const problems = [
-      ...probeLines(log, platform),
-      ...(tree.exitCode === 0 ? measureNative(parseHierarchy(tree.stdout.toString()), platform).problems : []),
-    ]
+    const problems = stateProblems({
+      log,
+      tree: tree.exitCode === 0 ? tree.stdout.toString() : undefined,
+      platform,
+      keyboard: 'keyboard' in state,
+    })
     const screenshot = reached ? await screenshotOf(state.name) : 'none'
-    if (large) await adb('settings', 'put', 'system', 'font_scale', '1.0')
     return { state: state.name, reached, problems, screenshot }
   }
 
   const results: StateResult[] = []
-  for (const state of nativeStatesFor(platform)) results.push(await sweepState(state))
+  for (const state of nativeStatesFor(platform)) {
+    // A large-text state must not leave its font scale to the states after it, even when it throws.
+    try {
+      results.push(await sweepState(state))
+    } finally {
+      if ('large' in state) await adb('settings', 'put', 'system', 'font_scale', '1.0')
+    }
+  }
   await writeFile(resolve(out, 'sweep-native.json'), JSON.stringify(results, null, 2))
   const { ok, lines } = summarize(results)
   console.log([`## Layout sweep on ${platform}`, '', ...lines].join('\n'))

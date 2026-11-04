@@ -1,0 +1,7 @@
+# Layout sweep (scripts/sweep-native.ts): the sidebar drawer. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: Toggle Sidebar
+- waitForAnimationToEnd

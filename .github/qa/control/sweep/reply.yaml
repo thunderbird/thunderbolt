@@ -1,0 +1,19 @@
+# Layout sweep (scripts/sweep-native.ts): a finished reply from the fake provider, which only Opus 5.5 reaches. The
+# model picker opens on the way, by the default model's name. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: DeepSeek V4.1 Flash
+- waitForAnimationToEnd
+- tapOn: Opus 5.5
+- tapOn:
+    text: Ask me anything…
+    retryTapIfNoChange: true
+- inputText: Plan a two-day budget.
+- tapOn: Send message
+- extendedWaitUntil:
+    visible: Hello from the fake provider, one word at a time.
+    timeout: 60000
+- hideKeyboard
+- waitForAnimationToEnd

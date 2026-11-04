@@ -1,0 +1,13 @@
+# Layout sweep (scripts/sweep-native.ts): the Preferences form. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: Toggle Sidebar
+# The sidebar's Settings section, then its first page.
+- tapOn: Settings
+- tapOn: Preferences
+- extendedWaitUntil:
+    visible: User Experience
+    timeout: 30000
+- waitForAnimationToEnd

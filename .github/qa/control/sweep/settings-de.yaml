@@ -1,0 +1,28 @@
+# Layout sweep (scripts/sweep-native.ts): the Preferences form in German, the longest of the shipped languages. The
+# app keeps the language, so this state runs last. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: Toggle Sidebar
+- tapOn: Settings
+- tapOn: Preferences
+- extendedWaitUntil:
+    visible: User Experience
+    timeout: 30000
+- scrollUntilVisible:
+    element: Language
+    direction: DOWN
+# The combobox's text ends in a line break on iOS, and Maestro matches the whole text.
+- tapOn: English\s*
+- tapOn: Deutsch\s*
+- extendedWaitUntil:
+    visible: Sprache
+    timeout: 30000
+# Back to the top of the form, a scroll position the same on every run.
+- repeat:
+    times: 6
+    commands:
+      - swipe:
+          direction: DOWN
+- waitForAnimationToEnd

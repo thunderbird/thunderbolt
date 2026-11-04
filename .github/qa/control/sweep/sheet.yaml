@@ -1,0 +1,11 @@
+# Layout sweep (scripts/sweep-native.ts): the composer's "Add to chat" sheet, the drawer the model picker also uses.
+# Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: Add to chat
+- extendedWaitUntil:
+    visible: Upload file
+    timeout: 30000
+- waitForAnimationToEnd

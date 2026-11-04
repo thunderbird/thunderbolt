@@ -1,0 +1,11 @@
+# Layout sweep (scripts/sweep-native.ts): the composer with the keyboard open and a long draft. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn:
+    text: Ask me anything…
+    retryTapIfNoChange: true
+# ASCII only: Android's inputText types no umlaut. A long unbroken word is what overflows first.
+- inputText: Kannst du die Donaudampfschifffahrtsgesellschaftskapitaensmuetzenabzeichen zusammenfassen?
+- waitForAnimationToEnd

@@ -1,0 +1,21 @@
+# Layout sweep (scripts/sweep-native.ts): the account deletion dialog, opened and never confirmed. Starts signed in.
+- launchApp
+- extendedWaitUntil:
+    visible: Ask me anything…
+    timeout: 120000
+- tapOn: Toggle Sidebar
+- tapOn: Settings
+- tapOn: Preferences
+- extendedWaitUntil:
+    visible: User Experience
+    timeout: 30000
+# To the end of the form, a scroll position the dialog's background shows the same on every run.
+- repeat:
+    times: 8
+    commands:
+      - scroll
+- tapOn: Delete My Account
+- extendedWaitUntil:
+    visible: Cancel
+    timeout: 30000
+- waitForAnimationToEnd

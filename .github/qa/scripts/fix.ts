@@ -373,11 +373,13 @@ export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
 }
 
 /**
- * Whether a task's patch must carry a unit test that fails without the fix: every web task whose PR adds no
- * regression spec (see `whyNoSpec`). Where it adds one, that browser check failed without the patch and passed with
- * it, which happy-dom cannot match for layout, so it is the proof. A native task keeps its Maestro check.
+ * Whether a task's patch must carry a unit test that fails without the fix: every web task but a layout or visual one
+ * whose PR adds the browser check as its regression spec (see `whyNoSpec`). That check failed without the patch and
+ * passed with it, which happy-dom cannot match for geometry, so it is the proof. Data lost on a reload gets the spec
+ * and keeps the unit test, since persistence is logic. A native task keeps its Maestro check.
  */
-export const needsUnitTest = (task: Omit<FixTask, 'unitTest'>) => !('flow' in task) && whyNoSpec(task) !== undefined
+export const needsUnitTest = (task: Omit<FixTask, 'unitTest'>) =>
+  !('flow' in task) && (whyNoSpec(task) !== undefined || task.finding.oracle.type === 'lost-on-reload')
 
 /** Named exports of `e2e/test.ts`; a spec importing only these can switch to the repo fixture. */
 const e2eTestExports = new Set(['test', 'expect', 'Page', 'Request', 'Route'])
@@ -597,8 +599,8 @@ type CheckTestsOptions = {
 /**
  * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: a named test must fail with
  * only the patch's hunks for its test files and its added files applied (`failsWithout`; see `testFailed`), and every
- * run must pass with the whole patch (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
- * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
+ * run must pass with the whole patch (`passesWith`). Both are false for a patch with no test file. One process runs
+ * both halves, so code a test leaves behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
  * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes, and
  * only the snapshot files are opened to it. A patch that adds or changes a symlink or submodule runs no test.
  */
@@ -890,7 +892,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
       needed: task.unitTest,
       reason: unitTests
         ? "the patch's unit tests did not fail without the fix and pass with it (a test that only fails to load or set up does not count)"
-        : `${noTestReason}, and a web fix without a regression spec needs one that fails without the fix`,
+        : `${noTestReason}, and a web fix that no browser check proves needs one that fails without the fix`,
     },
     {
       check: 'real',
@@ -1030,9 +1032,11 @@ const conventionalTitle = /^(feat|fix|chore|docs|refactor|perf|test|ci|build|sty
  */
 const titleOf = async (outDir: string, task: FixTask) => {
   const file = Bun.file(join(outDir, 'fix', `${task.fp}.title`))
-  const written = (await file.exists()) ? oneLine((await file.text()).split('\n')[0]) : ''
-  const usable = conventionalTitle.test(written) && !secretPattern.test(written)
-  return clip(usable ? written : `fix: ${oneLine(task.finding.title)}`)
+  const text = (await file.exists()) ? (await file.text()).split('\n')[0] : ''
+  // Sanitized like the ticket fields, and checked after the cut, which could leave `fix:` alone.
+  const written = clip(oneLine(sanitize(text, Infinity)))
+  const usable = conventionalTitle.test(written) && !secretPattern.test(text)
+  return usable ? written : clip(`fix: ${oneLine(task.finding.title)}`)
 }
 
 /** What the checks a published fix passed showed (see `missingPasses`), one paragraph. */
@@ -1049,11 +1053,11 @@ const evidenceOf = (task: FixTask, spec: { path: string } | undefined) => {
         ? 'The repro spec passed three times on the real AI providers with the patched frontend.'
         : 'The repro spec that confirmed the bug passed three times on the patched code.'
   const why = whyNoSpec(task)
-  if (why || !spec) {
-    const unit = "The patch's unit tests fail without the fix and pass with it."
-    return `${proof} ${noSpecText[why === 'onboarding' || why === 'real' ? why : 'unit']} ${unit}`
-  }
-  return `${proof} It is added with its assertions unchanged as \`${spec.path}\`.`
+  const guard = spec
+    ? `It is added with its assertions unchanged as \`${spec.path}\`.`
+    : noSpecText[why === 'onboarding' || why === 'real' ? why : 'unit']
+  const unit = task.unitTest ? " The patch's unit tests fail without the fix and pass with it." : ''
+  return `${proof} ${guard}${unit}`
 }
 
 /**

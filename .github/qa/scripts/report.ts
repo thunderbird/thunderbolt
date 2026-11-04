@@ -789,7 +789,8 @@ export const runFixPrs = async (
     '-f',
     `query=${query}`,
     '-f',
-    `q=repo:${repo} is:pr author:app/${qaApp}`,
+    // Newest first: search otherwise sorts by relevance, so the first 100 would be any 100.
+    `q=repo:${repo} is:pr author:app/${qaApp} sort:created-desc`,
   ])
   const { data }: { data: { search: { nodes: FixPr[] } } } = JSON.parse(out)
   const section = fixPrSection(data.search.nodes)

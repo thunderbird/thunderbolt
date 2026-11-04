@@ -909,11 +909,11 @@ describe('whyNoSpec', () => {
     expect(whyNoSpec(task({ real: true }))).toBe('real')
   })
 
-  test('asks for a unit test only from a web fix whose PR adds no regression spec', () => {
-    // The browser check that becomes the regression spec proves a layout, visual or reload fix.
+  test('asks every web fix for a unit test but a layout or visual one, which its browser check proves', () => {
     expect(needsUnitTest(task())).toBe(false)
     expect(needsUnitTest(task({ proof: { kind: 'visual' } }, oracle('visual')))).toBe(false)
-    expect(needsUnitTest(task({}, oracle('lost-on-reload')))).toBe(false)
+    // Persistence is logic: a reload fix gets the spec and keeps the unit test.
+    expect(needsUnitTest(task({}, oracle('lost-on-reload')))).toBe(true)
     // A missing name and logic, and the sessions whose check never becomes a spec, keep the unit test.
     expect(needsUnitTest(task({}, oracle('layout', '[qa-layout] unnamed-control button "x"')))).toBe(true)
     expect(needsUnitTest(task({}, oracle('stuck')))).toBe(true)
@@ -1308,7 +1308,10 @@ describe('checkTests', () => {
     await patchOf({ 'src/title.ts': fixed, 'src/title.test.ts': titleTest('  Renamed  ') })
     expect(await check()).toEqual({ failsWithout: true, passesWith: true })
     // The runner the workflow uses, which also copies the output to the job log.
-    expect(await check(undefined)).toEqual({ failsWithout: true, passesWith: true })
+    expect(await checkTests({ outDir, fp, repoDir: repo, run: git, log: () => {} })).toEqual({
+      failsWithout: true,
+      passesWith: true,
+    })
   }, 20_000)
 
   test('rejects a test that fails without the fix only because it cannot load or set up', async () => {
@@ -1815,7 +1818,8 @@ describe('publish', () => {
       commit:
         'fix: Renaming a chat loses its title\n\n' +
         'The repro spec that confirmed the bug passed three times on the patched code. It is added with its\n' +
-        'assertions unchanged as e2e/consumer-qa-ab12cd34.spec.ts.',
+        "assertions unchanged as e2e/consumer-qa-ab12cd34.spec.ts. The patch's unit tests fail without the\n" +
+        'fix and pass with it.',
     })
     expect(runs.map((r) => r.cmd.slice(0, 2).join(' '))).toEqual(['git read-tree', 'git apply', 'git diff'])
     expect(runs[1].cmd).toContain('--cached')
@@ -1871,7 +1875,8 @@ describe('publish', () => {
     // What the checks showed and who wrote it, without the pipeline's own labels.
     expect(pr.stdin).toBe(
       'The repro spec that confirmed the bug passed three times on the patched code. It is added with its ' +
-        'assertions unchanged as `e2e/consumer-qa-ab12cd34.spec.ts`.\n\n' +
+        "assertions unchanged as `e2e/consumer-qa-ab12cd34.spec.ts`. The patch's unit tests fail without the fix and " +
+        'pass with it.\n\n' +
         'An AI agent wrote this change. Review it like an outside contribution: the QA pipeline never merges, ' +
         'approves or marks PRs ready.',
     )
@@ -2088,6 +2093,9 @@ describe('publish', () => {
         title: 'fix: Renaming a chat loses its title',
       })
     expect(await titled()).toBe('fix: Renaming a chat loses its title')
+    // A foreign link goes, as in the ticket fields, and a cut that leaves no subject falls back.
+    expect(await titled('fix: load https://evil.example/x')).toBe('fix: load [link removed]')
+    expect(await titled(`fix: ${'x'.repeat(110)}`)).toBe('fix: Renaming a chat loses its title')
   })
 
   test('cuts a long title at a word and keeps every commit line within 100 characters', async () => {
@@ -2396,9 +2404,12 @@ describe('publish', () => {
     /** A finding a unit test can show, so its PR adds no regression spec and its patch needs a unit test. */
     const unit: Setup = { extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } }
     const visual: Setup = { kind: 'visual', extra: { oracle: { type: 'visual', evidence: 'Menu cut off' } } }
+    const layout: Setup = { extra: { oracle: { type: 'layout', evidence: '[qa-layout] overflow-text button "Menu"' } } }
     const tasks: [string, Setup, (keyof typeof reasons)[]][] = [
-      // The default finding is lost on a reload: its repro spec becomes the regression spec, so it needs no unit test.
-      ['a web spec task proved in the browser', {}, ['session', 'replay']],
+      // Its repro spec becomes the regression spec and proves the layout fix, so it needs no unit test.
+      ['a web layout task', layout, ['session', 'replay']],
+      // The default finding, lost on a reload, gets the spec and keeps the unit test.
+      ['a web reload task', {}, ['session', 'replay', 'tests']],
       ['a web spec task a unit test can show', unit, ['session', 'replay', 'tests']],
       ['a web visual task', visual, ['session', 'visual']],
       [
@@ -2585,14 +2596,14 @@ describe('publish', () => {
       expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     })
 
-    test('a web patch with no unit test says so, when its PR adds no regression spec', async () => {
+    test('a web patch with no unit test says so, when no browser check proves it', async () => {
       await setupTask(unit)
       await putPasses('session', 'replay')
       const result = await publish({ outDir, fp, live: false, run: fakeRun([], diffOutput), log: () => {} })
       expect(result).toEqual({
         outcome: 'human-required',
         reasons: [
-          'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`), and a web fix without a regression spec needs one that fails without the fix',
+          'the patch adds or changes no unit test file (`*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or `cli/`), and a web fix that no browser check proves needs one that fails without the fix',
         ],
       })
     })

@@ -1053,7 +1053,7 @@ describe('fix PRs of earlier runs', () => {
     const summary = join(dir, 'summary.md')
     const section = await runFixPrs('o/r', run, summary)
     expect(calls[0].slice(0, 3)).toEqual(['gh', 'api', 'graphql'])
-    expect(calls[0].at(-1)).toBe('q=repo:o/r is:pr author:app/thunderbolt-automation-agent')
+    expect(calls[0].at(-1)).toBe('q=repo:o/r is:pr author:app/thunderbolt-automation-agent sort:created-desc')
     expect(await readFile(summary, 'utf8')).toBe(section)
     expect(section).toContain('Right first time: 2 of 4 decided.')
   })

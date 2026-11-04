@@ -81,8 +81,8 @@ step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
 needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
-spec, `visual` for a web visual check, `tests` for a web task whose PR adds no regression spec (`unitTest` in the
-plan), `real` for a real-AI web spec, each platform in
+spec, `visual` for a web visual check, `tests` for every web task but a layout or visual one proven by its browser check
+(`unitTest` in the plan), `real` for a real-AI web spec, each platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
 app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
@@ -440,11 +440,11 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    task (`real`) is fixed on the fake AI, and `verify-real` runs its spec three times on the real providers against
    the patched frontend; all three must pass. A real-AI web visual task has no spec for `verify-real` to run, so
    `publish` never opens a PR for it: the ticket gets `Human Required`, like a fix that failed its checks.
-   The proof follows the defect. A web task whose PR adds the browser check as its regression spec (see `whyNoSpec`
-   below: a layout problem other than a missing name, a visual defect, data lost on a reload) is proven by that check,
-   which failed without the patch and passed with it, since happy-dom computes no layout. Every other web task (one
-   without a `flow`: a missing name, logic, and the c1, real-AI and security tasks, whose check never becomes a spec)
-   must also add or change a unit test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or
+   The proof follows the defect. A layout or visual web task whose PR adds the browser check as its regression spec
+   (see `whyNoSpec` below: a layout problem other than a missing name, a visual defect) is proven by that check, which
+   failed without the patch and passed with it, since happy-dom computes no layout. Every other web task (one without
+   a `flow`: a missing name, logic, data lost on a reload, which also gets the spec, and the c1, real-AI and security
+   tasks, whose check never becomes a spec) must also add or change a unit test file, `*.test.ts` or `*.test.tsx` under `src/`, `shared/`, `backend/` or
    `cli/`, that fails without the fix. `route` marks these tasks `unitTest` in the plan (`needsUnitTest`), and only
    they get a `verify-tests` job.
    `verify-tests` (keyless, see "Trust zones") checks it on a fresh checkout with `fix.ts tests`: `testRuns` picks

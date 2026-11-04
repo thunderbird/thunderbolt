@@ -54,7 +54,7 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: preview
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,6 +82,10 @@ jobs:
       - name: Install Pulumi dependencies
         working-directory: deploy/pulumi
         run: bun install --frozen-lockfile
+
+      # ubuntu-26.04 ships without the Pulumi CLI; with no `command` the action only installs it.
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Ensure Pulumi stack exists
         working-directory: deploy/pulumi

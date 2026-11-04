@@ -97,7 +97,8 @@
     getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el.parentElement).pointerEvents === 'none'
   const isCandidate = (el) => isVisible(el) && !el.closest('[aria-hidden=true], [inert]') && !inheritsNoPointer(el)
   // Tab and a screen reader reach a control whatever its pointer-events or opacity (a hover-only action, the #1481
-  // placeholder in a wrapper that stops clicks). Only a hidden, aria-hidden or inert one is out of their reach.
+  // placeholder in a wrapper that stops clicks). Both skip a hidden or inert one; a screen reader reads no name for an
+  // aria-hidden one, which modal.html pins behind a modal. A focusable control under aria-hidden is another defect.
   const isReachable = (el) =>
     el.checkVisibility({ visibilityProperty: true }) && !el.closest('[aria-hidden=true], [inert]')
 

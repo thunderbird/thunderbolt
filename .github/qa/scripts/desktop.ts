@@ -189,14 +189,18 @@ const checks = async (out: string, downloads: string): Promise<CheckResult[]> =>
         history.pushState(null, '', '/settings/preferences')
         dispatchEvent(new PopStateEvent('popstate'))
       })
-      await (await browser.$('#export-data-button')).click()
-      const exported = async () => (await readdir(downloads)).find((f) => f.startsWith('thunderbolt-export-'))
-      await browser.waitUntil(async () => (await exported()) !== undefined, {
-        timeout: 15_000,
-        timeoutMsg: `no export file in ${downloads}`,
-      })
-      JSON.parse(await readFile(join(downloads, (await exported()) ?? ''), 'utf8'))
-      await browser.execute(() => history.back())
+      try {
+        await (await browser.$('#export-data-button')).click()
+        const exported = async () => (await readdir(downloads)).find((f) => f.startsWith('thunderbolt-export-'))
+        await browser.waitUntil(async () => (await exported()) !== undefined, {
+          timeout: 15_000,
+          timeoutMsg: `no export file in ${downloads}`,
+        })
+        JSON.parse(await readFile(join(downloads, (await exported()) ?? ''), 'utf8'))
+      } finally {
+        // The next check measures the chat.
+        await browser.execute(() => history.back())
+      }
     })
 
     await check('the window stops at its 500px minimum width and the chat fits', async () => {

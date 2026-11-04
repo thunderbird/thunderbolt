@@ -19,8 +19,8 @@ should get a ticket for it.
 
 A `layout` finding, on the web or on a device, quotes a `[qa-layout]` line from the app's own layout probe. Code
 measured it, and the replay saw the same line again in the runs it counts, so that line is strong evidence. The probe
-is an approximation, though, and can be wrong. When a screenshot or the screen's element tree contradicts the line, do
-not keep the finding on the line's authority alone: investigate. A contradiction is a screenshot of the same screen
+is an approximation, though, and can be wrong. When a screenshot or an element tree you were given contradicts the
+line, do not keep the finding on the line's authority alone: investigate. A contradiction is a screenshot of the same screen
 showing the reported control whole, on screen and uncovered for `covered`, `offscreen`, `behind-keyboard`,
 `focus-covered` or `focused-clipped`; text shown in full for `overflow-text`; or a tree that gives the control of an
 `unnamed-control` line a name. A screenshot cannot show an accessible name, so it never contradicts `unnamed-control`.

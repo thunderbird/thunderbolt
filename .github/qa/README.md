@@ -279,7 +279,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    options). They cover every control a screen reader reaches, whatever its `pointer-events` or opacity (a disabled
    button, a hover-only action, a placeholder in a wrapper that stops clicks), and leave out a hidden, `aria-hidden`
    or `inert` one. A control axe cannot settle (an `incomplete` result) is never a line: it goes to
-   `window.__qaLayout.review()` for a person to check. `axe-core` is a pinned dev dependency for this alone; the
+   `window.__qaLayout.review()` for a person to check. axe checks no `contenteditable` without a role (the app has
+   none), treats a closed shadow root's text and CSS-generated text as no name, and takes about 5 to 30 ms a run
+   on the app's screens. `axe-core` is a pinned dev dependency for this alone; the
    name a geometry line quotes still comes from the probe's own approximation. The geometry kinds also skip a control that inherits
    `pointer-events: none`, as the page behind a modal does. An `unnamed-control` line has no name to quote, so it quotes which control it is: the control's own `id` as
    `#<id>`, its `data-testid` as `[data-testid=<value>]` or its `name` attribute as `[name=<value>]`. React's and

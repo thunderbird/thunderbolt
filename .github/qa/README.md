@@ -413,8 +413,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    the task's `specs` and `realSpecs` list the web repro spec of each finding of the ticket, the task's own included,
    on the fake and the real AI, and the replay after the fix (and the one before it in a fix-only run) runs all of
    `specs`, while `verify-real` runs all of `realSpecs`. So a finding that reports only part of a grouped bug still
-   checks the patch. Native flows join `verifyNative`, one per platform: a second finding of the same native platform
-   is left out (`shortcut:` in `route`). The fix goes on the ticket's Linear
+   checks the patch. Native flows join `verifyNative`, one per platform, since a native pass is named by platform: a
+   ticket with two findings on one native platform is not routed, with a log line, rather than checked on one of
+   them. A visual finding other than the task's own has no check (the fix agent writes one for its own task only). The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
    shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
    `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links
@@ -576,7 +577,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    commands, no edit tool, and answers `approved` and `problems` as structured output. It sits in the fix job, with
    Fix's QA Anthropic key and read-only token and nothing else, and before the key scan, since after that scan code
    the agent wrote runs outside its sandbox. A rejection runs the fix session once more (`Correct the fix`, the same
-   tools and caps) on the fix prompt with the problems appended, then a second review. A patch still rejected, or a
+   tools and caps) on the fix prompt with the problems appended, then a second review, whose prompt carries the first
+   review's problems: it must find each one fixed, or shown wrong by the code, before it approves. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
    `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
    every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and

@@ -39,6 +39,13 @@ verdict.
 Report only a problem you can point to in the code, with its `file:line`. Leave house style, naming and formatting
 alone: the PR checks and a person cover those. When none of the checks above finds a problem, approve.
 
+## A second review
+
+When this prompt ends with a `<first-review>` block, an earlier review rejected the patch with those problems, and the
+fix agent then had one pass to correct it. Settle each of those problems first, against the code as it is now: it is
+fixed, or the code shows it was wrong. A problem neither fixed nor shown wrong goes back in `problems`, whatever the
+fix agent says about it. Then check the corrected patch as above.
+
 ## Reply
 
 Reply with `approved` (true or false) and `problems`: one entry per problem, each one or two sentences that say what

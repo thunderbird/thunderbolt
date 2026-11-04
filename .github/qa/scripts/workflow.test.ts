@@ -168,6 +168,7 @@ describe('secrets', () => {
       'Fix',
       "Keep the fix session's execution file",
       'Review the fix',
+      "Keep the review session's execution file",
       'Build the correction prompt',
       'Correct the fix',
       "Keep the correction session's execution file",
@@ -401,9 +402,15 @@ describe('fix job', () => {
       expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
       expect(args).toContain('--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"')
       expect(args).toContain('--json-schema')
-      expect(review.with?.prompt).toBe('${{ steps.prompt.outputs.review }}')
-      expect(review.env).toEqual({ CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' })
-      expect(step('fix', 'Review the corrected fix').with).toEqual(review.with)
+      expect(review.with?.prompt).toBe('${{ env.QA_REVIEW_PROMPT }}')
+      expect(review.env).toEqual({
+        CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1',
+        QA_REVIEW_PROMPT: '${{ steps.prompt.outputs.review }}',
+      })
+      // The second review is the same session, on the review prompt the first review's problems extend.
+      const again = step('fix', 'Review the corrected fix')
+      expect(again.with).toEqual(review.with)
+      expect(again.env?.QA_REVIEW_PROMPT).toBe('${{ steps.correction-prompt.outputs.review }}')
       // The correction is the fix session again, on the prompt the review's problems extend.
       expect(step('fix', 'Correct the fix').with).toEqual(step('fix', 'Fix').with)
       expect(step('fix', 'Fix').with?.prompt).toBe('${{ env.QA_FIX_PROMPT }}')
@@ -413,15 +420,17 @@ describe('fix job', () => {
       expect(step('fix', 'Build the prompt').run).toContain('cat .github/qa/review.md')
     })
 
-    test('a rejection extends the fix prompt with its problems, one line each; anything else writes no prompt', () => {
-      const prompt = { PROMPT: '# Fix agent\n## Task' }
+    test('a rejection extends the fix and review prompts with its problems, one line each; nothing else does', () => {
+      const prompt = { PROMPT: '# Fix agent\n## Task', REVIEW_PROMPT: '# Fix reviewer\n## Task' }
       const rejected = runPlain('Build the correction prompt', {
         ...prompt,
         REVIEW: verdict(false, ['Fix the caller,\n  not the primitive (src/a.tsx:3).', 'Also the Close button.']),
       })
       expect(rejected.output).toBe(
         'text<<QA_PROMPT_EOF\n# Fix agent\n## Task\n\n<review>\n' +
-          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</review>\nQA_PROMPT_EOF\n',
+          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</review>\nQA_PROMPT_EOF\n' +
+          'review<<QA_PROMPT_EOF\n# Fix reviewer\n## Task\n\n<first-review>\n' +
+          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</first-review>\nQA_PROMPT_EOF\n',
       )
       for (const REVIEW of [verdict(true), verdict(false), 'not json'])
         expect(runPlain('Build the correction prompt', { ...prompt, REVIEW })).toEqual({ code: 0, output: '' })
@@ -1141,6 +1150,8 @@ describe('publish', () => {
       const record = steps('fix')[scan + 1]
       const upload = steps('fix')[scan + 2]
       expect(record.name).toBe('Record whether the fix session began')
+      // The fix session's own file, moved aside before a review session could write the shared one.
+      expect(record.env?.EXECUTION_FILE).toBe('${{ runner.temp }}/qa-execution-fix.json')
       expect(record.if).toBe('always()')
       expect(record.env?.PATH).toBe('/usr/bin:/bin')
       expect(upload.with?.name).toBe(`qa-fix-status-\${{ matrix.task.fp }}${attempt}`)

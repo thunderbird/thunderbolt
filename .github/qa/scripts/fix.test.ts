@@ -428,6 +428,20 @@ describe('route', () => {
     })
   })
 
+  test('a group with two findings on one native platform is not routed, since only one of their flows is checked', async () => {
+    await fileTickets([
+      fakeWeb,
+      { fp: 'fp-same', charterDir: 'c1-first-run-ios', raw: nativeLayout('ios') },
+      { fp: 'fp-same', charterDir: 'c2-chat-power-user-ios', raw: nativeLayout('ios') },
+    ])
+    const lines: string[] = []
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: (line) => lines.push(line) })
+    expect(plan).toEqual({ fixes: [], verifyNative: [] })
+    expect(lines).toContain(
+      'fix: fp-same has two findings on ios, and only one flow per platform is checked, so it is not routed',
+    )
+  })
+
   test('a bug found on the fake AI on the web and the real AI on Android keeps the web task and checks Android', async () => {
     const realAndroid = { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/1.yaml' }
     await fileTickets([
@@ -1816,7 +1830,7 @@ describe('publish', () => {
   }
   const putStatus = (stoppedBeforeSession: string | null) =>
     put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
-  const everyCheck = ['session', 'review', 'review', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
+  const everyCheck = ['session', 'review', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
   /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
   const putPasses = (...checks: string[]) => putPassesOf('1', ...checks)
   /** The same, as uploaded in run attempt `attempt`, by a fix job that recorded its status in attempts 1 and 2. */

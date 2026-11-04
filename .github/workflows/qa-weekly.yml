@@ -1421,7 +1421,8 @@ jobs:
       # second review, and a patch still rejected becomes a diagnosis, so no PR. Publish reads the verdict only as the
       # `review` pass. These steps sit before the key scan, like Fix, because after it code the agent wrote runs
       # outside its sandbox. The steps between the sessions run no code of the agent's, with the key scan's cleared
-      # variables and absolute paths. Every session writes the same execution file, so each is copied after its step.
+      # variables and absolute paths. Every session writes the same execution file, so each is moved aside after its
+      # step: a session that failed before writing one then leaves none, rather than the one before it.
       - name: Keep the fix session's execution file
         id: keep-fix
         if: always()
@@ -1433,7 +1434,7 @@ jobs:
           LD_PRELOAD: ''
           LD_LIBRARY_PATH: ''
         run: |
-          /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-fix.json" || true
+          /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-fix.json" || true
           echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
       - name: Review the fix
         id: review
@@ -1443,11 +1444,12 @@ jobs:
         timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_REVIEW_PROMPT: ${{ steps.prompt.outputs.review }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with: &review-session
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          prompt: ${{ steps.prompt.outputs.review }}
+          prompt: ${{ env.QA_REVIEW_PROMPT }}
           claude_args: |
             --model claude-opus-5-5
             --setting-sources user
@@ -1458,14 +1460,21 @@ jobs:
             --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}}},"required":["approved","problems"],"additionalProperties":false}'
             --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_REVIEW_MAX_TURNS }}
+      - name: Keep the review session's execution file
+        if: always() && steps.review.outcome != 'skipped'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review.json" || true
       # On a rejection, the fix prompt again with the review's problems at its end, one line each (fix.md, "A
-      # correction pass"). An approval, or a verdict that does not parse, writes no prompt.
+      # correction pass"), and the review prompt with them too, which the second review must settle one by one
+      # (review.md, "A second review"). An approval, or a verdict that does not parse, writes no prompt.
       - name: Build the correction prompt
         id: correction-prompt
         if: steps.review.outcome == 'success'
         shell: /bin/bash --noprofile --norc -e {0}
         env:
           PROMPT: ${{ steps.prompt.outputs.text }}
+          REVIEW_PROMPT: ${{ steps.prompt.outputs.review }}
           REVIEW: ${{ steps.review.outputs.structured_output }}
           PATH: /usr/bin:/bin
           BASH_ENV: ''
@@ -1473,13 +1482,15 @@ jobs:
           LD_PRELOAD: ''
           LD_LIBRARY_PATH: ''
         run: |
-          /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review.json" || true
           problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems[] | "- " + gsub("\\s+"; " ")' <<< "$REVIEW") ||
             exit 0
           [ -n "$problems" ] || exit 0
           {
             echo 'text<<QA_PROMPT_EOF'
             printf '%s\n\n<review>\n%s\n</review>\n' "$PROMPT" "$problems"
+            echo 'QA_PROMPT_EOF'
+            echo 'review<<QA_PROMPT_EOF'
+            printf '%s\n\n<first-review>\n%s\n</first-review>\n' "$REVIEW_PROMPT" "$problems"
             echo 'QA_PROMPT_EOF'
           } >> "$GITHUB_OUTPUT"
       - name: Correct the fix
@@ -1496,7 +1507,7 @@ jobs:
         if: always() && steps.correct.outcome != 'skipped'
         shell: /bin/bash --noprofile --norc -e {0}
         env: *plain-shell
-        run: /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-correct.json" || true
+        run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-correct.json" || true
       - name: Review the corrected fix
         id: review-again
         if: >-
@@ -1505,6 +1516,7 @@ jobs:
         timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_REVIEW_PROMPT: ${{ steps.correction-prompt.outputs.review }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with: *review-session
       # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's.
@@ -1523,7 +1535,7 @@ jobs:
           LD_LIBRARY_PATH: ''
         run: |
           if [ "$SECOND_OUTCOME" != skipped ]; then
-            /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
+            /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
           fi
           verdict=$FIRST
           if [ "$SECOND_OUTCOME" != skipped ]; then verdict=$SECOND; fi
@@ -1566,7 +1578,7 @@ jobs:
           ALREADY_PASSES: ${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           START: ${{ steps.prompt.outputs.start }}
-          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+          EXECUTION_FILE: ${{ runner.temp }}/qa-execution-fix.json
           PATH: /usr/bin:/bin
           BASH_ENV: ''
           ENV: ''

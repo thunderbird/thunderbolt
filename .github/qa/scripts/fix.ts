@@ -311,6 +311,7 @@ export const route = async ({
 
   // Every finding of one bug shares its ticket, and security never shares a group, so the first decides the branch.
   const branches = new Map<string, string | undefined>()
+  const declined = new Set<string>()
   for (const { fp, severity, issueId, identifier, charterDir, id } of tickets) {
     const fresh = !routed.has(fp)
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
@@ -328,10 +329,14 @@ export const route = async ({
     // One fix job per bug (same fp): a second one would fight over its branch, and `leadRank` picks which finding
     // it gets. The other findings' repros join it, since a group can hold findings that report part of the bug each,
     // but not their visual defects: the fix agent writes a visual check for its own task alone.
-    // shortcut: one native flow per platform, since a native pass is named by platform; key it by flow if a group
-    // ever holds two findings of one native platform.
     const flow = 'flow' in proof && (fresh || proof.kind === 'spec') ? proof.flow : undefined
-    if (flow && !plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
+    if (flow && plan.verifyNative.some((v) => v.fp === fp && v.platform === platform)) {
+      // A native pass is named by platform, so a second flow there would go unchecked and could hide a half fix.
+      log(
+        `fix: ${identifier ?? fp} has two findings on ${platform}, and only one flow per platform is checked, so it is not routed`,
+      )
+      declined.add(fp)
+    } else if (flow) {
       const unpatched = proof.kind === 'visual' || realAiCharters.has(charterDir)
       plan.verifyNative.push({ fp, platform, session: charterDir, flow, unpatched })
     }
@@ -363,6 +368,8 @@ export const route = async ({
       realSpecs: task.real ? own : [],
     })
   }
+  plan.fixes = plan.fixes.filter((t) => !declined.has(t.fp))
+  plan.verifyNative = plan.verifyNative.filter((v) => !declined.has(v.fp))
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
   return plan

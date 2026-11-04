@@ -619,7 +619,8 @@ Snapshot assertions stay banned in the specs a model writes.
 Baselines live in `sweep-baselines/`: `web/<case>-linux.png` (Playwright adds the OS, since fonts render
 differently on each) and `<platform>/<state>.png`. A case without one passes with its crop saved as a candidate.
 To approve, run the workflow, download `qa-sweep-web` (`candidates/`) or `qa-sweep-<platform>` (`qa-sweep/candidates/`),
-look at each image, and commit the ones that show the screen right. Only baselines from CI's own runners count: a
+look at each image, and copy the ones that show the screen right into `sweep-baselines/web/` or
+`sweep-baselines/<platform>/` as they are named; a candidate already has its baseline's name. Only baselines from CI's own runners count: a
 crop taken on a Mac renders differently. When a crop differs, the web artifact holds `*-expected.png`, `*-actual.png`
 and `*-diff.png` beside each other, and a native one Maestro's diff under `qa-sweep/diffs/`. A regression gets a ticket
 by hand; an intended change replaces the baseline.

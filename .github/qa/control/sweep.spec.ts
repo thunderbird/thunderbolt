@@ -10,7 +10,7 @@
 // snapshot assertions in the specs a model writes.
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { openSidebarOnMobile } from '../../../e2e/helpers'
 import { layoutProblems } from '../layout'
@@ -220,7 +220,8 @@ for (const sweepCase of sweepCases) {
         })
         return
       }
-      const candidate = resolve(test.info().project.outputDir, 'candidates', `${name}.png`)
+      // Named as its baseline would be (`<case>-linux.png` on CI), so approving it is a copy.
+      const candidate = resolve(test.info().project.outputDir, 'candidates', basename(baseline))
       await mkdir(dirname(candidate), { recursive: true })
       await target.screenshot({ path: candidate, mask, animations: 'disabled', caret: 'hide' })
       test.info().annotations.push({ type: 'no baseline', description: candidate })

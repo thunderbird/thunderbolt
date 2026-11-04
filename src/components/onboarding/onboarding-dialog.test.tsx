@@ -68,6 +68,76 @@ const createRouterWrapper =
   }
 
 describe('OnboardingDialog', () => {
+  describe('anonymous data donation', () => {
+    const flush = async () => {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+    }
+
+    it.each([true, false])('persists opting out before completing onboarding (local: %s)', async (local) => {
+      useLocalSettingsStore.setState({ cloudUrl: local ? '' : 'https://cloud.example.com/v1', localMode: local })
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { onboarding_current_step: '7' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+
+      const donation = screen.getByRole('switch', { name: 'Donate anonymous usage data' })
+      expect(donation).toBeChecked()
+      fireEvent.click(donation)
+      await flush()
+      expect(donation).not.toBeChecked()
+      expect((await getSettings(getDb(), { data_collection: true })).dataCollection).toBe(false)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+      await flush()
+      expect(await getSettings(getDb(), { data_collection: true, user_has_completed_onboarding: false })).toEqual({
+        dataCollection: false,
+        userHasCompletedOnboarding: true,
+      })
+    })
+
+    it('respects an existing opt-out and lets the user donate again', async () => {
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { onboarding_current_step: '7', data_collection: false })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+
+      const donation = screen.getByRole('switch', { name: 'Donate anonymous usage data' })
+      expect(donation).not.toBeChecked()
+      fireEvent.click(donation)
+      await flush()
+      expect(donation).toBeChecked()
+      expect((await getSettings(getDb(), { data_collection: false })).dataCollection).toBe(true)
+    })
+
+    it('keeps setup open if the donation preference fails to save and allows retry', async () => {
+      await reconcileDefaults(getDb())
+      await updateSettings(getDb(), { onboarding_current_step: '7' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+
+      const save = spyOn(getDb(), 'transaction').mockRejectedValueOnce(new Error('Storage unavailable'))
+      try {
+        fireEvent.click(screen.getByRole('switch', { name: 'Donate anonymous usage data' }))
+        await flush()
+        expect(screen.getByRole('alert')).toHaveTextContent('Could not save your preference. Please try again.')
+        expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+        expect((await getSettings(getDb(), { user_has_completed_onboarding: false })).userHasCompletedOnboarding).toBe(
+          false,
+        )
+
+        fireEvent.click(screen.getByRole('switch', { name: 'Donate anonymous usage data' }))
+        await flush()
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+        expect((await getSettings(getDb(), { data_collection: true })).dataCollection).toBe(false)
+      } finally {
+        save.mockRestore()
+      }
+    })
+  })
+
   describe('standalone requirements', () => {
     const flush = async () => {
       await act(async () => {

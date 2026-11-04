@@ -155,6 +155,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
     onDenied: handleDenied,
+    onVerificationFailed: setup.approvalVerificationFailed,
   })
 
   const handleRecoveryKeySubmit = async () => {
@@ -227,6 +228,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
         {setup.step === 'approval-waiting' && (
           <ApprovalWaitingStep
+            fingerprint={setup.approvalFingerprint}
             error={setup.approvalError}
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}
@@ -360,7 +362,7 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
           you a recovery key to keep safe.
         </Trans>
       </p>
-      <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+      <p className="text-sm font-medium text-warning">
         <Trans>
           Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all
           your devices.

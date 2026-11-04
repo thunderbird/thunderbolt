@@ -9,11 +9,11 @@ import { getAuthToken } from './auth-token'
 import type { HttpClient } from './http'
 import { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
 import { buildMcpHeaders, createMcpTransport, type MCPTransportType } from './mcp-transport'
-import { computeEffectiveProxyEnabled, createProxyFetch } from './proxy-fetch'
+import { createProxyFetch } from './proxy-fetch'
 
 /**
- * Resolve a server's bearer token, refreshing OAuth credentials through the
- * authenticated proxy when necessary. The refresh function is injectable for
+ * Resolve a server's bearer token, refreshing OAuth credentials with the same
+ * routing policy as the transport. The refresh function is injectable for
  * tests; production shares the existing token-refresh deduplication.
  */
 export const resolveMcpAccessToken = async (
@@ -30,7 +30,6 @@ export const resolveMcpAccessToken = async (
     const fetchFn = createProxyFetch({
       cloudUrl,
       getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
     })
     return ensureValidToken(db, serverId, fetchFn)
   }

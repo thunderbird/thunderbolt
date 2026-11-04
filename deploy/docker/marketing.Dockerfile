@@ -8,7 +8,7 @@
 # native binary only needs to match the build host, not the target image), so
 # this stage runs natively instead of under QEMU emulation for the target
 # platform. Only the final nginx stage below is built per target platform.
-FROM --platform=$BUILDPLATFORM oven/bun:latest AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS build
 
 WORKDIR /app
 

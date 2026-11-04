@@ -26,6 +26,7 @@ import { useConfigStore } from '@/api/config-store'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { getTransformer } from '@/files/transformers'
 import { defaultSkillResearch } from '@/defaults/skills'
 import * as realAgentCore from '@shared/agent-core'
 import { tool } from 'ai'
@@ -52,10 +53,11 @@ import {
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
+import { prepareBuiltInConversation, type BuiltInConversationDeps } from './built-in-conversation'
 import { createReceiptLifecycle, type BuildAppHarnessOptions, type PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
-import type { AgentHarness, AgentHarnessEvent, AgentTool } from '@earendil-works/pi-agent-core'
+import { FileError, type AgentHarness, type AgentHarnessEvent, type AgentTool } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import type { SecureClient } from 'tinfoil'
 
@@ -492,7 +494,7 @@ describe('resolvePiModel — Tinfoil', () => {
           headers: { Authorization: 'Bearer thunderbolt-managed', [inferenceModelHeader]: 'wrong-model' },
         })
 
-        env.VITE_AUTH_MODE = undefined
+        delete env.VITE_AUTH_MODE
         setAuthToken('session-token')
         await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
 
@@ -505,8 +507,16 @@ describe('resolvePiModel — Tinfoil', () => {
         expect(new Headers(calls[1].headers).get('authorization')).toBe('Bearer session-token')
         expect(new Headers(calls[1].headers).get('x-app-version')).toBe('1.2.3')
       } finally {
-        env.VITE_AUTH_MODE = savedMode
-        env.VITE_APP_VERSION = savedVersion
+        if (savedMode === undefined) {
+          delete env.VITE_AUTH_MODE
+        } else {
+          env.VITE_AUTH_MODE = savedMode
+        }
+        if (savedVersion === undefined) {
+          delete env.VITE_APP_VERSION
+        } else {
+          env.VITE_APP_VERSION = savedVersion
+        }
         if (savedToken) {
           setAuthToken(savedToken)
         } else {
@@ -823,6 +833,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         } as never
       },
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
         new ReadableStream<Uint8Array>({
@@ -898,6 +909,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         return harness as never
       },
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
         new ReadableStream<Uint8Array>({
@@ -967,6 +979,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [{ name: 'weather' } as AgentTool],
       piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
         new ReadableStream<Uint8Array>({
@@ -1081,6 +1094,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       isKnownAnthropicModel: () => true,
       buildAppHarness: buildHarness,
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async (toolset: PreparedAiRequestConfig['toolset']) => {
         toPiCalls.push(toolset)
         return Object.keys(toolset).map((name) => ({ name }) as AgentTool)
@@ -1581,6 +1595,7 @@ describe('createBuiltInAdapter stop', () => {
       isKnownAnthropicModel: () => true,
       buildAppHarness: async () => harness,
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (
         _harness: AgentHarness,
@@ -1845,6 +1860,7 @@ describe('Mini App reads on the persistent harness', () => {
       ...tinfoilAgentCore,
       buildAppHarness: async () => harness as never,
       workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      writeAgentWorkspaceFiles: async () => [],
       toPiAgentTools: async () => [],
       piHarnessToUiMessageStream: (
         _harness: AgentHarness,
@@ -1882,5 +1898,130 @@ describe('Mini App reads on the persistent harness', () => {
     expect(requested).toEqual([{ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] }])
     expect(hooks.context).toBeUndefined()
     expect(toolCallMetadata).toEqual({ modelId: model.id, embeddedSurface: 'mini-app' })
+  })
+})
+
+describe('attachments in the harness workspace', () => {
+  const csv = '"date","payee","amount"\n"2026-01-02","Hertz, LLC","-99.5"'
+
+  const runWithCsvAttachment = async (toolUsage: number, failures: realAgentCore.WorkspaceWriteFailure[] = []) => {
+    const localFileId = crypto.randomUUID()
+    const conversationDeps: BuiltInConversationDeps = {
+      getAttachment: async () => ({
+        id: localFileId,
+        filename: 'spend.csv',
+        mimeType: 'text/csv',
+        size: csv.length,
+        createdAt: 0,
+        blob: new Blob([csv], { type: 'text/csv' }),
+      }),
+      getTransformer,
+      blobToBase64: async () => '',
+      readXlsxSheets: async () => [],
+    }
+    const model = tinfoilModel({ toolUsage })
+    const config = {
+      model,
+      profile: null,
+      supportsTools: toolUsage !== 0,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
+    } satisfies PreparedAiRequestConfig
+    const events: string[] = []
+    const written: realAgentCore.WorkspaceFile[][] = []
+    const prompts: string[] = []
+    const harness = {
+      getTools: () => [],
+      setTools: async () => {},
+      prompt: async (text: string) => {
+        events.push('prompt')
+        prompts.push(text)
+      },
+      waitForIdle: async () => {},
+      on: () => () => {},
+      abort: async () => ({ aborted: true }),
+    }
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async () => harness as never,
+      writeAgentWorkspaceFiles: async (_threadId: string, files: realAgentCore.WorkspaceFile[]) => {
+        events.push('write')
+        written.push(files)
+        return failures
+      },
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      prepareConversation: (messages, skillInstructions, options) =>
+        prepareBuiltInConversation(messages, skillInstructions, options, conversationDeps),
+      getSystemTinfoilClient: async () => createSecureClient(),
+    })
+    const messages = [
+      {
+        role: 'user',
+        parts: [
+          { type: 'data-attachment', data: { localFileId, filename: 'spend.csv', mimeType: 'text/csv' } },
+          { type: 'text', text: 'total?' },
+        ],
+      },
+    ]
+    await (await adapter.fetch({ body: JSON.stringify({ messages }) }, tinfoilContext(model))).text()
+    return { localFileId, events, written, prompts }
+  }
+
+  it('writes the attachment as TSV before prompting when tools are active', async () => {
+    const { localFileId, events, written, prompts } = await runWithCsvAttachment(1)
+
+    expect(events).toEqual(['write', 'prompt'])
+    expect(written).toEqual([
+      [
+        {
+          path: `attachments/${localFileId}/spend.tsv`,
+          content: 'date\tpayee\tamount\n2026-01-02\tHertz, LLC\t-99.5\n',
+        },
+      ],
+    ])
+    expect(prompts[0]).toContain(`[Attachment: spend.csv — saved as attachments/${localFileId}/spend.tsv]`)
+  })
+
+  it('inlines the attachment whole and writes nothing when tools are inactive', async () => {
+    const { written, prompts } = await runWithCsvAttachment(0)
+
+    expect(written).toEqual([[]])
+    expect(prompts[0]).toBe(`[Attachment: spend.csv]\n\n${csv}\ntotal?`)
+  })
+
+  it('still prompts, naming and logging the failed path, when a workspace write fails', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const error = new FileError('unknown', 'quota exceeded', 'attachments/x/spend.tsv')
+
+    try {
+      const { events, prompts } = await runWithCsvAttachment(1, [{ path: 'attachments/x/spend.tsv', error }])
+
+      expect(events).toEqual(['write', 'prompt'])
+      expect(prompts[0].split('\n').at(-1)).toBe(
+        '[Could not save attachments/x/spend.tsv to the workspace. Answer from the preview only, and say the full file could not be read.]',
+      )
+      expect(consoleError).toHaveBeenCalledWith(
+        'Built-in agent: could not save attachments/x/spend.tsv to the workspace',
+        error,
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })

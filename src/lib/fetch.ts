@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getCapabilities, isTauri } from '@/lib/platform'
+import type { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { nativeFetch } from './native-fetch'
+import { isTauri } from '@/lib/platform'
 import { getLocalSetting } from '@/stores/local-settings-store'
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import { usesLocalProviders } from '@/lib/provider-mode'
+
+type FetchDeps = { isTauri: () => boolean; tauriFetch?: typeof tauriFetch }
 
 /**
  * Custom fetch function that handles CORS issues by routing through Tauri when available
@@ -13,22 +16,17 @@ import { usesLocalProviders } from '@/lib/provider-mode'
  * @param init - Optional request configuration
  * @returns Promise that resolves to the Response
  */
-export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  if (!isTauri()) {
+export const fetch = async (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  deps: FetchDeps = { isTauri },
+): Promise<Response> => {
+  if (!deps.isTauri()) {
     return globalThis.fetch(input, init)
   }
 
   if (usesLocalProviders() || getLocalSetting('isNativeFetchEnabled')) {
-    // Native HTTP ships by default. Keep older or explicitly reduced builds
-    // from invoking an unregistered plugin ("plugin http not found").
-    const { native_fetch: nativeFetchAvailable } = await getCapabilities()
-    if (nativeFetchAvailable) {
-      // HttpClient passes a Request, but the plugin only reads cancellation from init.
-      return tauriFetch(input, {
-        ...init,
-        signal: init?.signal ?? (input instanceof Request ? input.signal : undefined),
-      })
-    }
+    return nativeFetch(input, init, deps.tauriFetch)
   }
 
   return globalThis.fetch(input, init)

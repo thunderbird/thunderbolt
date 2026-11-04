@@ -6,7 +6,7 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 
 - **Offline-first.** Local SQLite is the source of truth. The app works without network. [Standalone mode](standalone-mode.md) starts without a backend and lets users configure their own models and search provider.
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
-- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). Downloaded apps ship native HTTP and can call user providers directly without a Thunderbolt server. With a server configured, the universal proxy at `/v1/proxy` remains available (`src/lib/proxy-fetch.ts`); browser builds use it for CORS. Managed models require a server. See [native transport](tauri-shell.md#the-native_fetch-cargo-feature).
+- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls through `createProxyFetch` go device-direct via native HTTP on Tauri desktop and mobile by default; `proxy_enabled` opts into the backend universal proxy at `/v1/proxy` for non-loopback targets. Loopback always stays direct on Tauri. Web always proxies. Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on. Tinfoil keeps its attested client ([tauri-shell.md](tauri-shell.md#native-http)). Managed models use `/v1/chat/*` instead.
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
 - **E2E encrypted.** Always on: content is encrypted before leaving the device and the server stores only ciphertext for it ([E2E Encryption](e2e-encryption.md)).
 
@@ -55,7 +55,8 @@ graph TB
 
   CRYPTO -- "sync (HTTPS)" --> PS
   STATE -- "REST / HTTPS" --> API
-  AI -- "own key (SSE)" --> PROXY
+  AI -- "own key: web or Cloud Proxy on (SSE)" --> PROXY
+  AI -- "own key: Tauri default (SSE)" --> LLM
   AI -- "managed models (SSE)" --> INFERENCE
   UI -- "OAuth redirect" --> AUTH
 
@@ -134,7 +135,7 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/posthog/*`                             | Analytics event relay                                                                                                                  |
 | `/v1/swagger`                               | OpenAPI spec (gated by `SWAGGER_ENABLED`)                                                                                              |
 
-There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and MCP rides the universal proxy like every other upstream (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists). The one MCP client on the server is the hosted agent's, which calls the operator's `AGENT_MCP_SERVERS` directly ([acp-agents.md](acp-agents.md#hosted-agent)).
+There is no `/v1/inference` and no `/v1/mcp-proxy`: managed inference is `/v1/chat`, and HTTP/SSE MCP uses the universal proxy in the web app and for non-loopback targets with Use Cloud Proxy on in desktop/mobile; with it off (the default), desktop/mobile sends it directly from the device (`e2e/proxy-mcp.spec.ts` asserts no MCP-specific path exists). Loopback HTTP/SSE MCP servers always connect directly in desktop and mobile. The one MCP client on the server is the hosted agent's, which calls the operator's `AGENT_MCP_SERVERS` directly ([acp-agents.md](acp-agents.md#hosted-agent)).
 
 `createAppVersionMiddleware` enforces a minimum client version on all `/v1` routes: with `MIN_APP_VERSION` set, below-minimum clients get `426 Upgrade Required` unless the path matches `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is fail-closed: a new browser-redirect or header-less route must join that list or it 426s once the gate is on.
 
@@ -195,6 +196,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Voice Mode](voice.md): the spoken loop, barge-in, and the engine contract.
 - [Projects](projects.md): inherited instructions, cross-chat search, assistant notes.
 - [Settings and Preferences](settings-and-preferences.md): synced `settings` row vs per-device Zustand store.
+- [Operator Branding](branding.md): shadcn-format theme tokens, shadows, radius, fonts, logo, links, default theme, app name and debug-transcript recipient from `/config`; follow-ups.
 - [Client Auth and Session](client-auth-and-session.md): credential storage; reload, offline boot, second tab.
 - [Sign-in and the Waitlist](sign-in-and-waitlist.md): one endpoint signs a user up, in, or onto the queue.
 - [Widgets](../widgets.md): assistant output as interactive components.

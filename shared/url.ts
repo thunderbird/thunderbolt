@@ -31,3 +31,28 @@ export const deriveFaviconUrl = (pageUrl: string): string | null => {
     return null
   }
 }
+
+/**
+ * True for an absolute http(s) URL.
+ *
+ * Operator config that reaches an `href` or `<iframe src>` (mini app URLs,
+ * branding links) is checked with this on both ends: the backend refuses to
+ * publish anything else, and the client refuses to render it, because the
+ * backend a client talks to is a local setting. A `javascript:` value would
+ * otherwise execute in our page.
+ *
+ * @param value - Candidate URL string, from operator config or the wire.
+ */
+export const isHttpUrl = (value: string): boolean => hasProtocol(value, 'http:') || hasProtocol(value, 'https:')
+
+/** The message both ends attach to a failed {@link isHttpUrl} check. */
+export const httpUrlMessage = 'must be an http(s) URL'
+
+/**
+ * True for an absolute URL with the given scheme.
+ *
+ * @param value - Candidate URL string.
+ * @param protocol - The scheme with its colon, e.g. `https:` or `mailto:`.
+ */
+export const hasProtocol = (value: string, protocol: string): boolean =>
+  URL.canParse(value) && new URL(value).protocol === protocol

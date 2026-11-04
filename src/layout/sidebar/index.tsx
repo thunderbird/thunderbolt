@@ -11,7 +11,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useDatabase } from '@/contexts'
 import { deleteChatThread, getAllChatThreads, updateChatThread } from '@/dal'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
-import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
+import { useDeleteNonProjectChats } from '@/hooks/use-delete-non-project-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
@@ -20,7 +20,7 @@ import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useCallback, useMemo, useRef } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatSidebarContent } from './chat-sidebar'
 import { SettingsSidebarContent } from './settings-sidebar'
 import { useSidebarSection } from './use-sidebar-section'
@@ -40,7 +40,9 @@ export default function Sidebar() {
   const deleteChatDialogRef = useRef<DeleteChatDialogRef>(null)
   const threadIdRef = useRef<string | null>(null)
 
-  const { chatThreadId: currentChatThreadId } = useParams()
+  const { chatThreadId } = useParams()
+  const [searchParams] = useSearchParams()
+  const currentChatThreadId = chatThreadId ?? searchParams.get('chat') ?? undefined
 
   // Only use collapsed icon view on desktop, not mobile
   const isCollapsed = !isMobile && state === 'collapsed'
@@ -94,7 +96,7 @@ export default function Sidebar() {
     [renameMutate],
   )
 
-  const deleteAllChats = useDeleteAllChats()
+  const deleteAllChats = useDeleteNonProjectChats()
   const deleteAllChatsMutation = useMutation({
     mutationFn: deleteAllChats,
     onSuccess: () => {
@@ -152,6 +154,7 @@ export default function Sidebar() {
             isCollapsed={isCollapsed}
             onSectionChange={setActiveSection}
             onSettingsNavigate={handleNavigate}
+            onSearchClick={openSearchPalette}
           />
         ) : (
           <ChatSidebarContent
@@ -173,7 +176,6 @@ export default function Sidebar() {
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
             onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
-            onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}
             onSearchClick={openSearchPalette}

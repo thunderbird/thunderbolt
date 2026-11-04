@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, spyOn } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { http } from '@/lib/http'
 import { stubJsonResponse } from '@/test-utils/http'
 import { defaultModels } from '@shared/defaults/models'
@@ -13,7 +13,16 @@ import {
   catalogRowSupportsImages,
   fetchModelsForProvider,
   thunderboltModelCatalog,
+  type CatalogRequest,
 } from './model-catalog'
+
+const catalogResponse = () => Response.json({ data: [] })
+
+const stubProxyFetch = () =>
+  Object.assign(
+    mock(async (_request: RequestInfo | URL) => catalogResponse()),
+    { preconnect: async () => false },
+  )
 
 describe('model catalog policy', () => {
   it('derives Thunderbolt choices from shipped defaults', () => {
@@ -77,6 +86,62 @@ describe('model catalog policy', () => {
       expect(catalogRowSupportsImages({ id: 'd', architecture: {} })).toBeUndefined()
     })
   })
+
+  describe('fetchModelsForProvider', () => {
+    it.each<[CatalogRequest, string]>([
+      [
+        { provider: 'custom', url: 'https://api.otari.ai/api/v1', apiKey: 'sk-test' },
+        'https://api.otari.ai/api/v1/models',
+      ],
+      [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
+      [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models/user'],
+    ])('routes the %o catalog through the supplied transport', async (request, endpoint) => {
+      const proxyFetch = stubProxyFetch()
+      await fetchModelsForProvider(request, () => proxyFetch)
+
+      const sent = new Request(proxyFetch.mock.calls[0][0])
+      expect(sent.url).toBe(endpoint)
+      expect(sent.headers.get('Authorization')).toBe('Bearer sk-test')
+    })
+
+    it('routes the Anthropic catalog through the supplied transport with scoped credentials', async () => {
+      const requests: Request[] = []
+      const proxyFetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requests.push(new Request(input, init))
+          return Response.json({ data: [{ id: 'claude-test', display_name: 'Claude Test' }] })
+        },
+        { preconnect: async () => false },
+      )
+
+      const webviewFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        const models = await fetchModelsForProvider({ provider: 'anthropic', apiKey: 'own-key' }, () => proxyFetch)
+
+        expect(models).toEqual([{ id: 'claude-test', name: 'Claude Test' }])
+        expect(requests[0].url).toBe('https://api.anthropic.com/v1/models?limit=1000')
+        expect(requests[0].headers.get('x-api-key')).toBe('own-key')
+        expect(requests[0].headers.get('authorization')).toBeNull()
+        expect(requests[0].headers.get('anthropic-version')).toBe('2023-06-01')
+        expect(requests[0].headers.get('anthropic-dangerous-direct-browser-access')).toBe('true')
+      } finally {
+        webviewFetch.mockRestore()
+      }
+    })
+
+    it('keeps loopback custom endpoints off the proxy, like chat does', async () => {
+      const proxyFetch = stubProxyFetch()
+      const directFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        await fetchModelsForProvider({ provider: 'custom', url: 'http://localhost:1234' }, () => proxyFetch)
+
+        expect(new Request(directFetch.mock.calls[0][0]).url).toBe('http://localhost:1234/v1/models')
+        expect(proxyFetch).not.toHaveBeenCalled()
+      } finally {
+        directFetch.mockRestore()
+      }
+    })
+  })
 })
 
 describe('fetchModelsForProvider', () => {
@@ -95,7 +160,7 @@ describe('fetchModelsForProvider', () => {
       }),
     )
     try {
-      const models = await fetchModelsForProvider({ provider: 'openrouter', apiKey: 'user-key' })
+      const models = await fetchModelsForProvider({ provider: 'openrouter', apiKey: 'user-key' }, stubProxyFetch)
 
       expect(getSpy).toHaveBeenCalledWith(
         'https://openrouter.ai/api/v1/models/user',
@@ -104,8 +169,8 @@ describe('fetchModelsForProvider', () => {
       expect(
         models.map(({ id, name, supports_tools, supports_images }) => ({ id, name, supports_tools, supports_images })),
       ).toEqual([
-        { id: 'vendor/chat', name: 'Chat', supports_tools: false, supports_images: false },
-        { id: 'vendor/vision', name: 'Vision', supports_tools: true, supports_images: true },
+        { id: 'vendor/chat', name: 'Chat', supports_tools: undefined, supports_images: false },
+        { id: 'vendor/vision', name: 'Vision', supports_tools: undefined, supports_images: true },
       ])
     } finally {
       getSpy.mockRestore()
@@ -115,7 +180,7 @@ describe('fetchModelsForProvider', () => {
   it('does not fall back to the unfiltered OpenRouter catalog without a key', async () => {
     const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [] }))
     try {
-      expect(await fetchModelsForProvider({ provider: 'openrouter' })).toEqual([])
+      expect(await fetchModelsForProvider({ provider: 'openrouter' }, stubProxyFetch)).toEqual([])
       expect(getSpy).not.toHaveBeenCalled()
     } finally {
       getSpy.mockRestore()
@@ -128,8 +193,8 @@ describe('fetchModelsForProvider', () => {
   ])('keeps the standard models endpoint for $provider', async ({ endpoint, ...request }) => {
     const getSpy = spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'chat-model' }] }))
     try {
-      expect(await fetchModelsForProvider(request)).toEqual([
-        { id: 'chat-model', supports_tools: false, supports_images: undefined },
+      expect(await fetchModelsForProvider(request, stubProxyFetch)).toEqual([
+        { id: 'chat-model', supports_images: undefined },
       ])
       expect(getSpy).toHaveBeenCalledWith(endpoint, expect.any(Object))
     } finally {

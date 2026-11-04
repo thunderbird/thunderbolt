@@ -6,6 +6,14 @@ import { useCallback, useMemo, useReducer, type KeyboardEvent, type RefObject } 
 
 import type { Skill } from '@/types'
 import type { AcpCommand } from '@/acp/translators/acp-to-ai-sdk'
+import {
+  chipMarker,
+  findSkillTokens,
+  foldPendingSigils,
+  hasPendingSigil,
+  isPendingSigil,
+  pendingSigilForKey,
+} from './parse-skill-tokens'
 import { buildDisplayNameToSlug, skillDisplayName, skillMatchesQuery, tokenForSkill } from './display'
 
 /**
@@ -28,8 +36,8 @@ export type SlashState = { tokenStart: number; query: string }
  *
  * The token begins at the first character after the most recent whitespace
  * (space / tab / newline) before the caret, or at index 0 if none. It must
- * start with `/` or `@` to be considered a trigger token; otherwise we return
- * `null`. Both triggers open the same skill picker; selecting a skill inserts
+ * start with `/`, `@` or a pending sigil to be considered a trigger token;
+ * otherwise we return `null`. Both triggers open the same skill picker; selecting a skill inserts
  * its `/Display Title` token (normalized to the slug at send time), while
  * agent commands insert their literal `/name`. Mid-word `@` (e.g. an email
  * address) never matches because the token wouldn't *start* with the trigger.
@@ -45,12 +53,51 @@ export const getSlashState = (value: string, cursor: number): SlashState | null 
   const lastWs = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n'), before.lastIndexOf('\t'))
   const tokenStart = lastWs + 1
   const token = value.slice(tokenStart, cursor)
-  if (!token.startsWith('/') && !token.startsWith('@')) {
+  if (!token.startsWith('/') && !token.startsWith('@') && !isPendingSigil(token[0])) {
     return null
   }
   // Which trigger opened the token is irrelevant downstream — selection
   // replaces the whole token range, so `@` naturally becomes `/`.
   return { tokenStart, query: token.slice(1) }
+}
+
+/** The query at the caret when a pending sigil opened its token, else null. */
+const pendingQueryAt = (value: string, caret: number): string | null => {
+  const state = getSlashState(value, caret)
+  return state && isPendingSigil(value[state.tokenStart]) ? state.query : null
+}
+
+/** True for a printable, non-space key typed with a collapsed caret right after a chip. */
+const typedAgainstChip = (
+  e: KeyboardEvent<HTMLTextAreaElement>,
+  value: string,
+  displayNameToSlug: ReadonlyMap<string, string>,
+): boolean => {
+  if (e.key.length !== 1 || /\s/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey) {
+    return false
+  }
+  const { selectionStart, selectionEnd } = e.currentTarget
+  if (selectionStart !== selectionEnd) {
+    return false
+  }
+  return findSkillTokens(value, displayNameToSlug).some(
+    (token) => token.end === selectionStart && value[token.start] === chipMarker,
+  )
+}
+
+/** True at the start of the input or right after whitespace. */
+const isTriggerBoundary = (value: string, caret: number): boolean => caret === 0 || /\s/.test(value[caret - 1] ?? '')
+
+/** The pending sigil for a `/` or `@` keypress that starts a token, or null. */
+const pendingSigilFromKey = (e: KeyboardEvent<HTMLTextAreaElement>, value: string): string | null => {
+  if (e.metaKey || e.ctrlKey || e.altKey) {
+    return null
+  }
+  const { selectionStart, selectionEnd } = e.currentTarget
+  if (selectionStart !== selectionEnd || !isTriggerBoundary(value, selectionStart)) {
+    return null
+  }
+  return pendingSigilForKey(e.key)
 }
 
 type SlashAction =
@@ -128,41 +175,42 @@ export const useSlashCommand = ({
   // slug OR the display name, so searching "brief" finds "Daily Brief"
   // (/daily-brief) — and "notes" finds a label-less /meeting-notes displayed
   // as "Meeting Notes".
-  const popupItems = useMemo<SlashItem[]>(() => {
-    if (!slashState) {
-      return []
-    }
-    // `skillMatchesQuery` lowercases internally; the lowered copy is only for
-    // the agent-command comparisons below.
-    const query = slashState.query.toLowerCase()
-    const skillItems: SlashItem[] = library
-      .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, slashState.query))
-      // Slug tiebreak keeps ordering deterministic when two skills share a
-      // display name (labels are free text).
-      .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
-      .map((s) => ({
-        kind: 'skill',
-        id: s.id,
-        name: s.name,
-        label: skillDisplayName(s),
-        description: s.description,
-        skill: s,
-      }))
-    // A skill and an agent command can share a name; the skill wins so the
-    // menu doesn't show two identical `/foo` rows.
-    const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
-    const commandItems: SlashItem[] = [...agentCommands]
-      .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({
-        kind: 'command',
-        id: `command:${c.name}`,
-        name: c.name,
-        label: c.name,
-        description: c.description,
-      }))
-    return [...skillItems, ...commandItems]
-  }, [slashState, library, isEnabled, agentCommands])
+  const itemsFor = useCallback(
+    (rawQuery: string): SlashItem[] => {
+      // `skillMatchesQuery` lowercases internally; the lowered copy is only for
+      // the agent-command comparisons below.
+      const query = rawQuery.toLowerCase()
+      const skillItems: SlashItem[] = library
+        .filter((s) => isEnabled(s.name) && skillMatchesQuery(s, rawQuery))
+        // Slug tiebreak keeps ordering deterministic when two skills share a
+        // display name (labels are free text).
+        .sort((a, b) => skillDisplayName(a).localeCompare(skillDisplayName(b)) || a.name.localeCompare(b.name))
+        .map((s) => ({
+          kind: 'skill',
+          id: s.id,
+          name: s.name,
+          label: skillDisplayName(s),
+          description: s.description,
+          skill: s,
+        }))
+      // A skill and an agent command can share a name; the skill wins so the
+      // menu doesn't show two identical `/foo` rows.
+      const skillNames = new Set(skillItems.map((s) => s.name.toLowerCase()))
+      const commandItems: SlashItem[] = [...agentCommands]
+        .filter((c) => c.name.toLowerCase().includes(query) && !skillNames.has(c.name.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({
+          kind: 'command',
+          id: `command:${c.name}`,
+          name: c.name,
+          label: c.name,
+          description: c.description,
+        }))
+      return [...skillItems, ...commandItems]
+    },
+    [library, isEnabled, agentCommands],
+  )
+  const popupItems = useMemo(() => (slashState ? itemsFor(slashState.query) : []), [slashState, itemsFor])
 
   const popupOpen = slashState !== null && popupItems.length > 0 && closedForToken !== slashState.tokenStart
 
@@ -181,30 +229,42 @@ export const useSlashCommand = ({
     dispatch({ type: 'CLEAR_DISMISS' })
   }
 
+  /** Write value and selection to the textarea in one step, so a select event never sees the caret React's commit moved. */
+  const writeEdit = useCallback(
+    (next: string, start: number, end: number = start) => {
+      const textarea = inputRef.current
+      if (textarea) {
+        textarea.value = next
+        textarea.setSelectionRange(start, end)
+      }
+      setValue(next)
+      dispatch({ type: 'SET_CURSOR', pos: start })
+    },
+    [inputRef, setValue],
+  )
+
   const insertToken = useCallback(
-    (name: string) => {
+    (token: string) => {
       if (!slashState) {
         return
       }
       const tokenEnd = slashState.tokenStart + 1 + slashState.query.length
       const before = value.slice(0, slashState.tokenStart)
       const after = value.slice(tokenEnd)
-      // Skip the trailing space when the following text already starts with
-      // whitespace — otherwise the user sees a doubled space after completion.
-      const needsTrailingSpace = !/^\s/.test(after)
-      const insert = `/${name}${needsTrailingSpace ? ' ' : ''}`
+      // Add a space only to keep following text from fusing with the token.
+      const needsSpace = after.length > 0 && !/^\s/.test(after)
+      const insert = needsSpace ? `${token} ` : token
       const next = before + insert + after
-      const newCursor = slashState.tokenStart + insert.length + (needsTrailingSpace ? 0 : 1)
-      // Update value and cursor in the same commit so the popup doesn't
-      // flicker open on a stale-cursor render between setValue and rAF.
-      setValue(next)
-      dispatch({ type: 'SET_CURSOR', pos: newCursor })
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-        inputRef.current?.setSelectionRange(newCursor, newCursor)
-      })
+      const newCursor = slashState.tokenStart + insert.length
+      writeEdit(next, newCursor)
+      inputRef.current?.focus()
     },
-    [slashState, value, setValue, inputRef],
+    [slashState, value, writeEdit, inputRef],
+  )
+
+  const hasSuggestions = useMemo(
+    () => agentCommands.length > 0 || library.some((s) => isEnabled(s.name)),
+    [agentCommands, library, isEnabled],
   )
 
   const displayNameToSlug = useMemo(() => buildDisplayNameToSlug(library), [library])
@@ -217,14 +277,75 @@ export const useSlashCommand = ({
   // the slug in chat; send-time normalization maps it back for the model.
   // Agent commands insert their literal name, which IS what the agent expects.
   const selectItem = useCallback(
-    (item: SlashItem) => insertToken(item.kind === 'skill' ? skillToken(item.skill) : item.name),
+    (item: SlashItem) => insertToken(item.kind === 'skill' ? chipMarker + skillToken(item.skill) : `/${item.name}`),
     [insertToken, skillToken],
   )
   /** Insert a skill's slash token. Convenience for the skill path (and tests). */
-  const selectSkill = useCallback((skill: Skill) => insertToken(skillToken(skill)), [insertToken, skillToken])
+  const selectSkill = useCallback(
+    (skill: Skill) => insertToken(chipMarker + skillToken(skill)),
+    [insertToken, skillToken],
+  )
+
+  /** Route a textarea edit; a pending sigil that can no longer match becomes the typed character. */
+  const handleChange = useCallback(
+    (next: string, caret: number) => {
+      const query = enabled ? pendingQueryAt(next, caret) : null
+      if (hasPendingSigil(next) && (query === null || itemsFor(query).length === 0)) {
+        writeEdit(foldPendingSigils(next), caret)
+        return
+      }
+      setValue(next)
+    },
+    [enabled, itemsFor, writeEdit, setValue],
+  )
+
+  /** Track the caret; leaving a pending sigil turns it into the typed character. */
+  const handleSelect = useCallback(
+    (start: number, end: number) => {
+      const live = inputRef.current?.value ?? value
+      if (hasPendingSigil(live) && (!enabled || pendingQueryAt(live, start) === null)) {
+        writeEdit(foldPendingSigils(live), start, end)
+        return
+      }
+      dispatch({ type: 'SET_CURSOR', pos: start })
+    },
+    [enabled, inputRef, value, writeEdit],
+  )
+
+  /** Close the picker for the token at the caret; a pending sigil becomes the typed character. */
+  const dismissToken = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>, tokenStart: number) => {
+      if (isPendingSigil(value[tokenStart])) {
+        writeEdit(foldPendingSigils(value), e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
+      }
+      dispatch({ type: 'DISMISS', tokenStart })
+    },
+    [value, writeEdit],
+  )
+
+  /** Insert the typed key after a space so it does not fuse with the chip before it. */
+  const insertSpacedChar = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      e.preventDefault()
+      const caret = e.currentTarget.selectionStart
+      writeEdit(`${value.slice(0, caret)} ${e.key}${value.slice(caret)}`, caret + 2)
+    },
+    [value, writeEdit],
+  )
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      const pendingSigil = enabled && hasSuggestions ? pendingSigilFromKey(e, value) : null
+      if (pendingSigil) {
+        e.preventDefault()
+        const caret = e.currentTarget.selectionStart
+        writeEdit(value.slice(0, caret) + pendingSigil + value.slice(caret), caret + 1)
+        return
+      }
+      if (typedAgainstChip(e, value, displayNameToSlug)) {
+        insertSpacedChar(e)
+        return
+      }
       if (!popupOpen) {
         return
       }
@@ -243,11 +364,24 @@ export const useSlashCommand = ({
       } else if (e.key === 'Escape') {
         e.preventDefault()
         if (slashState) {
-          dispatch({ type: 'DISMISS', tokenStart: slashState.tokenStart })
+          dismissToken(e, slashState.tokenStart)
         }
       }
     },
-    [popupOpen, popupItems, highlightedIdx, selectItem, slashState],
+    [
+      enabled,
+      hasSuggestions,
+      value,
+      popupOpen,
+      popupItems,
+      highlightedIdx,
+      selectItem,
+      slashState,
+      displayNameToSlug,
+      insertSpacedChar,
+      writeEdit,
+      dismissToken,
+    ],
   )
 
   const setCursorPos = useCallback((pos: number) => dispatch({ type: 'SET_CURSOR', pos }), [])
@@ -262,5 +396,7 @@ export const useSlashCommand = ({
     selectItem,
     selectSkill,
     handleKeyDown,
+    handleChange,
+    handleSelect,
   }
 }

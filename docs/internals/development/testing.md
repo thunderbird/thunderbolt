@@ -10,7 +10,8 @@ bun run test
 bun run test:agent-core
 
 # Build and check the production agent chunk in Chromium and WebKit (no backend/auth required)
-bunx playwright install chromium webkit
+bun run browsers:install
+bunx playwright install webkit
 bun run test:agent-core:browser
 
 # Run frontend tests in watch mode (src/ only)
@@ -32,7 +33,34 @@ helm unittest deploy/k8s
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
 
-`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+`bun run test` is `bun test --cwd=src` plus explicit paths: `shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`, `scripts/create-release.test.ts`, `scripts/release-workflows.test.ts`, `scripts/chrome.test.ts`, `scripts/install-chrome.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, `scripts/copy-powersync-assets.test.ts`, and selected `.github/scripts/*.test.*`. They must be explicit: `shared/` is outside `--cwd=src`, and Bun skips hidden dirs. `bun test --cwd=e2e db-diagnostic.test.ts fake-provider.test.ts` runs as a separate step, because root `bunfig.toml` excludes `e2e/**` from discovery and Playwright collects only `*.spec.ts`.
+
+### Browser security updates
+
+All Chrome-based tests use Google’s current **Chrome for Testing Stable**, downloaded separately from
+Playwright with `bun run browsers:install`. Run it after setting up a checkout and regularly before browser
+work. CI refreshes Stable on every run, including after restoring a cache. Installing Playwright alone, or
+running `playwright install chromium`, does not refresh this browser. On Linux, `--with-deps` also installs
+the system libraries Playwright lists for its own Chromium. We install with `@puppeteer/browsers` because
+Playwright's `channel: 'chrome'` launches the system Google Chrome, and `playwright install chrome` replaces
+that installation on macOS and Linux. Its Linux installer also does not support Arm64.
+
+The Stable alias lives under the Playwright browser cache (`stable-chrome/`) and is resolved locally when
+launching tests. An absent installation fails rather than silently falling back to Playwright’s pinned Chromium.
+`PLAYWRIGHT_BROWSERS_PATH` supports a shared cache across OS users. Only the user who installs into it should
+be able to write to it, because every other user runs the browsers it holds. Firefox and WebKit still use the
+builds paired with Playwright and must be updated with Playwright.
+
+The QA MCP servers use this same build. GitHub Actions receives its executable path from the installer;
+for local QA, export it again after each `browsers:install`, because the path names one Chrome build:
+
+```sh
+export THUNDERBOLT_CHROME_EXECUTABLE="$(bun scripts/chrome.ts)"
+```
+
+Chrome for Testing has no personal Chrome profile and no automatic updater. Refresh it with the command
+above; updating your regular Chrome does not update test browsers. Old caches can be removed after all active
+checkouts use this configuration; an old checkout can otherwise reinstall its old browser.
 
 ### `shared/agent-core`
 
@@ -315,6 +343,27 @@ On Linux, start and migrate PostgreSQL first, then start PowerSync using [`night
 ### Native app smoke
 
 The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
+
+The fake provider binds to IPv4 loopback (`127.0.0.1`). Binding to `localhost`
+can select `::1` on Linux while the Bun backend connects over IPv4. The scoped
+`fake-provider.test.ts` opens a real socket and consumes the complete Messages
+stream through the Anthropic SDK; `bun run test` runs it without the frontend's
+DOM or timer mocks. A passing native smoke checks runtime compatibility; it does
+not exercise or fix RUSTSEC-2024-0429.
+
+The Linux glib risk check and its negative fixtures run with:
+
+```sh
+bash scripts/check-glib-variantstriter.test.sh
+./scripts/check-glib-variantstriter.sh x86_64-unknown-linux-gnu
+./scripts/check-glib-variantstriter.sh aarch64-unknown-linux-gnu
+```
+
+The fixtures run the actual scanner over temporary package sources, with only
+Cargo metadata substituted. They cover callers in registry, Git and path
+packages, app build scripts, version/source drift and incomplete scans. The two
+commands below them resolve the locked application graphs and scan their sources.
+See [CI and previews](ci-and-previews.md) for the remaining risk.
 
 ### Preview Smoke
 

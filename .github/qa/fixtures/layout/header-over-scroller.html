@@ -1,0 +1,44 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Header over a scroller</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      /* Like the app's page header: absolute, a sibling of the scroll box, not inside it. */
+      #header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: #ddd;
+        z-index: 30;
+      }
+      #scroller {
+        height: 100vh;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header">Header</div>
+    <div id="scroller">
+      <div id="gap" style="height: 400px"></div>
+      <button>Under the header</button>
+      <div style="height: 3000px"></div>
+    </div>
+    <script>
+      // #stuck: the button starts under the header with nothing above it to scroll back to. Otherwise the list is
+      // scrolled until the button sits under the header, and scrolling up brings it back.
+      if (location.hash === '#stuck') document.getElementById('gap').style.height = '20px'
+      else document.getElementById('scroller').scrollTop = 390
+    </script>
+  </body>
+</html>

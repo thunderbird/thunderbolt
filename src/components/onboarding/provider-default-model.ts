@@ -45,20 +45,21 @@ export const prepareProviderDefaultModel = async (
   const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)])
   const work = async (): Promise<ProviderModelValues> => {
     boundedSignal.throwIfAborted()
-    const catalog = await runProviderSetupStage('catalog', () => deps.fetchModels({ provider, apiKey }))
+    const catalog = await runProviderSetupStage('catalog', () => deps.fetchModels({ provider, apiKey }, getProxyFetch))
     boundedSignal.throwIfAborted()
     const model = resolveProviderDefaultModel(catalog)
     if (!model) {
       throw new ProviderSetupError('model')
     }
     const preferred = defaultModels.find((model) => model.id === defaultModelId)!
-    await runProviderSetupStage('probe', () =>
+    const toolSupport = await runProviderSetupStage('probe', () =>
       deps.probe({ provider, model: model.id, apiKey, url: null }, getProxyFetch, boundedSignal),
     )
     boundedSignal.throwIfAborted()
     return {
       provider,
       apiKey,
+      supportsTools: toolSupport === 'supported',
       model: model.id,
       name: preferred.name,
       contextWindow: preferred.contextWindow,

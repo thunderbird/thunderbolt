@@ -1,6 +1,6 @@
 # Kubernetes
 
-One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except registry egress for the images, and an AI provider if you configure one. Keycloak is the default identity provider, and you can [point the chart at your own](#your-own-identity-provider) instead.
+One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except registry egress for the images, an AI provider if you configure one, and, if [branding](./configuration.md#branding) sets fonts or a logo, egress to Google Fonts and the logo host. Keycloak is the default identity provider, and you can [point the chart at your own](#your-own-identity-provider) instead.
 
 If you only want to see Thunderbolt working, we recommend [Docker Compose](./docker-compose.md) or the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
 
@@ -143,6 +143,7 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 | `backend.aiSecrets.*`                 | empty                   | Base64 provider keys: `anthropicApiKeyBase64`, `fireworksApiKeyBase64`, `exaApiKeyBase64`, `thunderboltInferenceApiKeyBase64`. Empty means that provider is off. |
 | `backend.env.rateLimitEnabled`        | `"false"`               | Per-client rate limiting on the API.                                                                                                                             |
 | `backend.env.minAppVersion`           | empty                   | Reject clients older than this version. Empty disables the check.                                                                                                |
+| `backend.env.branding`                | empty                   | [Branding](./configuration.md#branding) as a JSON string. Pass it with `--set-file`, see below.                                                                  |
 | `<component>.image.repository`        | public GHCR / upstream  | Point at a mirror. Pair with `imagePullSecrets` if it is private.                                                                                                |
 | `<component>.image.tag`               | `latest` for our images | Pin this. See [Install](#install).                                                                                                                               |
 | `<component>.replicas`                | `1`                     | Copies of that workload. Not available for PostgreSQL.                                                                                                           |
@@ -153,6 +154,8 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 `<component>` is one of `frontend`, `marketing`, `backend`, `postgres`, `powersync`, `keycloak`.
 
 Secret values ending in `Base64` are base64 of the raw value, not the raw value: `echo -n "your-key" | base64`.
+
+Pass branding from a file with `--set-file backend.env.branding=branding.json`. `--set` treats commas as separators and braces as list syntax, so a JSON value given that way arrives mangled.
 
 > Don't put `@`, `:`, `/`, `?` or `#` in the database password. It silently corrupts the connection string and the API never reaches the database.
 

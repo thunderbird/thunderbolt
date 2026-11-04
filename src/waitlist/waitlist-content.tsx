@@ -8,11 +8,13 @@ import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
-import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
+import { useBrandingLinks } from '@/lib/branding-selectors'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Fingerprint } from 'lucide-react'
+import { useId } from 'react'
 import type { useWaitlistState } from './use-waitlist-state'
 import { WaitlistHeader } from './waitlist-header'
 import { WaitlistLanguagePicker } from './waitlist-language-picker'
@@ -25,6 +27,8 @@ type WaitlistContentProps = {
 /** Shared early-access and approved-account form for the waitlist page and onboarding. */
 export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentProps) => {
   const { t } = useLingui()
+  const links = useBrandingLinks()
+  const otpPromptId = useId()
   const { state, isValidEmail, actions } = waitlist
 
   const isVerifying = state.status === 'verifying'
@@ -77,7 +81,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
                 : 'mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0'
             }
           >
-            <p className="text-sm text-muted-foreground">
+            <p id={otpPromptId} className="text-sm text-muted-foreground">
               <Trans>If you received a code to log in, enter it here:</Trans>
             </p>
             <InputOTP
@@ -88,6 +92,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
               onComplete={actions.handleOtpComplete}
               disabled={isVerifying}
               autoFocus
+              aria-labelledby={otpPromptId}
               autoComplete="one-time-code"
               data-1p-ignore
               data-lpignore="true"
@@ -196,7 +201,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
           <Trans>
             By continuing, you agree to our{' '}
             <a
-              href={termsOfServiceUrl}
+              href={links.termsOfService}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:no-underline"
@@ -205,7 +210,7 @@ export const WaitlistContent = ({ waitlist, embedded = false }: WaitlistContentP
             </a>{' '}
             and{' '}
             <a
-              href={privacyPolicyUrl}
+              href={links.privacyPolicy}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:no-underline"

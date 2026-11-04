@@ -295,7 +295,6 @@ export const ChatSkillsBar = ({
         collisionPadding: 12,
         className: 'w-60 max-w-[calc(100vw-1.5rem)] p-0',
       }}
-      mobileMenu={{ initialFocus: false }}
     >
       <div className="flex min-h-0 flex-col p-1">{addMenuContent}</div>
     </ResponsivePopover>

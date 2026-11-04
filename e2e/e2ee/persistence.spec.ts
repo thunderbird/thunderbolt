@@ -86,7 +86,10 @@ test.describe('PowerSync E2EE persistence and destructive flows', () => {
     await codeDialog.getByRole('button', { name: 'Delete account' }).click()
 
     await waitForAccountDeletion(userId)
-    await expect(page.getByPlaceholder('Email')).toBeVisible({ timeout: 30_000 })
+    await expect(page).toHaveURL(/\/account-deleted$/)
+    await expect(page.getByRole('heading', { name: 'Account Deleted' })).toBeVisible()
     await expect.poll(() => getEncryptionKeyNames(page)).toEqual([])
+    await page.getByRole('button', { name: 'Back to App' }).click()
+    await expect(page.getByPlaceholder('Email')).toBeVisible({ timeout: 30_000 })
   })
 })

@@ -10,7 +10,7 @@ const db = {} as AnyDrizzleDatabase
 
 const makeDeps = (overrides: Partial<MoveChatDeps> = {}) => ({
   db,
-  setProject: mock(async () => {}),
+  setProject: mock(async () => true),
   updateOpenSession: mock(() => {}),
   refreshChatList: mock(async () => {}),
   ...overrides,
@@ -38,6 +38,12 @@ describe('moveChatToProject', () => {
     expect(deps.refreshChatList).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the live session unchanged when the target project disappeared', async () => {
+    const rejected = makeDeps({ setProject: mock(async () => false) })
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'deleted' }, rejected)
+    expect(rejected.updateOpenSession).not.toHaveBeenCalled()
+  })
+
   it('does not swallow a failure to write membership itself', async () => {
     // The opposite of the above: if the move did not happen, the caller must hear
     // about it rather than the UI claiming success.
@@ -51,5 +57,8 @@ describe('moveChatToProject', () => {
       'database is gone',
     )
     expect(failing.updateOpenSession).not.toHaveBeenCalled()
+    // A failed write must release the chat's queue for a subsequent move.
+    await moveChatToProject({ chatThreadId: 'chat-1', projectId: 'p2' }, deps)
+    expect(deps.updateOpenSession).toHaveBeenCalledWith('chat-1', 'p2')
   })
 })

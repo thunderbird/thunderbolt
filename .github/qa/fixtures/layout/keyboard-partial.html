@@ -1,0 +1,25 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Keyboard partial</title>
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The field's lower 10 px sit under the 300 px keyboard. The page could scroll it clear, but nothing scrolled
+         it. -->
+    <div style="height: calc(100vh - 300px - 34px)"></div>
+    <form>
+      <input placeholder="Email" style="display: block; height: 44px; box-sizing: border-box" />
+    </form>
+    <div style="height: 2000px"></div>
+    <script src="fake-keyboard.js"></script>
+  </body>
+</html>

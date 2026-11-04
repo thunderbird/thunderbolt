@@ -7,6 +7,7 @@ import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { HttpError } from '@/lib/http'
+import { DeviceApprovalError } from '@/crypto/errors'
 import { useApprovalPolling } from './use-approval-polling'
 
 const createHTTPError = (status: number) => new HttpError(new Response(null, { status }))
@@ -16,6 +17,31 @@ const createRevokedError = () =>
 describe('useApprovalPolling', () => {
   afterEach(() => {
     cleanup()
+  })
+
+  it('reports receiver-verification failure and can still recover on a later poll', async () => {
+    let attempt = 0
+    const onVerificationFailed = mock(() => {})
+    const onApproved = mock(() => {})
+    const checkApproval = async () => {
+      attempt += 1
+      if (attempt === 1) {
+        throw new DeviceApprovalError('recipient-unverified')
+      }
+      return true
+    }
+    renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved, onVerificationFailed, intervalMs: 50 }),
+    )
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onVerificationFailed).toHaveBeenCalledTimes(1)
+    expect(onApproved).not.toHaveBeenCalled()
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+    expect(onApproved).toHaveBeenCalledTimes(1)
   })
 
   it('does not poll when disabled', async () => {

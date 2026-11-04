@@ -10,8 +10,9 @@
  *
  * @param {import('@actions/github').GitHub} github
  * @param {import('@actions/github').context} context
+ * @param {string} [baselineDir] where the baseline that ci.yml saves was restored
  */
-module.exports = async ({ github, context }) => {
+module.exports = async ({ github, context, baselineDir = '.metrics-baseline' }) => {
   const fs = require('fs')
 
   // All metric values are passed in as environment variables by the workflow.
@@ -31,8 +32,9 @@ module.exports = async ({ github, context }) => {
   let baselineBundle = null
   let baselineCoverage = null
   try {
-    if (fs.existsSync('.metrics-baseline/metrics.json')) {
-      const baseline = JSON.parse(fs.readFileSync('.metrics-baseline/metrics.json', 'utf8'))
+    const baselineFile = `${baselineDir}/metrics.json`
+    if (fs.existsSync(baselineFile)) {
+      const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'))
       baselineBundle = baseline.bundleSize
       baselineCoverage = baseline.coverage
     }

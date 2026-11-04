@@ -33,7 +33,7 @@ describe('provider default model', () => {
   })
 
   it('checks the selected model with the credential and preserves its metadata', async () => {
-    const probe = mock<ConnectionTestProbe>(async () => {})
+    const probe = mock<ConnectionTestProbe>(async () => 'supported')
     const values = await prepareProviderDefaultModel('tinfoil', 'secret', getFetch, new AbortController().signal, {
       fetchModels: async () => [{ id: preferred.model }],
       probe,
@@ -45,7 +45,7 @@ describe('provider default model', () => {
   })
 
   it('fails if the default is unavailable, instead of picking a different model', async () => {
-    const probe = mock<ConnectionTestProbe>(async () => {})
+    const probe = mock<ConnectionTestProbe>(async () => 'supported')
     await expect(
       prepareProviderDefaultModel('openrouter', 'key', getFetch, new AbortController().signal, {
         fetchModels: async () => [{ id: 'unrelated-model' }],
@@ -69,7 +69,7 @@ describe('provider default model', () => {
   it('cancels a hung catalog and never probes its late result', async () => {
     const catalog = Promise.withResolvers<Array<{ id: string }>>()
     const controller = new AbortController()
-    const probe = mock<ConnectionTestProbe>(async () => {})
+    const probe = mock<ConnectionTestProbe>(async () => 'supported')
     const pending = prepareProviderDefaultModel('openrouter', 'key', getFetch, controller.signal, {
       fetchModels: () => catalog.promise,
       probe,

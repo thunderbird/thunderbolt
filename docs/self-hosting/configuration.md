@@ -118,12 +118,12 @@ Users create personal access tokens in the app so a script or the command-line c
 
 Lets users sign in with a passkey, and unlock sync on a new device with it instead of approving it from another device. Consumer sign-in only; ignored under OIDC and SAML.
 
-| Variable                  | Default              | What it does                                                                                                                                            |
-| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PASSKEY_ENABLED`         | `false`              | Turns passkeys on.                                                                                                                                      |
-| `PASSKEY_RP_ID`           | `APP_URL`'s hostname | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
-| `PASSKEY_RP_NAME`         | `Thunderbolt`        | Name shown in the browser's passkey prompt.                                                                                                             |
-| `PASSKEY_ANDROID_ORIGINS` | empty                | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
+| Variable                  | Default               | What it does                                                                                                                                            |
+| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSKEY_ENABLED`         | `false`               | Turns passkeys on.                                                                                                                                      |
+| `PASSKEY_RP_ID`           | `APP_URL`'s hostname  | WebAuthn Relying Party ID. Set it only to share passkeys across subdomains (use the apex domain).                                                       |
+| `PASSKEY_RP_NAME`         | the branding app name | Name shown in the browser's passkey prompt. Unset, it uses `appName` from [`BRANDING`](#branding), then `Thunderbolt`.                                  |
+| `PASSKEY_ANDROID_ORIGINS` | empty                 | Comma-separated `android:apk-key-hash:<hash>` origins of the Android app's signing keys. The Android app's passkeys verify only when its key is listed. |
 
 > [!WARNING]
 > The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
@@ -181,16 +181,16 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 ## Encryption
 
-End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync, and each new device has to be approved from one the user already trusts, or recovered with their recovery phrase. The apps decide this from their own key material, not from the server, so a compromised server cannot switch it off.
+End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync. A new device unlocks through fingerprint approval from a trusted device, the current recovery phrase, or a passkey enrolled for sync. Fingerprint approval requires trusted client code on both the approving device and the new device; a malicious web host can replace the code it serves.
 
-> Because the servers hold only ciphertext for that content, an administrator cannot recover a user's data for them unless you run [organizational key escrow](#organizational-key-escrow). Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
+> Users unlock devices through fingerprint approval, their current recovery phrase, or an available passkey enrolled for sync. [Organizational key escrow](#organizational-key-escrow) separately supports offline decryption by an operator holding its private key; the supported escrow workflow decrypts data offline and does not restore the user's recovery phrase.
 
 **Upgrading from a release before 0.1.135**, where encryption was the `E2EE_ENABLED` setting:
 
 1. Set `MIN_APP_VERSION=0.1.135` in the same deploy that moves the backend to 0.1.135 or later. Older apps then show an upgrade screen instead of uploading plain text or silently failing to sync.
 2. Remove `E2EE_ENABLED`. Nothing reads it any more.
 
-Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. Accounts that already used encryption are upgraded in place: the first device to open the new version shows the user a new recovery phrase once, and the old phrase stops working.
+Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. For a legacy encrypted account, the migrating device shows a new recovery phrase once; save that new phrase because the old one stops working. Other trusted regular app devices return to pending approval, while existing pending or denied requests keep their state. They unlock through verified approval, the new phrase, or a passkey enrolled for sync. Existing encrypted data is preserved; CLI and bridge entries keep their state.
 
 ### Organizational key escrow
 
@@ -213,9 +213,19 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 | `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
 
-`MINIMAL_MODE=true` hides the Settings section, the header's agent name, the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
+`MINIMAL_MODE=true` hides the Settings section, the header's agent name (replaced by your logo when one is set, see below), the starter skill chips, Projects, the account control, the add menu's Connections action, the voice mode button and the palette's theme commands, and turns off slash-command skills, so `/` is ordinary text in the composer.
 
 Minimal mode has no theme control: the app follows the visitor's stored theme, which is the system theme unless they chose otherwise before minimal mode was on.
+
+| Variable              | Default | What it does                                                                                                                                                             |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BRAND_LOGO_URL`      | empty   | In minimal mode, a logo shown in the header for visitors who open the site directly in a browser, not inside an app (see below). An `https:` URL or a `data:image/` URL. |
+| `BRAND_LOGO_DARK_URL` | empty   | The logo for dark theme. Falls back to `BRAND_LOGO_URL`. Same URL rules.                                                                                                 |
+| `BRAND_LOGO_ALT`      | empty   | The logo's accessible name. Falls back to the agent's name.                                                                                                              |
+
+The logo shows only to visitors who open the site directly in a browser. Inside a native app's WebView the app's own chrome already carries the branding, so the logo stays hidden. The app counts as embedded once a load carries `?embed=app`: any load carrying it sets the marker. The marker is saved in `localStorage` from then on, so it survives navigation and restarts, and the web UI never clears it. There is no user agent detection: link the app with `?embed=app`, and a visitor who opens the plain URL sees the logo.
+
+A `data:image/` URL is the form that works everywhere, so it is the recommended one. An `https:` logo loads only where the page's policies allow it. On a deployment that sends `Cross-Origin-Embedder-Policy: require-corp` (the Render blueprint, `deploy/render/public-agent.yaml`), the logo's host must also send `Cross-Origin-Resource-Policy: cross-origin`. The desktop and mobile apps' content security policy allows images from `'self'`, `asset:`, `data:`, `blob:` and `https://api.thunderbolt.io`, so an `https:` logo there would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
 
 ### Hosted agent
 
@@ -284,6 +294,65 @@ HAYSTACK_PIPELINES='[{"id":"rag-chat","name":"RAG Chat","pipelineName":"rag-chat
 ```
 
 A pipeline that should accept file attachments needs `"supportedContent": {"text": true, "files": true}`. Without it attachments never reach the pipeline, and it is run as a chat pipeline rather than a generative one.
+
+## Branding
+
+| Variable   | Default | What it does                                                                     |
+| ---------- | ------- | -------------------------------------------------------------------------------- |
+| `BRANDING` | empty   | JSON object that renames the app and restyles it with shadcn-style theme tokens. |
+
+Every key is optional; anything you leave out keeps the default look. The API refuses to start when the value is not valid JSON or breaks the rules below, and lists every problem at once. In a `.env` file, wrap the value in single quotes (`BRANDING='{…}'`): unquoted, the `#` of the first hex color starts a comment and cuts the JSON short.
+
+```json
+{
+  "appName": "Acme AI",
+  "defaultThemeMode": "dark",
+  "cssVars": {
+    "theme": { "radius": "0.75rem" },
+    "light": { "background": "#f8fafc", "foreground": "#0f172a", "primary": "#4f46e5" },
+    "dark": { "background": "#0f172a", "foreground": "#e2e8f0", "primary": "#6366f1" }
+  }
+}
+```
+
+- `appName` (up to 60 characters) replaces Thunderbolt wherever the text means the app: the browser tab, sign-in, onboarding, settings and the standalone screens, the built-in agent's name, transactional emails, the passkey prompt (unless `PASSKEY_RP_NAME` is set), the consent screen of MCP servers users connect to, and the host name Mini Apps see. Text about the Thunderbolt product itself keeps the name: the command-line client, Thunderbolt Pro, the desktop app downloads and the open-source note. The desktop and mobile apps' own name and icon are set when they are built, so they stay Thunderbolt.
+- `debugTranscriptRecipient` (up to 60 characters) is who the debug-transcript share dialog says receives the transcript, as "the {name} team". It defaults to Thunderbolt, not to `appName`, because the default intake at `DEBUG_TRANSCRIPT_UPSTREAM_URL` is Thunderbolt's. Set it when you forward [debug transcripts](#debug-transcripts) to your own intake.
+- `defaultThemeMode` is `light`, `dark` or `system`, and applies to users who have never chosen a theme on that device, including existing installs that were left on the default.
+- `cssVars` uses the [shadcn theme](https://ui.shadcn.com/docs/theming) format, so a theme exported from an editor such as [tweakcn](https://tweakcn.com) can be pasted in as its `cssVars` object. `light` and `dark` are set independently; a mode you omit keeps the default palette.
+
+**Colors** are hex, `rgb()`, `hsl()`, `oklch()` or `oklab()` with plain numbers. Each mode accepts shadcn's tokens — `background`, `foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive` (each with a `-foreground` partner), `border`, `input`, `ring`, `chart-1` to `chart-5`, and the `sidebar-*` set — plus Thunderbolt's own:
+
+- `brand` fills primary buttons, checkboxes, switches and highlights. On its own it is a solid color; add `brand-gradient-start` to make it a left-to-right gradient that starts from `brand-gradient-start`. Without `brand`, the theme's `primary` is used, which is how shadcn themes color their buttons. `brand-foreground` sets the text on it.
+- `border-strong` is the firmer border on focused inputs.
+- `success` and `warning`, each with a `-foreground` partner.
+
+Setting `background` or `foreground` in a mode also derives the surfaces you don't set from them — cards, menus, the sidebar, hover fills, borders and secondary text — so a three-color theme stays coherent. Any token you set explicitly wins. Text on `brand` and `primary` switches between light and dark automatically for contrast unless you set its `-foreground`.
+
+**Lengths** (`shadow-blur`, `shadow-spread`, `shadow-offset-x`, `shadow-offset-y`, `letter-spacing`) need a `px`, `rem` or `em` unit; only `0` may omit it.
+
+**Shadows** come from six parameters per mode, as in tweakcn: `shadow-color`, `shadow-opacity` (0 to 1), `shadow-blur`, `shadow-spread`, `shadow-offset-x` and `shadow-offset-y`. Thunderbolt generates every shadow size from them; a hard offset shadow with no blur gives a neo-brutalist look, and an opacity of `0` a flat one.
+
+**Shape**: `radius` (a non-negative `px` or `rem` length, or `0`; the default is `0.625rem`, `0px` is square) scales every corner in the app together, and `letter-spacing` sets the text tracking. Both apply to both modes; put them in `theme`.
+
+**Links**: `links` points the legal and support links at your own pages: `privacyPolicy` and `termsOfService` (http or https URLs), shown on the sign-up, onboarding and Preferences screens, and `support` (an http or https URL, or a `mailto:` address), used by the Contact Support button on the startup error screen. A link you leave out keeps Thunderbolt's.
+
+```json
+"links": { "privacyPolicy": "https://acme.com/privacy", "termsOfService": "https://acme.com/terms", "support": "mailto:help@acme.com" }
+```
+
+**Logo**: `logo` takes `light` and an optional `dark` image URL (https only; SVG, PNG, WebP or JPEG up to 512 KB). The API downloads them at startup and serves them itself, so users' browsers never contact the logo host; the API needs outbound access to it. The app shows them in place of the Thunderbolt mark, and on the web as the browser tab icon. A square mark works best, since every placement is square. A `dark` logo that fails to download falls back to the light one. Emails use the light logo when it is a PNG or JPEG, which email clients can display, and link the API's copy of it rather than your logo host; an SVG or WebP logo leaves the emails with the Thunderbolt mark. The desktop and mobile app icons are set when the apps are built and do not change.
+
+**Fonts**: `font-sans` (all body text), `font-heading` (display headings), `font-mono` (code) and `font-serif` each take a font list such as `"DM Sans", sans-serif`; put them in `theme`. A slot you leave out keeps the default: the system font for body text and code, Mozilla Headline for headings. At startup the API downloads each list's first named font from Google Fonts (Latin and Latin Extended characters) and serves the files itself, so users' browsers never contact Google; the API needs outbound access to `fonts.googleapis.com` and `fonts.gstatic.com`. A name Google does not host, such as Georgia, is left to the fonts installed on each device. Every list is followed by the system and Japanese fallback fonts, so other scripts keep rendering. A returning user sees the system font for a moment on launch before the brand font swaps in.
+
+**Downloads**: the API waits up to 15 seconds for the font and logo downloads before it starts taking requests, so a new instance serves them from its first response, and logs a warning if they are still running when it starts. Each font and each logo downloads on its own over https only, from public addresses only (a logo on a private or internal host is refused). A download that fails for a reason that can clear up (a network error, a timeout, a 5xx, a 408 or 429) is logged and retried in the background, after 30 seconds, then doubling up to every 15 minutes, until it succeeds. One no retry can fix (any other 4xx such as a 404, a wrong file type, a file over the limit, a redirect loop, a refused address) is logged once as an error; fix `BRANDING` and restart. Anything served by Google Fonts is always retried, since it comes from Google rather than from `BRANDING`. The app shows the default until a download lands. Each API instance downloads on its own, so behind a load balancer instances can briefly disagree while one is still retrying; a client that misses a file shows the default and picks it up on its next launch.
+
+Keys that theme exports carry but Thunderbolt does not apply are accepted and ignored: `spacing`, the `tracking-*` set and the precomputed `shadow-*` sizes. Any other unknown key is an error, which catches typos.
+
+Transactional emails take the light-mode colors, converted to hex for email clients: the page from `background` and `foreground`, the message card from `card` and `card-foreground`, and `border`. The button fill is `brand`, else `primary`, as in the app, with `brand-foreground` as its text (or `primary-foreground` when the theme has no `brand`), else whichever of light or dark reads better; links take the button fill. Each surface and its text are used as a pair: if either is missing or can't be converted, both keep the default, so text never lands on a background it wasn't chosen for.
+
+The API checks `BRANDING` strictly; the app applies what it receives leniently. If an older app version gets a key or value it does not recognize from a newer API, it skips that one with a console warning and applies the rest.
+
+Changes reach users on their next app load; a returning user sees the previous branding for a moment until the new configuration arrives.
 
 ## Mini Apps
 
@@ -394,7 +463,7 @@ The challenge route has its own per-IP bucket, sized by the same `ANONYMOUS_SIGN
 | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as a semver string (`0.2.0`, or `0.2.0-rc.1`). Empty disables the check. |
 
-Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version on their API calls.
+On an honest deployment, every gated request must declare an accepted `X-App-Version` header at or above the configured minimum. Missing, malformed or below-minimum headers receive `426 Upgrade Required`. Apps that support the version gate show the update prompt. Personal access tokens earn no exemption, so API scripts and the CLI must send the header on their gated API calls. The value is client-supplied and does not prove which executable is running; a malicious server can ignore the policy.
 
 Exempt, because none of them can set the header: the startup configuration request, health checks, SSO and SAML browser callbacks, the command-line client's device-grant login, analytics capture, static assets, and the proxy WebSocket upgrade. `OPTIONS` preflights are always exempt. A blocked user can therefore still reach the update prompt.
 
@@ -440,7 +509,7 @@ If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wr
 
 ## Debug transcripts
 
-Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
+Users can send a conversation transcript to whoever runs your intake (the Thunderbolt team, unless you run your own) for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
 
 | Variable                          | Default | What it does                                                                                |
 | --------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
@@ -448,9 +517,9 @@ Users can send a conversation transcript to the Thunderbolt team for troubleshoo
 | `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
 
-Contact the team with a deployment name to get a key.
+Contact the team with a deployment name to get a key. The share dialog names the recipient as "the Thunderbolt team"; if you forward to your own intake, set `debugTranscriptRecipient` in [`BRANDING`](#branding).
 
-> Understand what leaves your infrastructure before you enable this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). The Thunderbolt team retains what it receives, and a transcript survives deletion of the account that submitted it.
+> Understand what leaves your infrastructure before you enable this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). Whoever runs the intake (the team the share dialog names) retains what it receives, and a transcript survives deletion of the account that submitted it.
 
 ## Frontend build settings
 
@@ -466,12 +535,14 @@ Several further settings are read when the app is built but are not offered as b
 
 ## Common startup errors
 
-| What it reports                                       | Fix                                                                                       |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                           |
-| The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.           |
-| `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                    |
-| `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                    |
-| `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                  |
-| The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither. |
-| `ALTCHA_SECRET` must be at least 32 characters        | Generate one with `openssl rand -hex 32`, or leave `CAPTCHA_PROVIDER` unset.              |
+| What it reports                                       | Fix                                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                            |
+| The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.            |
+| `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                     |
+| `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                     |
+| `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                   |
+| The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither.  |
+| `ALTCHA_SECRET` must be at least 32 characters        | Generate one with `openssl rand -hex 32`, or leave `CAPTCHA_PROVIDER` unset.               |
+| `BRANDING` must be valid JSON                         | In a `.env` file, wrap the whole value in single quotes; an unquoted `#` starts a comment. |
+| `BRANDING` is invalid, followed by keys               | Correct each listed key; [Branding](#branding) gives what each one accepts.                |

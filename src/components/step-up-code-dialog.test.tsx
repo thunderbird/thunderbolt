@@ -63,8 +63,5 @@ describe('StepUpCodeDialog', () => {
   })
 
   // NOT covered here: that the delete flow does not auto-submit on the last
-  // digit (`submitOnComplete`). It needs the real `InputOTP`, and
-  // `sign-in-modal.test.tsx` replaces that module process-wide via
-  // `mock.module` (it runs fake timers, which the library's internal timers
-  // fight), so such a test passes or fails on file ordering.
+  // digit (`submitOnComplete`).
 })

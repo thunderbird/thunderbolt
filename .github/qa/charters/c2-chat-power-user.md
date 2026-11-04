@@ -2,7 +2,7 @@
 
 Goal: long and messy chat sessions keep working.
 
-Start state: fresh user, desktop viewport, fake AI (select "Opus 5.5").
+Start state: fresh user, fake AI (select "Opus 5.5").
 
 1. A thread of at least 12 messages, including a 2,000-character prompt and one with Markdown and code. Scroll up and
    down.
@@ -16,7 +16,9 @@ Start state: fresh user, desktop viewport, fake AI (select "Opus 5.5").
 6. Attachments: attach `.github/qa/fixtures/sample.pdf` and `.github/qa/fixtures/sample.png` with
    `browser_file_upload`, send them, open them from the thread. Also remove an attachment before sending.
    Functions: `attach-files`, `attach-remove`.
-7. Select "DeepSeek V4.1 Flash" once and send a message: an error is expected here. Check that the app says so
+7. Open and close the sidebar: it is a drawer on a phone and a collapsible panel on a wide screen. Check that the chat
+   list stays usable each time. Function: `sidebar-toggle`.
+8. Select "DeepSeek V4.1 Flash" once and send a message: an error is expected here. Check that the app says so
    and recovers when you switch back to "Opus 5.5". Function: `model-error`.
 
 Out of bounds: settings, skills, projects, account deletion.

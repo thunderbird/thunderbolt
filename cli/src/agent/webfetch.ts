@@ -63,12 +63,16 @@ export type WebFetchDependencies = {
 
 export type WebFetchResolver = (hostname: string) => Promise<ReadonlyArray<{ readonly address: string }>>
 
+/** Bun `fetch` TLS options naming the original hostname of a pinned request. */
+type PinnedTls = { readonly serverName: string }
+
 export type WebFetchRequest = (
   input: string | URL,
   init?: {
     readonly headers?: Bun.HeadersInit
     readonly redirect?: 'error' | 'follow' | 'manual'
     readonly signal?: AbortSignal
+    readonly tls?: PinnedTls
   },
 ) => Promise<Response>
 
@@ -77,8 +81,15 @@ type HtmlScannerMode = 'comment' | 'rawText' | 'tag' | 'text'
 type RawTextElement = 'noscript' | 'script' | 'style' | 'svg'
 type TagFrame = { readonly characters: string[]; quote?: HtmlQuote }
 
-/** Resolve, validate, and pin one request hop to its first public IP address. */
-const validateAndPin = async (url: URL, resolve: WebFetchResolver): Promise<[pinnedUrl: string, headers: Headers]> => {
+/**
+ * Resolve, validate, and pin one request hop to its first public IP address.
+ * `tls` carries the original hostname for SNI and certificate checks, which Bun 1.4.1+
+ * no longer derives from the Host header; it is undefined when the URL was not rewritten.
+ */
+const validateAndPin = async (
+  url: URL,
+  resolve: WebFetchResolver,
+): Promise<[pinnedUrl: string, headers: Headers, tls: PinnedTls | undefined]> => {
   const parsedUrl = new URL(url)
   parsedUrl.username = ''
   parsedUrl.password = ''
@@ -86,7 +97,7 @@ const validateAndPin = async (url: URL, resolve: WebFetchResolver): Promise<[pin
   const literalAddress = parseIpAddress(hostname)
   if (literalAddress) {
     if (isPrivateOrInternalAddress(literalAddress)) throw new Error(privateAddressError)
-    return [parsedUrl.toString(), new Headers()]
+    return [parsedUrl.toString(), new Headers(), undefined]
   }
 
   const addresses = await resolve(hostname)
@@ -102,7 +113,7 @@ const validateAndPin = async (url: URL, resolve: WebFetchResolver): Promise<[pin
   const headers = new Headers()
   headers.set('Host', hostname)
 
-  return [pinnedUrl.toString(), headers]
+  return [pinnedUrl.toString(), headers, { serverName: hostname }]
 }
 
 /** Follow redirects manually so every network request receives fresh SSRF validation. */
@@ -115,8 +126,8 @@ const fetchWithValidatedRedirects = async (
   const state = { url: initialUrl, redirectsFollowed: 0 }
 
   while (true) {
-    const [pinnedUrl, headers] = await validateAndPin(state.url, resolve)
-    const response = await fetch(pinnedUrl, { headers, redirect: 'manual', signal })
+    const [pinnedUrl, headers, tls] = await validateAndPin(state.url, resolve)
+    const response = await fetch(pinnedUrl, { headers, redirect: 'manual', signal, tls })
     const location = response.headers.get('location')
     if (!redirectStatuses.has(response.status) || !location) return { response, url: state.url }
     if (state.redirectsFollowed >= maxRedirects) {
@@ -377,7 +388,9 @@ export const createWebFetchTool = (
   dependencies: WebFetchDependencies = {},
 ): AgentTool<typeof webFetchSchema, WebFetchDetails> => {
   const fetch: WebFetchRequest = dependencies.fetch ?? ((input, init) => globalThis.fetch(input, init))
-  const resolve: WebFetchResolver = dependencies.resolve ?? ((hostname) => lookup(hostname, { all: true }))
+  // The pin uses the first address; IPv4 first so a host without IPv6 egress still connects.
+  const resolve: WebFetchResolver =
+    dependencies.resolve ?? ((hostname) => lookup(hostname, { all: true, order: 'ipv4first' }))
   const timeoutMs = dependencies.timeoutMs ?? defaultTimeoutMs
   const maxResponseBytes = dependencies.maxResponseBytes ?? defaultMaxResponseBytes
   const maxTextLength = dependencies.maxTextLength ?? defaultMaxTextLength

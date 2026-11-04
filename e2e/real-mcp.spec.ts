@@ -53,6 +53,8 @@ test('the model calls an MCP tool through the proxy and displays its result', as
     .getByRole('region')
     .getByRole('button', { name: /Test Echo.*echo/i })
     .click()
-  await expect(page.getByText(`MCP result: ${marker}`, { exact: false })).toBeVisible()
+  // The model is asked to quote the result too, so the reply can repeat the marker outside the output panel.
+  await expect(page.getByTestId('object-view-output')).toBeVisible()
+  await expect(page.getByTestId('object-view-output')).toContainText(`MCP result: ${marker}`)
   expect(errors).toHaveLength(0)
 })

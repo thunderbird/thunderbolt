@@ -22,7 +22,7 @@ export const CopyCommandRow = ({ command, label }: { command: string; label: str
         aria-label={label}
         onClick={() => void copy(command)}
       >
-        {isCopied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
+        {isCopied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
       </Button>
     </div>
   )

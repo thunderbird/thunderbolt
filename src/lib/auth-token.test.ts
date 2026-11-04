@@ -178,7 +178,11 @@ describe('auth-token', () => {
       })
 
       afterEach(() => {
-        env.VITE_APP_VERSION = savedVersion
+        if (savedVersion === undefined) {
+          delete env.VITE_APP_VERSION
+        } else {
+          env.VITE_APP_VERSION = savedVersion
+        }
       })
 
       it('includes X-App-Version when VITE_APP_VERSION is set', () => {
@@ -187,7 +191,7 @@ describe('auth-token', () => {
       })
 
       it('omits X-App-Version when VITE_APP_VERSION is unset', () => {
-        env.VITE_APP_VERSION = undefined
+        delete env.VITE_APP_VERSION
         expect(getAuthenticatedHeaders()['X-App-Version']).toBeUndefined()
       })
     })

@@ -62,12 +62,40 @@ msgstr "{0} is only available on desktop"
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} can't take attachments. Remove the attached files to send."
 
+#: src/settings/voice.tsx
+msgid "{appName} (hosted, private)"
+msgstr "{appName} (hosted, private)"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+msgstr "{appName} is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
+
+#: src/components/storage-unavailable-screen.tsx
+msgid "{appName} needs browser storage (IndexedDB) to work, but it's currently disabled."
+msgstr "{appName} needs browser storage (IndexedDB) to work, but it's currently disabled."
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Calendar"
+msgstr "{appName} wants to connect to {providerName} Calendar"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Email"
+msgstr "{appName} wants to connect to {providerName} Email"
+
+#: src/widgets/connect-integration/widget.tsx
+msgid "{appName} wants to connect to {providerName} Email and Calendar"
+msgstr "{appName} wants to connect to {providerName} Email and Calendar"
+
+#: src/components/onboarding/onboarding-language-step.tsx
+msgid "{appName} will use it across the app. You can change it later in Preferences."
+msgstr "{appName} will use it across the app. You can change it later in Preferences."
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
-msgid "# chat"
-msgid_plural "# chats"
-msgstr[0] "# chat"
-msgstr[1] "# chats"
+#~ msgid "# chat"
+#~ msgid_plural "# chats"
+#~ msgstr[0] "# chat"
+#~ msgstr[1] "# chats"
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7BOne+skill+references+this.+If+you+delete+it%2C+that+skill+may+no+longer+resolve.%7D+other+%7B%23+skills+reference+this.+If+you+delete+it%2C+they+may+no+longer+resolve.%7D%7D&pluralize_on=count
 #: src/skills/dependents-dialog.tsx
@@ -95,8 +123,12 @@ msgid "{fileName} will be saved to your Downloads folder."
 msgstr "{fileName} will be saved to your Downloads folder."
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "{label} — already in this project"
-msgstr "{label} — already in this project"
+#~ msgid "{label} — already in this project"
+#~ msgstr "{label} — already in this project"
+
+#: src/layout/sidebar/sidebar-section-toggle.tsx
+#~ msgid "{label} options"
+#~ msgstr "{label} options"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
@@ -168,10 +200,6 @@ msgstr "A code was just sent. Wait a moment and try again."
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "A local model can work offline after it is downloaded. Cloud models need internet access and may charge for usage."
-#~ msgstr "A local model can work offline after it is downloaded. Cloud models need internet access and may charge for usage."
-
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
 msgstr "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
@@ -189,8 +217,8 @@ msgid "A new version is available. See the update prompt to install."
 msgstr "A new version is available. See the update prompt to install."
 
 #: src/projects/index.tsx
-msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
-msgstr "A project keeps your instructions in one place, so every chat inside it starts with the same context."
+#~ msgid "A project keeps your instructions in one place, so every chat inside it starts with the same context."
+#~ msgstr "A project keeps your instructions in one place, so every chat inside it starts with the same context."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "A URL, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId works only if the peer is discoverable)."
@@ -284,10 +312,6 @@ msgstr "Add Agent"
 msgid "Add and select a model in Settings to start chatting."
 msgstr "Add and select a model in Settings to start chatting."
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Add another model"
-#~ msgstr "Add another model"
-
 #: src/settings/connections/index.tsx
 msgid "Add failed"
 msgstr "Add failed"
@@ -324,10 +348,6 @@ msgstr "Add to chat"
 #: src/components/onboarding/onboarding-search-step.tsx
 msgid "Add web search"
 msgstr "Add web search"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Add your first model"
-#~ msgstr "Add your first model"
 
 #: src/settings/passkeys.tsx
 #~ msgid "Add your first passkey"
@@ -366,10 +386,6 @@ msgstr "Agents"
 msgid "AI provider"
 msgstr "AI provider"
 
-#: src/settings/connections/connections-list.tsx
-#~ msgid "AI providers"
-#~ msgstr "AI providers"
-
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "AI that <0>you</0> control."
 msgstr "AI that <0>you</0> control."
@@ -384,8 +400,9 @@ msgid "All agents"
 msgstr "All agents"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "All projects"
-msgstr "All projects"
+#: src/projects/index.tsx
+#~ msgid "All projects"
+#~ msgstr "All projects"
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "All skills are pinned"
@@ -439,10 +456,6 @@ msgstr "Analyzing…"
 msgid "Animals & nature"
 msgstr "Animals & nature"
 
-#: src/settings/search/index.tsx
-#~ msgid "Anonymized Exa search through your Tinfoil subscription"
-#~ msgstr "Anonymized Exa search through your Tinfoil subscription"
-
 #: src/settings/preferences.tsx
 msgid "Anonymous Usage Data"
 msgstr "Anonymous Usage Data"
@@ -489,8 +502,8 @@ msgid "App Version"
 msgstr "App Version"
 
 #: src/projects/project-form.tsx
-msgid "Applied to every chat in this project."
-msgstr "Applied to every chat in this project."
+#~ msgid "Applied to every chat in this project."
+#~ msgstr "Applied to every chat in this project."
 
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
@@ -529,9 +542,14 @@ msgstr "Are you sure? You will lose any changes that you made."
 msgid "Artifact"
 msgstr "Artifact"
 
-#: src/projects/project-detail-panel.tsx
-msgid "Artifacts"
-msgstr "Artifacts"
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#: src/projects/project-artifact-gallery.tsx
+#: src/projects/project-artifact-grid.tsx
+#: src/projects/project-artifact-workspace.tsx
+#: src/projects/project-artifacts-dialog.tsx
+#~ msgid "Artifacts"
+#~ msgstr "Artifacts"
 
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
@@ -617,10 +635,6 @@ msgstr "Back"
 msgid "Back to App"
 msgstr "Back to App"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Back to options"
-#~ msgstr "Back to options"
-
 #: src/settings/voice.tsx
 msgid "Base URL"
 msgstr "Base URL"
@@ -628,14 +642,6 @@ msgstr "Base URL"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Bearer token or API key"
 msgstr "Bearer token or API key"
-
-#: src/components/search-provider-setup.tsx
-#~ msgid "Brave Search API key"
-#~ msgstr "Brave Search API key"
-
-#: src/components/search-provider-setup.tsx
-#~ msgid "Brave Search is configured."
-#~ msgstr "Brave Search is configured."
 
 #: src/settings/devices.tsx
 msgid "Bridge"
@@ -690,6 +696,7 @@ msgstr "Calendar"
 #: src/components/ui/confirm-action-dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/projects/project-create-form.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/connections/tinfoil-impact-dialog.tsx
@@ -718,10 +725,6 @@ msgstr "Celsius"
 #: src/settings/preferences.tsx
 msgid "Change Language?"
 msgstr "Change Language?"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Change provider"
-#~ msgstr "Change provider"
 
 #: src/settings/devices.tsx
 msgid "Change recovery phrase"
@@ -756,7 +759,6 @@ msgid "Chat name"
 msgstr "Chat name"
 
 #: src/layout/sidebar/nav-toggle.tsx
-#: src/projects/project-detail-panel.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "Chats"
@@ -826,18 +828,6 @@ msgstr "Choose a provider"
 msgid "Choose a provider to power your agents."
 msgstr "Choose a provider to power your agents."
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Choose a provider to power your agents. Your workspace stays on this device."
-#~ msgstr "Choose a provider to power your agents. Your workspace stays on this device."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Choose a provider to power your chats and agents. Your workspace stays on this device."
-#~ msgstr "Choose a provider to power your chats and agents. Your workspace stays on this device."
-
-#: src/components/server-connection/server-connection-modal.tsx
-#~ msgid "Choose a server to use sign-in, sync, and cloud features. Your local data stays on this device until you enable sync."
-#~ msgstr "Choose a server to use sign-in, sync, and cloud features. Your local data stays on this device until you enable sync."
-
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Choose agent"
 msgstr "Choose agent"
@@ -854,17 +844,9 @@ msgstr "Choose an icon for {label}"
 msgid "Choose an option"
 msgstr "Choose an option"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Choose and test a model to continue. You can add more later."
-#~ msgstr "Choose and test a model to continue. You can add more later."
-
 #: src/components/server-connection/server-connection-modal.tsx
 msgid "Choose Cloud or Enterprise to connect your account."
 msgstr "Choose Cloud or Enterprise to connect your account."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Choose how to use Thunderbolt"
-#~ msgstr "Choose how to use Thunderbolt"
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose how you use Thunderbolt."
@@ -877,6 +859,10 @@ msgstr "Choose model"
 #: src/widgets/ask/display.tsx
 msgid "Choose one"
 msgstr "Choose one"
+
+#: src/projects/project-badge.tsx
+msgid "Choose project"
+msgstr "Choose project"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Choose your agents, models, and tools."
@@ -902,10 +888,6 @@ msgstr "Choose your email provider to access your email"
 msgid "Choose your email provider to access your email and calendar"
 msgstr "Choose your email provider to access your email and calendar"
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Choose your models, tools, and agents."
-#~ msgstr "Choose your models, tools, and agents."
-
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Choose your setup"
 msgstr "Choose your setup"
@@ -917,8 +899,8 @@ msgstr "City or region"
 #: src/layout/sidebar/chat-actions.tsx
 #: src/layout/sidebar/chat-list.tsx
 #: src/search/commands/use-commands.ts
-msgid "Clear all chats"
-msgstr "Clear all chats"
+#~ msgid "Clear all chats"
+#~ msgstr "Clear all chats"
 
 #: src/components/app-error-screen.tsx
 msgid "Clear Database"
@@ -967,6 +949,7 @@ msgstr "Clipboard unavailable. Please select the phrase above and copy it manual
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Close"
@@ -994,22 +977,6 @@ msgstr "Cloud"
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Cloud (Waitlist)"
 msgstr "Cloud (Waitlist)"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Cloud agents hosted by Thunderbolt."
-#~ msgstr "Cloud agents hosted by Thunderbolt."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Cloud agents hosted by us."
-#~ msgstr "Cloud agents hosted by us."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Cloud agents hosted by us. Join the waitlist."
-#~ msgstr "Cloud agents hosted by us. Join the waitlist."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Cloud providers need internet access and may charge for usage. For offline use, connect a model running on your device."
-#~ msgstr "Cloud providers need internet access and may charge for usage. For offline use, connect a model running on your device."
 
 #: src/components/sidebar-footer.tsx
 msgid "Cloud Sync"
@@ -1048,8 +1015,8 @@ msgid "Complete new task"
 msgstr "Complete new task"
 
 #: src/components/onboarding/onboarding-dialog.tsx
-msgid "Complete the setup process to get started with Thunderbolt"
-msgstr "Complete the setup process to get started with Thunderbolt"
+msgid "Complete the setup process to get started with {appName}"
+msgstr "Complete the setup process to get started with {appName}"
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Completing…"
@@ -1059,9 +1026,10 @@ msgstr "Completing…"
 msgid "Configuration"
 msgstr "Configuration"
 
-#: src/settings/search/index.tsx
-#~ msgid "Configure provider"
-#~ msgstr "Configure provider"
+#. placeholder {0}: candidate.name
+#: src/projects/project-badge.tsx
+msgid "Configure {0}"
+msgstr "Configure {0}"
 
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
@@ -1094,21 +1062,9 @@ msgstr "Connect {providerName}"
 msgid "Connect a local model or use an API key."
 msgstr "Connect a local model or use an API key."
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Connect a local model such as Ollama, or use your own provider API key. Add and test at least one model to continue."
-#~ msgstr "Connect a local model such as Ollama, or use your own provider API key. Add and test at least one model to continue."
-
-#: src/settings/search/index.tsx
-#~ msgid "Connect a provider to let your agents search the web."
-#~ msgstr "Connect a provider to let your agents search the web."
-
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr "Connect a remote agent that speaks the Agent Client Protocol."
-
-#: src/components/search-provider-setup.tsx
-#~ msgid "Connect Brave Search so your assistant can search the web. Your API key stays on this device."
-#~ msgstr "Connect Brave Search so your assistant can search the web. Your API key stays on this device."
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Connect Google"
@@ -1118,30 +1074,6 @@ msgstr "Connect Google"
 msgid "Connect Microsoft"
 msgstr "Connect Microsoft"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Connect Ollama or bring a provider API key."
-#~ msgstr "Connect Ollama or bring a provider API key."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Connect OpenRouter"
-#~ msgstr "Connect OpenRouter"
-
-#: src/settings/models/tinfoil-connection-card.tsx
-#~ msgid "Connect Tinfoil"
-#~ msgstr "Connect Tinfoil"
-
-#: src/components/server-connection/server-connection-modal.tsx
-#~ msgid "Connect to a Thunderbolt server"
-#~ msgstr "Connect to a Thunderbolt server"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Connect to a Thunderbolt server for sign-in and sync, or continue with your own models on this device."
-#~ msgstr "Connect to a Thunderbolt server for sign-in and sync, or continue with your own models on this device."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Connect to my organization"
-#~ msgstr "Connect to my organization"
-
 #: src/components/server-connection/server-connection-form.tsx
 #: src/settings/preferences.tsx
 msgid "Connect to server"
@@ -1150,10 +1082,6 @@ msgstr "Connect to server"
 #: src/components/server-connection/server-connection-modal.tsx
 msgid "Connect to Thunderbolt"
 msgstr "Connect to Thunderbolt"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Connect to your company’s server."
-#~ msgstr "Connect to your company’s server."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Connect to your organization's server."
@@ -1167,11 +1095,6 @@ msgstr "Connect to your server"
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Connect with a paid Tinfoil subscription."
 msgstr "Connect with a paid Tinfoil subscription."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#: src/settings/connections/ai-provider-detail.tsx
-#~ msgid "Connect with a paid Tinfoil subscription. Checkout opens on Tinfoil."
-#~ msgstr "Connect with a paid Tinfoil subscription. Checkout opens on Tinfoil."
 
 #: src/settings/search/index.tsx
 msgid "Connect with your own API key"
@@ -1197,10 +1120,6 @@ msgstr "Connect your AI"
 msgid "Connect your own MCP servers to give agents more tools."
 msgstr "Connect your own MCP servers to give agents more tools."
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Connect your own services."
-#~ msgstr "Connect your own services."
-
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/components/sidebar-footer.tsx
@@ -1213,14 +1132,6 @@ msgstr "Connected"
 #: src/voice/engine/openai-compatible-engine.ts
 msgid "Connected — synthesis succeeded."
 msgstr "Connected — synthesis succeeded."
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Connected providers have their own privacy and data policies."
-#~ msgstr "Connected providers have their own privacy and data policies."
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Connected service privacy"
-#~ msgstr "Connected service privacy"
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected to {connectedProviderName} Calendar"
@@ -1238,18 +1149,14 @@ msgstr "Connected to {connectedProviderName} Email and Calendar"
 msgid "Connected to {integrationName}"
 msgstr "Connected to {integrationName}"
 
-#: src/settings/models/tinfoil-connection-card.tsx
-#~ msgid "Connected with your Tinfoil subscription."
-#~ msgstr "Connected with your Tinfoil subscription."
+#: src/settings/models/connection-test-section.tsx
+msgid "Connected without tools"
+msgstr "Connected without tools"
 
 #: src/components/connect-provider-button.tsx
 #: src/components/provider-connection-button.tsx
 msgid "Connected!"
 msgstr "Connected!"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Connecting in your browser…"
-#~ msgstr "Connecting in your browser…"
 
 #: src/settings/search/index.tsx
 msgid "Connecting this provider replaces your saved search API key."
@@ -1258,10 +1165,6 @@ msgstr "Connecting this provider replaces your saved search API key."
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Connecting to {agentName}…"
 msgstr "Connecting to {agentName}…"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Connecting to Thunderbolt Cloud…"
-#~ msgstr "Connecting to Thunderbolt Cloud…"
 
 #: src/components/connect-provider-button.tsx
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -1331,10 +1234,6 @@ msgstr "Context Window Exceeded"
 msgid "Continue"
 msgstr "Continue"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Continue in your browser."
-#~ msgstr "Continue in your browser."
-
 #: src/components/sso-error.tsx
 #: src/components/sso-redirect.tsx
 msgid "Continue locally"
@@ -1352,6 +1251,7 @@ msgstr "Continue with organization"
 msgid "Continue with your organization's sign-in to connect to this server."
 msgstr "Continue with your organization's sign-in to connect to this server."
 
+#: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
 msgstr "Copied"
@@ -1371,6 +1271,10 @@ msgstr "Copy bridge target"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr "Copy build command"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Copy fingerprint"
+msgstr "Copy fingerprint"
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
@@ -1401,10 +1305,6 @@ msgstr "Could not bind the pairing code"
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr "Could not check whether a removed device still holds your account key. Reload to try again."
 
-#: src/components/onboarding/use-onboarding-provider-state.ts
-#~ msgid "Could not connect Thunderbolt's default model. Check your API key, credits, and model access, then try again."
-#~ msgstr "Could not connect Thunderbolt's default model. Check your API key, credits, and model access, then try again."
-
 #: src/lib/openrouter-auth.ts
 msgid "Could not connect to OpenRouter. Please try again with a new authorization code."
 msgstr "Could not connect to OpenRouter. Please try again with a new authorization code."
@@ -1434,9 +1334,17 @@ msgstr "Could not connect to Tinfoil. Try again, or use an API key."
 msgid "Could not connect. Check your API key and connection, then try again."
 msgstr "Could not connect. Check your API key and connection, then try again."
 
-#: src/projects/project-form.tsx
+#: src/projects/use-project-create-state.ts
 msgid "Could not create the project."
 msgstr "Could not create the project."
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the project. Please try again."
+msgstr "Could not delete the project. Please try again."
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Could not delete the projects. Please try again."
+msgstr "Could not delete the projects. Please try again."
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
 msgid "Could not disconnect this provider. Please try again."
@@ -1478,6 +1386,10 @@ msgstr "Could not save the project."
 msgid "Could not save the provider connection on this device."
 msgstr "Could not save the provider connection on this device."
 
+#: src/components/onboarding/onboarding-dialog.tsx
+msgid "Could not save your preference. Please try again."
+msgstr "Could not save your preference. Please try again."
+
 #: src/settings/connections/use-ai-provider-connections.ts
 msgid "Could not update the provider connection. Try again."
 msgstr "Could not update the provider connection. Try again."
@@ -1506,6 +1418,10 @@ msgstr "Couldn't add a passkey. You can add one later when you set up sync."
 msgid "Couldn't add the agent. Please try again."
 msgstr "Couldn't add the agent. Please try again."
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't approve this device. Please try again."
+msgstr "Couldn't approve this device. Please try again."
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
@@ -1522,9 +1438,17 @@ msgstr "Couldn't check for updates: {error}"
 msgid "Couldn't check for updates."
 msgstr "Couldn't check for updates."
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
+msgstr "Couldn't complete approval. Close this dialog and check the device list before trying again."
+
 #: src/components/server-connection/use-server-connection-state.ts
 msgid "Couldn't connect to this Thunderbolt server. Check the address and try again."
 msgstr "Couldn't connect to this Thunderbolt server. Check the address and try again."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't copy. Select the fingerprint to copy it manually."
+msgstr "Couldn't copy. Select the fingerprint to copy it manually."
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't download the update"
@@ -1557,10 +1481,6 @@ msgstr "Couldn't load your apps. Check your connection and reload."
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "Couldn't pin {name}."
-
-#: src/components/onboarding/use-onboarding-server-state.ts
-#~ msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up on this device for now."
-#~ msgstr "Couldn't reach Thunderbolt Cloud. Try again, or set up on this device for now."
 
 #: src/components/onboarding/use-onboarding-server-state.ts
 msgid "Couldn't reach Thunderbolt Cloud. Try again, or set up without a server for now."
@@ -1627,7 +1547,11 @@ msgstr "Couldn't update. Please try again."
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 
-#: src/projects/project-form.tsx
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
+msgstr "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
+
+#: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
 #: src/skills/skill-form.tsx
 msgid "Create"
@@ -1636,10 +1560,6 @@ msgstr "Create"
 #: src/search/commands/create-commands.ts
 msgid "Create Agent"
 msgstr "Create Agent"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Create an API key in your Tinfoil account, then paste it below."
-#~ msgstr "Create an API key in your Tinfoil account, then paste it below."
 
 #: src/search/commands/create-commands.ts
 msgid "Create Model"
@@ -1650,9 +1570,13 @@ msgstr "Create Model"
 msgid "Create passkey"
 msgstr "Create passkey"
 
-#: src/projects/create-project-panel.tsx
+#: src/projects/project-create-dialog.tsx
 msgid "Create project"
 msgstr "Create project"
+
+#: src/projects/project-badge.tsx
+msgid "Create Project"
+msgstr "Create Project"
 
 #: src/components/create-item/context.tsx
 #: src/search/commands/create-commands.ts
@@ -1661,15 +1585,15 @@ msgid "Create Skill"
 msgstr "Create Skill"
 
 #: src/projects/index.tsx
-msgid "Create your first project"
-msgstr "Create your first project"
+#~ msgid "Create your first project"
+#~ msgstr "Create your first project"
 
 #: src/skills/skills-list.tsx
 msgid "Create your first skill"
 msgstr "Create your first skill"
 
 #: src/lib/tool-metadata.ts
-#: src/projects/project-form.tsx
+#: src/projects/project-create-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Creating…"
 msgstr "Creating…"
@@ -1743,6 +1667,8 @@ msgstr "Default setting"
 #: src/components/settings/edit-delete-context-menu.tsx
 #: src/components/ui/chat-nav-button.tsx
 #: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
 #: src/skills/library-row.tsx
@@ -1770,20 +1696,44 @@ msgid "Delete agent"
 msgstr "Delete agent"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete All Chats"
-msgstr "Delete All Chats"
+#~ msgid "Delete All Chats"
+#~ msgstr "Delete All Chats"
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "Delete all chats?"
-msgstr "Delete all chats?"
+#~ msgid "Delete all chats?"
+#~ msgstr "Delete all chats?"
 
 #: src/settings/preferences.tsx
 msgid "Delete All Local Data"
 msgstr "Delete All Local Data"
 
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects"
+msgstr "Delete all projects"
+
+#: src/projects/project-delete-dialog.tsx
+msgid "Delete all projects?"
+msgstr "Delete all projects?"
+
 #: src/components/delete-chat-dialog.tsx
 msgid "Delete Chat"
 msgstr "Delete Chat"
+
+#: src/components/delete-all-chats-dialog.tsx
+#: src/layout/sidebar/chat-list.tsx
+msgid "Delete chats"
+msgstr "Delete chats"
+
+#: src/layout/sidebar/recent-chats-menu.tsx
+#: src/search/commands/use-commands.ts
+msgid "Delete chats outside projects"
+msgstr "Delete chats outside projects"
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "Delete chats?"
+msgstr "Delete chats?"
 
 #: src/components/logout-modal.tsx
 msgid "Delete data from device"
@@ -1797,7 +1747,7 @@ msgstr "Delete Model"
 msgid "Delete My Account"
 msgstr "Delete My Account"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete project"
 msgstr "Delete project"
 
@@ -1826,7 +1776,7 @@ msgstr "Delete this MCP server and its saved credentials?"
 msgid "Delete this model from your configured models?"
 msgstr "Delete this model from your configured models?"
 
-#: src/projects/project-detail-panel.tsx
+#: src/projects/project-delete-dialog.tsx
 msgid "Delete this project?"
 msgstr "Delete this project?"
 
@@ -1880,11 +1830,14 @@ msgstr "Depositing rime fog"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
-#: src/projects/project-form.tsx
 #: src/skills/skill-detail.tsx
 #: src/skills/skill-form.tsx
 msgid "Description"
 msgstr "Description"
+
+#: src/projects/project-form.tsx
+msgid "Description (optional)"
+msgstr "Description (optional)"
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -1894,6 +1847,11 @@ msgstr "Dev Settings"
 #: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr "Device access revoked"
+
+#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Device fingerprint"
+msgstr "Device fingerprint"
 
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
@@ -2019,6 +1977,10 @@ msgstr "Distance unit"
 msgid "Do not ask again"
 msgstr "Do not ask again"
 
+#: src/components/onboarding/onboarding-celebration-step.tsx
+msgid "Donate anonymous usage data"
+msgstr "Donate anonymous usage data"
+
 #: src/components/device-approval.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
@@ -2027,6 +1989,7 @@ msgstr "Done"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "Download"
 
@@ -2059,7 +2022,7 @@ msgstr "Downloading update… {downloadProgress}%"
 msgid "Downloading…"
 msgstr "Downloading…"
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-drop-row.tsx
 msgid "Drop"
 msgstr "Drop"
 
@@ -2082,6 +2045,8 @@ msgstr "Early Access Login"
 
 #: src/components/settings/detail-actions-menu.tsx
 #: src/components/settings/edit-delete-context-menu.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/library-row.tsx
 msgid "Edit"
 msgstr "Edit"
@@ -2099,8 +2064,8 @@ msgid "Edit Model"
 msgstr "Edit Model"
 
 #: src/projects/index.tsx
-msgid "Edit project"
-msgstr "Edit project"
+#~ msgid "Edit project"
+#~ msgstr "Edit project"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Edit skill"
@@ -2152,10 +2117,6 @@ msgstr "Enable {title}"
 #: src/components/sidebar-footer.tsx
 msgid "Enable cloud sync"
 msgstr "Enable cloud sync"
-
-#: src/settings/search/index.tsx
-#~ msgid "Enable or reconnect Tinfoil in Connections"
-#~ msgstr "Enable or reconnect Tinfoil in Connections"
 
 #: src/settings/search/index.tsx
 msgid "Enable or reconnect Tinfoil in Connections to use this provider."
@@ -2221,13 +2182,17 @@ msgstr "Enter the 24-word recovery phrase you saved when you first set up sync."
 msgid "Enter the 8-digit code"
 msgstr "Enter the 8-digit code"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Enter the address from your organization, or a Thunderbolt server you host yourself."
-#~ msgstr "Enter the address from your organization, or a Thunderbolt server you host yourself."
-
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
 msgstr "Enter the code shown in your terminal to continue."
+
+#: src/components/approve-device-dialog.tsx
+msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
+msgstr "Enter the fingerprint from the new device's screen or a separate channel you trust."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Enter this fingerprint on your trusted device before approving."
+msgstr "Enter this fingerprint on your trusted device before approving."
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Enter your API key"
@@ -2256,10 +2221,6 @@ msgstr "Exa provides search and page content through Tinfoil’s encrypted conne
 #: src/settings/search/index.tsx
 msgid "Exa search through your Tinfoil subscription"
 msgstr "Exa search through your Tinfoil subscription"
-
-#: src/settings/search/index.tsx
-#~ msgid "Exa via Tinfoil"
-#~ msgstr "Exa via Tinfoil"
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2437,14 +2398,6 @@ msgstr "Generating keys…"
 msgid "Generating…"
 msgstr "Generating…"
 
-#: src/components/search-provider-setup.tsx
-#~ msgid "Get a Brave Search API key"
-#~ msgstr "Get a Brave Search API key"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Get a Tinfoil API key"
-#~ msgstr "Get a Tinfoil API key"
-
 #: src/components/search-provider-setup/search-provider-setup.tsx
 msgid "Get an API key"
 msgstr "Get an API key"
@@ -2529,8 +2482,12 @@ msgid "Heavy snow showers"
 msgstr "Heavy snow showers"
 
 #: src/settings/preferences.tsx
-msgid "Help Thunderbolt Improve"
-msgstr "Help Thunderbolt Improve"
+msgid "Help {appName} Improve"
+msgstr "Help {appName} Improve"
+
+#: src/components/onboarding/onboarding-celebration-step.tsx
+msgid "Help make {appName} better."
+msgstr "Help make {appName} better."
 
 #: src/settings/preferences.tsx
 msgid "Help us improve the app by sending anonymous usage info such as crashes, performance, and usage. Read more about our <0>privacy policy</0>."
@@ -2549,25 +2506,17 @@ msgstr "Hide QR"
 msgid "Hide QR code for {deviceName}"
 msgstr "Hide QR code for {deviceName}"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Hosted AI tools. Join the waitlist."
-#~ msgstr "Hosted AI tools. Join the waitlist."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Hosted AI. Join the waitlist."
-#~ msgstr "Hosted AI. Join the waitlist."
-
 #: src/settings/preferences.tsx
-msgid "How Thunderbolt salutes you"
-msgstr "How Thunderbolt salutes you"
+msgid "How {appName} salutes you"
+msgstr "How {appName} salutes you"
 
 #: src/components/server-connection/server-connection-form.tsx
 msgid "https://your-server.example"
 msgstr "https://your-server.example"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "I agree to share this chat session with the Thunderbolt team."
-msgstr "I agree to share this chat session with the Thunderbolt team."
+msgid "I agree to share this chat session with the {recipient} team."
+msgstr "I agree to share this chat session with the {recipient} team."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
@@ -2578,8 +2527,8 @@ msgid "I have saved my recovery phrase"
 msgstr "I have saved my recovery phrase"
 
 #: src/components/storage-unavailable-screen.tsx
-msgid "If you are using iOS Lockdown Mode, exclude Thunderbolt from the \"Configure Web Browsing\" setting, then reopen the app."
-msgstr "If you are using iOS Lockdown Mode, exclude Thunderbolt from the \"Configure Web Browsing\" setting, then reopen the app."
+msgid "If you are using iOS Lockdown Mode, exclude {appName} from the \"Configure Web Browsing\" setting, then reopen the app."
+msgstr "If you are using iOS Lockdown Mode, exclude {appName} from the \"Configure Web Browsing\" setting, then reopen the app."
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "If you have access, we've sent an 8-digit code to <0>{email}</0>"
@@ -2630,6 +2579,11 @@ msgstr "Importing…"
 msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 msgstr "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 
+#. placeholder {0}: project.name
+#: src/projects/project-badge.tsx
+msgid "In project: {0}"
+msgstr "In project: {0}"
+
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "In your own words: what were you trying to do, and what did the agent do instead?"
 msgstr "In your own words: what were you trying to do, and what did the agent do instead?"
@@ -2637,10 +2591,6 @@ msgstr "In your own words: what were you trying to do, and what did the agent do
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
-
-#: src/settings/search/index.tsx
-#~ msgid "Included with your Tinfoil connection"
-#~ msgstr "Included with your Tinfoil connection"
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
@@ -2692,29 +2642,17 @@ msgstr "Invalid verification link. Please request a new one."
 msgid "iOS requires a secure URL (wss://)"
 msgstr "iOS requires a secure URL (wss://)"
 
-#: src/projects/project-detail-panel.tsx
+#: src/components/onboarding/onboarding-celebration-step.tsx
+msgid "It's optional. You can turn this off now or change it later in Settings."
+msgstr "It's optional. You can turn this off now or change it later in Settings."
+
+#: src/projects/project-delete-dialog.tsx
 msgid "Its instructions are removed. Chats in the project are kept and become ordinary chats."
 msgstr "Its instructions are removed. Chats in the project are kept and become ordinary chats."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Join the Thunderbolt waitlist."
-#~ msgstr "Join the Thunderbolt waitlist."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Join the waitlist for hosted AI, tools, and sync."
-#~ msgstr "Join the waitlist for hosted AI, tools, and sync."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Join the waitlist for Thunderbolt's connected tools and services."
-#~ msgstr "Join the waitlist for Thunderbolt's connected tools and services."
 
 #: src/waitlist/waitlist-content.tsx
 msgid "Join the waitlist or sign in if you already have access."
 msgstr "Join the waitlist or sign in if you already have access."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Join the waitlist."
-#~ msgstr "Join the waitlist."
 
 #: src/components/sidebar-footer.tsx
 msgid "Just synced"
@@ -2752,18 +2690,6 @@ msgstr "Keep your data in sync across all your devices. Everything is encrypted 
 msgid "Keep your data synced across devices."
 msgstr "Keep your data synced across devices."
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Keep your workspace on this device and connect the services you choose. No Thunderbolt account needed."
-#~ msgstr "Keep your workspace on this device and connect the services you choose. No Thunderbolt account needed."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Keep your workspace on this device. Connect your own services."
-#~ msgstr "Keep your workspace on this device. Connect your own services."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Keep your workspace on this device. No Thunderbolt account needed."
-#~ msgstr "Keep your workspace on this device. No Thunderbolt account needed."
-
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
 #: src/waitlist/waitlist-language-picker.tsx
@@ -2794,9 +2720,9 @@ msgstr "Leave without creating?"
 msgid "Leave without saving?"
 msgstr "Leave without saving?"
 
-#: src/components/onboarding/onboarding-search-step.tsx
-#~ msgid "Let your agents search the web. You can skip this step."
-#~ msgstr "Let your agents search the web. You can skip this step."
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
+msgstr "Lets the model call tools like web search and integrations. Turn this off if the model rejects tool requests."
 
 #: src/components/theme-toggle-group.tsx
 msgid "Light"
@@ -2864,22 +2790,15 @@ msgstr "Loading…"
 msgid "Local"
 msgstr "Local"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Local model or another provider"
-#~ msgstr "Local model or another provider"
-
 #: src/components/onboarding/onboarding-privacy-step.tsx
 #~ msgid "Local Storage"
 #~ msgstr "Local Storage"
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Local storage. Sync is up to you."
-#~ msgstr "Local storage. Sync is up to you."
 
 #: src/settings/preferences.tsx
 msgid "Localization"
 msgstr "Localization"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "Location"
@@ -2900,14 +2819,6 @@ msgstr "Logging out…"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Mainly clear"
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Make it yours"
-#~ msgstr "Make it yours"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Make Thunderbolt yours. You can add services as you go."
-#~ msgstr "Make Thunderbolt yours. You can add services as you go."
 
 #: src/settings/search/index.tsx
 msgid "Manage connection"
@@ -2978,8 +2889,8 @@ msgid "Model"
 msgstr "Model"
 
 #: src/settings/models/add-model-form.tsx
-msgid "Model may not be compatible"
-msgstr "Model may not be compatible"
+#~ msgid "Model may not be compatible"
+#~ msgstr "Model may not be compatible"
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
@@ -2992,10 +2903,6 @@ msgstr "Model name is required."
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "Models"
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Models you connect use their provider's privacy and data policies."
-#~ msgstr "Models you connect use their provider's privacy and data policies."
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
@@ -3022,18 +2929,28 @@ msgid "Modified model"
 msgstr "Modified model"
 
 #: src/components/settings/detail-actions-menu.tsx
+#: src/layout/sidebar/chat-list-item.tsx
 msgid "More"
 msgstr "More"
+
+#: src/layout/sidebar/chat-list-item.tsx
+#: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
+msgid "Move"
+msgstr "Move"
 
 #: src/components/chat/permission-dialog.tsx
 msgid "Move file"
 msgstr "Move file"
 
+#: src/projects/project-badge.tsx
+msgid "Move session?"
+msgstr "Move session?"
+
 #: src/layout/sidebar/chat-list-item.tsx
-#: src/layout/sidebar/project-drop-list.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "Move to project"
-msgstr "Move to project"
+#~ msgid "Move to project"
+#~ msgstr "Move to project"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "My Agent"
@@ -3041,6 +2958,7 @@ msgstr "My Agent"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
 #: src/settings/models/edit-model-form.tsx
@@ -3070,7 +2988,11 @@ msgstr "Network request failed (the browser blocked the request or the server is
 msgid "New Agent"
 msgstr "New Agent"
 
+#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
 #: src/mini-apps/mini-app-chat-history.tsx
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "New chat"
@@ -3083,8 +3005,9 @@ msgid "New Chat"
 msgstr "New Chat"
 
 #: src/projects/project-detail-panel.tsx
-msgid "New chat in this project"
-msgstr "New chat in this project"
+#: src/projects/project-workspace.tsx
+#~ msgid "New chat in this project"
+#~ msgstr "New chat in this project"
 
 #: src/settings/connections/connections-list.tsx
 msgid "New Connection"
@@ -3098,7 +3021,8 @@ msgstr "New device waiting"
 msgid "New Model"
 msgstr "New Model"
 
-#: src/projects/index.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 msgid "New project"
 msgstr "New project"
 
@@ -3115,24 +3039,20 @@ msgstr "New tab"
 msgid "New Task"
 msgstr "New Task"
 
-#: src/components/onboarding/onboarding-dialog.tsx
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Next"
-#~ msgstr "Next"
-
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "No agents found"
 msgstr "No agents found"
 
 #: src/projects/project-detail-panel.tsx
-msgid "No artifacts yet."
-msgstr "No artifacts yet."
+#~ msgid "No artifacts yet."
+#~ msgstr "No artifacts yet."
 
 #: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/chat-menu-items.tsx
 msgid "No chats yet"
 msgstr "No chats yet"
 
-#: src/projects/project-detail-panel.tsx
+#: src/layout/sidebar/project-tree-row.tsx
 msgid "No chats yet."
 msgstr "No chats yet."
 
@@ -3173,10 +3093,11 @@ msgid "No matching connections."
 msgstr "No matching connections."
 
 #: src/projects/index.tsx
-msgid "No matching projects"
-msgstr "No matching projects"
+#~ msgid "No matching projects"
+#~ msgstr "No matching projects"
 
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "No matching projects."
 msgstr "No matching projects."
 
@@ -3210,24 +3131,20 @@ msgstr "No models returned (server unreachable, or it doesn’t list models). En
 #~ msgstr "No passkeys yet"
 
 #: src/projects/index.tsx
-msgid "No projects yet"
-msgstr "No projects yet"
+#~ msgid "No projects yet"
+#~ msgstr "No projects yet"
 
 #: src/projects/move-chat-to-project-dialog.tsx
-msgid "No projects yet. Create one from the Projects page, then move this chat into it."
-msgstr "No projects yet. Create one from the Projects page, then move this chat into it."
+#~ msgid "No projects yet. Create one from the Projects page, then move this chat into it."
+#~ msgstr "No projects yet. Create one from the Projects page, then move this chat into it."
+
+#: src/projects/move-chat-to-project-dialog.tsx
+msgid "No projects yet. Create one in the sidebar, then move this chat into it."
+msgstr "No projects yet. Create one in the sidebar, then move this chat into it."
 
 #: src/search/palette/search-palette.tsx
 msgid "No results found."
 msgstr "No results found."
-
-#: src/settings/search/index.tsx
-#~ msgid "No search provider configured"
-#~ msgstr "No search provider configured"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "No server is needed for device setup. You can connect one later."
-#~ msgstr "No server is needed for device setup. You can connect one later."
 
 #: src/skills/skills-list.tsx
 msgid "No skills yet"
@@ -3256,10 +3173,6 @@ msgstr "Not available in private chats."
 #: src/settings/devices.tsx
 msgid "Not configured"
 msgstr "Not configured"
-
-#: src/settings/connections/connections-list.tsx
-#~ msgid "Not connected"
-#~ msgstr "Not connected"
 
 #: src/components/not-found.tsx
 msgid "Not Found"
@@ -3326,6 +3239,14 @@ msgstr "OAuth validation failed"
 msgid "Objects"
 msgstr "Objects"
 
+#: src/settings/preferences.tsx
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
+msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
+
+#: src/settings/preferences.tsx
+#~ msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+#~ msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Changes will sync when back online."
@@ -3350,6 +3271,10 @@ msgstr "OneDrive Access"
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Only available in private chats."
 msgstr "Only available in private chats."
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
+msgstr "Open {appName} on one of your trusted devices and go to Settings → Devices to approve this device."
 
 #: src/settings/models/models-list.tsx
 msgid "Open {modelName}"
@@ -3424,10 +3349,6 @@ msgstr "Open the store to check for updates."
 msgid "Open Thunderbolt CLI"
 msgstr "Open Thunderbolt CLI"
 
-#: src/components/sync-setup/approval-waiting-step.tsx
-msgid "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
-msgstr "Open Thunderbolt on one of your trusted devices and go to Settings → Devices to approve this device."
-
 #: src/components/chat/external-link-dialog.tsx
 msgid "Opening…"
 msgstr "Opening…"
@@ -3436,10 +3357,6 @@ msgstr "Opening…"
 #: src/settings/connections/use-ai-provider-connections.ts
 msgid "OpenRouter"
 msgstr "OpenRouter"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "OpenRouter connected"
-#~ msgstr "OpenRouter connected"
 
 #: src/lib/openrouter-auth.ts
 msgid "OpenRouter connection timed out. Please try again."
@@ -3463,8 +3380,8 @@ msgid "Optional — leave blank for local servers that don’t require auth."
 msgstr "Optional — leave blank for local servers that don’t require auth."
 
 #: src/projects/project-form.tsx
-msgid "Optional — what this project is for"
-msgstr "Optional — what this project is for"
+#~ msgid "Optional — what this project is for"
+#~ msgstr "Optional — what this project is for"
 
 #: src/components/onboarding/onboarding-search-step.tsx
 msgid "Optionally let your agent search the web"
@@ -3482,6 +3399,11 @@ msgstr "Or click the magic link in your email"
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or enter the 8-digit code"
 msgstr "Or enter the 8-digit code"
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
+msgid "Organize chats with projects."
+msgstr "Organize chats with projects."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Other provider"
@@ -3558,9 +3480,19 @@ msgstr "Permission Required"
 msgid "Personalization"
 msgstr "Personalization"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+msgid "Pin"
+msgstr "Pin"
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Pin limit reached ({maxPinnedSkills}). Unpin one first."
 msgstr "Pin limit reached ({maxPinnedSkills}). Unpin one first."
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#~ msgid "Pin project"
+#~ msgstr "Pin project"
 
 #: src/skills/suggestion-chip.tsx
 msgid "Pinned skill {label}"
@@ -3629,16 +3561,24 @@ msgstr "Privacy"
 msgid "Private"
 msgstr "Private"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Private AI with your Tinfoil API key."
-#~ msgstr "Private AI with your Tinfoil API key."
-
 #: src/lib/tool-metadata.ts
 msgid "Processing…"
 msgstr "Processing…"
 
-#: src/layout/sidebar/chat-sidebar.tsx
-#: src/projects/index.tsx
+#: src/projects/project-create-form.tsx
+msgid "Project name"
+msgstr "Project name"
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Project options"
+msgstr "Project options"
+
+#: src/projects/project-editor-dialog.tsx
+msgid "Project settings"
+msgstr "Project settings"
+
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/search/palette/entity-meta.ts
 msgid "Projects"
 msgstr "Projects"
@@ -3651,10 +3591,6 @@ msgstr "Provided by your server"
 #: src/settings/voice.tsx
 msgid "Provider"
 msgstr "Provider"
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Provider privacy"
-#~ msgstr "Provider privacy"
 
 #: src/settings/preferences.tsx
 msgid "Proxying is required in the web app to bypass browser CORS restrictions."
@@ -3701,24 +3637,25 @@ msgid "Received an error while testing the model."
 msgstr "Received an error while testing the model."
 
 #: src/layout/sidebar/chat-list.tsx
-msgid "Recent Chats"
-msgstr "Recent Chats"
+msgid "Recent chat options"
+msgstr "Recent chat options"
+
+#: src/layout/sidebar/chat-list.tsx
+#~ msgid "Recent Chats"
+#~ msgstr "Recent Chats"
 
 #: src/layout/sidebar/project-drop-list.tsx
-msgid "Recent Projects"
-msgstr "Recent Projects"
+#~ msgid "Recent Projects"
+#~ msgstr "Recent Projects"
+
+#: src/layout/sidebar/chat-list.tsx
+#: src/layout/sidebar/recent-chats-menu.tsx
+msgid "Recents"
+msgstr "Recents"
 
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Reconnect {name}"
 msgstr "Reconnect {name}"
-
-#: src/settings/models/tinfoil-connection-card.tsx
-#~ msgid "Reconnect Tinfoil"
-#~ msgstr "Reconnect Tinfoil"
-
-#: src/settings/connections/connections-list.tsx
-#~ msgid "Reconnect to continue"
-#~ msgstr "Reconnect to continue"
 
 #: src/hooks/use-sync-setup.ts
 msgid "Recovery failed"
@@ -3759,8 +3696,9 @@ msgstr "Remove"
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "Remove all chats, settings, and cached data from this device."
 
-#: src/layout/sidebar/project-drop-list.tsx
+#: src/layout/sidebar/project-tree.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Remove from project"
 msgstr "Remove from project"
 
@@ -3808,8 +3746,8 @@ msgid "Reply"
 msgstr "Reply"
 
 #: src/projects/project-form.tsx
-msgid "Reply in British English. Prefer bullet points over prose."
-msgstr "Reply in British English. Prefer bullet points over prose."
+#~ msgid "Reply in British English. Prefer bullet points over prose."
+#~ msgstr "Reply in British English. Prefer bullet points over prose."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Request denied"
@@ -3842,10 +3780,6 @@ msgstr "Resend Email"
 #: src/settings/preferences.tsx
 msgid "Reset Database"
 msgstr "Reset Database"
-
-#: src/settings/dev-settings.tsx
-#~ msgid "Reset local data before choosing a different server so account credentials and data stay separate."
-#~ msgstr "Reset local data before choosing a different server so account credentials and data stay separate."
 
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
@@ -3958,10 +3892,6 @@ msgstr "Save Changes"
 msgid "Save failed"
 msgstr "Save failed"
 
-#: src/components/search-provider-setup.tsx
-#~ msgid "Save search provider"
-#~ msgstr "Save search provider"
-
 #: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -3992,9 +3922,8 @@ msgid "Scroll to bottom"
 msgstr "Scroll to bottom"
 
 #: src/components/ui/page-search.tsx
-#: src/layout/sidebar/chat-actions.tsx
-#: src/layout/sidebar/chat-list.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
+#: src/layout/sidebar/sidebar-header-actions.tsx
 #: src/search/commands/navigation.ts
 #: src/search/palette/search-palette.tsx
 #: src/settings/search/index.tsx
@@ -4012,10 +3941,6 @@ msgstr "Search agents"
 #: src/settings/search/index.tsx
 msgid "Search and page content are provided by your connected Thunderbolt server."
 msgstr "Search and page content are provided by your connected Thunderbolt server."
-
-#: src/settings/search/index.tsx
-#~ msgid "Search and page content use your existing Tinfoil connection. No separate API key is needed."
-#~ msgstr "Search and page content use your existing Tinfoil connection. No separate API key is needed."
 
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
@@ -4062,8 +3987,8 @@ msgstr "Search Models"
 msgid "Search models…"
 msgstr "Search models…"
 
-#: src/projects/index.tsx
 #: src/projects/move-chat-to-project-dialog.tsx
+#: src/projects/project-badge.tsx
 msgid "Search projects"
 msgstr "Search projects"
 
@@ -4136,10 +4061,6 @@ msgstr "Select provider"
 msgid "Select…"
 msgstr "Select…"
 
-#: src/settings/search/index.tsx
-#~ msgid "Selected"
-#~ msgstr "Selected"
-
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Selected server"
 msgstr "Selected server"
@@ -4158,17 +4079,13 @@ msgstr "Send Magic Link"
 msgid "Send message"
 msgstr "Send message"
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Send messages directly to a local model or your chosen provider."
-#~ msgstr "Send messages directly to a local model or your chosen provider."
-
 #: src/components/ui/header.tsx
 msgid "Send this private chat to {agentName}?"
 msgstr "Send this private chat to {agentName}?"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "Send to the Thunderbolt team"
-msgstr "Send to the Thunderbolt team"
+msgid "Send to the {recipient} team"
+msgstr "Send to the {recipient} team"
 
 #: src/components/sync-setup/confirm-identity-step.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
@@ -4247,10 +4164,6 @@ msgstr "Set up pairing for {deviceName}"
 msgid "Set up sync"
 msgstr "Set up sync"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Set up without a server"
-#~ msgstr "Set up without a server"
-
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Setting up encryption…"
 msgstr "Setting up encryption…"
@@ -4268,13 +4181,55 @@ msgstr "Settings"
 msgid "Share debug transcript"
 msgstr "Share debug transcript"
 
+#: src/projects/project-form.tsx
+msgid "Shared instructions for project chats"
+msgstr "Shared instructions for project chats"
+
 #: src/lib/tray.tsx
 msgid "Show"
 msgstr "Show"
 
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show fewer chats in {0}"
+msgstr "Show fewer chats in {0}"
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show fewer projects"
+msgstr "Show fewer projects"
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show fewer recent chats"
+msgstr "Show fewer recent chats"
+
 #: src/components/chat/artifact-message-part.tsx
 msgid "Show inline"
 msgstr "Show inline"
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show less"
+msgstr "Show less"
+
+#: src/layout/sidebar/chat-menu-items.tsx
+#: src/layout/sidebar/project-tree-menu.tsx
+#: src/layout/sidebar/sidebar-list-toggle.tsx
+msgid "Show more"
+msgstr "Show more"
+
+#. placeholder {0}: project.name
+#: src/layout/sidebar/project-tree-row.tsx
+msgid "Show more chats in {0}"
+msgstr "Show more chats in {0}"
+
+#: src/layout/sidebar/project-tree.tsx
+msgid "Show more projects"
+msgstr "Show more projects"
+
+#: src/layout/sidebar/chat-list.tsx
+msgid "Show more recent chats"
+msgstr "Show more recent chats"
 
 #: src/settings/devices.tsx
 msgid "Show QR"
@@ -4316,38 +4271,22 @@ msgstr "Sign In"
 msgid "Sign in faster next time"
 msgstr "Sign in faster next time"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Sign in for Thunderbolt's connected tools and services."
-#~ msgstr "Sign in for Thunderbolt's connected tools and services."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Sign in through your browser to choose from many models."
-#~ msgstr "Sign in through your browser to choose from many models."
+#: src/components/sign-in-modal.tsx
+msgid "Sign in to {appName}"
+msgstr "Sign in to {appName}"
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr "Sign in to a full account to share a debug transcript."
-
-#: src/components/device-approval.tsx
-msgid "Sign in to a Thunderbolt account to approve this CLI request."
-msgstr "Sign in to a Thunderbolt account to approve this CLI request."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Sign in to access the services available on this server."
 msgstr "Sign in to access the services available on this server."
 
 #: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Sign in to choose your models."
-#~ msgstr "Sign in to choose your models."
-
-#: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Sign in to connect your account."
 msgstr "Sign in to connect your account."
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Sign in to connect your AI."
-#~ msgstr "Sign in to connect your AI."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Sign in to connect your private AI."
@@ -4358,8 +4297,8 @@ msgid "Sign in to continue"
 msgstr "Sign in to continue"
 
 #: src/settings/preferences.tsx
-#~ msgid "Sign in to enable cloud proxy."
-#~ msgstr "Sign in to enable cloud proxy."
+msgid "Sign in to enable cloud proxy."
+msgstr "Sign in to enable cloud proxy."
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Sign in to sync your workspace and access more features."
@@ -4369,18 +4308,14 @@ msgstr "Sign in to sync your workspace and access more features."
 msgid "Sign in to the CLI"
 msgstr "Sign in to the CLI"
 
-#: src/components/sign-in-modal.tsx
-msgid "Sign in to Thunderbolt"
-msgstr "Sign in to Thunderbolt"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Sign in to use this server's models and cloud features, or continue with your own models."
-#~ msgstr "Sign in to use this server's models and cloud features, or continue with your own models."
-
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Sign in with passkey"
 msgstr "Sign in with passkey"
+
+#: src/components/device-approval.tsx
+msgid "Sign in with your {appName} account to approve this CLI request."
+msgstr "Sign in with your {appName} account to approve this CLI request."
 
 #: src/settings/passkeys.tsx
 #~ msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
@@ -4504,13 +4439,9 @@ msgstr "Speaking"
 msgid "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 msgstr "Speech-to-text and text-to-speech run in Thunderbolt’s confidential enclave."
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Start on your device, with Thunderbolt Cloud, or with your organization."
-#~ msgstr "Start on your device, with Thunderbolt Cloud, or with your organization."
-
 #: src/components/onboarding/onboarding-dialog.tsx
-#~ msgid "Start Using Thunderbolt"
-#~ msgstr "Start Using Thunderbolt"
+#~ msgid "Start Using {appName}"
+#~ msgstr "Start Using {appName}"
 
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
@@ -4565,6 +4496,10 @@ msgstr "Successfully got a response from the model."
 #: src/projects/emoji-picker.tsx
 msgid "Suggested"
 msgstr "Suggested"
+
+#: src/settings/models/supports-tools-switch.tsx
+msgid "Supports tools"
+msgstr "Supports tools"
 
 #: src/components/ui/header.tsx
 msgid "Switch Agent"
@@ -4684,6 +4619,10 @@ msgstr "That code is invalid or expired. Check your email and try again."
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "That code isn't valid or has already been used. Check your terminal and try again."
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
+msgstr "The {recipient} team, for debugging. It's tied to your account — it isn't anonymous."
+
 #: src/components/chat/error-message.tsx
 msgid "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
 msgstr "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
@@ -4705,6 +4644,10 @@ msgid "The AI provider took too long to respond. Try again."
 msgstr "The AI provider took too long to respond. Try again."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the {recipient} team."
+msgstr "The chat will be retained by the {recipient} team."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
 #~ msgstr "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
 
@@ -4712,13 +4655,9 @@ msgstr "The AI provider took too long to respond. Try again."
 #~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
 #~ msgstr "The chat will be retained by the Thunderbolt team until your account is deleted."
 
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The chat will be retained by the Thunderbolt team."
-msgstr "The chat will be retained by the Thunderbolt team."
-
 #: src/components/revoke-device-dialog.tsx
-msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
-msgstr "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgid "The CLI will be signed out and must sign in again before it can use your {appName} account."
+msgstr "The CLI will be signed out and must sign in again before it can use your {appName} account."
 
 #: src/services/revoke-failure.ts
 msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
@@ -4751,6 +4690,10 @@ msgstr "The device lost access, but your account key was not replaced, so it can
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
+
+#: src/components/approve-device-dialog.tsx
+msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
+msgstr "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
 
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
@@ -4785,10 +4728,6 @@ msgid "The sign-in service is unavailable right now. Check your connection and t
 msgstr "The sign-in service is unavailable right now. Check your connection and try again."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."
-msgstr "The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."
-
-#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
 #~ msgstr "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
 
@@ -4800,6 +4739,7 @@ msgstr "The transcript was rejected by the server."
 msgid "Theme"
 msgstr "Theme"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx
@@ -4863,16 +4803,12 @@ msgid "This device was signed out remotely and its local data has been cleared."
 msgstr "This device was signed out remotely and its local data has been cleared."
 
 #: src/settings/preferences.tsx
-msgid "This file doesn't look like a Thunderbolt export."
-msgstr "This file doesn't look like a Thunderbolt export."
+msgid "This file doesn't look like a {appName} export."
+msgstr "This file doesn't look like a {appName} export."
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "This helps us personalize your experience with local settings and features."
 msgstr "This helps us personalize your experience with local settings and features."
-
-#: src/components/onboarding/onboarding-search-step.tsx
-#~ msgid "This is optional. You can add a search provider later in Settings."
-#~ msgstr "This is optional. You can add a search provider later in Settings."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
@@ -4895,8 +4831,16 @@ msgid "This model couldn't read the attached file. Try a different model."
 msgstr "This model couldn't read the attached file. Try a different model."
 
 #: src/settings/models/add-model-form.tsx
-msgid "This model does not seem to support tool usage."
-msgstr "This model does not seem to support tool usage."
+#~ msgid "This model does not seem to support tool usage."
+#~ msgstr "This model does not seem to support tool usage."
+
+#: src/settings/models/connection-test-section.tsx
+msgid "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
+msgstr "This model doesn't support tools, so chats will run without them. Tools have been turned off below."
+
+#: src/components/chat/error-message.tsx
+msgid "This model doesn't support tools."
+msgstr "This model doesn't support tools."
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."
@@ -4924,13 +4868,14 @@ msgstr "This private chat won't run on {agentName}."
 msgid "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 msgstr "This private chat won't run on {agentName}. Switch to {builtInAgentName} to run it."
 
+#: src/projects/project-create-form.tsx
 #: src/projects/project-form.tsx
 msgid "this project"
 msgstr "this project"
 
 #: src/components/settings/agents/agent-detail.tsx
-msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
-msgstr "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+msgid "This removes the connection from {appName} only. Nothing on the remote server is changed."
+msgstr "This removes the connection from {appName} only. Nothing on the remote server is changed."
 
 #: src/settings/devices.tsx
 msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
@@ -4953,8 +4898,8 @@ msgid "This server uses OAuth. Add it and authorize to connect."
 msgstr "This server uses OAuth. Add it and authorize to connect."
 
 #: src/lib/sso-error-messages.ts
-msgid "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
-msgstr "This sign-in did not start from Thunderbolt. Open Thunderbolt and sign in from there."
+msgid "This sign-in did not start from {appName}. Open {appName} and sign in from there."
+msgstr "This sign-in did not start from {appName}. Open {appName} and sign in from there."
 
 #: src/lib/device-grant.ts
 msgid "This sign-in request has expired. Start a new one from your terminal."
@@ -4965,8 +4910,16 @@ msgid "This transcript is too large to upload."
 msgstr "This transcript is too large to upload."
 
 #: src/components/upgrade-required.tsx
-msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
-msgstr "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
+msgid "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
+msgstr "This version of {appName} is no longer supported. Update the app to keep chatting and syncing."
+
+#: src/components/delete-all-chats-dialog.tsx
+msgid "This will delete all chats outside projects. Chats in projects won't be deleted."
+msgstr "This will delete all chats outside projects. Chats in projects won't be deleted."
+
+#: src/projects/project-delete-dialog.tsx
+msgid "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
+msgstr "This will delete all projects and their instructions. Their chats will be kept and moved to Recents."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "This will deny the device access to your encrypted data. The device will need to set up sync again."
@@ -4980,13 +4933,18 @@ msgstr "This will disable the models and Exa search provided by this Tinfoil con
 msgid "This will disconnect your Tinfoil account and disable the models and Exa search provided by this connection. You’ll need to reconnect to use them again."
 msgstr "This will disconnect your Tinfoil account and disable the models and Exa search provided by this connection. You’ll need to reconnect to use them again."
 
+#. placeholder {0}: dialog.project.name
+#: src/projects/project-badge.tsx
+msgid "This will move the session to <0>{0}</0>."
+msgstr "This will move the session to <0>{0}</0>."
+
 #: src/settings/preferences.tsx
 msgid "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 msgstr "This will permanently delete all of your local data including settings, chat history, and cached information. This action cannot be undone."
 
 #: src/components/delete-all-chats-dialog.tsx
-msgid "This will permanently delete all your chats."
-msgstr "This will permanently delete all your chats."
+#~ msgid "This will permanently delete all your chats."
+#~ msgstr "This will permanently delete all your chats."
 
 #: src/skills/delete-skill-dialog.tsx
 msgid "This will permanently delete the skill. Other skills that reference it may no longer resolve."
@@ -5005,8 +4963,8 @@ msgstr "This will permanently delete your account and all of your data on our se
 #~ msgstr "This will send the current chat with the Thunderbolt team so that they can debug the problem."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This will share the current chat with the Thunderbolt team so that they can debug the problem."
-msgstr "This will share the current chat with the Thunderbolt team so that they can debug the problem."
+msgid "This will share the current chat with the {recipient} team so that they can debug the problem."
+msgstr "This will share the current chat with the {recipient} team so that they can debug the problem."
 
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
@@ -5016,33 +4974,13 @@ msgstr "This will share your encryption key with the device, allowing it to decr
 msgid "Thought for {duration}"
 msgstr "Thought for {duration}"
 
-#: src/settings/voice.tsx
-msgid "Thunderbolt (hosted, private)"
-msgstr "Thunderbolt (hosted, private)"
-
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Thunderbolt CLI"
 msgstr "Thunderbolt CLI"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Thunderbolt Cloud"
-#~ msgstr "Thunderbolt Cloud"
-
-#: src/waitlist/waitlist-content.tsx
-#~ msgid "Thunderbolt Cloud is in early access. Join the waitlist, or sign in if you already have access."
-#~ msgstr "Thunderbolt Cloud is in early access. Join the waitlist, or sign in if you already have access."
-
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Thunderbolt is open-source"
 msgstr "Thunderbolt is open-source"
-
-#: src/components/settings/agents/agent-detail.tsx
-msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-msgstr "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
-
-#: src/components/storage-unavailable-screen.tsx
-msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
-msgstr "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Thunderbolt Pro is not available yet. Stay tuned!"
@@ -5056,29 +4994,9 @@ msgstr "Thunderbolt Server"
 msgid "Thunderbolt server address"
 msgstr "Thunderbolt server address"
 
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Calendar"
-msgstr "Thunderbolt wants to connect to {providerName} Calendar"
-
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Email"
-msgstr "Thunderbolt wants to connect to {providerName} Email"
-
-#: src/widgets/connect-integration/widget.tsx
-msgid "Thunderbolt wants to connect to {providerName} Email and Calendar"
-msgstr "Thunderbolt wants to connect to {providerName} Email and Calendar"
-
-#: src/components/onboarding/onboarding-language-step.tsx
-msgid "Thunderbolt will use it across the app. You can change it later in Preferences."
-msgstr "Thunderbolt will use it across the app. You can change it later in Preferences."
-
 #: src/components/onboarding/provider-setup-error.ts
 msgid "Thunderbolt's default model is not available from this provider."
 msgstr "Thunderbolt's default model is not available from this provider."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Thunderbolt's hosted experience. Join the waitlist."
-#~ msgstr "Thunderbolt's hosted experience. Join the waitlist."
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Thunderstorm"
@@ -5136,10 +5054,6 @@ msgstr "Tinfoil search refused an unsupported request method."
 #: src/integrations/tinfoil-search/attested-fetch.ts
 msgid "Tinfoil search returned an unencrypted response."
 msgstr "Tinfoil search returned an unencrypted response."
-
-#: src/lib/tinfoil-auth.ts
-#~ msgid "Tinfoil sign-in isn't configured in this build. Use an API key instead."
-#~ msgstr "Tinfoil sign-in isn't configured in this build. Use an API key instead."
 
 #: src/integrations/tinfoil-search/api.ts
 msgid "Tinfoil web search failed. Check your connection and subscription, then try again."
@@ -5228,6 +5142,10 @@ msgstr "TTS model"
 msgid "TTS voice"
 msgstr "TTS voice"
 
+#: src/components/chat/error-message.tsx
+msgid "Turn off tools and retry"
+msgstr "Turn off tools and retry"
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."
 msgstr "Turn on sync on new devices with just your passkey, no approval needed. Anyone with access to your passkey can unlock your data."
@@ -5276,9 +5194,16 @@ msgstr "Unlock sync with a passkey"
 msgid "Unlock with passkey"
 msgstr "Unlock with passkey"
 
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
 #: src/skills/suggestion-chip.tsx
 msgid "Unpin"
 msgstr "Unpin"
+
+#: src/projects/project-action-menu-items.tsx
+#: src/projects/project-actions.tsx
+#~ msgid "Unpin project"
+#~ msgstr "Unpin project"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
@@ -5326,10 +5251,6 @@ msgid "Update Thunderbolt before connecting to this server. You can continue usi
 msgstr "Update Thunderbolt before connecting to this server. You can continue using your local models."
 
 #: src/components/onboarding/use-onboarding-server-state.ts
-#~ msgid "Update Thunderbolt to connect to Thunderbolt Cloud. You can still set up on this device."
-#~ msgstr "Update Thunderbolt to connect to Thunderbolt Cloud. You can still set up on this device."
-
-#: src/components/onboarding/use-onboarding-server-state.ts
 msgid "Update Thunderbolt to connect to Thunderbolt Cloud. You can still set up without a server."
 msgstr "Update Thunderbolt to connect to Thunderbolt Cloud. You can still set up without a server."
 
@@ -5356,14 +5277,6 @@ msgstr "URL"
 msgid "URL is required for Custom providers"
 msgstr "URL is required for Custom providers"
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Usage analytics go to Thunderbolt. Turn them off in Settings."
-#~ msgstr "Usage analytics go to Thunderbolt. Turn them off in Settings."
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Usage analytics remain enabled and go to Thunderbolt. You can change this in Settings."
-#~ msgstr "Usage analytics remain enabled and go to Thunderbolt. You can change this in Settings."
-
 #: src/settings/search/index.tsx
 msgid "Use {name}"
 msgstr "Use {name}"
@@ -5380,10 +5293,6 @@ msgstr "Use an API key instead"
 msgid "Use an http:// or https:// URL"
 msgstr "Use an http:// or https:// URL"
 
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Use an OpenRouter API key"
-#~ msgstr "Use an OpenRouter API key"
-
 #: src/settings/preferences.tsx
 msgid "Use Cloud Proxy"
 msgstr "Use Cloud Proxy"
@@ -5392,25 +5301,13 @@ msgstr "Use Cloud Proxy"
 msgid "Use https:// (http is only allowed for localhost or a local network)"
 msgstr "Use https:// (http is only allowed for localhost or a local network)"
 
-#: src/components/onboarding/onboarding-dialog.tsx
-#~ msgid "Use my own models"
-#~ msgstr "Use my own models"
-
 #: src/components/sync-setup/approval-waiting-step.tsx
 msgid "Use my recovery key"
 msgstr "Use my recovery key"
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Use on this device"
-#~ msgstr "Use on this device"
-
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use passkey"
 msgstr "Use passkey"
-
-#: src/components/onboarding/onboarding-model-step.tsx
-#~ msgid "Use private AI with your Tinfoil API key."
-#~ msgstr "Use private AI with your Tinfoil API key."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 msgid "Use sign-in instead"
@@ -5428,25 +5325,9 @@ msgstr "Use the authorization code option to connect to OpenRouter on this devic
 msgid "Use the connection prompt on screen to continue."
 msgstr "Use the connection prompt on screen to continue."
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Use the tools and services managed by your organization."
-#~ msgstr "Use the tools and services managed by your organization."
-
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Use Thunderbolt from the command line."
 msgstr "Use Thunderbolt from the command line."
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Use Thunderbolt on its own, with Thunderbolt Cloud, or with your organization's server."
-#~ msgstr "Use Thunderbolt on its own, with Thunderbolt Cloud, or with your organization's server."
-
-#: src/components/onboarding/onboarding-dialog.tsx
-#~ msgid "Use without a server"
-#~ msgstr "Use without a server"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Use your company’s server."
-#~ msgstr "Use your company’s server."
 
 #: src/components/onboarding/onboarding-passkey-step.tsx
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -5454,16 +5335,8 @@ msgid "Use your fingerprint, face, or device PIN to sign in instead of an email 
 msgstr "Use your fingerprint, face, or device PIN to sign in instead of an email code. Email sign-in still works too."
 
 #: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Use your organization's server and services."
-#~ msgstr "Use your organization's server and services."
-
-#: src/components/onboarding/onboarding-server-step.tsx
 msgid "Use your own API keys without a server."
 msgstr "Use your own API keys without a server."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Use your own API keys, without a server."
-#~ msgstr "Use your own API keys, without a server."
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 #~ msgid "Use your passkey to turn on sync on new devices, without approving them from another device. Anyone who can use this passkey will be able to unlock your data."
@@ -5598,25 +5471,13 @@ msgstr "We've sent an email to <0>{email}</0> with your next steps."
 msgid "Weather data provided by Open-Meteo.com"
 msgstr "Weather data provided by Open-Meteo.com"
 
-#: src/settings/preferences.tsx
-#~ msgid "Web Search"
-#~ msgstr "Web Search"
-
-#: src/settings/search/index.tsx
-#~ msgid "Web search is turned off. Enable a provider to use it."
-#~ msgstr "Web search is turned off. Enable a provider to use it."
-
-#: src/settings/search/index.tsx
-#~ msgid "Web search is unavailable. Connect or enable a provider to use it."
-#~ msgstr "Web search is unavailable. Connect or enable a provider to use it."
-
 #: src/components/welcome-dialog.tsx
 msgid "Welcome"
 msgstr "Welcome"
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
-msgid "Welcome to Thunderbolt!"
-msgstr "Welcome to Thunderbolt!"
+msgid "Welcome to {appName}!"
+msgstr "Welcome to {appName}!"
 
 #: src/components/magic-link-verify.tsx
 msgid "Welcome, {displayName}"
@@ -5639,6 +5500,10 @@ msgstr "What agents use"
 #: src/skills/skill-form.tsx
 msgid "What is this for?"
 msgstr "What is this for?"
+
+#: src/projects/project-form.tsx
+msgid "What is this project for?"
+msgstr "What is this project for?"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "What it uses"
@@ -5664,17 +5529,9 @@ msgstr "What's in it?"
 #~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
 #~ msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
 
-#: src/settings/preferences.tsx
-msgid "When enabled, requests are routed through your Thunderbolt server's cloud proxy."
-msgstr "When enabled, requests are routed through your Thunderbolt server's cloud proxy."
-
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"
 msgstr "When to use this skill…"
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "When you connect models, search, or other services, their providers' privacy and data policies apply."
-#~ msgstr "When you connect models, search, or other services, their providers' privacy and data policies apply."
 
 #: src/components/onboarding/onboarding-location-step.tsx
 msgid "Where are you located?"
@@ -5728,10 +5585,6 @@ msgstr "wss://example.com/ws or paste an iroh ticket"
 msgid "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 msgstr "You appear to be using a <0>localhost</0> backend. Check your backend server logs for the code or magic link."
 
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "You can add services as you go."
-#~ msgstr "You can add services as you go."
-
 #: src/components/chat/chat-prompt-input.tsx
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr "You can attach up to {maxAttachmentCount} files."
@@ -5739,18 +5592,6 @@ msgstr "You can attach up to {maxAttachmentCount} files."
 #: src/components/openrouter-callback.tsx
 msgid "You can close this window and return to Thunderbolt to continue."
 msgstr "You can close this window and return to Thunderbolt to continue."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "You can connect a server later and keep adding your own services."
-#~ msgstr "You can connect a server later and keep adding your own services."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "You can connect a server later from any sign-in or sync button. No server or Docker setup is needed to use Thunderbolt on its own."
-#~ msgstr "You can connect a server later from any sign-in or sync button. No server or Docker setup is needed to use Thunderbolt on its own."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "You can connect a server later."
-#~ msgstr "You can connect a server later."
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "You can connect integrations later in Settings."
@@ -5784,10 +5625,6 @@ msgstr "You won't be able to sign in or unlock sync with this passkey anymore. D
 #: src/skills/skills-view.tsx
 msgid "You'll lose what you've added so far."
 msgstr "You'll lose what you've added so far."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "You'll sign in with this server next. Its services and policies apply when you connect."
-#~ msgstr "You'll sign in with this server next. Its services and policies apply when you connect."
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "You're all set!"
@@ -5842,17 +5679,9 @@ msgstr "Your agent · runs in your terminal"
 msgid "Your agents"
 msgstr "Your agents"
 
-#: src/settings/search/index.tsx
-#~ msgid "Your agents use the selected provider for web search and page content."
-#~ msgstr "Your agents use the selected provider for web search and page content."
-
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Your AI assistant will use this name to address you personally."
 msgstr "Your AI assistant will use this name to address you personally."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your AI tools. No server."
-#~ msgstr "Your AI tools. No server."
 
 #: src/settings/search/index.tsx
 msgid "Your API key"
@@ -5891,18 +5720,6 @@ msgstr "Your chats and settings will remain on this device for next time."
 #~ msgid "Your chats and settings will remain on this device for offline use."
 #~ msgstr "Your chats and settings will remain on this device for offline use."
 
-#: src/settings/connections/tinfoil-impact-dialog.tsx
-#~ msgid "Your chats will be kept. Your Tinfoil subscription will not be canceled."
-#~ msgstr "Your chats will be kept. Your Tinfoil subscription will not be canceled."
-
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Your choice of models"
-#~ msgstr "Your choice of models"
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your company server."
-#~ msgstr "Your company server."
-
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Your connection has expired. Reconnect to continue."
 msgstr "Your connection has expired. Reconnect to continue."
@@ -5910,6 +5727,10 @@ msgstr "Your connection has expired. Reconnect to continue."
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"
 msgstr "Your deployment's server"
+
+#: src/components/onboarding/onboarding-celebration-step.tsx
+msgid "Your donation helps us understand how the app is used and improve the product."
+msgstr "Your donation helps us understand how the app is used and improve the product."
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
@@ -5934,18 +5755,6 @@ msgstr "Your name"
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your organization's server."
-#~ msgstr "Your organization's server."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your own AI tools, without a server."
-#~ msgstr "Your own AI tools, without a server."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your own services."
-#~ msgstr "Your own services."
 
 #: src/settings/encryption/use-change-recovery-key.ts
 #~ msgid "Your passkey's sync keys could not be verified. Remove your passkey in Preferences, then try again."
@@ -5975,21 +5784,9 @@ msgstr "Your recovery phrase was never saved"
 msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."
 msgstr "Your request to sync this device was denied by another device. You can try again or close this dialog."
 
-#: src/components/onboarding/onboarding-privacy-step.tsx
-#~ msgid "Your setup, your choice"
-#~ msgstr "Your setup, your choice"
-
 #: src/lib/tinfoil-auth.ts
 msgid "Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Connections."
 msgstr "Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Connections."
-
-#: src/lib/tinfoil-auth.ts
-#~ msgid "Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Models."
-#~ msgstr "Your Tinfoil connection has expired. Reconnect Tinfoil in Settings → Models."
-
-#: src/components/onboarding/onboarding-server-step.tsx
-#~ msgid "Your workspace on this device, with the services you choose. No account required."
-#~ msgstr "Your workspace on this device, with the services you choose. No account required."
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 #~ msgid "Zero Logs"

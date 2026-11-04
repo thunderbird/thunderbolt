@@ -1,0 +1,35 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Covered</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      #footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 80px;
+        background: #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 10 px short of the end: the page can still scroll down, but not far enough to move the button out from under
+         the footer. -->
+    <iframe srcdoc="<p>Frame</p>" style="display: block; border: 0; height: 100px"></iframe>
+    <div style="height: 2000px"></div>
+    <button style="display: block; margin: 0 auto 30px">Continue</button>
+    <div id="footer">Footer</div>
+    <script>
+      scrollTo(0, document.documentElement.scrollHeight)
+      scrollBy(0, -10)
+    </script>
+  </body>
+</html>

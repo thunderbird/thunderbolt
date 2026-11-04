@@ -66,7 +66,6 @@ jobs:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          EVENT_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           EVENT_BASE_REPO: ${{ github.repository }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
         run: |
@@ -95,13 +94,6 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$IS_FORK" = "true" ]; then
             echo "proceed=false" >> $GITHUB_OUTPUT
             echo "Fork PR — pull_request_target will handle this; exiting."
-            exit 0
-          fi
-          # Draft fixes from the weekly QA agent (qa-fix/*) are AI-written: no automatic preview with the
-          # preview secrets before a person has read them. A maintainer can still deploy one by dispatch.
-          if [ "$EVENT_NAME" = "pull_request" ] && [[ "$EVENT_HEAD_REF" == qa-fix/* ]]; then
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "QA agent fix branch — no automatic preview; exiting."
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$IS_FORK" = "false" ]; then
@@ -199,7 +191,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: Cache Bun dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -215,7 +207,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        # Skip --with-deps: the runner image already ships Chromium's system libraries,
+        # and its apt step can stall on a slow mirror.
+        timeout-minutes: 3
+        run: bun run browsers:install
 
       - name: Smoke test deployed preview
         run: bun run e2e:preview

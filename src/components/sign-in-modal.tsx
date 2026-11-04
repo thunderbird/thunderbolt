@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { BackButton } from '@/components/ui/back-button'
 import { Button } from '@/components/ui/button'
 import { connectionModalSurfaceClass } from '@/components/ui/modal-styles'
@@ -33,6 +34,7 @@ type SignInModalProps = {
 export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps) => {
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
   const localMode = useLocalSettingsStore((s) => s.localMode)
+  const appName = useAppName()
   const [step, setStep] = useState<'email' | 'otp'>('email')
   const goBackRef = useRef<(() => void) | null>(null)
 
@@ -108,7 +110,7 @@ export const SignInModal = ({ open, onOpenChange, onSuccess }: SignInModalProps)
               says everything the sighted user needs. */}
           {step === 'email' && (
             <ResponsiveModalDescription className="sr-only">
-              <Trans>Sign in to Thunderbolt</Trans>
+              <Trans>Sign in to {appName}</Trans>
             </ResponsiveModalDescription>
           )}
         </ResponsiveModalHeader>

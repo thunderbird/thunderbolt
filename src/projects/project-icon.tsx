@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * A project's icon: its chosen emoji, or the folder glyph when it has none.
+ * A project's icon: its chosen emoji, or stacked chat bubbles when it has none.
  *
  * One component so the list row, the sidebar drop row, the detail title and the
  * drag preview can't drift — an emoji needs different vertical centring from a
@@ -11,7 +11,7 @@
  * notices until it ships.
  */
 
-import { FolderOpen } from 'lucide-react'
+import { MessagesCircleStacked } from '@/components/icons/messages-circle-stacked'
 
 import { cn } from '@/lib/utils'
 
@@ -23,7 +23,7 @@ type ProjectIconProps = {
 
 export const ProjectIcon = ({ icon, className }: ProjectIconProps) => {
   if (!icon) {
-    return <FolderOpen className={cn('text-muted-foreground', className ?? 'size-5')} aria-hidden="true" />
+    return <MessagesCircleStacked className={cn('text-muted-foreground', className ?? 'size-5')} aria-hidden="true" />
   }
   // `leading-none` + a flex box: emoji carry their own ascent/descent, so
   // ordinary line-height pushes them off-centre inside a fixed-size row.

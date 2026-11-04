@@ -8,6 +8,7 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
 import { selectBuiltInAgentEnabled } from '@/api/config-store'
+import { useAppName } from '@/lib/branding-selectors'
 import { disposeAdapter } from '@/acp/adapter-cache'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables'
@@ -121,6 +122,11 @@ export const loadAllAgents = async (
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
 export const useAllAgents = (): Agent[] => {
   const includeBuiltIn = useConfigCapability(selectBuiltInAgentEnabled)
+  // `builtInAgent.name` reads the app name live, so the same object stays current
+  // wherever it is held (the chat store keeps the selected agent by reference;
+  // a copy with the name baked in would go stale there). The value is unused:
+  // subscribing re-renders every agent list when `/config` renames the app.
+  useAppName()
   return composeAllAgents(useSystemAgents(), useAgents(), { includeBuiltIn })
 }
 

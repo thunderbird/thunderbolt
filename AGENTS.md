@@ -18,7 +18,7 @@ Each workspace below has its own dependencies and its own checks; there is no si
 | `docs/`              | Architecture and development docs.                                                                                                         |
 | `public/`            | Static assets served by Vite.                                                                                                              |
 
-`cli`, `agent-core`, `wasm-artifact` and `rust` are separate path-gated jobs in `.github/workflows/ci.yml`, so a change in one of those trees is not covered by the frontend job. The `wasm-artifact` job fails the build when `crates/` changed without a regenerated `src/acp/iroh/pkg`, and verifies the committed artifacts against `CHECKSUMS.txt` — rebuild with `crates/thunderbolt-acp-client/build.sh` and commit the output in the same change.
+`cli`, `agent-core`, `wasm-artifact` and `rust` are separate path-gated jobs in `.github/workflows/ci.yml`, so a change in one of those trees is not covered by the frontend job. The `wasm-artifact` job requires crate input changes to include regenerated `src/acp/iroh/pkg`, checks current inputs against `SOURCES.txt`, and verifies artifacts against `CHECKSUMS.txt`. Rebuild with `crates/thunderbolt-acp-client/build.sh` and commit the output in the same change. For input-check failures and provenance limits, see the [CI guide](docs/internals/development/ci-and-previews.md#gates-that-surprise-people); build details live in the [crate README](crates/thunderbolt-acp-client/README.md).
 
 ## Core Principles
 

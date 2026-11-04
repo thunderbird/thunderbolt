@@ -32,8 +32,7 @@ import { SettingsPageShell, SettingsSectionLabel } from '@/components/settings/s
 const DeviceQrCode = lazy(() => import('@/components/device-qr-code'))
 const SetNodeIdDialog = lazy(() => import('@/components/set-node-id-dialog'))
 
-type ConfirmationTarget = {
-  action: 'approve' | 'deny' | 'remove' | 'revoke'
+type ConfirmationTarget = ({ action: 'approve'; device: Device } | { action: 'deny' | 'remove' | 'revoke' }) & {
   deviceId: string
 }
 
@@ -346,7 +345,7 @@ export default function DevicesSettingsPage() {
   const refreshKeysMutation = useRefreshKeys()
   const removeMutation = useRemoveDevice()
   const denyMutation = useDenyDevice()
-  const approveMutation = useApproveDevice(pendingDevices)
+  const approveMutation = useApproveDevice()
   const setNodeIdMutation = useSetDeviceNodeId()
   const pairing = useDevicePairing()
 
@@ -448,12 +447,6 @@ export default function DevicesSettingsPage() {
         </p>
       )}
 
-      {approveMutation.error && (
-        <p className="text-sm text-destructive" role="alert">
-          {approveMutation.error.message}
-        </p>
-      )}
-
       {hasPendingDevices && (
         <section className="flex flex-col gap-2">
           <SettingsSectionLabel>
@@ -465,10 +458,14 @@ export default function DevicesSettingsPage() {
                 <PendingDeviceRow
                   device={device}
                   isApprovePending={approveMutation.isPending}
-                  isApprovingThisDevice={isMutatingDevice(approveMutation, device.id)}
+                  isApprovingThisDevice={
+                    approveMutation.isPending && approveMutation.variables?.device.id === device.id
+                  }
                   isDenyPending={denyMutation.isPending}
                   isDenyingThisDevice={isMutatingDevice(denyMutation, device.id)}
-                  onApprove={() => setConfirmationTarget({ action: 'approve', deviceId: device.id })}
+                  onApprove={() =>
+                    setConfirmationTarget({ action: 'approve', deviceId: device.id, device: { ...device } })
+                  }
                   onDeny={() => setConfirmationTarget({ action: 'deny', deviceId: device.id })}
                 />
               </li>
@@ -518,9 +515,16 @@ export default function DevicesSettingsPage() {
       )}
 
       <ApproveDeviceDialog
+        device={confirmationTarget?.action === 'approve' ? confirmationTarget.device : null}
         open={confirmationTarget?.action === 'approve'}
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
-        onConfirm={() => confirmPendingAction('approve', approveMutation)}
+        onConfirm={async (fingerprint) => {
+          if (confirmationTarget?.action !== 'approve') {
+            return
+          }
+          await approveMutation.mutateAsync({ device: confirmationTarget.device, fingerprint })
+          setConfirmationTarget(null)
+        }}
         isPending={approveMutation.isPending}
       />
 

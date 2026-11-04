@@ -65,7 +65,7 @@ export const SkillDetail = ({
             </TooltipContent>
           </Tooltip>
         </DetailSectionTitle>
-        <p className="whitespace-pre-wrap text-base leading-snug text-foreground">{description}</p>
+        <p className="whitespace-pre-wrap break-words text-base leading-snug text-foreground">{description}</p>
       </div>
 
       <DetailDivider />
@@ -74,7 +74,7 @@ export const SkillDetail = ({
         <DetailSectionTitle>
           <Trans>Instructions</Trans>
         </DetailSectionTitle>
-        <div className="whitespace-pre-wrap pb-1 text-base leading-snug text-foreground">{instruction}</div>
+        <div className="whitespace-pre-wrap break-words pb-1 text-base leading-snug text-foreground">{instruction}</div>
       </div>
     </DetailPanel>
   )

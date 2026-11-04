@@ -12,6 +12,9 @@ storage:
 port: 8080
 
 sync_config:
+  # PowerSync rebuilds its storage, and every device downloads its data again, whenever this
+  # label or the content changes. Bump PS_SYNC_CONFIG_VERSION to force that rebuild.
+  version_label: !env PS_SYNC_CONFIG_VERSION
   content: |
     config:
       edition: 3

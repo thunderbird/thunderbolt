@@ -45,6 +45,7 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
     return {
       provider,
       apiKey,
+      supportsTools: true,
       name: preferred.name,
       model: preferred.model,
       contextWindow: preferred.contextWindow,
@@ -273,7 +274,7 @@ describe('useOnboardingProviderState', () => {
     act(() => result.current.chooseProvider('custom'))
     expect(result.current.view).toBe('other')
     expect(result.current.addForm.form.getValues('provider')).toBe('custom')
-    expect(result.current.addForm.form.getValues('url')).toBe('http://localhost:11434/v1')
+    expect(result.current.addForm.form.getValues('url')).toBe('')
     expect(result.current.addForm.allowServerModels).toBe(false)
   })
 
@@ -374,7 +375,7 @@ describe('useOnboardingProviderState', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Other provider' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getByLabelText('URL')).toHaveValue('http://localhost:11434/v1')
+    expect(screen.getByLabelText('URL')).toHaveValue('')
     expect(screen.getByLabelText('API Key (Optional)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Model' })).toBeDisabled()
   })

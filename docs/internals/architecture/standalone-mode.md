@@ -151,7 +151,11 @@ manually without using the server's geocoder.
 Standalone analytics use Thunderbolt's normal PostHog endpoint at
 `https://api.thunderbolt.io/v1/posthog`, including its public configuration
 endpoint. Existing analytics consent and event sanitization remain in force;
-analytics failure cannot block startup. Search credentials are cleared by the
+the final onboarding screen offers an optional anonymous usage-data donation
+toggle backed by the same `data_collection` setting as Preferences. The default
+is enabled; an existing opt-out is preserved. Changes are saved before setup can
+finish, and a failed save offers a retry rather than discarding the user's choice.
+Analytics failure cannot block startup. Search credentials are cleared by the
 existing local reset flow.
 
 Serverless does not imply every feature works without internet. Fully offline

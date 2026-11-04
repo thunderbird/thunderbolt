@@ -1,0 +1,3 @@
+2026-10-20 00:33:59.246 Df Thunderbolt Dev[8866:1f702a] [com.apple.WebKit:Generic] WebContent[8873] tauri://localhost:333:16: CONSOLE ERROR [qa-layout] ready
+2026-10-20 00:34:02.892 Df Thunderbolt Dev[8866:1f702a] [com.apple.WebKit:Generic] WebContent[8873] tauri://localhost:300:20: CONSOLE ERROR [qa-layout] covered textbox "Email"
+2026-10-20 00:34:02.892 Df Thunderbolt Dev[8866:1f702a] [com.apple.WebKit:Generic] WebContent[8873] tauri://localhost:300:20: CONSOLE ERROR [qa-layout] focus-covered textbox "Email"

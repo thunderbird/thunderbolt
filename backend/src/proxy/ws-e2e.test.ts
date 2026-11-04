@@ -6,12 +6,14 @@ import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { createApp } from '@/index'
 import { wsCloseUnauthorized } from '@/auth/ws-bearer-auth'
 import { user as userTable, session as sessionTable } from '@/db/auth-schema'
-import { createTestApp, type TestAppHandle } from '@/test-utils/e2e'
+import { createTestApp, pingRoundTrip, type TestAppHandle } from '@/test-utils/e2e'
 import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { createGatedAuth } from '@/test-utils/mock-auth'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createHmac } from 'crypto'
-import { createObservabilityRecorder } from './observability'
-import { wsCloseCodes } from './ws'
+import { Elysia } from 'elysia'
+import { createObservabilityRecorder, type ObservabilityRecorder } from './observability'
+import { createUniversalProxyWsRoutes, wsCloseCodes } from './ws'
 
 const betterAuthSecret = 'better-auth-secret-12345678901234567890'
 
@@ -616,5 +618,213 @@ describe('Universal proxy WS observability — error_type per close path', () =>
     // 2xx/3xx-no-error-type pattern on the HTTP path.
     expect(relay?.error_type).toBeUndefined()
     expect(relay?.status).toBe(1000)
+  }, 15_000)
+})
+
+/** Serve only the relay plugin, with no database. Its bearer check waits for `releaseAuth()`, so a
+ *  test can hold `open()` mid-auth. */
+const startRelay = async (upstreamPort: number, observability?: ObservabilityRecorder) => {
+  const authGate = Promise.withResolvers<void>()
+  const app = new Elysia().use(
+    createUniversalProxyWsRoutes({
+      auth: createGatedAuth('relay-user', authGate.promise),
+      wsFactory: localUpstreamWsFactory(upstreamPort),
+      observability,
+    }),
+  )
+  await new Promise<void>((resolve) => {
+    app.listen({ port: 0, hostname: '127.0.0.1' }, () => resolve())
+  })
+  return {
+    url: `ws://127.0.0.1:${app.server?.port}/proxy/ws`,
+    releaseAuth: () => authGate.resolve(),
+    stop: async () => {
+      await Promise.race([app.stop(true), new Promise((r) => setTimeout(r, 500))])
+    },
+  }
+}
+
+const relayProtocols = buildProtocols('wss://upstream.test/', 'relay-bearer')
+
+/**
+ * A downstream client on a raw TCP socket, for what a WebSocket hides: it reads whether the relay's
+ * close frame carries a status at all, not the code a WebSocket derives from it, and it can drop
+ * without a close frame.
+ * `closeFrameCode` resolves with the status of the relay's close frame, or null when it has none.
+ */
+const connectRawClient = async (url: string, protocols: string[]) => {
+  const { hostname, port, pathname } = new URL(url)
+  const chunks: Buffer[] = []
+  const upgraded = Promise.withResolvers<void>()
+  const closeFrame = Promise.withResolvers<number | null>()
+  const socket = await Bun.connect({
+    hostname,
+    port: Number(port),
+    socket: {
+      data(_socket, chunk) {
+        chunks.push(chunk)
+        const bytes = Buffer.concat(chunks)
+        const headerEnd = bytes.indexOf('\r\n\r\n')
+        if (headerEnd === -1) {
+          return
+        }
+        const statusLine = bytes.subarray(0, bytes.indexOf('\r\n')).toString()
+        if (!statusLine.startsWith('HTTP/1.1 101')) {
+          upgraded.reject(new Error(`Upgrade refused: ${statusLine}`))
+          return
+        }
+        upgraded.resolve()
+        // The relay sends these tests nothing but its close frame (opcode 8): status, then reason.
+        // A server frame is unmasked and a close payload is under 126 bytes, so byte 1 is its length.
+        const frame = bytes.subarray(headerEnd + 4)
+        if (frame.length < 2 || frame.length < 2 + (frame[1] & 0x7f)) {
+          return
+        }
+        closeFrame.resolve((frame[1] & 0x7f) === 0 ? null : frame.readUInt16BE(2))
+      },
+      error(_socket, error) {
+        upgraded.reject(error)
+        closeFrame.reject(error)
+      },
+    },
+  })
+  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64')
+  socket.write(
+    `GET ${pathname} HTTP/1.1\r\nHost: ${hostname}:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+      `Sec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: ${protocols.join(', ')}\r\n\r\n`,
+  )
+  await upgraded.promise
+  return {
+    /** Send a short (< 126 bytes) text frame. Client frames must be masked; an all-zero key keeps the bytes. */
+    sendText: (text: string) => {
+      const payload = Buffer.from(text)
+      socket.write(Buffer.concat([Buffer.from([0x81, 0x80 | payload.length, 0, 0, 0, 0]), payload]))
+    },
+    closeFrameCode: closeFrame.promise,
+    drop: () => socket.terminate(),
+  }
+}
+
+describe('Universal proxy WS relay — frames during auth and unsendable close codes', () => {
+  const servers: Array<{ stop: () => Promise<void> }> = []
+
+  afterEach(async () => {
+    for (const server of servers.splice(0)) {
+      await server.stop()
+    }
+  })
+
+  it('forwards a frame the client sends before the bearer check finishes', async () => {
+    const received: string[] = []
+    const upstream = await startUpstreamServer({ message: (_ws, msg) => received.push(msg.toString()) })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    client.send('early')
+    await pingRoundTrip(client)
+    relay.releaseAuth()
+
+    await waitFor(() => received.includes('early'), { label: 'early frame at upstream' })
+    client.close()
+  }, 15_000)
+
+  it('opens no upstream when the client closes before the bearer check finishes', async () => {
+    const upstreamConnections: unknown[] = []
+    const upstream = await startUpstreamServer({ open: (ws) => upstreamConnections.push(ws) })
+    const { recorder, logs } = captureWsRecorder()
+    const relay = await startRelay(upstream.port, recorder)
+    servers.push(relay, upstream)
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await new Promise<void>((resolve) => client.addEventListener('open', () => resolve()))
+    const closed = waitForClose(client)
+    client.close()
+    await closed
+    relay.releaseAuth()
+
+    // The relay logs the close as the last step of `open()`; an upstream dial would show up instead.
+    await waitFor(() => logs.length > 0 || upstreamConnections.length > 0, { label: 'relay log or upstream dial' })
+    expect(upstreamConnections).toEqual([])
+  }, 15_000)
+
+  it('closes the upstream with 1000 when the client closes without a status code', async () => {
+    const upstreamCloses: number[] = []
+    const upstream = await startUpstreamServer({
+      open: (ws) => ws.send('ready'),
+      close: (code) => upstreamCloses.push(code),
+    })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+    relay.releaseAuth()
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    // `ready` crosses the relay only once its upstream socket is open, the state this close must reach.
+    await nextMessageEvent(client)
+    // Whatever code the bare close() reaches the relay with, the upstream must see a deliberate end.
+    client.close()
+
+    await waitFor(() => upstreamCloses.length > 0, { label: 'upstream close' })
+    expect(upstreamCloses).toEqual([1000])
+  }, 15_000)
+
+  it('relays an upstream close without a status code to the client as 1000', async () => {
+    // Bun's ServerWebSocket turns 1005 into an empty close frame, so the relay's upstream observes 1005.
+    const upstream = await startUpstreamServer({ open: (ws) => ws.close(1005) })
+    const { recorder, logs } = captureWsRecorder()
+    const relay = await startRelay(upstream.port, recorder)
+    servers.push(relay, upstream)
+    relay.releaseAuth()
+
+    const client = new WebSocket(relay.url, relayProtocols)
+    await waitForWsRelayLog(logs)
+    expect(logs.find((l) => l.event === 'proxy_ws_relay')?.status).toBe(1000)
+    client.close()
+  }, 15_000)
+
+  it('closes the client without a status code when the upstream connection drops', async () => {
+    // A browser reads a status-less close frame as 1005, which it may retry; 1000 would end the session.
+    const upstream = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response('not a ws request', { status: 400 })),
+      websocket: { message: (ws) => ws.terminate() },
+    })
+    const relay = await startRelay(upstream.port ?? 0)
+    // Not awaited, as in startUpstreamServer: stop(true) can hang while a peer socket is half-closed.
+    servers.push(relay, {
+      stop: async () => {
+        upstream.stop(true)
+      },
+    })
+    relay.releaseAuth()
+
+    const client = await connectRawClient(relay.url, relayProtocols)
+    // Relayed once the upstream socket is open; the upstream then drops without a close frame (1006).
+    client.sendText('drop')
+
+    expect(await client.closeFrameCode).toBeNull()
+  }, 15_000)
+
+  it('closes the upstream when the client connection drops', async () => {
+    const received: string[] = []
+    const upstreamCloses: number[] = []
+    const upstream = await startUpstreamServer({
+      message: (_ws, msg) => received.push(msg.toString()),
+      close: (code) => upstreamCloses.push(code),
+    })
+    const relay = await startRelay(upstream.port)
+    servers.push(relay, upstream)
+    relay.releaseAuth()
+
+    const client = await connectRawClient(relay.url, relayProtocols)
+    client.sendText('hello')
+    // `hello` reaches the upstream only once the relay's upstream socket is open, the state this drop must reach.
+    await waitFor(() => received.includes('hello'), { label: 'hello at upstream' })
+    // No close frame: the relay observes 1006, which a WebSocket may not send.
+    client.drop()
+
+    await waitFor(() => upstreamCloses.length > 0, { label: 'upstream close' })
   }, 15_000)
 })

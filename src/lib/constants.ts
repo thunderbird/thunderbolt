@@ -6,15 +6,17 @@
  * App-wide constants
  */
 
-/** URL to Mozilla/Thunderbird privacy policy */
+/** URL to Mozilla/Thunderbird privacy policy; operator branding can replace it (see `useBrandingLinks`) */
 export const privacyPolicyUrl = 'https://www.thunderbird.net/en-US/privacy/'
 
-/** URL to Mozilla terms of service */
+/** URL to Mozilla terms of service; operator branding can replace it */
 export const termsOfServiceUrl = 'https://www.mozilla.org/en-US/about/legal/terms/mozilla/'
 
 /** Cloud choice destination, separate from the optional server used at first launch. */
 export const thunderboltCloudUrl =
   import.meta.env.VITE_THUNDERBOLT_CLOUD_SERVICE_URL?.trim().replace(/\/+$/, '') || 'https://api.thunderbolt.io/v1'
+/** Where users reach support; operator branding can replace it */
+export const supportUrl = 'mailto:support@thunderbird.net'
 
 /** Default title shown for new/untitled chat threads */
 export const defaultChatTitle = 'New Chat'

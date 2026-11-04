@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useAppName } from '@/lib/branding-selectors'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { lazy, Suspense, useEffect, useEffectEvent, useReducer, useState, useTransition } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -9,7 +10,7 @@ import { ResponsiveModalContentComposable } from '@/components/ui/responsive-mod
 import { useDatabase, useSignInModal } from '@/contexts'
 import { deleteIntegrationCredentials, updateSettings } from '@/dal'
 import type { OAuthProvider } from '@/lib/auth'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '@/hooks/use-settings'
 import { onboardingStepCount, useOnboardingState } from '@/hooks/use-onboarding-state'
 import { OnboardingPrivacyStep } from './onboarding-privacy-step'
@@ -40,6 +41,7 @@ const passkeyStep = 6
 
 export const OnboardingDialog = () => {
   const { t } = useLingui()
+  const appName = useAppName()
   const { isMobile } = useIsMobile()
   const isStandalone = useNeedsOwnModel()
   const { openSignInModal } = useSignInModal()
@@ -48,8 +50,9 @@ export const OnboardingDialog = () => {
   const { configuredModels } = useOnboardingModelState()
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const { userHasCompletedOnboarding } = useSettings({
+  const { userHasCompletedOnboarding, dataCollection } = useSettings({
     user_has_completed_onboarding: false,
+    data_collection: true,
   })
   const hasBuiltInSearch = configuredModels.some((model) => model.provider === 'tinfoil' && model.toolUsage !== 0)
   const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
@@ -97,6 +100,8 @@ export const OnboardingDialog = () => {
   )
   const setIsFormDirty = (isFormDirty: boolean) => updateForm({ isFormDirty })
   const [completionError, setCompletionError] = useState<string | null>(null)
+
+  const donationMutation = useMutation({ mutationFn: (enabled: boolean) => dataCollection.setValue(enabled) })
 
   const handleCelebrationComplete = () => {
     startCompleting(async () => {
@@ -175,7 +180,7 @@ export const OnboardingDialog = () => {
           <Trans>Onboarding Wizard</Trans>
         </DialogTitle>
         <DialogDescription className="sr-only">
-          <Trans>Complete the setup process to get started with Thunderbolt</Trans>
+          <Trans>Complete the setup process to get started with {appName}</Trans>
         </DialogDescription>
         <div
           className={cn('flex h-full flex-col items-center', !isMobile && 'pb-6 pt-8')}
@@ -222,7 +227,18 @@ export const OnboardingDialog = () => {
                 </div>
               )}
               {state.currentStep === passkeyStep && shouldOfferPasskeyStep && <OnboardingPasskeyStep />}
-              {state.currentStep === onboardingStepCount && <OnboardingCelebrationStep />}
+              {state.currentStep === onboardingStepCount && (
+                <OnboardingCelebrationStep
+                  donateUsageData={dataCollection.value}
+                  onDonationChange={donationMutation.mutate}
+                  donationDisabled={dataCollection.isLoading || donationMutation.isPending || isCompleting}
+                />
+              )}
+              {isCelebration && donationMutation.isError && (
+                <p role="alert" className="text-sm text-destructive">
+                  <Trans>Could not save your preference. Please try again.</Trans>
+                </p>
+              )}
               {completionError && (
                 <p role="alert" className="text-sm text-destructive">
                   {completionError}
@@ -260,7 +276,11 @@ export const OnboardingDialog = () => {
                               ? !hasSearchProvider || !isSearchReady
                               : state.currentStep === passkeyStep
                                 ? !accountPasskey.isSettled
-                                : isCelebration && isCompleting
+                                : isCelebration &&
+                                  (isCompleting ||
+                                    dataCollection.isLoading ||
+                                    donationMutation.isPending ||
+                                    donationMutation.isError)
                 }
                 continueText={
                   state.currentStep === 8 && serverState.isConnecting ? (

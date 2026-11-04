@@ -6,11 +6,13 @@ import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/da
 import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { moveChatToProject } from '@/projects/use-move-chat-to-project'
+import { setChatThreadProject } from '@/dal/projects'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { agentsSystemTable, modelsTable } from '@/db/tables'
+import { agentsSystemTable, chatThreadsTable, modelsTable, projectsTable } from '@/db/tables'
 import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
@@ -653,6 +655,95 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.type).toBe(onHostedAgent ? 'managed-http' : 'built-in')
       expect((await getThread(getDb(), threadId))?.isEncrypted).toBe(isEncrypted)
     })
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts first',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const wroteProject = Promise.withResolvers<void>()
+        const releaseMove = Promise.withResolvers<void>()
+        await act(async () => {
+          const moving = moveChatToProject(
+            { chatThreadId: id, projectId },
+            {
+              db: getDb(),
+              setProject: async (...args) => {
+                const assigned = await setChatThreadProject(...args)
+                wroteProject.resolve()
+                await releaseMove.promise
+                return assigned
+              },
+              updateOpenSession: (chatThreadId, nextProjectId) =>
+                useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+              refreshChatList: async () => {},
+            },
+          )
+          await wroteProject.promise
+          const saving = result.current.saveMessages({ id, messages: [createTestMessage()] })
+          releaseMove.resolve()
+          await Promise.all([moving, saving])
+        })
+        expect((await getThread(getDb(), id))?.projectId).toBe(projectId)
+        expect(getCurrentSession()?.projectId).toBe(projectId)
+      },
+    )
+
+    it.each(['project-b', null])(
+      'keeps first-save membership consistent when a move to %s starts during insertion',
+      async (projectId) => {
+        if (projectId) {
+          await getDb().insert(projectsTable).values({ id: projectId, name: 'Move target' })
+        }
+        const id = uuidv7()
+        const { result } = renderHook(() => useHydrateChatStore({ id, isNew: true, projectId: 'project-a' }), {
+          wrapper: TestWrapper,
+        })
+        await act(async () => {
+          await result.current.hydrateChatStore()
+        })
+        const moved = Promise.withResolvers<void>()
+        const db = getDb()
+        const insert = db.insert.bind(db)
+        // Start the move after saveMessages has read the old project but before
+        // the thread's insert is executed, so an uncoordinated UPDATE finds no row.
+        const insertSpy = spyOn(db, 'insert').mockImplementation((table) => {
+          if (Object.is(table, chatThreadsTable)) {
+            moved.resolve(
+              moveChatToProject(
+                { chatThreadId: id, projectId },
+                {
+                  db,
+                  setProject: setChatThreadProject,
+                  updateOpenSession: (chatThreadId, nextProjectId) =>
+                    useChatStore.getState().updateSession(chatThreadId, { projectId: nextProjectId }),
+                  refreshChatList: async () => {},
+                },
+              ),
+            )
+          }
+          return insert(table)
+        })
+        try {
+          await act(async () => {
+            await result.current.saveMessages({ id, messages: [createTestMessage()] })
+            await moved.promise
+          })
+          expect((await getThread(db, id))?.projectId).toBe(projectId)
+          expect(getCurrentSession()?.projectId).toBe(projectId)
+        } finally {
+          insertSpy.mockRestore()
+        }
+      },
+    )
 
     it('should throw error if no session is found when saving messages', async () => {
       const threadId = uuidv7()

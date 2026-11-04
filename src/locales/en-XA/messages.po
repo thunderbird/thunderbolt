@@ -2645,6 +2645,10 @@ msgstr ""
 msgid "Model"
 msgstr ""
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
+
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
 #~ msgstr ""

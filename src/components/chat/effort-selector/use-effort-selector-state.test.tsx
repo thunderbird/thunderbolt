@@ -10,6 +10,8 @@ import { createMockChatInstance, createMockModel, hydrateStore, resetStore } fro
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getChatReasoningEffort } from '@/ai/reasoning-effort'
 import { useChatStore } from '@/chats/chat-store'
+import { sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
+import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import { EffortSelector } from './effort-selector'
 import { useEffortSelectorState } from './use-effort-selector-state'
 
@@ -47,6 +49,62 @@ afterEach(() => {
 afterAll(teardownTestDatabase)
 
 describe('effort selector state', () => {
+  it('keeps the released value visible while the agent saves it', async () => {
+    const session = useChatStore.getState().sessions.get('effort-chat')!
+    const agent = { ...session.selectedAgent, id: 'remote-effort', type: 'remote-acp' as const }
+    useChatStore.getState().updateSession(session.id, { selectedAgent: agent })
+    const saved = Promise.withResolvers<void>()
+    const key = sessionConfigKey(agent.id, session.id)
+    const options: SessionConfigOption[] = [
+      {
+        id: 'effort',
+        name: 'Effort',
+        category: 'thought_level',
+        type: 'select',
+        currentValue: 'low',
+        options: [
+          { value: 'low', name: 'Low' },
+          { value: 'high', name: 'High' },
+        ],
+      },
+    ]
+    const setOption = async () => {
+      await saved.promise
+    }
+    useSessionConfigStore.getState().set(key, { options, setOption })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    const slider = screen.getByRole('slider')
+    await act(async () => {
+      fireEvent.change(slider, { target: { value: '1' } })
+    })
+    await act(async () => {
+      fireEvent.pointerUp(slider)
+    })
+    expect(slider.getAttribute('aria-valuetext')).toBe('High')
+    expect(trigger.textContent).toContain('High')
+    expect((trigger as HTMLButtonElement).disabled).toBe(false)
+    await act(async () => {
+      useSessionConfigStore.getState().set(key, {
+        options: options.map((option) => (option.type === 'select' ? { ...option, currentValue: 'high' } : option)),
+        setOption,
+      })
+      saved.resolve()
+    })
+    expect(slider.getAttribute('aria-valuetext')).toBe('High')
+    useSessionConfigStore.getState().remove(key, setOption)
+  })
+
+  it('keeps model selection available when effort is unsupported', async () => {
+    useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, model: 'llama3-3-70b' } })
+    renderWithReactivity(<EffortSelector modelPicker={<button>Choose model</button>} />, { tables: ['settings'] })
+    expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
+    expect(screen.queryByRole('slider')).toBeNull()
+  })
+
   it('opens the slider, previews supported levels, commits on release, and resets', async () => {
     renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))

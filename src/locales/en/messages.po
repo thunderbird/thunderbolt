@@ -2645,6 +2645,10 @@ msgstr "Missing CSRF state — restart the authorization."
 msgid "Model"
 msgstr "Model"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr "Model and reasoning effort"
+
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
 #~ msgstr "Model may not be compatible"

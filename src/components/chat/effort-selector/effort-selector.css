@@ -3,11 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 .effort-track {
-  background: linear-gradient(
-    to right,
-    var(--color-blue-500) var(--effort-progress),
-    var(--color-accent) var(--effort-progress)
-  );
+  background: var(--color-accent);
+  overflow: hidden;
+}
+
+.effort-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-brand);
+  clip-path: inset(0 calc(100% - var(--effort-progress)) 0 0);
 }
 
 .effort-slider {

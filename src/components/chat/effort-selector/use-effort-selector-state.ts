@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState, useTransition } from 'react'
+import { useOptimistic, useState, useTransition } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useLingui } from '@lingui/react/macro'
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
@@ -34,8 +34,7 @@ export const useEffortSelectorState = () => {
   const [pending, startTransition] = useTransition()
   const busy =
     pending ||
-    setting.isSaving ||
-    setting.isLoading ||
+    (builtIn && (setting.isSaving || setting.isLoading)) ||
     chatInstance.status === 'submitted' ||
     chatInstance.status === 'streaming' ||
     compactionStatus === 'compacting'
@@ -62,12 +61,14 @@ export const useEffortSelectorState = () => {
       ? configSelectOptions(option)
       : []
   const value = builtIn ? (effort ?? 'default') : option?.currentValue
+  const [displayValue, setOptimisticValue] = useOptimistic(typeof value === 'string' ? value : undefined)
   const choose = (next: string) => {
     if (busy || !choices.some((choice) => choice.value === next)) {
       return
     }
     setError(null)
     startTransition(async () => {
+      setOptimisticValue(next)
       try {
         if (builtIn) {
           const write = setting.setValue(next === 'default' ? null : next)
@@ -88,5 +89,5 @@ export const useEffortSelectorState = () => {
       }
     })
   }
-  return { error, choices, value: typeof value === 'string' ? value : undefined, busy, choose }
+  return { error, choices, value: displayValue, busy, choose }
 }

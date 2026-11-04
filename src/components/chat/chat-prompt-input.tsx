@@ -821,10 +821,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // left, so the right side only renders it in the healthy state.
     const footerEndElements =
       !isConnecting && !isConnectionError ? (
-        <>
-          <EffortSelector key={`${chatThreadId}:${selectedAgent.id}:${selectedModel.id}`} />
-          <ChatModelPicker />
-        </>
+        <EffortSelector
+          key={`${chatThreadId}:${selectedAgent.id}:${selectedModel.id}`}
+          modelPicker={selectedAgent.type === 'built-in' ? <ChatModelPicker /> : undefined}
+        />
       ) : undefined
 
     const handleAddChipFromBar = useCallback(

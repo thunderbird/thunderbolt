@@ -2633,6 +2633,10 @@ msgstr "CSRF ステートがありません。認可をやり直してくださ�
 msgid "Model"
 msgstr "モデル"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
+
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
 #~ msgstr "このモデルは対応していない可能性があります"

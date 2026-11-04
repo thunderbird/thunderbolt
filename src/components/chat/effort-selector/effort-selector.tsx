@@ -4,7 +4,15 @@
 
 import { Brain } from 'lucide-react'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Select, SelectContent, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useEffortSelectorState } from './use-effort-selector-state'
 
 export const EffortSelector = () => {
@@ -30,14 +38,16 @@ export const EffortSelector = () => {
           <SelectValue placeholder={t`Reasoning effort`} />
         </SelectTrigger>
         <SelectContent align="end">
-          <SelectLabel>
-            <Trans>Reasoning effort</Trans>
-          </SelectLabel>
-          {choices.map((choice) => (
-            <SelectItem key={choice.value} value={choice.value}>
-              {choice.name}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            <SelectLabel>
+              <Trans>Reasoning effort</Trans>
+            </SelectLabel>
+            {choices.map((choice) => (
+              <SelectItem key={choice.value} value={choice.value}>
+                {choice.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </>

@@ -10,6 +10,7 @@ import { createMockChatInstance, createMockModel, hydrateStore, resetStore } fro
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
 import { getChatReasoningEffort } from '@/ai/reasoning-effort'
 import { useChatStore } from '@/chats/chat-store'
+import { EffortSelector } from './effort-selector'
 import { useEffortSelectorState } from './use-effort-selector-state'
 
 const model = createMockModel({ id: 'effort-model', provider: 'tinfoil', model: 'glm-5-3' })
@@ -46,6 +47,16 @@ afterEach(() => {
 afterAll(teardownTestDatabase)
 
 describe('effort selector state', () => {
+  it('renders the actual Radix selector with supported choices', async () => {
+    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    const trigger = await waitForElement(() => screen.queryByRole('combobox', { name: 'Reasoning effort' }))
+    expect(trigger.textContent).toContain('Default')
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    })
+    expect(await waitForElement(() => screen.queryByRole('option', { name: 'High' }))).toBeDefined()
+  })
+
   it('offers only supported levels and persists the conversation preference without editing the model', async () => {
     renderWithReactivity(<Probe />, { tables: ['settings'] })
     const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))

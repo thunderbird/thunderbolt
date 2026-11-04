@@ -336,7 +336,7 @@
     // The probe measures the top page only, and waiting on frames costs axe half a second.
     iframes: false,
   }
-  // One problem per control, in page order: axe lists them rule by rule.
+  /** One problem per control, in page order: axe lists them rule by rule. */
   const unnamedOf = (results) =>
     [...new Set(results.flatMap((result) => result.nodes.map((node) => node.element)))]
       .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))

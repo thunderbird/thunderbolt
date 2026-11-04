@@ -159,10 +159,30 @@ describe('secrets', () => {
     }
   })
 
-  test("the fix job's key leaves with the scan right after the session, before any agent code runs outside it", () => {
+  test("the fix job's key leaves with the scan right after the sessions, before any agent code runs outside them", () => {
     const fix = indexOf('fix', 'Fix')
-    expect(steps('fix')[fix + 1].name).toBe("Check the agent's output for the key")
-    expect(mentions('fix', 'secrets.').filter((m) => !m.startsWith('Fix:'))).toEqual([
+    const sessions = ['Fix', 'Review the fix', 'Correct the fix', 'Review the corrected fix']
+    // Between the sessions only steps that run no code of the agent's, with the key scan's cleared variables.
+    const between = steps('fix').slice(fix, indexOf('fix', "Check the agent's output for the key"))
+    expect(between.map((s) => s.name)).toEqual([
+      'Fix',
+      "Keep the fix session's execution file",
+      'Review the fix',
+      'Build the correction prompt',
+      'Correct the fix',
+      "Keep the correction session's execution file",
+      'Review the corrected fix',
+      'Decide the review',
+    ])
+    for (const plain of between.filter((s) => s.run)) {
+      expect({ name: plain.name, shell: plain.shell }).toEqual({
+        name: plain.name,
+        shell: '/bin/bash --noprofile --norc -e {0}',
+      })
+      expect(plain.env).toMatchObject({ PATH: '/usr/bin:/bin', BASH_ENV: '', ENV: '', LD_PRELOAD: '' })
+      expect(plain.run).not.toMatch(/\b(bun|bunx|git)\b/)
+    }
+    expect(mentions('fix', 'secrets.').filter((m) => !sessions.some((name) => m.startsWith(`${name}:`)))).toEqual([
       "Check the agent's output for the key:env",
     ])
     // node_modules too: the agent can write it and the real-AI build bundles it. Only .git, which it may not edit.
@@ -344,7 +364,7 @@ describe('fix job', () => {
     writeFileSync(join(dir, 'qa-out/c2/repro/1.spec.ts'), 'spec')
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Collect the patch').run ?? ''], {
       cwd: dir,
-      env: { PATH: process.env.PATH, QA_FP: 'fp1', FIX_OUTCOME: 'success', ...env },
+      env: { PATH: process.env.PATH, QA_FP: 'fp1', FIX_OUTCOME: 'success', REVIEWED: 'true', ...env },
     })
     expect(proc.exitCode).toBe(0)
     const diagnosis = join(dir, 'qa-out/fix/fp1.diagnosis.md')
@@ -358,6 +378,74 @@ describe('fix job', () => {
     expect(collect({ NEEDS_VISUAL: 'true', VISUAL: 'skipped' })).toContain('The visual check did not pass')
     expect(collect({ NEEDS_REAL_BUILD: 'true', REAL_BUILD: 'failure' })).toContain('did not build')
     expect(collect({ ...spec, REPLAY: 'success', FIX_OUTCOME: 'failure' })).toContain('did not finish')
+  })
+
+  describe('the independent review', () => {
+    /** Runs a plain step of the review with `env`, and returns its exit code and what it wrote to its output. */
+    const runPlain = (name: string, env: Record<string, string>) => {
+      const dir = mkdtempSync(join(work, 'review-'))
+      const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', name).run ?? ''], {
+        cwd: dir,
+        env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, 'output'), ...env },
+      })
+      return {
+        code: proc.exitCode,
+        output: existsSync(join(dir, 'output')) ? readFileSync(join(dir, 'output'), 'utf8') : '',
+      }
+    }
+    const verdict = (approved: boolean, problems: string[] = []) => JSON.stringify({ approved, problems })
+
+    test('a fresh session that can read the patch and change nothing, before any agent code runs outside a sandbox', () => {
+      const review = step('fix', 'Review the fix')
+      const args = review.with?.claude_args ?? ''
+      expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
+      expect(args).toContain('--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"')
+      expect(args).toContain('--json-schema')
+      expect(review.with?.prompt).toBe('${{ steps.prompt.outputs.review }}')
+      expect(review.env).toEqual({ CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' })
+      expect(step('fix', 'Review the corrected fix').with).toEqual(review.with)
+      // The correction is the fix session again, on the prompt the review's problems extend.
+      expect(step('fix', 'Correct the fix').with).toEqual(step('fix', 'Fix').with)
+      expect(step('fix', 'Fix').with?.prompt).toBe('${{ env.QA_FIX_PROMPT }}')
+      expect(step('fix', 'Fix').env?.QA_FIX_PROMPT).toBe('${{ steps.prompt.outputs.text }}')
+      expect(step('fix', 'Correct the fix').env?.QA_FIX_PROMPT).toBe('${{ steps.correction-prompt.outputs.text }}')
+      // review.md is read before Fix, whose commands could rewrite it.
+      expect(step('fix', 'Build the prompt').run).toContain('cat .github/qa/review.md')
+    })
+
+    test('a rejection extends the fix prompt with its problems, one line each; anything else writes no prompt', () => {
+      const prompt = { PROMPT: '# Fix agent\n## Task' }
+      const rejected = runPlain('Build the correction prompt', {
+        ...prompt,
+        REVIEW: verdict(false, ['Fix the caller,\n  not the primitive (src/a.tsx:3).', 'Also the Close button.']),
+      })
+      expect(rejected.output).toBe(
+        'text<<QA_PROMPT_EOF\n# Fix agent\n## Task\n\n<review>\n' +
+          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</review>\nQA_PROMPT_EOF\n',
+      )
+      for (const REVIEW of [verdict(true), verdict(false), 'not json'])
+        expect(runPlain('Build the correction prompt', { ...prompt, REVIEW })).toEqual({ code: 0, output: '' })
+    })
+
+    test("the verdict is the second review's when it ran, else the first's, and approves only on an approval", () => {
+      const decide = (FIRST: string, SECOND = '', SECOND_OUTCOME = 'skipped') =>
+        runPlain('Decide the review', { FIRST, SECOND, SECOND_OUTCOME }).output
+      expect(decide(verdict(true))).toBe('approved=true\n')
+      expect(decide(verdict(false), verdict(true), 'success')).toBe('approved=true\n')
+      expect(decide(verdict(false), verdict(false), 'success')).toBe('')
+      // A second review that failed, a correction that gave up, or a first review that never answered.
+      expect(decide(verdict(false), '', 'failure')).toBe('')
+      expect(decide(verdict(false))).toBe('')
+      expect(decide('')).toBe('')
+    })
+
+    test("a patch the review did not approve becomes a diagnosis with the review's problems", () => {
+      const problems = verdict(false, ['Fix the caller (src/a.tsx:3).'])
+      expect(collect({ REVIEWED: '', REVIEW: problems })).toBe(
+        'The independent review did not approve the patch, after one correction pass when it found problems, so ' +
+          'the patch is not published.\n- Fix the caller (src/a.tsx:3).\n',
+      )
+    })
   })
 
   test('a fix step that never started still leaves a diagnosis, which only the fix status overrides', () => {
@@ -657,6 +745,8 @@ describe('passes', () => {
       // Before Fix, and only once no process of the test user that ran the check is left.
       'fix unpatched': pass(`steps.unpatched.outputs.passes == 'true' && ${outcome('stop-tests')}`),
       'fix session': pass(fixScans + outcome('fix')),
+      // The verdict of the second review when it ran, else the first's.
+      'fix review': pass(`${fixScans}steps.review-verdict.outputs.approved == 'true'`),
       'fix replay': pass(fixScans + outcome('verify')),
       'fix visual': pass(fixScans + outcome('visual')),
       // The native platform is the matrix's, so the check is an expression.
@@ -1045,11 +1135,11 @@ describe('publish', () => {
     })
 
     test('the status goes up with every fix outcome, before agent code runs outside the sandbox', () => {
-      // Fix, then the key scan (no agent code), then these two: every later step may run code the agent wrote.
-      const fix = indexOf('fix', 'Fix')
-      expect(steps('fix')[fix + 1].id).toBe('key-scan')
-      const record = steps('fix')[fix + 2]
-      const upload = steps('fix')[fix + 3]
+      // The sessions, then the key scan (no agent code), then these two: every later step may run agent code.
+      const scan = indexOf('fix', "Check the agent's output for the key")
+      expect(steps('fix')[scan].id).toBe('key-scan')
+      const record = steps('fix')[scan + 1]
+      const upload = steps('fix')[scan + 2]
       expect(record.name).toBe('Record whether the fix session began')
       expect(record.if).toBe('always()')
       expect(record.env?.PATH).toBe('/usr/bin:/bin')

@@ -69,6 +69,10 @@ env:
   QA_FIX_MAX_BUDGET_USD: 20
   QA_FIX_MAX_TURNS: 200
   QA_FIX_TIMEOUT_MINUTES: 60
+  # The independent review of a patch, run up to twice per fix job. Not calibrated yet.
+  QA_REVIEW_MAX_BUDGET_USD: 5
+  QA_REVIEW_MAX_TURNS: 100
+  QA_REVIEW_TIMEOUT_MINUTES: 20
 
 jobs:
   build:
@@ -1234,7 +1238,7 @@ jobs:
     needs: [build, file]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90 # outer bound: the fix step's own cap plus setup
+    timeout-minutes: 200 # outer bound: the fix and correction caps, two review caps, setup and the checks
     environment: qa-agent
     permissions:
       contents: read
@@ -1353,6 +1357,7 @@ jobs:
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 
+      # Both prompts are read here, before the session: its commands could rewrite files in the checkout.
       - name: Build the prompt
         id: prompt
         env:
@@ -1364,10 +1369,16 @@ jobs:
             # shellcheck disable=SC2016 # Markdown backticks
             printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
             echo 'QA_PROMPT_EOF'
+            echo 'review<<QA_PROMPT_EOF'
+            cat .github/qa/review.md
+            # shellcheck disable=SC2016 # Markdown backticks
+            printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
+            echo 'QA_PROMPT_EOF'
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
+      # The tool rules keep the agent on task but are not the boundary: this job holds no write token. "Correct the
+      # fix" runs this same session again, with its own QA_FIX_PROMPT.
       - name: Fix
         id: fix
         if: steps.unpatched.outputs.passes != 'true'
@@ -1376,11 +1387,12 @@ jobs:
         env:
           # Keeps the Anthropic key out of every command the agent runs, such as a test file it wrote.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_FIX_PROMPT: ${{ steps.prompt.outputs.text }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
-        with:
+        with: &fix-session
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          prompt: ${{ steps.prompt.outputs.text }}
+          prompt: ${{ env.QA_FIX_PROMPT }}
           claude_args: |
             --model claude-opus-5-5
             --setting-sources user
@@ -1403,6 +1415,121 @@ jobs:
               "Skill(update-config)" "Skill(verify)" "Skill(workflow-authoring)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
+
+      # An independent review before any check runs: a fresh session, with the same key and token as Fix and no edit
+      # tool, tries to show the patch is wrong (review.md). A rejection gets one correction pass by the fixer and a
+      # second review, and a patch still rejected becomes a diagnosis, so no PR. Publish reads the verdict only as the
+      # `review` pass. These steps sit before the key scan, like Fix, because after it code the agent wrote runs
+      # outside its sandbox. The steps between the sessions run no code of the agent's, with the key scan's cleared
+      # variables and absolute paths. Every session writes the same execution file, so each is copied after its step.
+      - name: Keep the fix session's execution file
+        id: keep-fix
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: &plain-shell
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-fix.json" || true
+          echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Review the fix
+        id: review
+        if: >-
+          steps.fix.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: &review-session
+          anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt.outputs.review }}
+          claude_args: |
+            --model claude-opus-5-5
+            --setting-sources user
+            --permission-mode dontAsk
+            --tools "Read,Glob,Grep,Bash"
+            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"
+            --disallowedTools WebFetch WebSearch
+            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}}},"required":["approved","problems"],"additionalProperties":false}'
+            --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}
+            --max-turns ${{ env.QA_REVIEW_MAX_TURNS }}
+      # On a rejection, the fix prompt again with the review's problems at its end, one line each (fix.md, "A
+      # correction pass"). An approval, or a verdict that does not parse, writes no prompt.
+      - name: Build the correction prompt
+        id: correction-prompt
+        if: steps.review.outcome == 'success'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          PROMPT: ${{ steps.prompt.outputs.text }}
+          REVIEW: ${{ steps.review.outputs.structured_output }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review.json" || true
+          problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems[] | "- " + gsub("\\s+"; " ")' <<< "$REVIEW") ||
+            exit 0
+          [ -n "$problems" ] || exit 0
+          {
+            echo 'text<<QA_PROMPT_EOF'
+            printf '%s\n\n<review>\n%s\n</review>\n' "$PROMPT" "$problems"
+            echo 'QA_PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Correct the fix
+        id: correct
+        if: steps.correction-prompt.outputs.text != ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_FIX_PROMPT: ${{ steps.correction-prompt.outputs.text }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: *fix-session
+      - name: Keep the correction session's execution file
+        if: always() && steps.correct.outcome != 'skipped'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-correct.json" || true
+      - name: Review the corrected fix
+        id: review-again
+        if: >-
+          steps.correct.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: *review-session
+      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's.
+      - name: Decide the review
+        id: review-verdict
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          FIRST: ${{ steps.review.outputs.structured_output }}
+          SECOND: ${{ steps.review-again.outputs.structured_output }}
+          SECOND_OUTCOME: ${{ steps.review-again.outcome }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          if [ "$SECOND_OUTCOME" != skipped ]; then
+            /bin/cp "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
+          fi
+          verdict=$FIRST
+          if [ "$SECOND_OUTCOME" != skipped ]; then verdict=$SECOND; fi
+          if /usr/bin/jq -e '.approved == true' <<< "$verdict" > /dev/null 2>&1; then
+            echo 'approved=true' >> "$GITHUB_OUTPUT"
+          fi
 
       # The last step that holds the key: after it, code the agent wrote runs outside its sandbox. The key anywhere
       # in the checkout blocks the upload (node_modules is bundled into the real-AI build) except in .git, which the
@@ -1542,13 +1669,19 @@ jobs:
           REPLAY: ${{ steps.verify.outcome }}
           VISUAL: ${{ steps.visual.outcome }}
           REAL_BUILD: ${{ steps.real-build.outcome }}
+          REVIEWED: ${{ steps.review-verdict.outputs.approved }}
+          REVIEW: ${{ steps.review-again.outputs.structured_output || steps.review.outputs.structured_output }}
         run: |
           mkdir -p qa-out/fix
+          diagnosis="qa-out/fix/$QA_FP.diagnosis.md"
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
-          diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
+          diagnose() { echo "$1, so the patch is not published." >> "$diagnosis"; }
           # When the session never began, the fix status tells publish to leave the ticket alone instead.
           if [ "$FIX_OUTCOME" != success ]; then
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
+          elif [ ! -e "$diagnosis" ] && [ "$REVIEWED" != true ]; then
+            diagnose "The independent review did not approve the patch, after one correction pass when it found problems"
+            jq -r '.problems[]? | "- " + .' <<< "$REVIEW" >> "$diagnosis" || true
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
           elif [ -n "$NEEDS_VISUAL" ] && [ "$VISUAL" != success ]; then
@@ -1562,15 +1695,22 @@ jobs:
           if [ -n "$SPEC" ]; then cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"; fi
           if [ -n "$FLOW" ]; then cp "$FLOW" "qa-out/fix/$QA_FP.yaml"; fi
 
+      # The fix session as `fix-<fp>`, and each review or correction session that ran as `fix-<fp>-<session>`.
       - name: Record the session metrics
         if: always()
         env:
-          EXECUTION_FILE: ${{ steps.fix.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
           START: ${{ steps.prompt.outputs.start }}
+          END: ${{ steps.keep-fix.outputs.end }}
         run: |
           timed_out=()
-          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
-          bun .github/qa/scripts/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+          if [ $(( ${END:-$(date +%s)} - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
+          bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-fix.json" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+          for session in review correct review-again; do
+            file="$RUNNER_TEMP/qa-execution-$session.json"
+            if [ -e "$file" ]; then
+              bun .github/qa/scripts/report.ts session --execution-file "$file" --charter "fix-$QA_FP-$session" --out qa-out
+            fi
+          done
 
       # Token shapes only, since no later step holds the key; JWT shapes are left to publish's check because repo
       # test fixtures contain some. Patched code ran in earlier steps and could have changed $GITHUB_ENV or
@@ -1610,6 +1750,14 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-pass-${{ matrix.task.fp }}-session-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          steps.review-verdict.outputs.approved == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-review-${{ github.run_attempt }}
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
       - if: >-

@@ -76,11 +76,11 @@ Code the agent wrote runs in the fix job after the session (the visual check, th
 leaves behind can rewrite or delete any file there before the upload. So no verdict travels in a file. Each check
 that passes uploads an artifact named `qa-pass-<fp>-<check>-<run attempt>`, under an `if:` on the outcome of the step
 that ran the check, which the runner keeps and no process of the job can change. The checks are `session` (the fix
-step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of the bug (`ios`, `android`), and
+step succeeded), `review` (the independent review approved the patch, see the fix stage), `replay`, `visual`, `tests`, `real`, one per native platform of the bug (`ios`, `android`), and
 `checks` (the PR checks). `unpatched`, a repro that passed before the session, rests on that step's output instead,
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
-needs a pass of its own run attempt for every check the task needs: `session` always, `replay` when the bug has a
+needs a pass of its own run attempt for every check the task needs: `session` and `review` always, `replay` when the bug has a
 fake-AI web spec (`specs`), `visual` for a web visual check, `tests` for every web task but a layout or visual one
 proven by its browser check (`unitTest` in the plan), `real` when it has a real-AI web spec (`realSpecs`), each
 platform in
@@ -568,6 +568,23 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Commits title with a type Title Lint accepts (`lint-pr-title.yml`); otherwise it is `fix: <finding title>`. Either
    is cut at a word to 100 characters, and a security fix keeps its fixed title. The description says what the
    passed checks showed and that an AI wrote the change, and the commit body wraps that text at 100 columns.
+
+   Before any check runs, a fresh session reviews the patch (`review.md`): it gets the task, reads the patch with
+   `git diff HEAD` and `git status --short`, the callers of what it changes and the code the finding's steps run, and
+   tries to show the fix is wrong (wrong owner or layer, a broken caller, a test off the real path or a proxy, a
+   fake-provider artifact, a missed sibling, one adjacent case). It has `Read`, `Glob`, `Grep` and those two git
+   commands, no edit tool, and answers `approved` and `problems` as structured output. It sits in the fix job, with
+   Fix's QA Anthropic key and read-only token and nothing else, and before the key scan, since after that scan code
+   the agent wrote runs outside its sandbox. A rejection runs the fix session once more (`Correct the fix`, the same
+   tools and caps) on the fix prompt with the problems appended, then a second review. A patch still rejected, or a
+   review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
+   `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
+   every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and
+   the steps between the sessions run no agent code, with the key scan's cleared variables. This is a check against
+   honest mistakes, not against a patch built to cheat: the reviewer reads code the agent wrote, and a process that
+   outlived the sandbox (see "Passes") could read the key from a review step's environment as it could from the key
+   scan's. Each session's metrics go in the report as `fix-<fp>`, `fix-<fp>-review`, `fix-<fp>-correct` and
+   `fix-<fp>-review-again`.
 
    The fix session's tools are `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` and `Skill`, with no `Agent`, `Task`,
    web tool or git. `Skill` is there so the agent can run the bundled `simplify` skill on its own changes before it
@@ -1134,7 +1151,9 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
 turns, timeout), `explore.sh` for a native session's turns, and the constants at the top of
 `verify.ts` for replay and the judge. Explore: $4.01 / 552 turns (299 in a native session) / 63 min. Fix: $20 /
-200 turns / 60 min, its first values, since no fix has run on GitHub yet. Per leg, at most 30 findings are
+200 turns / 60 min, its first values, since no fix has run on GitHub yet; a correction pass gets the same. The review
+of a patch (`QA_REVIEW_*`, up to two per fix job): $5 / 100 turns / 20 min, also first values, calibrated apart from
+fix in the report's hint. Per leg, at most 30 findings are
 replayed (24 on a native leg, whose runs are slow) and 84 judged, and a judge leg spends at most $17, its grouping
 call included (a call is admitted only if its worst case fits: prompt bytes, 1,600 tokens per screenshot, plus
 `max_tokens`, at Opus prices). Replay and the judge take findings most severe first (the table in `findings.ts`),

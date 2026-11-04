@@ -1816,7 +1816,7 @@ describe('publish', () => {
   }
   const putStatus = (stoppedBeforeSession: string | null) =>
     put(join(outDir, 'status', `${fp}.json`), JSON.stringify({ stoppedBeforeSession }))
-  const everyCheck = ['session', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
+  const everyCheck = ['session', 'review', 'review', 'replay', 'visual', 'tests', 'real', 'ios', 'android', 'checks']
   /** The run's artifact names as the publish job lists them: the passes of `checks`, among other artifacts. */
   const putPasses = (...checks: string[]) => putPassesOf('1', ...checks)
   /** The same, as uploaded in run attempt `attempt`, by a fix job that recorded its status in attempts 1 and 2. */
@@ -2179,7 +2179,7 @@ describe('publish', () => {
 
   test('unit tests that did not fail without the fix send the ticket to a person, even past a failed PR check', async () => {
     await setup({ extra: { oracle: { type: 'assert-failed', evidence: 'expected Renamed' } } })
-    await putPasses('session', 'replay')
+    await putPasses('session', 'review', 'replay')
     const run = fakeRun([], { 'git diff': rawDiff('src/chat.ts', 'src/chat.test.ts') })
     expect(await publish({ outDir, fp, live: false, run, log: () => {} })).toEqual({
       outcome: 'human-required',
@@ -2431,6 +2431,7 @@ describe('publish', () => {
     })
     const reasons = {
       session: 'the fix session did not finish',
+      review: 'the independent review did not approve the patch',
       replay: 'the repro spec did not pass three times on the patched code',
       visual: 'the visual check did not fail three times without the patch and pass three times with it',
       tests:
@@ -2445,28 +2446,32 @@ describe('publish', () => {
     const layout: Setup = { extra: { oracle: { type: 'layout', evidence: '[qa-layout] overflow-text button "Menu"' } } }
     const tasks: [string, Setup, (keyof typeof reasons)[]][] = [
       // Its repro spec becomes the regression spec and proves the layout fix, so it needs no unit test.
-      ['a web layout task', layout, ['session', 'replay']],
+      ['a web layout task', layout, ['session', 'review', 'replay']],
       // The default finding, lost on a reload, gets the spec and keeps the unit test.
-      ['a web reload task', {}, ['session', 'replay', 'tests']],
-      ['a web spec task a unit test can show', unit, ['session', 'replay', 'tests']],
-      ['a web visual task', visual, ['session', 'visual']],
+      ['a web reload task', {}, ['session', 'review', 'replay', 'tests']],
+      ['a web spec task a unit test can show', unit, ['session', 'review', 'replay', 'tests']],
+      ['a web visual task', visual, ['session', 'review', 'visual']],
       [
         'a web visual task on the onboarding build',
         { ...visual, charterDir: 'c1-first-run-desktop' },
-        ['session', 'visual', 'tests'],
+        ['session', 'review', 'visual', 'tests'],
       ],
-      ['a real-AI web task', { real: true, charterDir: 'c3-models-providers-desktop' }, ['session', 'real', 'tests']],
+      [
+        'a real-AI web task',
+        { real: true, charterDir: 'c3-models-providers-desktop' },
+        ['session', 'review', 'real', 'tests'],
+      ],
       [
         'a web task grouped with a real-AI finding',
         { ...unit, groupRealSpecs: ['qa-out/c5/repro/1.spec.ts'] },
-        ['session', 'replay', 'tests', 'real'],
+        ['session', 'review', 'replay', 'tests', 'real'],
       ],
       [
         'a web task also found on Android',
         { ...unit, verifyNative: [native('android')] },
-        ['session', 'replay', 'tests', 'android'],
+        ['session', 'review', 'replay', 'tests', 'android'],
       ],
-      ['a native task', { flow: 'native', verifyNative: [native('ios')] }, ['session', 'ios']],
+      ['a native task', { flow: 'native', verifyNative: [native('ios')] }, ['session', 'review', 'ios']],
     ]
     const setupTask = async ({ flow, ...rest }: Setup) => {
       await setup({ ...rest, flow: flow && nativeFlow() })
@@ -2503,7 +2508,7 @@ describe('publish', () => {
     describe('a native check that could not tell whether the patch works', () => {
       const nativeTask = { flow: 'native', verifyNative: [native('ios'), native('android')] }
       const listed = (...names: string[]) =>
-        put(join(outDir, 'artifacts.txt'), [`qa-fix-status-${fp}-1`, ...names, ''].join('\n'))
+        put(join(outDir, 'artifacts.txt'), [`qa-fix-status-${fp}-1`, pass('review'), ...names, ''].join('\n'))
       const pass = (check: string) => `qa-pass-${fp}-${check}-1`
 
       test('leaves the ticket untouched and says why, with no other reason against the patch', async () => {
@@ -2547,7 +2552,14 @@ describe('publish', () => {
       const listed = (...names: string[]) =>
         put(
           join(outDir, 'artifacts.txt'),
-          [`qa-fix-status-${fp}-1`, `qa-pass-${fp}-session-1`, `qa-pass-${fp}-checks-1`, ...names, ''].join('\n'),
+          [
+            `qa-fix-status-${fp}-1`,
+            `qa-pass-${fp}-session-1`,
+            `qa-pass-${fp}-review-1`,
+            `qa-pass-${fp}-checks-1`,
+            ...names,
+            '',
+          ].join('\n'),
         )
 
       test('leaves the ticket untouched when a patched app was built but the run never started', async () => {
@@ -2586,11 +2598,14 @@ describe('publish', () => {
       await setupTask(unit)
       await put(
         join(outDir, 'artifacts.txt'),
-        [`qa-fix-status-${fp}-1`, ...['session', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`)].join('\n'),
+        [
+          `qa-fix-status-${fp}-1`,
+          ...['session', 'review', 'replay', 'tests'].map((c) => `qa-pass-ffffffff-${c}-1`),
+        ].join('\n'),
       )
       expect(await dryRun()).toEqual({
         outcome: 'human-required',
-        reasons: [reasons.session, reasons.replay, reasons.tests],
+        reasons: [reasons.session, reasons.review, reasons.replay, reasons.tests],
       })
     })
 
@@ -2598,7 +2613,7 @@ describe('publish', () => {
     // passes.
     test('only the passes of the attempt whose patch publish read count', async () => {
       await setupTask(unit)
-      await putPassesOf('1', 'session', 'replay', 'tests', 'checks')
+      await putPassesOf('1', 'session', 'review', 'replay', 'tests', 'checks')
       const inAttempt = (attempt: string) =>
         publish({
           outDir,
@@ -2611,7 +2626,7 @@ describe('publish', () => {
       expect((await inAttempt('1')).outcome).toBe('pr')
       expect(await inAttempt('2')).toEqual({
         outcome: 'human-required',
-        reasons: [reasons.session, reasons.replay, reasons.tests],
+        reasons: [reasons.session, reasons.review, reasons.replay, reasons.tests],
       })
     })
 
@@ -2641,7 +2656,7 @@ describe('publish', () => {
 
     test('a web patch with no unit test says so, when no browser check proves it', async () => {
       await setupTask(unit)
-      await putPasses('session', 'replay')
+      await putPasses('session', 'review', 'replay')
       const result = await publish({ outDir, fp, live: false, run: fakeRun([], diffOutput), log: () => {} })
       expect(result).toEqual({
         outcome: 'human-required',
@@ -2654,8 +2669,12 @@ describe('publish', () => {
     // Code the agent wrote ran in the fix job after the checks, so it could have deleted the diagnosis the workflow
     // wrote, or written a result file of its own saying the check passed. Neither is a pass.
     test.each([
-      ['a failed replay whose diagnosis was deleted', {}, ['session', 'tests']],
-      ['a failed visual check with a passing result file in the fix output', { kind: 'visual' }, ['session', 'tests']],
+      ['a failed replay whose diagnosis was deleted', {}, ['session', 'review', 'tests']],
+      [
+        'a failed visual check with a passing result file in the fix output',
+        { kind: 'visual' },
+        ['session', 'review', 'tests'],
+      ],
     ] as const)('%s goes to a person, not a PR', async (_, task, passes) => {
       await setupTask(task)
       await putPasses(...passes)

@@ -894,6 +894,7 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
   const web = !('flow' in task)
   const checks = [
     { check: 'session', needed: true, reason: 'the fix session did not finish' },
+    { check: 'review', needed: true, reason: 'the independent review did not approve the patch' },
     {
       check: 'replay',
       needed: task.specs.length > 0,

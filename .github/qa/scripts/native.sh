@@ -70,7 +70,7 @@ config() {
   local filter='.app.security.csp["connect-src"] = $real[0].app.security.csp["connect-src"] + " " + $extra'
   [ "$1" = android ] && filter="$filter | del(.identifier)"
   # Runs from the repo root, like the `bun run build` it replaces.
-  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' .github/qa/layout-probe.js'
+  local inject='bun run build && bun -e '\''const f = "dist/index.html"; const html = await Bun.file(f).text(); if (!html.includes("</head>")) throw new Error("no </head>"); const scripts = await Promise.all(process.argv.slice(1).map((s) => Bun.file(s).text())); await Bun.write(f, html.replace("</head>", () => scripts.map((js) => "<script>" + js + "</script>").join("") + "</head>"))'\'' node_modules/axe-core/axe.min.js .github/qa/layout-probe.js'
   [ "${3:-}" = control ] && inject="$inject .github/qa/control/cover.js"
   filter="$filter | .build.beforeBuildCommand = \$cmd"
   jq --slurpfile real src-tauri/tauri.conf.json --arg extra "$backend_url $fake_google_url http://$powersync ws://$powersync" --arg cmd "$inject" \

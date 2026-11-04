@@ -22,16 +22,22 @@ export type LayoutProblem = {
 declare global {
   // Declaration merging needs an interface.
   interface Window {
-    // Undefined until the probe loads; reading it before then throws, which is what a repro spec should do.
-    __qaLayout: { problems: () => LayoutProblem[] }
+    // Undefined until the probe loads; reading it before then throws, which is what a repro spec should do. `review`
+    // holds the controls axe-core could not settle a name for: a person checks them, they are never findings.
+    __qaLayout: { problems: () => LayoutProblem[]; review: () => LayoutProblem[] }
   }
 }
 
 const probePath = resolve(import.meta.dirname, 'layout-probe.js')
+/** axe-core, which the probe needs loaded before it. */
+export const axePath = resolve(import.meta.dirname, '../../node_modules/axe-core/axe.min.js')
 
 /** Injects the probe when the page lacks it (a repro spec), then waits for two checks 500 ms apart to confirm. */
 export const layoutProblems = async (page: Page): Promise<LayoutProblem[]> => {
-  if (!(await page.evaluate(() => Boolean(window.__qaLayout)))) await page.addScriptTag({ path: probePath })
+  if (!(await page.evaluate(() => Boolean(window.__qaLayout)))) {
+    await page.addScriptTag({ path: axePath })
+    await page.addScriptTag({ path: probePath })
+  }
   await page.waitForTimeout(1000)
   return page.evaluate(() => window.__qaLayout.problems())
 }

@@ -319,6 +319,9 @@
   // axe-core's name rules. They take every control a screen reader reaches, whatever its pointer-events or opacity (a
   // hover-only action, the #1481 placeholder in a wrapper that stops clicks), and skip a hidden, inert or aria-hidden
   // one. A result axe cannot settle (`incomplete`) needs a person: it goes to review(), never into a finding.
+  // Base UI's focus guards are no controls: on WebKit with VoiceOver they turn into a role=button span so the focus
+  // trap catches VoiceOver's cursor (FocusGuard in @base-ui/react), and they hand focus on at once.
+  const namedArea = { exclude: [['[data-base-ui-focus-guard]']] }
   const nameRules = {
     runOnly: [
       'aria-command-name',
@@ -363,7 +366,7 @@
             isFocusCovered(vv, area, field) && { kind: 'focus-covered', target: describe(field) },
           ].filter(Boolean)
         : []
-    const { violations, incomplete } = await window.axe.run(document, nameRules)
+    const { violations, incomplete } = await window.axe.run(namedArea, nameRules)
     review = unnamedOf(incomplete)
     return [...found, ...keyboard, ...focus, ...unnamedOf(violations), ...overflows()]
   }

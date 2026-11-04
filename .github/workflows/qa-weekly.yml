@@ -1211,8 +1211,9 @@ jobs:
           bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
           {
             echo "plan=$(jq --compact-output . qa-out/fix-plan.json)"
-            # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
-            echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
+            # Tasks with a real-AI web repro in their group, checked again on the real providers by verify-real.
+            # Android's run in verify-native.
+            echo "real=$(jq --compact-output '[.fixes[] | select(.realSpecs | length > 0)]' qa-out/fix-plan.json)"
             # Web tasks no browser check proves (`unitTest`), whose patch must carry a unit test that verify-tests
             # sees fail without the fix.
             echo "tests=$(jq --compact-output '[.fixes[] | select(.unitTest)]' qa-out/fix-plan.json)"
@@ -1312,20 +1313,22 @@ jobs:
       # the bug, so no session runs and publish only comments on the ticket. A weekly run's replay has just reproduced
       # the bug on this commit, so a pass on the dev stack there would only mean dev and build differ. The spec is
       # model-written, so it runs as the test user, which cannot read the key Fix later holds, and the stop below
-      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs.
+      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs. Every
+      # fake-AI repro of the bug's group must pass, the task's own first.
       - name: Replay the spec before the fix
         id: unpatched
         if: inputs.fix_from_run && matrix.task.spec && !matrix.task.real
         env:
-          SPEC: ${{ matrix.task.spec }}
+          SPECS: ${{ toJSON(matrix.task.specs) }}
         run: |
+          mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
           browsers="$HOME/.cache/ms-playwright"
           # The output dir is the test user's own: qa-out/replay belongs to the job's user.
           if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
-            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 5m \
+            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 10m \
               env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
               bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
-              --output "$out" "$SPEC"; then
+              --output "$out" "${specs[@]}"; then
             echo "passes=true" >> "$GITHUB_OUTPUT"
           fi
       # A process the spec left behind would otherwise outlive the check. SIGKILL, which a test cannot catch, again
@@ -1383,7 +1386,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
-            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}${{ matrix.task.specs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.specs, ' ')) || '' }}${{ matrix.task.realSpecs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.realSpecs, ' ')) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
               "Edit(deploy/pulumi/**)" "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/playwright.*.config.*)"
               "Edit(scripts/chrome*)" "Edit(scripts/install-chrome*)" "Edit(**/tsconfig*.json)"
@@ -1470,8 +1473,9 @@ jobs:
           retention-days: 7
 
       # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
+      # Every fake-AI repro of the bug's group runs, the task's own included.
       - name: Download the original spec
-        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
+        if: steps.fix.outcome == 'success' && matrix.task.specs[0]
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: 'qa-replay-{weekly,sync,android-sync}'
@@ -1479,11 +1483,13 @@ jobs:
           merge-multiple: true
       - name: Replay the spec on the patched code
         id: verify
-        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
+        if: steps.fix.outcome == 'success' && matrix.task.specs[0]
         env:
           QA_OUT: qa-out-verify
-          SPEC: ${{ matrix.task.spec }}
-        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
+          SPECS: ${{ toJSON(matrix.task.specs) }}
+        run: |
+          mapfile -t specs < <(jq -r '.[] | "qa-out-verify/" + ltrimstr("qa-out/")' <<< "$SPECS")
+          bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
 
       # Succeeds only when the check passes all three times. The baseline below runs only after it.
       - name: Run the visual check on the patched tree
@@ -1520,7 +1526,7 @@ jobs:
       # tree and tools the agent's commands could have changed.
       - name: Build the patched frontend for the real-AI check
         id: real-build
-        if: steps.fix.outcome == 'success' && matrix.task.real && matrix.task.spec
+        if: steps.fix.outcome == 'success' && matrix.task.realSpecs[0]
         run: .github/qa/scripts/stack.sh build "$RUNNER_TEMP/qa-dist-fix"
 
       - name: Collect the patch
@@ -1530,9 +1536,9 @@ jobs:
           FLOW: ${{ matrix.task.kind == 'spec' && matrix.task.flow || '' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           # Any outcome but success (failure, skipped, cancelled, none) of a check the task needs means no PR.
-          NEEDS_REPLAY: ${{ matrix.task.spec && !matrix.task.real && 'true' || '' }}
+          NEEDS_REPLAY: ${{ matrix.task.specs[0] && 'true' || '' }}
           NEEDS_VISUAL: ${{ matrix.task.kind == 'visual' && !matrix.task.flow && 'true' || '' }}
-          NEEDS_REAL_BUILD: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
+          NEEDS_REAL_BUILD: ${{ matrix.task.realSpecs[0] && 'true' || '' }}
           REPLAY: ${{ steps.verify.outcome }}
           VISUAL: ${{ steps.visual.outcome }}
           REAL_BUILD: ${{ steps.real-build.outcome }}
@@ -1624,7 +1630,7 @@ jobs:
           retention-days: 7
       - if: >-
           always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
-          matrix.task.real && matrix.task.spec
+          matrix.task.realSpecs[0]
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
@@ -1872,13 +1878,16 @@ jobs:
       - name: Take root away from the job's user
         if: hashFiles('qa-dist-fix/**') != ''
         run: .github/qa/scripts/stack.sh lock
+      # Every real-AI repro of the bug's group, the task's own included.
       - name: Replay the spec on the patched frontend
         id: replay
         if: hashFiles('qa-dist-fix/**') != ''
         continue-on-error: true
         env:
-          SPEC: ${{ matrix.task.spec }}
-        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"
+          SPECS: ${{ toJSON(matrix.task.realSpecs) }}
+        run: |
+          mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
+          bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
       - *pass-marker
       - if: always() && steps.replay.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

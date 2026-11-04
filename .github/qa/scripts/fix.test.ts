@@ -409,6 +409,25 @@ describe('route', () => {
     })
   })
 
+  test("keeps every web repro of a group, so the patch must pass each finding's own check", async () => {
+    // One panel: the lead reports both buttons, the others one each, from sessions on either AI.
+    const settings = { fp: 'fp-same', charterDir: 'c6-settings-data-desktop', raw: finding('settings') }
+    const visual = {
+      fp: 'fp-same',
+      charterDir: 'c8-phone',
+      raw: finding('settings', { oracle: { type: 'visual', evidence: 'x' }, screenshot: 'mcp/1.png' }),
+    }
+    await fileTickets([fakeWeb, realWeb, settings, visual])
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    const specOf = (charterDir: string) => join(outDir, charterDir, 'repro', '1.spec.ts')
+    expect(plan.fixes).toHaveLength(1)
+    expect(plan.fixes[0]).toMatchObject({
+      charterDir: 'c3-models-providers-desktop',
+      specs: [specOf('c2-chat-power-user-desktop'), specOf('c6-settings-data-desktop')],
+      realSpecs: [specOf('c3-models-providers-desktop')],
+    })
+  })
+
   test('a bug found on the fake AI on the web and the real AI on Android keeps the web task and checks Android', async () => {
     const realAndroid = { viewport: 'android', repro_spec: undefined, repro_flow: 'repro/1.yaml' }
     await fileTickets([
@@ -860,7 +879,7 @@ describe('whyNoSpec', () => {
   const task = (
     { proof, ...extra }: Extra = {},
     finding: Partial<FixTask['finding']> = {},
-  ): Omit<FixTask, 'unitTest'> => ({
+  ): Omit<FixTask, 'unitTest' | 'specs' | 'realSpecs'> => ({
     fp: 'ab12cd34',
     severity: 'High',
     branch: 'qa-fix/ab12cd34',
@@ -950,6 +969,8 @@ describe('checkPatch', () => {
     real: false,
     unitTest: true,
     spec: reproSpec(),
+    specs: [reproSpec()],
+    realSpecs: [],
     finding: { ...finding('chat'), oracle: { type: 'page-error', evidence: 'x' } },
   })
   const visualTask = (): FixTask => ({
@@ -961,6 +982,8 @@ describe('checkPatch', () => {
     kind: 'visual',
     real: false,
     unitTest: false,
+    specs: [],
+    realSpecs: [],
     finding: { ...finding('layout'), oracle: { type: 'visual', evidence: 'Continue sits under the banner' } },
   })
   const fixed = () => writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')
@@ -1136,6 +1159,8 @@ describe('checkPatch', () => {
       kind: 'spec',
       real: false,
       unitTest: false,
+      specs: [],
+      realSpecs: [],
       flow: reproFlow(),
       finding: { ...finding('onboarding'), viewport: 'ios', oracle: { type: 'assert-failed', evidence: 'x' } },
     })
@@ -1539,6 +1564,8 @@ describe('the PR checks gate', () => {
     unitTest: false,
     kind: 'spec',
     spec: join(outDir, 'c8-phone', 'repro', '1.spec.ts'),
+    specs: [join(outDir, 'c8-phone', 'repro', '1.spec.ts')],
+    realSpecs: [],
     finding: {
       title: 'Menu overflows',
       area: 'chat',
@@ -1733,6 +1760,8 @@ describe('publish', () => {
     charterDir?: string
     real?: boolean
     verifyNative?: NativeCheck[]
+    /** Repro specs of the bug's other findings, from real-AI sessions. */
+    groupRealSpecs?: string[]
   }
   const setup = async ({
     ticket = true,
@@ -1743,6 +1772,7 @@ describe('publish', () => {
     charterDir = 'c2-chat',
     real = false,
     verifyNative = [],
+    groupRealSpecs = [],
   }: Setup = {}) => {
     const base = {
       fp,
@@ -1761,14 +1791,20 @@ describe('publish', () => {
         actual: 'Untitled',
         ...extra,
       },
-    } satisfies Omit<FixTask, 'kind' | 'spec' | 'flow' | 'unitTest'>
+    } satisfies Omit<FixTask, 'kind' | 'spec' | 'flow' | 'unitTest' | 'specs' | 'realSpecs'>
     const proof = () => {
       if (flow) return { kind, platform: 'ios', flow }
       return kind === 'visual' ? { kind } : { kind, spec: specPath() }
     }
     const routed = { ...base, ...proof() }
     // As route sets it.
-    const task: FixTask = { ...routed, unitTest: needsUnitTest(routed) }
+    const own = flow || kind === 'visual' ? [] : [specPath()]
+    const task: FixTask = {
+      ...routed,
+      unitTest: needsUnitTest(routed),
+      specs: real ? [] : own,
+      realSpecs: [...(real ? own : []), ...groupRealSpecs],
+    }
     const withTicket = { ...task, issueId: 'issue-1', identifier: 'THB-1' }
     const plan: FixPlan = { fixes: [ticket ? withTicket : task], verifyNative }
     await put(join(outDir, 'fix-plan.json'), JSON.stringify(plan))
@@ -2004,16 +2040,18 @@ describe('publish', () => {
     }
   })
 
-  test("a backend change is published only when the plan's native verification does not check the bug", async () => {
+  test("a backend change is published only when neither the native nor the real-AI check runs the bug's old backend", async () => {
     const android: NativeCheck = { fp, platform: 'android', session: 'c2-chat-android', flow: 'a', unpatched: false }
     const outcomes = []
-    for (const verifyNative of [[], [android]]) {
-      await setup({ verifyNative })
+    const setups: Setup[] = [{}, { verifyNative: [android] }, { groupRealSpecs: ['qa-out/c5/repro/1.spec.ts'] }]
+    for (const options of setups) {
+      await setup(options)
       const { runs, result } = await publishLive({ 'git diff': rawDiff('src/chat.ts', 'backend/src/chat.ts') })
       outcomes.push([result.outcome, runs.some((r) => r.cmd.includes('push'))])
     }
     expect(outcomes).toEqual([
       ['pr', true],
+      ['human-required', false],
       ['human-required', false],
     ])
   })
@@ -2418,6 +2456,11 @@ describe('publish', () => {
         ['session', 'visual', 'tests'],
       ],
       ['a real-AI web task', { real: true, charterDir: 'c3-models-providers-desktop' }, ['session', 'real', 'tests']],
+      [
+        'a web task grouped with a real-AI finding',
+        { ...unit, groupRealSpecs: ['qa-out/c5/repro/1.spec.ts'] },
+        ['session', 'replay', 'tests', 'real'],
+      ],
       [
         'a web task also found on Android',
         { ...unit, verifyNative: [native('android')] },

@@ -2506,6 +2506,29 @@ describe('grouping', () => {
     expect(prompt).toStartWith('<findings>\n')
     expect(prompt).toEndWith('\n</findings>')
     expect(prompt).toContain('arrow-left icon after Connect Google')
+    // What the explorer did and saw, so overlapping reports of one panel can be told apart from look-alikes.
+    const [first] = await findings()
+    for (const field of [first.finding.steps[0], first.finding.expected, first.finding.actual])
+      expect(prompt).toContain(JSON.stringify(field))
+    expect(String(calls[0].system)).toContain('Download and Close buttons have no name')
+  })
+
+  test('keeps a group whose findings two sessions filed under different areas', async () => {
+    const result = await groupFindings(await findings(), answer(reply([...backButton, ...codeField])), 2, () => {})
+    expect(result).toMatchObject({ groups: [[...backButton, ...codeField]] })
+  })
+
+  test('refuses a group that joins a security finding with another area, whose PR would show the finding', async () => {
+    const lines: string[] = []
+    const asSecurity = (await findings()).map(
+      (v): VerifiedFinding =>
+        codeField.includes(`${v.charterDir}/${v.id}`) ? { ...v, finding: { ...v.finding, area: 'security' } } : v,
+    )
+    const result = await groupFindings(asSecurity, answer(reply([...backButton, ...codeField])), 2, (line) =>
+      lines.push(line),
+    )
+    expect(result).toEqual({ usage: { input_tokens: 500, output_tokens: 50 } })
+    expect(lines[0]).toContain('a group joins a security finding with another area')
   })
 
   const rejected: [string, string, string][] = [
@@ -2514,7 +2537,6 @@ describe('grouping', () => {
       'Sure! {"groups": [',
       'malformed grouping reply (stop_reason: end_turn)',
     ],
-    ['a group that joins two areas', reply([...backButton, ...codeField]), 'a group joins the areas'],
     [
       'an id that is not a confirmed finding',
       reply(backButton, codeField, ['c9/1']),

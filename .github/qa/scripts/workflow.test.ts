@@ -370,6 +370,21 @@ describe('fix job', () => {
     expect(collect({ REPLAY: 'skipped', VISUAL: 'skipped' })).toBeUndefined()
   })
 
+  test("the replay after the fix runs every fake-AI repro of the bug's group, from the fresh download", () => {
+    const dir = mkdtempSync(join(work, 'patched-replay-'))
+    writeFileSync(join(dir, 'bunx'), `#!/bin/sh\nprintf '%s\\n' "$@" > "${dir}/args"\n`, { mode: 0o755 })
+    const specs = ['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/2.spec.ts']
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Replay the spec on the patched code').run ?? ''], {
+      cwd: dir,
+      env: { PATH: `${dir}:${process.env.PATH}`, SPECS: JSON.stringify(specs) },
+    })
+    expect(proc.exitCode).toBe(0)
+    expect(readFileSync(join(dir, 'args'), 'utf8').trim().split('\n').slice(-2)).toEqual([
+      'qa-out-verify/c2/repro/1.spec.ts',
+      'qa-out-verify/c6/repro/2.spec.ts',
+    ])
+  })
+
   describe('the repro check before the session', () => {
     const before = step('fix', 'Replay the spec before the fix')
 
@@ -377,7 +392,8 @@ describe('fix job', () => {
       const after = step('fix', 'Replay the spec on the patched code')
       // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug.
       expect(before.if).toBe('inputs.fix_from_run && matrix.task.spec && !matrix.task.real')
-      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real")
+      // After the fix, every fake-AI repro of the bug's group, whatever the task's own proof.
+      expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.specs[0]")
       // Any failed run of the three fails it.
       const command = /bunx playwright test [^"]*/.exec(after.run ?? '')?.[0] ?? '?'
       expect(command).toContain('--repeat-each=3 --retries=0')
@@ -402,7 +418,7 @@ describe('fix job', () => {
           HOME: dir,
           QA_TEST_USER: 'qa-test',
           GITHUB_OUTPUT: join(dir, 'output'),
-          SPEC: 'qa-out/c2/repro/1.spec.ts',
+          SPECS: JSON.stringify(['qa-out/c2/repro/1.spec.ts', 'qa-out/c6/repro/1.spec.ts']),
         },
       })
       const read = (name: string) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), 'utf8') : '')
@@ -414,9 +430,10 @@ describe('fix job', () => {
       expect(passed).toMatchObject({ exitCode: 0, output: 'passes=true\n' })
       const [mktemp, run] = passed.sudo.trim().split('\n')
       expect(mktemp).toBe('-n -u qa-test mktemp -d')
-      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 5m env PATH=')
+      expect(run).toStartWith('-n -u qa-test timeout --kill-after=10s 10m env PATH=')
       expect(run).toContain('bunx playwright test')
-      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts$/)
+      // Every fake-AI repro of the bug's group must pass.
+      expect(run).toMatch(/--output \/\S+ qa-out\/c2\/repro\/1\.spec\.ts qa-out\/c6\/repro\/1\.spec\.ts$/)
     })
 
     // The usual case sets nothing and fails nothing, so a normal run shows no error annotation, and the session runs.

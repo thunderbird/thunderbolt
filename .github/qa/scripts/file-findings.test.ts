@@ -491,9 +491,12 @@ describe('one ticket per defect from the grouping call', () => {
     expect(tickets(await fileGrouped('{"groups": "all of them"}'))).toEqual(fingerprintTickets)
   })
 
-  test('a group that joins two areas files the whole run by fingerprint', async () => {
+  // Two sessions can file one panel under different areas, so the grouping call may join them.
+  test('a group that joins two areas files one ticket', async () => {
     const mixed = JSON.stringify({ groups: [[...codeField, ...backButton], locationField, keyboard] })
-    expect(tickets(await fileGrouped(mixed))).toEqual(fingerprintTickets)
+    const filed = await fileGrouped(mixed)
+    expect(tickets(filed)).toMatchObject({ '32e97796': ['High', 'desktop, phone, ios, android'] })
+    expect(tickets(filed)).not.toHaveProperty('c2df0dd5')
   })
 
   test("the ticket fingerprint follows platform order, not severity or the fingerprint's own order", async () => {

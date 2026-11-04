@@ -80,9 +80,10 @@ step succeeded), `replay`, `visual`, `tests`, `real`, one per native platform of
 `checks` (the PR checks). `unpatched`, a repro that passed before the session, rests on that step's output instead,
 which the runner keeps too (see the fix stage below). The artifact holds a marker file whose content nobody reads.
 `publish` lists the run's artifact names with the GitHub API (`actions: read`, into `qa-out/artifacts.txt`) and
-needs a pass of its own run attempt for every check the task needs: `session` always, `replay` for a fake-AI web
-spec, `visual` for a web visual check, `tests` for every web task but a layout or visual one proven by its browser check
-(`unitTest` in the plan), `real` for a real-AI web spec, each platform in
+needs a pass of its own run attempt for every check the task needs: `session` always, `replay` when the bug has a
+fake-AI web spec (`specs`), `visual` for a web visual check, `tests` for every web task but a layout or visual one
+proven by its browser check (`unitTest` in the plan), `real` when it has a real-AI web spec (`realSpecs`), each
+platform in
 `verifyNative` for the fingerprint, and `checks` for every task. A missing pass is a failure, and the ticket gets
 `Human Required` with the reason, except a native platform's. That one goes to a person only when its patch built no
 app or its run step uploaded the failure marker (`qa-native-failed-<fp>-<platform>-<run attempt>`, see the fix stage
@@ -377,10 +378,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
    call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
-   a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. That call sees each
-   finding's title, area, platform, oracle and screenshot path, fenced as untrusted data, and counts against the
-   judge's spend ceiling and `judge_usage`. Code checks the answer: every confirmed finding in exactly one group,
-   one area per group, and findings that share a fingerprint kept together. Only an answer that passes goes into
+   a field the keyboard hides is `behind-keyboard` on Android but `focused-clipped` on iOS. Findings also overlap on
+   one platform: one can report a panel's Download and Close buttons while two others report one button each, and
+   the prompt gives that example. That call sees each finding's title, area, platform, oracle, steps, expected, actual
+   and screenshot path, fenced as untrusted data, and counts against the judge's spend ceiling and `judge_usage`.
+   Code checks the answer: every confirmed finding in exactly one group, a security finding only with security
+   findings (its ticket and PR hide the finding), and findings that share a fingerprint kept together. Other areas may
+   mix, since two sessions can file one panel under different areas; the ticket takes its most severe finding's. Only an answer that passes goes into
    `verified.json` as `groups`. A malformed answer, a failed check, an API error or too little room under the
    ceiling logs why and leaves the whole run to fingerprint grouping. Writes `verified.json`.
 5. **file** (`file-findings.ts`): grouping and dedupe, severity, secret refusal. A run files as many tickets as it
@@ -405,7 +409,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    has swept correct Android screens clean (see "Known limits"). It still replays and is judged, and an iOS finding
    of the same bug is filed as usual. Every other Android layout kind files like any platform.
 6. **fix** (off by default, `fix.ts` and `fix.md`): one fix job per confirmed ticket, from any area, most severe
-   first. A bug found on several platforms is one ticket, so it gets one job. The fix goes on the ticket's Linear
+   first. A bug found on several platforms is one ticket, so it gets one job. That job keeps every finding's check:
+   the task's `specs` and `realSpecs` list the web repro spec of each finding of the ticket, the task's own included,
+   on the fake and the real AI, and the replay after the fix (and the one before it in a fix-only run) runs all of
+   `specs`, while `verify-real` runs all of `realSpecs`. So a finding that reports only part of a grouped bug still
+   checks the patch. Native flows join `verifyNative`, one per platform: a second finding of the same native platform
+   is left out (`shortcut:` in `route`). The fix goes on the ticket's Linear
    branch name (`branchName`), so merging the PR closes the ticket. `route` takes that name only when it has the
    shape `<prefix>/<identifier>` with an optional `-<slug>`, in lowercase, with at most 100 characters, and
    `git check-ref-format` accepts it; otherwise the branch is `qa-fix/<identifier lowercased>`, which still links
@@ -549,7 +558,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    patch, or a visual task has no check: publish hands those tickets to a person anyway. A failed check is the
    pipeline's: the job's summary names the ticket and the check, no PR opens, the ticket gets no write, and
    publish's summary says it was left for a later run. `publish` needs a pass from every platform in `verifyNative`
-   for the fingerprint, web tasks included, from `verify-real` for a real-AI web task, from `verify-tests` for every
+   for the fingerprint, web tasks included, from `verify-real` for a task with `realSpecs`, from `verify-tests` for every
    `unitTest` task and from `verify-checks` for every task (see "Passes"). Only then does it open a draft PR on the task's
    branch. Otherwise the ticket gets `Human Required` with the reason (for a native platform, "the patch did not build
    on the native platform, or the flow still fails there"). A fix from a session whose charter has `postgres` in `legs.ts` (today c7), on any

@@ -2467,6 +2467,7 @@ msgstr "Local Storage"
 msgid "Localization"
 msgstr "Localization"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "Location"

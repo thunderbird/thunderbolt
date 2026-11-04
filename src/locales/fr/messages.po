@@ -2479,6 +2479,7 @@ msgstr "Stockage local"
 msgid "Localization"
 msgstr "Localisation"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "Position"

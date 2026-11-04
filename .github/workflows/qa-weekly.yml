@@ -89,6 +89,7 @@ jobs:
       live: ${{ steps.plan.outputs.live }}
       autofix: ${{ steps.plan.outputs.autofix }}
       canaries: ${{ steps.canaries.outputs.count }}
+      desktopShell: ${{ steps.plan.outputs.desktopShell }}
     steps:
       # That run's artifacts reach the fix agent and publish, so only a scheduled or dispatched run of this workflow
       # on main counts: a fork's pull request and a branch both run workflow files of their own.
@@ -2275,6 +2276,51 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Scripted checks of the real Tauri app on Linux, with no model and no secret: README "Desktop shell".
+  desktop-shell:
+    needs: build
+    if: needs.build.outputs.desktopShell == 'true' && !inputs.fix_from_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      # The nightly native-linux job's packages, plus xclip to read the X clipboard.
+      - name: Install the desktop build and driver tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            build-essential curl wget file pkg-config libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
+            webkit2gtk-driver xvfb xclip
+          cargo install tauri-driver --locked
+      - name: Check the desktop shell
+        env:
+          VITE_AUTH_MODE: thunderbolt
+          VITE_SKIP_ONBOARDING: 'true'
+          VITE_AUTH_ENABLE_ANONYMOUS: 'false'
+          VITE_BYPASS_WAITLIST: 'false'
+          VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+        run: |
+          ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/qa-desktop-services.log" 2>&1 &
+          services_pid=$!
+          trap 'kill "$services_pid" 2>/dev/null || true' EXIT
+          bun tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
+          xvfb-run -a -s '-screen 0 1600x1200x24' bun .github/qa/scripts/desktop.ts --out "$RUNNER_TEMP/qa-desktop"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-desktop-shell
+          path: |
+            ${{ runner.temp }}/qa-desktop/
+            ${{ runner.temp }}/qa-desktop-services.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   notify:
     needs:
       - build
@@ -2294,6 +2340,7 @@ jobs:
       - publish
       - report
       - native-control
+      - desktop-shell
     if: ${{ always() && !cancelled() && needs.build.result != 'skipped' && github.ref == 'refs/heads/main' }}
     permissions:
       actions: read

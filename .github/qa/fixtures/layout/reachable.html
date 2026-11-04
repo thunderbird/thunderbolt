@@ -20,6 +20,13 @@
     <p>Message</p>
     <!-- An action that shows only on hover. -->
     <button style="opacity: 0"><svg class="lucide lucide-ellipsis" width="16" height="16"></svg></button>
+    <!-- Base UI's focus guard as WebKit with VoiceOver renders it at both ends of a drawer or dialog: not a control. -->
+    <span
+      tabindex="0"
+      role="button"
+      data-base-ui-focus-guard=""
+      style="clip-path: inset(50%); overflow: hidden; position: fixed; width: 1px; height: 1px; top: 0; left: 0"
+    ></span>
     <!-- Hidden from every user: none of these counts. -->
     <button hidden></button>
     <button style="visibility: hidden"></button>

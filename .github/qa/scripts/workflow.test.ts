@@ -829,18 +829,20 @@ describe('verify-tests', () => {
     expect(stopTests(1000)).toMatchObject({ code: 1, kills: 50 })
   })
 
-  test("checks every web task of the plan and no native one, from route's output", () => {
+  test("checks every task of the plan that needs a unit test, from route's output", () => {
     const route = step('file', 'Route fixable tickets').run ?? ''
     const filter = /tests=\$\(jq --compact-output '([^']+)' qa-out\/fix-plan\.json\)/.exec(route)?.[1] ?? ''
     const plan = {
       fixes: [
-        { fp: 'web', kind: 'spec', spec: 'x' },
-        { fp: 'visual', kind: 'visual' },
-        { fp: 'ios', flow: 'f' },
+        { fp: 'web', kind: 'spec', spec: 'x', unitTest: true },
+        { fp: 'layout', kind: 'spec', spec: 'y', unitTest: false },
+        { fp: 'visual', kind: 'visual', unitTest: false },
+        { fp: 'onboarding-visual', kind: 'visual', unitTest: true },
+        { fp: 'ios', flow: 'f', unitTest: false },
       ],
     }
     const proc = Bun.spawnSync(['jq', '--compact-output', filter], { stdin: Buffer.from(JSON.stringify(plan)) })
-    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'visual'])
+    expect(JSON.parse(proc.stdout.toString()).map((t: { fp: string }) => t.fp)).toEqual(['web', 'onboarding-visual'])
     expect(jobs['verify-tests'].strategy).toEqual({
       'fail-fast': false,
       matrix: { task: '${{ fromJSON(needs.file.outputs.tests) }}' },

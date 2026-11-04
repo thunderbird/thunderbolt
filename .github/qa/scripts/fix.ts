@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
-import { parseArgs } from 'node:util'
+import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { format, resolveConfig } from 'prettier'
 import ts from 'typescript'
 import { z } from 'zod'
@@ -65,7 +65,7 @@ type Proof = { kind: 'spec'; spec: string } | { kind: 'spec' | 'visual'; flow: s
 /**
  * One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. `real` marks a session on the
  * real AI providers, where the workflow verifies the fix on them too. `branch` is the branch route checked, which
- * publish pushes to.
+ * publish pushes to. `unitTest` asks the patch for a unit test that fails without the fix (see `needsUnitTest`).
  */
 export type FixTask = Ticket &
   Proof & {
@@ -73,6 +73,7 @@ export type FixTask = Ticket &
     charterDir: string
     platform: string
     real: boolean
+    unitTest: boolean
     screenshot?: string
     finding: Pick<Finding, 'title' | 'area' | 'viewport' | 'oracle' | 'steps' | 'expected' | 'actual'>
   }
@@ -330,7 +331,7 @@ export const route = async ({
     }
     if (!fresh) continue
     routed.add(fp)
-    plan.fixes.push({
+    const task = {
       fp,
       severity,
       issueId,
@@ -342,7 +343,8 @@ export const route = async ({
       real: realAiCharters.has(charterDir),
       screenshot: finding.screenshot ? join(outDir, charterDir, finding.screenshot) : undefined,
       finding: ticketView(finding),
-    })
+    }
+    plan.fixes.push({ ...task, unitTest: needsUnitTest(task) })
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
@@ -357,7 +359,7 @@ export const route = async ({
  * repo's testing guide sends browser storage to `e2e/`. A security fix, a native one, one from the onboarding build
  * and a real-AI one never add a spec.
  */
-export const whyNoSpec = (task: FixTask) => {
+export const whyNoSpec = (task: Omit<FixTask, 'unitTest'>) => {
   if (task.finding.area === 'security') return 'security'
   if ('flow' in task) return 'native'
   if (onboardingSession(task.charterDir)) return 'onboarding'
@@ -369,6 +371,13 @@ export const whyNoSpec = (task: FixTask) => {
     (type === 'layout' && !evidence.includes('[qa-layout] unnamed-control'))
   return needsBrowser ? undefined : 'unit'
 }
+
+/**
+ * Whether a task's patch must carry a unit test that fails without the fix: every web task whose PR adds no
+ * regression spec (see `whyNoSpec`). Where it adds one, that browser check failed without the patch and passed with
+ * it, which happy-dom cannot match for layout, so it is the proof. A native task keeps its Maestro check.
+ */
+export const needsUnitTest = (task: Omit<FixTask, 'unitTest'>) => !('flow' in task) && whyNoSpec(task) !== undefined
 
 /** Named exports of `e2e/test.ts`; a spec importing only these can switch to the repo fixture. */
 const e2eTestExports = new Set(['test', 'expect', 'Page', 'Request', 'Route'])
@@ -532,6 +541,32 @@ const noTestReason =
 const runTests = (cmd: string[], cwd: string) =>
   Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' }).exited
 
+/** A finished test run: its exit code and everything it printed. */
+export type TestResult = { code: number; output: string }
+
+/** Runs a command, copies its output to the job log when it ends, and returns its exit code and output. */
+const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
+  const proc = Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  process.stdout.write(stdout)
+  process.stderr.write(stderr)
+  return { code, output: stdout + stderr }
+}
+
+/**
+ * True when `bun test` output names a test that failed. A file that fails to import or compile, or throws at its top
+ * level, fails no named test, and a failed `beforeAll` or `afterAll` hook shows as `(unnamed)`, so none of them counts.
+ * A failed `beforeEach` shows as its test's failure and does count.
+ */
+export const testFailed = (output: string) =>
+  stripVTControlCharacters(output)
+    .split('\n')
+    .some((line) => line.startsWith('(fail) ') && !/(?:^\(fail\)|>) \(unnamed\)(?: \[|$)/.test(line))
+
 /**
  * `cmd` run as the OS user `user` through sudo, which resets the environment: the command gets `path` as its PATH and
  * that user's home, nothing else of the caller's environment.
@@ -555,14 +590,14 @@ type CheckTestsOptions = {
   user?: string
   repoDir?: string
   run?: Run
-  exec?: (cmd: string[], cwd: string) => Promise<number>
+  exec?: (cmd: string[], cwd: string) => Promise<TestResult>
   log?: (line: string) => void
 }
 
 /**
- * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: they must fail with only the
- * patch's hunks for its test files and its added files applied (`failsWithout`), and pass with the whole patch
- * (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
+ * Whether a web patch's own unit tests prove its fix, on a checkout without the patch: a named test must fail with
+ * only the patch's hunks for its test files and its added files applied (`failsWithout`; see `testFailed`), and every
+ * run must pass with the whole patch (`passesWith`). Both are false for a patch with no test file. One process runs both halves, so code a test leaves
  * behind cannot swap the verdict code between them. Each half takes its hunks out again, which leaves the checkout as
  * it was. With `user` the tests run as that user, so they cannot read the environment of this user's processes, and
  * only the snapshot files are opened to it. A patch that adds or changes a symlink or submodule runs no test.
@@ -573,7 +608,7 @@ export const checkTests = async ({
   user,
   repoDir = '.',
   run = runCommand,
-  exec = runTests,
+  exec = runTestsCapturing,
   log = console.log,
 }: CheckTestsOptions) => {
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
@@ -588,17 +623,17 @@ export const checkTests = async ({
     log(`fix: ${noTestReason}`)
     return { failsWithout: false, passesWith: false }
   }
-  const exitCodes = async (include: string[]) => {
+  const results = async (include: string[]) => {
     await run(['git', 'apply', ...include, patch])
     try {
       if (user) await openSnapshots(run, repoDir)
-      const codes: number[] = []
+      const done: TestResult[] = []
       for (const { cwd, cmd: bunTest } of runs) {
         // As in CI, where Bun fails on a missing snapshot instead of writing it. sudo drops the variable.
         const cmd = ['env', 'CI=true', ...bunTest]
-        codes.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
+        done.push(await exec(user ? asUser(user, process.env.PATH ?? '', cmd) : cmd, join(repoDir, cwd)))
       }
-      return codes
+      return done
     } finally {
       await run(['git', 'apply', '--reverse', ...include, patch])
     }
@@ -609,8 +644,12 @@ export const checkTests = async ({
   const baseline = files
     .filter((f) => isUnitTest(f.path) || f.status === 'A')
     .map((f) => `--include=${f.path.replace(/[[\]*?\\]/g, '\\$&')}`)
-  const failsWithout = (await exitCodes(baseline)).some((code) => code !== 0)
-  const passesWith = (await exitCodes([])).every((code) => code === 0)
+  const without = await results(baseline)
+  const failsWithout = without.some(({ code, output }) => code !== 0 && testFailed(output))
+  if (!failsWithout && without.some(({ code }) => code !== 0)) {
+    log('fix: without the fix the tests failed only to load or set up, which does not show the bug')
+  }
+  const passesWith = (await results([])).every(({ code }) => code === 0)
   return { failsWithout, passesWith }
 }
 
@@ -848,10 +887,10 @@ const missingPasses = ({ task, verifyNative, unitTests, artifacts, attempt, unch
     },
     {
       check: 'tests',
-      needed: web,
+      needed: task.unitTest,
       reason: unitTests
-        ? "the patch's unit tests did not fail without the fix and pass with it"
-        : `${noTestReason}, and every web fix needs one that fails without the fix`,
+        ? "the patch's unit tests did not fail without the fix and pass with it (a test that only fails to load or set up does not count)"
+        : `${noTestReason}, and a web fix without a regression spec needs one that fails without the fix`,
     },
     {
       check: 'real',

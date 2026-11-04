@@ -594,6 +594,50 @@ Why real fixes: they are bugs users really hit, nobody tuned the prompts for the
 new fixes land. When nothing qualifies, the leg is skipped and the report says so; the build log has one line per
 skipped fix with the reason. Most often a later change touched the same lines; that clears up with the next fixes.
 
+## Layout sweep
+
+The explorer finds a layout bug only where it happens to land. The sweep looks on purpose: fixed code reaches key
+screens in hard states and checks each one two ways. The layout probe must report nothing, and the screen must match
+a baseline a person approved. A screenshot difference alone is no bug: a person reviews it first. The sweep is
+trusted harness code that runs on the fake AI, in jobs of its own with no secret and no model, and it files nothing.
+Snapshot assertions stay banned in the specs a model writes.
+
+- **Web** (`control/sweep.spec.ts`, the `sweep` project, job `layout-sweep`): composer, sidebar, model picker,
+  dialog, settings form, attachment viewer, a rich reply (table, code, long link) and a reply still loading, on
+  desktop (1280×800), phone (390×844) and a narrow, short phone (320×480), in English, German and Japanese, with
+  normal or large text (the browser's default font size at 24 px). `scripts/sweep.ts` picks 24 cases so that every
+  pair of values of any two of those dimensions meets once, instead of all 144. The browser answers the chat
+  request itself, so a reply is the same on every run. Each case crops one region of the screen.
+- **iOS and Android** (`scripts/sweep-native.ts`, flows in `control/sweep/`, job `layout-sweep-native`, one per
+  platform the run builds): on the plain QA build, the composer with the keyboard open, the sidebar, the "Add to
+  chat" sheet, the Preferences form, the account deletion dialog, a reply, and Preferences in German. Android also
+  runs the composer and Preferences at a system font scale of 1.3; iOS's WebView ignores the system text size. The
+  problems are the probe's lines in the WebView log and the tree's own rules (`measureNative`), as in replay. The
+  screenshot is the whole screen with the status bar fixed at 9:41, compared by Maestro's `assertScreenshot` at 97%
+  similarity, so the chat greeting, which follows the hour, does not count.
+
+Baselines live in `sweep-baselines/`: `web/<case>-linux.png` (Playwright adds the OS, since fonts render
+differently on each) and `<platform>/<state>.png`. A case without one passes with its crop saved as a candidate.
+To approve, run the workflow, download `qa-sweep-web` (`candidates/`) or `qa-sweep-<platform>` (`qa-sweep/candidates/`),
+look at each image, and commit the ones that show the screen right. Only baselines from CI's own runners count: a
+crop taken on a Mac renders differently. When a crop differs, the web artifact holds `*-expected.png`, `*-actual.png`
+and `*-diff.png` beside each other, and a native one Maestro's diff under `qa-sweep/diffs/`. A regression gets a ticket
+by hand; an intended change replaces the baseline.
+
+Cost: the web sweep took 47 s for its 24 cases on a local run, plus the job's setup. The iOS sweep took about 9
+minutes on a local simulator, about 70 s a state, plus a macOS job's setup. Android has not run yet.
+
+Locally, against a stack on the default ports (or the same `QA_*_PORT` exports as the stack):
+
+```sh
+QA_OUT=qa-out-sweep bunx playwright test --config .github/qa/playwright.config.ts --project sweep
+# A native device with the plain build freshly installed and the console streaming, as for a session:
+QA_WEBVIEW_LOG=/tmp/webview.log bun .github/qa/scripts/sweep-native.ts --platform ios --device "$udid" --out /tmp/qa-sweep
+```
+
+Limits: the native sweep has no rich reply (the fake provider streams one sentence) and no attachment viewer (it opens
+through the system's file picker). A sweep problem is not a ticket: a person reads the job's annotations and summary.
+
 ## Functions, coverage and the free session
 
 `functions.json` lists per area (c1 to c7) what must work on every platform: an id, an observable outcome, and `reload: true` when

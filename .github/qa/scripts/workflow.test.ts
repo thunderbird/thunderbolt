@@ -1145,6 +1145,7 @@ describe('native jobs', () => {
   test("every job that runs Maestro turns off its AI banner, which fills a failed run's error", () => {
     expect(maestroJobs.map(([name]) => name).sort()).toEqual([
       'explore-native',
+      'layout-sweep-native',
       'native-control',
       'replay-native',
       'verify-native-run',

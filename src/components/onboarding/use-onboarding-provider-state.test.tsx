@@ -5,7 +5,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
 import { getDb } from '@/db/database'
@@ -65,29 +65,29 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
 
 describe('useOnboardingProviderState', () => {
   const originalLocks = navigator.locks
-  beforeAll(async () => {
+  beforeAll(() => {
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
       value: { request: async (_name: string, operation: () => Promise<unknown>) => operation() },
     })
-    await setupTestDatabase()
   })
   afterAll(async () => {
     Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks })
     await teardownTestDatabase()
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Standalone onboarding starts without seeded Cloud models, including the first randomized test.
+    await resetTestDatabase()
     rejectNestedTransactions(getDb())
     useLocalSettingsStore.setState({ cloudUrl: '', localMode: true, serverHasAuthenticated: false, syncEnabled: false })
     spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'example/model', name: 'Example Model' }] }))
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     cleanup()
     mock.restore()
     resetStore()
-    await resetTestDatabase()
   })
 
   it('saves and selects the verified default model after authorization without a picker', async () => {

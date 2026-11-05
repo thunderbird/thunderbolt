@@ -32,12 +32,14 @@ const replyWords = fakeProviderReply.match(/\S+\s*/g)!
 type Pace = { pauseMs: number; cutAfter?: number }
 
 /**
- * How the fake streams its reply to a request whose latest user message reads `text`. `cut` holds the texts already
- * cut off, so that a retry of one gets the whole reply.
+ * How the fake streams its reply to a request whose latest user message reads `text`. The triggers match in any case,
+ * since a phone keyboard capitalizes the first letter. `cut` holds the texts already cut off, so that a retry of one
+ * gets the whole reply.
  */
 export const paceOf = (text: string, cut: Set<string>): Pace => {
-  const pauseMs = text.includes(slowReplyTrigger) ? 3000 : 150
-  if (!text.includes(cutReplyTrigger) || cut.has(text)) {
+  const lower = text.toLowerCase()
+  const pauseMs = lower.includes(slowReplyTrigger) ? 3000 : 150
+  if (!lower.includes(cutReplyTrigger) || cut.has(text)) {
     return { pauseMs }
   }
   cut.add(text)

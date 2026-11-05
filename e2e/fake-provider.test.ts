@@ -85,6 +85,12 @@ test('the triggers set the pace, and a cut text is cut only once', () => {
   expect(paceOf(`Write a story ${cutReplyTrigger} 2`, cut)).toEqual({ pauseMs: 150, cutAfter: 3 })
 })
 
+test('the triggers match in any case, as a phone keyboard capitalizes them', () => {
+  const cut = new Set<string>()
+  expect(paceOf('Qa:slow write a story', cut)).toEqual({ pauseMs: 3000 })
+  expect(paceOf('QA:CUT write a story', cut)).toEqual({ pauseMs: 150, cutAfter: 3 })
+})
+
 /** A Messages request whose history holds `history` and whose latest user turn is `latest`. */
 const request = (latest: Anthropic.MessageParam['content'], history = 'Hello') => ({
   model: 'test-model',

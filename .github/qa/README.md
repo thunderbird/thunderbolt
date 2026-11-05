@@ -610,8 +610,9 @@ Every charter runs on desktop and phone. The layout probe covers screen fit, so 
 
 Transitions, a change made while something is still in flight, are charter steps with the outcome they must reach.
 c2 covers stop then send and a retry after a reply broke off, on the fake AI, which has two triggers in
-`e2e/fake-provider.ts`, read from the text of the latest user message. With `qa:slow` (`slowReplyTrigger`) the reply
-streams one word every 3 s, so the explorer, and a spec that replays it, has time to press Stop. With `qa:cut`
+`e2e/fake-provider.ts`, read from the text of the latest user message in any letter case (a phone keyboard
+capitalizes the first letter). With `qa:slow` (`slowReplyTrigger`) the reply streams one word every 3 s, so the
+explorer, and a spec that replays it, has time to press Stop. With `qa:cut`
 (`cutReplyTrigger`) the first request with that exact text loses its connection after three words and a retry gets the
 whole reply, so each run must use a fresh text. Replay rewrites a flow's partial fake reply to the full one, so on a
 device c2 checks only the replies that follow. c3 covers a model switch while a reply streams and the next turn

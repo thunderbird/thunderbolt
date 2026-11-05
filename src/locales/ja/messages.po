@@ -855,6 +855,7 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/ui/dialog.tsx
 #: src/components/ui/responsive-modal.tsx
 #: src/components/ui/sheet.tsx
+#: src/components/ui/sidebar-close-button.tsx
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
@@ -1058,6 +1059,7 @@ msgstr "コンテキストウィンドウを超えました"
 msgid "Continue"
 msgstr "続行"
 
+#: src/components/sync-setup/approval-waiting-step.tsx
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Copied"
 msgstr "コピーしました"
@@ -1077,6 +1079,10 @@ msgstr "ブリッジのターゲットをコピー"
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Copy build command"
 msgstr "ビルドコマンドをコピー"
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Copy fingerprint"
+msgstr ""
 
 #: src/components/artifact/artifact-actions.tsx
 msgid "Copy HTML"
@@ -1167,6 +1173,10 @@ msgstr "パスキーを追加できませんでした。同期を設定すると
 msgid "Couldn't add the agent. Please try again."
 msgstr "エージェントを追加できませんでした。もう一度お試しください。"
 
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't approve this device. Please try again."
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Couldn't attach \"{filename}\" — your browser's storage is full or unavailable."
 msgstr "「{filename}」を添付できませんでした — ブラウザーのストレージが満杯か利用できません。"
@@ -1182,6 +1192,14 @@ msgstr "更新を確認できませんでした: {error}"
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates."
 msgstr "更新を確認できませんでした。"
+
+#: src/components/approve-device-dialog.tsx
+msgid "Couldn't complete approval. Close this dialog and check the device list before trying again."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Couldn't copy. Select the fingerprint to copy it manually."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't download the update"
@@ -1275,6 +1293,10 @@ msgstr "更新できませんでした。もう一度お試しください。"
 #: src/components/chat/error-message.tsx
 msgid "Couldn't verify the secure AI connection. This is usually temporary — try again in a moment."
 msgstr "AI への安全な接続を検証できませんでした。通常は一時的なものです — 少し待ってからもう一度お試しください。"
+
+#: src/hooks/use-sync-setup.ts
+msgid "Couldn't verify this device's approval. Select Check now to try again, or choose another option below."
+msgstr ""
 
 #: src/projects/project-create-form.tsx
 #: src/search/palette/search-palette.tsx
@@ -1569,6 +1591,11 @@ msgstr "開発者設定"
 msgid "Device access revoked"
 msgstr "デバイスのアクセスを取り消しました"
 
+#: src/components/approve-device-dialog.tsx
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Device fingerprint"
+msgstr ""
+
 #: src/components/device-qr-code.tsx
 msgid "Device pairing QR code"
 msgstr "デバイスペアリング用 QR コード"
@@ -1671,6 +1698,7 @@ msgstr "完了"
 
 #: src/components/download-app-banner-mobile.tsx
 #: src/components/update-notification.tsx
+#: src/widgets/document-result/pdf-sidebar-viewer.tsx
 msgid "Download"
 msgstr "ダウンロード"
 
@@ -1858,6 +1886,14 @@ msgstr "8 桁のコードを入力してください"
 #: src/components/device-approval.tsx
 msgid "Enter the code shown in your terminal to continue."
 msgstr "続行するには、ターミナルに表示されているコードを入力してください。"
+
+#: src/components/approve-device-dialog.tsx
+msgid "Enter the fingerprint from the new device's screen or a separate channel you trust."
+msgstr ""
+
+#: src/components/sync-setup/approval-waiting-step.tsx
+msgid "Enter this fingerprint on your trusted device before approving."
+msgstr ""
 
 #: src/components/sign-in-modal.tsx
 msgid "Enter your code"
@@ -2419,6 +2455,7 @@ msgstr "ローカルストレージ"
 msgid "Localization"
 msgstr "地域と言語"
 
+#: src/components/onboarding/onboarding-location-step.tsx
 #: src/settings/preferences.tsx
 msgid "Location"
 msgstr "位置情報"
@@ -4214,6 +4251,10 @@ msgstr ""
 msgid "The device will be signed out and lose access to your synced data. Its local copy is cleared the next time it connects; a device that never comes back online keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
+#: src/components/approve-device-dialog.tsx
+msgid "The fingerprint doesn't match. Check the fingerprint shown on the new device and try again."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
 msgstr "スキルまたはプロジェクトの指示がこのエージェントには長すぎます。長いスキルまたはプロジェクトの指示を短くしてから、もう一度お試しください。"
@@ -4246,6 +4287,7 @@ msgstr ""
 msgid "Theme"
 msgstr "テーマ"
 
+#: src/components/chat/reasoning-group-title.tsx
 #: src/components/chat/reasoning-item.tsx
 #: src/components/chat/reasoning-part.tsx
 #: src/voice/ui/voice-mode-composer.tsx

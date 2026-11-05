@@ -97,6 +97,8 @@ services:
       PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
       # Label paired with the JWT secret. Must match the backend's POWERSYNC_JWT_KID.
       PS_JWT_KID: enterprise-powersync
+      # Bump to make PowerSync rebuild its storage (see `version_label` in the config).
+      PS_SYNC_CONFIG_VERSION: "1"
     volumes:
       - ./config/powersync-config.yaml:/config/config.yaml
     ports:

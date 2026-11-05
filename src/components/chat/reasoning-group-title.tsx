@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { plural } from '@lingui/core/macro'
-import { useLingui } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import type { I18n } from '@lingui/core'
@@ -70,7 +70,12 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mc
                 {loadingLabel}
               </span>
             </m.div>
-          ) : null
+          ) : (
+            // The trigger shows only a spinner here, so name it for assistive tech.
+            <span className="sr-only">
+              <Trans>Thinking</Trans>
+            </span>
+          )
         ) : (
           <m.div
             key="completed"

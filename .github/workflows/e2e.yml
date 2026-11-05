@@ -54,7 +54,7 @@ jobs:
         # Skip --with-deps: the runner image already ships Chromium's system libraries,
         # and its apt step stalled on a slow mirror long enough to time the job out.
         timeout-minutes: 3
-        run: bunx playwright install chromium
+        run: bun run browsers:install
 
       - name: Runner CPU/memory diagnostics (pre-test)
         run: |
@@ -125,7 +125,7 @@ jobs:
         # Skip --with-deps: the runner image already ships Chromium's system libraries,
         # and its apt step stalled on a slow mirror long enough to time the job out.
         timeout-minutes: 3
-        run: bunx playwright install chromium
+        run: bun run browsers:install
 
       - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
         # Playwright names every blob `report-<shard>.zip`, so this job's shard

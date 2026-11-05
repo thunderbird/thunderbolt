@@ -60,10 +60,10 @@ a compromised server could switch it off to collect plain text.
   public keys, so only that device can open its own copy.
 - The first device on an account creates the keys and shows the user a 24-word recovery phrase,
   once. Sync turns on when they confirm it.
-- Every later device stays pending until an already-trusted device approves it, or the user enters
-  the recovery phrase on it.
-- The recovery phrase is the only way back in if every trusted device is lost. You cannot recover
-  it for them, unless you run organizational key escrow.
+- A later device unlocks after fingerprint approval from an already-trusted device, entry of the
+  current recovery phrase, or use of an available passkey enrolled for sync.
+- If every trusted device is lost, the current phrase or an available sync passkey can unlock a new
+  device. Organizational key escrow separately permits offline operator decryption with its private key.
 - Revoking a device ends its sessions and replaces both the account key and the data key used for
   new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
   The device clears its local database and keys the next time it connects. One that never comes
@@ -218,8 +218,9 @@ user's conversations. What follows is about direct access to your own database a
   from sync, but own-key model and HTTP/SSE MCP credentials pass through your server in relayed requests.
 - Uploaded file contents, which never reach your server for storage.
 - Prompts or responses on the confidential inference tier.
-- Encrypted content, including messages, with no way to recover it for a user who loses every
-  device and their recovery phrase. Organizational key escrow is the exception.
+- Encrypted content, including messages. User recovery requires a trusted device, the current
+  recovery phrase or an available passkey enrolled for sync. Operator-held organizational escrow
+  keys permit separate offline decryption.
 - Anything on a device whose owner never enabled sync.
 
 ## What a user controls

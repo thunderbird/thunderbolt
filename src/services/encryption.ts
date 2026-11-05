@@ -58,6 +58,8 @@ import { clearRecoveryPhrasePending, markRecoveryPhrasePending } from '@/lib/rec
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
+import { DeviceApprovalError } from '@/crypto/errors'
+import { createDeviceApprovalFingerprint, matchesDeviceApprovalFingerprint } from '@/crypto/device-approval-fingerprint'
 import { StepUpVerificationError, stepUpRefusalCode } from '@/lib/step-up'
 import {
   bindSession,
@@ -891,10 +893,44 @@ const unwrapEnvelopeAK = async (wrappedCK: string): Promise<OpenedAkEnvelope> =>
  * reads 404 as "not approved yet" narrows that catch itself.
  */
 const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<{ keyring: FetchedKeyring; primaryKeyId: KeyId }> => {
-  const { wrappedCK } = await fetchMyEnvelope(httpClient)
+  const { wrappedCK, attestation } = await fetchMyEnvelope(httpClient)
   const envelope = await unwrapEnvelopeAK(wrappedCK)
+  await assertFirstEnvelopeRecipient(httpClient, envelope.ak, attestation)
   const keyring = await acceptCandidateAK(httpClient, envelope.ak)
   return { keyring, primaryKeyId: envelope.primaryKeyId }
+}
+
+/** Authenticate the first envelope's recipient before any key state becomes durable. */
+const assertFirstEnvelopeRecipient = async (
+  httpClient: HttpClient,
+  ak: CryptoKey,
+  attestation: string | null,
+): Promise<void> => {
+  if (await getAK()) {
+    return
+  }
+  const keyPair = await getKeyPair()
+  const metadata = await fetchEncryptionMetadata(httpClient)
+  if (!keyPair || !attestation || !metadata.canary_iv || !metadata.canary_ctext) {
+    throw new DeviceApprovalError('recipient-unverified')
+  }
+  const { unwrapCanaryKey, verifyDeviceAttestation } = await loadCanary()
+  try {
+    const canaryKey = await unwrapCanaryKey(ak, getUserId(), metadata.canary_iv, metadata.canary_ctext)
+    if (
+      await verifyDeviceAttestation(canaryKey, attestation, {
+        userId: getUserId(),
+        deviceId: getDeviceId(),
+        ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+      })
+    ) {
+      return
+    }
+  } catch (cause) {
+    throw new DeviceApprovalError('recipient-unverified', { cause })
+  }
+  throw new DeviceApprovalError('recipient-unverified')
 }
 
 /**
@@ -1169,18 +1205,41 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
 // Flow D (trusted device) — Approve / deny / revoke / node-id
 // =============================================================================
 
+/** Compute the pending device's confirmation from local keys, never a served device row. */
+export const getThisDeviceApprovalFingerprint = async (): Promise<string> => {
+  const keyPair = await getKeyPair()
+  if (!keyPair) {
+    throw new Error('Key pair not found in IndexedDB')
+  }
+  return createDeviceApprovalFingerprint({
+    userId: getUserId(),
+    deviceId: getDeviceId(),
+    ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+  })
+}
+
 /**
- * Approve a pending device by rewrapping the AK with its public keys and storing the envelope.
- * Fetches this device's own envelope from the server and rewraps — the locally stored
- * non-extractable AK is never touched, preserving its security properties.
- * Gated by an 'approve' challenge proof (replaces the v1 canary-secret body).
+ * Approve a captured recipient after fingerprint confirmation. Verify this device's
+ * served AK against the local witness, then rewrap its envelope for that recipient.
+ * The stored non-extractable AK is never exported. An 'approve' proof gates the POST.
  */
 export const approveDevice = async (
   httpClient: HttpClient,
   pendingDeviceId: string,
   pendingEcdhPublicKeyBase64: string,
   pendingMlkemPublicKeyBase64: string,
+  fingerprint: string,
 ): Promise<void> => {
+  const anchor = {
+    userId: getUserId(),
+    deviceId: pendingDeviceId,
+    ecdhPublicKey: pendingEcdhPublicKeyBase64,
+    mlkemPublicKey: pendingMlkemPublicKeyBase64,
+  }
+  if (!(await matchesDeviceApprovalFingerprint(anchor, fingerprint))) {
+    throw new DeviceApprovalError('fingerprint-mismatch')
+  }
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found in IndexedDB')
@@ -1192,6 +1251,9 @@ export const approveDevice = async (
   ])
   const pendingEcdhPub = await importPublicKey(pendingEcdhPublicKeyBase64)
   const pendingMlkemPub = importMlKemPublicKey(pendingMlkemPublicKeyBase64)
+  await reconcileKeyringAnchor()
+  const candidate = await unwrapAK(myWrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+  await assertCandidateAKIsOurs(candidate.ak, await fetchKeyring(httpClient))
   const wrappedCK = await rewrapAK(
     myWrappedCK,
     keyPair.ecdhPrivateKey,
@@ -1200,18 +1262,8 @@ export const approveDevice = async (
     pendingMlkemPub,
   )
 
-  // The approver attests the keys it just wrapped to, so the NEXT rotation can
-  // tell this device apart from a row the server invented. Note what this does
-  // NOT prove: the pending device's public keys arrived from the server, so an
-  // approval-time substitution is signed in good faith. Closing that needs
-  // out-of-band fingerprint comparison — a POC non-goal, tracked separately.
   const { signDeviceAttestation } = await loadCanary()
-  const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), {
-    userId: getUserId(),
-    deviceId: pendingDeviceId,
-    ecdhPublicKey: pendingEcdhPublicKeyBase64,
-    mlkemPublicKey: pendingMlkemPublicKeyBase64,
-  })
+  const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), anchor)
 
   await storeEnvelope(httpClient, { deviceId: pendingDeviceId, wrappedCK, attestation, proof })
 }
@@ -1303,6 +1355,7 @@ export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<bo
   }
 
   const opened = await unwrapEnvelopeAK(envelope.wrappedCK)
+  await assertFirstEnvelopeRecipient(httpClient, opened.ak, envelope.attestation)
   await applyKeyring(await acceptCandidateAK(httpClient, opened.ak), opened.primaryKeyId)
   return true
 }
@@ -1520,15 +1573,14 @@ export type TrustedDevicePublicKeys = {
 }
 
 /**
- * The devices this rotation/upgrade must cover, read from the SERVER rather than
+ * The recipients this rotation must cover, read from the server rather than
  * the local synced `devices` table.
  *
  * The server validates coverage against its own device rows, so deriving the set
  * from a PowerSync-replicated copy meant the two could disagree: a peer that had
  * not replicated locally yet was silently omitted, and the whole payload came
- * back 400 "must cover every envelope-capable device". Two devices migrating at
- * once hit this simultaneously and neither could ever win — the account stayed on
- * v1. Asking the server removes the class of bug rather than narrowing the race.
+ * back a coverage error. The server list keeps rotation coverage current;
+ * the rotating client separately verifies recipient attestations before wrapping.
  *
  * Devices that cannot hold an envelope (no public keys — bridges, and v1 devices
  * that never published v2 keys) are excluded by the endpoint itself, using the
@@ -2160,8 +2212,6 @@ export type MigrateResult =
   | { outcome: 'not-eligible' }
 
 export type MigrateToV2Options = {
-  /** Dependency seam for the synced-devices read (tests). */
-  listTrustedDevices?: () => Promise<TrustedDevicePublicKeys[]>
   /** Forwarded to the follower path taken on a 409 CAS-loss (tests). */
   getLegacyV1Sample?: () => Promise<LegacyV1Sample | null>
 }
@@ -2288,20 +2338,22 @@ const resolveLegacyCK = async (
 }
 
 /**
- * Migrate this v1 account to v2 (WS4). Eligibility: `scheme_version == 1`, this
+ * Migrate this v1 account to v2. Eligibility: `scheme_version == 1`, this
  * device holds the legacy CK (its v1 envelope unwraps and decrypts the canary),
  * and it is trusted. The migrator:
  *  1. absorbs the CK into the keyring as the reserved `"v1"` slot,
  *  2. mints a fresh primary DEK `"0"` + a fresh random AK + a new recovery phrase,
  *  3. wraps the keyring (both `"0"` and `"v1"`) under the new AK,
- *  4. writes a new-AK envelope for every trusted device and for the phrase,
+ *  4. writes the only device envelope for the migrator's local keys; the recovery
+ *     slot and any pinned organizational escrow key also receive wrapped copies
+ *     of the new account key,
  *  5. registers the signing key + kdf_salt + recovery slot + new canary,
  *  6. recovers the D1 possession proof (v1 CK decrypt of the canary, NO AAD),
  *  7. POSTs `/upgrade`, which CAS-flips `scheme_version 1→2` as its last step.
  *
  * The candidate AK/DEK/phrase are persisted ONLY on HTTP 200. On a 409 CAS-loss
- * (another device migrated first) nothing local is written and the flow falls
- * through to the follower path.
+ * (another device migrated first) nothing local is written. The follower path
+ * waits for verified approval unless this device already has a valid recipient envelope.
  */
 export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Options = {}): Promise<MigrateResult> => {
   const metadata = await fetchEncryptionMetadata(httpClient)
@@ -2347,11 +2399,6 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   const { canaryIv, canaryCtext, canaryKey } = await mintCanary(newAK, getUserId())
   const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
 
-  // Always cover THIS device from local key material — never rely solely on the
-  // synced `devices` table, which may not have replicated this (freshly trusted)
-  // device yet. Without self here, a migrator whose own row hasn't synced sends
-  // an empty `envelopes` array and the upgrade is rejected (422 minItems).
-  const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
   const self: TrustedDevicePublicKeys = {
     id: getDeviceId(),
     publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
@@ -2359,17 +2406,8 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     // Self: nothing to verify, and nothing has attested it yet.
     attestation: null,
   }
-  const devicesToCover = trustedDevices.some((device) => device.id === self.id)
-    ? trustedDevices
-    : [self, ...trustedDevices]
-  // NO verification here, and it is not an oversight: a v1 account has no prior
-  // epoch to check against — attestations begin existing at this write. So the
-  // migration is trust-on-first-use for the whole device set, the same way a
-  // brand-new device's first adoption is. A server that injects a row before an
-  // account migrates gets it attested by the migrator. Narrowing that needs
-  // out-of-band verification, not a signature; what this DOES establish is the
-  // epoch every later rotation checks against.
-  const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover, initialKeyId, canaryKey)
+  // Siblings must re-enter fingerprint-verified approval; no server-selected key receives this AK.
+  const envelopes = await buildDeviceEnvelopes(newAK, [self], initialKeyId, canaryKey)
   const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys, recovery.kdfSalt, canaryKey, initialKeyId)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
@@ -2617,6 +2655,7 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
   )
 
   const fetched = await fetchKeyring(httpClient)
+  await assertFirstEnvelopeRecipient(httpClient, ak, envelope.attestation)
   const keyring: WrappedKeyEntry[] = fetched.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
   await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 

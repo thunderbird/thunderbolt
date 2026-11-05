@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { refreshAuthorization as sdkRefreshAuthorization } from '@modelcontextprotocol/sdk/client/auth.js'
+import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { AuthorizationServerMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { resourceUrlFromServerUrl } from '@modelcontextprotocol/sdk/shared/auth-utils.js'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
@@ -14,8 +15,8 @@ import { isTokenFresh } from '@/integrations/oauth-credentials'
 
 /**
  * Thrown when an MCP OAuth token can no longer be refreshed (refresh token
- * revoked, expired, or reuse-detected). The caller surfaces this as a clean
- * re-authorization prompt on the server card.
+ * revoked, expired, reuse-detected, or its client rejected). The caller surfaces
+ * this as a clean re-authorization prompt on the server card.
  */
 export class McpOAuthNeedsReauthError extends Error {
   readonly serverId: string
@@ -30,14 +31,14 @@ export class McpOAuthNeedsReauthError extends Error {
   }
 }
 
-/** True for an OAuth `invalid_grant` error from the SDK (refresh token no longer valid). */
-const isInvalidGrant = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') {
-    return false
-  }
-  const { errorCode, message } = err as { errorCode?: unknown; message?: unknown }
-  return errorCode === 'invalid_grant' || (typeof message === 'string' && /invalid_grant/i.test(message))
-}
+/**
+ * OAuth error codes after which retrying the same refresh cannot succeed, so the card offers Authorize.
+ * Metabase answers a rotated-away refresh token with `invalid_request` ("The token request is invalid."),
+ * the same body it sends for a malformed request, so the two cannot be told apart; a new authorization
+ * (fresh client and tokens) is the only recovery for either, and the SDK error stays attached as `cause`.
+ * Transient `server_error` and `temporarily_unavailable` stay retryable.
+ */
+const credentialRejectedCodes = new Set(['invalid_grant', 'invalid_request', 'invalid_client', 'unauthorized_client'])
 
 /** Builds the minimal AS metadata the SDK refresh path reads (token endpoint). */
 const buildMetadata = (issuer: string, tokenEndpoint: string): AuthorizationServerMetadata => ({
@@ -69,9 +70,9 @@ const tokenRefreshInFlight = new Map<string, Promise<string>>()
  * is recomputed from the new `expires_in` (a response without `expires_in` is
  * stored as non-expiring, never as the stale pre-refresh timestamp, which would
  * trigger a refresh on every subsequent connect). The RFC 8707 `resource` (the
- * canonical MCP server URL) is sent on the refresh request. An `invalid_grant`
- * (revoked/reused refresh token) surfaces as `McpOAuthNeedsReauthError` so the
- * UI can prompt a clean re-authorization. `refreshAuthorization` is injectable
+ * canonical MCP server URL) is sent on the refresh request. A rejected refresh
+ * token or client (`credentialRejectedCodes`) surfaces as `McpOAuthNeedsReauthError`
+ * so the UI can prompt a clean re-authorization. `refreshAuthorization` is injectable
  * for tests.
  */
 export const ensureValidMcpOAuthToken = (
@@ -129,7 +130,7 @@ const resolveValidMcpOAuthToken = async (
         fetchFn,
       })
     } catch (err) {
-      if (isInvalidGrant(err)) {
+      if (err instanceof OAuthError && credentialRejectedCodes.has(err.errorCode)) {
         throw new McpOAuthNeedsReauthError(serverId, err)
       }
       throw err

@@ -12,6 +12,9 @@ import { entropyToMnemonic } from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 import {
   getTaskIds,
+  getDevicePublicKeys,
+  getEncryptionServerSnapshot,
+  sql,
   waitForConsumedChallenge,
   waitForDeviceState,
   waitForEncryptedSetting,
@@ -21,6 +24,7 @@ import {
 import { expect, test } from './fixtures'
 import {
   completeFirstDeviceSetup,
+  approvePendingDevice,
   createE2eeEmail,
   createIsolatedDevice,
   createTask,
@@ -32,6 +36,12 @@ import {
   startAdditionalDeviceSetup,
   waitForTasksPreference,
 } from './helpers'
+import {
+  exportPublicKey,
+  exportMlKemPublicKey,
+  generateKeyPair,
+  generateMlKemKeyPair,
+} from '../../src/crypto/primitives'
 
 test.describe('PowerSync E2EE multi-device enrollment', () => {
   test('approves an isolated device and decrypts existing synced data', async ({ browser, page }) => {
@@ -58,12 +68,7 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
         (state) => !state.trusted && state.approvalPending && !state.hasEnvelope,
       )
 
-      const notification = page.getByRole('dialog').filter({ hasText: 'New device waiting' })
-      await expect(notification).toBeVisible({ timeout: 30_000 })
-      await notification.getByRole('button', { name: 'Approve' }).click()
-      const confirmation = page.getByRole('alertdialog')
-      await expect(confirmation.getByText('Approve this device?')).toBeVisible()
-      await confirmation.getByRole('button', { name: 'Approve' }).click()
+      await approvePendingDevice(page, device.page)
 
       await waitForConsumedChallenge(userId, 'approve')
       await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
@@ -81,6 +86,55 @@ test.describe('PowerSync E2EE multi-device enrollment', () => {
       await waitForNewEncryptedTasks(userId, taskIdsBeforeReturnCreate)
       await expect(page.getByText(returnTaskText, { exact: true })).toBeVisible({ timeout: 30_000 })
       await expect(waitingDialog).toBeHidden()
+    } finally {
+      await device.context.close()
+    }
+  })
+
+  test('refuses substituted pending keys before issuing an envelope, then approves the restored owned device', async ({
+    browser,
+    page,
+  }) => {
+    const email = createE2eeEmail()
+    await loginViaConsumerOtp(page, email)
+    const userId = await waitForUserId(email)
+    await completeFirstDeviceSetup(page)
+    const device = await createIsolatedDevice(browser, 'firefox')
+    try {
+      await loginViaConsumerOtp(device.page, email)
+      await startAdditionalDeviceSetup(device.page)
+      const deviceId = await getDeviceId(device.page)
+      await waitForDeviceState(userId, deviceId, (state) => state.approvalPending && !state.trusted)
+      const original = await getDevicePublicKeys(deviceId)
+      const replacementEcdh = await exportPublicKey((await generateKeyPair()).publicKey)
+      const replacementMlkem = exportMlKemPublicKey(generateMlKemKeyPair().publicKey)
+      await sql`UPDATE powersync.devices SET public_key = ${replacementEcdh}, mlkem_public_key = ${replacementMlkem}, name = 'Owned substitution fixture' WHERE id = ${deviceId} AND user_id = ${userId}`
+      await expect(page.getByText('Owned substitution fixture', { exact: true })).toBeVisible({ timeout: 30_000 })
+      const releases: string[] = []
+      page.on('request', (request) => {
+        if (request.method() === 'POST' && request.url().endsWith(`/devices/${deviceId}/envelope`)) {
+          releases.push(request.url())
+        }
+      })
+      await approvePendingDevice(page, device.page)
+      const confirmation = page.getByRole('alertdialog')
+      await expect(confirmation.getByRole('alert')).toBeVisible()
+      const snapshot = await getEncryptionServerSnapshot(userId)
+      expect(snapshot.envelopes[deviceId]).toBeUndefined()
+      expect(releases).toEqual([])
+      await waitForDeviceState(
+        userId,
+        deviceId,
+        (state) => state.approvalPending && !state.trusted && !state.hasEnvelope,
+      )
+
+      await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await sql`UPDATE powersync.devices SET public_key = ${original.ecdh}, mlkem_public_key = ${original.mlkem}, name = 'Restored owned device' WHERE id = ${deviceId} AND user_id = ${userId}`
+      await expect(page.getByText('Restored owned device', { exact: true })).toBeVisible()
+      await approvePendingDevice(page, device.page)
+      await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
+      await finishAdditionalDeviceSetup(device.page)
+      expect(releases).toHaveLength(1)
     } finally {
       await device.context.close()
     }

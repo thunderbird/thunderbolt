@@ -5,7 +5,7 @@
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
 import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
-import { and, count, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, count, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
 
 export { cliDeviceIdPrefix, isCliDeviceId }
@@ -44,6 +44,7 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
       trusted: devicesTable.trusted,
       approvalPending: devicesTable.approvalPending,
       publicKey: devicesTable.publicKey,
+      mlkemPublicKey: devicesTable.mlkemPublicKey,
       revokedAt: devicesTable.revokedAt,
       deviceType: devicesTable.deviceType,
     })
@@ -52,34 +53,38 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
     .limit(1)
     .then((rows) => rows[0] ?? null)
 
-/** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * Devices are never inserted trusted — trust is granted only by `markDeviceTrusted` once an
- * envelope exists for them.
- * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
- * which client version each device is running. */
-export const upsertDevice = async (
+/**
+ * How stale `lastSeen` may get before a sync token request rewrites it. Every write to a device row
+ * adds a version to PowerSync's parameter history (the row feeds `active_device_account`), which
+ * PowerSync's Postgres storage never compacts, so a write per token refresh slows every checkpoint.
+ */
+export const deviceLastSeenRefreshMs = 60 * 60 * 1000
+
+/**
+ * Records a sync token request on the device's own row: sets `lastSeen`, `name` and, when given,
+ * `appVersion`, but only when `name` or `appVersion` changed or `lastSeen` is older than
+ * {@link deviceLastSeenRefreshMs}. Returns the updated rows, empty when nothing needed writing.
+ */
+export const touchDevice = (
   database: QueryableDatabase,
-  device: {
-    id: string
-    userId: string
-    name: string
-    lastSeen: Date
-    createdAt: Date
-    appVersion?: string
-  },
+  device: { id: string; userId: string; name: string; appVersion?: string },
+  now = new Date(),
 ) =>
   database
-    .insert(devicesTable)
-    .values({ ...device, trusted: false })
-    .onConflictDoUpdate({
-      target: devicesTable.id,
-      set: {
-        lastSeen: device.lastSeen,
-        name: device.name,
-        ...(device.appVersion ? { appVersion: device.appVersion } : {}),
-      },
-      setWhere: eq(devicesTable.userId, device.userId),
-    })
+    .update(devicesTable)
+    .set({ lastSeen: now, name: device.name, ...(device.appVersion ? { appVersion: device.appVersion } : {}) })
+    .where(
+      and(
+        eq(devicesTable.id, device.id),
+        eq(devicesTable.userId, device.userId),
+        or(
+          isNull(devicesTable.lastSeen),
+          lt(devicesTable.lastSeen, new Date(now.getTime() - deviceLastSeenRefreshMs)),
+          sql`${devicesTable.name} IS DISTINCT FROM ${device.name}`,
+          ...(device.appVersion ? [sql`${devicesTable.appVersion} IS DISTINCT FROM ${device.appVersion}`] : []),
+        ),
+      ),
+    )
     .returning()
 
 /** Create or touch a server-owned CLI device without converting collisions or reviving tombstones. */
@@ -137,6 +142,35 @@ export const revokeDevice = async (database: QueryableDatabase, deviceId: string
     .set({ revokedAt: new Date(), trusted: false, approvalPending: false, nodeId: null, nodeIdAttestedAt: null })
     .where(and(eq(devicesTable.id, deviceId), eq(devicesTable.userId, userId), isNull(devicesTable.revokedAt)))
     .returning()
+
+/** Must run inside the caller's migration transaction so envelope removal and sibling demotion roll back together. */
+export const requireMigrationSiblingApproval = async (
+  database: QueryableDatabase,
+  userId: string,
+  callerDeviceId: string,
+): Promise<void> => {
+  const regularSiblings = and(
+    eq(devicesTable.userId, userId),
+    ne(devicesTable.id, callerDeviceId),
+    eq(devicesTable.deviceType, 'normal'),
+    isNull(devicesTable.revokedAt),
+  )
+  await database
+    .delete(envelopesTable)
+    .where(
+      and(
+        eq(envelopesTable.userId, userId),
+        inArray(
+          envelopesTable.deviceId,
+          database.select({ id: devicesTable.id }).from(devicesTable).where(regularSiblings),
+        ),
+      ),
+    )
+  await database
+    .update(devicesTable)
+    .set({ trusted: false, approvalPending: true, nodeId: null, nodeIdAttestedAt: null })
+    .where(and(regularSiblings, eq(devicesTable.trusted, true)))
+}
 
 /** Mark a device as trusted and clear pending state. Called when an envelope is stored for the device.
  * Excludes revoked devices to prevent zombie state from a concurrent revoke transaction.
@@ -245,16 +279,16 @@ export const getTrustedNodeIds = async (database: typeof DbType, userId: string)
     )
 
 /**
- * List the ids of every device that can actually HOLD an AK envelope: trusted,
- * non-revoked, and holding both hybrid public keys. Used by AK rotation /
- * upgrade coverage validation — the caller must supply a new-AK envelope for
+ * List envelope-capable recipients for AK rotation: trusted,
+ * non-revoked, and holding both hybrid public keys. Rotation coverage validation
+ * requires the caller to supply a new-AK envelope for
  * exactly this set (a missing one locks a device out; an extra one hands the new
  * AK to a revoked/pending device).
  *
  * The public-key predicate is load-bearing, not a nicety. An envelope is
  * `wrapAK(ak, ecdhPublicKey, mlkemPublicKey)` — with either key null the client
  * CANNOT construct one, so demanding coverage for such a device is a requirement
- * that can never be satisfied and every rotation/upgrade fails with a 400.
+ * that can never be satisfied and every rotation fails with a 400.
  * Bridges are exactly that case: `registerBridge` inserts them trusted and
  * non-revoked with no public keys at all. A not-yet-migrated v1 device that has
  * never published v2 keys is the other.
@@ -271,9 +305,9 @@ export const listEnvelopeCapableDevices = async (database: QueryableDatabase, us
       mlkemPublicKey: devicesTable.mlkemPublicKey,
       // LEFT join: the attestation travels with the keys so a rotating device can
       // verify the recipient before wrapping. Null for a device whose envelope
-      // predates the column, which fails closed on the client rather than here —
-      // the server cannot verify a signature over a canary it does not hold, so
-      // it has no opinion to offer and must not pretend otherwise.
+      // predates the column, which fails closed on the rotating client. Its
+      // locally derived verification key is independent of server metadata;
+      // the backend's approval-time signature check only protects honest-server races.
       attestation: envelopesTable.attestation,
     })
     .from(devicesTable)

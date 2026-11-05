@@ -226,15 +226,11 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     catalog.invalidateCatalog()
     form.setValue('provider', nextProvider, { shouldValidate: false, shouldDirty: true })
     dispatch({ type: 'MODEL_SELECTED', modelId: '' })
-    for (const field of ['name', 'model', 'customModel', 'apiKey'] as const) {
+    // The URL starts blank so the catalog auto-fetch never calls an endpoint the user did not enter.
+    for (const field of ['name', 'model', 'customModel', 'apiKey', 'url'] as const) {
       form.setValue(field, '', { shouldValidate: false, shouldDirty: false })
     }
     form.setValue('supportsTools', true, { shouldDirty: false })
-    // Ollama's default local endpoint — the most common custom provider.
-    form.setValue('url', nextProvider === 'custom' ? 'http://localhost:11434/v1' : '', {
-      shouldValidate: false,
-      shouldDirty: false,
-    })
     void revalidateSilently()
   }
 

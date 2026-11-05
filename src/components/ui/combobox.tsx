@@ -134,6 +134,7 @@ export const Combobox = ({
           )}
         >
           <Command
+            label={searchPlaceholder}
             shouldFilter={!isAsync}
             className="overflow-visible rounded-none bg-transparent [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border"
           >

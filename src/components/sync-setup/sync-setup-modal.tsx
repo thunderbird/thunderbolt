@@ -155,6 +155,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
     onApproved: () => showSuccess(),
     onRevoked: handleRevoked,
     onDenied: handleDenied,
+    onVerificationFailed: setup.approvalVerificationFailed,
   })
 
   const handleRecoveryKeySubmit = async () => {
@@ -227,6 +228,7 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
 
         {setup.step === 'approval-waiting' && (
           <ApprovalWaitingStep
+            fingerprint={setup.approvalFingerprint}
             error={setup.approvalError}
             onContinue={handleApprovalContinue}
             onUseRecoveryKey={setup.goToRecoveryKeyEntry}

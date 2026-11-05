@@ -7,6 +7,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium, webkit } from 'playwright'
+import { getChromeLaunchOptions } from './chrome'
 
 /** Rows in the workspace file standing in for a large attachment: 1.2 MB, like a 10,000-row export. */
 const bigTsvRows = 600_000
@@ -48,6 +49,7 @@ try {
       // WebKit's ephemeral contexts reject OPFS; each case needs its own persistent profile.
       const browser = await engine.launchPersistentContext(
         join(temporaryDist, `${engineName}-${removeIteratorHelpers}`),
+        engineName === 'chromium' ? getChromeLaunchOptions() : {},
       )
       const timeout = setTimeout(() => {
         void browser.close()

@@ -4,12 +4,7 @@
 
 import { getAppName } from '@/lib/branding-selectors'
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
-import type {
-  OAuthClientInformation,
-  OAuthClientInformationFull,
-  OAuthClientMetadata,
-  OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js'
+import type { OAuthClientInformation, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { getMcpServerCredentials, setMcpServerCredentials } from '@/dal/mcp-secrets'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { computeEffectiveProxyEnabled } from '@/lib/proxy-fetch'
@@ -88,7 +83,6 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   private readonly origin: string
   private readonly redirectUri: string | undefined
   private readonly isBackendConnected: () => boolean
-  private clientInfo: OAuthClientInformationFull | undefined
 
   constructor(
     args: Required<Pick<CreateProviderArgs, 'serverId' | 'db'>> & {
@@ -138,30 +132,11 @@ class McpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformation | undefined> {
-    if (this.clientInfo) {
-      return this.clientInfo
-    }
     const cred = await getMcpServerCredentials(this.db, this.serverId)
     if (cred?.type !== 'oauth' || !cred.clientId) {
       return undefined
     }
     return { client_id: cred.clientId }
-  }
-
-  /**
-   * Persists the DCR-issued client_id into the oauth blob (per-AS binding via
-   * `issuer`). Keeps any existing tokens intact; before authorization completes
-   * there are usually none, so a placeholder access_token is written and later
-   * overwritten by `saveTokens`.
-   */
-  async saveClientInformation(clientInformation: OAuthClientInformationFull): Promise<void> {
-    this.clientInfo = clientInformation
-    const existing = await getMcpServerCredentials(this.db, this.serverId)
-    const base = existing?.type === 'oauth' ? existing : { type: 'oauth' as const, access_token: '' }
-    await setMcpServerCredentials(this.db, this.serverId, {
-      ...base,
-      clientId: clientInformation.client_id,
-    })
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -203,14 +178,13 @@ class McpOAuthClientProvider implements OAuthClientProvider {
    * Best-effort AS-binding fields from the in-flight MCP handshake, fail-soft:
    * any missing or unparseable field comes back undefined (same as before).
    */
-  private bindingFromHandshake(): { issuer?: string; tokenEndpoint?: string; clientId?: string } {
+  private bindingFromHandshake() {
     const handshake = getMcpOAuthState()
     const metadata = parseJson<{ token_endpoint?: string }>(handshake.metadata)
-    const handshakeClientId = parseJson<{ client_id?: string }>(handshake.clientInfo)?.client_id
     return {
       issuer: handshake.issuer ?? undefined,
       tokenEndpoint: metadata?.token_endpoint,
-      clientId: this.clientInfo?.client_id ?? handshakeClientId,
+      clientId: parseJson<{ client_id?: string }>(handshake.clientInfo)?.client_id,
     }
   }
 

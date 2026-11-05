@@ -26,13 +26,19 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
   const current = choices.findIndex((choice) => choice.value === value)
   const effortName = choices[current]?.name ?? t`Choose effort`
   const effortDescription = t`Reasoning effort: ${effortName}`
+  const modelName = selectedModel.name
+  const accessibleDescription = modelPicker
+    ? choices.length
+      ? t`Model: ${modelName}. Reasoning effort: ${effortName}`
+      : t`Model: ${modelName}`
+    : effortDescription
   const trigger = (
     <button
       type="button"
       aria-haspopup="dialog"
       aria-label={modelPicker ? t`Model and reasoning effort` : t`Reasoning effort`}
       title={choices.length ? effortDescription : selectedModel.name}
-      aria-description={choices.length ? effortDescription : undefined}
+      aria-description={accessibleDescription}
       className="flex shrink-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
     >
       {modelPicker &&

@@ -685,36 +685,6 @@ describe('createHarnessAgent (ACP server)', () => {
 })
 
 describe('ACP effort options', () => {
-  test.each([
-    ['high', 'high'],
-    ['off', 'none'],
-    ['unsupported-legacy-level', 'medium'],
-  ])('restores persisted %s as %s without losing it to initialization', async (saved, expected) => {
-    const store = fakeStore()
-    const sessionId = crypto.randomUUID()
-    const session = await store.openSession(sessionId, config.cwd)
-    await session.appendThinkingLevelChange('low')
-    await session.appendThinkingLevelChange(saved)
-    const build: BuildServeHarness = async (_config, _binding, activeSession) => {
-      let effort: ReasoningEffort = 'medium'
-      // Pi initialization can write its launch level before the agent restores the branch's choice.
-      await activeSession.appendThinkingLevelChange('medium')
-      return fakeHarness({
-        reasoning: {
-          capabilities: () => ({ efforts: ['none', 'low', 'medium', 'high'] }),
-          current: () => effort,
-          set: async (value) => {
-            effort = value
-          },
-        },
-      })
-    }
-    const pair = connectPair(build, store)
-    await pair.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
-    const resumed = await pair.client.resumeSession({ sessionId, cwd: '.', mcpServers: [] })
-    expect(resumed.configOptions?.[0].currentValue).toBe(expected)
-  })
-
   test('advertises native choices, validates opaque IDs, reports updates and isolates sessions', async () => {
     const build: BuildServeHarness = async () => {
       const state: { effort: ReasoningEffort } = {

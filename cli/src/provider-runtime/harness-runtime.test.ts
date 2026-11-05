@@ -56,7 +56,11 @@ const createTestBinding = (
     readonly installFailure?: Error
   } = {},
 ): TestBinding => {
-  const faux = fauxProvider({ provider: providerId, models: [{ id: modelId, reasoning: options.reasoning }] })
+  const faux = fauxProvider({
+    api: `${providerId}-faux`,
+    provider: providerId,
+    models: [{ id: modelId, reasoning: options.reasoning }],
+  })
   if (options.responses) faux.setResponses(options.responses)
 
   const installedModels: MutableModels[] = []
@@ -186,6 +190,17 @@ describe('HarnessRuntime', () => {
     const second = createTestBinding('thinking-b', 'thinking-b', { reasoning: true })
     await runtime.switchBinding(second.binding, persistenceTransaction([]), { forceReplace: false })
     expect(runtime.reasoning?.current()).toBe('low')
+  })
+
+  test('refreshes effort capabilities when force-replacing the same model identifier', async () => {
+    const initial = createTestBinding('profile', 'model')
+    const runtime = await createRuntime(initial.binding)
+    expect(runtime.reasoning?.capabilities().efforts).toEqual([])
+    const replacement = createTestBinding('profile', 'model', { reasoning: true })
+    await runtime.switchBinding(replacement.binding, persistenceTransaction([]), { forceReplace: true })
+    expect(runtime.reasoning?.capabilities().efforts).toContain('medium')
+    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(initial.attachedHarnesses[0]?.getModel()).toBe(replacement.binding.piModel)
   })
 
   test('preserves an explicit supported invocation level', async () => {

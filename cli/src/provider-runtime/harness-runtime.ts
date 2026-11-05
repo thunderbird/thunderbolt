@@ -6,7 +6,8 @@ import { piReasoningCapabilities } from '../../../shared/agent-core/reasoning-ca
 import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
-import { clampThinkingLevel, modelsAreEqual } from '@earendil-works/pi-ai'
+import { isDeepStrictEqual } from 'node:util'
+import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { cleanupFailure, collect, withCleanupErrors } from '../agent/cleanup-errors.ts'
 import type { HarnessRuntime, PreparedPiBinding } from './types.ts'
@@ -282,7 +283,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
       await harness.waitForIdle()
       if (disposed) return rejectOwnedBinding(binding, new Error('Harness runtime is disposed.'))
 
-      const modelChanged = !modelsAreEqual(previous.binding.piModel, binding.piModel)
+      const modelChanged = !isDeepStrictEqual(previous.binding.piModel, binding.piModel)
       const shouldActivate =
         switchOptions.forceReplace || modelChanged || previous.binding.providerId !== binding.providerId
 

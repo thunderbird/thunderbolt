@@ -17,6 +17,15 @@ const props = { choices, value: 'low', busy: false, error: null }
 afterEach(cleanup)
 
 describe('effort controls', () => {
+  it('does not choose an unset effort on secondary-button release', () => {
+    const choose = mock()
+    render(<EffortControls {...props} value={undefined} choose={choose} />)
+    const slider = screen.getByRole('slider')
+    fireEvent.pointerUp(slider, { button: 2 })
+    expect(choose).not.toHaveBeenCalled()
+    expect(slider.getAttribute('data-selected')).toBe('false')
+  })
+
   it('commits the previewed value even if an agent reorders its options during the gesture', () => {
     const choose = mock()
     const view = render(<EffortControls {...props} choose={choose} />)

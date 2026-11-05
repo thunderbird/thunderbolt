@@ -38,5 +38,11 @@ export const reasoningProviderOptions = (
   if (budgetThinking) {
     return { ...options, thinking: { type: 'enabled', budgetTokens: 4096 } }
   }
-  return { ...options, thinking: { type: 'adaptive' }, effort }
+  const thinking = profile.thinking
+  const display = thinking && typeof thinking === 'object' && !Array.isArray(thinking) ? thinking.display : undefined
+  return {
+    ...options,
+    thinking: { type: 'adaptive', ...(display === undefined ? {} : { display }) },
+    effort,
+  }
 }

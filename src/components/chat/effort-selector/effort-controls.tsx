@@ -52,14 +52,18 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
           disabled={busy || (choices.length < 2 && index >= 0)}
           aria-disabled={busy}
           aria-label={t`Reasoning effort`}
-          aria-valuetext={selected?.name ?? t`Reasoning effort`}
+          aria-valuetext={selected?.name ?? t`Choose effort`}
           onChange={(event) => {
             if (!busy) {
               setPreview(choices[Number(event.target.value)].value)
             }
           }}
           onPointerCancel={() => setPreview(null)}
-          onPointerUp={(event) => commit(Number(event.currentTarget.value))}
+          onPointerUp={(event) => {
+            if (event.button === 0) {
+              commit(Number(event.currentTarget.value))
+            }
+          }}
           onKeyUp={(event) => {
             if (
               ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(

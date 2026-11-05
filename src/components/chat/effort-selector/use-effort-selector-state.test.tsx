@@ -131,6 +131,7 @@ describe('effort selector state', () => {
     })
     const trigger = screen.getByRole('button', { name: 'Model and reasoning effort' })
     expect(trigger.textContent).toContain('Private model')
+    expect(trigger.getAttribute('aria-description')).toContain('Model: Private model')
     expect(screen.queryByLabelText('API key not configured')).toBeNull()
     await act(async () => {
       fireEvent.click(trigger)
@@ -250,6 +251,10 @@ describe('effort selector state', () => {
     })
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
     expect(screen.queryByRole('slider')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Model and reasoning effort' })).toHaveAttribute(
+      'aria-description',
+      `Model: ${model.name}`,
+    )
   })
 
   it('requires an explicit first choice, then previews and commits real effort levels', async () => {
@@ -261,6 +266,7 @@ describe('effort selector state', () => {
     })
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
     expect(slider.getAttribute('data-selected')).toBe('false')
+    expect(slider.getAttribute('aria-valuetext')).toBe('Choose effort')
     expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
     await act(async () => {
       fireEvent.blur(slider)

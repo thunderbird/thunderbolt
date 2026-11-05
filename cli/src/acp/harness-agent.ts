@@ -269,20 +269,8 @@ export const createHarnessAgent = (
     skills: readonly SkillDefinition[],
     phase: string,
   ): Promise<void> => {
-    const branch = await session.getBranch()
-    const savedThinking = branch.findLast((entry) => entry.type === 'thinking_level_change')
     const binding = await prepareProviderBinding(runtime, config.selection, { signal: conn.signal })
     const harness = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), binding, session)
-    try {
-      if (savedThinking?.type === 'thinking_level_change' && harness.reasoning) {
-        const savedEffort = savedThinking.thinkingLevel === 'off' ? 'none' : savedThinking.thinkingLevel
-        if (isReasoningEffort(savedEffort) && harness.reasoning.capabilities().efforts.includes(savedEffort)) {
-          await harness.reasoning.set(savedEffort)
-        }
-      }
-    } catch (error) {
-      return rejectWiring({ harness, unsubscribe: () => {} }, toError(error))
-    }
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so

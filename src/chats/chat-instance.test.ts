@@ -1710,11 +1710,13 @@ describe('createChatInstance — retry policy', () => {
 /** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
 const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
   const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
+  const modelIds: string[] = []
   const adapter: AgentAdapter = {
     ...makeAdapter(builtInAgent),
     fetch: async (_init, context) => {
       const budget = context.webToolBudget!
       attempts.push(budget)
+      modelIds.push(context.selectedModel.id)
       if (attempts.length === 1) {
         if (promote) {
           budget.promote('research')
@@ -1749,7 +1751,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     selectedModel: testModels[0],
     triggerData: null,
   })
-  return { instance, attempts }
+  return { instance, attempts, modelIds }
 }
 
 describe('logical-turn web retry state through the SDK', () => {
@@ -1776,6 +1778,118 @@ describe('logical-turn web retry state through the SDK', () => {
       }
       expect(attempts).toHaveLength(1)
       expect(instance.error?.message).toContain('Configure and select an available model')
+    } finally {
+      await instance.stop()
+      consoleError.mockRestore()
+    }
+  })
+
+  it.each([false, true])(
+    'does not schedule retries when access disappears during the first attempt (alternative: %s)',
+    async (hasAlternative) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const readingModels = Promise.withResolvers<void>()
+      const availableModels = Promise.withResolvers<typeof testModels>()
+      const fetch = mock(async () => new Response('must not be used'))
+      const getAvailableModels = mock(async () => {
+        readingModels.resolve()
+        return availableModels.promise
+      })
+      const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+        getAvailableModels,
+        getOrConnectAdapter: async () => ({ ...makeAdapter(builtInAgent), fetch }),
+        trackEvent: () => {},
+      })
+      hydrateStore({
+        chatInstance: instance,
+        chatThread: null,
+        id: sessionId,
+        models: testModels,
+        selectedModel: testModels[0],
+        triggerData: null,
+      })
+      try {
+        const sending = instance.sendMessage({ text: 'Research a topic' })
+        await readingModels.promise
+        const changedModels = [
+          { ...testModels[0], enabled: 0 },
+          ...(hasAlternative ? [{ ...testModels[1], apiKey: 'other-key' }] : []),
+        ]
+        useChatStore.getState().setModels(changedModels)
+        availableModels.resolve(changedModels)
+        await sending
+        expect(instance.error?.message).toContain('Configure and select an available model')
+        await getClock().tickAsync(60_000)
+        expect(fetch).not.toHaveBeenCalled()
+        expect(getAvailableModels).toHaveBeenCalledTimes(1)
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 0, retriesExhausted: true })
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
+
+  it.each([false, true])(
+    'does not retry or switch providers after model disable (alternative: %s)',
+    async (hasAlternative) => {
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      const { instance, attempts, modelIds } = createWebRetryChat(1)
+      try {
+        await instance.sendMessage({ text: 'Research a topic' })
+        const alternative = { ...testModels[1], apiKey: 'other-key' }
+        useChatStore.getState().setModels([{ ...testModels[0], enabled: 0 }, ...(hasAlternative ? [alternative] : [])])
+        if (hasAlternative) {
+          expect(useChatStore.getState().sessions.get(sessionId)?.selectedModel.id).toBe('m2')
+        }
+        await getClock().tickAsync(60_000)
+        expect(attempts).toHaveLength(1)
+        expect(modelIds).toEqual(['m1'])
+        expect(instance.messages.findLast((message) => message.role === 'user')?.metadata?.modelId).toBe('m1')
+        expect(instance.error?.message).toContain('Configure and select an available model')
+        expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 1, retriesExhausted: true })
+
+        // A new user action is allowed to select and send through another model.
+        useChatStore.getState().setModels([alternative])
+        await instance.sendMessage({ text: 'Try a new question with the available model' })
+        expect(modelIds).toEqual(['m1', 'm2'])
+      } finally {
+        await instance.stop()
+        consoleError.mockRestore()
+      }
+    },
+  )
+
+  it('stops automatic retries when the model no longer matches the conversation privacy', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const { instance, modelIds } = createWebRetryChat(1)
+    try {
+      useChatStore
+        .getState()
+        .updateSession(sessionId, { chatThread: createMockChatThread({ id: sessionId, isEncrypted: 0 }) })
+      await instance.sendMessage({ text: 'Research a topic' })
+      useChatStore.getState().setModels([{ ...testModels[0], isConfidential: 1 }])
+      await getClock().tickAsync(60_000)
+      expect(modelIds).toEqual(['m1'])
+      expect(instance.error?.message).toContain('no longer matches')
+      expect(useChatStore.getState().sessions.get(sessionId)).toMatchObject({ retryCount: 1, retriesExhausted: true })
+    } finally {
+      await instance.stop()
+      consoleError.mockRestore()
+    }
+  })
+
+  it('uses a newly selected model on an explicit manual retry', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const { instance, modelIds } = createWebRetryChat(1)
+    try {
+      await instance.sendMessage({ text: 'Research a topic' })
+      useChatStore.getState().setModels([{ ...testModels[1], apiKey: 'other-key' }])
+      await instance.regenerate()
+      expect(modelIds).toEqual(['m1', 'm2'])
+      expect(instance.messages.findLast((message) => message.role === 'user')?.metadata?.modelId).toBe('m2')
+      await getClock().tickAsync(60_000)
+      expect(modelIds).toEqual(['m1', 'm2'])
     } finally {
       await instance.stop()
       consoleError.mockRestore()

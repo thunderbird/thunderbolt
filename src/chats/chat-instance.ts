@@ -67,6 +67,12 @@ export const maxRetries = 3
 const baseRetryDelayMs = 2000
 const emptyTurnRetryDelayMs = 250
 
+/** Access changes require an explicit user choice, never automatic retries or provider fallback. */
+class ModelAccessError extends Error {
+  readonly isRetryable = false
+  override name = 'ModelAccessError'
+}
+
 /** Resolve current model access for every inference attempt, including regeneration and retries. */
 const requireRunnableModel = (agent: Agent, selectedModel: Model): Model => {
   if (!isBuiltInAgent(agent)) {
@@ -74,7 +80,7 @@ const requireRunnableModel = (agent: Agent, selectedModel: Model): Model => {
   }
   const current = useChatStore.getState().models.find((model) => model.id === selectedModel.id && isModelReady(model))
   if (!current) {
-    throw new Error(t`Configure and select an available model before sending a message.`)
+    throw new ModelAccessError(t`Configure and select an available model before sending a message.`)
   }
   return current
 }
@@ -253,6 +259,7 @@ export type AgentRoutingState = {
   getTurnTelemetry?: () => TurnTelemetry | undefined
   getDebugTranscriptTraceId?: () => string | undefined
   getAttempt?: () => number
+  getTurnModel?: () => Model | undefined
 }
 
 /**
@@ -370,7 +377,10 @@ export const createAgentRoutingFetch = (
         throw new Error('No session found')
       }
 
-      const { chatThread, selectedAgent, selectedModel } = session
+      const { chatThread, selectedAgent } = session
+      const selectedModel = isBuiltInAgent(selectedAgent)
+        ? (routingState.getTurnModel?.() ?? session.selectedModel)
+        : session.selectedModel
       requireRunnableModel(selectedAgent, selectedModel)
       const telemetry = isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
       telemetry?.setDimensions({
@@ -490,7 +500,7 @@ export const createAgentRoutingFetch = (
       const runnableModel = requireRunnableModel(selectedAgent, selectedModel)
       const currentThread = useChatStore.getState().sessions.get(id)?.chatThread ?? chatThread
       if (isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(runnableModel, currentThread)) {
-        throw new Error(t`This model no longer matches the conversation’s privacy setting.`)
+        throw new ModelAccessError(t`This model no longer matches the conversation’s privacy setting.`)
       }
       const response = await adapter.fetch(modelInit, {
         threadId: id,
@@ -658,6 +668,7 @@ const createInFlightTurnStorage = (chatId: string): InFlightTurnStorage => {
 type TurnModelProperties = { model_id: string; model_name: string; provider: string }
 
 type TurnState = {
+  model: Model | undefined
   telemetry: TurnTelemetry | undefined
   modelProperties: TurnModelProperties | undefined
   traceId: string | undefined
@@ -668,6 +679,7 @@ type TurnState = {
 
 /** Create isolated telemetry state for one chat turn. */
 const createTurnState = (): TurnState => ({
+  model: undefined,
   telemetry: undefined,
   modelProperties: undefined,
   traceId: undefined,
@@ -715,6 +727,7 @@ export const createChatInstance = (
     if (!session?.selectedModel) {
       return
     }
+    turn.model = session.selectedModel
     turn.modelProperties = {
       model_id: session.selectedModel.id,
       model_name: session.selectedModel.model,
@@ -764,6 +777,12 @@ export const createChatInstance = (
     getTurnTelemetry: getOrCreateTurnTelemetry,
     getDebugTranscriptTraceId: getOrCreateDebugTranscriptTraceId,
     getAttempt: getAttemptsMade,
+    getTurnModel: () => {
+      if (!currentTurn.model) {
+        initializeTurnForCurrentSession(currentTurn)
+      }
+      return currentTurn.model
+    },
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
   const createChat = deps.createChat ?? ((init: ChatInit<ThunderboltUIMessage>) => new Chat(init))
@@ -1120,11 +1139,10 @@ export const createChatInstance = (
 
   const originalRegenerate = instance.regenerate.bind(instance)
 
-  /** A retry can run on a different model than the original send; record the one it
-   *  uses on the prompt, so the turn (and its saved row) names the model that answered. */
+  /** Manual retries can choose a new model; automatic retries retain this logical turn's model. */
   const stampRetryModel = () => {
     // `selectedModel` can be missing at runtime; the send path guards it the same way.
-    const modelId = useChatStore.getState().sessions.get(id)?.selectedModel?.id
+    const modelId = routingState.getTurnModel?.()?.id
     const index = instance.messages.findLastIndex((message) => message.role === 'user')
     const prompt = instance.messages[index]
     if (!modelId || !prompt || prompt.metadata?.modelId === modelId) {

@@ -3,6 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import '../styles/marketing.css';
+import ThemeProvider from '../components/site-theme/ThemeProvider.astro';
 
 type Props = {
 	title?: string;
@@ -26,6 +27,7 @@ const {
 		<link rel="icon" type="image/png" href="/favicon.png" />
 		<link rel="apple-touch-icon" href="/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<ThemeProvider />
 		<title>{title}</title>
 		<meta name="description" content={description} />
 		{canonical && <link rel="canonical" href={canonical} />}
@@ -55,7 +57,7 @@ const {
 			})();
 		</script>
 	</head>
-	<body style="background: #f9fafb">
+	<body>
 		<slot />
 	</body>
 </html>

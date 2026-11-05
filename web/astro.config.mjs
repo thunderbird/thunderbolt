@@ -15,6 +15,7 @@ const repoTreeUrl = 'https://github.com/thunderbird/thunderbolt/tree/main';
 export default defineConfig({
 	site: 'https://thunderbolt.io',
 	redirects: {
+		'/designs/spark': '/',
 		'/announcing-thunderbolt': '/blog/mozilla-introduces-thunderbolt',
 		// Old root-level self-hosting docs were duplicates of /docs/self-hosting/*.
 		// Removed to eliminate drift; redirect old URLs to the canonical ones.
@@ -66,8 +67,8 @@ export default defineConfig({
 				themes: ['night-owl'],
 				useStarlightUiThemeColors: false,
 				styleOverrides: {
-					borderRadius: '0',
-					codeBackground: '#0f172a',
+					borderRadius: '0.625rem',
+					codeBackground: '#1b1e1f',
 					codeFontFamily: 'var(--tb-font-mono)',
 					frames: {
 						frameBoxShadowCssValue: 'none',
@@ -82,7 +83,9 @@ export default defineConfig({
 			components: {
 				Head: './src/components/starlight/Head.astro',
 				Header: './src/components/starlight/Header.astro',
+				PageTitle: './src/components/starlight/PageTitle.astro',
 				ThemeSelect: './src/components/starlight/ThemeSelect.astro',
+				ThemeProvider: './src/components/site-theme/ThemeProvider.astro',
 			},
 			sidebar: [
 				{

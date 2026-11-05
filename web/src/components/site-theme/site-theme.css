@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.site-theme-toggle {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--spark-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--spark-ink);
+  cursor: pointer;
+}
+.site-theme-toggle:hover {
+  background: var(--spark-hover);
+}
+.site-theme-toggle span {
+  display: flex;
+}
+:root[data-theme='light'] .site-theme-light-icon,
+:root:not([data-theme]) .site-theme-light-icon,
+:root[data-theme='dark'] .site-theme-dark-icon {
+  display: none;
+}

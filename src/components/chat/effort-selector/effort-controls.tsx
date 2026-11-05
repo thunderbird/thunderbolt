@@ -68,7 +68,7 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
           onBlur={() => commit()}
           className="effort-slider relative w-full cursor-pointer disabled:cursor-default"
         />
-      </div>{' '}
+      </div>
       {error && (
         <p role="alert" className="mt-2 text-destructive text-[length:var(--font-size-xs)]">
           {error}

@@ -30,7 +30,8 @@ export const useEffortSelectorState = () => {
   const option = remote?.options.find((item) => item.category === 'thought_level' && item.type === 'select')
   const capabilities = catalog.data ?? noReasoningEffort
   const effort = resolveReasoningEffort(setting.value, capabilities)
-  const [error, setError] = useState<string | null>(null)
+  const scope = `${selectedAgent.id}:${key}`
+  const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null)
   const [pending, startTransition] = useTransition()
   const busy =
     pending ||
@@ -56,14 +57,16 @@ export const useEffortSelectorState = () => {
       ? configSelectOptions(option).filter((choice) => choice.value !== 'default')
       : []
   const value = builtIn ? effort : option?.currentValue === 'default' ? undefined : option?.currentValue
-  const [displayValue, setOptimisticValue] = useOptimistic(typeof value === 'string' ? value : undefined)
+  const resolvedValue = typeof value === 'string' ? value : undefined
+  const [optimistic, setOptimisticValue] = useOptimistic({ scope, value: resolvedValue })
+  const displayValue = optimistic.scope === scope ? optimistic.value : resolvedValue
   const choose = (next: string) => {
     if (busy || !choices.some((choice) => choice.value === next)) {
       return
     }
-    setError(null)
+    setFailure(null)
     startTransition(async () => {
-      setOptimisticValue(next)
+      setOptimisticValue({ scope, value: next })
       try {
         if (builtIn) {
           const write = setting.setValue(next)
@@ -80,9 +83,9 @@ export const useEffortSelectorState = () => {
         }
       } catch (error) {
         console.error('Could not change reasoning effort', error)
-        setError(t`Could not change reasoning effort`)
+        setFailure({ scope, message: t`Could not change reasoning effort` })
       }
     })
   }
-  return { error, choices, value: displayValue, busy, choose }
+  return { error: failure?.scope === scope ? failure.message : null, choices, value: displayValue, busy, choose }
 }

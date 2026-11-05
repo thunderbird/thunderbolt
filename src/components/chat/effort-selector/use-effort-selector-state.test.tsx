@@ -88,13 +88,19 @@ describe('effort selector state', () => {
     expect(trigger.getAttribute('title')).toBe('Reasoning effort: High')
     expect((trigger as HTMLButtonElement).disabled).toBe(false)
     await act(async () => {
+      useChatStore.getState().updateSession(session.id, { selectedModel: { ...model, id: 'other-effort-model' } })
+    })
+    // Switching models keeps the surface open but must not inherit an in-flight optimistic selection.
+    const nextSlider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    expect(nextSlider.getAttribute('aria-valuetext')).toBe('Low')
+    await act(async () => {
       useSessionConfigStore.getState().set(key, {
         options: options.map((option) => (option.type === 'select' ? { ...option, currentValue: 'high' } : option)),
         setOption,
       })
       saved.resolve()
     })
-    expect(slider.getAttribute('aria-valuetext')).toBe('High')
+    expect(nextSlider.getAttribute('aria-valuetext')).toBe('High')
     useSessionConfigStore.getState().remove(key, setOption)
   })
 

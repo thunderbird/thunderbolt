@@ -215,7 +215,7 @@ keycloak:
   enabled: true
   image:
     repository: quay.io/keycloak/keycloak
-    tag: "26.0"
+    tag: "26.8"
   replicas: 1
   service:
     port: 8080

@@ -368,6 +368,13 @@ const thinkingLabel = {
   max: 'max',
 } as const satisfies Readonly<Record<ThinkingLevel, string>>
 
+/** Read the effective runtime level after initialization or a model transition. */
+const runtimeThinking = (harness: HarnessRuntime, fallback: ThinkingLevel): ThinkingLevel => {
+  if (!harness.reasoning) return fallback
+  const effort = harness.reasoning.current()
+  return effort === undefined || effort === 'none' ? 'off' : effort
+}
+
 /** Styles one footer key and its subdued action label. */
 const keyHint = (key: string, label: string): string => `${amber(key)}${dim(` ${label}`)}`
 
@@ -704,7 +711,7 @@ export const runTuiRepl = async (
     footer.setIdentity({
       model: selectedModel.label,
       confidential: selectedModel.confidential,
-      thinking: options.thinking,
+      thinking: runtimeThinking(harness, options.thinking),
       permissionMode,
     })
     activeController = undefined
@@ -734,7 +741,7 @@ export const runTuiRepl = async (
           footer.setIdentity({
             model: model.label,
             confidential: model.confidential,
-            thinking: options.thinking,
+            thinking: runtimeThinking(connected.harness, options.thinking),
             permissionMode,
           })
         }

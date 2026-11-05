@@ -42,7 +42,9 @@ const loadRouterCatalog = (): Promise<RouterCatalog> => {
   }
   const value = (async () => {
     try {
-      return routerCatalogSchema.parse(await http.get('https://openrouter.ai/api/v1/models').json())
+      return routerCatalogSchema.parse(
+        await http.get('https://openrouter.ai/api/v1/models', { timeout: 10_000 }).json(),
+      )
     } catch (error) {
       if (previous) {
         console.warn('Could not refresh OpenRouter reasoning capabilities; using the previous catalog', error)
@@ -50,9 +52,14 @@ const loadRouterCatalog = (): Promise<RouterCatalog> => {
       }
       delete routerCatalogCache.current
       throw error
+    } finally {
+      if (routerCatalogCache.current) {
+        routerCatalogCache.current.expires = Date.now() + 300_000
+      }
     }
   })()
-  routerCatalogCache.current = { expires: Date.now() + 300_000, value }
+  // Pending requests stay shared even after a suspended tab resumes beyond the TTL.
+  routerCatalogCache.current = { expires: Infinity, value }
   return value
 }
 

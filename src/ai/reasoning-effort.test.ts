@@ -30,8 +30,17 @@ it('shares OpenRouter discovery, retries cold failures, and retains known capabi
     })
   }
   try {
-    request.mockImplementation(() => response({ invalid: true }))
-    await expect(loadReasoningCapabilities(first)).rejects.toThrow()
+    const pending = Promise.withResolvers<unknown>()
+    request.mockImplementation(() => Object.assign(response({}), { json: <T>() => pending.promise as Promise<T> }))
+    const coldRequest = loadReasoningCapabilities(first)
+    clock.setSystemTime(300_002)
+    const sharedRequest = loadReasoningCapabilities(second)
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenLastCalledWith('https://openrouter.ai/api/v1/models', { timeout: 10_000 })
+    const failures = Promise.allSettled([coldRequest, sharedRequest])
+    pending.resolve({ invalid: true })
+    expect((await failures).map((result) => result.status)).toEqual(['rejected', 'rejected'])
+    clock.setSystemTime(1)
     request.mockImplementation(() =>
       response({
         data: [
@@ -59,7 +68,6 @@ it('shares OpenRouter discovery, retries cold failures, and retains known capabi
     expect(request).toHaveBeenCalledTimes(4)
   } finally {
     request.mockRestore()
-
     warn.mockRestore()
   }
 })

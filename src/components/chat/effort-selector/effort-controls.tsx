@@ -50,7 +50,6 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
           value={Math.max(0, index)}
           data-selected={index >= 0}
           disabled={busy || (choices.length < 2 && index >= 0)}
-          aria-disabled={busy}
           aria-label={t`Reasoning effort`}
           aria-valuetext={selected?.name ?? t`Choose effort`}
           onChange={(event) => {

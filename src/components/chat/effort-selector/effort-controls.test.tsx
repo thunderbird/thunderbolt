@@ -106,6 +106,7 @@ describe('effort controls', () => {
     expect(choose).toHaveBeenCalledWith('low')
     view.rerender(<EffortControls {...props} choices={[choices[0]]} choose={choose} error="Could not save" />)
     expect(slider).toBeDisabled()
+    expect(slider).not.toHaveAttribute('aria-disabled', 'false')
     expect(screen.getByRole('alert').textContent).toBe('Could not save')
   })
 })

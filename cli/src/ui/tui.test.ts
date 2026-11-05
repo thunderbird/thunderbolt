@@ -476,6 +476,38 @@ describe('runTuiRepl', () => {
     expect(output).not.toContain('[steering]')
   })
 
+  test.each(['high', 'none', undefined] as const)(
+    'shows effective effort on connection and after switching to %s',
+    async (nextEffort) => {
+      const terminal = new MemoryTerminal()
+      let effort: 'low' | 'high' | 'none' | undefined = 'low'
+      const events = tuiHarness({
+        reasoning: {
+          capabilities: () => ({ efforts: ['none', 'low', 'high'] }),
+          current: () => effort,
+          set: async () => {},
+        },
+      })
+      const running = runTuiRepl(providerRuntime(), {
+        connect: async () => ({ harness: events.harness, model: 'managed-default' }),
+        initialPermissionMode: 'yolo',
+        fullscreen: false,
+        thinking: 'medium',
+        terminal,
+        applyOutcome: async () => {
+          effort = nextEffort
+          return { providerId: 'thunderbolt', model: 'changed-model' }
+        },
+      })
+      await terminal.waitForOutput('thinking low')
+      terminal.send('switch')
+      terminal.send('\r')
+      await terminal.waitForOutput(`thinking ${nextEffort === 'high' ? 'high' : 'off'}`)
+      terminal.send('\x04')
+      await running
+    },
+  )
+
   test('runs provider selection before harness creation, then enables the connected editor and footer', async () => {
     const terminal = new MemoryTerminal()
     const pickerReady = Promise.withResolvers<void>()

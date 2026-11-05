@@ -90,6 +90,11 @@ disconnects and throws.
 sign-out). `clearLocalData` calls the latter first so no transport survives an identity change
 ([delete-account-and-revoke-device.md](delete-account-and-revoke-device.md)).
 
+A stopped prompt closes its local stream and removes its notification and permission handlers immediately.
+The adapter keeps the session occupied until the remote prompt resolves or rejects: a second prompt or
+configuration change is rejected during that interval, so late output from the cancelled turn cannot enter
+a later reply. Other sessions on the shared connection remain usable.
+
 ### Retry budget and terminal close codes
 
 [`reconnect-scheduler.ts`](../../../src/acp/reconnect-scheduler.ts) schedules bounded, coalesced

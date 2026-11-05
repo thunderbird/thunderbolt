@@ -46,6 +46,10 @@ export type HarnessCompaction = {
   abort: () => void
 }
 
+/** Target 10% of a model's window, capped by Pi's normal retention budget. */
+const recentContextBudget = (contextWindow: number): number =>
+  Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, Math.floor(contextWindow * 0.1))
+
 /** Old provider usage describes the pre-compaction prompt, not the retained tail. */
 const withoutUsage = (message: AgentMessage): AgentMessage =>
   message.role === 'assistant'
@@ -206,7 +210,7 @@ export const createHarnessCompaction = (
           1,
           Math.min(DEFAULT_COMPACTION_SETTINGS.reserveTokens, Math.floor(model.contextWindow * 0.2)),
         ),
-        keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, Math.floor(model.contextWindow * 0.1)),
+        keepRecentTokens: recentContextBudget(model.contextWindow),
       }
       const branch = await session.getBranch()
       const prepared = prepareCompaction(branch, settings)
@@ -308,6 +312,12 @@ export const createHarnessCompaction = (
       // Provider usage already includes the system prompt and tool schemas.
       const tokens = estimate.tokens + (estimate.lastUsageIndex === null ? (request.overheadTokens ?? 0) : 0)
       if (!(window > 0) || tokens < window * 0.8) {
+        return messages
+      }
+      // Prompt and tool overhead cannot be compacted. Preserve already-small
+      // history instead of paying for another summary on every tool step.
+      const historyTokens = messages.reduce((total, message) => total + estimateTokens(message), 0)
+      if (tokens < window && historyTokens <= recentContextBudget(window)) {
         return messages
       }
       try {

@@ -143,6 +143,49 @@ describe('Pi context compaction', () => {
     expect(f.requests).toHaveLength(calls)
   })
 
+  it('keeps small history intact while overhead dominates, then compacts when history grows', async () => {
+    const f = await fixture()
+    for (let turn = 0; turn < 3; turn++) {
+      await f.harness.appendMessage({ role: 'user', content: 'Continue', timestamp: turn })
+      await f.harness.appendMessage(fauxAssistantMessage('Working'))
+      const { messages } = await f.session.buildContext()
+      expect(await f.compaction.prepareRequest(messages, { overheadTokens: 8_500 })).toBe(messages)
+    }
+    expect(f.requests).toHaveLength(0)
+    await f.harness.appendMessage({ role: 'user', content: 'New detail. '.repeat(400), timestamp: 4 })
+    await f.harness.appendMessage(fauxAssistantMessage('Noted'))
+    await f.compaction.prepareRequest((await f.session.buildContext()).messages, { overheadTokens: 8_500 })
+    expect(f.requests).toHaveLength(1)
+  })
+
+  it('includes the previous summary when deciding whether compactable history is small', async () => {
+    const f = await fixture()
+    const checkpoint: CompactionCheckpoint = {
+      version: 1,
+      summary: 'Prior decision. '.repeat(250),
+      tokensBefore: 5_000,
+      contextTokens: 1_400,
+      retainedTail: [],
+    }
+    await restoreCompaction(f.session, checkpoint)
+    await f.harness.appendMessage({ role: 'user', content: 'Continue', timestamp: 1 })
+    await f.harness.appendMessage(fauxAssistantMessage('Working'))
+    const controller = createHarnessCompaction(f.harness, f.session, checkpoint)
+    await controller.prepareRequest((await f.session.buildContext()).messages, { overheadTokens: 8_500 })
+    expect(f.requests).toHaveLength(1)
+    expect(f.requests[0]).toContain(checkpoint.summary)
+  })
+
+  it('still attempts compaction and reports overflow when overhead alone fills the window', async () => {
+    const f = await fixture()
+    await f.harness.appendMessage({ role: 'user', content: 'Continue', timestamp: 1 })
+    await f.harness.appendMessage(fauxAssistantMessage('Working'))
+    await expect(
+      f.compaction.prepareRequest((await f.session.buildContext()).messages, { overheadTokens: 10_000 }),
+    ).rejects.toThrow('Context length still exceeds')
+    expect(f.requests).toHaveLength(1)
+  })
+
   it('does not double-count overhead already included in provider usage', async () => {
     const f = await fixture()
     await f.seed(7_900)

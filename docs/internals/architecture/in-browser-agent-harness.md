@@ -191,7 +191,10 @@ and the browser check fails unless the build emits exactly one `agent-core-*.js`
 
 The context circle opens a menu with manual compaction and optional summary instructions.
 The built-in Pi adapter also checks usage before each provider request, including requests
-between tool steps, and compacts at 80% of the selected model's context window. Manual
+between tool steps, and considers compaction at 80% of the selected model's context window.
+Below the hard limit, it keeps history that already fits the retention budget (10% of the
+window, capped by Pi's normal budget), including any previous summary. This avoids repeated
+summaries when system/tool overhead dominates; that overhead cannot be compacted. Manual
 compaction waits for an idle conversation; Stop cancels the summary request. Manual
 checkpoints end at the latest assistant message with content, leaving unanswered user turns
 outside the summary so Retry replays them once, verbatim. Compaction

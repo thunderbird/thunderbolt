@@ -1029,6 +1029,68 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
     expect(outcome?.outcome.outcome).toBe('cancelled')
   })
 
+  it.each([false, true])(
+    'keeps a cancelled session owned until its remote prompt settles (rejects: %s)',
+    async (rejectPrompt) => {
+      const fake = buildFakeConnection({
+        rejectPrompt,
+        configOptions: [
+          {
+            id: 'effort',
+            name: 'Effort',
+            type: 'select',
+            currentValue: 'low',
+            options: [
+              { value: 'low', name: 'Low' },
+              { value: 'high', name: 'High' },
+            ],
+          },
+        ],
+      })
+      const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+        openTransport: async () => buildFakeTransport().transport,
+        ClientSideConnection: fake.FakeConnection as never,
+        textDeltaThrottleMs: 0,
+      })
+      try {
+        const context = threadCtx('cancel-ownership')
+        const controller = new AbortController()
+        const first = await adapter.fetch(promptInit('first', controller.signal), context)
+        const config = useSessionConfigStore
+          .getState()
+          .sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+        controller.abort()
+        // Stop closes the local response without waiting for the remote result.
+        const stoppedText = await first.text()
+        await expect(adapter.fetch(promptInit('too early'), context)).rejects.toThrow('already active')
+        await expect(config.setOption('effort', 'high')).rejects.toThrow('current operation')
+        expect(fake.calls.prompt).toHaveLength(1)
+        expect(fake.calls.config).toHaveLength(0)
+        await fake.pushUpdate({
+          sessionId: 'sess-1',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'stale canceled reply' },
+          },
+        })
+        expect(stoppedText).not.toContain('stale canceled reply')
+        expect((await fake.pushPermission(permissionReq('sess-1')))?.outcome.outcome).toBe('cancelled')
+        // The cancellation only owns its session, not other threads on the connection.
+        const other = await adapter.fetch(promptInit('other thread'), threadCtx('other-thread'))
+        expect(fake.calls.prompt).toHaveLength(2)
+        fake.releasePrompts()
+        await other.text()
+        await config.setOption('effort', 'high')
+        const next = await adapter.fetch(promptInit('after settlement'), context)
+        expect(await next.text()).not.toContain('stale canceled reply')
+        expect(fake.calls.prompt).toHaveLength(3)
+      } finally {
+        fake.releasePrompts()
+        adapter.disconnect()
+      }
+    },
+  )
+
   it('a rejecting cancel is swallowed — abort still tears the thread down cleanly', async () => {
     const { transport } = buildFakeTransport()
     const { FakeConnection, calls, pushPermission, releasePrompts } = buildFakeConnection({ rejectCancel: true })
@@ -1152,6 +1214,30 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
     } finally {
       persisted.resolve()
       fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('removes cancellation listeners when prompt dispatch throws synchronously', async () => {
+    const fake = buildFakeConnection()
+    class ThrowingConnection extends fake.FakeConnection {
+      prompt = (_request: PromptRequest): never => {
+        throw new Error('Synchronous SDK failure')
+      }
+    }
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: ThrowingConnection as never,
+    })
+    try {
+      const controller = new AbortController()
+      const response = await adapter.fetch(promptInit('dispatch', controller.signal), threadCtx('sync-failure'))
+      expect(await response.text()).toContain('Synchronous SDK failure')
+      controller.abort()
+      expect(fake.calls.cancel).toHaveLength(0)
+      const retry = await adapter.fetch(promptInit('retry'), threadCtx('sync-failure'))
+      expect(await retry.text()).toContain('Synchronous SDK failure')
+    } finally {
       adapter.disconnect()
     }
   })

@@ -463,7 +463,8 @@ export const connectAcpAdapter = async (
   const configs = new Map<string, SessionConfigOption[]>()
   const configPublishers = new Map<string, () => void>()
   const configCleanups: Array<() => void> = []
-  const preparingPrompts = new Set<string>()
+  // Keep ownership after local cancellation until the remote prompt settles.
+  const activePrompts = new Set<string>()
   const configChanges = new Map<string, Promise<void>>()
 
   const rememberConfig = (sessionId: string, options: SessionConfigOption[]): void => {
@@ -639,7 +640,7 @@ export const connectAcpAdapter = async (
       const key = sessionConfigKey(agent.id, context.threadId)
       const setOption = async (configId: string, value: string): Promise<void> => {
         throwIfConnectionLost()
-        if (sessionUpdateSinks.has(sessionId) || preparingPrompts.has(sessionId) || configChanges.has(sessionId)) {
+        if (activePrompts.has(sessionId) || configChanges.has(sessionId)) {
           throw new Error('Wait for the current operation to finish')
         }
         const option = configs.get(sessionId)?.find((item) => item.id === configId)
@@ -701,10 +702,10 @@ export const connectAcpAdapter = async (
     throwIfConnectionLost()
     init.signal?.throwIfAborted()
     const sessionId = await resolveThreadSession(context)
-    if (preparingPrompts.has(sessionId) || sessionUpdateSinks.has(sessionId)) {
+    if (activePrompts.has(sessionId)) {
       throw new Error('A prompt is already active for this session')
     }
-    preparingPrompts.add(sessionId)
+    activePrompts.add(sessionId)
     const preparePrompt = async () => {
       // A prompt submitted during a config change must not silently run with
       // the previous setting if that change fails. The user can retry explicitly.
@@ -733,7 +734,7 @@ export const connectAcpAdapter = async (
       return prompt
     }
     const prompt = await preparePrompt().catch((error: unknown) => {
-      preparingPrompts.delete(sessionId)
+      activePrompts.delete(sessionId)
       throw error
     })
 
@@ -742,8 +743,6 @@ export const connectAcpAdapter = async (
       onSideEffect: context.onSessionSideEffect,
     })
 
-    freshPending.delete(context.threadId)
-    preparingPrompts.delete(sessionId)
     sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
     if (context.requestPermission) {
       permissionHandlers.set(sessionId, context.requestPermission)
@@ -782,6 +781,15 @@ export const connectAcpAdapter = async (
       teardown()
     }
 
+    // Attach before dispatch so even a synchronous SDK failure removes the listener.
+    if (signal?.aborted) {
+      activePrompts.delete(sessionId)
+      teardown()
+      signal.throwIfAborted()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    freshPending.delete(context.threadId)
+
     // Drive the prompt off the request thread — the response stream is the
     // synchronous return value so the AI SDK can attach immediately.
     void (async () => {
@@ -797,16 +805,10 @@ export const connectAcpAdapter = async (
       } catch (err) {
         translator.error(terminationError?.message ?? (err instanceof Error ? err.message : String(err)))
       } finally {
+        activePrompts.delete(sessionId)
         teardown()
       }
     })()
-
-    // A signal already aborted before we attached the listener still cancels.
-    if (signal?.aborted) {
-      onAbort()
-    } else {
-      signal?.addEventListener('abort', onAbort, { once: true })
-    }
 
     return new Response(body, {
       status: 200,

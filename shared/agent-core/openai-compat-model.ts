@@ -95,10 +95,10 @@ export type BuildOpenAiCompatModelOptions = {
   readonly supportsImages: boolean
   /** Provider-specific OpenAI compatibility behavior. */
   readonly compat?: Model<typeof apiName>['compat']
-  /** Provider-specific mapping from Pi thinking levels to wire efforts. */
   /** Current per-conversation override. Undefined preserves the existing profile behavior. */
   readonly getReasoningEffort?: () => ReasoningEffort | undefined
   readonly effortFormat?: 'openai' | 'openrouter' | 'tinfoil'
+  /** Provider-specific mapping from Pi thinking levels to wire efforts. */
   readonly thinkingLevelMap?: Model<typeof apiName>['thinkingLevelMap']
 }
 

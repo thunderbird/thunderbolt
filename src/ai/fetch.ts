@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { loadReasoningCapabilities } from './reasoning-effort'
+import { reasoningProviderOptions } from './reasoning-provider-options'
 import type { ReasoningEffort } from '@shared/reasoning-effort'
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
@@ -842,28 +843,10 @@ export const aiFetchStreamingResponse = async ({
       reasoningEffort !== undefined &&
       effortProvider === 'anthropic' &&
       (await loadReasoningCapabilities(model)).kind === 'toggle'
-    const effortOptions =
+    const providerOptions =
       reasoningEffort === undefined
-        ? undefined
-        : effortProvider === 'anthropic'
-          ? reasoningEffort === 'none'
-            ? { thinking: { type: 'disabled' } }
-            : toggleThinking || reasoningEffort === 'minimal'
-              ? { thinking: { type: 'enabled', budgetTokens: toggleThinking ? 4096 : 1024 } }
-              : { thinking: { type: 'adaptive' }, effort: reasoningEffort }
-          : effortProvider === 'openrouter'
-            ? { reasoning: { effort: reasoningEffort } }
-            : { reasoningEffort }
-    const explicitProfile = Object.fromEntries(
-      Object.entries(rawOptions).filter(
-        ([key]) =>
-          !effortOptions || !['reasoningEffort', 'reasoning_effort', 'reasoning', 'thinking', 'effort'].includes(key),
-      ),
-    )
-    const providerOptions = {
-      ...(Object.keys(rawOptions).length > 0 ? { [providerOptionsKey]: rawOptions } : {}),
-      ...(effortOptions ? { [effortProvider]: { ...explicitProfile, ...effortOptions } } : {}),
-    }
+        ? { [providerOptionsKey]: rawOptions }
+        : { [effortProvider]: reasoningProviderOptions(rawOptions, effortProvider, reasoningEffort, toggleThinking) }
 
     /**
      * Run a single streamText attempt and return the result along with metadata

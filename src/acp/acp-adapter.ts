@@ -455,6 +455,9 @@ export const connectAcpAdapter = async (
   }
 
   const routeSessionUpdate = (notification: SessionNotification): void => {
+    if (terminationError) {
+      return
+    }
     // The advertised command list is an agent-level capability, not part of a
     // single prompt's stream — capture it here regardless of whether a thread
     // is actively prompting, so commands surface before the first send too.

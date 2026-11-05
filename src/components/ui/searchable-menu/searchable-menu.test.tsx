@@ -23,6 +23,43 @@ describe('SearchableMenu', () => {
   })
 
   describe('functionality', () => {
+    it('labels search and preserves the reason a filtered group is unavailable', () => {
+      render(
+        <SearchableMenu
+          embedded
+          onValueChange={() => {}}
+          items={[
+            { id: 'available', items: [{ id: 'public', label: 'Public model' }] },
+            {
+              id: 'private',
+              label: 'Only available in private chats.',
+              items: [{ id: 'private-model', label: 'Private model', disabled: true }],
+            },
+          ]}
+        />,
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search…' }), { target: { value: '  private  ' } })
+      expect(screen.getByRole('heading', { name: 'Only available in private chats.' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Private model' })).toBeDisabled()
+      expect(screen.queryByText('Public model')).toBeNull()
+    })
+
+    it('exposes selection to assistive technology for default and custom rows', () => {
+      const view = render(<SearchableMenu embedded items={mockFlatItems} value="2" onValueChange={() => {}} />)
+      expect(screen.getByRole('button', { name: /Option 2/ })).toHaveAttribute('aria-current', 'true')
+      expect(screen.getByRole('button', { name: /Option 1/ })).not.toHaveAttribute('aria-current')
+      view.rerender(
+        <SearchableMenu
+          embedded
+          items={mockFlatItems}
+          value="1"
+          onValueChange={() => {}}
+          renderItem={(item) => <span>{item.label}</span>}
+        />,
+      )
+      expect(screen.getByRole('button', { name: 'Option 1' })).toHaveAttribute('aria-current', 'true')
+    })
+
     it('keeps an embedded list open on selection and closes its host before a footer action', () => {
       const onChange = mock()
       const events: string[] = []

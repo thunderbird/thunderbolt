@@ -31,13 +31,38 @@ const routerCatalogSchema = z.object({
   ),
 })
 
+type RouterCatalog = z.infer<typeof routerCatalogSchema>
+const routerCatalogCache: { current?: { expires: number; value: Promise<RouterCatalog> } } = {}
+
+/** Share one public catalog across models; a refresh outage keeps the last known capabilities. */
+const loadRouterCatalog = (): Promise<RouterCatalog> => {
+  const previous = routerCatalogCache.current
+  if (previous && previous.expires > Date.now()) {
+    return previous.value
+  }
+  const value = (async () => {
+    try {
+      return routerCatalogSchema.parse(await http.get('https://openrouter.ai/api/v1/models').json())
+    } catch (error) {
+      if (previous) {
+        console.warn('Could not refresh OpenRouter reasoning capabilities; using the previous catalog', error)
+        return previous.value
+      }
+      delete routerCatalogCache.current
+      throw error
+    }
+  })()
+  routerCatalogCache.current = { expires: Date.now() + 300_000, value }
+  return value
+}
+
 /** Resolve capabilities from the serving provider, never from the existence of a profile preference. */
-const resolveCapabilities = async (model: Model): Promise<ReasoningCapabilities> => {
+export const loadReasoningCapabilities = async (model: Model): Promise<ReasoningCapabilities> => {
   if (model.provider === 'tinfoil') {
     return tinfoilReasoningCapabilities(model.model)
   }
   if (model.provider === 'openrouter') {
-    const catalog = routerCatalogSchema.parse(await http.get('https://openrouter.ai/api/v1/models').json())
+    const catalog = await loadRouterCatalog()
     return openRouterReasoningCapabilities(catalog.data.find((row) => row.id === model.model)?.reasoning ?? undefined)
   }
   const provider = model.provider === 'thunderbolt' ? model.vendor : model.provider
@@ -62,23 +87,4 @@ export const getChatReasoningEffort = async (threadId: string, model: Model) => 
     return undefined
   }
   return resolveReasoningEffort(settings[key], await loadReasoningCapabilities(model))
-}
-
-const capabilityCache = new Map<string, { expires: number; value: Promise<ReasoningCapabilities> }>()
-
-/** Share discovery between the selector and send path, without retaining credentials or retrying failed requests forever. */
-export const loadReasoningCapabilities = (model: Model): Promise<ReasoningCapabilities> => {
-  const key = JSON.stringify([model.provider, model.model, model.vendor])
-  const existing = capabilityCache.get(key)
-  if (existing && existing.expires > Date.now()) {
-    return existing.value
-  }
-  const value = resolveCapabilities(model)
-  capabilityCache.set(key, { expires: Date.now() + 300_000, value })
-  void value.catch(() => {
-    if (capabilityCache.get(key)?.value === value) {
-      capabilityCache.delete(key)
-    }
-  })
-  return value
 }

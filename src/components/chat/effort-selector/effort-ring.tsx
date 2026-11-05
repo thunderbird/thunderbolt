@@ -10,13 +10,12 @@ const levels: Record<string, number> = { none: 0, off: 0, minimal: 1, low: 2, me
 /** Six fixed segments distinguish every native effort; unknown ACP values follow the agent's ordering. */
 export const EffortRing = ({ value, values }: { value: string | undefined; values: string[] }) => {
   const gradientId = useId()
-  if (!value || value === 'default') {
+  if (value === undefined || !values.includes(value)) {
     return <Sparkles aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
   }
-  const ranked = values.filter((item) => item !== 'default')
   const filled = Object.hasOwn(levels, value)
     ? levels[value]!
-    : Math.max(1, Math.ceil(((ranked.indexOf(value) + 1) / ranked.length) * 6))
+    : Math.max(1, Math.ceil(((values.indexOf(value) + 1) / values.length) * 6))
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4 shrink-0" fill="none">
       <defs>

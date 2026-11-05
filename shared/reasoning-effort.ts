@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/** Wire values, deliberately distinct from Pi's `off` and the UI's Default. */
+/** Wire values, deliberately distinct from Pi's `off` and an omitted preference. */
 export const reasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type ReasoningEffort = (typeof reasoningEfforts)[number]
 export type ReasoningCapabilities = { kind?: 'effort' | 'toggle'; efforts: readonly ReasoningEffort[] }
@@ -12,7 +12,7 @@ export const noReasoningEffort: ReasoningCapabilities = { efforts: [] }
 export const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && reasoningEfforts.some((effort) => effort === value)
 
-/** Unsupported saved selections resolve to Default, never a silently clamped level. */
+/** Unsupported saved selections resolve to omission, never a silently clamped level. */
 export const resolveReasoningEffort = (
   value: unknown,
   capabilities: ReasoningCapabilities,
@@ -59,13 +59,13 @@ export const openRouterReasoningCapabilities = (
 })
 
 /** Apply an explicit choice at the provider boundary, after Pi's compatibility mappings.
- * Default returns the original payload unchanged. Exact native choices must not be
+ * An omitted preference returns the original payload unchanged. Exact native choices must not be
  * remapped by catalog aliases (e.g. Tinfoil DeepSeek high -> xhigh).
  */
 export const applyReasoningEffort = (
   payload: unknown,
   effort: ReasoningEffort | undefined,
-  format: 'openai' | 'openrouter' | 'tinfoil' | 'responses',
+  format: 'openai' | 'openrouter' | 'tinfoil',
 ): unknown => {
   if (effort === undefined) {
     return payload
@@ -75,7 +75,7 @@ export const applyReasoningEffort = (
   }
   const result = { ...payload } as Record<string, unknown>
   delete result.reasoning_effort
-  if (format === 'openrouter' || format === 'responses') {
+  if (format === 'openrouter') {
     const existing = result.reasoning
     const reasoning = existing && typeof existing === 'object' ? ({ ...existing } as Record<string, unknown>) : {}
     delete reasoning.max_tokens

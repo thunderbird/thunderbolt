@@ -456,6 +456,7 @@ msgstr "API キー（任意）"
 msgid "API Key is required for this provider"
 msgstr "このプロバイダーには API キーが必要です"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx

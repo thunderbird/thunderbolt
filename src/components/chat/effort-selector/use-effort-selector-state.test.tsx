@@ -30,6 +30,41 @@ const Probe = () => {
   )
 }
 
+const DirectChoiceProbe = () => {
+  const { choose } = useEffortSelectorState()
+  return (
+    <>
+      <button onClick={() => choose('unsupported')}>Unsupported</button>
+      <button onClick={() => choose('deep')}>Deep</button>
+    </>
+  )
+}
+
+/** Installs a remote agent's advertised options without interpreting its opaque values. */
+const installRemoteOptions = (setOption: (configId: string, value: string) => Promise<void>) => {
+  const session = useChatStore.getState().sessions.get('effort-chat')!
+  const agent = { ...session.selectedAgent, id: 'opaque-agent', type: 'remote-acp' as const }
+  useChatStore.getState().updateSession(session.id, { selectedAgent: agent })
+  const key = sessionConfigKey(agent.id, session.id)
+  useSessionConfigStore.getState().set(key, {
+    setOption,
+    options: [
+      {
+        id: 'native-effort',
+        name: 'Effort',
+        category: 'thought_level',
+        type: 'select',
+        currentValue: 'default',
+        options: [
+          { value: 'default', name: 'Balanced' },
+          { value: 'deep', name: 'Deep' },
+        ],
+      },
+    ],
+  })
+  return () => useSessionConfigStore.getState().remove(key, setOption)
+}
+
 beforeAll(setupTestDatabase)
 beforeEach(async () => {
   await resetTestDatabase()
@@ -49,6 +84,103 @@ afterEach(() => {
 afterAll(teardownTestDatabase)
 
 describe('effort selector state', () => {
+  it('rejects unsupported values even when called outside the slider', async () => {
+    const writes: string[] = []
+    const remove = installRemoteOptions(async (_id, value) => {
+      writes.push(value)
+    })
+    renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings'] })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Unsupported' }))
+    })
+    expect(writes).toEqual([])
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    remove()
+  })
+
+  it.each(['submitted', 'streaming', 'compacting'] as const)(
+    'rejects effort writes while %s even if the caller is enabled',
+    async (status) => {
+      const writes: string[] = []
+      const remove = installRemoteOptions(async (_id, value) => {
+        writes.push(value)
+      })
+      useChatStore
+        .getState()
+        .updateSession(
+          'effort-chat',
+          status === 'compacting'
+            ? { compactionStatus: 'compacting' }
+            : { chatInstance: createMockChatInstance([], status) },
+        )
+      renderWithReactivity(<DirectChoiceProbe />, { tables: ['settings'] })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Deep' }))
+      })
+      expect(writes).toEqual([])
+      remove()
+    },
+  )
+
+  it('keeps confidential model selection usable and honors the model picker close callback', async () => {
+    useChatStore.getState().updateSession('effort-chat', {
+      selectedModel: { ...model, name: 'Private model', isConfidential: 1, isSystem: 1, apiKey: null },
+    })
+    renderWithReactivity(<EffortSelector modelPicker={(close) => <button onClick={close}>Manage models</button>} />, {
+      tables: ['settings'],
+    })
+    const trigger = screen.getByRole('button', { name: 'Model and reasoning effort' })
+    expect(trigger.textContent).toContain('Private model')
+    expect(screen.queryByLabelText('API key not configured')).toBeNull()
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Manage models' }))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('preserves agent-advertised opaque values, including default', async () => {
+    const writes: Array<[string, string]> = []
+    const remove = installRemoteOptions(async (id, value) => {
+      writes.push([id, value])
+    })
+    renderWithReactivity(<Probe />, { tables: ['settings'] })
+    expect(screen.getByRole('status').textContent).toBe('default')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Balanced' }))
+    })
+    expect(writes).toEqual([['native-effort', 'default']])
+    remove()
+  })
+
+  it('rolls back failed agent writes and hides the failure after switching models', async () => {
+    const remove = installRemoteOptions(async () => {
+      throw new Error('Agent rejected change')
+    })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reasoning effort' }))
+    })
+    const slider = screen.getByRole('slider')
+    await act(async () => {
+      fireEvent.change(slider, { target: { value: '1' } })
+    })
+    await act(async () => {
+      fireEvent.pointerUp(slider)
+    })
+    expect(screen.getByRole('alert').textContent).toBe('Could not change reasoning effort')
+    expect(slider.getAttribute('aria-valuetext')).toBe('Balanced')
+    await act(async () => {
+      useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, id: 'different' } })
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('slider').getAttribute('aria-valuetext')).toBe('Balanced')
+    remove()
+  })
+
   it('keeps the released value visible while the agent saves it', async () => {
     const session = useChatStore.getState().sessions.get('effort-chat')!
     const agent = { ...session.selectedAgent, id: 'remote-effort', type: 'remote-acp' as const }
@@ -102,6 +234,12 @@ describe('effort selector state', () => {
     })
     expect(nextSlider.getAttribute('aria-valuetext')).toBe('High')
     useSessionConfigStore.getState().remove(key, setOption)
+  })
+
+  it('retains the missing API key warning in the combined trigger', async () => {
+    useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, isSystem: 0, apiKey: null } })
+    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, { tables: ['settings'] })
+    expect(screen.getByLabelText('API key not configured')).toBeInTheDocument()
   })
 
   it('keeps model selection available when effort is unsupported', async () => {

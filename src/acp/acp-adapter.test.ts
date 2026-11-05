@@ -109,6 +109,7 @@ const buildFakeTransport = (): {
 const buildFakeConnection = (
   opts: {
     configOptions?: SessionConfigOption[]
+    beforeConfigResponse?: () => Promise<void>
     hangInitialize?: boolean
     loadSession?: boolean
     resume?: boolean
@@ -180,6 +181,7 @@ const buildFakeConnection = (
     }
     setSessionConfigOption = async (req: SetSessionConfigOptionRequest) => {
       calls.config.push(req)
+      await opts.beforeConfigResponse?.()
       return { configOptions: (opts.configOptions ?? []).map((option) => ({ ...option, currentValue: req.value })) }
     }
     cancel = (req: CancelNotification) => {
@@ -1102,6 +1104,82 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
 })
 
 describe('ACP reasoning configuration', () => {
+  it('waits for a pending config write before prompting and rejects concurrent changes', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      await adapter.ensureSession(threadCtx('pending-config'))
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'pending-config'))!
+      const change = config.setOption('budget', 'high')
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      const pending = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        threadCtx('pending-config'),
+      )
+      expect(fake.calls.prompt).toHaveLength(0)
+      gate.resolve()
+      await change
+      const response = await pending
+      expect(fake.calls.prompt).toHaveLength(1)
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      fake.releasePrompts()
+      await response.text()
+      await config.setOption('budget', 'low')
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('ignores queued notifications from a disconnected generation', async () => {
+    const old = buildFakeConnection()
+    const next = buildFakeConnection()
+    const connect = (fake: ReturnType<typeof buildFakeConnection>) =>
+      connectAcpAdapter(remoteAgent, baseCtx(), {
+        ClientSideConnection: fake.FakeConnection as never,
+        openTransport: async () => buildFakeTransport().transport,
+        getEnabledSkills: async () => [],
+      })
+    const first = await connect(old)
+    await first.ensureSession(threadCtx('generation'))
+    first.disconnect()
+    const second = await connect(next)
+    try {
+      await second.ensureSession(threadCtx('generation'))
+      const key = sessionConfigKey(remoteAgent.id, 'generation')
+      const current = useSessionConfigStore.getState().sessions.get(key)
+      await old.pushUpdate({
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'config_option_update', configOptions: [] },
+      })
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+      first.disconnect()
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+    } finally {
+      second.disconnect()
+    }
+  })
+
   it('retains initial options, forwards opaque values, isolates threads and receives idle updates', async () => {
     const options: SessionConfigOption[] = [
       {

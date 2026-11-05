@@ -45,6 +45,11 @@ describe('Pi effort discovery', () => {
     expect(piReasoningCapabilities(model({ thinkingLevelMap: { off: 'none' } })).efforts).toContain('none')
     expect(piReasoningCapabilities(model()).efforts).not.toContain('none')
   })
+  it('omits the implicit minimal-to-low alias on adaptive Anthropic models', () => {
+    expect(
+      piReasoningCapabilities(model({ api: 'anthropic-messages', compat: { forceAdaptiveThinking: true } })).efforts,
+    ).toEqual(['none', 'low', 'medium', 'high'])
+  })
   it('uses a toggle for Anthropic budget-only thinking instead of inventing native efforts', () => {
     expect(piReasoningCapabilities(model({ api: 'anthropic-messages' }))).toEqual({
       kind: 'toggle',

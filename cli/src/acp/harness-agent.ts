@@ -22,7 +22,7 @@
  * below remains the per-connection registry, now hydrated from disk on resume.
  */
 
-import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
+import { isReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { realpath } from 'node:fs/promises'
 import { PROTOCOL_VERSION, RequestError } from '@agentclientprotocol/sdk'
 import type {
@@ -326,11 +326,13 @@ export const createHarnessAgent = (
     sessions.set(sessionId, candidate)
   }
 
-  /** ACP clients use exactly these values; Default restores the invocation's configured level. */
+  /** Advertise the native levels this session can actually apply. */
   const sessionConfig = (sessionId: string): { configOptions?: SessionConfigOption[] } => {
     const reasoning = requireSession(sessionId).harness.reasoning
-    const efforts = reasoning?.capabilities().efforts ?? []
-    if (!reasoning || !efforts.length) return {}
+    const capabilities = reasoning?.capabilities()
+    const efforts = capabilities?.efforts ?? []
+    const current = reasoning?.current()
+    if (!reasoning || !efforts.length || current === undefined) return {}
     return {
       configOptions: [
         {
@@ -338,14 +340,11 @@ export const createHarnessAgent = (
           name: 'Reasoning effort',
           category: 'thought_level',
           type: 'select',
-          currentValue: reasoning.current() ?? 'default',
-          options: [
-            { value: 'default', name: 'Default' },
-            ...efforts.map((value) => ({
-              value,
-              name: value === 'none' ? 'Off' : reasoning.capabilities().kind === 'toggle' ? 'On' : value,
-            })),
-          ],
+          currentValue: current,
+          options: efforts.map((value) => ({
+            value,
+            name: value === 'none' ? 'Off' : capabilities?.kind === 'toggle' ? 'On' : value,
+          })),
         },
       ],
     }
@@ -359,12 +358,12 @@ export const createHarnessAgent = (
       params.configId !== 'reasoning_effort' ||
       !reasoning ||
       !reasoning.capabilities().efforts.length ||
-      (params.value !== 'default' &&
-        (!isReasoningEffort(params.value) || !reasoning.capabilities().efforts.includes(params.value)))
+      !isReasoningEffort(params.value) ||
+      !reasoning.capabilities().efforts.includes(params.value)
     ) {
       throw RequestError.invalidParams(undefined, 'Unsupported reasoning configuration')
     }
-    await reasoning.set(params.value === 'default' ? undefined : (params.value as ReasoningEffort))
+    await reasoning.set(params.value)
     const configOptions = sessionConfig(params.sessionId).configOptions ?? []
     await conn.sessionUpdate({
       sessionId: params.sessionId,

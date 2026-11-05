@@ -182,7 +182,7 @@ export type HarnessRuntime = {
   readonly reasoning?: {
     readonly capabilities: () => ReasoningCapabilities
     readonly current: () => ReasoningEffort | undefined
-    readonly set: (effort: ReasoningEffort | undefined) => Promise<void>
+    readonly set: (effort: ReasoningEffort) => Promise<void>
   }
   readonly subscribe: (listener: (event: AgentHarnessEvent) => void) => () => void
   readonly registerToolCallGate: (handler: (event: ToolCallEvent) => Promise<ToolCallResult | undefined>) => void

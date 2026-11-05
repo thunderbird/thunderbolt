@@ -6,7 +6,7 @@ import { piReasoningCapabilities } from '../../../shared/agent-core/reasoning-ca
 import { isReasoningEffort, type ReasoningEffort } from '../../../shared/reasoning-effort.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
-import { modelsAreEqual } from '@earendil-works/pi-ai'
+import { clampThinkingLevel, modelsAreEqual } from '@earendil-works/pi-ai'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { cleanupFailure, collect, withCleanupErrors } from '../agent/cleanup-errors.ts'
 import type { HarnessRuntime, PreparedPiBinding } from './types.ts'
@@ -70,6 +70,28 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
   return errors
 }
 
+/** Resolve the effective native effort, including Pi's supported-level aliases. */
+const currentReasoningEffort = (harness: AgentHarness): ReasoningEffort | undefined => {
+  const level = harness.getThinkingLevel()
+  const model = harness.getModel()
+  const capabilities = piReasoningCapabilities(model)
+  if (!model || !capabilities.efforts.length) return undefined
+  if (capabilities.kind === 'toggle') return level === 'off' ? 'none' : 'high'
+  const nativeLevel = level === 'off' ? level : clampThinkingLevel(model, level)
+  const mapped = model.thinkingLevelMap?.[nativeLevel]
+  const effort = mapped ?? (nativeLevel === 'off' ? 'none' : nativeLevel)
+  return isReasoningEffort(effort) && capabilities.efforts.includes(effort) ? effort : undefined
+}
+
+/** Keep the selected level concrete when a model cannot honor the inherited effort. */
+const ensureSupportedReasoningEffort = async (harness: AgentHarness): Promise<void> => {
+  const efforts = piReasoningCapabilities(harness.getModel()).efforts
+  if (efforts.length && currentReasoningEffort(harness) === undefined) {
+    const effort = efforts.includes('medium') ? 'medium' : efforts[0]!
+    await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
+  }
+}
+
 /**
  * Wrap one Pi harness and mutable registry with binding and transaction ownership.
  * The initial binding must already be installed in `models`.
@@ -77,6 +99,7 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
 export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): Promise<HarnessRuntime> => {
   const { harness, models } = options
   await harness.setSteeringMode('one-at-a-time')
+  await ensureSupportedReasoningEffort(harness)
   const initialUnsubscribe = options.binding.attach(harness)
   let activeBinding: BindingCleanupState | null = createBindingCleanupState(options.binding, initialUnsubscribe)
   const retiredBindings = new Set<BindingCleanupState>()
@@ -118,6 +141,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     previous: BindingCleanupState,
     candidate: BindingCleanupState,
     modelChangeAttempted: boolean,
+    previousThinking: ReturnType<AgentHarness['getThinkingLevel']>,
   ): Promise<Error[]> => {
     const errors: Error[] = []
 
@@ -128,6 +152,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     if (modelChangeAttempted) {
       await collect(errors, async () => {
         await harness.setModel(previous.binding.piModel)
+        await harness.setThinkingLevel(previousThinking)
       })
     }
 
@@ -250,6 +275,7 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     const finishTransition = beginTransition()
     const previous = activeBinding
     const candidate = createBindingCleanupState(binding)
+    const previousThinking = harness.getThinkingLevel()
     let modelChangeAttempted = false
 
     try {
@@ -287,9 +313,10 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
         if (modelChanged) {
           modelChangeAttempted = true
           await harness.setModel(binding.piModel)
+          await ensureSupportedReasoningEffort(harness)
         }
       } catch (error) {
-        const rollbackErrors = await restoreLiveBinding(previous, candidate, modelChangeAttempted)
+        const rollbackErrors = await restoreLiveBinding(previous, candidate, modelChangeAttempted, previousThinking)
         await collect(rollbackErrors, transaction.rollback)
         rollbackErrors.push(...(await retireBinding(candidate)))
         throw withCleanupErrors(toError(error), rollbackErrors)
@@ -390,27 +417,16 @@ export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): 
     return disposePromise
   }
 
-  const defaultThinkingLevel = harness.getThinkingLevel()
   const reasoning = {
     capabilities: () => piReasoningCapabilities(harness.getModel()),
-    current: (): ReasoningEffort | undefined => {
-      const level = harness.getThinkingLevel()
-      return level === defaultThinkingLevel
-        ? undefined
-        : level === 'off'
-          ? 'none'
-          : isReasoningEffort(level)
-            ? level
-            : undefined
-    },
-    set: async (effort: ReasoningEffort | undefined): Promise<void> => {
+    current: () => currentReasoningEffort(harness),
+    set: async (effort: ReasoningEffort): Promise<void> => {
       if (disposed || !activeBinding) throw new Error('Harness runtime is unavailable.')
       if (promptActive || transitionActive) throw new Error('Wait for the current operation to finish.')
-      if (effort !== undefined && !reasoning.capabilities().efforts.includes(effort))
-        throw new Error('Unsupported reasoning effort.')
+      if (!reasoning.capabilities().efforts.includes(effort)) throw new Error('Unsupported reasoning effort.')
       const finish = beginTransition()
       try {
-        await harness.setThinkingLevel(effort === undefined ? defaultThinkingLevel : effort === 'none' ? 'off' : effort)
+        await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
       } finally {
         finish()
       }

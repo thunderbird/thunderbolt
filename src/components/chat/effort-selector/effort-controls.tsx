@@ -9,25 +9,28 @@ import { EffortRing } from './effort-ring'
 
 export const EffortControls = ({ choices, value, busy, choose, error }: ReturnType<typeof useEffortSelectorState>) => {
   const { t } = useLingui()
-  const [preview, setPreview] = useState<number | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const current = choices.findIndex((choice) => choice.value === value)
-  const index = preview ?? current
+  const previewIndex = choices.findIndex((choice) => choice.value === preview)
+  const index = previewIndex >= 0 ? previewIndex : current
   const selected = choices[index]
   const progress = index >= 0 && choices.length > 1 ? (index / (choices.length - 1)) * 100 : 0
   const commit = (inputIndex?: number) => {
-    const choice = choices[preview ?? inputIndex ?? -1]
+    const choice = preview === null ? choices[inputIndex ?? -1] : choices.find((choice) => choice.value === preview)
     if (!busy && choice) {
       choose(choice.value)
-      setPreview(null)
     }
+    setPreview(null)
   }
   return (
-    <div className="border-t bg-gradient-to-br from-brand/5 via-transparent to-primary/5 p-4">
+    <div className="shrink-0 border-t bg-gradient-to-br from-brand/5 via-transparent to-primary/5 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Reasoning effort`}</span>
-        <div className="flex items-center gap-2 text-brand" aria-live="polite">
+        <div className="flex min-w-0 items-center gap-2 text-brand" aria-live="polite">
           <EffortRing value={selected?.value} values={choices.map((choice) => choice.value)} />
-          <span className="text-lg font-medium">{selected?.name ?? t`Choose effort`}</span>
+          <span className="min-w-0 text-right text-lg font-medium wrap-break-word">
+            {selected?.name ?? t`Choose effort`}
+          </span>
         </div>
       </div>
       <div className="relative flex h-9 items-center" style={{ '--effort-progress': `${progress}%` } as CSSProperties}>
@@ -46,15 +49,16 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
           step={1}
           value={Math.max(0, index)}
           data-selected={index >= 0}
-          disabled={choices.length < 2 && index >= 0}
+          disabled={busy || (choices.length < 2 && index >= 0)}
           aria-disabled={busy}
           aria-label={t`Reasoning effort`}
           aria-valuetext={selected?.name ?? t`Reasoning effort`}
           onChange={(event) => {
             if (!busy) {
-              setPreview(Number(event.target.value))
+              setPreview(choices[Number(event.target.value)].value)
             }
           }}
+          onPointerCancel={() => setPreview(null)}
           onPointerUp={(event) => commit(Number(event.currentTarget.value))}
           onKeyUp={(event) => {
             if (

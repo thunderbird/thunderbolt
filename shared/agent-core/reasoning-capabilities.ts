@@ -19,6 +19,10 @@ export const piReasoningCapabilities = (model: Model<Api> | undefined): Reasonin
   return {
     efforts: getSupportedThinkingLevels(model).flatMap((level) => {
       const mapped = model.thinkingLevelMap?.[level]
+      // Pi aliases minimal to low for adaptive Anthropic models.
+      if (model.api === 'anthropic-messages' && level === 'minimal') {
+        return []
+      }
       if (level === 'off') {
         return mapped === 'none' || model.api === 'anthropic-messages' ? ['none' as const] : []
       }

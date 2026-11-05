@@ -26,8 +26,29 @@ describe('reasoning capabilities', () => {
   })
   it('preserves model-specific choices, including mandatory reasoning', () => {
     expect(tinfoilReasoningCapabilities('glm-5-3').efforts).toEqual(['low', 'high', 'max'])
-    expect(tinfoilReasoningCapabilities('gpt-oss-120b').efforts).toEqual(['low', 'medium', 'high'])
     expect(tinfoilReasoningCapabilities('deepseek-v4-1-flash').efforts).toEqual(['none', 'low', 'high', 'xhigh', 'max'])
+  })
+  it.each(['gpt-oss-120b', 'gpt-oss-safeguard-120b'])(
+    'limits Tinfoil %s to Harmony-supported native levels',
+    (modelId) => {
+      const capabilities = tinfoilReasoningCapabilities(modelId)
+      expect(capabilities.efforts).toEqual(['low', 'medium', 'high'])
+      for (const unsupported of ['none', 'minimal', 'xhigh', 'max']) {
+        expect(resolveReasoningEffort(unsupported, capabilities)).toBeUndefined()
+      }
+    },
+  )
+  it('supports the full Gemma scale and Kimi native mandatory-reasoning levels', () => {
+    expect(tinfoilReasoningCapabilities('gemma4-31b').efforts).toEqual([
+      'none',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+    expect(tinfoilReasoningCapabilities('kimi-k3').efforts).toEqual(['low', 'high', 'max'])
   })
   it('resolves unsupported saved values to Default and isolates conversation/model preferences', () => {
     const capabilities = tinfoilReasoningCapabilities('glm-5-3')
@@ -47,12 +68,23 @@ describe('effort wire translation', () => {
   it('sends explicit off, rather than confusing it with omission', () => {
     expect(applyReasoningEffort({ model: 'm' }, 'none', 'openai')).toEqual({ model: 'm', reasoning_effort: 'none' })
   })
-  it.each(['openrouter', 'responses'] as const)(
-    'uses nested effort for %s without conflicting budgets or enable flags',
-    (format) => {
-      const payload = { reasoning_effort: 'low', reasoning: { max_tokens: 100, enabled: false, summary: 'auto' } }
-      expect(applyReasoningEffort(payload, 'high', format)).toEqual({ reasoning: { summary: 'auto', effort: 'high' } })
-      expect(payload.reasoning.max_tokens).toBe(100)
+  it('uses nested OpenRouter effort without conflicting budgets or enable flags', () => {
+    const payload = { reasoning_effort: 'low', reasoning: { max_tokens: 100, enabled: false, summary: 'auto' } }
+    expect(applyReasoningEffort(payload, 'high', 'openrouter')).toEqual({
+      reasoning: { summary: 'auto', effort: 'high' },
+    })
+    expect(payload.reasoning.max_tokens).toBe(100)
+  })
+  it('removes empty Tinfoil thinking overrides without mutating the profile', () => {
+    const payload = { chat_template_kwargs: { enable_thinking: false, reasoning_effort: 'low' } }
+    expect(applyReasoningEffort(payload, 'max', 'tinfoil')).toEqual({ reasoning_effort: 'max' })
+    expect(payload.chat_template_kwargs.enable_thinking).toBe(false)
+  })
+  it.each([{ payload: null }, { payload: [] }, { payload: 'invalid' }])(
+    'rejects a malformed provider payload when applying an explicit choice (%j)',
+    ({ payload }) => {
+      expect(() => applyReasoningEffort(payload, 'high', 'openai')).toThrow('Expected a provider request object')
+      expect(applyReasoningEffort(payload, undefined, 'openai')).toBe(payload)
     },
   )
   it('does not silently remap Tinfoil high/max and preserves unrelated template parameters', () => {

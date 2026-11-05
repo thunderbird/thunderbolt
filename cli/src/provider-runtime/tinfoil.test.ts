@@ -65,7 +65,9 @@ const successfulCompletion = (receipt: string): Response =>
         object: 'chat.completion.chunk',
         created: 1,
         model: confidentialModel.model,
-        choices: [{ index: 0, delta: { role: 'assistant', reasoning_content: 'private reasoning' }, finish_reason: null }],
+        choices: [
+          { index: 0, delta: { role: 'assistant', reasoning_content: 'private reasoning' }, finish_reason: null },
+        ],
       })}`,
       `data: ${JSON.stringify({
         id: 'chatcmpl-private',
@@ -194,19 +196,19 @@ const hangingCompletion = (request: Request, receipt: string): Response =>
   )
 
 /** Injects a deterministic secure transport without patching the SDK prototype. */
-const secureClientFactory = (
-  respond: (request: Request) => Promise<Response> | Response,
-  reset: () => void = () => {},
-  observedOptions?: ConstructorParameters<typeof SecureClient>[0][],
-): NonNullable<CreateTinfoilBindingOptions['createSecureClient']> =>
+const secureClientFactory =
+  (
+    respond: (request: Request) => Promise<Response> | Response,
+    reset: () => void = () => {},
+    observedOptions?: ConstructorParameters<typeof SecureClient>[0][],
+  ): NonNullable<CreateTinfoilBindingOptions['createSecureClient']> =>
   (options) => {
     observedOptions?.push(options)
     const client = Object.create(SecureClient.prototype) as SecureClient
     Object.defineProperties(client, {
       fetch: {
         value: Object.assign(
-          async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
-            respond(new Request(String(input), init)),
+          async (input: Parameters<typeof fetch>[0], init?: RequestInit) => respond(new Request(String(input), init)),
           { preconnect: () => {} },
         ),
       },
@@ -335,38 +337,41 @@ describe('createTinfoilBinding', () => {
   })
 
   test.each([
-    ['glm-5-3', 'off', { type: 'disabled' }, undefined],
+    ['glm-5-3', 'off', { type: 'enabled', clear_thinking: false }, 'low'],
     ['glm-5-3', 'minimal', { type: 'enabled', clear_thinking: false }, 'low'],
     ['glm-5-3', 'medium', { type: 'enabled', clear_thinking: false }, 'high'],
     ['glm-5-2', 'low', { type: 'enabled', clear_thinking: false }, 'high'],
-  ] as const)('maps %s %s thinking through Pi compatibility', async (modelId, level, expectedThinking, expectedEffort) => {
-    let requestThinking: unknown
-    let requestEffort: unknown
-    const createSecureClient = secureClientFactory(async (request) => {
-      const payload = (await request.json()) as {
-        readonly thinking?: unknown
-        readonly reasoning_effort?: unknown
-      }
-      expect(payload).toMatchObject({ model: modelId })
-      requestThinking = payload.thinking
-      requestEffort = payload.reasoning_effort
-      return successfulCompletion('')
-    })
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      model: { ...confidentialModel, model: modelId },
-      createSecureClient,
-    })
-    const runtime = await createRuntime(binding, level)
-    try {
-      await runtime.prompt(crypto.randomUUID())
+  ] as const)(
+    'maps %s %s thinking through Pi compatibility',
+    async (modelId, level, expectedThinking, expectedEffort) => {
+      let requestThinking: unknown
+      let requestEffort: unknown
+      const createSecureClient = secureClientFactory(async (request) => {
+        const payload = (await request.json()) as {
+          readonly thinking?: unknown
+          readonly reasoning_effort?: unknown
+        }
+        expect(payload).toMatchObject({ model: modelId })
+        requestThinking = payload.thinking
+        requestEffort = payload.reasoning_effort
+        return successfulCompletion('')
+      })
+      const binding = await createTinfoilBinding({
+        ...bindingOptions(),
+        model: { ...confidentialModel, model: modelId },
+        createSecureClient,
+      })
+      const runtime = await createRuntime(binding, level)
+      try {
+        await runtime.prompt(crypto.randomUUID())
 
-      expect(requestThinking).toEqual(expectedThinking)
-      expect(requestEffort).toBe(expectedEffort)
-    } finally {
-      await runtime.dispose()
-    }
-  })
+        expect(requestThinking).toEqual(expectedThinking)
+        expect(requestEffort).toBe(expectedEffort)
+      } finally {
+        await runtime.dispose()
+      }
+    },
+  )
 
   test('derives thinking semantics from each confidential model instead of GLM 5.2', async () => {
     const requestEfforts: unknown[] = []
@@ -390,62 +395,65 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test.each([confidentialModel, defaultModelDeepSeekV41Flash])('sends $model identity and submits terminal usage', async (model) => {
-    const secureRequests: Request[] = []
-    const receiptRequests: Request[] = []
-    const receipt = 'iu1.canonicalPayload.canonicalSignature'
-    const binding = await createTinfoilBinding({
-      ...bindingOptions(),
-      model,
-      createSecureClient: secureClientFactory((request) => {
-        secureRequests.push(request)
-        return successfulCompletion(receipt)
-      }),
-      fetchFn: async (input, init) => {
-        receiptRequests.push(new Request(String(input), init))
-        return new Response(null, { status: 204 })
-      },
-    })
-    const runtime = await createHarnessRuntime(
-      {
-        cwd: process.cwd(),
-        thinking: 'high',
-      },
-      binding,
-    )
-
-    try {
-      const message = await runtime.prompt('keep this private')
-
-      expect(message.content).toContainEqual({
-        type: 'thinking',
-        thinking: 'private reasoning',
-        thinkingSignature: 'reasoning_content',
+  test.each([confidentialModel, defaultModelDeepSeekV41Flash])(
+    'sends $model identity and submits terminal usage',
+    async (model) => {
+      const secureRequests: Request[] = []
+      const receiptRequests: Request[] = []
+      const receipt = 'iu1.canonicalPayload.canonicalSignature'
+      const binding = await createTinfoilBinding({
+        ...bindingOptions(),
+        model,
+        createSecureClient: secureClientFactory((request) => {
+          secureRequests.push(request)
+          return successfulCompletion(receipt)
+        }),
+        fetchFn: async (input, init) => {
+          receiptRequests.push(new Request(String(input), init))
+          return new Response(null, { status: 204 })
+        },
       })
-      expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
-      expect(secureRequests).toHaveLength(1)
-      expect(secureRequests[0]?.headers.get(inferenceModelHeader)).toBe(model.model)
-      expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
-      expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
-      expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
-      expect(secureRequests[0]?.headers.get('x-api-key')).toBeNull()
-      const requestPayload = (await secureRequests[0]?.json()) as {
-        readonly model?: unknown
-        readonly stream?: unknown
+      const runtime = await createHarnessRuntime(
+        {
+          cwd: process.cwd(),
+          thinking: 'high',
+        },
+        binding,
+      )
+
+      try {
+        const message = await runtime.prompt('keep this private')
+
+        expect(message.content).toContainEqual({
+          type: 'thinking',
+          thinking: 'private reasoning',
+          thinkingSignature: 'reasoning_content',
+        })
+        expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
+        expect(secureRequests).toHaveLength(1)
+        expect(secureRequests[0]?.headers.get(inferenceModelHeader)).toBe(model.model)
+        expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
+        expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
+        expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
+        expect(secureRequests[0]?.headers.get('x-api-key')).toBeNull()
+        const requestPayload = (await secureRequests[0]?.json()) as {
+          readonly model?: unknown
+          readonly stream?: unknown
+        }
+        expect(requestPayload.model).toBe(model.model)
+        expect(requestPayload.stream).toBe(true)
+        expect(receiptRequests).toHaveLength(1)
+        expect(await receiptRequests[0]?.json()).toEqual({
+          receipt,
+          promptTokens: 16,
+          completionTokens: 2,
+          totalTokens: 18,
+        })
+      } finally {
+        await runtime.dispose()
       }
-      expect(requestPayload.model).toBe(model.model)
-      expect(requestPayload.stream).toBe(true)
-      expect(receiptRequests).toHaveLength(1)
-      expect(await receiptRequests[0]?.json()).toEqual({
-        receipt,
-        promptTokens: 16,
-        completionTokens: 2,
-        totalTokens: 18,
-      })
-    } finally {
-      await runtime.dispose()
-    }
-  })
+    },
+  )
 
   test('rejects a remote plain-HTTP backend before constructing a secure request', async () => {
     await expect(
@@ -496,9 +504,7 @@ describe('createTinfoilBinding', () => {
 
   test.each([429, 503] as const)('does not reject the stored session for confidential inference %i', async (status) => {
     const rejected: string[] = []
-    const ready = secureClientFactory(() =>
-      Response.json({ error: { message: 'temporary failure' } }, { status }),
-    )
+    const ready = secureClientFactory(() => Response.json({ error: { message: 'temporary failure' } }, { status }))
     const binding = await createTinfoilBinding({
       ...bindingOptions(),
       createSecureClient: ready,
@@ -688,13 +694,7 @@ describe('createTinfoilBinding', () => {
       expect(accountBReceiptRequests).toEqual([])
       expect(accountBDemotions).toEqual([])
       expect(
-        await readFileOrNull(
-          join(
-            receiptOutboxDirectory,
-            'inference-usage-receipts',
-            `${credentialA.deviceId}.json`,
-          ),
-        ),
+        await readFileOrNull(join(receiptOutboxDirectory, 'inference-usage-receipts', `${credentialA.deviceId}.json`)),
       ).not.toBeNull()
     } finally {
       if (previousHome === undefined) delete process.env.THUNDERBOLT_HOME

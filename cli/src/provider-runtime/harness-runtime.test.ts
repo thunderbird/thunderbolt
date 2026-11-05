@@ -47,6 +47,7 @@ const createTestBinding = (
   providerId: string,
   modelId: string,
   options: {
+    readonly reasoning?: boolean
     readonly responses?: FauxResponseStep[]
     readonly events?: string[]
     readonly onAttach?: (harness: AgentHarness) => (() => void) | undefined
@@ -55,7 +56,7 @@ const createTestBinding = (
     readonly installFailure?: Error
   } = {},
 ): TestBinding => {
-  const faux = fauxProvider({ provider: providerId, models: [{ id: modelId }] })
+  const faux = fauxProvider({ provider: providerId, models: [{ id: modelId, reasoning: options.reasoning }] })
   if (options.responses) faux.setResponses(options.responses)
 
   const installedModels: MutableModels[] = []
@@ -159,6 +160,103 @@ describe('CLI provider dependency alignment', () => {
 })
 
 describe('HarnessRuntime', () => {
+  test('initializes mandatory reasoning to medium and reports explicit levels, including its initial value', async () => {
+    const active = createTestBinding('reasoning', 'model', { reasoning: true })
+    const runtime = await createRuntime(active.binding)
+    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('medium')
+    await runtime.reasoning!.set('high')
+    expect(runtime.reasoning?.current()).toBe('high')
+    await runtime.reasoning!.set('medium')
+    expect(runtime.reasoning?.current()).toBe('medium')
+    await expect(runtime.reasoning!.set('none')).rejects.toThrow('Unsupported')
+    expect(runtime.reasoning?.current()).toBe('medium')
+    await runtime.dispose()
+    await expect(runtime.reasoning!.set('high')).rejects.toThrow('unavailable')
+  })
+
+  test('normalizes inherited effort on model switches and preserves a supported explicit choice', async () => {
+    const plain = createTestBinding('plain', 'plain')
+    const runtime = await createRuntime(plain.binding)
+    const first = createTestBinding('thinking-a', 'thinking-a', { reasoning: true })
+    await runtime.switchBinding(first.binding, persistenceTransaction([]), { forceReplace: false })
+    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(plain.attachedHarnesses[0]?.getThinkingLevel()).toBe('medium')
+    await runtime.reasoning!.set('low')
+    const second = createTestBinding('thinking-b', 'thinking-b', { reasoning: true })
+    await runtime.switchBinding(second.binding, persistenceTransaction([]), { forceReplace: false })
+    expect(runtime.reasoning?.current()).toBe('low')
+  })
+
+  test('preserves an explicit supported invocation level', async () => {
+    const active = createTestBinding('reasoning', 'explicit', { reasoning: true })
+    const runtime = await createHarnessRuntime({ cwd: process.cwd(), thinking: 'high' }, active.binding)
+    runtimes.push(runtime)
+    expect(runtime.reasoning?.current()).toBe('high')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('high')
+  })
+
+  test('reports a mapped native level instead of advertising its Pi alias', async () => {
+    const active = createTestBinding('reasoning', 'alias', { reasoning: true })
+    const runtime = await createRuntime({
+      ...active.binding,
+      piModel: { ...active.binding.piModel, thinkingLevelMap: { off: 'low' } },
+    })
+    expect(runtime.reasoning?.current()).toBe('low')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('off')
+  })
+
+  test('initializes to the lowest supported level when medium is unavailable', async () => {
+    const active = createTestBinding('reasoning', 'limited', { reasoning: true })
+    const runtime = await createRuntime({
+      ...active.binding,
+      piModel: { ...active.binding.piModel, thinkingLevelMap: { off: null, minimal: null, medium: null } },
+    })
+    expect(runtime.reasoning?.current()).toBe('low')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('low')
+  })
+
+  test('preserves a supported disabled state and normalizes its wire value', async () => {
+    const active = createTestBinding('reasoning', 'optional', { reasoning: true })
+    const runtime = await createRuntime({
+      ...active.binding,
+      piModel: { ...active.binding.piModel, thinkingLevelMap: { off: 'none' } },
+    })
+    expect(runtime.reasoning?.current()).toBe('none')
+    await runtime.reasoning!.set('high')
+    await runtime.reasoning!.set('none')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('off')
+    expect(runtime.reasoning?.current()).toBe('none')
+  })
+
+  test('serializes effort writes with prompts and other configuration transitions', async () => {
+    const active = createTestBinding('reasoning', 'model', { reasoning: true })
+    const runtime = await createRuntime(active.binding)
+    const harness = active.attachedHarnesses[0]!
+    const gate = Promise.withResolvers<void>()
+    const setThinkingLevel = harness.setThinkingLevel.bind(harness)
+    harness.setThinkingLevel = async (level) => {
+      await gate.promise
+      await setThinkingLevel(level)
+    }
+    const change = runtime.reasoning!.set('high')
+    await expect(runtime.reasoning!.set('low')).rejects.toThrow('current operation')
+    await expect(runtime.prompt('wait')).rejects.toThrow('transition')
+    gate.resolve()
+    await change
+    expect(runtime.reasoning?.current()).toBe('high')
+    harness.setThinkingLevel = setThinkingLevel
+    await runtime.reasoning!.set('low')
+    expect(runtime.reasoning?.current()).toBe('low')
+  })
+
+  test('nonreasoning models expose no effort and reject changes', async () => {
+    const runtime = await createRuntime(createTestBinding('plain', 'plain').binding)
+    expect(runtime.reasoning?.capabilities().efforts).toEqual([])
+    expect(runtime.reasoning?.current()).toBeUndefined()
+    await expect(runtime.reasoning!.set('high')).rejects.toThrow('Unsupported')
+  })
+
   test('owns one harness, one mutable model registry, and one attached binding behind a narrow surface', async () => {
     const active = createTestBinding('profile-a', 'model-a')
     await createRuntime(active.binding)

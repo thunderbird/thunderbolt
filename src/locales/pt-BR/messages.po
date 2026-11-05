@@ -480,6 +480,7 @@ msgstr "Chave de API (opcional)"
 msgid "API Key is required for this provider"
 msgstr "Este provedor exige uma chave de API"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx

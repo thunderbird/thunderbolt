@@ -54,9 +54,9 @@ export const useEffortSelectorState = () => {
         name: capabilities.kind === 'toggle' && value !== 'none' ? t`On` : labels[value],
       }))
     : option
-      ? configSelectOptions(option).filter((choice) => choice.value !== 'default')
+      ? configSelectOptions(option)
       : []
-  const value = builtIn ? effort : option?.currentValue === 'default' ? undefined : option?.currentValue
+  const value = builtIn ? effort : option?.currentValue
   const resolvedValue = typeof value === 'string' ? value : undefined
   const [optimistic, setOptimisticValue] = useOptimistic({ scope, value: resolvedValue })
   const displayValue = optimistic.scope === scope ? optimistic.value : resolvedValue

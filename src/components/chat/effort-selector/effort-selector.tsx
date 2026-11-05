@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState, type ReactNode } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { useLingui } from '@lingui/react/macro'
 import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useEffortSelectorState } from './use-effort-selector-state'
+import { needsApiKey } from '@/settings/models/model-policy'
 import { GradientLock } from '@/components/ui/gradient-lock'
 import { EffortControls } from './effort-controls'
 import { EffortRing } from './effort-ring'
@@ -34,17 +35,21 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
       aria-description={choices.length ? effortDescription : undefined}
       className="flex shrink-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
     >
-      {modelPicker && selectedModel.isConfidential === 1 && <GradientLock className="size-3.5 shrink-0" />}
+      {modelPicker &&
+        (needsApiKey(selectedModel) ? (
+          <AlertTriangle aria-label={t`API key not configured`} className="size-3.5 shrink-0 text-warning" />
+        ) : selectedModel.isConfidential === 1 ? (
+          <GradientLock className="size-3.5 shrink-0" />
+        ) : null)}
       {modelPicker && <span className="max-w-40 truncate">{selectedModel.name}</span>}
       {choices.length > 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} />}
       <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
     </button>
   )
-  const handleOpenChange = (nextOpen: boolean) => setOpen(nextOpen)
   return (
     <ResponsivePopover
       open={open}
-      onOpenChange={handleOpenChange}
+      onOpenChange={setOpen}
       trigger={trigger}
       title={t`Model and reasoning effort`}
       mobileMenu={{ side: 'bottom' }}
@@ -52,12 +57,13 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
         side: !chatThread ? 'bottom' : 'top',
         align: 'end',
         sideOffset: 5,
-        className: 'w-80 overflow-hidden p-0',
+        className:
+          'flex max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0',
       }}
     >
       {modelPicker && (
         <>
-          <div className="px-4 pt-3 pb-2 text-[length:var(--font-size-xs)] font-medium text-muted-foreground max-md:hidden">{t`Model`}</div>
+          <div className="shrink-0 px-4 pt-3 pb-2 text-[length:var(--font-size-xs)] font-medium text-muted-foreground max-md:hidden">{t`Model`}</div>
           {modelPicker(() => setOpen(false))}
         </>
       )}

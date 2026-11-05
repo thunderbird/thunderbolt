@@ -51,7 +51,7 @@ import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
-import { applyReasoningEffort, type ReasoningEffort } from '../reasoning-effort.ts'
+import { applyReasoningEffort, reasoningEffortFormat, type ReasoningEffort } from '../reasoning-effort.ts'
 import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
@@ -175,7 +175,7 @@ export const buildOpenAiCompatModel = (
       return applyReasoningEffort(
         transformed ?? payload,
         opts.getReasoningEffort?.(),
-        opts.effortFormat ?? (opts.providerId === 'openrouter' ? 'openrouter' : 'openai'),
+        opts.effortFormat ?? reasoningEffortFormat(opts.providerId),
       )
     },
   })

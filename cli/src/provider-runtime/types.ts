@@ -179,7 +179,7 @@ export const noopBindingLifecycle = {
 } satisfies Pick<PreparedPiBinding, 'attach' | 'observePromptError' | 'dispose'>
 
 export type HarnessRuntime = {
-  readonly reasoning?: {
+  readonly reasoning: {
     readonly capabilities: () => ReasoningCapabilities
     readonly current: () => ReasoningEffort | undefined
     readonly set: (effort: ReasoningEffort) => Promise<void>

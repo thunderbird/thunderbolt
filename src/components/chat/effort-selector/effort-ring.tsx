@@ -11,13 +11,13 @@ const levels: Record<string, number> = { none: 0, off: 0, minimal: 1, low: 2, me
 export const EffortRing = ({ value, values }: { value: string | undefined; values: string[] }) => {
   const gradientId = useId()
   if (value === undefined || !values.includes(value)) {
-    return <Sparkles aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+    return <Sparkles aria-hidden="true" className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
   }
   const filled = Object.hasOwn(levels, value)
     ? levels[value]!
     : Math.max(1, Math.ceil(((values.indexOf(value) + 1) / values.length) * 6))
   return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" className="size-4 shrink-0" fill="none">
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="size-[var(--icon-size-default)] shrink-0" fill="none">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
           <stop stopColor="var(--color-brand-2)" />

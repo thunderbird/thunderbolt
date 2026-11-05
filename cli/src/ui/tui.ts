@@ -369,8 +369,7 @@ const thinkingLabel = {
 } as const satisfies Readonly<Record<ThinkingLevel, string>>
 
 /** Read the effective runtime level after initialization or a model transition. */
-const runtimeThinking = (harness: HarnessRuntime, fallback: ThinkingLevel): ThinkingLevel => {
-  if (!harness.reasoning) return fallback
+const runtimeThinking = (harness: HarnessRuntime): ThinkingLevel => {
   const effort = harness.reasoning.current()
   return effort === undefined || effort === 'none' ? 'off' : effort
 }
@@ -711,7 +710,7 @@ export const runTuiRepl = async (
     footer.setIdentity({
       model: selectedModel.label,
       confidential: selectedModel.confidential,
-      thinking: runtimeThinking(harness, options.thinking),
+      thinking: runtimeThinking(harness),
       permissionMode,
     })
     activeController = undefined
@@ -741,7 +740,7 @@ export const runTuiRepl = async (
           footer.setIdentity({
             model: model.label,
             confidential: model.confidential,
-            thinking: runtimeThinking(connected.harness, options.thinking),
+            thinking: runtimeThinking(connected.harness),
             permissionMode,
           })
         }

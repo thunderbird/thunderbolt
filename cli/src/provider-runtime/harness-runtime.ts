@@ -88,7 +88,9 @@ const currentReasoningEffort = (harness: AgentHarness): ReasoningEffort | undefi
 const ensureSupportedReasoningEffort = async (harness: AgentHarness): Promise<void> => {
   const efforts = piReasoningCapabilities(harness.getModel()).efforts
   if (efforts.length && currentReasoningEffort(harness) === undefined) {
-    const effort = efforts.includes('medium') ? 'medium' : efforts[0]!
+    const effort = efforts.includes('medium')
+      ? 'medium'
+      : (efforts.find((level) => level !== 'none') ?? efforts[0]!)
     await harness.setThinkingLevel(effort === 'none' ? 'off' : effort)
   }
 }

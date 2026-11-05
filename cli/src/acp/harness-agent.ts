@@ -317,10 +317,10 @@ export const createHarnessAgent = (
   /** Advertise the native levels this session can actually apply. */
   const sessionConfig = (sessionId: string): { configOptions?: SessionConfigOption[] } => {
     const reasoning = requireSession(sessionId).harness.reasoning
-    const capabilities = reasoning?.capabilities()
-    const efforts = capabilities?.efforts ?? []
-    const current = reasoning?.current()
-    if (!reasoning || !efforts.length || current === undefined) return {}
+    const capabilities = reasoning.capabilities()
+    const efforts = capabilities.efforts
+    const current = reasoning.current()
+    if (!efforts.length || current === undefined) return {}
     return {
       configOptions: [
         {
@@ -331,7 +331,7 @@ export const createHarnessAgent = (
           currentValue: current,
           options: efforts.map((value) => ({
             value,
-            name: value === 'none' ? 'Off' : capabilities?.kind === 'toggle' ? 'On' : value,
+            name: value === 'none' ? 'Off' : capabilities.kind === 'toggle' ? 'On' : value,
           })),
         },
       ],
@@ -344,8 +344,6 @@ export const createHarnessAgent = (
     const reasoning = requireSession(params.sessionId).harness.reasoning
     if (
       params.configId !== 'reasoning_effort' ||
-      !reasoning ||
-      !reasoning.capabilities().efforts.length ||
       !isReasoningEffort(params.value) ||
       !reasoning.capabilities().efforts.includes(params.value)
     ) {

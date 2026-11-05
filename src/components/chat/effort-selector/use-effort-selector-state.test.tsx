@@ -130,6 +130,7 @@ describe('effort selector state', () => {
       tables: ['settings'],
     })
     const trigger = screen.getByRole('button', { name: 'Model and reasoning effort' })
+    expect(screen.getByTestId('model-selector-trigger')).toBe(trigger)
     expect(trigger.textContent).toContain('Private model')
     expect(trigger.getAttribute('aria-description')).toContain('Model: Private model')
     expect(screen.queryByLabelText('API key not configured')).toBeNull()

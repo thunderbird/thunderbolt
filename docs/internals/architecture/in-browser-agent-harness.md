@@ -353,7 +353,7 @@ including grouped choices, and commits through `session/set_config_option`. Init
 and idle `config_option_update` notifications refresh the control. No advertised option means no selector.
 The CLI Pi harness exposes concrete supported levels, serializes changes against active prompts, and restores saved
 thinking-level entries when resuming a session. If an inherited level cannot resolve to a supported effort, it
-initializes Medium when available, otherwise the lowest supported level. Valid explicit and resumed choices are
+initializes Medium when available, otherwise the lowest enabled reasoning level (Off only if it is the sole option). Valid explicit and resumed choices are
 preserved. No synthetic Default option is advertised.
 
 Provider references: [OpenAI](https://developers.openai.com/api/docs/guides/reasoning),

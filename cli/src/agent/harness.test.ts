@@ -57,7 +57,7 @@ describe('createHarnessRuntime saved effort', () => {
     }
     const runtime = await createHarnessRuntime({ cwd: process.cwd(), thinking: 'high' }, binding, session)
     try {
-      expect(runtime.reasoning?.current()).toBe(expected)
+      expect(runtime.reasoning.current()).toBe(expected)
       expect(
         (await session.getBranch())
           .filter((entry) => entry.type === 'thinking_level_change')

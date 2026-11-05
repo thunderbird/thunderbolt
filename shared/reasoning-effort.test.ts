@@ -7,6 +7,7 @@ import {
   applyReasoningEffort,
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
+  reasoningEffortFormat,
   resolveReasoningEffort,
   tinfoilReasoningCapabilities,
 } from './reasoning-effort'
@@ -102,4 +103,14 @@ describe('effort wire translation', () => {
       chat_template_kwargs: { custom: 'keep' },
     })
   })
+})
+
+it.each([
+  ['openrouter', 'openrouter'],
+  ['tinfoil', 'tinfoil'],
+  ['openai', 'openai'],
+  ['thunderbolt', 'openai'],
+  ['custom-provider', 'openai'],
+] as const)('uses %s provider effort encoding %s', (provider, format) => {
+  expect(reasoningEffortFormat(provider)).toBe(format)
 })

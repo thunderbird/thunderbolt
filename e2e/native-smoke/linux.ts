@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resolve } from 'node:path'
-import { remote } from 'webdriverio'
+import { Key, remote } from 'webdriverio'
 import { fakeProviderReply } from '../fake-provider'
 
 const capabilities = {
@@ -31,6 +31,7 @@ try {
   await composer.waitForDisplayed({ timeout: 60_000 })
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
   await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
+  await browser.keys(Key.Escape)
   await composer.setValue('Please greet me briefly.')
   await (await browser.$('button[aria-label="Send message"]')).click()
   await browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(fakeProviderReply), {

@@ -76,6 +76,9 @@ OPTIONS
       --api-key <key>   compatibility-only per-process provider key override;
                         command-line keys may appear in shell history or process listings
       --thinking <lvl>  reasoning depth: ${thinkingLevels.join(' | ')} (default: medium)
+                        Levels follow model support and may be mapped to a supported level.
+                        When off is unsupported (e.g. GLM 5.3), uses medium if available,
+                        otherwise the lowest enabled level; reasoning remains on.
   -y, --yolo            start in yolo permission mode (alias:
                         --dangerously-skip-permissions)
       --no-tui          use the plain readline REPL, not the interactive TUI

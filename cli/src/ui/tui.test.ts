@@ -44,6 +44,13 @@ const tuiHarness = (overrides: Partial<HarnessRuntime> = {}) => {
   let toolCallGate: Parameters<HarnessRuntime['registerToolCallGate']>[0] | undefined
   let unsubscribes = 0
   const harness: HarnessRuntime = {
+    reasoning: {
+      capabilities: () => ({ efforts: [] }),
+      current: () => undefined,
+      set: async () => {
+        throw new Error('Unsupported reasoning effort.')
+      },
+    },
     subscribe: (next) => {
       listener = next
       return () => {

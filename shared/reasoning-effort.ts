@@ -42,6 +42,10 @@ export const tinfoilReasoningCapabilities = (modelId: string): ReasoningCapabili
   }
 }
 
+/** Select the effort encoding for an OpenAI-compatible provider. */
+export const reasoningEffortFormat = (providerId: string): 'openai' | 'openrouter' | 'tinfoil' =>
+  providerId === 'openrouter' || providerId === 'tinfoil' ? providerId : 'openai'
+
 /** OpenRouter distinguishes omitted support (unknown/unavailable) from null (all gateway values). */
 export const openRouterReasoningCapabilities = (
   reasoning:

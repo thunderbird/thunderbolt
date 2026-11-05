@@ -167,16 +167,16 @@ describe('HarnessRuntime', () => {
   test('initializes mandatory reasoning to medium and reports explicit levels, including its initial value', async () => {
     const active = createTestBinding('reasoning', 'model', { reasoning: true })
     const runtime = await createRuntime(active.binding)
-    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(runtime.reasoning.current()).toBe('medium')
     expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('medium')
-    await runtime.reasoning!.set('high')
-    expect(runtime.reasoning?.current()).toBe('high')
-    await runtime.reasoning!.set('medium')
-    expect(runtime.reasoning?.current()).toBe('medium')
-    await expect(runtime.reasoning!.set('none')).rejects.toThrow('Unsupported')
-    expect(runtime.reasoning?.current()).toBe('medium')
+    await runtime.reasoning.set('high')
+    expect(runtime.reasoning.current()).toBe('high')
+    await runtime.reasoning.set('medium')
+    expect(runtime.reasoning.current()).toBe('medium')
+    await expect(runtime.reasoning.set('none')).rejects.toThrow('Unsupported')
+    expect(runtime.reasoning.current()).toBe('medium')
     await runtime.dispose()
-    await expect(runtime.reasoning!.set('high')).rejects.toThrow('unavailable')
+    await expect(runtime.reasoning.set('high')).rejects.toThrow('unavailable')
   })
 
   test('normalizes inherited effort on model switches and preserves a supported explicit choice', async () => {
@@ -184,22 +184,22 @@ describe('HarnessRuntime', () => {
     const runtime = await createRuntime(plain.binding)
     const first = createTestBinding('thinking-a', 'thinking-a', { reasoning: true })
     await runtime.switchBinding(first.binding, persistenceTransaction([]), { forceReplace: false })
-    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(runtime.reasoning.current()).toBe('medium')
     expect(plain.attachedHarnesses[0]?.getThinkingLevel()).toBe('medium')
-    await runtime.reasoning!.set('low')
+    await runtime.reasoning.set('low')
     const second = createTestBinding('thinking-b', 'thinking-b', { reasoning: true })
     await runtime.switchBinding(second.binding, persistenceTransaction([]), { forceReplace: false })
-    expect(runtime.reasoning?.current()).toBe('low')
+    expect(runtime.reasoning.current()).toBe('low')
   })
 
   test('refreshes effort capabilities when force-replacing the same model identifier', async () => {
     const initial = createTestBinding('profile', 'model')
     const runtime = await createRuntime(initial.binding)
-    expect(runtime.reasoning?.capabilities().efforts).toEqual([])
+    expect(runtime.reasoning.capabilities().efforts).toEqual([])
     const replacement = createTestBinding('profile', 'model', { reasoning: true })
     await runtime.switchBinding(replacement.binding, persistenceTransaction([]), { forceReplace: true })
-    expect(runtime.reasoning?.capabilities().efforts).toContain('medium')
-    expect(runtime.reasoning?.current()).toBe('medium')
+    expect(runtime.reasoning.capabilities().efforts).toContain('medium')
+    expect(runtime.reasoning.current()).toBe('medium')
     expect(initial.attachedHarnesses[0]?.getModel()).toBe(replacement.binding.piModel)
   })
 
@@ -207,7 +207,7 @@ describe('HarnessRuntime', () => {
     const active = createTestBinding('reasoning', 'explicit', { reasoning: true })
     const runtime = await createHarnessRuntime({ cwd: process.cwd(), thinking: 'high' }, active.binding)
     runtimes.push(runtime)
-    expect(runtime.reasoning?.current()).toBe('high')
+    expect(runtime.reasoning.current()).toBe('high')
     expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('high')
   })
 
@@ -217,7 +217,7 @@ describe('HarnessRuntime', () => {
       ...active.binding,
       piModel: { ...active.binding.piModel, thinkingLevelMap: { off: 'low' } },
     })
-    expect(runtime.reasoning?.current()).toBe('low')
+    expect(runtime.reasoning.current()).toBe('low')
     expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('off')
   })
 
@@ -227,7 +227,24 @@ describe('HarnessRuntime', () => {
       ...active.binding,
       piModel: { ...active.binding.piModel, thinkingLevelMap: { off: null, minimal: null, medium: null } },
     })
-    expect(runtime.reasoning?.current()).toBe('low')
+    expect(runtime.reasoning.current()).toBe('low')
+    expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('low')
+  })
+
+  test('fallback skips off when an enabled level exists', async () => {
+    const active = createTestBinding('reasoning', 'limited', { reasoning: true })
+    const runtime = await createHarnessRuntime(
+      { cwd: process.cwd(), thinking: 'medium' },
+      {
+        ...active.binding,
+        piModel: {
+          ...active.binding.piModel,
+          thinkingLevelMap: { off: 'none', minimal: null, medium: 'unsupported-alias' },
+        },
+      },
+    )
+    runtimes.push(runtime)
+    expect(runtime.reasoning.current()).toBe('low')
     expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('low')
   })
 
@@ -237,11 +254,11 @@ describe('HarnessRuntime', () => {
       ...active.binding,
       piModel: { ...active.binding.piModel, thinkingLevelMap: { off: 'none' } },
     })
-    expect(runtime.reasoning?.current()).toBe('none')
-    await runtime.reasoning!.set('high')
-    await runtime.reasoning!.set('none')
+    expect(runtime.reasoning.current()).toBe('none')
+    await runtime.reasoning.set('high')
+    await runtime.reasoning.set('none')
     expect(active.attachedHarnesses[0]?.getThinkingLevel()).toBe('off')
-    expect(runtime.reasoning?.current()).toBe('none')
+    expect(runtime.reasoning.current()).toBe('none')
   })
 
   test('serializes effort writes with prompts and other configuration transitions', async () => {
@@ -254,22 +271,22 @@ describe('HarnessRuntime', () => {
       await gate.promise
       await setThinkingLevel(level)
     }
-    const change = runtime.reasoning!.set('high')
-    await expect(runtime.reasoning!.set('low')).rejects.toThrow('current operation')
+    const change = runtime.reasoning.set('high')
+    await expect(runtime.reasoning.set('low')).rejects.toThrow('current operation')
     await expect(runtime.prompt('wait')).rejects.toThrow('transition')
     gate.resolve()
     await change
-    expect(runtime.reasoning?.current()).toBe('high')
+    expect(runtime.reasoning.current()).toBe('high')
     harness.setThinkingLevel = setThinkingLevel
-    await runtime.reasoning!.set('low')
-    expect(runtime.reasoning?.current()).toBe('low')
+    await runtime.reasoning.set('low')
+    expect(runtime.reasoning.current()).toBe('low')
   })
 
   test('nonreasoning models expose no effort and reject changes', async () => {
     const runtime = await createRuntime(createTestBinding('plain', 'plain').binding)
-    expect(runtime.reasoning?.capabilities().efforts).toEqual([])
-    expect(runtime.reasoning?.current()).toBeUndefined()
-    await expect(runtime.reasoning!.set('high')).rejects.toThrow('Unsupported')
+    expect(runtime.reasoning.capabilities().efforts).toEqual([])
+    expect(runtime.reasoning.current()).toBeUndefined()
+    await expect(runtime.reasoning.set('high')).rejects.toThrow('Unsupported')
   })
 
   test('owns one harness, one mutable model registry, and one attached binding behind a narrow surface', async () => {

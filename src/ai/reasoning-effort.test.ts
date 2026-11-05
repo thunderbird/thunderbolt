@@ -6,7 +6,11 @@ import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { http } from '@/lib/http'
 import { createMockModel } from '@/test-utils/chat-store-mocks'
-import { getChatReasoningEffort, loadReasoningCapabilities } from './reasoning-effort'
+import {
+  createReasoningCapabilitiesLoader,
+  getChatReasoningEffort,
+  loadReasoningCapabilities,
+} from './reasoning-effort'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { updateSettings } from '@/dal/settings'
 import { getDb } from '@/db/database'
@@ -17,7 +21,27 @@ afterAll(teardownTestDatabase)
 
 it('shares OpenRouter discovery, retries cold failures, and retains known capabilities during refresh outages', async () => {
   const clock = getClock()
+  const loadReasoningCapabilities = createReasoningCapabilitiesLoader()
   clock.setSystemTime(1)
+  const timeoutController = new AbortController()
+  const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutController.signal)
+  const bodyStarted = Promise.withResolvers<void>()
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+    Object.assign(
+      async (input: RequestInfo | URL) => {
+        const request = input as Request
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              request.signal.addEventListener('abort', () => controller.error(request.signal.reason), { once: true })
+              bodyStarted.resolve()
+            },
+          }),
+        )
+      },
+      { preconnect: () => {} },
+    ),
+  )
   const request = spyOn(http, 'get')
   const warn = spyOn(console, 'warn').mockImplementation(() => {})
   const first = createMockModel({ provider: 'openrouter', model: 'test/one' })
@@ -30,15 +54,15 @@ it('shares OpenRouter discovery, retries cold failures, and retains known capabi
     })
   }
   try {
-    const pending = Promise.withResolvers<unknown>()
-    request.mockImplementation(() => Object.assign(response({}), { json: <T>() => pending.promise as Promise<T> }))
     const coldRequest = loadReasoningCapabilities(first)
+    await bodyStarted.promise
+    await request.mock.results[0].value
     clock.setSystemTime(300_002)
     const sharedRequest = loadReasoningCapabilities(second)
     expect(request).toHaveBeenCalledTimes(1)
-    expect(request).toHaveBeenLastCalledWith('https://openrouter.ai/api/v1/models', { timeout: 10_000 })
+    expect(timeout).toHaveBeenLastCalledWith(10_000)
     const failures = Promise.allSettled([coldRequest, sharedRequest])
-    pending.resolve({ invalid: true })
+    timeoutController.abort(new DOMException('Request timed out', 'TimeoutError'))
     expect((await failures).map((result) => result.status)).toEqual(['rejected', 'rejected'])
     clock.setSystemTime(1)
     request.mockImplementation(() =>
@@ -68,6 +92,8 @@ it('shares OpenRouter discovery, retries cold failures, and retains known capabi
     expect(request).toHaveBeenCalledTimes(4)
   } finally {
     request.mockRestore()
+    fetch.mockRestore()
+    timeout.mockRestore()
     warn.mockRestore()
   }
 })

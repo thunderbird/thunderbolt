@@ -236,12 +236,6 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
         ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
             getReasoningEffort,
-            effortFormat:
-              options.model.providerId === 'tinfoil'
-                ? 'tinfoil'
-                : options.model.providerId === 'openrouter'
-                  ? 'openrouter'
-                  : 'openai',
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,

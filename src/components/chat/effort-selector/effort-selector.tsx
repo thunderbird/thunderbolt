@@ -35,6 +35,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
   const trigger = (
     <button
       type="button"
+      data-testid={modelPicker ? 'model-selector-trigger' : undefined}
       aria-haspopup="dialog"
       aria-label={modelPicker ? t`Model and reasoning effort` : t`Reasoning effort`}
       title={choices.length ? effortDescription : selectedModel.name}

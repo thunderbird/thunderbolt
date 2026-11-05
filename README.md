@@ -10,7 +10,7 @@ Thunderbolt is an open-source, cross-platform AI client that can be deployed on-
 - 🧠 Compatible with frontier, local, and on-prem models.
 - 🙋 Enterprise features, support, and FDEs available.
 
-Thunderbolt ships system-managed models that the backend serves on your behalf: Opus 5.5, routed to Anthropic, and a catalog of confidential models hosted in Tinfoil enclaves — one of which, `DeepSeek V4.1 Flash`, is the default model for a new install. A self-hosted backend serves those when you give it `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. You can also add API keys for any OpenAI-compatible model provider in the settings, or point Thunderbolt at [Ollama](https://ollama.com) or [llama.cpp](https://github.com/ggml-org/llama.cpp) for local inference.
+Thunderbolt ships system-managed models that the backend serves on your behalf: Opus 5.5, routed to Anthropic, and a catalog of confidential models hosted in Tinfoil enclaves. One of those, `DeepSeek V4.1 Flash`, is the default model for a new install. A self-hosted backend serves those when you give it `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. You can also add API keys for any OpenAI-compatible model provider in the settings, or point Thunderbolt at [Ollama](https://ollama.com) or [llama.cpp](https://github.com/ggml-org/llama.cpp) for local inference.
 
 ## Get Started Locally
 

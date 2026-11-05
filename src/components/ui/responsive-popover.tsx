@@ -26,7 +26,7 @@ type ResponsivePopoverProps = {
    */
   openOnTriggerClickMobile?: boolean
   /** Placement/styling for the mobile drawer card. */
-  mobileMenu?: Pick<ComponentProps<typeof MobileCardMenu>, 'side' | 'className'>
+  mobileMenu?: Pick<ComponentProps<typeof MobileCardMenu>, 'side' | 'className' | 'showTitle'>
   /** Positioning/sizing for the desktop popover panel. */
   desktopMenu?: Pick<
     ComponentProps<typeof PopoverContent>,

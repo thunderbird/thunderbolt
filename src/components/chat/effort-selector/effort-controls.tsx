@@ -5,7 +5,6 @@
 import { useState, type CSSProperties } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import type { useEffortSelectorState } from './use-effort-selector-state'
-import { EffortRing } from './effort-ring'
 
 export const EffortControls = ({ choices, value, busy, choose, error }: ReturnType<typeof useEffortSelectorState>) => {
   const { t } = useLingui()
@@ -23,21 +22,23 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
     setPreview(null)
   }
   return (
-    <div className="shrink-0 border-t bg-gradient-to-br from-brand/5 via-transparent to-primary/5 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="shrink-0 border-t px-4 pt-3 pb-2">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Reasoning effort`}</span>
-        <div className="flex min-w-0 items-center gap-2 text-brand" aria-live="polite">
-          <EffortRing value={selected?.value} values={choices.map((choice) => choice.value)} />
-          <span className="min-w-0 text-right text-lg font-medium wrap-break-word">
+        <div className="min-w-0" aria-live="polite">
+          <span className="min-w-0 text-right text-[length:var(--font-size-sm)] font-medium text-foreground/80 wrap-break-word">
             {selected?.name ?? t`Choose effort`}
           </span>
         </div>
       </div>
-      <div className="relative flex h-9 items-center" style={{ '--effort-progress': `${progress}%` } as CSSProperties}>
-        <div aria-hidden="true" className="effort-track pointer-events-none absolute inset-x-0 h-6 rounded-full">
-          <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between">
+      <div
+        className="relative flex h-9 items-center max-md:h-11"
+        style={{ '--effort-progress': `${progress}%` } as CSSProperties}
+      >
+        <div aria-hidden="true" className="effort-track pointer-events-none absolute inset-x-0 h-1.5 rounded-full">
+          <div className="absolute inset-x-2.5 inset-y-0 flex items-center justify-between">
             {choices.map((choice) => (
-              <span key={choice.value} className="size-1 rounded-full bg-muted-foreground/60" />
+              <span key={choice.value} className="size-1 rounded-full bg-foreground/25" />
             ))}
           </div>
         </div>

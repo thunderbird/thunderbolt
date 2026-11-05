@@ -2633,7 +2633,7 @@ msgstr "最小化"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "CSRF ステートがありません。認可をやり直してください。"
 
-#: src/components/chat/effort-selector/effort-selector.tsx
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -3295,6 +3295,7 @@ msgstr "Webview のプレビューはデスクトップアプリでのみ利用�
 msgid "Privacy"
 msgstr "プライバシー"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "非公開"

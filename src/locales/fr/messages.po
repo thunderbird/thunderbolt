@@ -2657,7 +2657,7 @@ msgstr "Réduire"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "État CSRF manquant — relancez l'autorisation."
 
-#: src/components/chat/effort-selector/effort-selector.tsx
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -3319,6 +3319,7 @@ msgstr "L'aperçu webview est disponible uniquement dans l'application de bureau
 msgid "Privacy"
 msgstr "Confidentialité"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Privé"

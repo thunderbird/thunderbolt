@@ -59,7 +59,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
       onOpenChange={setOpen}
       trigger={trigger}
       title={t`Model and reasoning effort`}
-      mobileMenu={{ side: 'bottom' }}
+      mobileMenu={{ side: 'bottom', showTitle: !modelPicker }}
       desktopMenu={{
         side: !chatThread ? 'bottom' : 'top',
         align: 'end',
@@ -68,12 +68,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
           'flex max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0',
       }}
     >
-      {modelPicker && (
-        <>
-          <div className="shrink-0 px-4 pt-3 pb-2 text-[length:var(--font-size-xs)] font-medium text-muted-foreground max-md:hidden">{t`Model`}</div>
-          {modelPicker(() => setOpen(false))}
-        </>
-      )}
+      {modelPicker?.(() => setOpen(false))}
       {choices.length > 0 && <EffortControls key={selectedModel.id} {...effort} />}
     </ResponsivePopover>
   )

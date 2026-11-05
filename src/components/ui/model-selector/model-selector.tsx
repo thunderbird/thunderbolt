@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, Check, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
 import { useCallback } from 'react'
 
 export type ModelSelectorProps = {
@@ -175,18 +175,21 @@ export const ModelSelector = ({
         className={cn(
           searchableMenuRowClass,
           'hover:bg-accent/50',
-          isSelected && (embedded ? 'bg-brand/10 text-brand' : 'bg-accent'),
+          embedded && 'text-foreground/80',
+          isSelected && 'bg-accent',
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
         <span className="truncate font-normal">{item.label}</span>
-        {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0" />}
+        {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-brand" />}
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (
           <AlertTriangle className="ml-auto size-3.5 flex-shrink-0 text-warning" />
         ) : item.icon ? (
-          <span className="ml-auto flex-shrink-0">{item.icon}</span>
+          <span className="ml-auto flex-shrink-0">
+            {embedded ? <Lock aria-label={t`Private`} className="size-3.5 text-muted-foreground" /> : item.icon}
+          </span>
         ) : null}
       </div>
     )
@@ -217,29 +220,50 @@ export const ModelSelector = ({
   )
 
   return (
-    <SearchableMenu
-      embedded={embedded}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose?.()
-        }
-      }}
-      items={groupedItems}
-      value={selectedModel?.id}
-      onValueChange={handleModelChange}
-      searchable={models.length > 10}
-      searchPlaceholder={t`Search Models`}
-      emptyMessage={t`No models found`}
-      mobileTitle={t`Choose model`}
-      mobileSide="bottom"
-      trigger={renderTrigger}
-      renderItem={renderItem}
-      footerAction={footerAction}
-      contentClassName="max-md:bg-sidebar"
-      width={240}
-      maxHeight={embedded ? 220 : 340}
-      side={side}
-      align={align}
-    />
+    <>
+      {embedded && (
+        <div className="flex shrink-0 items-center justify-between pl-3 pr-1 pt-2 pb-1">
+          <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Model`}</span>
+          {onAddModels && (
+            <button
+              type="button"
+              aria-label={t`Add Model`}
+              title={t`Add Model`}
+              className="flex size-8 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              onClick={() => {
+                onClose?.()
+                onAddModels()
+              }}
+            >
+              <Plus aria-hidden="true" className="size-4" />
+            </button>
+          )}
+        </div>
+      )}
+      <SearchableMenu
+        embedded={embedded}
+        onOpenChange={(open) => {
+          if (!open) {
+            onClose?.()
+          }
+        }}
+        items={groupedItems}
+        value={selectedModel?.id}
+        onValueChange={handleModelChange}
+        searchable={models.length > 10}
+        searchPlaceholder={t`Search Models`}
+        emptyMessage={t`No models found`}
+        mobileTitle={t`Choose model`}
+        mobileSide="bottom"
+        trigger={renderTrigger}
+        renderItem={renderItem}
+        footerAction={embedded ? undefined : footerAction}
+        contentClassName="max-md:bg-sidebar"
+        width={240}
+        maxHeight={embedded ? 220 : 340}
+        side={side}
+        align={align}
+      />
+    </>
   )
 }

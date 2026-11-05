@@ -2657,7 +2657,7 @@ msgstr "Minimizar"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "Falta el estado CSRF: reinicia la autorización."
 
-#: src/components/chat/effort-selector/effort-selector.tsx
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -3319,6 +3319,7 @@ msgstr "La vista previa web solo está disponible en la app de escritorio"
 msgid "Privacy"
 msgstr "Privacidad"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Privado"

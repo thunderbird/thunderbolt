@@ -9,11 +9,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useEffortSelectorState } from './use-effort-selector-state'
 import { GradientLock } from '@/components/ui/gradient-lock'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { EffortRing } from './effort-ring'
 import './effort-selector.css'
 
 export const EffortSelector = ({ modelPicker }: { modelPicker?: ReactNode }) => {
   const { t } = useLingui()
-  const { selectedModel, selectedAgent } = useCurrentChatSession()
+  const { selectedModel, selectedAgent, chatThread } = useCurrentChatSession()
+  const { isMobile } = useIsMobile()
   const { error, choices, value, busy, choose } = useEffortSelectorState()
   const [preview, setPreview] = useState<number | null>(null)
   if (!choices.length) {
@@ -32,6 +35,8 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: ReactNode }) => 
       setPreview(null)
     }
   }
+  const effortName = choices[current]?.name ?? selected.name
+  const effortDescription = t`Reasoning effort: ${effortName}`
   const reset = choices.find((choice) => choice.value === 'default')
   return (
     <Popover onOpenChange={() => setPreview(null)}>
@@ -39,17 +44,22 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: ReactNode }) => 
         <button
           type="button"
           aria-label={modelPicker ? t`Model and reasoning effort` : t`Reasoning effort`}
-          title={t`Higher effort can improve difficult answers but takes more time and tokens.`}
+          title={effortDescription}
+          aria-description={effortDescription}
           className="flex shrink-0 cursor-pointer items-center gap-1.5 px-2 h-[var(--touch-height-control)] rounded-[var(--radius-control)] text-[length:var(--font-size-sm)] font-medium text-muted-foreground transition-colors hover:bg-accent/50 data-[state=open]:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
         >
           {modelPicker && selectedModel.isConfidential === 1 && <GradientLock className="size-3.5 shrink-0" />}
           {modelPicker && <span className="max-w-40 truncate">{selectedModel.name}</span>}
-          {modelPicker && <span aria-hidden="true" className="size-0.5 rounded-full bg-muted-foreground/60" />}
-          <span>{choices[current]?.name}</span>
+          <EffortRing value={value} values={choices.map((choice) => choice.value)} />
           <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-4">
+      <PopoverContent
+        side={!chatThread && !isMobile ? 'bottom' : 'top'}
+        align="end"
+        sideOffset={8}
+        className="w-72 p-4"
+      >
         <div className="relative mb-4 text-center">
           <div className="px-7 text-lg font-medium text-brand" aria-live="polite">
             {selected.name}

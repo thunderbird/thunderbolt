@@ -85,7 +85,7 @@ describe('effort selector state', () => {
       fireEvent.pointerUp(slider)
     })
     expect(slider.getAttribute('aria-valuetext')).toBe('High')
-    expect(trigger.textContent).toContain('High')
+    expect(trigger.getAttribute('title')).toBe('Reasoning effort: High')
     expect((trigger as HTMLButtonElement).disabled).toBe(false)
     await act(async () => {
       useSessionConfigStore.getState().set(key, {
@@ -108,7 +108,7 @@ describe('effort selector state', () => {
   it('opens the slider, previews supported levels, commits on release, and resets', async () => {
     renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
-    expect(trigger.textContent).toContain('Default')
+    expect(trigger.getAttribute('title')).toBe('Reasoning effort: Default')
     await act(async () => {
       fireEvent.click(trigger)
     })

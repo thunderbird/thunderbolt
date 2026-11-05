@@ -2252,8 +2252,8 @@ msgid "High"
 msgstr ""
 
 #: src/components/chat/effort-selector/effort-selector.tsx
-msgid "Higher effort can improve difficult answers but takes more time and tokens."
-msgstr ""
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -3353,6 +3353,10 @@ msgstr "推論"
 
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
 msgstr ""
 
 #: src/settings/models/connection-test-section.tsx

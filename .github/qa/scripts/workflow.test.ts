@@ -394,14 +394,20 @@ describe('fix job', () => {
         output: existsSync(join(dir, 'output')) ? readFileSync(join(dir, 'output'), 'utf8') : '',
       }
     }
-    const verdict = (approved: boolean, problems: string[] = []) => JSON.stringify({ approved, problems })
+    type Resolved = { problem: number; where: string; command: string; result: string }
+    const verdict = (approved: boolean, problems: string[] = [], resolved: Resolved[] = []) =>
+      JSON.stringify({ approved, problems, resolved })
 
     test('a fresh session that can read the patch and change nothing, before any agent code runs outside a sandbox', () => {
       const review = step('fix', 'Review the fix')
       const args = review.with?.claude_args ?? ''
       expect(args).toContain('--tools "Read,Glob,Grep,Bash"')
-      expect(args).toContain('--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"')
-      expect(args).toContain('--json-schema')
+      expect(args).toContain(
+        '--allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short),Bash(bun run test),Bash(bun run test:backend)"',
+      )
+      const schema = JSON.parse(/--json-schema '([^']+)'/.exec(args)?.[1] ?? '{}')
+      expect(schema.required).toEqual(['approved', 'problems', 'resolved'])
+      expect(schema.properties.resolved.items.required).toEqual(['problem', 'where', 'command', 'result'])
       expect(review.with?.prompt).toBe('${{ env.QA_REVIEW_PROMPT }}')
       expect(review.env).toEqual({
         CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1',
@@ -420,7 +426,7 @@ describe('fix job', () => {
       expect(step('fix', 'Build the prompt').run).toContain('cat .github/qa/review.md')
     })
 
-    test('a rejection extends the fix and review prompts with its problems, one line each; nothing else does', () => {
+    test('a rejection extends the fix and review prompts with its numbered problems, one line each; nothing else does', () => {
       const prompt = { PROMPT: '# Fix agent\n## Task', REVIEW_PROMPT: '# Fix reviewer\n## Task' }
       const rejected = runPlain('Build the correction prompt', {
         ...prompt,
@@ -428,9 +434,9 @@ describe('fix job', () => {
       })
       expect(rejected.output).toBe(
         'text<<QA_PROMPT_EOF\n# Fix agent\n## Task\n\n<review>\n' +
-          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</review>\nQA_PROMPT_EOF\n' +
+          '1. Fix the caller, not the primitive (src/a.tsx:3).\n2. Also the Close button.\n</review>\nQA_PROMPT_EOF\n' +
           'review<<QA_PROMPT_EOF\n# Fix reviewer\n## Task\n\n<first-review>\n' +
-          '- Fix the caller, not the primitive (src/a.tsx:3).\n- Also the Close button.\n</first-review>\nQA_PROMPT_EOF\n',
+          '1. Fix the caller, not the primitive (src/a.tsx:3).\n2. Also the Close button.\n</first-review>\nQA_PROMPT_EOF\n',
       )
       for (const REVIEW of [verdict(true), verdict(false), 'not json'])
         expect(runPlain('Build the correction prompt', { ...prompt, REVIEW })).toEqual({ code: 0, output: '' })
@@ -448,11 +454,42 @@ describe('fix job', () => {
       expect(decide('')).toBe('')
     })
 
+    test('a second approval counts only with evidence of where and how each earlier problem was fixed', () => {
+      const decide = (second: string) =>
+        runPlain('Decide the review', {
+          FIRST: verdict(false, ['Wrong path in the test.', 'The Close button too.']),
+          SECOND: second,
+          SECOND_OUTCOME: 'success',
+        }).output
+      const shown = (problem: number): Resolved => ({
+        problem,
+        where: 'src/content-view/sideview.test.tsx:42',
+        command: 'bun run test',
+        result: 'local-file sideview > renders a PNG stored as an attachment: pass',
+      })
+      expect(decide(verdict(true, [], [shown(1), { ...shown(2), where: 'src/a.tsx:3-9' }]))).toBe('approved=true\n')
+      // An approval that barely read anything, one that skips a problem, and one whose evidence lacks a place
+      // (prose, a time of day, line 0), a command or a result.
+      expect(decide(verdict(true))).toBe('')
+      expect(decide(verdict(true, [], [shown(1)]))).toBe('')
+      for (const where of ['the sideview test', 'I checked it at 12:30 today', 'src/a.ts:0'])
+        expect({ where, approved: decide(verdict(true, [], [shown(1), { ...shown(2), where }])) }).toEqual({
+          where,
+          approved: '',
+        })
+      expect(decide(verdict(true, [], [shown(1), { ...shown(2), command: '  ' }]))).toBe('')
+      expect(decide(verdict(true, [], [shown(1), { ...shown(2), result: '' }]))).toBe('')
+    })
+
     test("a patch the review did not approve becomes a diagnosis with the review's problems", () => {
       const problems = verdict(false, ['Fix the caller (src/a.tsx:3).'])
       expect(collect({ REVIEWED: '', REVIEW: problems })).toBe(
         'The independent review did not approve the patch, after one correction pass when it found problems, so ' +
           'the patch is not published.\n- Fix the caller (src/a.tsx:3).\n',
+      )
+      // A second approval without that evidence leaves the first review's problems standing.
+      expect(collect({ REVIEWED: '', FIRST_REVIEW: problems, REVIEW: verdict(true) })).toContain(
+        '- Fix the caller (src/a.tsx:3).',
       )
     })
   })

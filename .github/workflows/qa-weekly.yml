@@ -1455,9 +1455,9 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Bash"
-            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short)"
+            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short),Bash(bun run test),Bash(bun run test:backend)"
             --disallowedTools WebFetch WebSearch
-            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}}},"required":["approved","problems"],"additionalProperties":false}'
+            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}},"resolved":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"integer"},"where":{"type":"string"},"command":{"type":"string"},"result":{"type":"string"}},"required":["problem","where","command","result"],"additionalProperties":false}}},"required":["approved","problems","resolved"],"additionalProperties":false}'
             --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_REVIEW_MAX_TURNS }}
       - name: Keep the review session's execution file
@@ -1482,8 +1482,8 @@ jobs:
           LD_PRELOAD: ''
           LD_LIBRARY_PATH: ''
         run: |
-          problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems[] | "- " + gsub("\\s+"; " ")' <<< "$REVIEW") ||
-            exit 0
+          problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems | to_entries[] |
+            "\(.key + 1). " + (.value | gsub("\\s+"; " "))' <<< "$REVIEW") || exit 0
           [ -n "$problems" ] || exit 0
           {
             echo 'text<<QA_PROMPT_EOF'
@@ -1519,7 +1519,10 @@ jobs:
           QA_REVIEW_PROMPT: ${{ steps.correction-prompt.outputs.review }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with: *review-session
-      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's.
+      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A second
+      # approval counts only with evidence for every problem of the first review: an entry in `resolved` naming the
+      # problem's number, where the patch fixes it (`file:line`) and how the reviewer checked it (the command it ran
+      # and its result). Without it the approval is a rejection.
       - name: Decide the review
         id: review-verdict
         if: always()
@@ -1538,8 +1541,17 @@ jobs:
             /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
           fi
           verdict=$FIRST
-          if [ "$SECOND_OUTCOME" != skipped ]; then verdict=$SECOND; fi
-          if /usr/bin/jq -e '.approved == true' <<< "$verdict" > /dev/null 2>&1; then
+          earlier=0
+          if [ "$SECOND_OUTCOME" != skipped ]; then
+            verdict=$SECOND
+            earlier=$(/usr/bin/jq '.problems | length' <<< "$FIRST" 2> /dev/null) || earlier=0
+          fi
+          # shellcheck disable=SC2016 # jq variables
+          if /usr/bin/jq -e --argjson earlier "$earlier" '.approved == true and
+            ([range(1; $earlier + 1)] - [(.resolved // [])[] | select(
+              (.where | type == "string" and test("^[^\\s:]+:[1-9][0-9]*(-[1-9][0-9]*)?$")) and
+              (.command | type == "string" and test("\\S")) and
+              (.result | type == "string" and test("\\S"))) | .problem]) == []' <<< "$verdict" > /dev/null 2>&1; then
             echo 'approved=true' >> "$GITHUB_OUTPUT"
           fi
 
@@ -1682,6 +1694,7 @@ jobs:
           VISUAL: ${{ steps.visual.outcome }}
           REAL_BUILD: ${{ steps.real-build.outcome }}
           REVIEWED: ${{ steps.review-verdict.outputs.approved }}
+          FIRST_REVIEW: ${{ steps.review.outputs.structured_output }}
           REVIEW: ${{ steps.review-again.outputs.structured_output || steps.review.outputs.structured_output }}
         run: |
           mkdir -p qa-out/fix
@@ -1693,6 +1706,8 @@ jobs:
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
           elif [ ! -e "$diagnosis" ] && [ "$REVIEWED" != true ]; then
             diagnose "The independent review did not approve the patch, after one correction pass when it found problems"
+            # An approval without evidence for each earlier problem leaves those problems standing.
+            if ! jq -e '.problems | length > 0' <<< "$REVIEW" > /dev/null 2>&1; then REVIEW=$FIRST_REVIEW; fi
             jq -r '.problems[]? | "- " + .' <<< "$REVIEW" >> "$diagnosis" || true
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"

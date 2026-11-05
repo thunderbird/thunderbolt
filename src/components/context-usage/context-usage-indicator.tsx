@@ -109,9 +109,9 @@ export const ContextUsageIndicator = ({
               </button>
             </TooltipTrigger>
           }
-          desktopMenu={{ align: 'start', className: 'w-64 max-w-[calc(100vw-2rem)] p-0' }}
+          desktopMenu={{ align: 'start', className: 'max-w-[calc(100vw-2rem)] p-0' }}
         >
-          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-1 max-md:gap-4 max-md:px-4 max-md:pb-4 max-md:pt-2">
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4 max-md:gap-4 max-md:pt-2">
             {onCompact ? (
               <>
                 <Textarea
@@ -136,7 +136,7 @@ export const ContextUsageIndicator = ({
             )}
             <div
               className={cn(
-                'gap-2 max-md:flex max-md:flex-col-reverse',
+                'gap-2 max-md:flex max-md:flex-col',
                 onCompact && onViewSummary ? 'md:grid md:grid-cols-2' : 'md:flex md:justify-end',
               )}
             >

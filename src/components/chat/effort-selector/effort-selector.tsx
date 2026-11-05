@@ -48,7 +48,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
           <GradientLock className="size-3.5 shrink-0" />
         ) : null)}
       {modelPicker && <span className="max-w-40 truncate">{selectedModel.name}</span>}
-      {choices.length > 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} />}
+      {current >= 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} />}
       <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
     </button>
   )

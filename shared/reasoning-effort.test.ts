@@ -5,6 +5,8 @@
 import { describe, expect, it } from 'bun:test'
 import {
   applyReasoningEffort,
+  piThinkingLevels,
+  reasoningEfforts,
   openRouterReasoningCapabilities,
   reasoningEffortSettingKey,
   reasoningEffortFormat,
@@ -13,6 +15,12 @@ import {
 } from './reasoning-effort'
 
 describe('reasoning capabilities', () => {
+  it('keeps Pi levels ordered while distinguishing off from the native none value', () => {
+    expect(piThinkingLevels).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(piThinkingLevels).not.toContain('none')
+    expect(reasoningEfforts).toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(reasoningEfforts).not.toContain('off')
+  })
   it('does not invent levels for unknown or non-reasoning models', () => {
     expect(tinfoilReasoningCapabilities('llama3-3-70b').efforts).toEqual([])
     expect(tinfoilReasoningCapabilities('future-model').efforts).toEqual([])

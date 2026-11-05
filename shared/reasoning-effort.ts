@@ -2,9 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
+
 /** Wire values, deliberately distinct from Pi's `off` and an omitted preference. */
 export const reasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type ReasoningEffort = (typeof reasoningEfforts)[number]
+
+/** Pi uses `off` for the native API's `none` effort; all other levels retain their order. */
+export const piThinkingLevels: readonly ModelThinkingLevel[] = reasoningEfforts.map((effort) =>
+  effort === 'none' ? 'off' : effort,
+)
 export type ReasoningCapabilities = { kind?: 'effort' | 'toggle'; efforts: readonly ReasoningEffort[] }
 export const noReasoningEffort: ReasoningCapabilities = { efforts: [] }
 
@@ -22,8 +29,9 @@ export const resolveReasoningEffort = (
 export const reasoningEffortSettingKey = (threadId: string, modelId: string): string =>
   `chat-reasoning-effort:${threadId}:${modelId}`
 
-/** Tinfoil's documented native effort values; a reasoning boolean alone is insufficient.
- * https://docs.tinfoil.sh/guides/reasoning (2026-11-04).
+/** Native levels from https://docs.tinfoil.sh/guides/reasoning (2026-11-05).
+ * https://inference.tinfoil.sh/v1/models exposes preset effort_map values, not complete native support:
+ * Kimi has no mapping, and DeepSeek's mapping omits the supported max level.
  */
 export const tinfoilReasoningCapabilities = (modelId: string): ReasoningCapabilities => {
   switch (modelId) {

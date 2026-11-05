@@ -42,6 +42,7 @@
  * adapter's teardown (agent delete / config edit / sign-out).
  */
 
+import { piThinkingLevels } from '@shared/reasoning-effort'
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
@@ -163,7 +164,7 @@ type TinfoilClientOptions = Pick<
   | 'isSsoMode'
 >
 
-const piThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+const piThinkingLevelSchema = z.enum(piThinkingLevels)
 const profileThinkingOptionsSchema = z
   .object({
     reasoningEffort: z.string().optional().catch(undefined),

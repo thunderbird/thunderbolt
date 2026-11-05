@@ -8,6 +8,7 @@
  * result.
  */
 
+import { piThinkingLevels as thinkingLevels } from '../../shared/reasoning-effort.ts'
 import type {
   BridgeConfig,
   BridgeProtocol,
@@ -21,9 +22,6 @@ import { defaultCloudUrl } from './auth/config.ts'
 import { cliVersion } from './version.ts'
 
 export { cliVersion }
-
-/** All valid `--thinking` levels, in increasing depth. */
-const thinkingLevels: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 const defaultTransport: BridgeTransport = 'wss'
 

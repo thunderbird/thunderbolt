@@ -11,11 +11,12 @@
  * are imported directly from `@earendil-works/pi-agent-core` where needed.
  */
 
+import type { ThinkingLevel } from '@earendil-works/pi-agent-core'
 import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import type { InvocationSelection } from '../provider-runtime/types.ts'
 
 /** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type { ThinkingLevel } from '@earendil-works/pi-agent-core'
 
 /** Built-in Pi providers exposed by thunderbolt. */
 export const builtinProviders = [

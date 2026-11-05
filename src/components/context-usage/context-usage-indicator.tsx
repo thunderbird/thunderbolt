@@ -4,11 +4,12 @@
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Loader2 } from 'lucide-react'
+import { flushSync } from 'react-dom'
 import { useFormatters } from '@/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ResponsivePopover } from '@/components/ui/responsive-popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useContextUsageState } from './use-context-usage-state'
 
@@ -59,10 +60,13 @@ export const ContextUsageIndicator = ({
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <Popover open={state.open} onOpenChange={state.setOpen}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
+      <Tooltip>
+        <ResponsivePopover
+          open={state.open}
+          onOpenChange={state.setOpen}
+          title={t`Context usage`}
+          trigger={
+            <TooltipTrigger asChild>
               <button
                 type="button"
                 aria-label={t`Context usage`}
@@ -99,91 +103,93 @@ export const ContextUsageIndicator = ({
                 )}
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{percentageText}</span>
               </button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          {!state.open && (
-            <TooltipContent>
-              <Trans>
-                {usedTokensLabel} of {maxTokensLabel} Context Window
-              </Trans>
-            </TooltipContent>
-          )}
-        </Tooltip>
-        <PopoverContent align="start" className="flex w-64 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1">
-          {onCompact ? (
-            <>
-              <div className="px-1 py-1.5">
-                <Textarea
-                  aria-label={t`Compaction instructions (optional)`}
-                  value={state.instructions}
-                  onChange={(event) => state.setInstructions(event.target.value)}
-                  placeholder={t`Add summary instructions (optional)`}
-                  disabled={pending}
-                  rows={3}
-                  className="rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)]"
-                />
-              </div>
-              {state.failed && (
-                <p role="alert" className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-destructive">
-                  <Trans>Could not compact context. Your chat history is safe. Please try again.</Trans>
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
-              <Trans>Context compaction is available with supported built-in models.</Trans>
-            </p>
-          )}
-          <div
-            className={cn('gap-2 px-1 pb-1.5', onCompact && onViewSummary ? 'grid grid-cols-2' : 'flex justify-end')}
-          >
-            {onViewSummary && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-auto min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal"
-                onClick={() => {
-                  state.setOpen(false)
-                  onViewSummary()
-                }}
-              >
-                <Trans>View summary</Trans>
-              </Button>
-            )}
-            {onCompact && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    tabIndex={(busy || !hasHistory) && !pending ? 0 : undefined}
-                    className="inline-flex min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-ring"
-                  >
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      disabled={busy || pending || !hasHistory}
-                      onClick={state.compact}
-                      className="h-auto w-full min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal"
-                    >
-                      {pending ? <Trans>Compacting context…</Trans> : <Trans>Compact now</Trans>}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {(busy || !hasHistory) && !pending && (
-                  <TooltipContent className="max-w-56 text-wrap">
-                    {busy ? (
-                      <Trans>Wait for the current response to finish before compacting.</Trans>
-                    ) : (
-                      <Trans>Nothing to compact yet.</Trans>
-                    )}
-                  </TooltipContent>
+            </TooltipTrigger>
+          }
+          desktopMenu={{ align: 'start', className: 'w-64 max-w-[calc(100vw-2rem)] p-0' }}
+        >
+          <div className="flex min-h-0 flex-col gap-0.5 overflow-y-auto p-1">
+            {onCompact ? (
+              <>
+                <div className="px-1 py-1.5">
+                  <Textarea
+                    aria-label={t`Compaction instructions (optional)`}
+                    value={state.instructions}
+                    onChange={(event) => state.setInstructions(event.target.value)}
+                    placeholder={t`Add summary instructions (optional)`}
+                    disabled={pending}
+                    rows={3}
+                    className="rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)]"
+                  />
+                </div>
+                {state.failed && (
+                  <p role="alert" className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-destructive">
+                    <Trans>Could not compact context. Your chat history is safe. Please try again.</Trans>
+                  </p>
                 )}
-              </Tooltip>
+              </>
+            ) : (
+              <p className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+                <Trans>Context compaction is available with supported built-in models.</Trans>
+              </p>
             )}
+            <div
+              className={cn('gap-2 px-1 pb-1.5', onCompact && onViewSummary ? 'grid grid-cols-2' : 'flex justify-end')}
+            >
+              {onViewSummary && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-auto min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal max-md:min-h-[var(--touch-height-default)]"
+                  onClick={() => {
+                    flushSync(() => state.setOpen(false))
+                    onViewSummary()
+                  }}
+                >
+                  <Trans>View summary</Trans>
+                </Button>
+              )}
+              {onCompact && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      tabIndex={(busy || !hasHistory) && !pending ? 0 : undefined}
+                      className="inline-flex min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        disabled={busy || pending || !hasHistory}
+                        onClick={state.compact}
+                        className="h-auto w-full min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal max-md:min-h-[var(--touch-height-default)]"
+                      >
+                        {pending ? <Trans>Compacting context…</Trans> : <Trans>Compact now</Trans>}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {(busy || !hasHistory) && !pending && (
+                    <TooltipContent className="max-w-56 text-wrap">
+                      {busy ? (
+                        <Trans>Wait for the current response to finish before compacting.</Trans>
+                      ) : (
+                        <Trans>Nothing to compact yet.</Trans>
+                      )}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              )}
+            </div>
           </div>
-        </PopoverContent>
-      </Popover>
+        </ResponsivePopover>
+        {!state.open && (
+          <TooltipContent>
+            <Trans>
+              {usedTokensLabel} of {maxTokensLabel} Context Window
+            </Trans>
+          </TooltipContent>
+        )}
+      </Tooltip>
     </div>
   )
 }

@@ -42,7 +42,7 @@ export const summarize = (results: CheckResult[]) => ({
 
 const prompt = 'Please greet me briefly.'
 const probe = await readFile(resolve(import.meta.dir, '../layout-probe.js'), 'utf8')
-// The probe needs axe-core loaded before it, as in mcp.json and layout.ts.
+// The axe-core version of the probe throws unless axe-core loads first; the older probe ignores it.
 const axe = await readFile(resolve(import.meta.dir, '../../../node_modules/axe-core/axe.min.js'), 'utf8')
 // A variable, as in e2e/native-smoke/linux.ts: webdriverio's type has no `tauri:options`.
 const capabilities = {

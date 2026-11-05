@@ -299,6 +299,22 @@ describe('renderReport', () => {
     expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
   })
 
+  it('calibrates the reviews of a fix apart from the fix and its correction pass, which share its caps', () => {
+    const report = renderReport({
+      sessions: [
+        session({ charter: 'fix-ab12cd34', cost_usd: 8 }),
+        session({ charter: 'fix-ab12cd34-correct', cost_usd: 4 }),
+        session({ charter: 'fix-ab12cd34-review', cost_usd: 1 }),
+        session({ charter: 'fix-ab12cd34-review-again', cost_usd: 2 }),
+      ],
+      coverage: new Map(),
+      found: [],
+    })
+    expect(report).toContain('| fix | cost | 2 | $8.00 | $12.00 |')
+    expect(report).toContain('| review | cost | 2 | $2.00 | $3.00 |')
+    expect(report).not.toContain('| explore |')
+  })
+
   it('shows free sessions apart from the charters: case, platform, what was tried and their own findings', () => {
     const free = (charterDir: string, id: string) => ({ ...verifiedFinding('chat', 'assert-failed', id), charterDir })
     const desktop = 'free-trip-planner-desktop'

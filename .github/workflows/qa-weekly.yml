@@ -69,6 +69,10 @@ env:
   QA_FIX_MAX_BUDGET_USD: 20
   QA_FIX_MAX_TURNS: 200
   QA_FIX_TIMEOUT_MINUTES: 60
+  # The independent review of a patch, run up to twice per fix job. Not calibrated yet.
+  QA_REVIEW_MAX_BUDGET_USD: 5
+  QA_REVIEW_MAX_TURNS: 100
+  QA_REVIEW_TIMEOUT_MINUTES: 20
 
 jobs:
   build:
@@ -1211,8 +1215,9 @@ jobs:
           bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
           {
             echo "plan=$(jq --compact-output . qa-out/fix-plan.json)"
-            # Web real-AI tasks, checked again on the real providers by verify-real. Android's run in verify-native.
-            echo "real=$(jq --compact-output '[.fixes[] | select(.real and .spec != null)]' qa-out/fix-plan.json)"
+            # Tasks with a real-AI web repro in their group, checked again on the real providers by verify-real.
+            # Android's run in verify-native.
+            echo "real=$(jq --compact-output '[.fixes[] | select(.realSpecs | length > 0)]' qa-out/fix-plan.json)"
             # Web tasks no browser check proves (`unitTest`), whose patch must carry a unit test that verify-tests
             # sees fail without the fix.
             echo "tests=$(jq --compact-output '[.fixes[] | select(.unitTest)]' qa-out/fix-plan.json)"
@@ -1233,7 +1238,7 @@ jobs:
     needs: [build, file]
     if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90 # outer bound: the fix step's own cap plus setup
+    timeout-minutes: 200 # outer bound: the fix and correction caps, two review caps, setup and the checks
     environment: qa-agent
     permissions:
       contents: read
@@ -1312,20 +1317,25 @@ jobs:
       # the bug, so no session runs and publish only comments on the ticket. A weekly run's replay has just reproduced
       # the bug on this commit, so a pass on the dev stack there would only mean dev and build differ. The spec is
       # model-written, so it runs as the test user, which cannot read the key Fix later holds, and the stop below
-      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs.
+      # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs. Every
+      # fake-AI repro of the bug's group must pass, the task's own first. A group that also holds a real-AI repro or a
+      # native flow skips this check, since only those runs could show the bug is gone there.
       - name: Replay the spec before the fix
         id: unpatched
-        if: inputs.fix_from_run && matrix.task.spec && !matrix.task.real
+        if: >-
+          inputs.fix_from_run && matrix.task.spec && !matrix.task.real && !matrix.task.realSpecs[0] &&
+          !contains(fromJSON(needs.file.outputs.plan).verifyNative.*.fp, matrix.task.fp)
         env:
-          SPEC: ${{ matrix.task.spec }}
+          SPECS: ${{ toJSON(matrix.task.specs) }}
         run: |
+          mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
           browsers="$HOME/.cache/ms-playwright"
           # The output dir is the test user's own: qa-out/replay belongs to the job's user.
           if chmod o+x "$HOME/.cache" && chmod -R o+rX "$browsers" && out=$(sudo -n -u "$QA_TEST_USER" mktemp -d) &&
-            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 5m \
+            sudo -n -u "$QA_TEST_USER" timeout --kill-after=10s 10m \
               env "PATH=$PATH" "PLAYWRIGHT_BROWSERS_PATH=$browsers" \
               bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 \
-              --output "$out" "$SPEC"; then
+              --output "$out" "${specs[@]}"; then
             echo "passes=true" >> "$GITHUB_OUTPUT"
           fi
       # A process the spec left behind would otherwise outlive the check. SIGKILL, which a test cannot catch, again
@@ -1350,6 +1360,7 @@ jobs:
           path: ${{ runner.temp }}/qa-pass.txt
           retention-days: 7
 
+      # Both prompts are read here, before the session: its commands could rewrite files in the checkout.
       - name: Build the prompt
         id: prompt
         env:
@@ -1361,10 +1372,16 @@ jobs:
             # shellcheck disable=SC2016 # Markdown backticks
             printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
             echo 'QA_PROMPT_EOF'
+            echo 'review<<QA_PROMPT_EOF'
+            cat .github/qa/review.md
+            # shellcheck disable=SC2016 # Markdown backticks
+            printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
+            echo 'QA_PROMPT_EOF'
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # The tool rules keep the agent on task but are not the boundary: this job holds no write token.
+      # The tool rules keep the agent on task but are not the boundary: this job holds no write token. "Correct the
+      # fix" runs this same session again, with its own QA_FIX_PROMPT.
       - name: Fix
         id: fix
         if: steps.unpatched.outputs.passes != 'true'
@@ -1373,17 +1390,18 @@ jobs:
         env:
           # Keeps the Anthropic key out of every command the agent runs, such as a test file it wrote.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_FIX_PROMPT: ${{ steps.prompt.outputs.text }}
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
-        with:
+        with: &fix-session
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          prompt: ${{ steps.prompt.outputs.text }}
+          prompt: ${{ env.QA_FIX_PROMPT }}
           claude_args: |
             --model claude-opus-5-5
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash,Skill"
-            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
+            --allowedTools "Read,Glob,Grep,Edit(**),Skill(simplify),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bun db generate),Bash(cd backend && bun db generate),${{ matrix.task.spec && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', matrix.task.spec) || '' }}${{ matrix.task.specs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.specs, ' ')) || '' }}${{ matrix.task.realSpecs[0] && format('Bash(bunx playwright test --config .github/qa/playwright.config.ts {0}),', join(matrix.task.realSpecs, ' ')) || '' }}Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/check.spec.ts),Bash(bunx playwright test --config .github/qa/playwright.config.ts qa-out/fix-${{ matrix.task.fp }}/repro/web.spec.ts)"
             --disallowedTools "Bash(git:*)" WebFetch WebSearch "Edit(.git/**)" "Edit(.github/**)" "Edit(e2e/**)"
               "Edit(deploy/pulumi/**)" "Edit(**/vite.config.*)" "Edit(**/playwright.config.*)" "Edit(**/playwright.*.config.*)"
               "Edit(scripts/chrome*)" "Edit(scripts/install-chrome*)" "Edit(**/tsconfig*.json)"
@@ -1400,6 +1418,177 @@ jobs:
               "Skill(update-config)" "Skill(verify)" "Skill(workflow-authoring)"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
+
+      # An independent review before any check runs: a fresh session, with the same key and token as Fix and no edit
+      # tool, tries to show the patch is wrong (review.md). A rejection gets one correction pass by the fixer and a
+      # second review, and a patch still rejected becomes a diagnosis, so no PR. Publish reads the verdict only as the
+      # `review` pass. These steps sit before the key scan, like Fix, because after it code the agent wrote runs
+      # outside its sandbox. The steps between the sessions run no code of the agent's, with the key scan's cleared
+      # variables and absolute paths. Every session writes the same execution file, so each is moved aside after its
+      # step: a session that failed before writing one then leaves none, rather than the one before it.
+      - name: Keep the fix session's execution file
+        id: keep-fix
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: &plain-shell
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-fix.json" || true
+          echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
+      # The tree each review reads, as a list of every file's hash (git's ignore rules apply later, in "Collect the
+      # patch", since git may not run between the sessions). The list's own hash is the step output, which the runner
+      # keeps and no process of the job can change, so a test the reviewer runs cannot rewrite the list unseen.
+      - name: Record the tree the review reads
+        id: review-tree
+        if: >-
+          steps.fix.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: &record-tree |
+          files() {
+            /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+              -type f "$@" -print0
+          }
+          # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too, as an `x` line.
+          # Both go through sha256sum, which writes a name with a newline in it escaped, on one line.
+          {
+            files | /usr/bin/xargs -0r /usr/bin/sha256sum
+            files -perm -100 | /usr/bin/xargs -0r /usr/bin/sha256sum | /usr/bin/sed 's/^/x/'
+          } > "$RUNNER_TEMP/qa-tree.txt"
+          sum=$(/usr/bin/sha256sum < "$RUNNER_TEMP/qa-tree.txt")
+          /bin/mv "$RUNNER_TEMP/qa-tree.txt" "$RUNNER_TEMP/qa-tree-${sum%% *}.txt"
+          echo "sha=${sum%% *}" >> "$GITHUB_OUTPUT"
+      - name: Review the fix
+        id: review
+        if: >-
+          steps.fix.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_REVIEW_PROMPT: ${{ steps.prompt.outputs.review }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: &review-session
+          anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ env.QA_REVIEW_PROMPT }}
+          claude_args: |
+            --model claude-opus-5-5
+            --setting-sources user
+            --permission-mode dontAsk
+            --tools "Read,Glob,Grep,Bash"
+            --allowedTools "Read,Glob,Grep,Bash(git diff HEAD),Bash(git status --short),Bash(bun run test),Bash(bun run test:backend)"
+            --disallowedTools WebFetch WebSearch
+            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"problems":{"type":"array","items":{"type":"string"}},"resolved":{"type":"array","items":{"type":"object","properties":{"problem":{"type":"integer"},"where":{"type":"string"},"command":{"type":"string"},"result":{"type":"string"}},"required":["problem","where","command","result"],"additionalProperties":false}}},"required":["approved","problems","resolved"],"additionalProperties":false}'
+            --max-budget-usd ${{ env.QA_REVIEW_MAX_BUDGET_USD }}
+            --max-turns ${{ env.QA_REVIEW_MAX_TURNS }}
+      - name: Keep the review session's execution file
+        if: always() && steps.review.outcome != 'skipped'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review.json" || true
+      # On a rejection, the fix prompt again with the review's problems at its end, one line each (fix.md, "A
+      # correction pass"), and the review prompt with them too, which the second review must settle one by one
+      # (review.md, "A second review"). An approval, or a verdict that does not parse, writes no prompt.
+      - name: Build the correction prompt
+        id: correction-prompt
+        if: steps.review.outcome == 'success'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          PROMPT: ${{ steps.prompt.outputs.text }}
+          REVIEW_PROMPT: ${{ steps.prompt.outputs.review }}
+          REVIEW: ${{ steps.review.outputs.structured_output }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          problems=$(/usr/bin/jq -r 'select(.approved == false) | .problems | to_entries[] |
+            "\(.key + 1). " + (.value | gsub("\\s+"; " "))' <<< "$REVIEW") || exit 0
+          [ -n "$problems" ] || exit 0
+          {
+            echo 'text<<QA_PROMPT_EOF'
+            printf '%s\n\n<review>\n%s\n</review>\n' "$PROMPT" "$problems"
+            echo 'QA_PROMPT_EOF'
+            echo 'review<<QA_PROMPT_EOF'
+            printf '%s\n\n<first-review>\n%s\n</first-review>\n' "$REVIEW_PROMPT" "$problems"
+            echo 'QA_PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Correct the fix
+        id: correct
+        if: steps.correction-prompt.outputs.text != ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_FIX_PROMPT: ${{ steps.correction-prompt.outputs.text }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: *fix-session
+      - name: Keep the correction session's execution file
+        if: always() && steps.correct.outcome != 'skipped'
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-correct.json" || true
+      - name: Record the tree the second review reads
+        id: review-again-tree
+        if: >-
+          steps.correct.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: *record-tree
+      - name: Review the corrected fix
+        id: review-again
+        if: >-
+          steps.correct.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_REVIEW_TIMEOUT_MINUTES) }}
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          QA_REVIEW_PROMPT: ${{ steps.correction-prompt.outputs.review }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with: *review-session
+      # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A second
+      # approval counts only with evidence for every problem of the first review: an entry in `resolved` naming the
+      # problem's number, where the patch fixes it (`file:line`) and how the reviewer checked it (the command it ran
+      # and its result). Without it the approval is a rejection. The entry is the reviewer's own account: nothing
+      # here checks that the command ran or printed that result, so this stops a review that skips the evidence,
+      # not one that makes it up.
+      - name: Decide the review
+        id: review-verdict
+        if: always()
+        shell: /bin/bash --noprofile --norc -e {0}
+        env:
+          FIRST: ${{ steps.review.outputs.structured_output }}
+          SECOND: ${{ steps.review-again.outputs.structured_output }}
+          SECOND_OUTCOME: ${{ steps.review-again.outcome }}
+          PATH: /usr/bin:/bin
+          BASH_ENV: ''
+          ENV: ''
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+        run: |
+          if [ "$SECOND_OUTCOME" != skipped ]; then
+            /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-review-again.json" || true
+          fi
+          verdict=$FIRST
+          earlier=0
+          if [ "$SECOND_OUTCOME" != skipped ]; then
+            verdict=$SECOND
+            earlier=$(/usr/bin/jq '.problems | length' <<< "$FIRST" 2> /dev/null) || earlier=0
+          fi
+          # shellcheck disable=SC2016 # jq variables
+          if /usr/bin/jq -e --argjson earlier "$earlier" '.approved == true and
+            ([range(1; $earlier + 1)] - [(.resolved // [])[] | select(
+              (.where | type == "string" and test("^[^\\s:]+:[1-9][0-9]*(-[1-9][0-9]*)?$")) and
+              (.command | type == "string" and test("\\S")) and
+              (.result | type == "string" and test("\\S"))) | .problem]) == []' <<< "$verdict" > /dev/null 2>&1; then
+            echo 'approved=true' >> "$GITHUB_OUTPUT"
+          fi
 
       # The last step that holds the key: after it, code the agent wrote runs outside its sandbox. The key anywhere
       # in the checkout blocks the upload (node_modules is bundled into the real-AI build) except in .git, which the
@@ -1436,7 +1625,7 @@ jobs:
           ALREADY_PASSES: ${{ steps.unpatched.outputs.passes == 'true' && steps.stop-tests.outcome == 'success' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           START: ${{ steps.prompt.outputs.start }}
-          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+          EXECUTION_FILE: ${{ runner.temp }}/qa-execution-fix.json
           PATH: /usr/bin:/bin
           BASH_ENV: ''
           ENV: ''
@@ -1470,8 +1659,9 @@ jobs:
           retention-days: 7
 
       # Fresh from the artifact: the agent's commands could have changed qa-out/. Real-AI specs run in verify-real.
+      # Every fake-AI repro of the bug's group runs, the task's own included.
       - name: Download the original spec
-        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
+        if: steps.fix.outcome == 'success' && matrix.task.specs[0]
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: 'qa-replay-{weekly,sync,android-sync}'
@@ -1479,11 +1669,13 @@ jobs:
           merge-multiple: true
       - name: Replay the spec on the patched code
         id: verify
-        if: steps.fix.outcome == 'success' && matrix.task.spec && !matrix.task.real
+        if: steps.fix.outcome == 'success' && matrix.task.specs[0]
         env:
           QA_OUT: qa-out-verify
-          SPEC: ${{ matrix.task.spec }}
-        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
+          SPECS: ${{ toJSON(matrix.task.specs) }}
+        run: |
+          mapfile -t specs < <(jq -r '.[] | "qa-out-verify/" + ltrimstr("qa-out/")' <<< "$SPECS")
+          bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
 
       # Succeeds only when the check passes all three times. The baseline below runs only after it.
       - name: Run the visual check on the patched tree
@@ -1520,7 +1712,7 @@ jobs:
       # tree and tools the agent's commands could have changed.
       - name: Build the patched frontend for the real-AI check
         id: real-build
-        if: steps.fix.outcome == 'success' && matrix.task.real && matrix.task.spec
+        if: steps.fix.outcome == 'success' && matrix.task.realSpecs[0]
         run: .github/qa/scripts/stack.sh build "$RUNNER_TEMP/qa-dist-fix"
 
       - name: Collect the patch
@@ -1530,19 +1722,30 @@ jobs:
           FLOW: ${{ matrix.task.kind == 'spec' && matrix.task.flow || '' }}
           FIX_OUTCOME: ${{ steps.fix.outcome }}
           # Any outcome but success (failure, skipped, cancelled, none) of a check the task needs means no PR.
-          NEEDS_REPLAY: ${{ matrix.task.spec && !matrix.task.real && 'true' || '' }}
+          NEEDS_REPLAY: ${{ matrix.task.specs[0] && 'true' || '' }}
           NEEDS_VISUAL: ${{ matrix.task.kind == 'visual' && !matrix.task.flow && 'true' || '' }}
-          NEEDS_REAL_BUILD: ${{ matrix.task.real && matrix.task.spec && 'true' || '' }}
+          NEEDS_REAL_BUILD: ${{ matrix.task.realSpecs[0] && 'true' || '' }}
           REPLAY: ${{ steps.verify.outcome }}
           VISUAL: ${{ steps.visual.outcome }}
           REAL_BUILD: ${{ steps.real-build.outcome }}
+          REVIEWED: ${{ steps.review-verdict.outputs.approved }}
+          FIRST_REVIEW: ${{ steps.review.outputs.structured_output }}
+          REVIEW: ${{ steps.review-again.outputs.structured_output || steps.review.outputs.structured_output }}
+          REVIEWED_TREE: >-
+            ${{ steps.review-again.outcome != 'skipped' && steps.review-again-tree.outputs.sha || steps.review-tree.outputs.sha }}
         run: |
           mkdir -p qa-out/fix
+          diagnosis="qa-out/fix/$QA_FP.diagnosis.md"
           # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
-          diagnose() { echo "$1, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"; }
+          diagnose() { echo "$1, so the patch is not published." >> "$diagnosis"; }
           # When the session never began, the fix status tells publish to leave the ticket alone instead.
           if [ "$FIX_OUTCOME" != success ]; then
             diagnose "The fix session did not finish (step outcome: $FIX_OUTCOME)"
+          elif [ ! -e "$diagnosis" ] && [ "$REVIEWED" != true ]; then
+            diagnose "The independent review did not approve the patch, after one correction pass when it found problems"
+            # An approval without evidence for each earlier problem leaves those problems standing.
+            if ! jq -e '.problems | length > 0' <<< "$REVIEW" > /dev/null 2>&1; then REVIEW=$FIRST_REVIEW; fi
+            jq -r '.problems[]? | "- " + .' <<< "$REVIEW" >> "$diagnosis" || true
           elif [ -n "$NEEDS_REPLAY" ] && [ "$REPLAY" != success ]; then
             diagnose "The repro spec did not pass three times on the patched code (step outcome: ${REPLAY:-none})"
           elif [ -n "$NEEDS_VISUAL" ] && [ "$VISUAL" != success ]; then
@@ -1550,21 +1753,58 @@ jobs:
           elif [ -n "$NEEDS_REAL_BUILD" ] && [ "$REAL_BUILD" != success ]; then
             diagnose "The patched frontend for the real-AI check did not build (step outcome: ${REAL_BUILD:-none})"
           fi
+          # The patch must be the tree the approving review read: a file that a test the reviewer ran, or a later step,
+          # changed since was never reviewed. Only a change git would publish counts, not one in an ignored path.
+          if [ "$REVIEWED" = true ]; then
+            reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
+            sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=
+            files() {
+              find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+                -type f "$@" -print0
+            }
+            if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
+              diagnose "The record of the tree the review read is missing or changed"
+            # A sha256sum that writes such a path raw (macOS's does) would let it forge a line of the list.
+            elif [ -n "$(files -path $'*\n*' | tr -d '\0')" ]; then
+              diagnose "A path in the checkout holds a newline"
+            else
+              changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
+                { files | xargs -0r sha256sum; files -perm -100 | xargs -0r sha256sum | sed 's/^/x/'; } | LC_ALL=C sort
+              ) | sed -E 's/^\t?x?[0-9a-f]{64}  \.\///' | LC_ALL=C sort -u)
+              if [ -n "$changed" ]; then
+                # check-ignore never names a tracked file, so a tracked file under an ignored path still counts.
+                ignored=$(git check-ignore --stdin <<< "$changed" | LC_ALL=C sort -u) || true
+                published=$(LC_ALL=C comm -23 <(echo "$changed") <(echo "$ignored") | paste -sd ' ' -)
+                if [ -n "$published" ]; then diagnose "Files changed after the review read them ($published)"; fi
+              fi
+            fi
+          fi
           git add --all
           git diff --cached --binary HEAD > "qa-out/fix/$QA_FP.patch"
           # The repro as the agent left it; publish refuses the patch when it differs from the original.
           if [ -n "$SPEC" ]; then cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"; fi
           if [ -n "$FLOW" ]; then cp "$FLOW" "qa-out/fix/$QA_FP.yaml"; fi
 
+      # The fix session as `fix-<fp>`, and each review or correction session that ran as `fix-<fp>-<session>`, also
+      # one cut off before it wrote its execution file, which the report lists as incomplete.
       - name: Record the session metrics
         if: always()
         env:
-          EXECUTION_FILE: ${{ steps.fix.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
           START: ${{ steps.prompt.outputs.start }}
+          END: ${{ steps.keep-fix.outputs.end }}
+          SESSIONS: >-
+            review=${{ steps.review.outcome }} correct=${{ steps.correct.outcome }}
+            review-again=${{ steps.review-again.outcome }}
         run: |
           timed_out=()
-          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
-          bun .github/qa/scripts/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+          if [ $(( ${END:-$(date +%s)} - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
+          bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-fix.json" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+          for entry in $SESSIONS; do
+            session=${entry%%=*}
+            case ${entry#*=} in skipped | '') continue ;; esac
+            bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-$session.json" \
+              --charter "fix-$QA_FP-$session" --out qa-out
+          done
 
       # Token shapes only, since no later step holds the key; JWT shapes are left to publish's check because repo
       # test fixtures contain some. Patched code ran in earlier steps and could have changed $GITHUB_ENV or
@@ -1608,6 +1848,14 @@ jobs:
           retention-days: 7
       - if: >-
           always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
+          steps.review-verdict.outputs.approved == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-pass-${{ matrix.task.fp }}-review-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qa-pass.txt
+          retention-days: 7
+      - if: >-
+          always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
           steps.verify.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1624,7 +1872,7 @@ jobs:
           retention-days: 7
       - if: >-
           always() && steps.key-scan.outcome == 'success' && steps.secret-scan.outcome == 'success' &&
-          matrix.task.real && matrix.task.spec
+          matrix.task.realSpecs[0]
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-dist-${{ matrix.task.fp }}-${{ github.run_attempt }}
@@ -1872,13 +2120,16 @@ jobs:
       - name: Take root away from the job's user
         if: hashFiles('qa-dist-fix/**') != ''
         run: .github/qa/scripts/stack.sh lock
+      # Every real-AI repro of the bug's group, the task's own included.
       - name: Replay the spec on the patched frontend
         id: replay
         if: hashFiles('qa-dist-fix/**') != ''
         continue-on-error: true
         env:
-          SPEC: ${{ matrix.task.spec }}
-        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "$SPEC"
+          SPECS: ${{ toJSON(matrix.task.realSpecs) }}
+        run: |
+          mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
+          bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "${specs[@]}"
       - *pass-marker
       - if: always() && steps.replay.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

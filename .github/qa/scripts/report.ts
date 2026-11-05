@@ -441,8 +441,13 @@ const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
   return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays${inconclusive}${reason})`
 }
 
-/** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
+/**
+ * Fix sessions record their metrics as `fix-<fp>`, its correction pass as `fix-<fp>-correct`, and the reviews of its
+ * patch as `fix-<fp>-review` and `fix-<fp>-review-again`; every other session explored a charter.
+ */
 const isFix = (s: Session) => s.charter.startsWith('fix-')
+/** A review of a fix, which has caps of its own. */
+const isReview = (s: Session) => /-review(-again)?$/.test(s.charter)
 
 /** True when explore sessions ran and every one errored or timed out (a revoked key, a retired model id). */
 export const nothingExplored = (sessions: Session[]) => {
@@ -451,6 +456,7 @@ export const nothingExplored = (sessions: Session[]) => {
 }
 
 const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: number) => {
+  const reviews = fixes.filter(isReview)
   const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
     const cap = suggestCap(samples)
     return cap === undefined
@@ -459,7 +465,8 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
   }
   const steps = [
     ['explore', explore],
-    ['fix', fixes],
+    ['fix', fixes.filter((s) => !isReview(s))],
+    ['review', reviews],
   ] as const
   return [
     ...steps.flatMap(([step, samples]) => [

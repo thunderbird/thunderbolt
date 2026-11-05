@@ -4,8 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { existsSync } from 'node:fs'
-import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
+import { closeSync, existsSync, openSync } from 'node:fs'
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { format, resolveConfig } from 'prettier'
@@ -546,17 +547,24 @@ const runTests = (cmd: string[], cwd: string) =>
 /** A finished test run: its exit code and everything it printed. */
 export type TestResult = { code: number; output: string }
 
-/** Runs a command, copies its output to the job log when it ends, and returns its exit code and output. */
-const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
-  const proc = Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  process.stdout.write(stdout)
-  process.stderr.write(stderr)
-  return { code, output: stdout + stderr }
+/**
+ * Runs a command, copies its output to the job log when it ends, and returns its exit code and output. The output goes
+ * to a file rather than a pipe: a process a test leaves behind inherits the pipe, and reading a pipe to its end waits
+ * for every process holding it, so one leftover would stall the check until the job's timeout.
+ */
+export const runTestsCapturing = async (cmd: string[], cwd: string): Promise<TestResult> => {
+  const dir = await mkdtemp(join(tmpdir(), 'qa-tests-'))
+  const path = join(dir, 'output')
+  const fd = openSync(path, 'w')
+  try {
+    const code = await Bun.spawn(cmd, { cwd, stdin: 'ignore', stdout: fd, stderr: fd }).exited
+    const output = await readFile(path, 'utf8')
+    process.stdout.write(output)
+    return { code, output }
+  } finally {
+    closeSync(fd)
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 /**

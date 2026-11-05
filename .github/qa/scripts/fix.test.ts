@@ -26,6 +26,7 @@ import {
   needsUnitTest,
   noLinks,
   runGate,
+  runTestsCapturing,
   testFailed,
   testRuns,
   whyNoSpec,
@@ -1277,6 +1278,11 @@ describe('testFailed', () => {
     // An import, compile or top-level error: Bun counts a failure but names no test.
     expect(testFailed("SyntaxError: Export named 'clean' not found\n 0 pass\n 1 fail\n 1 error\n")).toBe(false)
   })
+})
+
+test('the test runner returns when its command exits, though a process the command left behind holds its output', async () => {
+  const result = await runTestsCapturing(['sh', '-c', 'echo out; echo err >&2; sleep 30 & exit 3'], dir)
+  expect(result).toEqual({ code: 3, output: 'out\nerr\n' })
 })
 
 describe('checkTests', () => {

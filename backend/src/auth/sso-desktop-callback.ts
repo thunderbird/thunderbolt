@@ -202,7 +202,10 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings, fetchFn: type
             return redirectToApp({ error: query.error })
           }
 
-          const encodedToken = parseCookieValue(cookieHeader, sessionCookieName)
+          // HTTPS sessions take precedence over any stale cookie from an earlier HTTP deployment.
+          const encodedToken =
+            parseCookieValue(cookieHeader, `__Secure-${sessionCookieName}`) ??
+            parseCookieValue(cookieHeader, sessionCookieName)
           if (!encodedToken) {
             return new Response(errorPage('Session not found. Please try signing in again from the app.'), {
               status: 401,

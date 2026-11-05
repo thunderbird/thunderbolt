@@ -16,6 +16,7 @@ const ssoSettings = {
 const clientState = 'a'.repeat(43)
 const nonceCookieName = 'thunderbolt_desktop_sso_nonce'
 const sessionCookie = 'better-auth.session_token=rawtoken.sig%3D%3D'
+const secureSessionCookie = '__Secure-better-auth.session_token=securetoken.sig%3D%3D'
 const createApp = (settings = ssoSettings, fetchFn?: typeof fetch) =>
   new Elysia({ prefix: '/v1' }).use(createSsoDesktopCallbackRoutes(settings, fetchFn))
 
@@ -32,7 +33,7 @@ const startFlow = async (
       { headers: { 'set-cookie': 'better-auth.state=state-cookie; HttpOnly' } },
     )
   }) as typeof fetch
-  const app = createApp(ssoSettings, fakeFetch)
+  const app = createApp({ ...ssoSettings, betterAuthUrl: options.origin ?? ssoSettings.betterAuthUrl }, fakeFetch)
   const query = new URLSearchParams({ loopback_port: String(port), ...(state && { client_state: state }) })
   const response = await app.handle(
     new Request(`${options.origin ?? 'http://localhost'}/v1/api/auth/sso/desktop-initiate?${query}`, {
@@ -100,6 +101,30 @@ describe('SSO desktop routes', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('referrer-policy')).toBe('no-referrer')
   })
+
+  it.each([
+    { origin: 'http://localhost:8000', session: sessionCookie, token: 'rawtoken.sig==' },
+    { origin: 'https://app.example.test', session: secureSessionCookie, token: 'securetoken.sig==' },
+  ])('reads the session cookie for $origin', async ({ origin, session, token }) => {
+    const flow = await startFlow(17421, clientState, { origin })
+    expect(flow.callback.origin).toBe(origin)
+    const response = await complete(flow, { session })
+    expect(response.status).toBe(302)
+    const location = new URL(response.headers.get('location')!)
+    expect(location.origin).toBe('http://127.0.0.1:17421')
+    expect(location.searchParams.get('token')).toBe(token)
+    expect(location.searchParams.get('client_state')).toBe(clientState)
+  })
+
+  it.each([`${sessionCookie}; ${secureSessionCookie}`, `${secureSessionCookie}; ${sessionCookie}`])(
+    'prefers the secure session cookie regardless of header order: %s',
+    async (session) => {
+      const flow = await startFlow(17421, clientState, { origin: 'https://app.example.test' })
+      const response = await complete(flow, { session })
+      expect(response.status).toBe(302)
+      expect(new URL(response.headers.get('location')!).searchParams.get('token')).toBe('securetoken.sig==')
+    },
+  )
 
   it.each(['0', '80', '9999', '-1', 'abc'])('rejects an invalid loopback port %s', async (port) => {
     const app = createApp()

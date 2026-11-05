@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useAppName, useBrandingLinks } from '@/lib/branding-selectors'
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
@@ -195,6 +196,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   const isAuthenticated = !!session?.user
   const isAnonymous = session?.user?.isAnonymous === true
   const isFullUser = isAuthenticated && !isAnonymous
+  const backendAuthenticated = useServerAuthentication()
   const { openSignInModal } = useSignInModal()
   const runningInTauri = isStandalone()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
@@ -727,7 +729,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
             >
               <Trans>Location</Trans>
             </ModificationIndicator>
-            {cloudUrl ? (
+            {backendAuthenticated ? (
               <LocationSearchCombobox
                 value={localizedLocationName}
                 onSelect={handleSelectLocation}

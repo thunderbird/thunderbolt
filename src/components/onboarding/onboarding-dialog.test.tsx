@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { createModel, getSettings, updateSettings } from '@/dal'
 import { saveIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -46,9 +47,11 @@ beforeEach(() => {
   originalCloudUrl = getLocalSetting('cloudUrl')
   originalLocalMode = getLocalSetting('localMode')
   useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', localMode: false })
+  setAuthToken('test-session')
 })
 
 afterEach(async () => {
+  clearAuthToken()
   useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl, localMode: originalLocalMode })
   useSearchProviderStore.getState().clearSearchProvider()
   await resetTestDatabase()
@@ -251,6 +254,7 @@ describe('OnboardingDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
       await flush()
       expect(screen.queryByText('Sign in to Thunderbolt')).not.toBeNull()
+      act(() => setAuthToken('new-session'))
       sessionSpy.mockImplementation(signedInClient.useSession)
       rerender(<OnboardingDialog />)
       await flush()

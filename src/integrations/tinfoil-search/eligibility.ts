@@ -17,6 +17,13 @@ export const canSupplyTinfoilSearch = (model: Model): boolean =>
 export const hasTinfoilSearchConnection = (models: Model[], oauthAvailable: boolean): boolean =>
   oauthAvailable || models.some(canSupplyTinfoilSearch)
 
-/** Retains the user's private-provider intent while its credentials are disabled or disconnected. */
+/** Only device-local credential history establishes intent; synced model definitions do not. */
 export const hasConfiguredTinfoilSearch = (models: Model[], oauthConfigured: boolean): boolean =>
-  oauthConfigured || models.some((model) => model.provider === 'tinfoil' && model.isSystem !== 1 && !model.deletedAt)
+  oauthConfigured ||
+  models.some(
+    (model) =>
+      model.provider === 'tinfoil' &&
+      model.isSystem !== 1 &&
+      !model.deletedAt &&
+      Boolean(model.hasLocalCredentialRecord),
+  )

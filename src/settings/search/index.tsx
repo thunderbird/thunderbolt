@@ -39,9 +39,7 @@ const SearchSettingsPage = () => {
       subtitle:
         page.available.custom && page.stored.provider === id ? t`Your API key` : t`Connect with your own API key`,
     })),
-    ...(page.available.cloud
-      ? [{ id: 'cloud' as const, name: 'Thunderbolt', subtitle: t`Provided by your server` }]
-      : []),
+    ...(page.cloudVisible ? [{ id: 'cloud' as const, name: 'Thunderbolt', subtitle: t`Provided by your server` }] : []),
   ]
   const close = () => page.setPanel(null)
   return (
@@ -121,13 +119,11 @@ const SearchSettingsPage = () => {
                     <Trans>Enable or reconnect Tinfoil in Connections to use this provider.</Trans>
                   </p>
                 )}
-                {page.panel === 'tinfoil' && (
-                  <Button variant="outline" asChild>
-                    <Link to="/settings/connections">
-                      <Trans>Manage connection</Trans>
-                    </Link>
-                  </Button>
-                )}
+                <Button variant="outline" asChild>
+                  <Link to="/settings/connections">
+                    <Trans>Manage connection</Trans>
+                  </Link>
+                </Button>
               </div>
             </DetailPanel>
           )

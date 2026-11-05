@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useSignInModal } from '@/contexts'
 import { useLingui } from '@lingui/react/macro'
 import { ProviderConnectionButton } from './provider-connection-button'
 import { ServerConnectionModal } from '@/components/server-connection'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
 import { useState } from 'react'
@@ -55,7 +56,7 @@ export const ConnectProviderButton = ({
 }: ConnectProviderButtonProps) => {
   const { t } = useLingui()
   const [serverConnectionOpen, setServerConnectionOpen] = useState(false)
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const authenticated = useServerAuthentication()
   const connectingLabel = connectingLabelProp ?? t`Connecting…`
   const connectedLabel = connectedLabelProp ?? t`Connected!`
 
@@ -79,7 +80,7 @@ export const ConnectProviderButton = ({
     if (isConnected || isConnecting) {
       return
     }
-    if (!cloudUrl) {
+    if (!authenticated) {
       setServerConnectionOpen(true)
       return
     }
@@ -104,11 +105,22 @@ export const ConnectProviderButton = ({
         size={size}
         className={className}
       />
-      <ServerConnectionModal
-        open={serverConnectionOpen}
-        onOpenChange={setServerConnectionOpen}
-        onConnected={() => setServerConnectionOpen(false)}
-      />
+      {serverConnectionOpen && <ProviderSignInPrompt onClose={() => setServerConnectionOpen(false)} />}
     </>
+  )
+}
+
+/** Mount the account sign-in bridge only when a provider connection requires it. */
+const ProviderSignInPrompt = ({ onClose }: { onClose: () => void }) => {
+  const { openSignInModal } = useSignInModal()
+  return (
+    <ServerConnectionModal
+      open
+      onOpenChange={onClose}
+      onConnected={() => {
+        onClose()
+        openSignInModal()
+      }}
+    />
   )
 }

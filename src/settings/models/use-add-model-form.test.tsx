@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useChatStore } from '@/chats/chat-store'
-import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { getSettings, updateSettings } from '@/dal'
 import { createModel, getAllModels, getModel, updateModel } from '@/dal/models'
@@ -22,7 +22,7 @@ import { stubJsonResponse } from '@/test-utils/http'
 import { renderWithReactivity } from '@/test-utils/powersync-reactivity-test'
 import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { generateModelName, useAddModelForm } from './use-add-model-form'
 
@@ -72,25 +72,22 @@ describe('useAddModelForm', () => {
   let originalCloudUrl: string
   let originalLocalMode: boolean
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetTestDatabase()
     resetStore()
     originalCloudUrl = getLocalSetting('cloudUrl')
     originalLocalMode = getLocalSetting('localMode')
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', localMode: false })
-  })
-  beforeAll(async () => {
-    await setupTestDatabase()
   })
 
   afterAll(async () => {
     await teardownTestDatabase()
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     cleanup()
     resetStore()
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl, localMode: originalLocalMode })
-    await resetTestDatabase()
   })
 
   it('refreshes the chat model list before closing after creation', async () => {

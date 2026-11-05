@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -20,6 +21,7 @@ const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
 
 beforeEach(() => {
   useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+  setAuthToken('test-session')
 })
 
 type Recorded = { url: string; language: unknown }
@@ -98,6 +100,7 @@ afterAll(async () => {
 })
 
 afterEach(async () => {
+  clearAuthToken()
   useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
   await resetTestDatabase()
   setActiveLocale('en')

@@ -5,7 +5,7 @@
 import { isSearchProvider, type SearchProvider } from '@/integrations/standalone-search/providers'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useSettings } from '@/hooks/use-settings'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
@@ -14,17 +14,18 @@ import { useSearchProviderStore } from '@/stores/search-provider-store'
 
 /** Keeps the visible selection aligned with runtime availability without copying provider credentials. */
 export const useSearchSettingsState = () => {
-  const local = useLocalProviders()
+  const authenticated = useServerAuthentication()
   const stored = useSearchProviderStore()
   const [panel, setPanel] = useState<SearchProvider | 'tinfoil' | 'cloud' | null>(null)
   const { custom, tinfoil, tinfoilConfigured, loading } = useSearchProviderAvailability()
   const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
   const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
+  const cloudVisible = authenticated && Boolean(proAccess)
   const available = {
     custom,
     tinfoil,
     tinfoilConfigured,
-    cloud: !local && Boolean(proAccess && integrationsProIsEnabled.value),
+    cloud: cloudVisible && integrationsProIsEnabled.value,
   }
   const selected = resolveSearchSelection(stored.selection, available)
   return {
@@ -32,6 +33,7 @@ export const useSearchSettingsState = () => {
     panel,
     setPanel,
     available,
+    cloudVisible,
     selected: selected === 'custom' ? stored.provider : selected,
     loading,
     toggle: (provider: SearchProvider | 'tinfoil' | 'cloud', enabled: boolean) => {

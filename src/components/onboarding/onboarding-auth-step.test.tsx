@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
 import { resetTestDatabase, setupTestDatabase } from '@/dal/test-utils'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
@@ -49,6 +50,7 @@ describe('OnboardingAuthStep', () => {
 
   beforeEach(async () => {
     useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1' })
+    setAuthToken('test-session')
     await setupTestDatabase()
     mockOnConnectionChange.mockClear()
 
@@ -58,6 +60,7 @@ describe('OnboardingAuthStep', () => {
   })
 
   afterEach(async () => {
+    clearAuthToken()
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
     await resetTestDatabase()
     cleanup()

@@ -33,6 +33,7 @@ const modelWithSecretColumns = {
   apiKey: modelsSecretsTable.apiKey,
   oauthProvider: modelsSecretsTable.oauthProvider,
   providerDefault: modelsSecretsTable.providerDefault,
+  hasLocalCredentialRecord: sql<boolean>`${modelsSecretsTable.modelId} IS NOT NULL`.mapWith(Boolean),
 }
 
 /** Base query that LEFT JOINs models with their local-only secrets. */
@@ -175,9 +176,10 @@ export const updateModelInTransaction = async (
   updates: Partial<Model>,
 ): Promise<void> => {
   // Don't allow updating defaultHash - it must be preserved for modification tracking
-  const { defaultHash, apiKey, oauthProvider, providerDefault, ...updateFields } = updates as Partial<Model> & {
-    defaultHash?: string
-  }
+  const { defaultHash, hasLocalCredentialRecord, apiKey, oauthProvider, providerDefault, ...updateFields } =
+    updates as Partial<Model> & {
+      defaultHash?: string
+    }
 
   if (Object.keys(updateFields).length > 0) {
     await tx.update(modelsTable).set(updateFields).where(eq(modelsTable.id, id))
@@ -253,7 +255,7 @@ export const createModel = (db: AnyDrizzleDatabase, data: NewModel): Promise<voi
 
 /** Create within the caller's transaction so provider sessions and models commit together. */
 export const createModelInTransaction = async (tx: ModelTransaction, data: NewModel): Promise<void> => {
-  const { apiKey, oauthProvider, providerDefault, ...modelData } = data
+  const { hasLocalCredentialRecord, apiKey, oauthProvider, providerDefault, ...modelData } = data
   await tx.insert(modelsTable).values(modelData)
   if (apiKey != null || oauthProvider || providerDefault === 1) {
     await tx.insert(modelsSecretsTable).values({ modelId: data.id, apiKey, oauthProvider, providerDefault })

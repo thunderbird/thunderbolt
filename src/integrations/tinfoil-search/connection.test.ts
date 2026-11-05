@@ -10,7 +10,7 @@ import { saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createTinfoilWebApi } from './api'
-import { getTinfoilSearchConnection } from './connection'
+import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from './connection'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { createMockHttpClient } from '@/test-utils/http-client'
 
@@ -147,4 +147,19 @@ it('retains private search intent when a BYOK model is disabled', async () => {
 
 it('does not infer a private connection for an account that never configured one', async () => {
   expect(await getTinfoilSearchConnection(getDb())).toEqual({ tinfoilSearchApi: undefined, tinfoilConfigured: false })
+})
+
+it('a synced Tinfoil model does not establish local search intent', async () => {
+  await createModel(getDb(), { id: 'synced', provider: 'tinfoil', name: 'Synced model', model: 'test', enabled: 1 })
+  const available = await getTinfoilSearchAvailability(getDb())
+  expect(available).toEqual({ tinfoil: false, tinfoilConfigured: false })
+  expect(resolveSearchSelection('auto', { ...available, custom: false, cloud: true })).toBe('cloud')
+  expect(resolveSearchSelection('tinfoil', { ...available, custom: false, cloud: true })).toBeNull()
+  await updateModel(getDb(), 'synced', { apiKey: 'local-key' })
+  expect((await getTinfoilSearchAvailability(getDb())).tinfoil).toBe(true)
+  await updateModel(getDb(), 'synced', { apiKey: null })
+  const disconnected = await getTinfoilSearchAvailability(getDb())
+  expect(disconnected).toEqual({ tinfoil: false, tinfoilConfigured: true })
+  expect(resolveSearchSelection('auto', { ...disconnected, custom: false, cloud: true })).toBeNull()
+  expect(resolveSearchSelection('cloud', { ...disconnected, custom: false, cloud: true })).toBe('cloud')
 })

@@ -6,7 +6,7 @@ import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { fetchLocations, type LocationData } from '@/lib/locations'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
 import { useEffect, useReducer, useTransition } from 'react'
 
 type LocationState = {
@@ -52,14 +52,14 @@ type UseLocationSearchOptions = {
 export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
   const locale = useActiveLocale()
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
+  const authenticated = useServerAuthentication()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
   const { open, searchQuery, locations } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [isSearching, startTransition] = useTransition()
 
   useEffect(() => {
-    if (!cloudUrl || debouncedSearchQuery.trim().length <= 1) {
+    if (!authenticated || debouncedSearchQuery.trim().length <= 1) {
       dispatch({ type: 'SET_LOCATIONS', payload: [] })
       return
     }
@@ -72,7 +72,7 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
         dispatch({ type: 'SET_LOCATIONS', payload: [] })
       }
     })
-  }, [debouncedSearchQuery, httpClient, locale, cloudUrl])
+  }, [debouncedSearchQuery, httpClient, locale, authenticated])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })

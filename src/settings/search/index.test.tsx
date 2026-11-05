@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
+import { updateSettings } from '@/dal'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { createModel, updateModel } from '@/dal/models'
@@ -22,6 +24,7 @@ beforeEach(async () => {
 })
 afterEach(() => {
   cleanup()
+  clearAuthToken()
   useSearchProviderStore.getState().clearSearchProvider()
 })
 
@@ -129,4 +132,26 @@ it('keeps Tinfoil visible but removes selected status when its connection is dis
   expect(screen.getByText('Private')).toBeTruthy()
   expect(screen.getByRole('switch', { name: 'Use Tinfoil' }).getAttribute('aria-checked')).toBe('false')
   expect(useSearchProviderStore.getState().selection).toBe('tinfoil')
+})
+
+it('keeps Thunderbolt visible and selected when only a synced Tinfoil model exists', async () => {
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+  setAuthToken('cloud-session')
+  await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+  await createModel(getDb(), { id: 'synced', name: 'Synced Tinfoil', provider: 'tinfoil', model: 'test', enabled: 1 })
+  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
+  expect(await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Thunderbolt' }))).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open Thunderbolt' })).toBeTruthy()
+  expect(screen.getByRole('switch', { name: 'Use Tinfoil' })).toBeTruthy()
+})
+
+it('keeps the Cloud option visible when server integrations are switched off', async () => {
+  useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false })
+  setAuthToken('cloud-session')
+  await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
+  const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Use Thunderbolt' }))
+  fireEvent.click(toggle)
+  expect(screen.getByRole('link', { name: 'Manage connection' })).toBeTruthy()
+  expect(useSearchProviderStore.getState().selection).toBe('auto')
 })

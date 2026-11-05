@@ -18,6 +18,13 @@ const subscribeProviderAuthentication = (listener: () => void): (() => void) => 
   }
 }
 
+/** Whether the selected backend has a usable bearer or cookie session on this device. */
+export const useServerAuthentication = (): boolean => {
+  const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  const authenticated = useSyncExternalStore(subscribeProviderAuthentication, hasServerAuthentication)
+  return Boolean(cloudUrl) && authenticated
+}
+
 /** Reactively follows the same authentication policy used by non-React model and tool calls. */
 export const useLocalProviders = (): boolean => {
   const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)

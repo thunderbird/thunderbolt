@@ -4,17 +4,13 @@
 
 ![Thunderbolt Main Dashboard](./docs/screenshots/main.png)
 
-> [!IMPORTANT]
-> We encourage you to self-host Thunderbolt and try it out, but there are a few caveats:
->
-> - While we eventually plan to make Thunderbolt fully offline-first, it currently depends on authentication and search functionality (though you can disable search under _Settings → Connections_). You can [deploy your own backend with Docker Compose](./docs/self-hosting/docker-compose.md) and sign up in order to test it locally.
-> - Thunderbolt ships system-managed models that the backend serves on your behalf: Opus 5.5, routed to Anthropic, and a catalog of confidential models hosted in Tinfoil enclaves — one of which, `DeepSeek V4.1 Flash`, is the default model for a new install. A backend you host yourself only serves those if you give it `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. Otherwise, add API keys for any OpenAI-compatible model provider in the settings, or point Thunderbolt at [Ollama](https://ollama.com) or [llama.cpp](https://github.com/ggml-org/llama.cpp) for free local inference.
-
 Thunderbolt is an open-source, cross-platform AI client that can be deployed on-prem anywhere.
 
 - 🌐 Available on all major desktop and mobile platforms: web, iOS, Android, Mac, Linux, and Windows.
 - 🧠 Compatible with frontier, local, and on-prem models.
 - 🙋 Enterprise features, support, and FDEs available.
+
+Thunderbolt ships system-managed models that the backend serves on your behalf: Opus 5.5, routed to Anthropic, and a catalog of confidential models hosted in Tinfoil enclaves — one of which, `DeepSeek V4.1 Flash`, is the default model for a new install. A self-hosted backend serves those when you give it `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. You can also add API keys for any OpenAI-compatible model provider in the settings, or point Thunderbolt at [Ollama](https://ollama.com) or [llama.cpp](https://github.com/ggml-org/llama.cpp) for local inference.
 
 ## Get Started Locally
 
@@ -29,9 +25,7 @@ For self-hosting with Docker Compose, Kubernetes, or Pulumi on AWS, see [`docs/s
 
 ## Need Help?
 
-Found a bug? Have an idea?
-
-- We're actively working on our docs, community, and roadmap. For now, the best way to get in touch is to [File an issue](https://github.com/thunderbird/thunderbolt/issues).
+Found a bug or have an idea? [File an issue](https://github.com/thunderbird/thunderbolt/issues).
 
 ## Contributing
 

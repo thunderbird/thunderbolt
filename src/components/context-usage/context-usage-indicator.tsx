@@ -107,34 +107,30 @@ export const ContextUsageIndicator = ({
           }
           desktopMenu={{ align: 'start', className: 'w-64 max-w-[calc(100vw-2rem)] p-0' }}
         >
-          <div className="flex min-h-0 flex-col gap-0.5 overflow-y-auto p-1">
+          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-1">
             {onCompact ? (
               <>
-                <div className="px-1 py-1.5">
-                  <Textarea
-                    aria-label={t`Compaction instructions (optional)`}
-                    value={state.instructions}
-                    onChange={(event) => state.setInstructions(event.target.value)}
-                    placeholder={t`Add summary instructions (optional)`}
-                    disabled={pending}
-                    rows={3}
-                    className="rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)]"
-                  />
-                </div>
+                <Textarea
+                  aria-label={t`Compaction instructions (optional)`}
+                  value={state.instructions}
+                  onChange={(event) => state.setInstructions(event.target.value)}
+                  placeholder={t`Add summary instructions (optional)`}
+                  disabled={pending}
+                  rows={3}
+                  className="rounded-md text-[length:var(--font-size-sm)]"
+                />
                 {state.failed && (
-                  <p role="alert" className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-destructive">
+                  <p role="alert" className="px-3 py-2 text-[length:var(--font-size-sm)] text-destructive">
                     <Trans>Could not compact context. Your chat history is safe. Please try again.</Trans>
                   </p>
                 )}
               </>
             ) : (
-              <p className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+              <p className="px-3 py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
                 <Trans>Context compaction is available with supported built-in models.</Trans>
               </p>
             )}
-            <div
-              className={cn('gap-2 px-1 pb-1.5', onCompact && onViewSummary ? 'grid grid-cols-2' : 'flex justify-end')}
-            >
+            <div className={cn('gap-2', onCompact && onViewSummary ? 'grid grid-cols-2' : 'flex justify-end')}>
               {onViewSummary && (
                 <Button
                   type="button"

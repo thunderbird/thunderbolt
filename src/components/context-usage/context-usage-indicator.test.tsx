@@ -4,13 +4,18 @@
 
 import '@testing-library/jest-dom'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
+import { desktopWidth, mobileWidth, restoreViewport, setViewport } from '@/test-utils/viewport'
 import { ContextUsageIndicator } from './context-usage-indicator'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  restoreViewport()
+})
 
-describe('ContextUsageIndicator', () => {
+describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (width) => {
+  beforeEach(() => setViewport(width))
   it('disables compaction until a response supplies a checkpoint boundary', () => {
     const compact = mock(async () => {})
     render(<ContextUsageIndicator usedTokens={20} maxTokens={1_000} onCompact={compact} hasHistory={false} />)
@@ -33,11 +38,18 @@ describe('ContextUsageIndicator', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('800 of 1K Context Window')
     fireEvent.click(trigger)
     expect(screen.queryByRole('tooltip')).toBeNull()
-    expect(within(screen.getByRole('dialog')).queryByText(/context window/i)).toBeNull()
+    const menu = screen.getByRole('dialog')
+    expect(menu).toHaveAttribute('data-slot', width === mobileWidth ? 'drawer-content' : 'popover-content')
+    expect(within(menu).queryByText(/context window/i)).toBeNull()
+    if (width === mobileWidth) {
+      expect(menu).toHaveAccessibleName('Context usage')
+      expect(menu).toHaveAttribute('data-swipe-direction', 'down')
+    }
     expect(screen.getByLabelText('Compaction instructions (optional)')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'View summary' })).toBeNull()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
     expect(compact).toHaveBeenCalledWith(undefined)
+    await act(async () => getClock().runAllAsync())
     expect(screen.queryByRole('button', { name: 'Compact now' })).toBeNull()
   })
 
@@ -53,6 +65,22 @@ describe('ContextUsageIndicator', () => {
     expect(compact).toHaveBeenCalledWith('Keep decisions')
     expect(screen.getByRole('button', { name: 'Compacting context…' })).toBeDisabled()
     await act(async () => pending.resolve())
+  })
+
+  it('dismisses with Escape and keeps optional instructions when reopened', async () => {
+    const compact = mock(async () => {})
+    render(<ContextUsageIndicator usedTokens={800} maxTokens={1000} onCompact={compact} />)
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    fireEvent.click(trigger)
+    fireEvent.change(screen.getByLabelText('Compaction instructions (optional)'), {
+      target: { value: 'Keep decisions' },
+    })
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    await act(async () => getClock().runAllAsync())
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(trigger)
+    expect(screen.getByLabelText('Compaction instructions (optional)')).toHaveValue('Keep decisions')
+    expect(compact).not.toHaveBeenCalled()
   })
 
   it('keeps instructions after failure and allows a retry', async () => {
@@ -100,14 +128,17 @@ describe('ContextUsageIndicator', () => {
     expect(screen.getByText('Context compaction is available with supported built-in models.')).toBeInTheDocument()
   })
 
-  it('opens a saved summary while busy and closes the menu without starting compaction', () => {
+  it('opens a saved summary while busy and closes the menu without starting compaction', async () => {
     const compact = mock(async () => {})
-    const view = mock()
+    const view = mock(() => {
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    })
     render(<ContextUsageIndicator usedTokens={800} maxTokens={1000} onCompact={compact} onViewSummary={view} busy />)
     const trigger = screen.getByRole('button', { name: 'Context usage' })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('button', { name: 'View summary' }))
     expect(view).toHaveBeenCalledTimes(1)
+    await act(async () => getClock().runAllAsync())
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(compact).not.toHaveBeenCalled()
   })

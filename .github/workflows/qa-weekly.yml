@@ -1318,10 +1318,13 @@ jobs:
       # the bug on this commit, so a pass on the dev stack there would only mean dev and build differ. The spec is
       # model-written, so it runs as the test user, which cannot read the key Fix later holds, and the stop below
       # leaves none of its processes behind. Any failure, a hang included, sets no output and the session runs. Every
-      # fake-AI repro of the bug's group must pass, the task's own first.
+      # fake-AI repro of the bug's group must pass, the task's own first. A group that also holds a real-AI repro or a
+      # native flow skips this check, since only those runs could show the bug is gone there.
       - name: Replay the spec before the fix
         id: unpatched
-        if: inputs.fix_from_run && matrix.task.spec && !matrix.task.real
+        if: >-
+          inputs.fix_from_run && matrix.task.spec && !matrix.task.real && !matrix.task.realSpecs[0] &&
+          !contains(fromJSON(needs.file.outputs.plan).verifyNative.*.fp, matrix.task.fp)
         env:
           SPECS: ${{ toJSON(matrix.task.specs) }}
         run: |

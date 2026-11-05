@@ -524,8 +524,12 @@ describe('fix job', () => {
 
     test('runs only in a fix-only run, on the tasks and with the Playwright run of the replay after the fix', () => {
       const after = step('fix', 'Replay the spec on the patched code')
-      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug.
-      expect(before.if).toBe('inputs.fix_from_run && matrix.task.spec && !matrix.task.real')
+      // A fake-AI web spec, so no real-AI, visual or native task; a weekly run's replay just reproduced the bug. A
+      // group with a real-AI repro or a native flow too, whose bug a fake-AI pass cannot show gone, runs the session.
+      expect(before.if).toBe(
+        'inputs.fix_from_run && matrix.task.spec && !matrix.task.real && !matrix.task.realSpecs[0] && ' +
+          '!contains(fromJSON(needs.file.outputs.plan).verifyNative.*.fp, matrix.task.fp)',
+      )
       // After the fix, every fake-AI repro of the bug's group, whatever the task's own proof.
       expect(after.if).toBe("steps.fix.outcome == 'success' && matrix.task.specs[0]")
       // Any failed run of the three fails it.

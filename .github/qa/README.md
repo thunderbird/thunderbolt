@@ -428,8 +428,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `publish` is about 70 to 80 minutes, and about two hours when one fix runs to its step timeout.
    In a fix-only run, before the session, the fix job replays a fake-AI web task's original spec 3 times on the dev
    stack without any patch, with the same Playwright command as the replay after the fix. It catches a ticket whose
-   twin was fixed after it was filed. A weekly run skips it: its replay has just reproduced the bug on the same
-   commit, so a pass on the dev stack there would only mean the dev stack and the build differ. The spec is
+   twin was fixed after it was filed. A group that also holds a real-AI repro or a native flow skips it too, since a
+   pass of the fake-AI specs says nothing about those. A weekly run skips it: its replay has just reproduced the bug
+   on the same commit, so a pass on the dev stack there would only mean the dev stack and the build differ. The spec is
    model-written and the fix step later holds the key, so the spec runs as `qa-test` (as in `verify-tests`), a user
    that cannot read the job user's processes, with its own output dir, and every process of that user is killed
    before the fix step. A process that survives fails the job there, and the ticket waits for a later run. When all

@@ -950,6 +950,18 @@ msgstr "Compacting context…"
 msgid "Compacting…"
 msgstr "Compacting…"
 
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr "Compaction"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr "Compaction cancelled"
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr "Compaction failed"
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compaction instructions (optional)"
 msgstr "Compaction instructions (optional)"
@@ -1105,12 +1117,16 @@ msgid "Context"
 msgstr "Context"
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "Context compaction is available with supported built-in models."
-msgstr "Context compaction is available with supported built-in models."
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr "Context compaction is available with supported built-in models."
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Context usage"
 msgstr "Context usage"
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
+msgstr "Context usage is not available."
 
 #: src/components/context-overflow-modal.tsx
 msgid "Context Window Exceeded"
@@ -1188,8 +1204,12 @@ msgid "Could not check whether a removed device still holds your account key. Re
 msgstr "Could not check whether a removed device still holds your account key. Reload to try again."
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "Could not compact context. Your chat history is safe. Please try again."
-msgstr "Could not compact context. Your chat history is safe. Please try again."
+msgid "Could not compact context. Please try again."
+msgstr "Could not compact context. Please try again."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr "Could not compact context. Your chat history is safe. Please try again."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -4550,6 +4570,10 @@ msgstr "This model doesn't support tools, so chats will run without them. Tools 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
 msgstr "This model doesn't support tools."
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
+msgstr "This model or agent does not offer context compaction."
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "This passkey can sign you in, but it can't unlock sync. You can still approve new devices or use your recovery phrase."

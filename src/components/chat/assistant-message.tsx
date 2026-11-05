@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AcpCompactionNotice } from '@/components/context-usage'
 import { isRenderHtmlPart } from '@/artifacts/render-html-tool'
 import {
   artifactRendersStandalone,
@@ -76,6 +77,10 @@ export const mountMessageParts = (
   })
 
   groupedParts.forEach((part, index) => {
+    if (part.type === 'data-acp-compaction') {
+      partElements.push(<AcpCompactionNotice compaction={part.data} />)
+      return
+    }
     const [partType] = splitPartType(part.type)
     const isLastPart = index === groupedParts.length - 1
 
@@ -186,13 +191,13 @@ export const AssistantMessage = memo(
       [message.parts],
     )
 
-    const lastPartIsReasoningGroup = useMemo(() => {
+    const lastPartIsActivity = useMemo(() => {
       const lastPart = groupedParts[groupedParts.length - 1]
       if (!lastPart) {
         return false
       }
       const [partType] = splitPartType(lastPart.type)
-      return partType === 'reasoning_group'
+      return partType === 'reasoning_group' || lastPart.type === 'data-acp-compaction'
     }, [groupedParts])
 
     const showCopyOnHover = !isLastAssistantMessage
@@ -215,7 +220,7 @@ export const AssistantMessage = memo(
         {activity}
         {!isStreaming && (copyText || lastAssistantAction) && (
           <div
-            className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
+            className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsActivity ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
           >
             {copyText && <CopyMessageButton text={copyText} />}
             {lastAssistantAction}

@@ -70,3 +70,52 @@ describe('useCompactionSummaryState', () => {
     expect(result.current.sidebar.state.type).toBe('object-view')
   })
 })
+
+it('inspects the latest available remote summary without treating it as a Pi checkpoint', () => {
+  const remote: ThunderboltUIMessage = {
+    id: 'remote',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'data-acp-compaction',
+        id: 'first',
+        data: {
+          agentId: 'agent',
+          sessionId: 's',
+          compactionId: 'first',
+          status: 'completed',
+          summary: [{ type: 'text', text: 'Earlier ACP summary' }],
+        },
+      },
+      {
+        type: 'data-acp-compaction',
+        id: 'second',
+        data: {
+          agentId: 'agent',
+          sessionId: 's',
+          compactionId: 'second',
+          status: 'completed',
+          summary: [{ type: 'text', text: 'Latest ACP summary' }],
+        },
+      },
+      {
+        type: 'data-acp-compaction',
+        id: 'third',
+        data: { agentId: 'agent', sessionId: 's', compactionId: 'third', status: 'in_progress' },
+      },
+    ],
+  }
+  const { result, rerender } = renderHook(
+    ({ messages }) => ({ summary: useCompactionSummaryState(messages), sidebar: useContentView() }),
+    { initialProps: { messages: [checkpointMessage('Pi summary'), remote] }, wrapper },
+  )
+  act(() => result.current.summary.onViewSummary!())
+  expect(result.current.sidebar.state).toEqual({ type: 'compaction-summary', data: { summary: 'Latest ACP summary' } })
+  expect(remote.metadata?.contextCompaction).toBeUndefined()
+  rerender({ messages: [remote, checkpointMessage('New Pi summary')] })
+  act(() => result.current.summary.onViewSummary!())
+  expect(result.current.sidebar.state).toEqual({
+    type: 'compaction-summary',
+    data: checkpointMessage('New Pi summary').metadata!.contextCompaction!,
+  })
+})

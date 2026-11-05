@@ -14,10 +14,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useContextUsageState } from './use-context-usage-state'
 
 type ContextUsageIndicatorProps = {
-  usedTokens: number
-  maxTokens: number
+  usedTokens: number | null
+  maxTokens: number | null
   className?: string
   onCompact?: (instructions?: string) => Promise<void>
+  supportsInstructions?: boolean
   busy?: boolean
   compacting?: boolean
   hasHistory?: boolean
@@ -28,23 +29,25 @@ type ContextUsageIndicatorProps = {
  * Context usage indicator component showing token usage as a progress ring
  */
 export const ContextUsageIndicator = ({
-  usedTokens = 0,
+  usedTokens,
   maxTokens,
   className,
   onCompact,
+  supportsInstructions = true,
   busy,
   compacting,
   hasHistory = true,
   onViewSummary,
 }: ContextUsageIndicatorProps) => {
   const { t } = useLingui()
-  const state = useContextUsageState(onCompact)
+  const state = useContextUsageState(onCompact, supportsInstructions)
   const pending = compacting || state.pending
   const formatters = useFormatters()
-  const percentage = maxTokens > 0 ? Math.max(0, Math.min((usedTokens / maxTokens) * 100, 100)) : 0
+  const hasUsage = usedTokens !== null && maxTokens !== null && maxTokens > 0
+  const percentage = hasUsage ? Math.max(0, Math.min((usedTokens / maxTokens) * 100, 100)) : 0
   const roundedPercentage = Math.round(percentage)
-  const usedTokensLabel = formatters.compactNumber(usedTokens)
-  const maxTokensLabel = formatters.compactNumber(maxTokens)
+  const usedTokensLabel = formatters.compactNumber(usedTokens ?? 0)
+  const maxTokensLabel = formatters.compactNumber(maxTokens ?? 0)
 
   const strokeColor = 'var(--color-muted-foreground)'
 
@@ -56,7 +59,7 @@ export const ContextUsageIndicator = ({
   const strokeDasharray = circumference
   const strokeDashoffset = circumference - (percentage / 100) * circumference
 
-  const percentageText = formatters.percent(roundedPercentage / 100)
+  const percentageText = hasUsage ? formatters.percent(roundedPercentage / 100) : '—'
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -114,24 +117,26 @@ export const ContextUsageIndicator = ({
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4 max-md:gap-4 max-md:pt-2">
             {onCompact ? (
               <>
-                <Textarea
-                  aria-label={t`Compaction instructions (optional)`}
-                  value={state.instructions}
-                  onChange={(event) => state.setInstructions(event.target.value)}
-                  placeholder={t`Add summary instructions (optional)`}
-                  disabled={pending}
-                  rows={3}
-                  className="md:rounded-md md:text-[length:var(--font-size-sm)]"
-                />
+                {supportsInstructions && (
+                  <Textarea
+                    aria-label={t`Compaction instructions (optional)`}
+                    value={state.instructions}
+                    onChange={(event) => state.setInstructions(event.target.value)}
+                    placeholder={t`Add summary instructions (optional)`}
+                    disabled={pending}
+                    rows={3}
+                    className="md:rounded-md md:text-[length:var(--font-size-sm)]"
+                  />
+                )}
                 {state.failed && (
                   <p role="alert" className="px-3 py-2 text-[length:var(--font-size-sm)] text-destructive">
-                    <Trans>Could not compact context. Your chat history is safe. Please try again.</Trans>
+                    <Trans>Could not compact context. Please try again.</Trans>
                   </p>
                 )}
               </>
             ) : (
               <p className="px-3 py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
-                <Trans>Context compaction is available with supported built-in models.</Trans>
+                <Trans>This model or agent does not offer context compaction.</Trans>
               </p>
             )}
             <div
@@ -187,9 +192,13 @@ export const ContextUsageIndicator = ({
         </ResponsivePopover>
         {!state.open && (
           <TooltipContent>
-            <Trans>
-              Using {usedTokensLabel} of {maxTokensLabel} Context Window
-            </Trans>
+            {hasUsage ? (
+              <Trans>
+                Using {usedTokensLabel} of {maxTokensLabel} Context Window
+              </Trans>
+            ) : (
+              <Trans>Context usage is not available.</Trans>
+            )}
           </TooltipContent>
         )}
       </Tooltip>

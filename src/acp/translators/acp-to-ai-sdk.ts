@@ -37,16 +37,11 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { HaystackDocumentMeta, HaystackReferenceMeta } from '@/types'
 import type { AiSdkChunk } from '../types'
+import { acpCompactionKey, type AcpCompaction, type AcpContextUsage } from '../compaction'
 
 const sseDataPrefix = 'data: '
 const sseDataSuffix = '\n\n'
 const textDeltaThrottleMsDefault = 200
-
-// Key the reasoning duration to the first reasoning part in a group. The UI's
-// `groupMessageParts` labels reasoning items `reasoning-<counter>` (0-based per
-// message), and this translator emits a single reasoning stream, so its
-// duration always lands on `reasoning-0`.
-const reasoningDurationKey = 'reasoning-0'
 
 const encoder = new TextEncoder()
 
@@ -157,6 +152,10 @@ export type Translator = {
   start: () => void
   /** Translate one ACP notification and emit zero or more AI SDK chunks. */
   handle: (notification: SessionNotification) => void
+  /** Upsert one session-owned entity at its first position in this turn. */
+  compaction: (snapshot: AcpCompaction) => void
+  /** Publish current context usage independently of billable token metadata. */
+  usage: (snapshot: AcpContextUsage) => void
   /** Ingest a free-form `_meta` object — typically the `PromptResponse._meta`
    *  surfaced by the SDK's `connection.prompt(...)` return. Same shape as the
    *  notification-level `_meta`; merges into the running haystack metadata
@@ -183,15 +182,14 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
   const reasoningThrottle = createThrottle('reasoning', reasoningId, emit)
   let textStarted = false
   let reasoningStarted = false
+  let textPart = 0
+  let reasoningPart = 0
+  const compactionIds = new Set<string>()
   // Status the tool call was last seen in. Used so a `completed`/`failed` update
   // emits the right output chunk even if its raw output sneaks in via a prior
   // `in_progress` update.
   const toolStatus = new Map<string, ToolCallStatus>()
-  // Per-action start timestamps used to compute durations the UI renders.
-  // Tool calls key by `toolCallId` (the same id `groupMessageParts` assigns to
-  // a tool group item); reasoning keys by `reasoningDurationKey` (the first
-  // reasoning part in a group — the only reasoning stream this translator
-  // emits — which `groupMessageParts` labels `reasoning-0`).
+  // Tool IDs and zero-based reasoning indices match groupMessageParts' keys.
   const toolStartTimes = new Map<string, number>()
   let reasoningStartTime: number | null = null
   let reasoningDurationEmitted = false
@@ -211,7 +209,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
       return
     }
     reasoningDurationEmitted = true
-    emitDuration(reasoningDurationKey, now() - reasoningStartTime)
+    emitDuration(`reasoning-${reasoningPart}`, now() - reasoningStartTime)
   }
   // Haystack metadata accumulators. Backend emits these in `_meta` on
   // `agent_message_chunk` updates; references keyed by position so later chunks
@@ -262,7 +260,8 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     }
     textStarted = true
     emitReasoningDuration()
-    emit({ type: 'text-start', id: textId })
+    textThrottle.id = textPart === 0 ? textId : `${textId}-${textPart}`
+    emit({ type: 'text-start', id: textThrottle.id })
   }
 
   const ensureReasoningStarted = (): void => {
@@ -271,7 +270,8 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     }
     reasoningStarted = true
     reasoningStartTime = now()
-    emit({ type: 'reasoning-start', id: reasoningId })
+    reasoningThrottle.id = reasoningPart === 0 ? reasoningId : `${reasoningId}-${reasoningPart}`
+    emit({ type: 'reasoning-start', id: reasoningThrottle.id })
   }
 
   const handle = (notification: SessionNotification): void => {
@@ -361,6 +361,8 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
       case 'plan':
       case 'session_info_update':
       case 'usage_update':
+      case 'compaction_update':
+      case 'compaction_summary_chunk':
       case 'user_message_chunk':
         return
     }
@@ -371,17 +373,40 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     emit({ type: 'start-step' })
   }
 
-  const finish = (): void => {
+  const closeParts = (): void => {
     flushThrottle(textThrottle)
     flushThrottle(reasoningThrottle)
     if (reasoningStarted) {
       // Covers reasoning-only turns where no text-start boundary fired.
       emitReasoningDuration()
-      emit({ type: 'reasoning-end', id: reasoningId })
+      emit({ type: 'reasoning-end', id: reasoningThrottle.id })
+      reasoningStarted = false
+      reasoningPart++
+      reasoningStartTime = null
+      reasoningDurationEmitted = false
     }
     if (textStarted) {
-      emit({ type: 'text-end', id: textId })
+      emit({ type: 'text-end', id: textThrottle.id })
+      textStarted = false
+      textPart++
     }
+  }
+
+  const compaction = (snapshot: AcpCompaction): void => {
+    const id = acpCompactionKey(snapshot)
+    if (!compactionIds.has(id)) {
+      closeParts()
+      compactionIds.add(id)
+    }
+    emit({ type: 'data-acp-compaction', id, data: snapshot })
+  }
+
+  const usage = (snapshot: AcpContextUsage): void => {
+    emit({ type: 'message-metadata', messageMetadata: { acpContextUsage: snapshot } })
+  }
+
+  const finish = (): void => {
+    closeParts()
     emit({ type: 'finish-step' })
     emit({ type: 'finish' })
   }
@@ -392,7 +417,7 @@ export const createTranslator = (emit: (chunk: AiSdkChunk) => void, options: Tra
     emit({ type: 'error', errorText: message })
   }
 
-  return { start, handle, ingestMeta: ingestHaystackMeta, finish, error }
+  return { start, handle, compaction, usage, ingestMeta: ingestHaystackMeta, finish, error }
 }
 
 /** Convenience: build a `ReadableStream<Uint8Array>` of SSE-formatted chunks

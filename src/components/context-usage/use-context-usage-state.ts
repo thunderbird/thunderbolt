@@ -28,7 +28,10 @@ const reducer = (state: State, action: Action): State => {
 }
 
 /** Keep prompt edits and retryable failures local to the context menu. */
-export const useContextUsageState = (onCompact?: (instructions?: string) => Promise<void>) => {
+export const useContextUsageState = (
+  onCompact?: (instructions?: string) => Promise<void>,
+  supportsInstructions = true,
+) => {
   const [state, dispatch] = useReducer(reducer, { open: false, instructions: '', failed: false })
   const [pending, startTransition] = useTransition()
   const compact = () => {
@@ -38,7 +41,7 @@ export const useContextUsageState = (onCompact?: (instructions?: string) => Prom
     dispatch({ type: 'compactionStarted' })
     startTransition(async () => {
       try {
-        await onCompact(state.instructions.trim() || undefined)
+        await onCompact(supportsInstructions ? state.instructions.trim() || undefined : undefined)
         dispatch({ type: 'compactionSucceeded' })
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {

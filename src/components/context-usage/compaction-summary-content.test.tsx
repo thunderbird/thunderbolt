@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import type { CompactionCheckpoint } from '@shared/agent-core'
+import { ExternalLinkDialogProvider } from '@/components/chat/markdown-utils'
 import { CompactionSummaryContent } from './compaction-summary-content'
 
 const checkpoint: CompactionCheckpoint = {
@@ -77,5 +78,23 @@ describe('CompactionSummaryContent', () => {
     expect(screen.queryByRole('button', { name: 'Retained messages and tool results' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves unsafe summary resource links inert while preserving ordinary links', () => {
+    const summary = [
+      '[Run command](javascript:alert%281%29)',
+      '[Open local file](file:///private/report.txt)',
+      '[Read report](https://example.invalid/report)',
+      '<iframe src="https://example.invalid/embed"></iframe>',
+    ].join('\n\n')
+    const { container } = render(
+      <ExternalLinkDialogProvider>
+        <CompactionSummaryContent checkpoint={{ summary }} onClose={() => {}} />
+      </ExternalLinkDialogProvider>,
+    )
+    expect(screen.getByText('Run command').tagName).toBe('SPAN')
+    expect(screen.getByText('Open local file').tagName).toBe('SPAN')
+    expect(screen.getByRole('link', { name: 'Read report' })).toHaveAttribute('href', 'https://example.invalid/report')
+    expect(container.querySelector('iframe,[src]')).toBeNull()
   })
 })

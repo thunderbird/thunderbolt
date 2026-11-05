@@ -17,6 +17,7 @@ import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { createTranslator, createTranslatorStream } from './acp-to-ai-sdk'
 import type { AiSdkChunk } from '../types'
+import { acpCompactionKey, type AcpCompaction } from '../compaction'
 
 const notification = (update: SessionNotification['update']): SessionNotification => ({
   sessionId: 'sess-1',
@@ -505,5 +506,65 @@ describe('createTranslator — haystack metadata', () => {
         haystackDocuments: [{ id: 'doc-1', content: 'snip', score: 0.9, file: { id: 'f1', name: 'a.pdf' } }],
       },
     })
+  })
+})
+
+describe('createTranslator — compaction timeline entities', () => {
+  const snapshot: AcpCompaction = { agentId: 'agent', sessionId: 's', compactionId: 'c', status: 'in_progress' }
+
+  it('flushes and closes preceding text, then patches one stable entity without splitting following text', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.start()
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Before' } }))
+    t.compaction(snapshot)
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'After ' } }))
+    t.compaction({ ...snapshot, status: 'completed' })
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'update' } }))
+    t.finish()
+    expect(chunks.filter((chunk) => !['start', 'start-step', 'finish-step', 'finish'].includes(chunk.type))).toEqual([
+      { type: 'text-start', id: 'acp-text-0' },
+      { type: 'text-delta', id: 'acp-text-0', delta: 'Before' },
+      { type: 'text-end', id: 'acp-text-0' },
+      { type: 'data-acp-compaction', id: acpCompactionKey(snapshot), data: snapshot },
+      { type: 'text-start', id: 'acp-text-0-1' },
+      { type: 'data-acp-compaction', id: acpCompactionKey(snapshot), data: { ...snapshot, status: 'completed' } },
+      { type: 'text-delta', id: 'acp-text-0-1', delta: 'After update' },
+      { type: 'text-end', id: 'acp-text-0-1' },
+    ])
+  })
+
+  it('closes reasoning at first placement and measures subsequent reasoning separately', () => {
+    const { emit, chunks } = collect()
+    let now = 0
+    const t = createTranslator(emit, { now: () => now })
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Before' } }))
+    now = 10
+    t.compaction(snapshot)
+    t.handle(notification({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'After' } }))
+    now = 30
+    t.compaction({ ...snapshot, compactionId: 'next' })
+    t.finish()
+    expect(chunks.filter((chunk) => chunk.type === 'message-metadata')).toEqual([
+      { type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-0': 10 } } },
+      { type: 'message-metadata', messageMetadata: { reasoningTime: { 'reasoning-1': 20 } } },
+    ])
+    expect(chunks.filter((chunk) => chunk.type === 'reasoning-end')).toEqual([
+      { type: 'reasoning-end', id: 'acp-reasoning-0' },
+      { type: 'reasoning-end', id: 'acp-reasoning-0-1' },
+    ])
+  })
+
+  it('emits usage metadata without splitting text or manufacturing token billing', () => {
+    const { emit, chunks } = collect()
+    const t = createTranslator(emit)
+    t.handle(notification({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Text' } }))
+    const usage = { agentId: 'agent', sessionId: 's', used: 20, size: 100 }
+    t.usage(usage)
+    expect(chunks).toEqual([
+      { type: 'text-start', id: 'acp-text-0' },
+      { type: 'message-metadata', messageMetadata: { acpContextUsage: usage } },
+    ])
+    t.finish()
   })
 })

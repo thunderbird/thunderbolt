@@ -10,6 +10,9 @@ import {
 } from '@/acp/adapter-cache'
 import type { AcpCommand, SessionSideEffect } from '@/acp/translators/acp-to-ai-sdk'
 import { useAgentCommandsStore } from '@/acp/agent-commands-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
+import type { AcpSessionEvent } from '@/acp/compaction'
 import {
   createTurnBudget as defaultCreateTurnBudget,
   createTurnBudgetExhaustedError,
@@ -58,11 +61,12 @@ import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
-import { DefaultChatTransport, type ChatInit } from 'ai'
+import { DefaultChatTransport, type ChatInit, type ChatOnFinishCallback } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
 import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 import { withStoppedReplyMarkers } from './stopped-prompts'
+import { applyAcpSessionEvent, getAcpCompactions } from './acp-session-events'
 
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
@@ -484,6 +488,8 @@ export const createAgentRoutingFetch = (
       onAcpSessionId: persistAcpSessionId,
       requestPermission,
       onSessionSideEffect: applySessionSideEffect,
+      getAcpCompactions: session.chatInstance.getAcpCompactions,
+      onAcpSessionEvent: session.chatInstance.onAcpSessionEvent,
       // Manual compaction reports success only after the checkpoint is saved below.
       onCompactionStatus:
         operation === 'prompt'
@@ -880,6 +886,81 @@ export const createChatInstance = (
     useChatStore.getState().updateSession(id, { retriesExhausted: true })
   }
 
+  const pendingAcpEvents: AcpSessionEvent[] = []
+  let acpSave: Promise<void> | undefined
+  let pendingFinishes = 0
+  let lastFinish = Promise.resolve()
+  /** A replaced agent/session must not overwrite the current context meter. */
+  const acceptsAcpEvent = (event: AcpSessionEvent): boolean => {
+    if (event.type !== 'usage') {
+      return true
+    }
+    const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
+    const activeSession = agentId && useAcpSessionStore.getState().sessions.get(sessionConfigKey(agentId, id))
+    return agentId === event.usage.agentId && (!activeSession || activeSession.sessionId === event.usage.sessionId)
+  }
+  /** Serialize idle/replayed patches so an older snapshot cannot win the final write. */
+  const saveAcpEvent = (event: AcpSessionEvent, inPrompt: boolean): boolean => {
+    if (!acceptsAcpEvent(event)) {
+      return true
+    }
+    const applied = applyAcpSessionEvent(instance.messages, event, inPrompt)
+    if (!applied) {
+      return false
+    }
+    instance.messages = applied.messages
+    const previous = acpSave
+    acpSave = (async () => {
+      await previous
+      await saveMessages({ id, messages: [applied.changed] })
+    })().catch((error: unknown) => console.error('Could not save ACP session update:', error))
+    return true
+  }
+  const onAcpSessionEvent = (event: AcpSessionEvent, inPrompt: boolean, replaying = false): boolean => {
+    if (!acceptsAcpEvent(event)) {
+      return true
+    }
+    // The stream may still be draining after the remote prompt settles. Apply
+    // late patches after onFinish, once the SDK has stopped replacing its message.
+    const streamDraining = instance.status === 'streaming' || instance.status === 'submitted'
+    const deferred = pendingFinishes > 0 || (!inPrompt && !replaying && streamDraining)
+    if (!deferred) {
+      return saveAcpEvent(event, inPrompt)
+    }
+    if (inPrompt && !applyAcpSessionEvent(instance.messages, event, true)) {
+      return false
+    }
+    pendingAcpEvents.push(event)
+    return true
+  }
+  const finishWithAcpEvents =
+    (finish: ChatOnFinishCallback<ThunderboltUIMessage>): ChatOnFinishCallback<ThunderboltUIMessage> =>
+    (result) => {
+      pendingFinishes++
+      lastFinish = (async () => {
+        try {
+          await finish(result)
+        } finally {
+          while (pendingFinishes === 1 && pendingAcpEvents.length > 0) {
+            for (const event of pendingAcpEvents.splice(0)) {
+              saveAcpEvent(event, false)
+            }
+            await acpSave
+          }
+          pendingFinishes--
+        }
+      })()
+      return lastFinish
+    }
+  /** Keep replay/idle event writes before the next user turn in the saved timeline. */
+  const waitForSessionUpdates = async (): Promise<void> => {
+    const hasAcpEvents = pendingAcpEvents.length > 0 || getAcpCompactions(instance.messages).length > 0
+    if (pendingFinishes > 0 && hasAcpEvents) {
+      await lastFinish
+    }
+    await acpSave
+  }
+
   const instance = createChat({
     id,
     messages,
@@ -891,8 +972,11 @@ export const createChatInstance = (
     // message never materialized (Stop pressed while `submitted`) leaves the
     // user message trailing. The stopRequested guard prevents resending it.
     sendAutomaticallyWhen: ({ messages }) =>
-      !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
-    onFinish: async ({ message, isError, isAbort }) => {
+      !stopRequested &&
+      messages.length > 0 &&
+      messages[messages.length - 1].role === 'user' &&
+      !messages[messages.length - 1].metadata?.acpCommand,
+    onFinish: finishWithAcpEvents(async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
       const resetRetryStateIfUnswapped = () => {
         if (currentTurn !== finishedTurn) {
@@ -974,6 +1058,18 @@ export const createChatInstance = (
 
         emitTurnCompleted(finishedTurn, 'success', completedMessage)
         resetRetryStateIfUnswapped()
+        return
+      }
+
+      // Agent commands may finish silently. Retrying a compaction command can
+      // compact twice; only an explicit user action should send it again.
+      if (instance.messages.findLast((item) => item.role === 'user')?.metadata?.acpCommand) {
+        if (isError) {
+          markRetriesExhausted(finishedTurn)
+        } else {
+          emitTurnCompleted(finishedTurn, 'success', message)
+          resetRetryStateIfUnswapped()
+        }
         return
       }
 
@@ -1090,7 +1186,7 @@ export const createChatInstance = (
       } else {
         markRetriesExhausted(finishedTurn, retryReason)
       }
-    },
+    }),
     // Retry logic lives in onFinish (the SDK's finally block), not here.
     // Adding retries to onError caused infinite loops in earlier iterations
     // because onFinish resets state that onError depends on. If onFinish
@@ -1146,6 +1242,8 @@ export const createChatInstance = (
   // Reset retry count on manual regenerate (Retry button) so auto-retries work again
   instance.regenerate = async function () {
     assertNotCompacting()
+    await waitForSessionUpdates()
+    assertNotCompacting()
     startNewTurn()
     getOrCreateTurnTelemetry()
     const agentId = useChatStore.getState().sessions.get(id)?.selectedAgent.id
@@ -1164,8 +1262,33 @@ export const createChatInstance = (
 
   const compactContext = async (instructions?: string): Promise<void> => {
     assertNotCompacting()
+    await waitForSessionUpdates()
+    assertNotCompacting()
     if (instance.status === 'streaming' || instance.status === 'submitted' || retryTimeout) {
       throw new Error('Wait for the current response to finish before compacting')
+    }
+    const session = useChatStore.getState().sessions.get(id)
+    if (!session) {
+      throw new Error('No session found')
+    }
+    if (!isBuiltInAgent(session.selectedAgent)) {
+      const command = useAcpSessionStore
+        .getState()
+        .sessions.get(sessionConfigKey(session.selectedAgent.id, id))
+        ?.commands.find((item) => item.name === 'compact')
+      if (!command) {
+        throw new Error('This agent does not support context compaction')
+      }
+      const focus = command.inputHint !== undefined ? instructions?.trim() : undefined
+      await instance.sendMessage({
+        text: focus ? `/compact ${focus}` : '/compact',
+        metadata: { acpCommand: 'compact' },
+      })
+      await lastFinish
+      if (instance.error) {
+        throw instance.error
+      }
+      return
     }
     const sourceMessages = instance.messages
     // Keep unanswered user turns outside the checkpoint so Retry can replay them
@@ -1175,10 +1298,6 @@ export const createChatInstance = (
     const lastMessage = messagesToCompact.at(-1)
     if (!lastMessage) {
       throw new Error('Nothing to compact')
-    }
-    const session = useChatStore.getState().sessions.get(id)
-    if (!session || !isBuiltInAgent(session.selectedAgent)) {
-      throw new Error('This agent does not support context compaction')
     }
     if (session.chatThread && !matchesThreadConfidentiality(session.selectedModel, session.chatThread)) {
       throw new Error('The selected model does not match the conversation confidentiality')
@@ -1211,6 +1330,8 @@ export const createChatInstance = (
 
   // Override the sendMessage method to check if the model is available for the chat thread
   instance.sendMessage = async function (message, options) {
+    assertNotCompacting()
+    await waitForSessionUpdates()
     assertNotCompacting()
     // Cancel any pending auto-retry and reset error state for the new message
     startNewTurn()
@@ -1317,5 +1438,9 @@ export const createChatInstance = (
     }
   }
 
-  return Object.assign(instance, { compactContext })
+  return Object.assign(instance, {
+    compactContext,
+    getAcpCompactions: () => getAcpCompactions(instance.messages),
+    onAcpSessionEvent,
+  })
 }

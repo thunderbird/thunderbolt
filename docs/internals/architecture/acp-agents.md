@@ -121,13 +121,42 @@ because connect rejections reach the chat layer as a bare string.
 - [`translators/acp-to-ai-sdk.ts`](../../../src/acp/translators/acp-to-ai-sdk.ts) converts ACP
   `session/update` notifications into the AI-SDK v5 UI message stream (`data: <json>\n\n` chunks)
   `DefaultChatTransport` already consumes, coalescing text deltas on a 200 ms flush. It is the only
-  seam where ACP vocabulary becomes app vocabulary; the chat UI does not know ACP exists.
+  seam where ACP stream events become UI message parts.
 - `available_commands_update` is captured at the adapter's session router rather than in a prompt's
-  stream, because commands are _agent-level_, shared by every thread on that agent. They land in
-  [`agent-commands-store.ts`](../../../src/acp/agent-commands-store.ts) keyed by agent id and surface in
-  the slash menu; termination and disposal clear them, so no command outlives its connection.
+  stream. The slash menu uses the latest agent-wide list in
+  [`agent-commands-store.ts`](../../../src/acp/agent-commands-store.ts), keyed by agent id.
+  Session-specific controls use the owning session's list in
+  [`session-state-store.ts`](../../../src/acp/session-state-store.ts); one thread advertising
+  `/compact` must not enable it in another. Termination clears both stores.
 - Remote and managed agents get project instructions folded into the prompt text but no project tool,
   because ACP has no system channel ([projects.md](projects.md)).
+
+### Context compaction
+
+The ACP agent owns its context and compaction policy. Thunderbolt advertises
+`clientCapabilities.session.compaction: {}` and displays `compaction_update` and
+`compaction_summary_chunk` as persistent `data-acp-compaction` message parts. An entity is keyed
+by agent, session, and compaction ID: later notifications patch it in place, including idle
+updates and history replay. Omitted fields retain their value, `null` clears them, summary
+arrays replace prior content, and chunks append. Unknown status strings remain stored and
+receive a generic presentation. A completed update without a summary still gets a completion row.
+
+These summaries are presentation data, never Pi checkpoints or instructions for reconstructing
+the remote context. The viewer renders text and resource descriptions without loading embedded
+media. Earlier conversation history remains intact. `usage_update.used` and `.size` drive the
+ACP context meter independently of billing usage; unknown usage is shown as unknown. External
+agents decide when to compact and whether a prompt fits their context window.
+
+The context menu offers **Compact now** only when the current session advertises `/compact`.
+It sends the native command through the normal prompt/cancellation path. Optional instructions
+are offered only when the command declares input support. Command prompts bypass project/skill
+decoration and transcript replay so the agent receives the slash command verbatim. A command
+that fails or completes silently is never automatically retried. Agents without structured
+notifications can still describe the result through ordinary messages.
+
+The frontend pins ACP SDK **1.9.0**, which provides native compaction validation while retaining
+the existing `ClientSideConnection` API. SDK 2.x changes that API and needs a separate migration;
+the CLI and backend keep their independent dependencies.
 
 ## Transport routing
 

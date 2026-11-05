@@ -938,6 +938,18 @@ msgstr ""
 msgid "Compacting…"
 msgstr ""
 
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction cancelled"
+msgstr ""
+
+#: src/components/context-usage/compaction-notice.tsx
+msgid "Compaction failed"
+msgstr ""
+
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Compaction instructions (optional)"
 msgstr ""
@@ -1093,11 +1105,15 @@ msgid "Context"
 msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "Context compaction is available with supported built-in models."
-msgstr ""
+#~ msgid "Context compaction is available with supported built-in models."
+#~ msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
 msgid "Context usage"
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Context usage is not available."
 msgstr ""
 
 #: src/components/context-overflow-modal.tsx
@@ -1176,8 +1192,12 @@ msgid "Could not check whether a removed device still holds your account key. Re
 msgstr ""
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "Could not compact context. Your chat history is safe. Please try again."
+msgid "Could not compact context. Please try again."
 msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+#~ msgid "Could not compact context. Your chat history is safe. Please try again."
+#~ msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -4537,6 +4557,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
+msgstr ""
+
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "This model or agent does not offer context compaction."
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx

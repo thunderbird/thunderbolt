@@ -27,6 +27,8 @@ import { SlashPopup } from '@/skills/slash-popup'
 import { useSkillTelemetry } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
 import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
 import {
   useEnabledSkills as useEnabledSkills_default,
@@ -334,8 +336,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     })
     const compacting = compactionStatus === 'compacting'
     const isBusy = isActive || compacting
+    const builtIn = isBuiltInAgent(selectedAgent)
+    const acpSession = useAcpSessionStore((state) =>
+      state.sessions.get(sessionConfigKey(selectedAgent.id, chatThreadId)),
+    )
+    const compactCommand = acpSession?.commands.find((command) => command.name === 'compact')
     const canCompact =
-      selectedAgent.type === 'built-in' && supportsPiCompaction(selectedModel) && !!chatInstance.compactContext
+      !!chatInstance.compactContext && (builtIn ? supportsPiCompaction(selectedModel) : !!compactCommand)
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -607,13 +614,27 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       return total
     }, [normalizedInput, enabledInstructionBySlug, quotes])
 
-    const { usedTokens, maxTokens, isContextKnown, isOverflowing } = useContextTracking({
+    const builtInContext = useContextTracking({
       model: selectedModel,
       chatThreadId,
       currentInput: normalizedInput,
       additionalInputTokens,
       onOverflow: () => handleShowOverflowModal(selectedModel, normalizedInput.trim().length, messages.length + 1),
     })
+
+    const acpSessionId =
+      acpSession?.sessionId ?? (chatThread?.agentId === selectedAgent.id ? chatThread.acpSessionId : undefined)
+    const savedAcpUsage = acpSessionId
+      ? messages.findLast(
+          (message) =>
+            message.metadata?.acpContextUsage?.sessionId === acpSessionId &&
+            message.metadata.acpContextUsage.agentId === selectedAgent.id,
+        )?.metadata?.acpContextUsage
+      : undefined
+    const acpUsage = acpSession?.usage ?? savedAcpUsage
+    const usedTokens = builtIn ? builtInContext.usedTokens : (acpUsage?.used ?? null)
+    const maxTokens = builtIn ? builtInContext.maxTokens : (acpUsage?.size ?? null)
+    const isContextKnown = builtIn ? builtInContext.isContextKnown : acpUsage !== undefined
 
     // Store dropped/picked PDFs locally (IndexedDB) and add reference-only
     // attachments. Bytes never enter a message part — only the localFileId ref.
@@ -706,7 +727,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           return
         }
 
-        if (isOverflowing && !canCompact) {
+        if (builtIn && builtInContext.isOverflowing && !canCompact) {
           handleShowOverflowModal(selectedModel, textToSend.length, messages.length + 1)
           return
         }
@@ -801,15 +822,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             </span>
           </div>
         ) : null}
-        {(isContextKnown || (canCompact && messages.length > 0) || !!summaryView.onViewSummary) && (
+        {(isContextKnown || (canCompact && (!builtIn || messages.length > 0)) || !!summaryView.onViewSummary) && (
           <ContextUsageIndicator
-            key={chatThreadId}
-            usedTokens={usedTokens ?? 0}
-            maxTokens={maxTokens ?? 0}
+            key={`${chatThreadId}:${selectedAgent.id}`}
+            usedTokens={usedTokens}
+            maxTokens={maxTokens}
             onCompact={canCompact ? chatInstance.compactContext : undefined}
+            supportsInstructions={builtIn || compactCommand?.inputHint !== undefined}
             busy={isActive}
             compacting={compacting}
-            hasHistory={messages.some(hasAssistantContent)}
+            hasHistory={!builtIn || messages.some(hasAssistantContent)}
             onViewSummary={summaryView.onViewSummary}
           />
         )}

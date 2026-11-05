@@ -122,10 +122,29 @@ describe.each([desktopWidth, mobileWidth])('ContextUsageIndicator at %dpx', (wid
   it('explains unsupported agents and handles an unknown context window without NaN', () => {
     render(<ContextUsageIndicator usedTokens={0} maxTokens={0} />)
     const trigger = screen.getByRole('button', { name: 'Context usage' })
-    expect(trigger).toHaveTextContent('0%')
+    expect(trigger).toHaveTextContent('—')
     fireEvent.click(trigger)
     expect(screen.queryByRole('button', { name: 'Compact now' })).toBeNull()
-    expect(screen.getByText('Context compaction is available with supported built-in models.')).toBeInTheDocument()
+    expect(screen.getByText('This model or agent does not offer context compaction.')).toBeInTheDocument()
+  })
+
+  it('does not offer or send instructions for a command without argument support', async () => {
+    const compact = mock(async () => {})
+    const { rerender } = render(<ContextUsageIndicator usedTokens={null} maxTokens={null} onCompact={compact} />)
+    const trigger = screen.getByRole('button', { name: 'Context usage' })
+    expect(trigger).toHaveTextContent('—')
+    fireEvent.focus(trigger)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Context usage is not available.')
+    fireEvent.click(trigger)
+    fireEvent.change(screen.getByLabelText('Compaction instructions (optional)'), {
+      target: { value: 'Instructions from the previous capability' },
+    })
+    rerender(
+      <ContextUsageIndicator usedTokens={null} maxTokens={null} onCompact={compact} supportsInstructions={false} />,
+    )
+    expect(screen.queryByRole('textbox')).toBeNull()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
+    expect(compact).toHaveBeenCalledWith(undefined)
   })
 
   it('opens a saved summary while busy and closes the menu without starting compaction', async () => {

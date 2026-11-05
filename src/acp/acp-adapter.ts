@@ -61,10 +61,12 @@ import { getTransformer } from '@/files/transformers'
 import { getAttachment } from '@/lib/file-blob-storage'
 import { openTransport } from './transports'
 import type { AcpTransport } from './types'
-import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
+import { createTranslatorStream, toAcpCommands, type AcpCommand, type Translator } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
 
 import { configSelectOptions, sessionConfigKey, useSessionConfigStore } from './session-config-store'
+import { useAcpSessionStore, type AcpSessionState } from './session-state-store'
+import { acpCompactionKey, applyAcpCompactionUpdate, type AcpCompaction, type AcpSessionEvent } from './compaction'
 
 const protocolVersion = 1
 /** Connect-phase budget. Generous on purpose: a cold-starting upstream (e.g. a
@@ -450,12 +452,9 @@ export const connectAcpAdapter = async (
     }
   }
 
-  // `session/update` notifications are routed to the owning thread's translator
-  // by ACP `sessionId`. While a thread isn't actively prompting its entry is
-  // absent and updates for it are dropped (the agent SHOULD only emit them
-  // inside a turn anyway). A per-session map — never a single last-writer-wins
-  // sink — is what prevents cross-thread bleed when two threads stream at once.
-  const sessionUpdateSinks = new Map<string, (notification: SessionNotification) => void>()
+  // Prompt content goes only to its live translator. Session entities also
+  // survive idle periods and session/load replay, without crossing threads.
+  const sessionUpdateSinks = new Map<string, Translator>()
   // Permission prompts also carry an ACP `sessionId`, so route them the same
   // way. A thread registers its handler while connected; the fallback cancels.
   const permissionHandlers = new Map<string, RequestPermissionFn>()
@@ -466,6 +465,47 @@ export const connectAcpAdapter = async (
   // Keep ownership after local cancellation until the remote prompt settles.
   const activePrompts = new Set<string>()
   const configChanges = new Map<string, Promise<void>>()
+  const sessionStates = new Map<string, AcpSessionState>()
+  const sessionPublishers = new Map<string, () => void>()
+  const sessionThreads = new Map<string, string>()
+  const threadContexts = new Map<string, EnsureSessionContext>()
+  const compactions = new Map<string, AcpCompaction>()
+  const pendingSessionEvents = new Map<string, AcpSessionEvent[]>()
+  const sessionOwner = {}
+
+  const sessionState = (sessionId: string): AcpSessionState =>
+    sessionStates.get(sessionId) ?? { sessionId, commands: [] }
+
+  const routeSessionEvent = (sessionId: string, event: AcpSessionEvent): void => {
+    const threadId = sessionThreads.get(sessionId)
+    if (!threadId) {
+      const pending = pendingSessionEvents.get(sessionId) ?? []
+      pending.push(event)
+      pendingSessionEvents.set(sessionId, pending)
+      return
+    }
+    const translator = sessionUpdateSinks.get(sessionId)
+    const handled = threadContexts
+      .get(threadId)
+      ?.onAcpSessionEvent?.(event, translator !== undefined, !sessionPublishers.has(sessionId))
+    if (handled || !translator) {
+      return
+    }
+    if (event.type === 'compaction') {
+      translator.compaction(event.compaction)
+    } else {
+      translator.usage(event.usage)
+    }
+  }
+
+  const bindSession = (sessionId: string, threadId: string): void => {
+    sessionThreads.set(sessionId, threadId)
+    const pending = pendingSessionEvents.get(sessionId) ?? []
+    pendingSessionEvents.delete(sessionId)
+    for (const event of pending) {
+      routeSessionEvent(sessionId, event)
+    }
+  }
 
   const rememberConfig = (sessionId: string, options: SessionConfigOption[]): void => {
     configs.set(sessionId, options)
@@ -476,17 +516,32 @@ export const connectAcpAdapter = async (
     if (terminationError) {
       return
     }
-    // The advertised command list is an agent-level capability, not part of a
-    // single prompt's stream — capture it here regardless of whether a thread
-    // is actively prompting, so commands surface before the first send too.
-    if (notification.update.sessionUpdate === 'config_option_update') {
-      rememberConfig(notification.sessionId, notification.update.configOptions)
+    const { sessionId, update } = notification
+    if (update.sessionUpdate === 'config_option_update') {
+      rememberConfig(sessionId, update.configOptions)
     }
-    if (notification.update.sessionUpdate === 'available_commands_update') {
-      ctx.onAvailableCommands?.(toAcpCommands(notification.update.availableCommands))
+    if (update.sessionUpdate === 'available_commands_update') {
+      const commands = toAcpCommands(update.availableCommands)
+      sessionStates.set(sessionId, { ...sessionState(sessionId), commands })
+      sessionPublishers.get(sessionId)?.()
+      ctx.onAvailableCommands?.(commands)
       return
     }
-    sessionUpdateSinks.get(notification.sessionId)?.(notification)
+    if (update.sessionUpdate === 'usage_update') {
+      const usage = { agentId: agent.id, sessionId, used: update.used, size: update.size }
+      sessionStates.set(sessionId, { ...sessionState(sessionId), usage })
+      sessionPublishers.get(sessionId)?.()
+      routeSessionEvent(sessionId, { type: 'usage', usage })
+      return
+    }
+    if (update.sessionUpdate === 'compaction_update' || update.sessionUpdate === 'compaction_summary_chunk') {
+      const key = acpCompactionKey({ agentId: agent.id, sessionId, compactionId: update.compactionId })
+      const compaction = applyAcpCompactionUpdate(agent.id, sessionId, update, compactions.get(key))
+      compactions.set(key, compaction)
+      routeSessionEvent(sessionId, { type: 'compaction', compaction })
+      return
+    }
+    sessionUpdateSinks.get(sessionId)?.handle(notification)
   }
 
   const routePermission: RequestPermissionFn = (request) => {
@@ -510,7 +565,11 @@ export const connectAcpAdapter = async (
         connection.initialize({
           protocolVersion: protocolVersion,
           clientInfo: { name: clientName, version: clientVersion },
-          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+          clientCapabilities: {
+            fs: { readTextFile: false, writeTextFile: false },
+            terminal: false,
+            session: { compaction: {} },
+          },
         }),
         closed,
         handshakeTimeoutMs,
@@ -553,9 +612,18 @@ export const connectAcpAdapter = async (
    *  guarded handshake rejects there too, surfacing loudly. Subsequent sends
    *  reuse the cached id. */
   const resolveThreadSession = (context: EnsureSessionContext): Promise<string> => {
+    threadContexts.set(context.threadId, context)
     const existing = sessionByThread.get(context.threadId)
     if (existing) {
       return existing
+    }
+    for (const compaction of context.getAcpCompactions?.() ?? []) {
+      if (compaction.agentId === agent.id && !compactions.has(acpCompactionKey(compaction))) {
+        compactions.set(acpCompactionKey(compaction), compaction)
+      }
+    }
+    if (context.acpSessionId) {
+      bindSession(context.acpSessionId, context.threadId)
     }
     const resolveNew = async (
       skills: readonly SkillDefinition[],
@@ -638,6 +706,11 @@ export const connectAcpAdapter = async (
     const configured = resolve.then((sessionId) => {
       throwIfConnectionLost()
       const key = sessionConfigKey(agent.id, context.threadId)
+      bindSession(sessionId, context.threadId)
+      const publishSession = () => useAcpSessionStore.getState().set(key, sessionState(sessionId), sessionOwner)
+      sessionPublishers.set(sessionId, publishSession)
+      configCleanups.push(() => useAcpSessionStore.getState().remove(key, sessionOwner))
+      publishSession()
       const setOption = async (configId: string, value: string): Promise<void> => {
         throwIfConnectionLost()
         if (activePrompts.has(sessionId) || configChanges.has(sessionId)) {
@@ -701,6 +774,8 @@ export const connectAcpAdapter = async (
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     throwIfConnectionLost()
     init.signal?.throwIfAborted()
+    const lastUser = parseRequestMessages(init).findLast((message) => message.role === 'user')
+    const compact = lastUser?.metadata?.acpCommand === 'compact'
     const sessionId = await resolveThreadSession(context)
     if (activePrompts.has(sessionId)) {
       throw new Error('A prompt is already active for this session')
@@ -712,6 +787,19 @@ export const connectAcpAdapter = async (
       await waitForConfiguration(configChanges.get(sessionId), init.signal)
       init.signal?.throwIfAborted()
       throwIfConnectionLost()
+
+      if (compact) {
+        const command = sessionState(sessionId).commands.find((item) => item.name === 'compact')
+        const text = messageText(lastUser!)
+        if (
+          !command ||
+          !/^\/compact(?:\s|$)/.test(text) ||
+          (command.inputHint === undefined && text.trim() !== '/compact')
+        ) {
+          throw new Error('This session does not support the requested compact command')
+        }
+        return [{ type: 'text' as const, text }]
+      }
 
       // First real send of a freshly-minted session: persist the id we actually
       // used, and (tier-3 only) seed the prior transcript as context. The marker
@@ -743,7 +831,7 @@ export const connectAcpAdapter = async (
       onSideEffect: context.onSessionSideEffect,
     })
 
-    sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
+    sessionUpdateSinks.set(sessionId, translator)
     if (context.requestPermission) {
       permissionHandlers.set(sessionId, context.requestPermission)
     }
@@ -788,7 +876,9 @@ export const connectAcpAdapter = async (
       signal.throwIfAborted()
     }
     signal?.addEventListener('abort', onAbort, { once: true })
-    freshPending.delete(context.threadId)
+    if (!compact) {
+      freshPending.delete(context.threadId)
+    }
 
     // Drive the prompt off the request thread — the response stream is the
     // synchronous return value so the AI SDK can attach immediately.

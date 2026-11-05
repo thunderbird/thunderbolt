@@ -13,6 +13,7 @@ import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
 import type { CompactionCheckpoint } from '@shared/agent-core'
+import type { AcpCompaction, AcpContextUsage } from '@/acp/compaction'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
@@ -83,6 +84,7 @@ export type QuoteData = {
 export type ThunderboltUIDataTypes = {
   attachment: AttachmentData
   quote: QuoteData
+  'acp-compaction': AcpCompaction
 }
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
@@ -172,6 +174,9 @@ export type UIMessageMetadata = {
   contextCompaction?: CompactionCheckpoint
   /** Current model context, separate from billable generation usage. */
   contextTokens?: number
+  acpContextUsage?: AcpContextUsage
+  /** An explicit agent command, sent verbatim without prompt decoration. */
+  acpCommand?: 'compact'
   modelId?: string
   /** Correlates a persisted turn with its richer session-scoped debug capture. */
   debugTranscript?: DebugTranscriptMessageMetadataV1

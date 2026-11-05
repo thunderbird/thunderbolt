@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import type { CompactionCheckpoint } from '@shared/agent-core'
+import type { CompactionSummary } from './compaction-summary'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { SidebarContent } from '@/components/ui/sidebar'
 import { ContentViewHeader } from '@/content-view/header'
@@ -19,7 +19,7 @@ const summaryComponents: Components = {
 }
 
 type CompactionSummaryContentProps = {
-  checkpoint: CompactionCheckpoint
+  checkpoint: CompactionSummary
   onClose: () => void
 }
 
@@ -34,7 +34,7 @@ export const CompactionSummaryContent = ({ checkpoint, onClose }: CompactionSumm
       <ContentViewHeader title={t`Compaction summary`} onClose={onClose} className="md:bg-card" />
       <SidebarContent className="gap-4 overflow-x-hidden p-4 break-words">
         <MemoizedMarkdown id="compaction-summary" content={checkpoint.summary} components={summaryComponents} />
-        {checkpoint.retainedTail.length > 0 && (
+        {!!checkpoint.retainedTail?.length && (
           <Accordion type="single" collapsible>
             <AccordionItem value="retained-context">
               <AccordionTrigger>

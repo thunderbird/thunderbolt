@@ -155,13 +155,7 @@ describe('summary action subscription', () => {
     const Action = memo(() => {
       const show = useShowCompactionSummary()
       renderAction()
-      return (
-        <button
-          onClick={() => show({ version: 1, summary: 'Saved', tokensBefore: 100, contextTokens: 10, retainedTail: [] })}
-        >
-          Summary
-        </button>
-      )
+      return <button onClick={() => show({ summary: 'Saved', retainedTail: [] })}>Summary</button>
     })
     const Panel = () => {
       const { state, close } = useContentView()

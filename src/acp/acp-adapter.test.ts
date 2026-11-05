@@ -47,6 +47,8 @@ import { connectAcpAdapter, type AcpAdapterContext } from './acp-adapter'
 import { sessionConfigKey, useSessionConfigStore } from './session-config-store'
 import { TransportTerminationError } from './termination'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
+import type { AcpCompaction, AcpSessionEvent } from './compaction'
+import { useAcpSessionStore } from './session-state-store'
 
 const remoteAgent: Agent = {
   id: 'remote-foo',
@@ -110,6 +112,7 @@ const buildFakeConnection = (
   opts: {
     configOptions?: SessionConfigOption[]
     beforeConfigResponse?: () => Promise<void>
+    beforeSessionResponse?: (client: Client, sessionId: string) => Promise<void>
     hangInitialize?: boolean
     loadSession?: boolean
     resume?: boolean
@@ -158,13 +161,15 @@ const buildFakeConnection = (
         },
       })
     }
-    newSession = (req: NewSessionRequest) => {
+    newSession = async (req: NewSessionRequest) => {
       calls.newSession.push(req)
       newSessionCount++
+      await opts.beforeSessionResponse?.(client!, `sess-${newSessionCount}`)
       return Promise.resolve({ sessionId: `sess-${newSessionCount}`, configOptions: opts.configOptions })
     }
-    loadSession = (req: LoadSessionRequest) => {
+    loadSession = async (req: LoadSessionRequest) => {
       calls.loadSession.push(req)
+      await opts.beforeSessionResponse?.(client!, req.sessionId)
       return opts.rejectLoad ? Promise.reject(new Error('session unloadable')) : Promise.resolve({})
     }
     resumeSession = (req: ResumeSessionRequest) => {
@@ -198,7 +203,7 @@ const buildFakeConnection = (
     // so a test can observe whether a thread's handler is still wired (its own
     // outcome) or has been torn down (the adapter's `cancelled` fallback).
     pushPermission: (req: RequestPermissionRequest): Promise<RequestPermissionResponse> | undefined =>
-      client?.requestPermission(req),
+      client ? Promise.resolve(client.requestPermission(req)) : undefined,
     releasePrompts: () => promptGate.release(),
   }
 }
@@ -1488,5 +1493,344 @@ describe('ACP reasoning configuration', () => {
       adapter.disconnect()
     }
     expect(useSessionConfigStore.getState().sessions.has(sessionConfigKey(remoteAgent.id, 'one'))).toBe(false)
+  })
+})
+
+describe('ACP session compaction and usage', () => {
+  const snapshot: AcpCompaction = {
+    agentId: remoteAgent.id,
+    sessionId: 'stored',
+    compactionId: 'c',
+    status: 'in_progress',
+    summary: [{ type: 'text', text: 'Saved' }],
+    _meta: { retained: true },
+  }
+  const commandUpdate: SessionNotification['update'] = {
+    sessionUpdate: 'available_commands_update',
+    availableCommands: [{ name: 'compact', description: 'Compact', input: { hint: '' } }],
+  }
+
+  it('advertises native compaction and retains early new-session entities, commands and usage', async () => {
+    const events: AcpSessionEvent[] = []
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({ sessionId, update: commandUpdate })
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'compaction_summary_chunk',
+            compactionId: 'early',
+            content: { type: 'text', text: 'Early' },
+          },
+        })
+        await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'usage_update', used: 10, size: 100 } })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const key = sessionConfigKey(remoteAgent.id, 'early')
+    await adapter.ensureSession(
+      threadCtx('early', {
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(true)
+          events.push(event)
+          return true
+        },
+      }),
+    )
+    expect(fake.calls.initialize[0].clientCapabilities?.session?.compaction).toEqual({})
+    expect(events.map((event) => event.type)).toEqual(['compaction', 'usage'])
+    expect(events[0]).toMatchObject({
+      compaction: { compactionId: 'early', status: 'in_progress', summary: [{ type: 'text', text: 'Early' }] },
+    })
+    expect(useAcpSessionStore.getState().sessions.get(key)).toEqual({
+      sessionId: 'sess-1',
+      commands: [{ name: 'compact', description: 'Compact', inputHint: '' }],
+      usage: { agentId: remoteAgent.id, sessionId: 'sess-1', used: 10, size: 100 },
+    })
+    adapter.disconnect()
+    expect(useAcpSessionStore.getState().sessions.has(key)).toBe(false)
+  })
+
+  it('seeds stored entities before load replay, preserves omitted fields, and refreshes idle callbacks', async () => {
+    const replay: AcpSessionEvent[] = []
+    const idle: AcpSessionEvent[] = []
+    const fake = buildFakeConnection({
+      loadSession: true,
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed' },
+        })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    await adapter.ensureSession(
+      threadCtx('replay', {
+        acpSessionId: 'stored',
+        getAcpCompactions: () => [snapshot, { ...snapshot, agentId: 'other', summary: [] }],
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(true)
+          replay.push(event)
+          return true
+        },
+      }),
+    )
+    expect(replay).toEqual([{ type: 'compaction', compaction: { ...snapshot, status: 'completed' } }])
+    await adapter.ensureSession(
+      threadCtx('replay', {
+        onAcpSessionEvent: (event, inPrompt, replaying) => {
+          expect(inPrompt).toBe(false)
+          expect(replaying).toBe(false)
+          idle.push(event)
+          return true
+        },
+      }),
+    )
+    await fake.pushUpdate({
+      sessionId: 'stored',
+      update: {
+        sessionUpdate: 'compaction_summary_chunk',
+        compactionId: 'c',
+        content: { type: 'text', text: 'Appended' },
+        _meta: { chunkOnly: true },
+      },
+    })
+    expect(replay).toHaveLength(1)
+    expect(idle).toEqual([
+      {
+        type: 'compaction',
+        compaction: {
+          ...snapshot,
+          status: 'completed',
+          summary: [...snapshot.summary!, { type: 'text', text: 'Appended' }],
+        },
+      },
+    ])
+    adapter.disconnect()
+  })
+
+  it('streams new IDs, patches older transcript IDs outside the stream, and keeps sessions isolated', async () => {
+    const seen: { event: AcpSessionEvent; inPrompt: boolean }[] = []
+    const fake = buildFakeConnection()
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const context = threadCtx('active', {
+      onAcpSessionEvent: (event, inPrompt) => {
+        seen.push({ event, inPrompt })
+        return event.type === 'compaction' && event.compaction.compactionId === 'old'
+      },
+    })
+    const response = await adapter.fetch(promptInit('hello'), context)
+    await adapter.ensureSession(threadCtx('other'))
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'old', status: 'completed' },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-2',
+      update: {
+        sessionUpdate: 'compaction_update',
+        compactionId: 'new',
+        status: 'completed',
+        summary: [{ type: 'text', text: 'OTHER_SESSION_SUMMARY' }],
+      },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'new', status: 'in_progress' },
+    })
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'new', status: 'completed' },
+    })
+    await fake.pushUpdate({ sessionId: 'sess-1', update: { sessionUpdate: 'usage_update', used: 30, size: 100 } })
+    fake.releasePrompts()
+    const output = (await readSse(response)).join('')
+    expect(output).not.toContain('"compactionId":"old"')
+    expect(output).not.toContain('OTHER_SESSION_SUMMARY')
+    expect(output.match(/data-acp-compaction/g)).toHaveLength(2)
+    expect(output).toContain('"acpContextUsage":{"agentId":"remote-foo","sessionId":"sess-1","used":30,"size":100}')
+    expect(seen.every((item) => item.inPrompt)).toBe(true)
+    adapter.disconnect()
+  })
+
+  it('retains a terminal compaction patch after Stop without reopening the cancelled stream', async () => {
+    const events: { event: AcpSessionEvent; inPrompt: boolean }[] = []
+    const fake = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const controller = new AbortController()
+    const response = await adapter.fetch(
+      promptInit('hello', controller.signal),
+      threadCtx('stop-compaction', {
+        onAcpSessionEvent: (event, inPrompt) => {
+          events.push({ event, inPrompt })
+          return !inPrompt
+        },
+      }),
+    )
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'in_progress' },
+    })
+    controller.abort()
+    await fake.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'cancelled', error: 'Stopped' },
+    })
+    const output = (await readSse(response)).join('')
+    expect(output).toContain('"status":"in_progress"')
+    expect(output).not.toContain('"status":"cancelled"')
+    expect(events.map((event) => event.inPrompt)).toEqual([true, false])
+    expect(events[1].event).toMatchObject({ compaction: { status: 'cancelled', error: 'Stopped' } })
+    fake.releasePrompts()
+    adapter.disconnect()
+  })
+
+  it('keeps successor store state when an older connection disconnects', async () => {
+    const first = buildFakeConnection()
+    const second = buildFakeConnection()
+    const a = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: first.FakeConnection as never,
+    })
+    const b = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: second.FakeConnection as never,
+    })
+    await a.ensureSession(threadCtx('shared-generation'))
+    await b.ensureSession(threadCtx('shared-generation'))
+    await second.pushUpdate({ sessionId: 'sess-1', update: commandUpdate })
+    a.disconnect()
+    expect(
+      useAcpSessionStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'shared-generation'))?.commands,
+    ).toHaveLength(1)
+    await first.pushUpdate({
+      sessionId: 'sess-1',
+      update: { sessionUpdate: 'available_commands_update', availableCommands: [] },
+    })
+    expect(
+      useAcpSessionStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'shared-generation'))?.commands,
+    ).toHaveLength(1)
+    b.disconnect()
+  })
+
+  const compactInit = (text = '/compact focus'): RequestInit => ({
+    body: JSON.stringify({
+      messages: [
+        { role: 'user', parts: [{ type: 'text', text: 'Earlier' }] },
+        { role: 'assistant', parts: [{ type: 'text', text: 'Prior answer' }] },
+        { role: 'user', parts: [{ type: 'text', text }], metadata: { acpCommand: 'compact' } },
+      ],
+    }),
+  })
+
+  it('sends native compact text verbatim without consuming fresh transcript replay or persisting the empty session', async () => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({ sessionId, update: commandUpdate })
+      },
+    })
+    const { transport } = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const persisted: string[] = []
+    const context = threadCtx('compact-fresh', {
+      acpSessionId: 'old-session',
+      onAcpSessionId: async (id) => {
+        persisted.push(id)
+      },
+      skillInstructions: ['SKILL'],
+      projectSection: 'PROJECT',
+    })
+    const compactResponse = await adapter.fetch(compactInit(), context)
+    expect(fake.calls.prompt[0].prompt).toEqual([{ type: 'text', text: '/compact focus' }])
+    expect(persisted).toEqual([])
+    fake.releasePrompts()
+    await readSse(compactResponse)
+    const normal = await adapter.fetch(
+      conversationInit([
+        { role: 'user', text: 'Earlier' },
+        { role: 'assistant', text: 'Prior answer' },
+        { role: 'user', text: 'Continue' },
+      ]),
+      context,
+    )
+    await readSse(normal)
+    expect(persisted).toEqual(['sess-1'])
+    expect(fake.calls.prompt[1].prompt).toEqual([
+      {
+        type: 'text',
+        text: 'PROJECT\n\nSKILL\n\nConversation so far:\n\nuser: Earlier\n\nassistant: Prior answer\n\nContinue',
+      },
+    ])
+    adapter.disconnect()
+  })
+
+  it('accepts an advertised compact command with no arguments', async () => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: [{ name: 'compact', description: 'Compact' }],
+          },
+        })
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    const response = await adapter.fetch(compactInit('/compact'), threadCtx('compact-no-args'))
+    expect(fake.calls.prompt[0].prompt).toEqual([{ type: 'text', text: '/compact' }])
+    fake.releasePrompts()
+    await readSse(response)
+    adapter.disconnect()
+  })
+
+  it.each([
+    { advertised: false, hint: false, text: '/compact' },
+    { advertised: true, hint: false, text: '/compact focus' },
+    { advertised: true, hint: true, text: '/compact-other' },
+  ])('rejects unsupported or mismatched native commands: %p', async ({ advertised, hint, text }) => {
+    const fake = buildFakeConnection({
+      beforeSessionResponse: async (client, sessionId) => {
+        await client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: advertised
+              ? [{ name: 'compact', description: 'Compact', ...(hint ? { input: { hint: 'focus' } } : {}) }]
+              : [],
+          },
+        })
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    expect((await observeConnect(adapter.fetch(compactInit(text), threadCtx('invalid-command')))).rejected).toBe(true)
+    expect(fake.calls.prompt).toHaveLength(0)
+    adapter.disconnect()
   })
 })

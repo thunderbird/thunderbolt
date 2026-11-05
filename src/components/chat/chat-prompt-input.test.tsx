@@ -18,6 +18,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import { createElement, createRef, type ReactNode } from 'react'
 import { BrowserRouter } from 'react-router'
 import { useChatStore } from '@/chats/chat-store'
+import { useAcpSessionStore } from '@/acp/session-state-store'
+import { sessionConfigKey } from '@/acp/session-config-store'
 import { useConfigStore } from '@/api/config-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { ContentViewProvider } from '@/content-view/context'
@@ -131,11 +133,13 @@ describe('ChatPromptInput', () => {
 
   beforeEach(() => {
     resetStore()
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
   })
 
   afterEach(async () => {
     cleanup()
     resetStore()
+    useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() })
     await resetTestDatabase()
   })
 
@@ -281,6 +285,118 @@ describe('ChatPromptInput', () => {
         fireEvent.click(stopButton)
       })
       expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('ACP context controls', () => {
+    it.each([undefined, ''])(
+      'offers manual compaction using the session command (input hint: %p)',
+      async (inputHint) => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const compact = mock(async () => {})
+        Object.assign(mockChatInstance, { compactContext: compact })
+        useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+        useAcpSessionStore
+          .getState()
+          .set(
+            sessionConfigKey(remoteAcpAgent.id, 'thread-1'),
+            { sessionId: 'acp-1', commands: [{ name: 'compact', description: 'Compact context', inputHint }] },
+            {},
+          )
+        render(
+          <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+          { wrapper: TestWrapper },
+        )
+        const trigger = screen.getByRole('button', { name: 'Context usage' })
+        expect(trigger).toHaveTextContent('—')
+        fireEvent.click(trigger)
+        expect(screen.queryByLabelText('Compaction instructions (optional)') !== null).toBe(inputHint !== undefined)
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Compact now' })))
+        expect(compact).toHaveBeenCalledWith(undefined)
+        expect(mockChatInstance.sendMessage).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not borrow another thread’s command or the built-in model’s usage', () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      Object.assign(mockChatInstance, { compactContext: mock(async () => {}) })
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      useAcpSessionStore
+        .getState()
+        .set(
+          sessionConfigKey(remoteAcpAgent.id, 'another-thread'),
+          { sessionId: 'acp-other', commands: [{ name: 'compact', description: 'Compact context' }] },
+          {},
+        )
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(false, true, 1000, 2000)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('uses matching persisted usage until live session usage arrives and clears it for a replacement session', () => {
+      const messages: ThunderboltUIMessage[] = [
+        {
+          id: 'reply',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Done' }],
+          metadata: { acpContextUsage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 100, size: 1000 } },
+        },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+      useChatStore.getState().updateSession('thread-1', {
+        selectedAgent: remoteAcpAgent,
+        chatThread: createMockChatThread({ agentId: remoteAcpAgent.id, acpSessionId: 'acp-1' }),
+      })
+      const { rerender } = render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('10%')
+      const key = sessionConfigKey(remoteAcpAgent.id, 'thread-1')
+      act(() =>
+        useAcpSessionStore.getState().set(
+          key,
+          {
+            sessionId: 'acp-1',
+            commands: [],
+            usage: { agentId: remoteAcpAgent.id, sessionId: 'acp-1', used: 600, size: 2000 },
+          },
+          {},
+        ),
+      )
+      expect(screen.getByRole('button', { name: 'Context usage' })).toHaveTextContent('30%')
+      act(() => useAcpSessionStore.getState().set(key, { sessionId: 'acp-2', commands: [] }, {}))
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+      act(() => useAcpSessionStore.setState({ sessions: new Map(), owners: new Map() }))
+      messages[0].metadata!.acpContextUsage!.agentId = 'another-agent'
+      rerender(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+      )
+      expect(screen.queryByRole('button', { name: 'Context usage' })).toBeNull()
+    })
+
+    it('leaves token limits to the external agent rather than blocking a normal send', async () => {
+      const { mockUseChat, mockChatInstance } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: remoteAcpAgent })
+      const { container } = render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          useContextTracking={createMockUseContextTracking(true)}
+          useIsMobile={createMockUseIsMobile()}
+          useWarmAcpCommands={noWarmUp}
+        />,
+        { wrapper: TestWrapper },
+      )
+      fireEvent.change(screen.getByPlaceholderText('Ask me anything…'), { target: { value: 'Continue' } })
+      await act(async () => fireEvent.submit(container.querySelector('form')!))
+      expect(mockChatInstance.sendMessage).toHaveBeenCalledTimes(1)
     })
   })
 

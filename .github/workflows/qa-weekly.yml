@@ -1449,8 +1449,15 @@ jobs:
         shell: /bin/bash --noprofile --norc -e {0}
         env: *plain-shell
         run: &record-tree |
-          /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
-            -type f -print0 | /usr/bin/xargs -0r /usr/bin/sha256sum > "$RUNNER_TEMP/qa-tree.txt"
+          files() {
+            /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+              -type f "$@" -print0
+          }
+          # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too.
+          {
+            files | /usr/bin/xargs -0r /usr/bin/sha256sum
+            files -perm -100 | /usr/bin/xargs -0r /usr/bin/printf 'x  %s\n'
+          } > "$RUNNER_TEMP/qa-tree.txt"
           sum=$(/usr/bin/sha256sum < "$RUNNER_TEMP/qa-tree.txt")
           /bin/mv "$RUNNER_TEMP/qa-tree.txt" "$RUNNER_TEMP/qa-tree-${sum%% *}.txt"
           echo "sha=${sum%% *}" >> "$GITHUB_OUTPUT"
@@ -1753,10 +1760,13 @@ jobs:
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
               diagnose "The record of the tree the review read is missing or changed"
             else
-              changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
+              files() {
                 find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
-                  -type f -print0 | xargs -0r sha256sum | LC_ALL=C sort
-              ) | sed -E 's/^\t?[0-9a-f]{64}  \.\///' | LC_ALL=C sort -u)
+                  -type f "$@" -print0
+              }
+              changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
+                { files | xargs -0r sha256sum; files -perm -100 | xargs -0r printf 'x  %s\n'; } | LC_ALL=C sort
+              ) | sed -E 's/^\t?([0-9a-f]{64}|x)  \.\///' | LC_ALL=C sort -u)
               if [ -n "$changed" ]; then
                 # check-ignore never names a tracked file, so a tracked file under an ignored path still counts.
                 ignored=$(git check-ignore --stdin <<< "$changed" | LC_ALL=C sort -u) || true

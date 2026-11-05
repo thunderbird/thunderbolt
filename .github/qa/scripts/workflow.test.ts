@@ -7,6 +7,7 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -563,6 +564,18 @@ describe('fix job', () => {
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
       writeFileSync(join(tree.dir, 'dist/index.js'), 'rebuilt')
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(dist/index.js)')
+    })
+
+    test('an executable bit set or cleared since rejects the approval, as git publishes it; one left alone does not', () => {
+      const tree = checkout({ 'src/a.ts': 'reviewed', 'scripts/run.sh': '#!/bin/sh\n' })
+      chmodSync(join(tree.dir, 'scripts/run.sh'), 0o755)
+      tree.git('add', '--all')
+      tree.git('commit', '-q', '-m', 'executable')
+      const reviewed = recordTree(tree)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      chmodSync(join(tree.dir, 'src/a.ts'), 0o755)
+      chmodSync(join(tree.dir, 'scripts/run.sh'), 0o644)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(scripts/run.sh src/a.ts)')
     })
 
     test('a missing or rewritten record rejects the approval, and a rejected patch needs none', () => {

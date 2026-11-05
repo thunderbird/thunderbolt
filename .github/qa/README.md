@@ -587,9 +587,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    and the diagnosis lists the first review's problems. A local run showed why: a second review approved after three
    tool calls in 16 seconds. That evidence is the reviewer's own account, which nothing checks against the commands
    it actually ran: it stops a review that skips the evidence, not one that makes it up. Before each review a step
-   records the hash of every file in the checkout, and `Collect the patch` turns an approval into a rejection when a
-   file git would publish changed after the approving review read it, so a test the reviewer ran cannot add to the
-   patch unreviewed. A patch still rejected, or a
+   records the hash and executable bit of every file in the checkout, and `Collect the patch` turns an approval into
+   a rejection when a file git would publish changed after the approving review read it, so a test the reviewer ran
+   cannot add to the patch unreviewed. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
    `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
    every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and

@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
+import { i18n } from '@/i18n'
 import {
   captureOtariBrowserReturn,
   captureOtariMobileReturn,
@@ -142,17 +143,38 @@ describe('Otari same-tab authorization', () => {
       callback(`error=access_denied&error_description=private-detail&state=${nonce}`),
       deps,
     )!
-    await expect(result.complete()).rejects.toThrow('Connection cancelled')
-    expect(result.error).not.toContain('private-detail')
+    await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+    expect(i18n._(result.error!)).toContain('Connection cancelled')
+    expect(i18n._(result.error!)).not.toContain('private-detail')
     expect(exchange).not.toHaveBeenCalled()
     expect(storage.length).toBe(0)
+  })
+
+  test('keeps thrown errors English and leaves callback copy for the display boundary', async () => {
+    const { deps } = setup()
+    await startOtariBrowserConnection('https://otari.ai', 'onboarding', new AbortController().signal, attempt, deps)
+    const result = captureOtariBrowserReturn(callback(`error=access_denied&state=${nonce}`), deps)!
+    const previousLocale = i18n.locale
+    try {
+      i18n.loadAndActivate({
+        locale: 'de',
+        messages: {
+          "Connection cancelled. You can connect to Otari whenever you're ready.": 'Verbindung abgebrochen.',
+        },
+      })
+      expect(i18n._(result.error!)).toBe('Verbindung abgebrochen.')
+      await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+    } finally {
+      i18n.activate(previousLocale)
+    }
   })
 
   test('expires the saved request instead of exchanging it', async () => {
     const { deps, exchange } = setup()
     await startOtariBrowserConnection('https://otari.ai', 'onboarding', new AbortController().signal, attempt, deps)
     const result = captureOtariBrowserReturn(callback(), { ...deps, now: () => 601_001 })!
-    await expect(result.complete()).rejects.toThrow('expired')
+    await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+    expect(i18n._(result.error!)).toContain('expired')
     expect(exchange).not.toHaveBeenCalled()
   })
 
@@ -165,8 +187,9 @@ describe('Otari same-tab authorization', () => {
         callback(`error=${error}&error_description=private-detail&state=${nonce}`),
         deps,
       )!
-      await expect(result.complete()).rejects.toThrow('invalid response')
-      expect(result.error).not.toContain('private-detail')
+      await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+      expect(i18n._(result.error!)).toContain('invalid response')
+      expect(i18n._(result.error!)).not.toContain('private-detail')
       expect(exchange).not.toHaveBeenCalled()
     },
   )
@@ -177,7 +200,8 @@ describe('Otari same-tab authorization', () => {
       const { deps, storage, exchange } = setup()
       await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
       const result = captureOtariBrowserReturn(callback(query), deps)!
-      await expect(result.complete()).rejects.toThrow('invalid response')
+      await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+      expect(i18n._(result.error!)).toContain('invalid response')
       expect(storage.length).toBe(0)
       expect(exchange).not.toHaveBeenCalled()
     },
@@ -187,7 +211,8 @@ describe('Otari same-tab authorization', () => {
     const { deps, exchange } = setup()
     await startOtariBrowserConnection('https://otari.ai', 'models', new AbortController().signal, attempt, deps)
     const result = captureOtariBrowserReturn(callback(), { ...deps, now: () => 1_000 + age })!
-    await expect(result.complete()).rejects.toThrow('expired')
+    await expect(result.complete()).rejects.toThrow('Otari authorization failed')
+    expect(i18n._(result.error!)).toContain('expired')
     expect(exchange).not.toHaveBeenCalled()
   })
 
@@ -432,7 +457,7 @@ describe('Otari native mobile authorization', () => {
     // A restarted process has only durable storage, not the original owner or promise.
     localStorage.setItem(key, persisted)
     const returned = captureOtariMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=one-use&state=${nonce}`))!
-    expect(returned).toMatchObject({ id: nonce, context: 'models', attempt, returnTo: '/settings/models', error: '' })
+    expect(returned).toMatchObject({ id: nonce, context: 'models', attempt, returnTo: '/settings/models', error: null })
     expect(localStorage.getItem(key)).toBeNull()
     returned.cancel()
     await expect(returned.complete()).rejects.toHaveProperty('name', 'AbortError')

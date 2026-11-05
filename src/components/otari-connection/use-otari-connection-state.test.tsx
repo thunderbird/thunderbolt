@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { StrictMode } from 'react'
+import { msg } from '@lingui/core/macro'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getAllModels, getAvailableModels } from '@/dal'
@@ -12,6 +13,7 @@ import * as modelProbe from '@/hooks/use-model-connection-test'
 import * as otariBrowser from '@/lib/otari-browser-auth'
 import { getProviderConnectionAttempt, invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
 import { http } from '@/lib/http'
+import { i18n } from '@/i18n'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
@@ -83,7 +85,7 @@ describe('Otari connection', () => {
       context: 'onboarding' as const,
       returnTo: '/chats/new',
       attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
-      error: '',
+      error: null,
       complete,
       cancel: mock(() => {}),
     }
@@ -116,7 +118,7 @@ describe('Otari connection', () => {
       context: 'onboarding',
       returnTo: '/chats/new',
       attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
-      error: 'Connection cancelled.',
+      error: msg`Connection cancelled.`,
       complete: async () => {
         throw new Error('cancelled')
       },
@@ -131,6 +133,30 @@ describe('Otari connection', () => {
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   })
 
+  it('translates callback error copy when setup resumes under another locale', async () => {
+    spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue({
+      id: 'cancelled-state',
+      origin: 'https://otari.ai',
+      context: 'models',
+      returnTo: '/settings/models',
+      attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
+      error: msg`Connection cancelled.`,
+      complete: async () => {
+        throw new Error('Otari authorization failed')
+      },
+      cancel: () => {},
+    })
+    const previousLocale = i18n.locale
+    try {
+      i18n.loadAndActivate({ locale: 'de', messages: { 'Connection cancelled.': 'Verbindung abgebrochen.' } })
+      const { result } = renderHook(() => useOtariConnectionState(), { wrapper: createTestProvider() })
+      await act(async () => getClock().runAllAsync())
+      expect(result.current.error).toBe('Verbindung abgebrochen.')
+    } finally {
+      i18n.activate(previousLocale)
+    }
+  })
+
   it('uses the footer Continue to verify and save the selected Otari model', async () => {
     spyOn(otariBrowser, 'getOtariBrowserReturn').mockReturnValue({
       id: 'ready-state',
@@ -138,7 +164,7 @@ describe('Otari connection', () => {
       context: 'onboarding',
       returnTo: '/chats/new',
       attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
-      error: '',
+      error: null,
       complete: async () => 'otari-key',
       cancel: () => {},
     })
@@ -183,7 +209,7 @@ describe('Otari connection', () => {
       context: 'onboarding',
       returnTo: '/chats/new',
       attempt: await getProviderConnectionAttempt(getDb(), 'otari'),
-      error: '',
+      error: null,
       complete: async () => 'otari-key',
       cancel: () => {},
     })

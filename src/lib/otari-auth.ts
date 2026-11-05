@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { msg } from '@lingui/core/macro'
-import { i18n } from '@/i18n'
 import { http } from '@/lib/http'
 import { fetch as nativeFetch } from '@/lib/fetch'
 import {
@@ -76,7 +74,7 @@ export const connectOtari = async (
     return await exchangeOtariCode(origin, grant, signal)
   } catch {
     signal.throwIfAborted()
-    throw new Error(i18n._(msg`Could not connect to Otari. Please try again.`))
+    throw new Error('Could not connect to Otari. Please try again.')
   }
 }
 

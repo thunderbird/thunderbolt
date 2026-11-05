@@ -1408,7 +1408,6 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/otari-connection/use-otari-connection-state.ts
-#: src/lib/otari-auth.ts
 msgid "Could not connect to Otari. Please try again."
 msgstr ""
 
@@ -3582,16 +3581,16 @@ msgid "Otari"
 msgstr ""
 
 #: src/integrations/otari-search/api.ts
-msgid "Otari could not complete this web request. Check the search provider and web access settings in Otari."
-msgstr ""
+#~ msgid "Otari could not complete this web request. Check the search provider and web access settings in Otari."
+#~ msgstr ""
 
 #: src/lib/otari-browser-auth.ts
 msgid "Otari returned an invalid response. Please connect again."
 msgstr ""
 
 #: src/integrations/otari-search/connection.ts
-msgid "Otari search changed or was disconnected. Start a new turn after reconnecting."
-msgstr ""
+#~ msgid "Otari search changed or was disconnected. Start a new turn after reconnecting."
+#~ msgstr ""
 
 #: src/components/otari-connection/otari-connection.tsx
 #~ msgid "Otari server"
@@ -3602,8 +3601,8 @@ msgid "Otari server URL"
 msgstr ""
 
 #: src/integrations/otari-search/api.ts
-msgid "Otari web access was denied. Reconnect Otari or check your workspace’s web access settings."
-msgstr ""
+#~ msgid "Otari web access was denied. Reconnect Otari or check your workspace’s web access settings."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-search-step.tsx
 msgid "Otari web search isn’t available. Choose a search provider below, or skip for now."

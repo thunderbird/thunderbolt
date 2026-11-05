@@ -16,9 +16,9 @@ export const belongsToOtariConnection = (model: Model, connection: OtariSearchCo
   !model.oauthProvider &&
   Boolean(model.apiKey)
 
-/** Search follows the connected model's enable switch and the workspace's advertised capability. */
+/** Local eligibility for discovery; cached capability failures must not prevent a later recheck. */
 export const canSupplyOtariSearch = (model: Model, connection: OtariSearchConnection | null): boolean =>
-  belongsToOtariConnection(model, connection) && model.enabled === 1 && connection?.searchStatus === 'available'
+  belongsToOtariConnection(model, connection) && model.enabled === 1
 
 /** Shares the saved OAuth connection with onboarding and search settings without copying its key. */
 export const hasOtariSearchConnection = (models: Model[], connection: OtariSearchConnection | null): boolean =>

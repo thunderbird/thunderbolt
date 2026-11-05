@@ -619,7 +619,7 @@ describe('useDeepLinkListener hook', () => {
       expect(getOtariBrowserReturn('models')).toMatchObject({
         id: state,
         returnTo: '/settings/models',
-        error: '',
+        error: null,
         attempt: { provider: 'otari', revision: 'before-connect' },
       })
       expect(localStorage.getItem('thunderbolt.otari.authorization')).toBeNull()

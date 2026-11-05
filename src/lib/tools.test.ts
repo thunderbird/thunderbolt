@@ -296,6 +296,37 @@ describe('selected gateway discovery', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it.each(['otari', 'auto'] as const)('rechecks cached unknown search when %s selects Otari', async (selection) => {
+    const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [{ id: 'otari_web_search', available: true, direct_available: true }] }),
+    )
+    useSearchProviderStore.getState().configureOtariSearch({
+      modelId: 'otari-search',
+      url: 'https://otari.example/api/v1',
+      searchStatus: 'unknown',
+    })
+    useSearchProviderStore.getState().selectSearchProvider(selection)
+    expect((await loadConnectedSearchApis(getDb())).otariSearchApi?.search).toBeDefined()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(useSearchProviderStore.getState().selection).toBe(selection)
+  })
+
+  it.each(['none', 'cloud', 'custom', 'tinfoil'] as const)(
+    'does not retry cached unknown Otari search while %s is selected',
+    async (selection) => {
+      const fetch = spyOn(globalThis, 'fetch')
+      useSearchProviderStore.getState().configureOtariSearch({
+        modelId: 'otari-search',
+        url: 'https://otari.example/api/v1',
+        searchStatus: 'unknown',
+      })
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      expect((await loadConnectedSearchApis(getDb())).otariSearchApi).toBeUndefined()
+      expect(fetch).not.toHaveBeenCalled()
+      expect(useSearchProviderStore.getState().selection).toBe(selection)
+    },
+  )
+
   it('honors auto priority before contacting Otari', async () => {
     const fetch = spyOn(globalThis, 'fetch')
     useSearchProviderStore.getState().configureSearchProvider('custom-key')

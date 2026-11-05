@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { t } from '@lingui/core/macro'
 import { z } from 'zod'
 import { isPublicWebUrl } from '@/integrations/standalone-search/url-policy'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
@@ -47,11 +46,11 @@ export const createOtariWebApi = (
     } catch (error) {
       if (error instanceof HttpError && (error.response.status === 401 || error.response.status === 403)) {
         // eslint-disable-next-line preserve-caught-error
-        throw new Error(t`Otari web access was denied. Reconnect Otari or check your workspace’s web access settings.`)
+        throw new Error('Otari web access was denied. Reconnect Otari or check your workspace’s web access settings.')
       }
       // eslint-disable-next-line preserve-caught-error
       throw new Error(
-        t`Otari could not complete this web request. Check the search provider and web access settings in Otari.`,
+        'Otari could not complete this web request. Check the search provider and web access settings in Otari.',
       )
     }
   }

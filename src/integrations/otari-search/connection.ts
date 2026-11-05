@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { t } from '@lingui/core/macro'
 import { getModel } from '@/dal/models'
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -17,7 +16,7 @@ const readOtariSearchState = async (db: AnyDrizzleDatabase) => {
   return { connection, model: model && canSupplyOtariSearch(model, connection) ? model : null }
 }
 
-/** Checks local availability without making a paid search request. */
+/** Checks whether this connection can be selected for discovery, without contacting the gateway. */
 export const getOtariSearchAvailability = async (db: AnyDrizzleDatabase) => {
   const { connection, model } = await readOtariSearchState(db)
   return { otari: Boolean(model), otariConfigured: Boolean(connection) }
@@ -38,7 +37,7 @@ export const getOtariSearchConnection = async (db: AnyDrizzleDatabase, createApi
       !current.model ||
       current.model.apiKey !== model.apiKey
     ) {
-      throw new Error(t`Otari search changed or was disconnected. Start a new turn after reconnecting.`)
+      throw new Error('Otari search changed or was disconnected. Start a new turn after reconnecting.')
     }
     return current.model.apiKey!
   }

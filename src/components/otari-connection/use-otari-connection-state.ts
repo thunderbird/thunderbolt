@@ -4,6 +4,7 @@
 
 import { useEffect, useReducer, useRef, useState, useEffectEvent } from 'react'
 import { useLingui } from '@lingui/react/macro'
+import { i18n } from '@/i18n'
 import { useDatabase } from '@/contexts'
 import { getProviderConnectionAttempt, type ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import {
@@ -132,7 +133,7 @@ export const useOtariConnectionState = (
       await loadModels(returned.origin, key, returned.attempt, controller)
     } catch {
       if (!controller.signal.aborted) {
-        update({ error: returned.error || t`Could not connect to Otari. Please try again.` })
+        update({ error: returned.error ? i18n._(returned.error) : t`Could not connect to Otari. Please try again.` })
       }
     } finally {
       if (pending.current === controller) {

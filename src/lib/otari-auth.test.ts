@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test'
 import { getClock } from '@/testing-library'
+import { i18n } from '@/i18n'
 import type { OpenRouterAuthDependencies } from './openrouter-auth'
 import {
   connectOtari,
@@ -122,6 +123,23 @@ describe('Otari native authorization', () => {
     )
     expect(transport).not.toHaveBeenCalled()
     expect(harness.unlisten).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps sanitized transport errors English under another UI locale', async () => {
+    const harness = nativeAuthorization()
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('private-transport-detail'))
+    const previousLocale = i18n.locale
+    try {
+      i18n.loadAndActivate({
+        locale: 'de',
+        messages: { 'Could not connect to Otari. Please try again.': 'Verbindung fehlgeschlagen.' },
+      })
+      await expect(
+        connectOtari(defaultOtariOrigin, new AbortController().signal, harness.dependencies),
+      ).rejects.toThrow('Could not connect to Otari. Please try again.')
+    } finally {
+      i18n.activate(previousLocale)
+    }
   })
 
   test('sanitizes token transport errors and preserves cancellation', async () => {

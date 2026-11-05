@@ -130,15 +130,29 @@ it('never infers an Otari connection from a custom model URL or name and honors 
 })
 
 it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
-  'does not probe or expose an unavailable onboarding connection (%s)',
+  'rechecks a previously unavailable connection and recovers after search is enabled (%s)',
   async (searchStatus) => {
     await connect()
     useSearchProviderStore.getState().configureOtariSearch({ ...connection, searchStatus })
-    const fetch = spyOn(globalThis, 'fetch')
-    expect(await getOtariSearchConnection(getDb())).toEqual({ otariSearchApi: undefined, otariConfigured: true })
+    const fetch = spyOn(globalThis, 'fetch').mockResolvedValueOnce(toolsResponse(false, false))
+    expect(await getOtariSearchAvailability(getDb())).toEqual({ otari: true, otariConfigured: true })
     expect(fetch).not.toHaveBeenCalled()
+    expect(await getOtariSearchConnection(getDb())).toEqual({ otariSearchApi: undefined, otariConfigured: true })
+    expect((await getOtariSearchConnection(getDb())).otariSearchApi?.search).toBeDefined()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls.every(([request]) => new Request(request).url === `${connection.url}/tools`)).toBe(true)
   },
 )
+
+it('recovers from a failed discovery without reconnecting or updating the cached onboarding status', async () => {
+  await connect()
+  useSearchProviderStore.getState().configureOtariSearch({ ...connection, searchStatus: 'unknown' })
+  const fetch = spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('network unavailable'))
+  expect(await getOtariSearchConnection(getDb())).toEqual({ otariSearchApi: undefined, otariConfigured: true })
+  expect((await getOtariSearchConnection(getDb())).otariSearchApi?.search).toBeDefined()
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(useSearchProviderStore.getState().otariConnection?.searchStatus).toBe('unknown')
+})
 
 it('retires a running connection when another gateway is registered, even if it uses the same model key', async () => {
   await connect()

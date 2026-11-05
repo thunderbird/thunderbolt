@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { z } from 'zod'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { i18n } from '@/i18n'
 import { exchangeOtariCode, getOtariAuthorizationUrl, normalizeOtariOrigin } from '@/lib/otari-auth'
 import { generateCodeChallenge, generateCodeVerifier } from '@/lib/pkce'
 import type { ProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
@@ -34,7 +34,7 @@ export type OtariBrowserReturn = {
   context: OtariReturnContext
   attempt: ProviderConnectionAttempt
   returnTo: string
-  error: string
+  error: MessageDescriptor | null
   complete: () => Promise<string>
   cancel: () => void
 }
@@ -232,13 +232,13 @@ export const captureOtariBrowserReturn = (
     returnTo,
     context: flow.context,
     attempt: flow.attempt,
-    error: error ? i18n._(error) : '',
+    error,
     cancel: () => controller.abort(),
     complete: () => {
       completion ??= (async () => {
         controller.signal.throwIfAborted()
         if (error) {
-          throw new Error(i18n._(error))
+          throw new Error('Otari authorization failed')
         }
         return deps.exchange(
           flow.origin,

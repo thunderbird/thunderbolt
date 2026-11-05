@@ -51,7 +51,9 @@ export const useOnboardingModelState = () => {
       provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari' ? provider : 'custom',
     )
   const hasBuiltInSearch =
-    hasTinfoilSearchConnection(models, oauthAvailable) || hasOtariSearchConnection(models, otariConnection)
+    hasTinfoilSearchConnection(models, oauthAvailable) ||
+    // Only skip setup after successful discovery; runtime eligibility still permits later retries.
+    (otariConnection?.searchStatus === 'available' && hasOtariSearchConnection(models, otariConnection))
   const disconnectProvider = async (provider: OnboardingProvider) => {
     if (provider === 'tinfoil') {
       await tinfoilSession.disconnect()

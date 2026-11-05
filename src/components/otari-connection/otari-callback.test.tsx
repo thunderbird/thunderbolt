@@ -81,7 +81,7 @@ test('scrubs credentials and returns to the owning screen once under StrictMode'
     id: nonce,
     origin: 'http://localhost:8099',
     attempt: { provider: 'otari', revision: 'before-authorization' },
-    error: '',
+    error: null,
   })
 })
 
@@ -89,8 +89,8 @@ test('returns a provider denial to setup without exposing its details', async ()
   await prepareConnection()
   renderCallback(`?error=access_denied&error_description=private-detail&state=${nonce}`)
   expect(screen.getByRole('status')).toHaveTextContent('Model setup')
-  expect(getOtariBrowserReturn('models')?.error).toContain('Connection cancelled')
-  expect(getOtariBrowserReturn('models')?.error).not.toContain('private-detail')
+  expect(i18n._(getOtariBrowserReturn('models')!.error!)).toContain('Connection cancelled')
+  expect(i18n._(getOtariBrowserReturn('models')!.error!)).not.toContain('private-detail')
   expect(window.location.search).toBe('')
 })
 
@@ -120,7 +120,7 @@ test('resumes a captured native app link without putting the code in the WebView
   renderCallback('')
   expect(screen.getByRole('status')).toHaveTextContent('Model setup')
   expect(window.location.search).toBe('')
-  expect(getOtariBrowserReturn('models')?.error).toBe('')
+  expect(getOtariBrowserReturn('models')?.error).toBeNull()
 })
 
 test('still scrubs the authorization code and shows recovery when tab storage is blocked', async () => {

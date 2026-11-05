@@ -128,7 +128,7 @@ describe('Otari connection', () => {
     await act(async () => getClock().runAllAsync())
     expect(screen.getByRole('heading', { name: 'Connect Otari' })).toBeInTheDocument()
     expect(screen.getByLabelText('Otari server URL')).toHaveValue('http://localhost:8099')
-    expect(screen.getByText('Connection cancelled.')).toBeInTheDocument()
+    expect(screen.getByText(i18n._(msg`Connection cancelled.`))).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect Otari' })).toBeEnabled()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   })

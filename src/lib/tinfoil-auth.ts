@@ -42,6 +42,24 @@ export type TinfoilCredentials = {
   reauth_required?: boolean
 }
 
+/** Builds the same PKCE request for browser, desktop, and verified mobile app links. */
+export const getTinfoilAuthorizationUrl = (
+  { challenge, redirectUri, state }: { challenge: string; redirectUri: string; state: string },
+  clientId = tinfoilClientId,
+): string => {
+  const url = new URL('https://dash.tinfoil.sh/oauth/authorize')
+  url.search = new URLSearchParams({
+    response_type: 'code',
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: 'inference:api offline_access',
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+  }).toString()
+  return url.toString()
+}
+
 /** OAuth 2.1 public client: exchange directly with Tinfoil using PKCE, never a Thunderbolt server. */
 export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial<OpenRouterAuthDependencies> = {}) => {
   const authorization = createProviderAuthorization(
@@ -49,19 +67,8 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
       authorizationEndpoint: 'https://dash.tinfoil.sh/oauth/authorize',
       callbackPath: '/oauth/tinfoil',
       fixedCallbackPath: true,
-      buildUrl: (challenge, redirectUri, state) => {
-        const url = new URL('https://dash.tinfoil.sh/oauth/authorize')
-        url.search = new URLSearchParams({
-          response_type: 'code',
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          scope: 'inference:api offline_access',
-          state,
-          code_challenge: challenge,
-          code_challenge_method: 'S256',
-        }).toString()
-        return url.toString()
-      },
+      buildUrl: (challenge, redirectUri, state) =>
+        getTinfoilAuthorizationUrl({ challenge, redirectUri, state }, clientId),
     },
     overrides,
   )
@@ -96,19 +103,17 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
     }
   }
 
+  const exchangeCode = (
+    { code, verifier, redirectUri }: { code: string; verifier: string; redirectUri: string },
+    signal?: AbortSignal,
+  ) => grant({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri }, signal)
+
   return {
+    exchangeCode,
     startConnection: async (options: OpenRouterConnectionOptions = {}): Promise<TinfoilCredentials> => {
       try {
         const result = await authorization.startConnection(options)
-        return await grant(
-          {
-            grant_type: 'authorization_code',
-            code: result.code,
-            code_verifier: result.verifier,
-            redirect_uri: result.redirectUri,
-          },
-          options.signal,
-        )
+        return await exchangeCode(result, options.signal)
       } catch (error) {
         options.signal?.throwIfAborted()
         if (error instanceof TinfoilConnectionError) {

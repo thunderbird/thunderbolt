@@ -61,6 +61,42 @@ All three ports must be registered as redirect URIs in the provider's console; s
   before accepting either a token or an IdP error. Other OAuth flows still validate the provider's
   state in the frontend, and PKCE blocks token theft because the verifier never leaves it.
 
+### Tinfoil sign-in on mobile
+
+Tinfoil uses the same verified HTTPS app link as Google and Microsoft:
+`https://app.thunderbolt.io/oauth/callback`. The mobile shell opens the system browser with PKCE;
+it does not run the desktop loopback server. The existing `deep-link` configuration covers both
+iOS Universal Links and Android App Links, so this flow needs no new scheme or native permission.
+
+[`tinfoil-mobile-auth.ts`](../../../src/lib/tinfoil-mobile-auth.ts) persists the pending nonce,
+verifier, setup context, and connection revision in device-local storage for ten minutes. That
+lets authorization resume after the OS terminates the app. The callback must match the exact
+HTTPS URL and pending nonce. It consumes the pending record and hands one in-memory exchange to
+the original onboarding or Connections surface through `/oauth/tinfoil`. Explicit cancellation
+clears the record; an ordinary unmount preserves it. The existing connection revision and model
+save transaction reject a return after disconnect. Tokens use the existing local Tinfoil session
+store. Provider callback URLs and errors are never logged.
+
+The global deep-link listener subscribes before reading startup links, deduplicates OAuth states,
+and cleans up listeners even when native registration finishes after unmount. The callback route
+remounts setup so a return to an already-open screen also resumes correctly. Browser popups and
+desktop loopback authorization retain their existing relay.
+
+**Registration check (2026-11-05):** Tinfoil's public authorization-info endpoint returned HTTP 200,
+client name `Thunderbolt`, product `thunderbolt`, `verified: true`, the exact mobile redirect, and
+both requested scopes for this unauthenticated GET:
+
+```text
+https://api.tinfoil.sh/oauth/authorize/info?client_id=oauthc_SDVdLmN2tIicRCMaqNGijBTNKZceSmEjwolKnycjrypWSCvN&redirect_uri=https%3A%2F%2Fapp.thunderbolt.io%2Foauth%2Fcallback&response_type=code&scope=inference%3Aapi%20offline_access
+```
+
+This verifies provider registration without signing in or granting access. A full device smoke test
+still requires a signed build whose app association is installed, a Tinfoil account, and consent:
+connect from onboarding and Connections, return with the app alive and after OS termination,
+then verify inference and search. Cancel and retry once, and confirm an old callback after disconnect
+cannot reconnect the account. Unit tests cover nonce/URL validation, expiration, cancellation,
+single exchange, StrictMode replay, routing, listener cleanup, and the transactional save guard.
+
 ### What the CLI installer does
 
 1. Derives download URLs from the running app's version and the naming scheme

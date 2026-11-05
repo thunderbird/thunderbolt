@@ -8,6 +8,14 @@ import { createModel, getAllModels, getAvailableModels, getModel, getSettings } 
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { StrictMode, type ReactNode } from 'react'
+import {
+  cancelTinfoilMobileConnection,
+  startTinfoilMobileConnection,
+  captureTinfoilMobileReturn,
+} from '@/lib/tinfoil-mobile-auth'
+import { mobileOAuthRedirectUri } from '@/lib/oauth-redirect'
+import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
 import * as platform from '@/lib/platform'
@@ -35,6 +43,7 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
     refresh_token: 'refresh-token',
     expires_at: Date.now() + 900_000,
   })),
+  startTinfoilMobile: mock(async (..._args: Parameters<typeof startTinfoilMobileConnection>) => {}),
   prepareManual: mock(
     async (): Promise<OpenRouterManualConnection> => ({
       authorizationUrl: 'https://openrouter.ai/auth?code_challenge=test',
@@ -86,6 +95,7 @@ describe('useOnboardingProviderState', () => {
 
   afterEach(() => {
     cleanup()
+    cancelTinfoilMobileConnection()
     mock.restore()
     resetStore()
   })
@@ -555,12 +565,15 @@ describe('useOnboardingProviderState', () => {
     expect(screen.getByRole('button', { name: 'Add Model' })).toBeDisabled()
   })
 
-  it('uses API keys for native-mobile Tinfoil while retaining OpenRouter code authorization', async () => {
+  it('starts native-mobile Tinfoil authorization while retaining OpenRouter code authorization and optional keys', async () => {
     const deps = makeDependencies({ needsManual: () => true })
     const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
     act(() => result.current.chooseProvider('tinfoil'))
-    expect(result.current.supportsSignIn).toBe(false)
-    expect(result.current.showApiKey).toBe(true)
+    expect(result.current.showApiKey).toBe(false)
+    await act(async () => result.current.connectTinfoil())
+    expect(deps.startTinfoilMobile).toHaveBeenCalledTimes(1)
+    act(() => result.current.cancelConnection())
+    act(() => result.current.useApiKey())
     act(() => result.current.addForm.form.setValue('apiKey', 'mobile-key'))
     await act(async () => result.current.connectApiKey())
     expect(deps.startTinfoil).not.toHaveBeenCalled()
@@ -570,24 +583,104 @@ describe('useOnboardingProviderState', () => {
       oauthProvider: null,
     })
     act(() => result.current.chooseProvider('openrouter'))
-    expect(result.current.supportsSignIn).toBe(true)
     expect(result.current.showApiKey).toBe(false)
     await act(async () => result.current.connectOpenRouter())
     expect(result.current.view).toBe('manual')
   })
 
-  it('offers the native-mobile Tinfoil key form immediately and lets Back return to choices', async () => {
+  it('offers native-mobile Tinfoil sign-in and lets Back return to choices', async () => {
     spyOn(platform, 'isTauri').mockReturnValue(true)
     spyOn(platform, 'isMobile').mockReturnValue(true)
     render(<OnboardingModelStep />, { wrapper: createTestProvider() })
     await act(async () => getClock().runAllAsync())
     fireEvent.click(screen.getByRole('radio', { name: 'Tinfoil' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getByLabelText('API Key')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Connect Tinfoil' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use sign-in instead' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     expect(screen.getByRole('radio', { name: 'Tinfoil' })).toBeInTheDocument()
+  })
+
+  it.each([false, true])('resumes native authorization once after remount (StrictMode: %s)', async (strict) => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const exchange = mock(async () => ({
+      access_token: 'mobile-access',
+      refresh_token: 'mobile-refresh',
+      expires_at: Date.now() + 900_000,
+    }))
+    await startTinfoilMobileConnection('onboarding', attempt, new AbortController().signal, {
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      openUrl: async () => {},
+    })
+    captureTinfoilMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=code&state=${nonce}`), { exchange })
+    const deps = makeDependencies()
+    const TestProvider = createTestProvider()
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), {
+      wrapper: strict
+        ? ({ children }: { children: ReactNode }) => (
+            <StrictMode>
+              <TestProvider>{children}</TestProvider>
+            </StrictMode>
+          )
+        : TestProvider,
+    })
+    await act(async () => getClock().runAllAsync())
+    expect(result.current.view).toBe('tinfoil')
+    expect(exchange).toHaveBeenCalledTimes(1)
+    expect(deps.startTinfoil).not.toHaveBeenCalled()
+    expect((await getAvailableModels(getDb()))[0]).toMatchObject({
+      provider: 'tinfoil',
+      oauthProvider: 'tinfoil',
+      apiKey: null,
+    })
+    expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe('mobile-access')
+  })
+
+  it('aborts a returning mobile exchange when the user goes back and ignores its late result', async () => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const completion = Promise.withResolvers<{ access_token: string; expires_at: number }>()
+    const exchange = mock((_params: unknown, _signal?: AbortSignal) => completion.promise)
+    await startTinfoilMobileConnection('onboarding', attempt, new AbortController().signal, {
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      openUrl: async () => {},
+    })
+    captureTinfoilMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=code&state=${nonce}`), { exchange })
+    const { result } = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => {})
+    expect(exchange).toHaveBeenCalledTimes(1)
+    act(() => result.current.showChoices())
+    expect(exchange.mock.calls[0][1]?.aborted).toBe(true)
+    await act(async () => completion.resolve({ access_token: 'late-key', expires_at: Date.now() + 900_000 }))
+    expect(result.current.view).toBe('choices')
+    expect(await getAvailableModels(getDb())).toHaveLength(0)
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+  })
+
+  it('refuses a mobile callback if another window disconnected before it returned', async () => {
+    const nonce = 'n'.repeat(43)
+    const attempt = await getProviderConnectionAttempt(getDb(), 'tinfoil')
+    const exchange = mock(async () => ({ access_token: 'must-not-save', expires_at: Date.now() + 900_000 }))
+    await startTinfoilMobileConnection('onboarding', attempt, new AbortController().signal, {
+      verifier: () => nonce,
+      challenge: async () => 'challenge',
+      openUrl: async () => {},
+    })
+    captureTinfoilMobileReturn(new URL(`${mobileOAuthRedirectUri}?code=code&state=${nonce}`), { exchange })
+    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: '', sessionRevision: 'disconnected' }, false)
+    const { result } = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => getClock().runAllAsync())
+    expect(exchange).not.toHaveBeenCalled()
+    expect(result.current.error).toContain('Could not connect')
+    expect(await getAvailableModels(getDb())).toHaveLength(0)
   })
 
   it('starts Tinfoil authorization only after its connection button and stays on that screen after saving', async () => {

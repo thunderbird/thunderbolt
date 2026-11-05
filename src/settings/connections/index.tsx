@@ -26,6 +26,7 @@ import { getAuthToken } from '@/lib/auth-token'
 import { deriveOAuthCardDecision } from '@/lib/mcp-auth/auth-decision'
 import { McpOAuthNeedsReauthError } from '@/lib/mcp-auth/ensure-valid-token'
 import { getOAuthState } from '@/lib/oauth-state'
+import { getTinfoilMobileReturn } from '@/lib/tinfoil-mobile-auth'
 import { classifyMcpServerAuth } from '@/lib/mcp-auth/web-oauth-flow'
 import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web-oauth-flow'
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
@@ -94,10 +95,12 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const location = useLocation()
 
   const initialCallback = getConnectionsOAuthCallback(location.state)
-  const [state, dispatch] = useReducer(
-    connectionsPageReducer,
-    createConnectionsPageState(initialCallback.kind === 'integration'),
-  )
+  const [state, dispatch] = useReducer(connectionsPageReducer, {
+    ...createConnectionsPageState(initialCallback.kind === 'integration'),
+    ...(getTinfoilMobileReturn('connections')
+      ? { selected: { kind: 'provider' as const, id: 'tinfoil' as const } }
+      : {}),
+  })
   const {
     selected,
     mode,

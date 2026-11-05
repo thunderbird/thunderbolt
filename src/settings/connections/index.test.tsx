@@ -334,14 +334,16 @@ describe('ConnectionsPage list', () => {
     expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeTruthy()
   })
 
-  it('offers Tinfoil API-key setup on native mobile instead of unsupported sign-in', async () => {
+  it('offers Tinfoil sign-in on native mobile', async () => {
     spyOn(platform, 'isTauri').mockReturnValue(true)
     spyOn(platform, 'isMobile').mockReturnValue(true)
     renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
     fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
-    await waitForElement(() => screen.queryByLabelText('API Key'))
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled()
-    expect(screen.queryByRole('button', { name: 'Connect Tinfoil' })).not.toBeInTheDocument()
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect Tinfoil' }))).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Use an API key instead' }))
+    expect(screen.getByLabelText('API Key')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
+    expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeEnabled()
   })
 
   it('keeps healthy Tinfoil subscription controls in its provider detail without a reconnect action', async () => {

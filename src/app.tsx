@@ -13,6 +13,7 @@ import { i18n } from '@/i18n'
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
 import OAuthCallback from '@/components/oauth-callback'
+import TinfoilCallback from '@/components/tinfoil-callback'
 import OpenRouterCallback from '@/components/openrouter-callback'
 import { AccountDeleted } from '@/components/account-deleted'
 import { DeviceRevoked } from '@/components/device-revoked'
@@ -210,7 +211,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
         {/* Auth flow routes - NO guards (must work during auth) */}
         <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="/oauth/openrouter/:flowId" element={<OpenRouterCallback />} />
-        <Route path="/oauth/tinfoil" element={<OpenRouterCallback />} />
+        <Route path="/oauth/tinfoil" element={<TinfoilCallback />} />
         <Route path="/auth/verify" element={<MagicLinkVerify />} />
         <Route path="/device" element={<DeviceApproval />} />
 

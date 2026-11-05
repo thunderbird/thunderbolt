@@ -29,6 +29,7 @@ export const AiProviderDetail = ({
   const { disconnectProvider } = useOnboardingModelState()
   const state = useOnboardingProviderState(connected ? [id] : [], undefined, undefined, {
     initialProvider: id,
+    returnContext: 'connections',
     onSaved: onClose,
   })
   const busy = state.isConnecting || state.isDisconnecting || state.addForm.isPending
@@ -49,15 +50,13 @@ export const AiProviderDetail = ({
             <Trans>Your connection has expired. Reconnect to continue.</Trans>
           ) : connected ? (
             <Trans>Connected</Trans>
-          ) : !state.supportsSignIn ? (
-            <Trans>Use a Tinfoil API key to power your agents.</Trans>
           ) : id === 'tinfoil' ? (
             <Trans>Connect with a paid Tinfoil subscription.</Trans>
           ) : (
             <Trans>Sign in to connect your account.</Trans>
           )}
         </p>
-        {(state.showApiKey || !state.supportsSignIn) && (!connected || needsReauth) ? (
+        {state.showApiKey && (!connected || needsReauth) ? (
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
@@ -78,11 +77,9 @@ export const AiProviderDetail = ({
             <Button type="submit" disabled={busy || !state.addForm.form.watch('apiKey')?.trim()} isLoading={busy}>
               <Trans>Connect</Trans>
             </Button>
-            {state.supportsSignIn && (
-              <Button type="button" variant="link" size="sm" disabled={busy} onClick={state.cancelConnection}>
-                <Trans>Use sign-in instead</Trans>
-              </Button>
-            )}
+            <Button type="button" variant="link" size="sm" disabled={busy} onClick={state.cancelConnection}>
+              <Trans>Use sign-in instead</Trans>
+            </Button>
           </form>
         ) : state.view === 'manual' ? (
           <>
@@ -115,7 +112,7 @@ export const AiProviderDetail = ({
             </Button>
           )
         )}
-        {!connected && state.supportsSignIn && !state.showApiKey && !busy && state.view !== 'manual' && (
+        {!connected && !state.showApiKey && !busy && state.view !== 'manual' && (
           <Button variant="link" size="sm" className="text-muted-foreground" onClick={state.useApiKey}>
             <Trans>Use an API key instead</Trans>
           </Button>

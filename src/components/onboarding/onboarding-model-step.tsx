@@ -29,7 +29,7 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
   const back = () => {
     if (state.view === 'choices') {
       onBack?.()
-    } else if (state.view === 'manual' || (state.showApiKey && state.supportsSignIn)) {
+    } else if (state.view === 'manual' || state.showApiKey) {
       state.cancelConnection()
     } else {
       state.showChoices()
@@ -86,13 +86,7 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
               <OnboardingStepHeader
                 icon={<OnboardingProviderLogo provider={state.provider} className="size-10" />}
                 title={<Trans>Connect {providerName}</Trans>}
-                description={
-                  state.supportsSignIn ? (
-                    <Trans>Connect your account to power your agents.</Trans>
-                  ) : (
-                    <Trans>Use a Tinfoil API key to power your agents.</Trans>
-                  )
-                }
+                description={<Trans>Connect your account to power your agents.</Trans>}
               />
               {state.provider === 'tinfoil' && !state.isConnected && !state.showApiKey && (
                 <p className="text-center text-sm text-muted-foreground">
@@ -125,18 +119,16 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                     >
                       <Trans>Connect</Trans>
                     </Button>
-                    {state.supportsSignIn && (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="sm"
-                        className="text-muted-foreground"
-                        onClick={state.cancelConnection}
-                        disabled={busy}
-                      >
-                        <Trans>Use sign-in instead</Trans>
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={state.cancelConnection}
+                      disabled={busy}
+                    >
+                      <Trans>Use sign-in instead</Trans>
+                    </Button>
                   </form>
                 ) : (
                   <>

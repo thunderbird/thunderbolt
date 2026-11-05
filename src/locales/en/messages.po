@@ -1350,6 +1350,7 @@ msgstr "Could not connect to this server. Check the URL and that the server is r
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
 #: src/lib/tinfoil-auth.ts
+#: src/lib/tinfoil-mobile-auth.ts
 msgid "Could not connect to Tinfoil. Try again, or use an API key."
 msgstr "Could not connect to Tinfoil. Try again, or use an API key."
 
@@ -5350,8 +5351,8 @@ msgstr "Use {name}"
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx
-msgid "Use a Tinfoil API key to power your agents."
-msgstr "Use a Tinfoil API key to power your agents."
+#~ msgid "Use a Tinfoil API key to power your agents."
+#~ msgstr "Use a Tinfoil API key to power your agents."
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx

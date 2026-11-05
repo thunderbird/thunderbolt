@@ -583,9 +583,10 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    tools and caps) on the fix prompt with the problems appended, then a second review, whose prompt carries the first
    review's problems, numbered: it must find each one fixed, or shown wrong by the code, before it approves, and
    show it. `Decide the review` counts a second approval only when `resolved` names every earlier problem with the
-   `file:line` that settles it, the command the reviewer ran and its result; otherwise it is a rejection,
+   `file:line` that settles it, the command the reviewer says it ran and its result; otherwise it is a rejection,
    and the diagnosis lists the first review's problems. A local run showed why: a second review approved after three
-   tool calls in 16 seconds. A patch still rejected, or a
+   tool calls in 16 seconds. That evidence is the reviewer's own account, which nothing checks against the commands
+   it actually ran: it stops a review that skips the evidence, not one that makes it up. A patch still rejected, or a
    review that never answered, gets a diagnosis with the problems, so a person takes the ticket and no PR opens.
    `Decide the review` writes `approved=true` only on an approval, and the `review` pass rests on that output, like
    every other pass. Both prompts are read in "Build the prompt", before Fix, whose commands could rewrite them, and

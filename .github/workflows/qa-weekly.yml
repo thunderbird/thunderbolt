@@ -1525,7 +1525,9 @@ jobs:
       # The verdict publish needs as the `review` pass: the second review's when it ran, else the first's. A second
       # approval counts only with evidence for every problem of the first review: an entry in `resolved` naming the
       # problem's number, where the patch fixes it (`file:line`) and how the reviewer checked it (the command it ran
-      # and its result). Without it the approval is a rejection.
+      # and its result). Without it the approval is a rejection. The entry is the reviewer's own account: nothing
+      # here checks that the command ran or printed that result, so this stops a review that skips the evidence,
+      # not one that makes it up.
       - name: Decide the review
         id: review-verdict
         if: always()

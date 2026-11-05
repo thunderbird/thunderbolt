@@ -48,9 +48,9 @@ export const ContextUsageIndicator = ({
   const strokeColor = 'var(--color-muted-foreground)'
 
   // SVG circle parameters
-  const size = 24
-  const strokeWidth = 3
-  const radius = (size - strokeWidth) / 2
+  const size = 20
+  const strokeWidth = 2.5
+  const radius = 7
   const circumference = 2 * Math.PI * radius
   const strokeDasharray = circumference
   const strokeDashoffset = circumference - (percentage / 100) * circumference
@@ -70,13 +70,9 @@ export const ContextUsageIndicator = ({
                 className="flex h-[var(--touch-height-control)] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-control)] px-2 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {pending ? (
-                  <Loader2 className="size-[var(--icon-size-default)] animate-spin" aria-hidden="true" />
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
                 ) : (
-                  <svg
-                    viewBox={`0 0 ${size} ${size}`}
-                    className="size-[var(--icon-size-default)] -rotate-90"
-                    aria-hidden="true"
-                  >
+                  <svg viewBox={`0 0 ${size} ${size}`} className="size-4 shrink-0 -rotate-90" aria-hidden="true">
                     {/* Background circle */}
                     <circle
                       cx={size / 2}

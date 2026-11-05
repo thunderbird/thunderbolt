@@ -256,7 +256,9 @@ describe('ChatMessages', () => {
         await Bun.sleep(5)
       })
       const action = screen.queryByRole('button', { name: 'Share debug transcript' })
-      if (action) return action
+      if (action) {
+        return action
+      }
     }
     return screen.getByRole('button', { name: 'Share debug transcript' })
   }

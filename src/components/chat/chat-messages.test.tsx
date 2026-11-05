@@ -250,9 +250,14 @@ describe('ChatMessages', () => {
         </ContentViewProvider>
       </TestProvider>,
     )
-    await act(async () => {
-      await Bun.sleep(20)
-    })
+    // Lazy module resolution uses real I/O; advance React until the action appears.
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await act(async () => {
+        await Bun.sleep(5)
+      })
+      const action = screen.queryByRole('button', { name: 'Share debug transcript' })
+      if (action) return action
+    }
     return screen.getByRole('button', { name: 'Share debug transcript' })
   }
 

@@ -266,7 +266,21 @@ export const createHarnessCompaction = (
       if (!(window > 0) || tokens < window * 0.8) {
         return messages
       }
-      await run(request, false)
+      if (state.controller) {
+        throw new Error('Context compaction is already running')
+      }
+      try {
+        await run(request, false)
+      } catch (error) {
+        request.signal?.throwIfAborted()
+        if ((error instanceof Error && error.name === 'AbortError') || tokens >= window) {
+          throw error
+        }
+        // Automatic compaction is proactive. A summary outage must not block a
+        // prompt that still fits; manual compaction continues to report failures.
+        console.warn('Automatic context compaction failed; keeping the current context', error)
+        return messages
+      }
       const context = await session.buildContext()
       // A huge prompt or tool result can remain too large after summarization.
       // Fail once, visibly, rather than repeatedly charging for futile summaries.

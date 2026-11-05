@@ -21,7 +21,7 @@ import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
 import { selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
-import { useContentView } from '@/content-view/context'
+import { useShowCompactionSummary } from '@/content-view/context'
 import { CompactionNotice } from '../context-usage'
 
 const ShareDebugTranscriptAction = lazy(async () => {
@@ -60,7 +60,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     selectedModel,
     compactionStatus,
   } = useCurrentChatSession()
-  const { showCompactionSummary } = useContentView()
+  const showCompactionSummary = useShowCompactionSummary()
   const compacting = compactionStatus === 'compacting'
   const debugTranscriptsEnabled = useConfigStore((state) => selectDebugTranscriptsEnabled(state.config))
 

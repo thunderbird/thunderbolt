@@ -71,6 +71,9 @@ type ContentViewContextType = {
 }
 
 const ContentViewContext = createContext<ContentViewContextType | undefined>(undefined)
+const ShowCompactionSummaryContext = createContext<ContentViewContextType['showCompactionSummary'] | undefined>(
+  undefined,
+)
 
 /**
  * Unified provider for managing the content view
@@ -184,7 +187,9 @@ export const ContentViewProvider = ({
         setPreviewHidden,
       }}
     >
-      {children}
+      <ShowCompactionSummaryContext.Provider value={showCompactionSummary}>
+        {children}
+      </ShowCompactionSummaryContext.Provider>
     </ContentViewContext.Provider>
   )
 }
@@ -244,4 +249,13 @@ export const useSideview = () => {
     showSideview,
     closeSideview: close,
   }
+}
+
+/** Open summaries without subscribing the message list to side-panel state. */
+export const useShowCompactionSummary = () => {
+  const show = useContext(ShowCompactionSummaryContext)
+  if (!show) {
+    throw new Error('useShowCompactionSummary must be used within a ContentViewProvider')
+  }
+  return show
 }

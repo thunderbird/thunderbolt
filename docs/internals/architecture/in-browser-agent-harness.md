@@ -225,7 +225,12 @@ normal requests. Stopped-reply markers are included in both model-input paths wi
 being inserted into the visible or saved transcript.
 Regeneration removes the regenerated response from the request, so its checkpoint is
 excluded too. Automatic checkpoints are emitted only when compaction actually runs,
-avoiding a copy of the growing context on every subsequent message.
+avoiding a copy of the growing context on every subsequent message. Retained Pi messages
+cannot be reconstructed losslessly from visible text turns: they carry tool-call/result
+pairing and provider-specific content. Each checkpoint therefore stores its own tail, and
+older checkpoints remain available for inspecting or regenerating earlier branches. Pi's
+retention target is the smaller of its default budget and 10% of the model window, though
+an indivisible turn can exceed that target.
 
 After compaction, the cached harness is marked for rebuilding on the next operation.
 Cache reuse also requires its last user turn to match the supplied transcript, so
@@ -251,7 +256,9 @@ usage already includes system/tool overhead, which is added only to character es
 Confidential summary requests settle their own signed usage receipts because they emit no
 harness `message_end` event.
 
-Summary failures and cancellation leave the old context intact. Manual compaction locks
+Summary failures and cancellation leave the old context intact. A failed automatic summary
+allows the original request to proceed while its estimated context is below the model window;
+cancellation and failures at or above the window still stop the request. Manual compaction locks
 sending/regeneration through the final persistence write, and publishes its checkpoint to
 the live chat only after saving succeeds. An oversized retained context fails visibly
 instead of looping over repeated summaries.

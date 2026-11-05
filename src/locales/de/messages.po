@@ -181,8 +181,8 @@ msgstr[0] "# Zeile importiert. Die App braucht möglicherweise einen Moment, um 
 msgstr[1] "# Zeilen importiert. Die App braucht möglicherweise einen Moment, um neue Chats anzuzeigen."
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr ""
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -4966,9 +4966,9 @@ msgstr "Melden Sie sich mit Fingerabdruck, Gesicht oder Geräte-PIN an statt mit
 msgid "User Experience"
 msgstr "Nutzererlebnis"
 
-#: src/components/context-usage-indicator.tsx
-#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr "{usedTokensLabel} von {maxTokensLabel} des Kontextfensters genutzt"
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr "{usedTokensLabel} von {maxTokensLabel} des Kontextfensters genutzt"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"

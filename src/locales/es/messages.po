@@ -193,8 +193,8 @@ msgstr[1] "Se importaron # filas. La aplicación puede tardar un momento en refl
 msgstr[2] "Se importaron # filas. La aplicación puede tardar un momento en reflejar los nuevos chats."
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr ""
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -4978,9 +4978,9 @@ msgstr "Inicia sesión con tu huella, tu cara o el PIN del dispositivo en lugar 
 msgid "User Experience"
 msgstr "Experiencia de usuario"
 
-#: src/components/context-usage-indicator.tsx
-#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr "{usedTokensLabel} de {maxTokensLabel} de la ventana de contexto en uso"
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr "{usedTokensLabel} de {maxTokensLabel} de la ventana de contexto en uso"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"

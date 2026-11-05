@@ -188,7 +188,7 @@ export const ContextUsageIndicator = ({
         {!state.open && (
           <TooltipContent>
             <Trans>
-              {usedTokensLabel} of {maxTokensLabel} Context Window
+              Using {usedTokensLabel} of {maxTokensLabel} Context Window
             </Trans>
           </TooltipContent>
         )}

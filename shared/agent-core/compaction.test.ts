@@ -192,6 +192,37 @@ describe('Pi context compaction', () => {
     expect(status).toEqual(['compacting', 'idle'])
   })
 
+  it('continues with unchanged context when a proactive summary fails below the window limit', async () => {
+    const f = await fixture(async () => new Response('unavailable', { status: 503 }))
+    await f.seed(8_100)
+    const before = await f.session.getEntries()
+    const { messages } = await f.session.buildContext()
+    const status: CompactionStatus[] = []
+    expect(await f.compaction.prepareRequest(messages, { onStatus: (value) => status.push(value) })).toBe(messages)
+    expect(await f.session.getEntries()).toEqual(before)
+    expect(f.compaction.revision).toBe(0)
+    expect(status).toEqual(['compacting', 'idle'])
+  })
+
+  it('reports a failed automatic summary when the original context no longer fits', async () => {
+    const f = await fixture(async () => new Response('unavailable', { status: 503 }))
+    await f.seed(10_000)
+    await expect(f.compaction.prepareRequest((await f.session.buildContext()).messages, {})).rejects.toThrow()
+  })
+
+  it('never falls back to sending a cancelled automatic summary request', async () => {
+    const controller = new AbortController()
+    const f = await fixture(async () => {
+      controller.abort()
+      return new Response('unavailable', { status: 503 })
+    })
+    await f.seed(8_100)
+    await expect(
+      f.compaction.prepareRequest((await f.session.buildContext()).messages, { signal: controller.signal }),
+    ).rejects.toThrow()
+    expect(f.compaction.revision).toBe(0)
+  })
+
   it('preserves the previous summary when the next cut contains only a turn prefix', async () => {
     const f = await fixture()
     const checkpoint: CompactionCheckpoint = {
@@ -236,6 +267,9 @@ describe('Pi context compaction', () => {
     const pending = f.compaction.compact({ onStatus: (value) => status.push(value) })
     await started.promise
     await expect(f.compaction.compact()).rejects.toThrow('already running')
+    await expect(f.compaction.prepareRequest((await f.session.buildContext()).messages, {})).rejects.toThrow(
+      'already running',
+    )
     f.compaction.abort()
     await expect(pending).rejects.toThrow()
     expect(await f.session.getEntries()).toEqual(before)

@@ -181,8 +181,8 @@ msgstr[0] "Imported # row. The app may take a moment to reflect new chats."
 msgstr[1] "Imported # rows. The app may take a moment to reflect new chats."
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr "{usedTokensLabel} of {maxTokensLabel} Context Window"
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -4966,9 +4966,9 @@ msgstr "Use your fingerprint, face, or device PIN to sign in instead of an email
 msgid "User Experience"
 msgstr "User Experience"
 
-#: src/components/context-usage-indicator.tsx
-#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"

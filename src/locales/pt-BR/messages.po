@@ -193,8 +193,8 @@ msgstr[1] "# linhas importadas. O app pode levar um momento para refletir as nov
 msgstr[2] "# linhas importadas. O app pode levar um momento para refletir as novas conversas."
 
 #: src/components/context-usage/context-usage-indicator.tsx
-msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
-msgstr ""
+#~ msgid "{usedTokensLabel} of {maxTokensLabel} Context Window"
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "{verbPhrase}…"
@@ -4978,9 +4978,9 @@ msgstr "Entre com sua digital, seu rosto ou o PIN do dispositivo em vez de um c�
 msgid "User Experience"
 msgstr "Experiência do usuário"
 
-#: src/components/context-usage-indicator.tsx
-#~ msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
-#~ msgstr "{usedTokensLabel} de {maxTokensLabel} da janela de contexto em uso"
+#: src/components/context-usage/context-usage-indicator.tsx
+msgid "Using {usedTokensLabel} of {maxTokensLabel} Context Window"
+msgstr "{usedTokensLabel} de {maxTokensLabel} da janela de contexto em uso"
 
 #: src/components/magic-link-verify.tsx
 msgid "Verification Failed"

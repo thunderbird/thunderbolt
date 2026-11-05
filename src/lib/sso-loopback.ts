@@ -17,6 +17,15 @@ export class SsoCallbackError extends Error {
   }
 }
 
+/** Parse an untrusted callback URL on WebViews without URL.canParse. */
+const parseCallbackUrl = (value: string): URL | null => {
+  try {
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
+
 /**
  * Starts an SSO flow using the localhost loopback server and the system browser.
  *
@@ -50,7 +59,7 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
 
     // Register listener BEFORE opening browser to avoid race condition
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
-      const url = URL.canParse(event.payload.url) ? new URL(event.payload.url) : null
+      const url = parseCallbackUrl(event.payload.url)
       if (
         url?.origin === callbackOrigin &&
         url.pathname === '/' &&

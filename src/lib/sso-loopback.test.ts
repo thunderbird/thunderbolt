@@ -75,6 +75,26 @@ describe('startSsoFlowLoopback', () => {
     expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
   })
 
+  it('accepts a valid callback without URL.canParse while ignoring malformed callbacks', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(URL, 'canParse')
+    Object.defineProperty(URL, 'canParse', { configurable: true, value: undefined })
+    try {
+      openUrlSpy.mockImplementation(async (url) => {
+        callback({ payload: { url: 'not a URL' } })
+        respond(url, { client_state: 'wrong-state', token: 'attacker-token' })
+        respond(url, { token: 'real-token' })
+      })
+      expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
+      expect(unlistenFn).toHaveBeenCalledTimes(1)
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(URL, 'canParse', descriptor)
+      } else {
+        Reflect.deleteProperty(URL, 'canParse')
+      }
+    }
+  })
+
   it('uses a fresh nonce after an earlier attempt, rejecting its replay', async () => {
     const states: string[] = []
     openUrlSpy.mockImplementation(async (url) => {

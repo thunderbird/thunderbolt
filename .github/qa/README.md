@@ -375,7 +375,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    line is the proof and a screenshot only context. The fake AI provider (`e2e/fake-provider.ts`) answers streamed
    Anthropic Messages and streamed OpenAI-compatible chat completions, the two requests the backend sends it, and
    gives anything else a 404 and a `[fake-provider] unsupported <time> <request>` line in the stack log. Replay reads
-   that log (`QA_BACKEND_LOG`) and gives each finding the lines logged while one of its runs ran, as
+   that log (`QA_BACKEND_LOG`) and gives each finding the lines logged while one of its counted runs ran, as
    `replay.provider_gaps`: by time for a spec, since specs replay in parallel and a line can land on another spec's
    finding too, and from the run's own log lines for a flow. The judge sees them in `<fake_provider>` and drops a
    finding whose failure follows from one as an environment artifact. A spec can write to that log, so the lines

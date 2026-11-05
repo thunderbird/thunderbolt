@@ -42,6 +42,8 @@ export const summarize = (results: CheckResult[]) => ({
 
 const prompt = 'Please greet me briefly.'
 const probe = await readFile(resolve(import.meta.dir, '../layout-probe.js'), 'utf8')
+// The probe needs axe-core loaded before it, as in mcp.json and layout.ts.
+const axe = await readFile(resolve(import.meta.dir, '../../../node_modules/axe-core/axe.min.js'), 'utf8')
 // A variable, as in e2e/native-smoke/linux.ts: webdriverio's type has no `tauri:options`.
 const capabilities = {
   browserName: 'wry',
@@ -124,6 +126,7 @@ const signIn = async (browser: Browser) => {
 
 /** The layout probe's confirmed problems on the current screen. */
 const layoutProblems = async (browser: Browser): Promise<LayoutProblem[]> => {
+  await browser.execute(axe)
   await browser.execute(probe)
   await browser.pause(1500)
   return browser.execute(() => window.__qaLayout.problems())

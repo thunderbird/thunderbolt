@@ -89,7 +89,12 @@ export type ThunderboltUIDataTypes = {
 
 export type ThunderboltUIMessage = UIMessage<UIMessageMetadata, ThunderboltUIDataTypes, UITools>
 
-export type SaveMessagesFunction = ({ id, messages }: { id: string; messages: ThunderboltUIMessage[] }) => Promise<void>
+export type SaveMessagesFunction = (params: {
+  id: string
+  messages: ThunderboltUIMessage[]
+  /** Historical message edits must not replace the thread's current context size. */
+  updateContext?: boolean
+}) => Promise<void>
 
 /**
  * Persists a single in-flight assistant message during streaming (crash-recovery

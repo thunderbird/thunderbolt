@@ -912,7 +912,7 @@ export const createChatInstance = (
     const previous = acpSave
     acpSave = (async () => {
       await previous
-      await saveMessages({ id, messages: [applied.changed] })
+      await saveMessages({ id, messages: [applied.changed], updateContext: event.type === 'usage' })
     })().catch((error: unknown) => console.error('Could not save ACP session update:', error))
     return true
   }

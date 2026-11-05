@@ -617,6 +617,8 @@ export const connectAcpAdapter = async (
     if (existing) {
       return existing
     }
+    // Replay preserves omitted fields; agents must explicitly replace/clear summaries before replaying saved chunks.
+    // https://agentclientprotocol.com/protocol/v1/prompt-turn#session-compaction
     for (const compaction of context.getAcpCompactions?.() ?? []) {
       if (compaction.agentId === agent.id && !compactions.has(acpCompactionKey(compaction))) {
         compactions.set(acpCompactionKey(compaction), compaction)

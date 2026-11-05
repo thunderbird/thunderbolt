@@ -1619,6 +1619,77 @@ describe('ACP session compaction and usage', () => {
     adapter.disconnect()
   })
 
+  it('applies explicit replay replacements and clears without implicitly resetting saved summaries', async () => {
+    const saved: AcpCompaction = { ...snapshot, summary: [{ type: 'text', text: 'Hello' }] }
+    const replay: AcpCompaction[] = []
+    const replayUpdates: SessionNotification['update'][] = [
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed' },
+      { sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text: 'Hello' } },
+      {
+        sessionUpdate: 'compaction_update',
+        compactionId: 'c',
+        status: 'completed',
+        summary: [{ type: 'text', text: 'Replacement' }],
+      },
+      {
+        sessionUpdate: 'compaction_summary_chunk',
+        compactionId: 'c',
+        content: { type: 'text', text: 'After replacement' },
+      },
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed', summary: null },
+      { sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text: 'After clear' } },
+      { sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed', summary: [] },
+    ]
+    const fake = buildFakeConnection({
+      loadSession: true,
+      beforeSessionResponse: async (client, sessionId) => {
+        for (const update of replayUpdates) {
+          await client.sessionUpdate({ sessionId, update })
+        }
+      },
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+    })
+    try {
+      await adapter.ensureSession(
+        threadCtx('explicit-replay-patches', {
+          acpSessionId: 'stored',
+          getAcpCompactions: () => [saved],
+          onAcpSessionEvent: (event, inPrompt, replaying) => {
+            expect(inPrompt).toBe(false)
+            expect(replaying).toBe(true)
+            if (event.type === 'compaction') {
+              replay.push(event.compaction)
+            }
+            return true
+          },
+        }),
+      )
+      expect(fake.calls.loadSession).toHaveLength(1)
+      expect(replay.map((compaction) => compaction.summary)).toEqual([
+        [{ type: 'text', text: 'Hello' }],
+        [
+          { type: 'text', text: 'Hello' },
+          { type: 'text', text: 'Hello' },
+        ],
+        [{ type: 'text', text: 'Replacement' }],
+        [
+          { type: 'text', text: 'Replacement' },
+          { type: 'text', text: 'After replacement' },
+        ],
+        null,
+        [{ type: 'text', text: 'After clear' }],
+        [],
+      ])
+      expect(replay.every((compaction) => compaction._meta === saved._meta)).toBe(true)
+      expect(saved.summary).toEqual([{ type: 'text', text: 'Hello' }])
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
   it('streams new IDs, patches older transcript IDs outside the stream, and keeps sessions isolated', async () => {
     const seen: { event: AcpSessionEvent; inPrompt: boolean }[] = []
     const fake = buildFakeConnection()

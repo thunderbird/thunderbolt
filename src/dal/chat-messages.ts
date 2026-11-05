@@ -73,6 +73,7 @@ const updateMutableMessageColumns = async (db: AnyDrizzleDatabase, msg: ChatMess
  * Saves messages to a chat thread and updates context size if available
  * @param threadId - The ID of the chat thread
  * @param messages - Array of UI messages to save
+ * @param options - Set updateContext to false when editing historical messages
  * @returns The saved database messages
  * @throws Error if thread is not found
  */
@@ -80,6 +81,7 @@ export const saveMessagesWithContextUpdate = async (
   db: AnyDrizzleDatabase,
   threadId: string,
   messages: ThunderboltUIMessage[],
+  { updateContext = true }: { updateContext?: boolean } = {},
 ): Promise<ChatMessage[]> => {
   // Verify thread exists
   const thread = await getChatThread(db, threadId)
@@ -122,7 +124,7 @@ export const saveMessagesWithContextUpdate = async (
     const metadata = latestMessage?.metadata as UIMessageMetadata | undefined
 
     const contextSize = metadata?.contextTokens ?? metadata?.usage?.totalTokens
-    if (contextSize !== undefined) {
+    if (updateContext && contextSize !== undefined) {
       await updateChatThread(tx, threadId, { contextSize })
     }
   })

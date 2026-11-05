@@ -439,6 +439,63 @@ describe('Chat Messages DAL', () => {
         (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
       ).toBe(123)
     })
+
+    it.each([undefined, 500])(
+      'preserves current context when patching a historical compaction with contextTokens %p',
+      async (contextTokens) => {
+        const db = getDb()
+        const threadId = uuidv7()
+        await db.insert(chatThreadsTable).values({ id: threadId, title: 'Compacted', isEncrypted: 0 })
+        const compaction = {
+          agentId: 'agent',
+          sessionId: 'session',
+          compactionId: 'compact-1',
+          status: 'in_progress',
+        }
+        const older: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Earlier reply' },
+            { type: 'data-acp-compaction', data: compaction },
+          ],
+          metadata: {
+            ...(contextTokens !== undefined ? { contextTokens } : {}),
+            usage: { inputTokens: 800, outputTokens: 50, totalTokens: 850 },
+          },
+        }
+        const latest: ThunderboltUIMessage = {
+          id: uuidv7(),
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Current reply' }],
+          metadata: { contextTokens: 2000 },
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [older, latest])
+
+        const updated: ThunderboltUIMessage = {
+          ...older,
+          parts: [
+            older.parts[0],
+            {
+              type: 'data-acp-compaction',
+              data: { ...compaction, status: 'completed', summary: [{ type: 'text', text: 'Earlier decisions' }] },
+            },
+          ],
+        }
+        await saveMessagesWithContextUpdate(db, threadId, [updated], { updateContext: false })
+
+        const saved = await getChatMessages(db, threadId)
+        expect(saved).toHaveLength(2)
+        expect(saved[0].parts).toEqual(updated.parts)
+        expect(saved[0].metadata).toEqual(older.metadata!)
+        expect(saved[0].parentId).toBeNull()
+        expect(saved[1].parts).toEqual(latest.parts)
+        expect(saved[1].parentId).toBe(older.id)
+        expect(
+          (await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, threadId)).get())?.contextSize,
+        ).toBe(2000)
+      },
+    )
   })
 
   describe('saveStreamingAssistantMessage', () => {

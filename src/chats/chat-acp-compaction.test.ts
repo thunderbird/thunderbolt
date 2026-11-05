@@ -298,6 +298,7 @@ describe('ACP compaction chat lifecycle', () => {
     expect(f.instance.getAcpCompactions()).toEqual([compaction])
     expect(f.saved).toHaveBeenCalledTimes(2)
     expect(f.saved.mock.calls[1][0].messages[0].id).toBe('historical-compaction')
+    expect(f.saved.mock.calls[1][0].updateContext).toBe(false)
   })
 
   it('waits for final persistence and queued session events before starting the next user turn', async () => {

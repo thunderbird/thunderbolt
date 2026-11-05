@@ -127,7 +127,7 @@ export const useHydrateChatStore = ({
     await updateChatThread(db, threadId, { title })
   }
 
-  const saveMessages: SaveMessagesFunction = async ({ id, messages }) => {
+  const saveMessages: SaveMessagesFunction = async ({ id, messages, updateContext = true }) => {
     const { updateSession } = useChatStore.getState()
     // Read the session inside the queue so a move that ran before creation is
     // included in the insert; a later move waits until the row exists.
@@ -158,7 +158,7 @@ export const useHydrateChatStore = ({
     })
 
     // Save messages and update context size using DAL
-    await saveMessagesWithContextUpdate(db, id, messages)
+    await saveMessagesWithContextUpdate(db, id, messages, { updateContext })
 
     // Generate title in background if needed
     if (thread?.title === defaultChatTitle) {

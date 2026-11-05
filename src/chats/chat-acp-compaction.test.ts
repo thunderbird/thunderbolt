@@ -95,7 +95,7 @@ describe('ACP compaction chat lifecycle', () => {
       return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
     })
     const sdk = new Chat<ThunderboltUIMessage>({
-      transport: new DefaultChatTransport({ fetch }),
+      transport: new DefaultChatTransport({ fetch: Object.assign(fetch, { preconnect: () => undefined }) }),
       sendAutomaticallyWhen: f.callbacks.current!.sendAutomaticallyWhen,
     })
     await sdk.sendMessage({ text: '/compact', metadata: { acpCommand: 'compact' } })

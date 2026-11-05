@@ -27,7 +27,7 @@ export const EffortControls = ({ choices, value, busy, choose, error }: ReturnTy
         <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Reasoning effort`}</span>
         <div className="flex items-center gap-2 text-brand" aria-live="polite">
           <EffortRing value={selected?.value} values={choices.map((choice) => choice.value)} />
-          <span className="text-xl font-medium">{selected?.name ?? t`Choose effort`}</span>
+          <span className="text-lg font-medium">{selected?.name ?? t`Choose effort`}</span>
         </div>
       </div>
       <div className="relative flex h-9 items-center" style={{ '--effort-progress': `${progress}%` } as CSSProperties}>

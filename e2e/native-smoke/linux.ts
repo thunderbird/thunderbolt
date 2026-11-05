@@ -39,6 +39,7 @@ try {
     timeoutMsg: `The chat reply did not render: ${fakeProviderReply}`,
   })
   await browser.pause(1000) // Keep the complete reply visible in the recording.
+  // eslint-disable-next-line no-console -- Report successful completion in the smoke-test runner output.
   console.log('Linux desktop smoke passed')
 } finally {
   await browser.deleteSession()

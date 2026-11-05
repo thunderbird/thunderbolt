@@ -25,5 +25,11 @@
 - extendedWaitUntil:
     visible: Hello from the fake provider, one word at a time.
     timeout: 60000
-- hideKeyboard
+# iOS keeps the keyboard up after a send. On Android Maestro's hideKeyboard fails when the keyboard floats, and the
+# keyboard there shows the same way on every run anyway.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - hideKeyboard
 - waitForAnimationToEnd

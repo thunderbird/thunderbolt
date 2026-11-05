@@ -216,13 +216,19 @@ Recheck these adaptations when upgrading Pi.
 
 Compaction preserves the visible transcript. A versioned checkpoint lives in the boundary
 message's existing encrypted `metadata` column, so it syncs without a schema migration.
-It stores the summary and retained Pi messages, including tool pairs. Structured image
+It stores the summary and retained Pi messages, including tool pairs. The optional `files`
+field holds sorted `readFiles` and `modifiedFiles` arrays, restored as Pi compaction details
+so subsequent summaries preserve the exact inventory independently of model output. A short
+manual compaction that summarizes the entire conversation collects paths from that entire
+range. Older version-1 checkpoints without `files` still restore their summary and tail. Structured image
 parts become text markers and raw tool-result `details` are omitted from the durable copy:
 image binaries and original attachments stay local, matching ordinary transcript replay.
 Live Pi messages are not rewritten by checkpoint serialization. On reload or model
 change the adapter restores it, then seeds only visible turns after that boundary.
-Attachment files are restored from the full visible transcript, including turns before
-the checkpoint, so paths referenced by a summary still resolve in the workspace.
+When workspace tools are enabled, attachment files are restored from the full visible
+transcript, including turns before the checkpoint, so paths referenced by a summary still
+resolve. Without workspace tools, compacted attachments are not reopened or re-extracted;
+only turns after the checkpoint need preparation.
 Manual compaction uses the same attachment previews and tool-availability policy as
 normal requests. Stopped-reply markers are included in both model-input paths without
 being inserted into the visible or saved transcript.
@@ -247,6 +253,8 @@ superseded Mini App reads out of durable summaries.
 The context menu's **View summary** opens the latest saved checkpoint; each completed
 transcript row opens its own checkpoint in the shared inspection sidebar. It renders the summary as
 Markdown and exposes retained messages and tool results in an expandable section.
+Summary images render as alt text so opening untrusted model-generated content does not
+fetch embedded image URLs.
 Opening the viewer takes a stable snapshot; it does not trigger compaction or change
 the transcript. The menu entry remains available after reloads and agent changes.
 

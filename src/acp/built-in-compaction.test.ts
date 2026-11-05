@@ -8,8 +8,9 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
 import { builtInAgent } from '@/defaults/agents'
+import { defaultModelProfileOpus55 } from '@/defaults/model-profiles'
 import { createClient } from '@/lib/http'
-import type { Model, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
+import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import type { AgentAdapterContext } from '@/types/acp'
 import type { CompactionStatus } from '@shared/agent-core'
 import { createBuiltInAdapter } from './built-in-adapter'
@@ -33,6 +34,7 @@ const isSummary = (request: RequestBody) =>
 /** Script just the provider's HTTP responses; everything from the adapter through Pi runs for real. */
 const fixture = (
   options: {
+    profile?: ModelProfile
     toolSteps?: number
     toolTokens?: number
     toolOutput?: string
@@ -54,7 +56,7 @@ const fixture = (
   } as Model
   const config: PreparedAiRequestConfig = {
     model,
-    profile: null,
+    profile: options.profile ?? null,
     supportsTools: true,
     sourceCollector: [],
     mcpToolsMetadata: undefined,
@@ -160,6 +162,33 @@ const metadata = async (response: Response): Promise<UIMessageMetadata> => {
 }
 
 describe('built-in compaction integration', () => {
+  it('lets an explicit chat effort override the inherited profile and restores it on Default', async () => {
+    const f = fixture({
+      profile: {
+        ...defaultModelProfileOpus55,
+        modelId: 'compaction-test',
+        providerOptions: { thinking: { type: 'adaptive' }, effort: 'high' },
+      },
+    })
+    const adapter = f.adapter()
+    const first = user('Use the profile effort')
+    try {
+      await metadata(await adapter.fetch(body([first]), f.context))
+      expect(f.providerRequests.at(-1)?.reasoning_effort).toBe('high')
+      f.context.reasoningEffort = 'low'
+      const next = user('Use less reasoning')
+      await metadata(await adapter.fetch(body([first, assistant('Done'), next]), f.context))
+      expect(f.providerRequests.at(-1)?.reasoning_effort).toBe('low')
+      f.context.reasoningEffort = undefined
+      await metadata(
+        await adapter.fetch(body([first, assistant('Done'), next, assistant('Done'), user('Use default')]), f.context),
+      )
+      expect(f.providerRequests.at(-1)?.reasoning_effort).toBe('high')
+    } finally {
+      adapter.disconnect()
+    }
+  })
+
   it('changes effort after compaction, preserves the checkpoint, and restores Default', async () => {
     const f = fixture()
     const adapter = f.adapter()

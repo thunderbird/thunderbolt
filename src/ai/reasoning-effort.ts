@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { z } from 'zod'
+import { managedAnthropicCatalogId } from './managed-model-id'
 import { http } from '@/lib/http'
 import type { Model } from '@/types'
 import { getSettings } from '@/dal/settings'
@@ -80,9 +81,7 @@ export const createReasoningCapabilitiesLoader = () => {
     }
     const modelId =
       model.provider === 'thunderbolt' && provider === 'anthropic'
-        ? model.model === 'opus-5-5'
-          ? 'claude-opus-5'
-          : `claude-${model.model}`
+        ? managedAnthropicCatalogId(model.model)
         : model.model
     const { catalogReasoningCapabilities } = await import('@shared/agent-core/reasoning-capabilities')
     return catalogReasoningCapabilities(provider, modelId)

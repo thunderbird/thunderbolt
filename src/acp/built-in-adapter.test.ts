@@ -115,6 +115,20 @@ describe('isPiModelCandidate', () => {
 })
 
 describe('readProfileThinkingLevel', () => {
+  it.each(['high', 'max'] as const)('preserves adaptive Anthropic profile effort %s', (effort) => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'adaptive' }, effort })).toBe(effort)
+  })
+
+  it('keeps disabled Anthropic thinking off despite a stored effort', () => {
+    expect(readProfileThinkingLevel({ thinking: { type: 'disabled' }, effort: 'max' })).toBe('off')
+  })
+
+  it('prefers native effort fields and ignores malformed adaptive effort', () => {
+    expect(readProfileThinkingLevel({ reasoningEffort: 'low', effort: 'max' })).toBe('low')
+    expect(readProfileThinkingLevel({ reasoning: { effort: 'high' }, effort: 'max' })).toBe('high')
+    expect(readProfileThinkingLevel({ effort: 'unsupported', thinking: { budgetTokens: 4096 } })).toBe('low')
+  })
+
   it('ignores a non-object JSON value from the synced profile column', () => {
     expect(readProfileThinkingLevel(['high'] as never)).toBeNull()
   })

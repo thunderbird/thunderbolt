@@ -57,6 +57,20 @@ describe('CompactionSummaryContent', () => {
     expect(within(dialog).queryByRole('textbox')).toBeNull()
   })
 
+  it('renders image descriptions without loading URLs embedded in summary text', () => {
+    const summary = [
+      '![Private report](https://example.invalid/collect?secret=private)',
+      '![](https://example.invalid/track)',
+      '<img src="https://example.invalid/html-image">',
+    ].join('\n\n')
+    const { container } = render(
+      <CompactionSummaryContent checkpoint={{ ...checkpoint, summary }} onClose={() => {}} />,
+    )
+    expect(screen.getByText('Private report')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('[src]')).toBeNull()
+  })
+
   it('omits empty retained context and closes through the shared sidebar header', () => {
     const onClose = mock()
     render(<CompactionSummaryContent checkpoint={{ ...checkpoint, retainedTail: [] }} onClose={onClose} />)

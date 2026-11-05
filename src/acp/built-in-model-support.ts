@@ -5,6 +5,7 @@
 // Catalog data only: the composer must not import the adapter or provider runtimes.
 import { ANTHROPIC_MODELS as anthropicModels } from '@earendil-works/pi-ai/providers/anthropic.models'
 import type { Model } from '@/types'
+import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
 
 const piProviders = new Set<Model['provider']>([
   'anthropic',
@@ -18,10 +19,6 @@ const piProviders = new Set<Model['provider']>([
 /** Whether a model is eligible for Pi resolution. Tinfoil has no legacy fallback. */
 export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
   piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
-
-/** Pi 0.82.1 has no Opus 5.5 entry; borrow Opus 5's metadata while keeping the wire slug. */
-export const managedAnthropicCatalogId = (modelId: string): string =>
-  modelId === 'opus-5-5' ? 'claude-opus-5' : `claude-${modelId}`
 
 /** Match Pi's resolvable models without loading its engine or opening a transport. */
 export const supportsPiCompaction = (

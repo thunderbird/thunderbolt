@@ -11,6 +11,7 @@ import {
   prepareCompaction,
   type AgentHarness,
   type AgentMessage,
+  type BranchSummaryDetails,
   type Session,
 } from '@earendil-works/pi-agent-core'
 import type { ReceiptLifecycle } from './confidential-model.ts'
@@ -22,6 +23,8 @@ export type CompactionCheckpoint = {
   tokensBefore: number
   contextTokens: number
   retainedTail: AgentMessage[]
+  /** Structured inventory survives subsequent summaries without relying on model output. */
+  files?: BranchSummaryDetails
 }
 
 export type CompactionStatus = 'idle' | 'compacting' | 'compacted'
@@ -76,29 +79,67 @@ const toSavedContextMessage = (message: AgentMessage): AgentMessage => {
   }
 }
 
+/** Include the whole manual fallback range, which Pi's retained-tail cut does not summarize. */
+const includeFileOperations = (
+  messages: AgentMessage[],
+  fileOps: { read: Set<string>; written: Set<string>; edited: Set<string> },
+): void => {
+  for (const message of messages) {
+    if (message.role !== 'assistant') {
+      continue
+    }
+    for (const block of message.content) {
+      if (block.type !== 'toolCall' || typeof block.arguments.path !== 'string') {
+        continue
+      }
+      if (block.name === 'read') {
+        fileOps.read.add(block.arguments.path)
+      }
+      if (block.name === 'write') {
+        fileOps.written.add(block.arguments.path)
+      }
+      if (block.name === 'edit') {
+        fileOps.edited.add(block.arguments.path)
+      }
+    }
+  }
+}
+
 /** Preserve Pi's exact file inventory separately from the model-generated summary. */
-const fileOperationsSummary = (fileOps: { read: Set<string>; written: Set<string>; edited: Set<string> }): string => {
+const savedFileOperations = (fileOps: {
+  read: Set<string>
+  written: Set<string>
+  edited: Set<string>
+}): BranchSummaryDetails => {
   const modified = new Set([...fileOps.written, ...fileOps.edited])
-  const groups = [
-    ['read-files', [...fileOps.read].filter((path) => !modified.has(path)).sort()],
-    ['modified-files', [...modified].sort()],
-  ] as const
-  return groups
+  return {
+    readFiles: [...fileOps.read].filter((path) => !modified.has(path)).sort(),
+    modifiedFiles: [...modified].sort(),
+  }
+}
+
+/** Render the deterministic inventory appended after validating the model's summary. */
+const fileOperationsSummary = (files: BranchSummaryDetails): string =>
+  (
+    [
+      ['read-files', files.readFiles],
+      ['modified-files', files.modifiedFiles],
+    ] as const
+  )
     .filter(([, paths]) => paths.length > 0)
     .map(([tag, paths]) => `<${tag}>\n${paths.join('\n')}\n</${tag}>`)
     .join('\n\n')
-}
 
 /** Restore Pi's summary entry and real message entries so subsequent compactions can retain them. */
 export const restoreCompaction = async (
   session: Session,
-  checkpoint: Pick<CompactionCheckpoint, 'summary' | 'tokensBefore' | 'retainedTail'>,
+  checkpoint: Pick<CompactionCheckpoint, 'summary' | 'tokensBefore' | 'retainedTail' | 'files'>,
 ): Promise<void> => {
   await session.appendCompaction(
     checkpoint.summary,
     undefined,
     checkpoint.tokensBefore,
-    undefined,
+    checkpoint.files,
     false,
     undefined,
     [],
@@ -122,6 +163,7 @@ export const createHarnessCompaction = (
 ): HarnessCompaction => {
   const state = {
     summary: restored?.summary,
+    files: restored?.files,
     tokensBefore: restored?.tokensBefore ?? 0,
     controller: null as AbortController | null,
     overheadTokens: 0,
@@ -138,6 +180,7 @@ export const createHarnessCompaction = (
     return {
       version: 1,
       summary: state.summary,
+      files: state.files,
       tokensBefore: state.tokensBefore,
       contextTokens: estimate.tokens + (estimate.lastUsageIndex === null ? state.overheadTokens : 0),
       retainedTail,
@@ -224,16 +267,22 @@ export const createHarnessCompaction = (
       if (!result.value.trim()) {
         throw new CompactionError('summarization_failed', 'Compaction returned an empty summary')
       }
-      const summary = [result.value, fileOperationsSummary(selected.fileOps)].filter(Boolean).join('\n\n')
+      if (!hasSummaryInput) {
+        includeFileOperations(summaryMessages, selected.fileOps)
+      }
+      const files = savedFileOperations(selected.fileOps)
+      const summary = [result.value, fileOperationsSummary(files)].filter(Boolean).join('\n\n')
       const retainedTail = (request.transformMessage ? tail.map(request.transformMessage) : tail).map(withoutUsage)
       // Keep original entries for history, but materialize the retained tail
       // after the boundary. Pi can then compact again even after a restore.
       await restoreCompaction(session, {
         summary,
+        files,
         tokensBefore: selected.tokensBefore,
         retainedTail,
       })
       state.summary = summary
+      state.files = files
       state.tokensBefore = selected.tokensBefore
       state.revision++
       const nextCheckpoint = (await checkpoint())!

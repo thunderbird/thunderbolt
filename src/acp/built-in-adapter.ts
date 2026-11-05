@@ -84,7 +84,8 @@ import {
   isTinfoilTransportWedgedError,
 } from '@/ai/tinfoil-client'
 import { prepareBuiltInConversation, prepareBuiltInHistory } from './built-in-conversation'
-import { isPiModelCandidate, managedAnthropicCatalogId } from './built-in-model-support'
+import { isPiModelCandidate } from './built-in-model-support'
+import { managedAnthropicCatalogId } from '@/ai/managed-model-id'
 
 /** The type of the lazily-imported Pi engine module. A pure type reference — it
  *  resolves the module's shape for the compiler without emitting a runtime
@@ -168,6 +169,7 @@ const piThinkingLevelSchema = z.enum(piThinkingLevels)
 const profileThinkingOptionsSchema = z
   .object({
     reasoningEffort: z.string().optional().catch(undefined),
+    effort: z.string().optional().catch(undefined),
     reasoning_effort: z.string().optional().catch(undefined),
     reasoning: z
       .object({ effort: z.string().optional().catch(undefined) })
@@ -223,7 +225,7 @@ const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null 
 /** Pull a Pi thinking level out of a profile's `providerOptions`, the only
  *  per-model reasoning signal in the data model (there is no thinking-level
  *  column). Recognizes the OpenAI `reasoningEffort`/`reasoning_effort` strings,
- *  a nested `reasoning.effort`, and the Anthropic-style `thinking` object
+ *  a nested `reasoning.effort`, Anthropic's top-level `effort`, and its `thinking` object
  *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
  *  null when no reasoning config is present. */
 export const readProfileThinkingLevel = (
@@ -249,16 +251,14 @@ export const readProfileThinkingLevel = (
     }
   }
   const thinking = options.thinking
-  if (thinking) {
-    const { type, budgetTokens } = thinking
-    if (type === 'disabled') {
-      return 'off'
-    }
-    if (budgetTokens !== undefined) {
-      return budgetToThinkingLevel(budgetTokens)
-    }
+  if (thinking?.type === 'disabled') {
+    return 'off'
   }
-  return null
+  const adaptiveEffort = effortToThinkingLevel(options.effort)
+  if (adaptiveEffort) {
+    return adaptiveEffort
+  }
+  return thinking?.budgetTokens === undefined ? null : budgetToThinkingLevel(thinking.budgetTokens)
 }
 
 /** The Pi thinking level for a model: its explicit profile reasoning config, else

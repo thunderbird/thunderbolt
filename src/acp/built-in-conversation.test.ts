@@ -55,6 +55,54 @@ describe('prepareBuiltInConversation', () => {
     expect(splitCompactedHistory([original, next]).compaction).toBeUndefined()
     expect(compacted.parts[0]).toEqual({ type: 'text', text: 'Original visible answer' })
   })
+  it('does not reopen compacted attachments when no workspace needs restoring', async () => {
+    const checkpoint = {
+      version: 1 as const,
+      summary: 'The old attachment has already been summarized.',
+      tokensBefore: 9_000,
+      contextTokens: 100,
+      retainedTail: [],
+    }
+    const deps: BuiltInConversationDeps = {
+      getAttachment: async () => {
+        throw new Error('Compacted attachment must not be read')
+      },
+      getTransformer: async () => {
+        throw new Error('Compacted attachment must not be transformed')
+      },
+      blobToBase64: async () => {
+        throw new Error('Compacted attachment must not be encoded')
+      },
+      readXlsxSheets: async () => {
+        throw new Error('Compacted attachment must not be parsed')
+      },
+    }
+    const history = [
+      message('user', [
+        { type: 'data-attachment', data: { localFileId: 'old', filename: 'old.pdf', mimeType: 'application/pdf' } },
+      ]),
+      { ...message('assistant', [{ type: 'text', text: 'Read it' }]), metadata: { contextCompaction: checkpoint } },
+      message('user', [{ type: 'text', text: 'Follow-up' }]),
+      message('assistant', [{ type: 'text', text: 'Answer' }]),
+    ]
+    const prepared = await prepareBuiltInHistory(history, inline, deps)
+    expect(prepared).toEqual({
+      compaction: checkpoint,
+      history: [
+        { role: 'user', text: 'Follow-up' },
+        { role: 'assistant', text: 'Answer' },
+      ],
+      files: [],
+    })
+    const conversation = await prepareBuiltInConversation(
+      [...history, message('user', [{ type: 'text', text: 'Continue' }])],
+      undefined,
+      inline,
+      deps,
+    )
+    expect(conversation.history).toEqual(prepared.history)
+    expect(conversation.prompt.text).toBe('Continue')
+  })
   it('flattens quotes/text attachments and maps current images to Pi image content', async () => {
     const files = new Map([
       ['notes', storedFile('notes', 'text/plain')],

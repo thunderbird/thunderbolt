@@ -59,8 +59,9 @@ export const prepareBuiltInHistory = async (
   deps: BuiltInConversationDeps = defaultDeps,
 ): Promise<PreparedBuiltInHistory> => {
   const previous = splitCompactedHistory(messages)
+  const messagesToPrepare = options.workspace ? messages : previous.messages
   const preparedMessages = await Promise.all(
-    messages.map(async (message) => {
+    messagesToPrepare.map(async (message) => {
       if (message.role !== 'user' && message.role !== 'assistant') {
         return null
       }
@@ -68,7 +69,7 @@ export const prepareBuiltInHistory = async (
     }),
   )
   const turns = preparedMessages
-    .slice(messages.length - previous.messages.length)
+    .slice(messagesToPrepare.length - previous.messages.length)
     .flatMap((entry): SeedTurn[] => (entry?.prepared.text ? [{ role: entry.role, text: entry.prepared.text }] : []))
   const files = preparedMessages.flatMap((entry) => entry?.prepared.files ?? [])
   return {

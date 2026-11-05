@@ -269,6 +269,57 @@ describe('Pi context compaction', () => {
     )
   })
 
+  it('preserves the exact file inventory when a short manual conversation is summarized whole', async () => {
+    const f = await fixture()
+    await f.harness.appendMessage({ role: 'user', content: 'Read and update the files.', timestamp: 1 })
+    await f.harness.appendMessage({
+      ...fauxAssistantMessage(''),
+      content: [
+        { type: 'toolCall', id: 'read', name: 'read', arguments: { path: 'a.ts' } },
+        { type: 'toolCall', id: 'write', name: 'write', arguments: { path: 'a.ts' } },
+        { type: 'toolCall', id: 'edit', name: 'edit', arguments: { path: 'b.ts' } },
+        { type: 'toolCall', id: 'other', name: 'search', arguments: { path: 'not-a-file.ts' } },
+        { type: 'toolCall', id: 'invalid', name: 'read', arguments: { path: 42 } },
+      ],
+    })
+    await f.harness.appendMessage(fauxAssistantMessage('Done'))
+    const checkpoint = await f.compaction.compact()
+    expect(checkpoint.retainedTail).toEqual([])
+    expect(checkpoint.files).toEqual({ readFiles: [], modifiedFiles: ['a.ts', 'b.ts'] })
+    expect(checkpoint.summary).toEndWith('<modified-files>\na.ts\nb.ts\n</modified-files>')
+  })
+
+  it.each([false, true])('carries exact file paths into later compactions (restored: %s)', async (restore) => {
+    const f = await fixture()
+    await f.harness.appendMessage({ role: 'user', content: 'Inspect the project', timestamp: 1 })
+    await f.harness.appendMessage({
+      ...fauxAssistantMessage(''),
+      content: [{ type: 'toolCall', id: 'read', name: 'read', arguments: { path: 'original.ts' } }],
+    })
+    await f.seed(8_100)
+    const first = await f.compaction.compact()
+    expect(first.files).toEqual({ readFiles: ['original.ts'], modifiedFiles: [] })
+    const current = restore ? await fixture() : f
+    if (restore) {
+      await restoreCompaction(current.session, JSON.parse(JSON.stringify(first)))
+    }
+    const controller = restore ? createHarnessCompaction(current.harness, current.session, first) : f.compaction
+    await current.harness.appendMessage({ role: 'user', content: 'Now update the file', timestamp: 5 })
+    await current.harness.appendMessage({
+      ...fauxAssistantMessage(''),
+      content: [{ type: 'toolCall', id: 'edit', name: 'edit', arguments: { path: 'original.ts' } }],
+    })
+    await current.harness.appendMessage(fauxAssistantMessage('Updated'))
+    const second = await controller.compact()
+    expect(second.files).toEqual({ readFiles: [], modifiedFiles: ['original.ts'] })
+    expect(second.summary).toEndWith('<modified-files>\noriginal.ts\n</modified-files>')
+    await current.harness.appendMessage({ role: 'user', content: 'Continue', timestamp: 6 })
+    await current.harness.appendMessage(fauxAssistantMessage('Finished'))
+    const third = await controller.compact()
+    expect(third.files).toEqual(second.files)
+    expect(third.summary).toEndWith('<modified-files>\noriginal.ts\n</modified-files>')
+  })
+
   it.each([false, true])('validates summary text before adding a file inventory (empty: %s)', async (empty) => {
     const f = await fixture(undefined, empty ? '' : undefined)
     await f.harness.appendMessage({ role: 'user', content: 'Update the files.', timestamp: 0 })
@@ -376,7 +427,7 @@ describe('Pi context compaction', () => {
     expect(f.compaction.revision).toBe(0)
   })
 
-  it('preserves the previous summary when the next cut contains only a turn prefix', async () => {
+  it('restores a legacy v1 checkpoint without a file inventory and preserves its summary for a prefix-only cut', async () => {
     const f = await fixture()
     const checkpoint: CompactionCheckpoint = {
       version: 1,

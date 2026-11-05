@@ -187,14 +187,6 @@ const requestPermissionViaStore = (
   })
 }
 
-/** Forward translator side effects to the chat store + analytics. The server
- *  is the source of truth for ACP-side mode and config option state, so a
- *  mode/config emit always wins over a stale optimistic UI update.
- *
- *  This branch ships the wire but no UI surface reads it yet — when a future
- *  PR adds ACP-mode UI it will subscribe to `agentSessionState` populated
- *  here. (ACP session modes are an agent-protocol concept, unrelated to the
- *  removed local chat-mode picker.) */
 /** Build the agent-level commands sink wired into the ACP connection. Stashes
  *  the agent's advertised commands so the chat input's slash menu can surface
  *  them (badged with the agent name). Keyed by agent — they're agent-level, so

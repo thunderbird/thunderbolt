@@ -21,7 +21,12 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 
@@ -291,6 +296,7 @@ a teardown.
 | `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
 | `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
 | `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers        |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

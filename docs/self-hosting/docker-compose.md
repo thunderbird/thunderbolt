@@ -88,7 +88,7 @@ BRANDING='{"appName":"Acme AI","debugTranscriptRecipient":"Acme IT","cssVars":{"
 ```bash
 docker compose ps                        # every service up, postgres and keycloak healthy
 curl http://localhost:3000/v1/config     # returns JSON, no sign-in needed
-docker compose logs -f backend           # "Running database migrations", then "Starting server"
+docker compose logs -f backend           # "Database server is ready.", then "Starting server..."
 ```
 
 The `curl` goes through the app's own address, so a JSON reply means the browser-facing service and the API behind it are both answering. Sign in as the demo user and open the same conversation in a second browser window: if it appears there too, sync is working as well.

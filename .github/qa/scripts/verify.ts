@@ -335,8 +335,8 @@ const addProviderGaps = (replay: VerifiedFinding['replay'], lines: string[]) => 
 /**
  * Failed and total runs per spec file (absolute path), with the error, video and trace of the first failed run that
  * reached the bug step, or of the first failed run when none did. A run that failed outside the `bugStep` step never
- * reached the bug: it is `inconclusive` and left out of `runs`. `gaps` logged while one of the spec's runs ran become
- * its `provider_gaps`; replays run in parallel, so another spec's run can contribute one.
+ * reached the bug: it is `inconclusive` and left out of `runs`. `gaps` logged while one of the spec's counted runs ran
+ * become its `provider_gaps`; replays run in parallel, so another spec's run can contribute one.
  */
 const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = []) => {
   const outcomes = new Map<string, Pick<VerifiedFinding, 'replay' | 'artifacts'>>()
@@ -345,16 +345,17 @@ const outcomesBySpec = (report: ReplayReport, gaps: ProviderGap[] = []) => {
     const outcome = outcomes.get(file) ?? { replay: { failed: 0, runs: 0 }, artifacts: {} }
     for (const result of spec.tests.flatMap((test) => test.results)) {
       if (result.status === 'skipped') continue
-      const start = Date.parse(result.startTime ?? '')
-      const end = start + (result.duration ?? 0)
-      addProviderGaps(
-        outcome.replay,
-        gaps.filter(({ time }) => time >= start && time <= end).map(({ line }) => line),
-      )
       const failed = result.status === 'failed' || result.status === 'timedOut'
       const reached = !failed || failedInBugStep(result.steps ?? [])
-      if (reached) outcome.replay.runs++
-      else outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
+      if (reached) {
+        outcome.replay.runs++
+        const start = Date.parse(result.startTime ?? '')
+        const end = start + (result.duration ?? 0)
+        addProviderGaps(
+          outcome.replay,
+          gaps.filter(({ time }) => time >= start && time <= end).map(({ line }) => line),
+        )
+      } else outcome.replay.inconclusive = (outcome.replay.inconclusive ?? 0) + 1
       if (!failed) continue
       if (reached) outcome.replay.failed++
       // The judge reads a stuck sign-in as a bad locator, so a run that reached the bug replaces an unreached one's.

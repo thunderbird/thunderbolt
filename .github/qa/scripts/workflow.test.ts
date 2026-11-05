@@ -5,9 +5,18 @@
 // The workflow's trust boundaries, read from the resolved YAML, and the steps that gate a fix PR.
 
 import { afterAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import platforms from '../platforms.json'
 import { isDenied, prChecks } from './fix'
 import {
@@ -167,11 +176,13 @@ describe('secrets', () => {
     expect(between.map((s) => s.name)).toEqual([
       'Fix',
       "Keep the fix session's execution file",
+      'Record the tree the review reads',
       'Review the fix',
       "Keep the review session's execution file",
       'Build the correction prompt',
       'Correct the fix',
       "Keep the correction session's execution file",
+      'Record the tree the second review reads',
       'Review the corrected fix',
       'Decide the review',
     ])
@@ -181,7 +192,8 @@ describe('secrets', () => {
         shell: '/bin/bash --noprofile --norc -e {0}',
       })
       expect(plain.env).toMatchObject({ PATH: '/usr/bin:/bin', BASH_ENV: '', ENV: '', LD_PRELOAD: '' })
-      expect(plain.run).not.toMatch(/\b(bun|bunx|git)\b/)
+      // A call in any command position, by name or path; a `.git` path, which the tree record skips, is no call.
+      expect(plain.run).not.toMatch(/(^|[\s;|&(/"'`])(bun|bunx|git)($|[\s;|&)"'`])/m)
     }
     expect(mentions('fix', 'secrets.').filter((m) => !sessions.some((name) => m.startsWith(`${name}:`)))).toEqual([
       "Check the agent's output for the key:env",
@@ -356,20 +368,57 @@ describe('fix job', () => {
     expect(args).not.toContain('"Skill"')
   })
 
-  const collect = (env: Record<string, string>) => {
+  type Checkout = { dir: string; temp: string; git: (...args: string[]) => void }
+  /** A checkout with one commit and a repro spec, with `files` committed, and the runner's temp dir beside it. */
+  const checkout = (files: Record<string, string> = {}): Checkout => {
     const dir = mkdtempSync(join(work, 'collect-'))
-    const git = (...args: string[]) => Bun.spawnSync(['git', '-C', dir, ...args])
+    const git = (...args: string[]) => {
+      Bun.spawnSync(['git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    }
     git('init', '-q')
-    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true })
+      writeFileSync(join(dir, path), text)
+    }
+    git('add', '--all', '--force')
+    git('commit', '-q', '--allow-empty', '-m', 'base')
     mkdirSync(join(dir, 'qa-out/c2/repro'), { recursive: true })
     writeFileSync(join(dir, 'qa-out/c2/repro/1.spec.ts'), 'spec')
+    return { dir, temp: mkdtempSync(join(work, 'runner-')), git }
+  }
+  // The runner's sha256sum; macOS keeps it in /sbin.
+  const sha256sum = existsSync('/usr/bin/sha256sum') ? '/usr/bin/sha256sum' : '/sbin/sha256sum'
+  /** Records the tree a review reads, as the step before each review does, and returns the record's hash. */
+  const recordTree = ({ dir, temp }: Checkout) => {
+    const run = (step('fix', 'Record the tree the review reads').run ?? '').replaceAll('/usr/bin/sha256sum', sha256sum)
+    const proc = Bun.spawnSync(['bash', '-e', '-c', run], {
+      cwd: dir,
+      env: { PATH: '/usr/bin:/bin', RUNNER_TEMP: temp, GITHUB_OUTPUT: join(temp, 'output') },
+    })
+    expect(proc.exitCode).toBe(0)
+    return readFileSync(join(temp, 'output'), 'utf8').replace(/^sha=/, '').trim()
+  }
+  /** Runs "Collect the patch" in `checkout` with `env`, and returns the diagnosis it wrote. */
+  const collectIn = ({ dir, temp }: Checkout, env: Record<string, string>) => {
     const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Collect the patch').run ?? ''], {
       cwd: dir,
-      env: { PATH: process.env.PATH, QA_FP: 'fp1', FIX_OUTCOME: 'success', REVIEWED: 'true', ...env },
+      env: {
+        PATH: `${dirname(sha256sum)}:${process.env.PATH}`,
+        RUNNER_TEMP: temp,
+        QA_FP: 'fp1',
+        FIX_OUTCOME: 'success',
+        REVIEWED: 'true',
+        ...env,
+      },
     })
     expect(proc.exitCode).toBe(0)
     const diagnosis = join(dir, 'qa-out/fix/fp1.diagnosis.md')
     return existsSync(diagnosis) ? readFileSync(diagnosis, 'utf8') : undefined
+  }
+  /** "Collect the patch" on a tree unchanged since the review read it. */
+  const collect = (env: Record<string, string>) => {
+    const tree = checkout()
+    return collectIn(tree, { REVIEWED_TREE: recordTree(tree), ...env })
   }
   const spec = { SPEC: 'qa-out/c2/repro/1.spec.ts', NEEDS_REPLAY: 'true' }
 
@@ -490,6 +539,56 @@ describe('fix job', () => {
       // A second approval without that evidence leaves the first review's problems standing.
       expect(collect({ REVIEWED: '', FIRST_REVIEW: problems, REVIEW: verdict(true) })).toContain(
         '- Fix the caller (src/a.tsx:3).',
+      )
+    })
+  })
+
+  describe('the tree the approving review read', () => {
+    test('a file git would publish that changed, appeared or went away since rejects the approval', () => {
+      const tree = checkout({ 'src/a.ts': 'reviewed', 'src/gone.ts': 'reviewed' })
+      const reviewed = recordTree(tree)
+      writeFileSync(join(tree.dir, 'src/a.ts'), 'written by a test the reviewer ran')
+      writeFileSync(join(tree.dir, 'src/new.ts'), 'new')
+      rmSync(join(tree.dir, 'src/gone.ts'))
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
+        'Files changed after the review read them (src/a.ts src/gone.ts src/new.ts), so the patch is not published.\n',
+      )
+    })
+
+    test('a change only in an ignored path keeps the approval, unless git tracks the file there', () => {
+      const tree = checkout({ '.gitignore': 'cache/\ndist/\n', 'dist/index.js': 'built' })
+      const reviewed = recordTree(tree)
+      mkdirSync(join(tree.dir, 'cache'))
+      writeFileSync(join(tree.dir, 'cache/run.json'), '{}')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBeUndefined()
+      writeFileSync(join(tree.dir, 'dist/index.js'), 'rebuilt')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(dist/index.js)')
+    })
+
+    test('a missing or rewritten record rejects the approval, and a rejected patch needs none', () => {
+      const tree = checkout()
+      const reviewed = recordTree(tree)
+      appendFileSync(join(tree.temp, `qa-tree-${reviewed}.txt`), 'x  ./src/a.ts\n')
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('The record of the tree the review read')
+      expect(collectIn(checkout(), { REVIEWED_TREE: '' })).toContain('The record of the tree the review read')
+      expect(collectIn(checkout(), { REVIEWED: '', REVIEW: '{"approved":false,"problems":["x"]}' })).not.toContain(
+        'record',
+      )
+    })
+
+    test("each review's record is taken right before it, and the verdict's review picks the record", () => {
+      const first = step('fix', 'Record the tree the review reads')
+      const second = step('fix', 'Record the tree the second review reads')
+      expect(first.if).toBe(step('fix', 'Review the fix').if)
+      expect(second.if).toBe(step('fix', 'Review the corrected fix').if)
+      expect(second.run).toBe(first.run)
+      expect(indexOf('fix', 'Review the fix')).toBe(indexOf('fix', 'Record the tree the review reads') + 1)
+      expect(indexOf('fix', 'Review the corrected fix')).toBe(
+        indexOf('fix', 'Record the tree the second review reads') + 1,
+      )
+      expect(step('fix', 'Collect the patch').env?.REVIEWED_TREE).toBe(
+        "${{ steps.review-again.outcome != 'skipped' && steps.review-again-tree.outputs.sha || " +
+          'steps.review-tree.outputs.sha }}',
       )
     })
   })

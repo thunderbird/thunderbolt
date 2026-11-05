@@ -1439,6 +1439,21 @@ jobs:
         run: |
           /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-fix.json" || true
           echo "end=$(/bin/date +%s)" >> "$GITHUB_OUTPUT"
+      # The tree each review reads, as a list of every file's hash (git's ignore rules apply later, in "Collect the
+      # patch", since git may not run between the sessions). The list's own hash is the step output, which the runner
+      # keeps and no process of the job can change, so a test the reviewer runs cannot rewrite the list unseen.
+      - name: Record the tree the review reads
+        id: review-tree
+        if: >-
+          steps.fix.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: &record-tree |
+          /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+            -type f -print0 | /usr/bin/xargs -0r /usr/bin/sha256sum > "$RUNNER_TEMP/qa-tree.txt"
+          sum=$(/usr/bin/sha256sum < "$RUNNER_TEMP/qa-tree.txt")
+          /bin/mv "$RUNNER_TEMP/qa-tree.txt" "$RUNNER_TEMP/qa-tree-${sum%% *}.txt"
+          echo "sha=${sum%% *}" >> "$GITHUB_OUTPUT"
       - name: Review the fix
         id: review
         if: >-
@@ -1511,6 +1526,13 @@ jobs:
         shell: /bin/bash --noprofile --norc -e {0}
         env: *plain-shell
         run: /bin/mv "$RUNNER_TEMP/claude-execution-output.json" "$RUNNER_TEMP/qa-execution-correct.json" || true
+      - name: Record the tree the second review reads
+        id: review-again-tree
+        if: >-
+          steps.correct.outcome == 'success' && hashFiles(format('qa-out/fix/{0}.diagnosis.md', matrix.task.fp)) == ''
+        shell: /bin/bash --noprofile --norc -e {0}
+        env: *plain-shell
+        run: *record-tree
       - name: Review the corrected fix
         id: review-again
         if: >-
@@ -1701,6 +1723,8 @@ jobs:
           REVIEWED: ${{ steps.review-verdict.outputs.approved }}
           FIRST_REVIEW: ${{ steps.review.outputs.structured_output }}
           REVIEW: ${{ steps.review-again.outputs.structured_output || steps.review.outputs.structured_output }}
+          REVIEWED_TREE: >-
+            ${{ steps.review-again.outcome != 'skipped' && steps.review-again-tree.outputs.sha || steps.review-tree.outputs.sha }}
         run: |
           mkdir -p qa-out/fix
           diagnosis="qa-out/fix/$QA_FP.diagnosis.md"
@@ -1720,6 +1744,26 @@ jobs:
             diagnose "The visual check did not pass three times with the patch and fail three times without it (baseline step outcome: ${VISUAL:-none})"
           elif [ -n "$NEEDS_REAL_BUILD" ] && [ "$REAL_BUILD" != success ]; then
             diagnose "The patched frontend for the real-AI check did not build (step outcome: ${REAL_BUILD:-none})"
+          fi
+          # The patch must be the tree the approving review read: a file that a test the reviewer ran, or a later step,
+          # changed since was never reviewed. Only a change git would publish counts, not one in an ignored path.
+          if [ "$REVIEWED" = true ]; then
+            reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
+            sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=
+            if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
+              diagnose "The record of the tree the review read is missing or changed"
+            else
+              changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
+                find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+                  -type f -print0 | xargs -0r sha256sum | LC_ALL=C sort
+              ) | sed -E 's/^\t?[0-9a-f]{64}  \.\///' | LC_ALL=C sort -u)
+              if [ -n "$changed" ]; then
+                # check-ignore never names a tracked file, so a tracked file under an ignored path still counts.
+                ignored=$(git check-ignore --stdin <<< "$changed" | LC_ALL=C sort -u) || true
+                published=$(LC_ALL=C comm -23 <(echo "$changed") <(echo "$ignored") | paste -sd ' ' -)
+                if [ -n "$published" ]; then diagnose "Files changed after the review read them ($published)"; fi
+              fi
+            fi
           fi
           git add --all
           git diff --cached --binary HEAD > "qa-out/fix/$QA_FP.patch"

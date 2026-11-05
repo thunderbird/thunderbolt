@@ -26,4 +26,5 @@ export type AiProviderConnection = {
   connected: boolean
   enabled: boolean
   needsReauth: boolean
+  oauthConnected?: boolean
 }

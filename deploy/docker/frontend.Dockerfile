@@ -60,6 +60,9 @@ FROM nginxinc/nginx-unprivileged:alpine
 # any `BACKEND_PORT=8000` default we set here and break envsubst.
 ENV THUNDERBOLT_BACKEND_HOST=backend
 ENV THUNDERBOLT_BACKEND_PORT=8000
+# The nginx entrypoint reads /etc/resolv.conf before rendering templates, covering
+# Docker's embedded DNS, Kubernetes cluster DNS, and other container runtimes.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY deploy/config/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY deploy/config/security-headers.conf /etc/nginx/snippets/security-headers.conf

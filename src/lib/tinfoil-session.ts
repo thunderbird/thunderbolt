@@ -4,6 +4,8 @@
 
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { getDb } from '@/db/database'
+import { getAllModels, updateModelInTransaction } from '@/dal/models'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
 
 const lockName = 'thunderbolt-tinfoil-session'
@@ -16,6 +18,25 @@ const defaultDependencies = {
   auth: tinfoilAuth,
   lock: withTinfoilSessionLock,
   now: Date.now,
+}
+
+/** Updates OAuth access within a caller-owned transaction and session lock. */
+export const setTinfoilSessionEnabledInTransaction = async (
+  db: AnyDrizzleDatabase,
+  enabled: boolean,
+): Promise<void> => {
+  const row = await getIntegrationCredentials(db, 'tinfoil')
+  if (!row?.credentials.access_token || (enabled && row.credentials.reauth_required)) {
+    throw new TinfoilReauthorizationError()
+  }
+  if (row.enabled !== enabled) {
+    await saveIntegrationCredentials(
+      db,
+      'tinfoil',
+      { ...row.credentials, sessionRevision: crypto.randomUUID() },
+      enabled,
+    )
+  }
 }
 
 /** Serialize session changes across windows: Tinfoil revokes replayed refresh-token families. */
@@ -48,23 +69,7 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
       }
     }),
   setEnabled: (enabled: boolean) =>
-    deps.lock(async () => {
-      const db = deps.db()
-      await db.transaction(async (tx) => {
-        const row = await getIntegrationCredentials(tx, 'tinfoil')
-        if (!row?.credentials.access_token || (enabled && row.credentials.reauth_required)) {
-          throw new TinfoilReauthorizationError()
-        }
-        if (row.enabled !== enabled) {
-          await saveIntegrationCredentials(
-            tx,
-            'tinfoil',
-            { ...row.credentials, sessionRevision: crypto.randomUUID() },
-            enabled,
-          )
-        }
-      })
-    }),
+    deps.lock(() => deps.db().transaction((tx) => setTinfoilSessionEnabledInTransaction(tx, enabled))),
   disconnect: () =>
     deps.lock(async () => {
       const db = deps.db()
@@ -74,6 +79,16 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
+        for (const model of await getAllModels(tx)) {
+          if (
+            model.provider === 'tinfoil' &&
+            model.isSystem !== 1 &&
+            model.providerDefault === 1 &&
+            !model.oauthProvider
+          ) {
+            await updateModelInTransaction(tx, model.id, { apiKey: null })
+          }
+        }
         await saveIntegrationCredentials(
           tx,
           'tinfoil',

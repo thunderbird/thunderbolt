@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createModel, getModel } from '@/dal/models'
+import { tinfoilSession, createTinfoilSession } from '@/lib/tinfoil-session'
+import { tinfoilAuth } from '@/lib/tinfoil-auth'
+import { saveIntegrationCredentials } from '@/dal/integrations'
 import { getDb } from '@/db/database'
 import { getClock } from '@/testing-library'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
@@ -75,6 +78,77 @@ describe('provider disconnect', () => {
     expect(result.current.configuredModels).toEqual([])
     expect(result.current.hasConfiguredModel).toBe(false)
     expect((await getModel(getDb(), 'disabled'))?.enabled).toBe(0)
+  })
+
+  it('does not present manually added Tinfoil models as an onboarding account connection', async () => {
+    await createModel(getDb(), {
+      id: 'manual-tinfoil',
+      provider: 'tinfoil',
+      name: 'Manual Tinfoil',
+      model: 'model',
+      apiKey: 'manual-key',
+    })
+    const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(result.current.hasConfiguredModel).toBe(true)
+    expect(result.current.connectedProviders).toEqual([])
+  })
+
+  it('preserves manual Tinfoil keys during disconnect', async () => {
+    const db = getDb()
+    for (const enabled of [0, 1]) {
+      await createModel(db, {
+        id: `manual-tinfoil-${enabled}`,
+        provider: 'tinfoil',
+        name: 'Manual',
+        model: 'model',
+        apiKey: 'manual-key',
+        enabled,
+      })
+    }
+    await createModel(db, {
+      id: 'default-tinfoil',
+      provider: 'tinfoil',
+      name: 'Default',
+      model: 'model',
+      apiKey: 'default-key',
+      providerDefault: 1,
+    })
+    await createModel(db, {
+      id: 'oauth-tinfoil',
+      provider: 'tinfoil',
+      name: 'OAuth',
+      model: 'model',
+      oauthProvider: 'tinfoil',
+    })
+    await saveIntegrationCredentials(db, 'tinfoil', { access_token: 'oauth-token' }, true)
+    const session = createTinfoilSession({
+      db: getDb,
+      auth: { ...tinfoilAuth, revoke: async () => {} },
+      lock: async (work) => work(),
+      now: Date.now,
+    })
+    const disconnect = spyOn(tinfoilSession, 'disconnect').mockImplementation(session.disconnect)
+    try {
+      const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+      expect(result.current.connectedProviders).toContain('tinfoil')
+      await act(async () => {
+        await result.current.disconnectProvider('tinfoil')
+      })
+      expect(disconnect).toHaveBeenCalledTimes(1)
+      for (const enabled of [0, 1]) {
+        expect(await getModel(db, `manual-tinfoil-${enabled}`)).toMatchObject({ apiKey: 'manual-key', enabled })
+      }
+      expect(await getModel(db, 'default-tinfoil')).toMatchObject({ apiKey: null })
+      expect(await getModel(db, 'oauth-tinfoil')).toMatchObject({ oauthProvider: 'tinfoil', apiKey: null })
+    } finally {
+      disconnect.mockRestore()
+    }
   })
 
   it('clears models added after the disconnect handler rendered, retaining other providers', async () => {

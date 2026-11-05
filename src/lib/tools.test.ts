@@ -6,6 +6,9 @@ import { type getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@
 import { getDb } from '@/db/database'
 import { saveIntegrationCredentials } from '@/dal/integrations'
 import { createModel } from '@/dal/models'
+import { updateSettings } from '@/dal'
+import { setAuthToken, clearAuthToken } from '@/lib/auth-token'
+import { clearCachedSession } from '@/lib/session-cache'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createRecordingClient } from '@/test-utils/http-client'
 import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
@@ -245,10 +248,32 @@ const context = (overrides: Partial<ToolAvailabilityContext> = {}): ToolAvailabi
 // read (the duplicate the DI removed) would surface here. This locks in the
 // dedup from the hot send path (`aiFetchStreamingResponse`).
 describe('getAvailableTools (injected context)', () => {
-  afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
+  beforeEach(() => {
+    clearCachedSession()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    setAuthToken('session')
+  })
+  afterEach(() => {
+    useSearchProviderStore.getState().clearSearchProvider()
+    clearAuthToken()
+  })
+
+  it('does not expose backend tools for a selected server without a session', async () => {
+    clearAuthToken()
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      undefined,
+      context({
+        settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
+        integrationStatus: integrationStatus({ googleEnabled: true, microsoftEnabled: true }),
+      }),
+    )
+    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+  })
 
   it('does not expose server web tools without a configured server', async () => {
     useLocalSettingsStore.setState({ cloudUrl: '' })
+    setAuthToken('stale-session')
     const tools = await getAvailableTools(
       stubHttpClient,
       undefined,
@@ -421,10 +446,16 @@ describe('live search availability during a turn', () => {
   afterAll(teardownTestDatabase)
   beforeEach(async () => {
     await resetTestDatabase()
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    clearCachedSession()
     useSearchProviderStore.getState().clearSearchProvider()
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    setAuthToken('session')
   })
-  afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
+  afterEach(() => {
+    useSearchProviderStore.getState().clearSearchProvider()
+    clearAuthToken()
+  })
 
   const cloudSettings = { experimentalFeatureTasks: false, integrationsProIsEnabled: true }
   const cloudResponse = JSON.stringify({
@@ -526,6 +557,30 @@ describe('live search availability during a turn', () => {
       expect(sources).toHaveLength(1)
     },
   )
+
+  it('stops Cloud search and page reads after disabling the integration', async () => {
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    const { client, requests } = createRecordingClient(() => cloudResponse)
+    const tools = await getAvailableTools(client, [], context({ settings: cloudSettings }))
+    await tools.find(({ name }) => name === 'search')!.execute({ query: 'before disable' })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+    for (const name of ['search', 'fetch_content']) {
+      await expect(
+        tools.find((tool) => tool.name === name)!.execute({ query: 'after disable', url: 'https://example.com' }),
+      ).rejects.toThrow('Search provider changed')
+    }
+    expect(requests).toEqual(['search'])
+  })
+
+  it('stops Cloud calls after sign-out even in managed mode', async () => {
+    const { client, requests } = createRecordingClient(() => cloudResponse)
+    const tools = await getAvailableTools(client, [], context({ settings: cloudSettings }))
+    clearAuthToken()
+    await expect(tools.find(({ name }) => name === 'search')!.execute({ query: 'after sign-out' })).rejects.toThrow(
+      'Search provider changed',
+    )
+    expect(requests).toEqual([])
+  })
 
   it('keeps automatic Cloud search available when no provider changed', async () => {
     const { client, requests } = createRecordingClient(() => cloudResponse)

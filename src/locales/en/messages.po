@@ -5354,6 +5354,7 @@ msgid "Use a Tinfoil API key to power your agents."
 msgstr "Use a Tinfoil API key to power your agents."
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/ai-provider-detail.tsx
 msgid "Use an API key instead"
 msgstr "Use an API key instead"
 
@@ -5378,6 +5379,7 @@ msgid "Use passkey"
 msgstr "Use passkey"
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/ai-provider-detail.tsx
 msgid "Use sign-in instead"
 msgstr "Use sign-in instead"
 

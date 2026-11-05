@@ -11,19 +11,27 @@ import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels } from '@/dal'
-import { tinfoilSession } from '@/lib/tinfoil-session'
+import { setTinfoilSessionEnabledInTransaction, withTinfoilSessionLock } from '@/lib/tinfoil-session'
+import { getIntegrationCredentials } from '@/dal/integrations'
 import { invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
 import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
 import type { Model } from '@/types'
 import type { AiProviderConnection } from './types'
 
 /** Matches the saved models controlled by an account connection, excluding managed and manually added API-key models. */
-const belongsToConnection = (model: Model, provider: AiProviderConnection['id']) =>
+const belongsToConnection = (
+  model: Pick<Model, 'deletedAt' | 'apiKey' | 'oauthProvider' | 'providerDefault'> & {
+    provider: Model['provider'] | null
+    isSystem: number | null
+  },
+  provider: AiProviderConnection['id'],
+) =>
   model.isSystem !== 1 &&
   !model.deletedAt &&
-  (provider === 'tinfoil'
-    ? model.oauthProvider === 'tinfoil'
-    : model.provider === 'openrouter' && model.providerDefault === 1 && Boolean(model.apiKey))
+  model.provider === provider &&
+  !model.oauthProvider &&
+  model.providerDefault === 1 &&
+  Boolean(model.apiKey)
 
 /** Reads device-local provider access independently of individual model toggles. */
 export const useAiProviderConnections = () => {
@@ -38,18 +46,28 @@ export const useAiProviderConnections = () => {
   const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
   const toggleMutation = useMutation({
     mutationFn: async ({ provider, enabled }: { provider: AiProviderConnection['id']; enabled: boolean }) => {
-      if (provider === 'tinfoil') {
-        await tinfoilSession.setEnabled(enabled)
-      } else {
-        // Re-read so toggling includes models added since the last render.
-        await db.transaction(async (tx) => {
-          for (const model of await getAllModels(tx)) {
-            if (belongsToConnection(model, provider)) {
-              await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
+      // Session and model access change together under the provider's session lock.
+      const updateModels = () =>
+        db.transaction(async (tx) => {
+          const ownedModels = (await getAllModels(tx)).filter((model) => belongsToConnection(model, provider))
+          if (provider === 'tinfoil') {
+            const current = await getIntegrationCredentials(tx, provider)
+            if (
+              current?.credentials.access_token &&
+              (!enabled || !current.credentials.reauth_required || ownedModels.length === 0)
+            ) {
+              await setTinfoilSessionEnabledInTransaction(tx, enabled)
             }
+          }
+          for (const model of ownedModels) {
+            await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
           }
           await invalidateProviderConnectionAttempts(tx, provider)
         })
+      if (provider === 'tinfoil') {
+        await withTinfoilSessionLock(updateModels)
+      } else {
+        await updateModels()
       }
       useChatStore.getState().setModels(await getAvailableModels(db))
       await queryClient.invalidateQueries({ queryKey: ['models'] })
@@ -66,9 +84,12 @@ export const useAiProviderConnections = () => {
     {
       id: 'tinfoil',
       name: t`Tinfoil`,
-      enabled: Boolean(session?.enabled),
-      connected: Boolean(session?.connected),
-      needsReauth: Boolean(session?.needsReauth),
+      enabled:
+        Boolean(session?.enabled) ||
+        models.some((model) => belongsToConnection(model, 'tinfoil') && model.enabled === 1),
+      connected: Boolean(session?.connected) || models.some((model) => belongsToConnection(model, 'tinfoil')),
+      oauthConnected: Boolean(session?.connected),
+      needsReauth: Boolean(session?.needsReauth) && !models.some((model) => belongsToConnection(model, 'tinfoil')),
     },
   ]
   return {

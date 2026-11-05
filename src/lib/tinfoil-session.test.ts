@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { beforeAll, beforeEach, afterAll, afterEach, describe, it, expect, mock } from 'bun:test'
+import { beforeAll, beforeEach, afterAll, afterEach, describe, it, expect, mock, spyOn } from 'bun:test'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createModel, getModel } from '@/dal/models'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
@@ -113,7 +113,16 @@ describe('Tinfoil session lifecycle', () => {
       model: 'deepseek',
       apiKey: 'own-key',
     })
+    await createModel(getDb(), {
+      id: 'connection-byok',
+      provider: 'tinfoil',
+      name: 'Connection BYOK',
+      model: 'model',
+      apiKey: 'connection-key',
+      providerDefault: 1,
+    })
     await session.disconnect()
+    expect(await getModel(getDb(), 'connection-byok')).toMatchObject({ apiKey: null, enabled: 1 })
     expect(await getModel(getDb(), 'oauth-model')).toMatchObject({
       enabled: 1,
       oauthProvider: 'tinfoil',
@@ -180,6 +189,34 @@ describe('Tinfoil session lifecycle', () => {
     await expect(session.disconnect()).rejects.toThrow('unavailable')
     expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials).toEqual(renewed)
   })
+  it('rolls back both owned BYOK and OAuth state if the disconnect transaction fails', async () => {
+    const db = getDb()
+    await saveIntegrationCredentials(db, 'tinfoil', renewed, true)
+    await createModel(db, {
+      id: 'connection-byok',
+      provider: 'tinfoil',
+      name: 'Connection BYOK',
+      model: 'model',
+      apiKey: 'connection-key',
+      providerDefault: 1,
+    })
+    mock.restore()
+    const transaction = db.transaction.bind(db)
+    const failing = spyOn(db, 'transaction').mockImplementation((work) =>
+      transaction(async (tx) => {
+        await work(tx)
+        throw new Error('Transaction failed')
+      }),
+    )
+    try {
+      await expect(harness().session.disconnect()).rejects.toThrow('Transaction failed')
+    } finally {
+      failing.mockRestore()
+    }
+    expect(await getModel(db, 'connection-byok')).toMatchObject({ apiKey: 'connection-key' })
+    expect(await getIntegrationCredentials(db, 'tinfoil')).toMatchObject({ enabled: true, credentials: renewed })
+  })
+
   it('refuses disabled and disconnected sessions even with a fresh token', async () => {
     const { auth, session } = harness()
     await expect(session.getAccessToken()).rejects.toBeInstanceOf(TinfoilReauthorizationError)

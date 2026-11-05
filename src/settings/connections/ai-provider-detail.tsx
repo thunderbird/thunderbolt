@@ -24,7 +24,7 @@ export const AiProviderDetail = ({
   connection: AiProviderConnection
   onClose: () => void
 }) => {
-  const { id, name, connected, needsReauth } = connection
+  const { id, name, connected, needsReauth, oauthConnected } = connection
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const { disconnectProvider } = useOnboardingModelState()
   const state = useOnboardingProviderState(connected ? [id] : [], undefined, undefined, {
@@ -35,7 +35,7 @@ export const AiProviderDetail = ({
   const connect = id === 'tinfoil' ? state.connectTinfoil : state.connectOpenRouter
   const disconnect = () =>
     state.disconnectProvider(async () => {
-      await disconnectProvider(id, id === 'tinfoil')
+      await disconnectProvider(id)
       setConfirmDisconnect(false)
     })
   return (
@@ -57,7 +57,7 @@ export const AiProviderDetail = ({
             <Trans>Sign in to connect your account.</Trans>
           )}
         </p>
-        {!state.supportsSignIn && (!connected || needsReauth) ? (
+        {(state.showApiKey || !state.supportsSignIn) && (!connected || needsReauth) ? (
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
@@ -78,6 +78,11 @@ export const AiProviderDetail = ({
             <Button type="submit" disabled={busy || !state.addForm.form.watch('apiKey')?.trim()} isLoading={busy}>
               <Trans>Connect</Trans>
             </Button>
+            {state.supportsSignIn && (
+              <Button type="button" variant="link" size="sm" disabled={busy} onClick={state.cancelConnection}>
+                <Trans>Use sign-in instead</Trans>
+              </Button>
+            )}
           </form>
         ) : state.view === 'manual' ? (
           <>
@@ -110,9 +115,14 @@ export const AiProviderDetail = ({
             </Button>
           )
         )}
+        {!connected && state.supportsSignIn && !state.showApiKey && !busy && state.view !== 'manual' && (
+          <Button variant="link" size="sm" className="text-muted-foreground" onClick={state.useApiKey}>
+            <Trans>Use an API key instead</Trans>
+          </Button>
+        )}
         {connected && (
           <div className="flex flex-wrap gap-2">
-            {id === 'tinfoil' && (
+            {id === 'tinfoil' && oauthConnected && (
               <Button variant="outline" size="sm" onClick={() => openExternalUrl(tinfoilManageSubscriptionUrl)}>
                 <Trans>Manage subscription</Trans>
               </Button>
@@ -133,7 +143,7 @@ export const AiProviderDetail = ({
             <Trans>Cancel connection</Trans>
           </Button>
         )}
-        {connected && id === 'tinfoil' && (
+        {connected && id === 'tinfoil' && oauthConnected && (
           <p className="text-xs text-muted-foreground">
             <Trans>Disconnecting does not cancel your subscription.</Trans>
           </p>

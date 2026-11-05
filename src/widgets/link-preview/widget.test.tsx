@@ -18,6 +18,8 @@ import { HttpClientProvider } from '@/contexts/http-client-context'
 import { getDb } from '@/db/database'
 import { chatMessagesTable, chatThreadsTable } from '@/db/tables'
 import { createModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import { clearCachedSession } from '@/lib/session-cache'
 import * as integrations from '@/dal/integrations'
 import * as tinfoilConnection from '@/hooks/use-tinfoil-connection'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -32,6 +34,8 @@ beforeEach(async () => {
   await getDb().insert(chatMessagesTable).values({ id: 'msg-1', chatThreadId: 'preview-thread', role: 'assistant' })
   clearAuthToken()
   useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+  setAuthToken('cloud-account-token')
+  await updateSettings(getDb(), { integrations_pro_is_enabled: true })
   useSearchProviderStore.getState().clearSearchProvider()
 })
 afterEach(() => {
@@ -256,6 +260,10 @@ describe('LinkPreviewWidget', () => {
 })
 
 describe('standalone preview privacy', () => {
+  beforeEach(() => {
+    clearAuthToken()
+    clearCachedSession()
+  })
   it.each(['', 'https://waitlist.example/v1'])(
     'uses a hostname fallback without a request for local setup at %s',
     (cloudUrl) => {
@@ -296,6 +304,35 @@ describe('standalone preview privacy', () => {
 })
 
 describe('cloud-account private-search preview routing', () => {
+  it.each(['auto', 'cloud'] as const)(
+    'does not fetch previews with the Cloud connection disabled (%s)',
+    async (selection) => {
+      await updateSettings(getDb(), { integrations_pro_is_enabled: false })
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      const { client, requests } = createRecordingClient(() => previewResponse)
+      const { getByText } = renderWithProviders(
+        <LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />,
+        client,
+      )
+      await settleQueries()
+      expect(requests).toEqual([])
+      expect(getByText('example.com')).toBeTruthy()
+    },
+  )
+
+  it.each([true, false])(
+    'does not fetch previews without authentication regardless of localMode: %s',
+    async (localMode) => {
+      clearAuthToken()
+      clearCachedSession()
+      useLocalSettingsStore.setState({ localMode })
+      const { client, requests } = createRecordingClient(() => previewResponse)
+      renderWithProviders(<LinkPreviewWidget url="https://example.com/article" messageId="msg-1" />, client)
+      await settleQueries()
+      expect(requests).toEqual([])
+    },
+  )
+
   beforeEach(() => {
     setAuthToken('cloud-account-token')
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: true })

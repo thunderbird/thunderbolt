@@ -8,7 +8,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useHttpClient } from '@/contexts'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { fetchLinkPreview } from '@/integrations/thunderbolt-pro/api'
-import { useLocalProviders } from '@/hooks/use-local-providers'
+import { useServerAuthentication } from '@/hooks/use-local-providers'
+import { useSettings } from '@/hooks/use-settings'
+import { useQuery } from '@tanstack/react-query'
+import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { useSearchProviderAvailability } from '@/integrations/standalone-search/use-search-provider-availability'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
@@ -89,12 +92,19 @@ export const LinkPreviewWidget = ({
 
 /** Passive previews follow the same provider choice as web tools and never silently use a different server. */
 const ProviderLinkPreview = ({ url, messageId }: Pick<LinkPreviewWidgetProps, 'url' | 'messageId'>) => {
-  const localProviders = useLocalProviders()
+  const authenticated = useServerAuthentication()
+  const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
+  const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
   const selection = useSearchProviderStore((state) => state.selection)
   const { custom, tinfoil, tinfoilConfigured, ready } = useSearchProviderAvailability()
   const useCloudPreview =
     ready &&
-    resolveSearchSelection(selection, { custom, tinfoil, tinfoilConfigured, cloud: !localProviders }) === 'cloud'
+    resolveSearchSelection(selection, {
+      custom,
+      tinfoil,
+      tinfoilConfigured,
+      cloud: authenticated && Boolean(proAccess) && integrationsProIsEnabled.value,
+    }) === 'cloud'
   if (!useCloudPreview) {
     return <LinkPreview title={getHostname(url)} description={null} url={url} image={null} />
   }

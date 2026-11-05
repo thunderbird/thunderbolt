@@ -4,6 +4,7 @@
 
 import { createMcpServer, createMcpServerWithCredentials, getAllMcpServers, getMcpServerCredentials } from '@/dal'
 import { tinfoilSession, createTinfoilSession } from '@/lib/tinfoil-session'
+import * as tinfoilSessions from '@/lib/tinfoil-session'
 import {
   getProviderConnectionAttempt,
   assertProviderConnectionAttemptCurrent,
@@ -82,6 +83,7 @@ describe('ConnectionsPage list', () => {
     await resetTestDatabase()
     const session = createTinfoilSession({ db: getDb, auth: tinfoilAuth, lock: async (work) => work(), now: Date.now })
     spyOn(tinfoilSession, 'setEnabled').mockImplementation(session.setEnabled)
+    spyOn(tinfoilSessions, 'withTinfoilSessionLock').mockImplementation(async (work) => work())
   })
 
   afterEach(() => {
@@ -244,6 +246,93 @@ describe('ConnectionsPage list', () => {
       }
     },
   )
+
+  it.each(['none', 'valid', 'expired'])(
+    'controls connection-owned Tinfoil API keys with OAuth state: %s',
+    async (oauthState) => {
+      const oauthConnected = oauthState !== 'none'
+      const db = getDb()
+      await createModel(db, {
+        id: 'connection-key',
+        provider: 'tinfoil',
+        name: 'Connection key',
+        model: 'model',
+        apiKey: 'connection-key',
+        providerDefault: 1,
+      })
+      await createModel(db, {
+        id: 'manual-key',
+        provider: 'tinfoil',
+        name: 'Manual key',
+        model: 'model',
+        apiKey: 'manual-key',
+      })
+      if (oauthConnected) {
+        await saveIntegrationCredentials(
+          db,
+          'tinfoil',
+          { access_token: 'oauth-token', reauth_required: oauthState === 'expired' },
+          true,
+        )
+      }
+      const session = createTinfoilSession({
+        db: getDb,
+        auth: { ...tinfoilAuth, revoke: async () => {} },
+        lock: async (work) => work(),
+        now: Date.now,
+      })
+      spyOn(tinfoilSession, 'disconnect').mockImplementation(session.disconnect)
+      const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
+        tables: ['models', 'models_secrets', 'integrations_secrets'],
+        wrapper: McpProviderWrapper,
+      })
+      const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
+      expect(toggle).not.toBeDisabled()
+      fireEvent.click(toggle)
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Disable Tinfoil' }))
+        await getClock().runAllAsync()
+        triggerChange(['models', 'integrations_secrets'])
+      })
+      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 0, apiKey: 'connection-key' })
+      expect(await getModel(db, 'manual-key')).toMatchObject({ enabled: 1, apiKey: 'manual-key' })
+      const enable = await waitForElement(() => screen.queryByRole('switch', { name: 'Enable Tinfoil' }))
+      await act(async () => {
+        fireEvent.click(enable)
+        await getClock().runAllAsync()
+        triggerChange(['models', 'integrations_secrets'])
+      })
+      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 1, apiKey: 'connection-key' })
+      fireEvent.click(screen.getByRole('button', { name: 'Open Tinfoil' }))
+      await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
+      expect(Boolean(screen.queryByRole('button', { name: 'Manage subscription' }))).toBe(oauthConnected)
+      expect(screen.queryByRole('button', { name: 'Reconnect Tinfoil' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Disconnect Tinfoil' }))
+        await getClock().runAllAsync()
+        triggerChange(['models_secrets', 'integrations_secrets'])
+      })
+      expect(await getModel(db, 'connection-key')).toMatchObject({ enabled: 1, apiKey: null })
+      expect(await getModel(db, 'manual-key')).toMatchObject({ enabled: 1, apiKey: 'manual-key' })
+      expect((await getIntegrationCredentials(db, 'tinfoil'))?.credentials.access_token).toBe('')
+      expect(
+        await waitForElement(() => {
+          const toggle = screen.queryByRole('switch', { name: 'Enable Tinfoil' })
+          return toggle?.hasAttribute('disabled') ? toggle : null
+        }),
+      ).toBeDisabled()
+    },
+  )
+
+  it('offers API-key setup alongside sign-in on desktop', async () => {
+    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open Tinfoil' })))
+    fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Use an API key instead' })))
+    expect(screen.getByLabelText('API Key')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use sign-in instead' }))
+    expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeTruthy()
+  })
 
   it('offers Tinfoil API-key setup on native mobile instead of unsupported sign-in', async () => {
     spyOn(platform, 'isTauri').mockReturnValue(true)

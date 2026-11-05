@@ -1497,6 +1497,7 @@ it.each([
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
   await setupTestDatabase()
+  setAuthToken('test-session')
   const run = createBudgetAdapter(
     [
       [{ name: 'search', args: { query: 'one', max_results: 10 } }],
@@ -1528,6 +1529,7 @@ it('keeps real adapter citation metadata across a below-cap harness rebuild', as
     expect(JSON.stringify(results[1]!.content)).toContain('[Source 2]')
     expect(run.registrations.size).toBe(0)
   } finally {
+    clearAuthToken()
     run.adapter.disconnect()
     await teardownTestDatabase()
   }

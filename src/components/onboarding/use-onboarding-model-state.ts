@@ -37,33 +37,42 @@ export const useOnboardingModelState = () => {
       isConfiguredStandaloneModel({ ...model, enabled: 1 }) && (model.oauthProvider !== 'tinfoil' || oauthAvailable),
   )
   const configuredModels = connectedModels.filter((model) => model.enabled === 1)
+  const connectedProviders = connectedModels
+    .filter(
+      (model) =>
+        !['openrouter', 'tinfoil'].includes(model.provider) ||
+        model.providerDefault === 1 ||
+        model.oauthProvider === 'tinfoil',
+    )
+    .map(({ provider }): OnboardingProvider | 'custom' =>
+      provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom',
+    )
   const hasBuiltInSearch = hasTinfoilSearchConnection(models, oauthAvailable)
-  const disconnectProvider = async (provider: OnboardingProvider, oauthOnly = false) => {
+  const disconnectProvider = async (provider: OnboardingProvider) => {
     if (provider === 'tinfoil') {
       await tinfoilSession.disconnect()
-    }
-    // Keep model identities and chat history while removing device-local access.
-    await db.transaction(async (tx) => {
-      for (const model of (await getAllModels(tx)).filter(
-        (model) =>
-          model.provider === provider &&
-          (provider !== 'openrouter' || model.providerDefault === 1) &&
-          model.isSystem !== 1 &&
-          !model.deletedAt &&
-          !model.oauthProvider &&
-          !oauthOnly,
-      )) {
-        await updateModelInTransaction(tx, model.id, { apiKey: null })
-      }
-      if (provider === 'openrouter') {
+    } else {
+      // Keep model identities and chat history while removing device-local access.
+      await db.transaction(async (tx) => {
+        for (const model of await getAllModels(tx)) {
+          if (
+            model.provider === provider &&
+            model.providerDefault === 1 &&
+            model.isSystem !== 1 &&
+            !model.oauthProvider
+          ) {
+            await updateModelInTransaction(tx, model.id, { apiKey: null })
+          }
+        }
         await invalidateProviderConnectionAttempts(tx, provider)
-      }
-    })
+      })
+    }
     useChatStore.getState().setModels(await getAvailableModels(db))
     await queryClient.invalidateQueries({ queryKey: ['models'] })
   }
   return {
     connectedModels,
+    connectedProviders,
     configuredModels,
     hasConfiguredModel: configuredModels.length > 0,
     hasBuiltInSearch,

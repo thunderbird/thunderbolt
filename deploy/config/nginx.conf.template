@@ -27,7 +27,7 @@ server {
     location ^~ /v1/ {
         include /etc/nginx/snippets/security-headers.conf;
 
-        resolver 127.0.0.11 valid=10s;
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
         set $backend "${THUNDERBOLT_BACKEND_HOST}";
         # No URI suffix on proxy_pass: when the host contains a variable, nginx does not
         # do prefix substitution and instead sends only the directive URI to upstream
@@ -58,7 +58,7 @@ server {
         set $search_envelope "$request_method:$http_ehbp_encapsulated_key";
         if ($search_envelope = "POST:") { return 400; }
         client_max_body_size 1m;
-        resolver 127.0.0.11 valid=60s;
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=60s;
         set $search_host "websearch.tinfoil.sh";
         proxy_pass https://$search_host/mcp;
         proxy_ssl_server_name on;

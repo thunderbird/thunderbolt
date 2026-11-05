@@ -8,7 +8,8 @@ import { getCachedSession, isCachedSessionValid } from '@/lib/session-cache'
 
 /** Browser SSO can authenticate with a session cookie without issuing a bearer token. */
 export const hasServerAuthentication = (): boolean => {
-  if (!isCurrentServer(getLocalSetting('cloudUrl'))) {
+  const cloudUrl = getLocalSetting('cloudUrl')
+  if (!cloudUrl || !isCurrentServer(cloudUrl)) {
     return false
   }
   if (getAuthToken()) {

@@ -16,7 +16,7 @@ import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@/inte
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
-import { usesLocalProviders } from '@/lib/provider-mode'
+import { hasServerAuthentication } from '@/lib/provider-mode'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toolCallKey } from '@/lib/stable-stringify'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
@@ -65,7 +65,7 @@ export const getAvailableTools = async (
   const baseTools: ToolConfig[] = [renderHtmlTool, ...(experimentalFeatureTasks ? Object.values(tasksTools) : [])]
 
   const { provider, apiKey, selection } = useSearchProviderStore.getState()
-  const hasServer = !usesLocalProviders()
+  const hasServer = hasServerAuthentication()
   const shouldIncludeProTools = hasServer && proEnabled && integrationsProIsEnabled
 
   const selected = resolveSearchSelection(selection, {
@@ -89,11 +89,15 @@ export const getAvailableTools = async (
         execute: async (params: unknown) => {
           // Construction fixes this turn's API and source registry; execution must still honor live provider changes.
           const tinfoilAvailability = await readTinfoilSearchAvailability()
+          const cloudEnabled =
+            selected === 'cloud'
+              ? (await getSettings(getDb(), { integrations_pro_is_enabled: false })).integrationsProIsEnabled
+              : shouldIncludeProTools
           const current = useSearchProviderStore.getState()
           const currentSelection = resolveSearchSelection(current.selection, {
             custom: Boolean(current.provider && current.apiKey),
             ...tinfoilAvailability,
-            cloud: !usesLocalProviders() && shouldIncludeProTools,
+            cloud: hasServerAuthentication() && proEnabled && cloudEnabled,
           })
           if (
             currentSelection !== selected ||

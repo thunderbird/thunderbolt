@@ -5,6 +5,7 @@
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { useChatStore } from '@/chats/chat-store'
+import { resetStore } from '@/test-utils/chat-store-mocks'
 import { createModel, getAvailableModels } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -42,6 +43,7 @@ describe('model settings update active chat availability', () => {
   beforeAll(setupTestDatabase)
   afterAll(teardownTestDatabase)
   beforeEach(async () => {
+    resetStore()
     await resetTestDatabase()
     await createModel(getDb(), {
       id: 'editable',
@@ -53,7 +55,10 @@ describe('model settings update active chat availability', () => {
     })
     useChatStore.getState().setModels(await getAvailableModels(getDb()))
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    resetStore()
+  })
 
   it('removes disabled models immediately and restores them when enabled', async () => {
     renderWithReactivity(<MutationHarness id="editable" />, { tables: ['models'] })

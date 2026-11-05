@@ -869,6 +869,7 @@ describe('withAppVersionHeader', () => {
 describe('logical-turn citation registry', () => {
   it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
     await setupTestDatabase()
+    setAuthToken('test-session')
     try {
       await insertModel(getDb(), {
         id: 'source-model',
@@ -925,6 +926,7 @@ describe('logical-turn citation registry', () => {
       expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
       expect(requests).toEqual(['one', 'two', 'one'])
     } finally {
+      clearAuthToken()
       await teardownTestDatabase()
     }
   })

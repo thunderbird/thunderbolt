@@ -105,9 +105,11 @@ const main = async () => {
 
   const adb = (...args: string[]) => Bun.$`adb -s ${device} shell ${args}`.quiet()
   // A fixed clock and full bars in the status bar, which every screenshot shows.
-  if (platform === 'ios') {
-    await Bun.$`xcrun simctl status_bar ${device} override --time 9:41 --batteryState charged --batteryLevel 100`
-  } else {
+  const fixStatusBar = async () => {
+    if (platform === 'ios') {
+      await Bun.$`xcrun simctl status_bar ${device} override --time 9:41 --batteryState charged --batteryLevel 100`
+      return
+    }
     await adb('settings', 'put', 'global', 'sysui_demo_allowed', '1')
     for (const command of [
       ['enter'],
@@ -117,6 +119,12 @@ const main = async () => {
     ]) {
       await adb('am', 'broadcast', '-a', 'com.android.systemui.demo', '-e', 'command', ...command)
     }
+  }
+  await fixStatusBar()
+  // A new font scale redraws the system UI, which leaves demo mode and shows the real clock again.
+  const setFontScale = async (scale: string) => {
+    await adb('settings', 'put', 'system', 'font_scale', scale)
+    await fixStatusBar()
   }
 
   // The iOS driver sometimes does not start in time, so each flow gets one more try.
@@ -160,7 +168,7 @@ const main = async () => {
 
   const sweepState = async (state: NativeSweepState): Promise<StateResult> => {
     const large = 'large' in state
-    if (large) await adb('settings', 'put', 'system', 'font_scale', '1.3')
+    if (large) await setFontScale('1.3')
     const offset = (await Bun.file(webviewLog).text()).length
     const flow = await Bun.file(resolve(qaDir, `control/sweep/${state.flow}.yaml`)).text()
     const reached = await maestro(state.name, flow)
@@ -184,7 +192,7 @@ const main = async () => {
     try {
       results.push(await sweepState(state))
     } finally {
-      if ('large' in state) await adb('settings', 'put', 'system', 'font_scale', '1.0')
+      if ('large' in state) await setFontScale('1.0')
     }
   }
   await writeFile(resolve(out, 'sweep-native.json'), JSON.stringify(results, null, 2))

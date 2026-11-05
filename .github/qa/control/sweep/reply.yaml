@@ -1,12 +1,22 @@
-# Layout sweep (scripts/sweep-native.ts): a finished reply from the fake provider, which only Opus 5.5 reaches. The
-# model picker opens on the way, by the default model's name. Starts signed in.
+# Layout sweep (scripts/sweep-native.ts): a finished reply from the fake provider, which only Opus 5.5 reaches.
+# Starts signed in, on whatever model the build defaults to.
 - launchApp
 - extendedWaitUntil:
     visible: Ask me anything…
     timeout: 120000
-- tapOn: DeepSeek V4.1 Flash
-- waitForAnimationToEnd
-- tapOn: Opus 5.5
+- runFlow:
+    when:
+      notVisible: Opus 5.5
+    commands:
+      # The model picker's trigger is the one named control under the field and between these two, whatever the model
+      # is called. Maestro's leftOf and rightOf ignore height, so without `below` the header's agent selector matches.
+      - tapOn:
+          text: .+
+          below: Ask me anything…
+          rightOf: Add to chat
+          leftOf: Start voice mode
+      - waitForAnimationToEnd
+      - tapOn: Opus 5.5
 - tapOn:
     text: Ask me anything…
     retryTapIfNoChange: true

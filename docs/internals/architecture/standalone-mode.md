@@ -197,6 +197,41 @@ Tinfoil preserves a separately saved search key. Disconnecting a provider does
 not silently fall back to another provider. Tool instances recheck selection and
 credentials before use, so a running turn cannot keep using a disconnected key.
 
+### Otari
+
+Otari connects through a registered public OAuth client with S256 PKCE. The
+official server is the default; Custom URL supports another HTTPS deployment or
+HTTP loopback for local development. Browser authorization redirects in the same
+tab. Desktop uses the existing native loopback listener, while native mobile
+uses the same verified HTTPS app link as Google and Microsoft. Pending mobile
+authorization survives an app restart. None of these flows requires a
+Thunderbolt backend.
+
+The Otari deployment must register the `thunderbolt` client, the web deployment's
+`/oauth/otari` redirect, desktop `http://localhost/` loopback redirect, and mobile
+`https://app.thunderbolt.io/oauth/callback` redirect. Browser deployments also
+need their origin in Otari's CORS configuration. The app uses Otari's standard
+`/api/v1/oauth/apps/authorize` and `/api/v1/oauth/apps/token` endpoints.
+
+After workspace approval, the user chooses a searchable catalog model and
+Thunderbolt verifies its tool support before saving it. The model keeps the
+first-class `otari` provider identity and the catalog's display name, with a
+generic readable fallback when the server supplies only an identifier. The
+opaque delegated key stays in the existing device-local model secret store.
+Reconnecting the same model on the same server preserves its identity and user
+preferences; manually configured models and other servers stay separate.
+Connections controls only the models created by this connection flow.
+
+Otari model, catalog, search, and page-fetch requests go directly to the chosen
+server, without cookies or redirect following. Otari supplies ordinary HTTPS
+transport, not Tinfoil's encrypted enclave transport. Search is selected and its
+onboarding step skipped only when the workspace advertises available search.
+Otherwise setup explains the missing capability and keeps the search step.
+Refresh Models rechecks workspace capabilities; each search turn also rechecks
+the selected server before exposing its search and page-fetch tools. Missing or
+disconnected Otari access never silently changes an explicitly selected search
+provider. Remote result images remain links, as with other local search providers.
+
 ### Provider connection research
 
 The following provider contracts were checked on October 23, 2026. These are

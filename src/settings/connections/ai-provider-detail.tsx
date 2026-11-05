@@ -21,7 +21,7 @@ export const AiProviderDetail = ({
   connection,
   onClose,
 }: {
-  connection: AiProviderConnection
+  connection: AiProviderConnection & { id: 'openrouter' | 'tinfoil' }
   onClose: () => void
 }) => {
   const { id, name, connected, needsReauth, oauthConnected } = connection

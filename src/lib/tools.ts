@@ -7,12 +7,14 @@ import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
 import { getDb } from '@/db/database'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import * as tasksTools from '@/extensions/tasks/tools'
 import { createConfigs as createGoogleConfigs } from '@/integrations/google/tools'
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
 import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
+import { getOtariSearchAvailability, getOtariSearchConnection } from '@/integrations/otari-search/connection'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
@@ -28,8 +30,31 @@ import { tool, type Tool } from 'ai'
 export type ToolAvailabilityContext = {
   tinfoilSearchApi?: WebToolApi
   tinfoilConfigured?: boolean
+  otariSearchApi?: WebToolApi
+  otariConfigured?: boolean
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
+}
+
+/** Only contacts a gateway when local settings actually select it for this turn. */
+export const loadConnectedSearchApis = async (
+  db: AnyDrizzleDatabase,
+): Promise<Omit<ToolAvailabilityContext, 'settings' | 'integrationStatus'>> => {
+  const tinfoil = await getTinfoilSearchAvailability(db)
+  const otari = await getOtariSearchAvailability(db)
+  const { selection, provider, apiKey } = useSearchProviderStore.getState()
+  const selected = resolveSearchSelection(selection, {
+    custom: Boolean(provider && apiKey),
+    ...tinfoil,
+    ...otari,
+    cloud: false,
+  })
+  return {
+    tinfoilConfigured: tinfoil.tinfoilConfigured,
+    otariConfigured: otari.otariConfigured,
+    ...(selected === 'tinfoil' ? await getTinfoilSearchConnection(db) : {}),
+    ...(selected === 'otari' ? await getOtariSearchConnection(db) : {}),
+  }
 }
 
 /** Read the settings + integration status that gate tool availability. The hot
@@ -42,7 +67,11 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return { settings, integrationStatus, ...(await getTinfoilSearchConnection(db)) }
+  return {
+    settings,
+    integrationStatus,
+    ...(await loadConnectedSearchApis(db)),
+  }
 }
 
 type ReadTinfoilSearchAvailability = () => ReturnType<typeof getTinfoilSearchAvailability>
@@ -52,6 +81,10 @@ export const getAvailableTools = async (
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
   readTinfoilSearchAvailability: ReadTinfoilSearchAvailability = () => getTinfoilSearchAvailability(getDb()),
+  readOtariSearchAvailability: () => ReturnType<typeof getOtariSearchAvailability> = async () =>
+    useSearchProviderStore.getState().otariConnection
+      ? getOtariSearchAvailability(getDb())
+      : { otari: false, otariConfigured: false },
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -59,6 +92,8 @@ export const getAvailableTools = async (
     integrationStatus,
     tinfoilSearchApi,
     tinfoilConfigured,
+    otariSearchApi,
+    otariConfigured,
   } = context ?? (await loadToolAvailabilityContext())
 
   // render_html is a core capability, always available regardless of integrations.
@@ -72,6 +107,8 @@ export const getAvailableTools = async (
     custom: Boolean(provider && apiKey),
     tinfoil: Boolean(tinfoilSearchApi),
     tinfoilConfigured,
+    otari: Boolean(otariSearchApi),
+    otariConfigured,
     cloud: shouldIncludeProTools,
   })
 
@@ -80,7 +117,9 @@ export const getAvailableTools = async (
       ? createStandaloneWebApi(apiKey, undefined, provider)
       : selected === 'tinfoil'
         ? tinfoilSearchApi
-        : undefined
+        : selected === 'otari'
+          ? otariSearchApi
+          : undefined
   if (selected) {
     const webTools = createWebSearchTools(httpClient, sourceCollector, webApi)
     baseTools.push(
@@ -89,6 +128,7 @@ export const getAvailableTools = async (
         execute: async (params: unknown) => {
           // Construction fixes this turn's API and source registry; execution must still honor live provider changes.
           const tinfoilAvailability = await readTinfoilSearchAvailability()
+          const otariAvailability = await readOtariSearchAvailability()
           const cloudEnabled =
             selected === 'cloud'
               ? (await getSettings(getDb(), { integrations_pro_is_enabled: false })).integrationsProIsEnabled
@@ -97,6 +137,7 @@ export const getAvailableTools = async (
           const currentSelection = resolveSearchSelection(current.selection, {
             custom: Boolean(current.provider && current.apiKey),
             ...tinfoilAvailability,
+            ...otariAvailability,
             cloud: hasServerAuthentication() && proEnabled && cloudEnabled,
           })
           if (

@@ -15,6 +15,42 @@ const storageChanged = (key: string | null = storageKey, storageArea: Storage = 
 afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
 
 describe('search credentials across windows', () => {
+  it.each(['not_configured', 'workspace_disabled', 'unknown'] as const)(
+    'preserves an explicit fallback when Otari search is %s',
+    (searchStatus) => {
+      useSearchProviderStore.getState().configureSearchProvider('saved-exa', 'exa')
+      const connection = { modelId: 'model', url: 'https://otari.example/api/v1', searchStatus }
+      useSearchProviderStore.getState().configureOtariSearch(connection)
+      expect(useSearchProviderStore.getState()).toMatchObject({ selection: 'custom', apiKey: 'saved-exa' })
+      useSearchProviderStore.getState().selectSearchProvider('otari')
+      useSearchProviderStore.getState().configureOtariSearch(connection)
+      expect(useSearchProviderStore.getState().selection).toBe('auto')
+    },
+  )
+
+  it('selects Otari by model reference, preserving other search keys without copying the OAuth token', () => {
+    useSearchProviderStore.getState().configureSearchProvider('saved-exa', 'exa')
+    useSearchProviderStore.getState().configureOtariSearch({
+      searchStatus: 'available' as const,
+      modelId: 'otari-model',
+      url: 'https://otari.example/api/v1',
+    })
+    expect(JSON.parse(localStorage.getItem(storageKey)!)).toMatchObject({
+      state: {
+        selection: 'otari',
+        apiKey: 'saved-exa',
+        provider: 'exa',
+        otariConnection: {
+          searchStatus: 'available' as const,
+          modelId: 'otari-model',
+          url: 'https://otari.example/api/v1',
+        },
+      },
+    })
+    localStorage.removeItem(storageKey)
+    storageChanged()
+    expect(useSearchProviderStore.getState().otariConnection).toBeNull()
+  })
   it('stops retaining a key disconnected in another window without writing it back', () => {
     useSearchProviderStore.getState().configureSearchProvider('old-key', 'exa')
     const disconnected = JSON.stringify({ state: { provider: null, apiKey: '', selection: 'none' }, version: 0 })

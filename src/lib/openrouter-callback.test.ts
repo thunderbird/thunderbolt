@@ -28,15 +28,19 @@ describe('OpenRouter callback parsing', () => {
     })
   })
 
-  it.each(['code=code&state=wrong', 'code=code', `state=${flowId}`, `code=%20&state=${flowId}`])(
-    'never relays codes from invalid success callbacks: %s',
-    (query) => {
-      expect(readOpenRouterCallback(new URL(`https://app.test/oauth/openrouter/${flowId}?${query}`))).toEqual({
-        flowId,
-        message: { type: 'openrouter-callback', state: flowId, error: 'invalid_response' },
-      })
-    },
-  )
+  it.each([
+    'code=code&state=wrong',
+    'code=code',
+    `state=${flowId}`,
+    `code=%20&state=${flowId}`,
+    `code=code&code=other&state=${flowId}`,
+    `code=code&state=${flowId}&state=other`,
+  ])('never relays codes from invalid success callbacks: %s', (query) => {
+    expect(readOpenRouterCallback(new URL(`https://app.test/oauth/openrouter/${flowId}?${query}`))).toEqual({
+      flowId,
+      message: { type: 'openrouter-callback', state: flowId, error: 'invalid_response' },
+    })
+  })
 
   it('targets denial without returned state and removes arbitrary provider error text', () => {
     expect(
@@ -49,6 +53,7 @@ describe('OpenRouter callback parsing', () => {
 
   it.each([
     '/oauth/callback',
+    '/oauth/otari',
     '/oauth/openrouter/short',
     `/oauth/openrouter/${'a'.repeat(44)}`,
     `/oauth/openrouter/${flowId}/extra`,

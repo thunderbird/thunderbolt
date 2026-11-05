@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
@@ -23,7 +24,10 @@ export const useModelsPageState = () => {
   const { t } = useLingui()
   const db = useDatabase()
   const localProviders = useLocalProviders()
-  const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
+  const [state, dispatch] = useReducer(modelsPageReducer, undefined, () => ({
+    ...initialModelsPageState,
+    panel: getOtariBrowserReturn('models') || getOtariBrowserDraft('models') ? { kind: 'add' as const } : null,
+  }))
   const { panel, deleteConfirmId, mutationError } = state
   const isAddPanelOpen = panel?.kind === 'add'
   const activeModelId = panel?.kind === 'detail' || panel?.kind === 'edit' ? panel.modelId : null

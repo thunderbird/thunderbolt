@@ -96,13 +96,15 @@ const ProviderLinkPreview = ({ url, messageId }: Pick<LinkPreviewWidgetProps, 'u
   const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
   const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
   const selection = useSearchProviderStore((state) => state.selection)
-  const { custom, tinfoil, tinfoilConfigured, ready } = useSearchProviderAvailability()
+  const { custom, tinfoil, tinfoilConfigured, otari, otariConfigured, ready } = useSearchProviderAvailability()
   const useCloudPreview =
     ready &&
     resolveSearchSelection(selection, {
       custom,
       tinfoil,
       tinfoilConfigured,
+      otari,
+      otariConfigured,
       cloud: authenticated && Boolean(proAccess) && integrationsProIsEnabled.value,
     }) === 'cloud'
   if (!useCloudPreview) {

@@ -52,8 +52,7 @@ import { fetch as baseFetch } from '@/lib/fetch'
 import { isLoopbackHost } from '@/lib/mcp-url-validation'
 import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
 import { createLiveProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
-import { getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
-import { createToolset, getAvailableTools, type ToolCallCache } from '@/lib/tools'
+import { createToolset, getAvailableTools, loadConnectedSearchApis, type ToolCallCache } from '@/lib/tools'
 import { recordDebugTranscriptRetry, recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
 import type { Model, ModelProfile, Skill, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
@@ -97,6 +96,14 @@ import { createMessageMetadata } from './message-metadata'
 const fetch: typeof baseFetch = (input, init) =>
   baseFetch(input, isSsoMode() ? { ...init, credentials: 'include' } : init)
 fetch.preconnect = baseFetch.preconnect
+
+// Otari supports browser CORS. Keep its delegated key and prompts on the chosen
+// gateway, independent of Thunderbolt's backend/proxy or SSO cookie settings.
+const otariFetch: FetchFn = Object.assign(
+  (input: RequestInfo | URL, init?: RequestInit) =>
+    baseFetch(input, { ...init, credentials: 'omit', redirect: 'error' }),
+  { preconnect: baseFetch.preconnect },
+)
 
 /**
  * Wrap a fetch so every request carries the `X-App-Version` header. Only apply
@@ -302,6 +309,14 @@ export const resolveOpenAiCompatConnection = (
             fetch: createLiveProxyFetch(getProxyFetch),
           }
         : null
+    case 'otari':
+      return modelConfig.url && modelConfig.apiKey
+        ? {
+            baseURL: normalizeOpenAiBaseUrl(modelConfig.url),
+            apiKey: modelConfig.apiKey,
+            fetch: otariFetch,
+          }
+        : null
     case 'custom': {
       if (!modelConfig.url) {
         return null
@@ -429,10 +444,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       })
       return openai(modelConfig.model)
     }
+    case 'otari':
     case 'custom': {
       const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
       if (!conn) {
-        throw new Error('No URL provided for custom provider')
+        throw new Error(`No URL provided for ${modelConfig.provider} provider`)
       }
       // `conn.baseURL` and `conn.fetch` already carry the `/v1` normalization
       // and the loopback-vs-proxy dispatch (see resolveOpenAiCompatConnection).
@@ -440,7 +456,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // through the same connection object, so their upstream URL + transport
       // stay in lockstep by construction.
       const openaiCompatible = createOpenAICompatible({
-        name: 'custom',
+        name: modelConfig.provider,
         baseURL: conn.baseURL,
         apiKey: conn.apiKey || undefined,
         fetch: conn.fetch,
@@ -566,7 +582,7 @@ export const prepareAiRequestConfig = async ({
     ? await getAvailableTools(httpClient, sourceCollector, {
         settings,
         integrationStatus,
-        ...(await getTinfoilSearchConnection(db)),
+        ...(await loadConnectedSearchApis(db)),
       })
     : []
   const appToolset = addSkillTool(

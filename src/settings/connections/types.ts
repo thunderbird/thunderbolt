@@ -21,7 +21,7 @@ export type Integration = {
 }
 
 export type AiProviderConnection = {
-  id: 'openrouter' | 'tinfoil'
+  id: 'openrouter' | 'tinfoil' | 'otari'
   name: string
   connected: boolean
   enabled: boolean

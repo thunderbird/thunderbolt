@@ -23,6 +23,7 @@ import type { OpenRouterConnectionOptions, OpenRouterManualConnection } from '@/
 import type { OnboardingProvider } from './provider-default-model'
 import { defaultModelId, defaultModels } from '@shared/defaults/models'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { resetStore } from '@/test-utils/chat-store-mocks'
 import { stubJsonResponse } from '@/test-utils/http'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -90,7 +91,13 @@ describe('useOnboardingProviderState', () => {
     await resetTestDatabase()
     rejectNestedTransactions(getDb())
     useLocalSettingsStore.setState({ cloudUrl: '', localMode: true, serverHasAuthenticated: false, syncEnabled: false })
-    spyOn(http, 'get').mockReturnValue(stubJsonResponse({ data: [{ id: 'example/model', name: 'Example Model' }] }))
+    spyOn(http, 'get').mockImplementation((url) =>
+      stubJsonResponse({
+        data: url.endsWith('/tools')
+          ? [{ id: 'otari_web_search', available: true }]
+          : [{ id: 'example/model', name: 'Example Model' }],
+      }),
+    )
   })
 
   afterEach(() => {
@@ -98,6 +105,7 @@ describe('useOnboardingProviderState', () => {
     cancelTinfoilMobileConnection()
     mock.restore()
     resetStore()
+    useSearchProviderStore.getState().clearSearchProvider()
   })
 
   it('saves and selects the verified default model after authorization without a picker', async () => {
@@ -549,6 +557,7 @@ describe('useOnboardingProviderState', () => {
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('button', { name: 'Connect Tinfoil' })).toBeInTheDocument()
+    expect(screen.queryByText('Connect with a paid Tinfoil subscription.')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Use an API key instead' }))

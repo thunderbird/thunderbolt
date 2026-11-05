@@ -658,6 +658,39 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
   })
 })
 
+describe('resolveOpenAiCompatConnection (Otari)', () => {
+  afterEach(() => mock.restore())
+
+  it.each(['http://localhost:8099/api/v1', 'https://otari.example/api/v1'])(
+    'keeps %s direct and omits cookies, redirects, and Thunderbolt proxy credentials',
+    async (url) => {
+      const native = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+      const proxy = mock(() => stubProxyFetch)
+      const connection = resolveOpenAiCompatConnection({ provider: 'otari', url, apiKey: 'delegated-key' }, proxy)!
+      expect(connection.baseURL).toBe(url)
+      expect(connection.apiKey).toBe('delegated-key')
+      await connection.fetch(`${url}/chat/completions`, {
+        headers: { Authorization: `Bearer ${connection.apiKey}` },
+        credentials: 'include',
+        redirect: 'follow',
+      })
+      expect(proxy).not.toHaveBeenCalled()
+      const request = new Request(...native.mock.calls[0])
+      expect(request.url).toBe(`${url}/chat/completions`)
+      expect(request.headers.get('Authorization')).toBe('Bearer delegated-key')
+      expect(request.credentials).toBe('omit')
+      expect(request.redirect).toBe('error')
+    },
+  )
+
+  it.each([
+    { url: null, apiKey: 'key' },
+    { url: 'https://otari.example/api/v1', apiKey: null },
+  ])('requires a server and delegated credential (%j)', (config) => {
+    expect(resolveOpenAiCompatConnection({ provider: 'otari', ...config }, () => stubProxyFetch)).toBeNull()
+  })
+})
+
 describe('provider connection transport', () => {
   let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
   beforeEach(() => {

@@ -16,8 +16,8 @@ import { useSearchProviderStore } from '@/stores/search-provider-store'
 export const useSearchSettingsState = () => {
   const authenticated = useServerAuthentication()
   const stored = useSearchProviderStore()
-  const [panel, setPanel] = useState<SearchProvider | 'tinfoil' | 'cloud' | null>(null)
-  const { custom, tinfoil, tinfoilConfigured, loading } = useSearchProviderAvailability()
+  const [panel, setPanel] = useState<SearchProvider | 'tinfoil' | 'otari' | 'cloud' | null>(null)
+  const { custom, tinfoil, tinfoilConfigured, otari, otariConfigured, loading } = useSearchProviderAvailability()
   const { data: proAccess } = useQuery({ queryKey: ['pro-access'], queryFn: hasProAccess })
   const { integrationsProIsEnabled } = useSettings({ integrations_pro_is_enabled: false })
   const cloudVisible = authenticated && Boolean(proAccess)
@@ -25,6 +25,8 @@ export const useSearchSettingsState = () => {
     custom,
     tinfoil,
     tinfoilConfigured,
+    otari,
+    otariConfigured,
     cloud: cloudVisible && integrationsProIsEnabled.value,
   }
   const selected = resolveSearchSelection(stored.selection, available)
@@ -36,7 +38,7 @@ export const useSearchSettingsState = () => {
     cloudVisible,
     selected: selected === 'custom' ? stored.provider : selected,
     loading,
-    toggle: (provider: SearchProvider | 'tinfoil' | 'cloud', enabled: boolean) => {
+    toggle: (provider: SearchProvider | 'tinfoil' | 'otari' | 'cloud', enabled: boolean) => {
       const selection = isSearchProvider(provider) ? 'custom' : provider
       const ready = selection === 'custom' ? available.custom && stored.provider === provider : available[selection]
       if (enabled && !ready) {

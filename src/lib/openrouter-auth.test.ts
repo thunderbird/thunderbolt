@@ -372,6 +372,9 @@ describe('OpenRouter native connection', () => {
     'http://localhost:17421/?code=authorization-code&state=wrong',
     'http://localhost:17421/?state=expected-nonce',
     'http://localhost:17421/other?code=authorization-code&state=expected-nonce',
+    'http://localhost:17421/other?error=access_denied',
+    'http://localhost:17421/?code=authorization-code&code=other&state=expected-nonce',
+    'http://localhost:17421/?code=authorization-code&state=expected-nonce&state=other',
   ])('rejects invalid local callbacks: %s', async (callback) => {
     const harness = createHarness(true)
     const promise = harness.auth.startConnection()

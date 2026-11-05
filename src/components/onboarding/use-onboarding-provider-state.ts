@@ -32,9 +32,9 @@ import { useAddModelForm } from '@/settings/models/use-add-model-form'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import { prepareProviderDefaultModel, type OnboardingProvider } from './provider-default-model'
 
-type SetupView = 'choices' | 'openrouter' | 'tinfoil' | 'other' | 'manual'
+type SetupView = 'choices' | 'openrouter' | 'tinfoil' | 'otari' | 'other' | 'manual'
 type ProviderState = {
-  selection: OnboardingProvider | 'custom'
+  selection: OnboardingProvider | 'otari' | 'custom'
   view: SetupView
   isConnecting: boolean
   isDisconnecting: boolean
@@ -102,6 +102,7 @@ export const useOnboardingProviderState = (
   onConnected?: () => void,
   options: {
     initialProvider?: ProviderState['selection']
+    initialView?: SetupView
     onSaved?: () => void
     returnContext?: TinfoilReturnContext
   } = {},
@@ -112,7 +113,7 @@ export const useOnboardingProviderState = (
   const [returned] = useState(() => getTinfoilMobileReturn(options.returnContext ?? 'onboarding'))
   const [state, dispatch] = useReducer(onboardingProviderReducer, {
     selection: returned ? 'tinfoil' : (options.initialProvider ?? connectedProviders[0] ?? 'openrouter'),
-    view: returned ? 'tinfoil' : 'choices',
+    view: returned ? 'tinfoil' : (options.initialView ?? 'choices'),
     isConnecting: false,
     isDisconnecting: false,
     showApiKey: false,
@@ -317,7 +318,7 @@ export const useOnboardingProviderState = (
     dispatch({ type: 'view', view: 'choices' })
   }
 
-  const chooseProvider = (provider: 'tinfoil' | 'custom' | 'openrouter') => {
+  const chooseProvider = (provider: ProviderState['selection']) => {
     cancelAuthorization()
     addForm.onProviderChange(provider)
     dispatch({ type: 'select', selection: provider })
@@ -329,7 +330,7 @@ export const useOnboardingProviderState = (
       return
     }
     const key = addForm.form.getValues('apiKey')?.trim()
-    if (!key || state.selection === 'custom') {
+    if (!key || state.selection === 'custom' || state.selection === 'otari') {
       return
     }
     pending.current?.abort()

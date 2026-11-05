@@ -339,6 +339,43 @@ describe('OnboardingDialog', () => {
       },
     )
 
+    it.each(['available', 'not_configured', 'workspace_disabled', 'unknown'] as const)(
+      'only skips search when Otari advertises it (%s)',
+      async (searchStatus) => {
+        useLocalSettingsStore.setState({ cloudUrl: '' })
+        await reconcileDefaults(getDb())
+        const connection = { searchStatus, modelId: 'otari', url: 'http://localhost:8099/api/v1' }
+        await createModel(
+          getDb(),
+          createMockModel({
+            id: connection.modelId,
+            provider: 'otari',
+            isSystem: 0,
+            url: connection.url,
+            apiKey: 'otari-key',
+          }),
+        )
+        useSearchProviderStore.getState().configureOtariSearch(connection)
+        await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
+        render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+        await flush()
+        if (searchStatus !== 'available') {
+          expect(screen.getByText('Add web search')).toBeInTheDocument()
+          expect(
+            screen.getByText('Otari web search isn’t available. Choose a search provider below, or skip for now.'),
+          ).toBeInTheDocument()
+          expect(useSearchProviderStore.getState().selection).toBe('auto')
+          return
+        }
+        expect(screen.queryByText('Add web search')).toBeNull()
+        expect(screen.getByText('What should we call you?')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+        await flush()
+        expect(screen.getByRole('heading', { name: 'Connect your AI' })).toBeInTheDocument()
+        expect(screen.queryByText('Add web search')).toBeNull()
+      },
+    )
+
     it.each([
       { enabled: 0, toolUsage: 1 },
       { enabled: 1, toolUsage: 0 },

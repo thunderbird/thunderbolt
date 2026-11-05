@@ -45,22 +45,29 @@ export const useAiProviderConnections = () => {
   })
   const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
   const toggleMutation = useMutation({
-    mutationFn: async ({ provider, enabled }: { provider: AiProviderConnection['id']; enabled: boolean }) => {
+    mutationFn: async (
+      change: { provider: AiProviderConnection['id']; enabled: boolean } | { provider: 'otari'; disconnect: true },
+    ) => {
+      const { provider } = change
       // Session and model access change together under the provider's session lock.
       const updateModels = () =>
         db.transaction(async (tx) => {
           const ownedModels = (await getAllModels(tx)).filter((model) => belongsToConnection(model, provider))
-          if (provider === 'tinfoil') {
+          if (change.provider === 'tinfoil') {
             const current = await getIntegrationCredentials(tx, provider)
             if (
               current?.credentials.access_token &&
-              (!enabled || !current.credentials.reauth_required || ownedModels.length === 0)
+              (!change.enabled || !current.credentials.reauth_required || ownedModels.length === 0)
             ) {
-              await setTinfoilSessionEnabledInTransaction(tx, enabled)
+              await setTinfoilSessionEnabledInTransaction(tx, change.enabled)
             }
           }
           for (const model of ownedModels) {
-            await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
+            await updateModelInTransaction(
+              tx,
+              model.id,
+              'disconnect' in change ? { apiKey: null } : { enabled: change.enabled ? 1 : 0 },
+            )
           }
           await invalidateProviderConnectionAttempts(tx, provider)
         })
@@ -91,9 +98,17 @@ export const useAiProviderConnections = () => {
       oauthConnected: Boolean(session?.connected),
       needsReauth: Boolean(session?.needsReauth),
     },
+    {
+      id: 'otari',
+      name: t`Otari`,
+      enabled: models.some((model) => belongsToConnection(model, 'otari') && model.enabled === 1),
+      connected: models.some((model) => belongsToConnection(model, 'otari')),
+      needsReauth: false,
+    },
   ]
   return {
     providers,
+    disconnectOtari: () => toggleMutation.mutate({ provider: 'otari', disconnect: true }),
     ready: !modelsLoading && !sessionLoading,
     confirmDisable,
     cancelDisable: () => {

@@ -15,7 +15,7 @@ import { createOpenRouterCallbackChannel, openRouterCallbackChannelName } from '
 
 export type ProviderAuthorizationConfig = {
   authorizationEndpoint: string
-  callbackPath: '/oauth/openrouter' | '/oauth/tinfoil'
+  callbackPath: '/oauth/openrouter' | '/oauth/tinfoil' | '/oauth/otari'
   buildUrl?: (challenge: string, redirectUri: string, state: string) => string
   fixedCallbackPath?: boolean
 }
@@ -265,8 +265,16 @@ export const createProviderAuthorization = (
             if (!url || url.origin !== origin) {
               return
             }
+            if (
+              url.pathname !== '/' ||
+              url.searchParams.getAll('code').length > 1 ||
+              url.searchParams.getAll('state').length > 1
+            ) {
+              deliver({ error: 'invalid_response' })
+              return
+            }
             deliver({
-              code: url.pathname === '/' ? url.searchParams.get('code') : null,
+              code: url.searchParams.get('code'),
               state: url.searchParams.get('state'),
               error: url.searchParams.get('error') || url.searchParams.get('error_description'),
             })

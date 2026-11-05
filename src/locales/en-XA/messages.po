@@ -247,6 +247,7 @@ msgstr ""
 
 #: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/integration-detail.tsx
+#: src/settings/connections/otari-provider-detail.tsx
 msgid "Account"
 msgstr ""
 
@@ -303,6 +304,10 @@ msgstr ""
 #~ msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
 #~ msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Add a provider in your Otari workspace, then refresh to choose a model."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr ""
@@ -328,6 +333,10 @@ msgstr ""
 #: src/settings/connections/index.tsx
 msgid "Add MCP Server"
 msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Add model"
+#~ msgstr ""
 
 #: src/components/create-item/context.tsx
 #: src/components/ui/model-selector/model-selector.tsx
@@ -693,6 +702,7 @@ msgstr ""
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
+#: src/components/provider-connection-button.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -719,6 +729,7 @@ msgid "Cancel"
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/components/provider-connection-button.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Cancel connection"
 msgstr ""
@@ -808,6 +819,10 @@ msgstr ""
 msgid "Checking for updates…"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Checking model…"
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "Checking sign-in request…"
 msgstr ""
@@ -828,6 +843,10 @@ msgstr ""
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Checking…"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Choose a model"
 msgstr ""
 
 #: src/components/search-provider-setup/search-provider-setup.tsx
@@ -980,6 +999,10 @@ msgstr ""
 msgid "Close reorder"
 msgstr ""
 
+#: src/components/provider-authorization-result.tsx
+msgid "Close this window"
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Cloud"
 msgstr ""
@@ -1089,6 +1112,10 @@ msgstr ""
 msgid "Connect a remote agent that speaks the Agent Client Protocol."
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Connect another account"
+#~ msgstr ""
+
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Connect Google"
 msgstr ""
@@ -1097,8 +1124,24 @@ msgstr ""
 msgid "Connect Microsoft"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Connect Otari"
+msgstr ""
+
+#: src/settings/search/index.tsx
+#~ msgid "Connect Otari and enable its model in Models to use this provider."
+#~ msgstr ""
+
+#: src/settings/search/index.tsx
+msgid "Connect Otari in Connections and enable web search in your Otari workspace."
+msgstr ""
+
 #: src/components/server-connection/server-connection-form.tsx
 msgid "Connect to server"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Connect to the official Otari server."
 msgstr ""
 
 #: src/components/server-connection/server-connection-modal.tsx
@@ -1109,11 +1152,14 @@ msgstr ""
 msgid "Connect to your organization's server."
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Connect to your Otari server."
+msgstr ""
+
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Connect to your server"
 msgstr ""
 
-#: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Connect with a paid Tinfoil subscription."
 msgstr ""
@@ -1148,6 +1194,7 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/mcp-server-detail.tsx
+#: src/settings/connections/otari-provider-detail.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Connected"
 msgstr ""
@@ -1170,6 +1217,14 @@ msgstr ""
 
 #: src/settings/connections/integration-detail.tsx
 msgid "Connected to {integrationName}"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Connected to Otari"
+msgstr ""
+
+#: src/components/otari-connection/use-otari-connection-state.ts
+msgid "Connected to Otari, but couldn't load your models. Please try again."
 msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
@@ -1204,6 +1259,14 @@ msgstr ""
 msgid "Connection"
 msgstr ""
 
+#: src/components/provider-authorization-result.tsx
+msgid "Connection cancelled"
+msgstr ""
+
+#: src/lib/otari-browser-auth.ts
+msgid "Connection cancelled. You can connect to Otari whenever you're ready."
+msgstr ""
+
 #: src/settings/connections/mcp-server-detail.tsx
 msgid "Connection error"
 msgstr ""
@@ -1214,7 +1277,7 @@ msgstr ""
 msgid "Connection failed"
 msgstr ""
 
-#: src/components/openrouter-callback.tsx
+#: src/components/provider-authorization-result.tsx
 msgid "Connection not completed"
 msgstr ""
 
@@ -1255,6 +1318,10 @@ msgstr ""
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/waitlist/waitlist-content.tsx
 msgid "Continue"
+msgstr ""
+
+#: src/components/provider-authorization-result.tsx
+msgid "Continue in your Thunderbolt window"
 msgstr ""
 
 #: src/components/sso-error.tsx
@@ -1336,6 +1403,15 @@ msgstr ""
 msgid "Could not connect to OpenRouter. Try again, or use an API key."
 msgstr ""
 
+#: src/components/otari-connection/use-otari-connection-state.ts
+#~ msgid "Could not connect to Otari. Check the app registration and available models."
+#~ msgstr ""
+
+#: src/components/otari-connection/use-otari-connection-state.ts
+#: src/lib/otari-auth.ts
+msgid "Could not connect to Otari. Please try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr ""
@@ -1402,6 +1478,10 @@ msgstr ""
 msgid "Could not render pairing code."
 msgstr ""
 
+#: src/components/otari-connection/use-otari-connection-state.ts
+#~ msgid "Could not save the Otari model. Please try again."
+#~ msgstr ""
+
 #: src/projects/project-form.tsx
 msgid "Could not save the project."
 msgstr ""
@@ -1416,6 +1496,10 @@ msgstr ""
 
 #: src/settings/connections/use-ai-provider-connections.ts
 msgid "Could not update the provider connection. Try again."
+msgstr ""
+
+#: src/components/otari-connection/use-otari-connection-state.ts
+msgid "Could not verify or save the Otari model. Please try again."
 msgstr ""
 
 #: src/components/onboarding/use-onboarding-provider-state.ts
@@ -1460,6 +1544,10 @@ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "Couldn't check for updates."
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Couldn’t check whether this Otari workspace has web search."
 msgstr ""
 
 #: src/components/approve-device-dialog.tsx
@@ -1640,6 +1728,10 @@ msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Custom — OpenAI-compatible endpoint"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Custom URL"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -1951,6 +2043,7 @@ msgstr ""
 #: src/components/search-provider-setup/search-provider-setup.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/connections/integration-detail.tsx
+#: src/settings/connections/otari-provider-detail.tsx
 msgid "Disconnect"
 msgstr ""
 
@@ -2180,6 +2273,10 @@ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Enter a different code"
+msgstr ""
+
+#: src/components/otari-connection/use-otari-connection-state.ts
+msgid "Enter a valid HTTPS server URL, or an HTTP localhost URL for local development."
 msgstr ""
 
 #: src/lib/mcp-url-validation.ts
@@ -2554,6 +2651,10 @@ msgstr ""
 msgid "How {appName} salutes you"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "https://otari.example.com"
+msgstr ""
+
 #: src/components/server-connection/server-connection-form.tsx
 msgid "https://your-server.example"
 msgstr ""
@@ -2568,6 +2669,10 @@ msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "I have saved my recovery phrase"
+msgstr ""
+
+#: src/components/provider-authorization-result.tsx
+msgid "If this window stays open, you can safely close the tab."
 msgstr ""
 
 #: src/components/storage-unavailable-screen.tsx
@@ -2812,6 +2917,10 @@ msgstr ""
 msgid "Loading emoji…"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Loading models…"
+msgstr ""
+
 #: src/settings/passkeys.tsx
 #~ msgid "Loading passkeys…"
 #~ msgstr ""
@@ -2870,6 +2979,10 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
+msgstr ""
+
+#: src/settings/connections/otari-provider-detail.tsx
+msgid "Manage models"
 msgstr ""
 
 #: src/settings/connections/ai-provider-detail.tsx
@@ -3153,6 +3266,14 @@ msgstr ""
 msgid "No matching skills."
 msgstr ""
 
+#: src/components/otari-connection/use-otari-connection-state.ts
+#~ msgid "No models are available in this Otari workspace. Add a provider in Otari first."
+#~ msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "No models available yet"
+msgstr ""
+
 #: src/settings/models/models-list.tsx
 msgid "No models configured"
 msgstr ""
@@ -3161,6 +3282,7 @@ msgstr ""
 msgid "No models found"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "No models found."
@@ -3381,6 +3503,10 @@ msgstr ""
 msgid "Open Link"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Open Otari"
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Open Source"
 msgstr ""
@@ -3447,6 +3573,40 @@ msgstr ""
 #: src/layout/sidebar/project-tree-menu.tsx
 #: src/layout/sidebar/project-tree.tsx
 msgid "Organize chats with projects."
+msgstr ""
+
+#: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/otari-provider-detail.tsx
+#: src/settings/connections/use-ai-provider-connections.ts
+msgid "Otari"
+msgstr ""
+
+#: src/integrations/otari-search/api.ts
+msgid "Otari could not complete this web request. Check the search provider and web access settings in Otari."
+msgstr ""
+
+#: src/lib/otari-browser-auth.ts
+msgid "Otari returned an invalid response. Please connect again."
+msgstr ""
+
+#: src/integrations/otari-search/connection.ts
+msgid "Otari search changed or was disconnected. Start a new turn after reconnecting."
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Otari server"
+#~ msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Otari server URL"
+msgstr ""
+
+#: src/integrations/otari-search/api.ts
+msgid "Otari web access was denied. Reconnect Otari or check your workspace’s web access settings."
+msgstr ""
+
+#: src/components/onboarding/onboarding-search-step.tsx
+msgid "Otari web search isn’t available. Choose a search provider below, or skip for now."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
@@ -3668,6 +3828,10 @@ msgstr ""
 msgid "Reading {fileName}…"
 msgstr ""
 
+#: src/components/provider-authorization-result.tsx
+msgid "Ready to continue"
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-entry-step.tsx
 msgid "Ready to submit"
 msgstr ""
@@ -3711,6 +3875,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Refresh keys and retry"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Refresh models"
 msgstr ""
 
 #: src/settings/devices.tsx
@@ -3869,7 +4037,7 @@ msgstr ""
 msgid "Retrying…"
 msgstr ""
 
-#: src/components/openrouter-callback.tsx
+#: src/components/provider-authorization-result.tsx
 msgid "Return to Thunderbolt"
 msgstr ""
 
@@ -3986,6 +4154,10 @@ msgstr ""
 msgid "Search and page content are provided by your connected Thunderbolt server."
 msgstr ""
 
+#: src/settings/search/index.tsx
+msgid "Search and page content use your Otari connection and your workspace’s web access settings. Manage your search provider in Otari."
+msgstr ""
+
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Search and work with your OneDrive files and documents."
 msgstr ""
@@ -4026,6 +4198,7 @@ msgstr ""
 msgid "Search Models"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "Search models…"
@@ -4051,6 +4224,10 @@ msgstr ""
 
 #: src/tasks/index.tsx
 msgid "Search tasks…"
+msgstr ""
+
+#: src/settings/search/index.tsx
+msgid "Search through your Otari workspace"
 msgstr ""
 
 #: src/components/ui/combobox.tsx
@@ -4332,6 +4509,14 @@ msgid "Sign in to access the services available on this server."
 msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#~ msgid "Sign in to connect Otari"
+#~ msgstr ""
+
+#: src/components/onboarding/onboarding-model-step.tsx
+msgid "Sign in to connect Otari."
+msgstr ""
+
+#: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx
 msgid "Sign in to connect your account."
 msgstr ""
@@ -4347,6 +4532,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
 msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Sign in to Otari and choose a workspace. Your provider keys stay in Otari."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-server-step.tsx
 msgid "Sign in to sync your workspace and access more features."
@@ -4826,6 +5015,14 @@ msgstr ""
 msgid "This code has expired. Please request a new one."
 msgstr ""
 
+#: src/lib/otari-browser-auth.ts
+msgid "This connection expired. Please connect to Otari again."
+msgstr ""
+
+#: src/components/provider-authorization-result.tsx
+msgid "This connection link is no longer valid. Return to Thunderbolt and start a new connection."
+msgstr ""
+
 #: src/components/chat/error-message.tsx
 msgid "This conversation is too large for the model's context window. Start a new chat, remove some attachments, or switch to a model with a larger context window."
 msgstr ""
@@ -5198,6 +5395,10 @@ msgstr ""
 msgid "Try anyway"
 msgstr ""
 
+#: src/components/provider-authorization-result.tsx
+msgid "Try connecting again"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "TTS model"
 msgstr ""
@@ -5338,7 +5539,12 @@ msgstr ""
 
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
-msgid "URL is required for Custom providers"
+#~ msgid "URL is required for Custom providers"
+#~ msgstr ""
+
+#: src/settings/models/use-add-model-form.ts
+#: src/settings/models/use-edit-model-form-state.ts
+msgid "URL is required for this provider"
 msgstr ""
 
 #: src/settings/search/index.tsx
@@ -5375,6 +5581,10 @@ msgstr ""
 msgid "Use my recovery key"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Use Otari by Mozilla AI"
+#~ msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Use passkey"
 msgstr ""
@@ -5388,12 +5598,24 @@ msgstr ""
 msgid "Use System"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+#~ msgid "Use the address of your team's or self-hosted Otari server."
+#~ msgstr ""
+
 #: src/lib/openrouter-auth.ts
 msgid "Use the authorization code option to connect to OpenRouter on this device."
 msgstr ""
 
 #: src/voice/speakable.ts
 msgid "Use the connection prompt on screen to continue."
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Use the official Otari server"
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Use this model"
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
@@ -5546,6 +5768,14 @@ msgstr ""
 msgid "Weather data provided by Open-Meteo.com"
 msgstr ""
 
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Web search is disabled in this Otari workspace."
+msgstr ""
+
+#: src/components/otari-connection/otari-connection.tsx
+msgid "Web search isn’t set up in this Otari workspace."
+msgstr ""
+
 #: src/integrations/standalone-search/api.ts
 #~ msgid "Web tools can only fetch public HTTP or HTTPS pages without embedded credentials."
 #~ msgstr ""
@@ -5668,9 +5898,13 @@ msgstr ""
 msgid "You can attach up to {maxAttachmentCount} files."
 msgstr ""
 
-#: src/components/openrouter-callback.tsx
-msgid "You can close this window and return to Thunderbolt to continue."
+#: src/components/otari-connection/otari-connection.tsx
+msgid "You can choose a search provider in the next step."
 msgstr ""
+
+#: src/components/openrouter-callback.tsx
+#~ msgid "You can close this window and return to Thunderbolt to continue."
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "You can connect integrations later in Settings."
@@ -5678,6 +5912,10 @@ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "You can return to your terminal."
+msgstr ""
+
+#: src/components/provider-authorization-result.tsx
+msgid "You cancelled this connection. Return to Thunderbolt to try again whenever you're ready."
 msgstr ""
 
 #: src/components/signed-out.tsx
@@ -5720,6 +5958,10 @@ msgstr ""
 
 #: src/settings/app-version-section.tsx
 msgid "You're on the latest version."
+msgstr ""
+
+#: src/components/provider-authorization-result.tsx
+msgid "You're ready for the next step. Return to Thunderbolt to finish connecting your account."
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
@@ -5822,6 +6064,10 @@ msgstr ""
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
 msgstr ""
+
+#: src/components/onboarding/onboarding-model-step.tsx
+#~ msgid "Your models, connected through Mozilla AI."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Your name"

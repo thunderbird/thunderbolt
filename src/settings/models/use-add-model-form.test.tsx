@@ -24,32 +24,12 @@ import { getClock } from '@/testing-library'
 import { act, cleanup, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
-import { generateModelName, useAddModelForm } from './use-add-model-form'
+import { useAddModelForm } from './use-add-model-form'
 
 /** Model-save tests represent an authorization started against the current local session. */
 const currentAuthorization = async (credentials: TinfoilCredentials) => ({
   tinfoilCredentials: credentials,
   attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
-})
-
-describe('generateModelName', () => {
-  it('title-cases hyphenated ids and keeps version numbers intact', () => {
-    expect(generateModelName('gpt-4-turbo')).toBe('Gpt 4 Turbo')
-    expect(generateModelName('claude-3-5-sonnet')).toBe('Claude 3 5 Sonnet')
-  })
-
-  it('drops the vendor prefix and tag suffix', () => {
-    expect(generateModelName('anthropic/claude-3-haiku')).toBe('Claude 3 Haiku')
-    expect(generateModelName('llama3:latest')).toBe('Llama 3')
-  })
-
-  it('keeps letter-digit model families like o1 together', () => {
-    expect(generateModelName('o1-preview')).toBe('O1 Preview')
-  })
-
-  it('preserves decimal versions', () => {
-    expect(generateModelName('glm-5.2')).toBe('Glm 5.2')
-  })
 })
 
 /** A provider that answers chat completions but rejects any request carrying tools, as Ollama does. */
@@ -383,6 +363,44 @@ describe('useAddModelForm', () => {
     })
   })
 
+  it('reuses an Otari model only on the same server and preserves manual models and preferences', async () => {
+    const values = {
+      provider: 'otari' as const,
+      providerDefault: 1,
+      name: 'Workspace model',
+      model: 'example/model',
+      url: 'https://otari.example.com/api/v1',
+      apiKey: 'delegated-key',
+      supportsTools: true,
+    }
+    await createModel(getDb(), { ...values, id: 'manual', providerDefault: null, apiKey: 'manual-key' })
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
+      wrapper: createTestProvider(),
+    })
+    await act(async () => {
+      await result.current.saveModel(values)
+      await result.current.saveModel({ ...values, url: 'https://other.example.com/api/v1', apiKey: 'other-key' })
+    })
+    const original = (await getAllModels(getDb())).find(
+      (model) => model.providerDefault === 1 && model.url === values.url,
+    )!
+    await updateModel(getDb(), original.id, { name: 'My model', enabled: 0, toolUsage: 0, contextWindow: 8192 })
+    await act(async () => {
+      await result.current.saveModel({ ...values, apiKey: 'replacement-key' })
+    })
+    const models = await getAllModels(getDb())
+    expect(models).toHaveLength(3)
+    expect(models.find((model) => model.id === original.id)).toMatchObject({
+      name: 'My model',
+      enabled: 0,
+      toolUsage: 0,
+      contextWindow: 8192,
+      apiKey: 'replacement-key',
+    })
+    expect(models.find((model) => model.id === 'manual')?.apiKey).toBe('manual-key')
+    expect(models.find((model) => model.url !== values.url)?.apiKey).toBe('other-key')
+  })
+
   it('does not overwrite a different OAuth model when connecting the provider default', async () => {
     const lockSpy = spyOn(tinfoilSessionModule, 'withTinfoilSessionLock').mockImplementation(async (operation) =>
       operation(),
@@ -510,6 +528,38 @@ describe('useAddModelForm', () => {
     const created = useChatStore.getState().models.find((candidate) => candidate.name === 'My Custom Model')
     expect(created?.model).toBe('gpt-4-turbo-preview')
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses shared display names for catalog and unlisted model selections without changing model IDs', async () => {
+    const getSpy = spyOn(http, 'get').mockReturnValue(
+      stubJsonResponse({
+        data: [
+          { id: 'vendor/opaque-123', name: ' DeepSeek V4.1 Flash ' },
+          { id: 'deepseek/deepseek-v4.1-flash', name: 'deepseek/deepseek-v4.1-flash' },
+        ],
+      }),
+    )
+    const { result } = renderHook(() => useAddModelForm({ isOpen: true, onClose: mock(() => {}) }), {
+      wrapper: createTestProvider(),
+    })
+    try {
+      act(() => {
+        result.current.onProviderChange('openai')
+        result.current.form.setValue('apiKey', 'sk-test')
+      })
+      await act(async () => getClock().runAllAsync())
+      for (const [id, name] of [
+        ['vendor/opaque-123', 'DeepSeek V4.1 Flash'],
+        ['deepseek/deepseek-v4.1-flash', 'Deepseek v4.1 Flash'],
+        ['llama3:latest', 'Llama 3'],
+      ]) {
+        act(() => result.current.onSelectModel(id))
+        expect(result.current.form.getValues('name')).toBe(name)
+        expect(result.current.form.getValues('model')).toBe(id)
+      }
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 
   it('does not refetch an already requested catalog when visibility alone changes', async () => {

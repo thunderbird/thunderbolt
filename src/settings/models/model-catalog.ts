@@ -10,7 +10,7 @@ import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
-import { catalogRequiresApiKey } from './model-policy'
+import { catalogRequiresApiKey, providerRequiresUrl } from './model-policy'
 
 export type AvailableModel = {
   id: string
@@ -89,7 +89,7 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
   if (catalogRequiresApiKey(provider) && !apiKey) {
     return false
   }
-  return provider !== 'custom' || isFetchableCatalogUrl(url)
+  return !providerRequiresUrl(provider) || isFetchableCatalogUrl(url)
 }
 
 /** Stable identity for the inputs that produced a catalog result. */
@@ -118,8 +118,7 @@ export const fetchModelsForProvider = async (
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  // Reuse chat's transport: web needs the proxy for hosts that don't answer preflights;
-  // native follows the Cloud Proxy setting.
+  // Reuse chat's transport, including Otari's direct OAuth connection.
   const connection = resolveOpenAiCompatConnection(
     { provider, apiKey: apiKey ?? null, url: url ?? null },
     getProxyFetch,

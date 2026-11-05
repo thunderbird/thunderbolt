@@ -7,7 +7,7 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
 import type { OAuthProvider } from '../lib/auth'
 
-type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter'
+type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter' | 'otari'
 
 type IntegrationCredentials = {
   access_token: string

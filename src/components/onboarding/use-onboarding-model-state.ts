@@ -12,6 +12,8 @@ import { getAllModels, getAvailableModels } from '@/dal'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
 import { hasTinfoilSearchConnection } from '@/integrations/tinfoil-search/eligibility'
+import { hasOtariSearchConnection } from '@/integrations/otari-search/eligibility'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { useChatStore } from '@/chats/chat-store'
 import type { OnboardingProvider } from './provider-default-model'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
@@ -25,6 +27,7 @@ export const isConfiguredStandaloneModel = (model: Model): boolean =>
 export const useOnboardingModelState = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
+  const otariConnection = useSearchProviderStore((state) => state.otariConnection)
   const { data: models = [], isLoading: modelsLoading } = useQuery({
     queryKey: ['models', 'onboarding'],
     query: toCompilableQuery(getAllModels(db)),
@@ -40,14 +43,15 @@ export const useOnboardingModelState = () => {
   const connectedProviders = connectedModels
     .filter(
       (model) =>
-        !['openrouter', 'tinfoil'].includes(model.provider) ||
+        !['openrouter', 'tinfoil', 'otari'].includes(model.provider) ||
         model.providerDefault === 1 ||
         model.oauthProvider === 'tinfoil',
     )
-    .map(({ provider }): OnboardingProvider | 'custom' =>
-      provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom',
+    .map(({ provider }): OnboardingProvider | 'otari' | 'custom' =>
+      provider === 'openrouter' || provider === 'tinfoil' || provider === 'otari' ? provider : 'custom',
     )
-  const hasBuiltInSearch = hasTinfoilSearchConnection(models, oauthAvailable)
+  const hasBuiltInSearch =
+    hasTinfoilSearchConnection(models, oauthAvailable) || hasOtariSearchConnection(models, otariConnection)
   const disconnectProvider = async (provider: OnboardingProvider) => {
     if (provider === 'tinfoil') {
       await tinfoilSession.disconnect()

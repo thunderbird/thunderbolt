@@ -38,6 +38,8 @@ import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
 import { TinfoilImpactDialog } from './tinfoil-impact-dialog'
 import { AiProviderDetail } from './ai-provider-detail'
+import { OtariProviderDetail } from './otari-provider-detail'
+import { getOtariBrowserReturn, getOtariBrowserDraft } from '@/lib/otari-browser-auth'
 import { useAiProviderConnections } from './use-ai-provider-connections'
 import { ConnectionsList } from './connections-list'
 import { IntegrationDetail } from './integration-detail'
@@ -95,12 +97,18 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   const location = useLocation()
 
   const initialCallback = getConnectionsOAuthCallback(location.state)
-  const [state, dispatch] = useReducer(connectionsPageReducer, {
-    ...createConnectionsPageState(initialCallback.kind === 'integration'),
-    ...(getTinfoilMobileReturn('connections')
-      ? { selected: { kind: 'provider' as const, id: 'tinfoil' as const } }
-      : {}),
-  })
+  const [state, dispatch] = useReducer(
+    connectionsPageReducer,
+    initialCallback.kind === 'integration',
+    (processing) => ({
+      ...createConnectionsPageState(processing),
+      selected: getTinfoilMobileReturn('connections')
+        ? { kind: 'provider' as const, id: 'tinfoil' as const }
+        : getOtariBrowserReturn('connections') || getOtariBrowserDraft('connections')
+          ? { kind: 'provider' as const, id: 'otari' as const }
+          : null,
+    }),
+  )
   const {
     selected,
     mode,
@@ -311,10 +319,21 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     if (selected?.kind === 'provider') {
       const connection = aiProviders.find((provider) => provider.id === selected.id)
       if (connection) {
+        if (connection.id === 'otari') {
+          return (
+            <OtariProviderDetail
+              connection={connection}
+              pending={providerConnections.pending}
+              error={providerConnections.error}
+              onDisconnect={providerConnections.disconnectOtari}
+              onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
+            />
+          )
+        }
         return (
           <AiProviderDetail
             key={connection.id}
-            connection={connection}
+            connection={{ ...connection, id: connection.id }}
             onClose={() => dispatch({ type: 'SELECTION_CHANGED', selection: null })}
           />
         )

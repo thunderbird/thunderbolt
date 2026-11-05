@@ -11,6 +11,9 @@ describe('provider labels', () => {
     expect(getProviderLabel(i18n, 'thunderbolt', 'Acme AI')).toBe('Acme AI')
     expect(getProviderLabel(i18n, 'custom', 'Acme AI')).toBe('Custom')
     expect(getProviderLabel(i18n, 'openai', 'Acme AI')).toBe('OpenAI')
+    expect(getProviderLabel(i18n, 'otari', 'Acme AI')).toBe('Otari')
+    expect(getProviderDisplay(i18n, { provider: 'otari', isSystem: 0 }, 'Acme AI')).toBe('Otari')
+    expect(getProviderDisplay(i18n, { provider: 'openrouter', isSystem: 0 }, 'Acme AI')).toBe('OpenRouter')
   })
 
   it('treats system Tinfoil as a managed model, and user Tinfoil as Tinfoil', () => {
@@ -19,6 +22,14 @@ describe('provider labels', () => {
   })
 
   it('lists every provider in picker order, managed first', () => {
-    expect(providerPickerOrder).toEqual(['thunderbolt', 'tinfoil', 'openai', 'openrouter', 'anthropic', 'custom'])
+    expect(providerPickerOrder).toEqual([
+      'thunderbolt',
+      'tinfoil',
+      'otari',
+      'openai',
+      'openrouter',
+      'anthropic',
+      'custom',
+    ])
   })
 })

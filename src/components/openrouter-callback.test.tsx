@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { I18nProvider } from '@lingui/react'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { i18n } from '@/i18n'
 import { getClock } from '@/testing-library'
@@ -14,8 +14,8 @@ const flowId = 'a'.repeat(43)
 const originalLocation = window.location
 
 /** Renders a returned popup with no opener and an isolated channel boundary. */
-const renderCallback = (query: string) => {
-  const callbackUrl = new URL(`https://app.test/oauth/openrouter/${flowId}${query}`)
+const renderCallback = (query: string, path = `/oauth/openrouter/${flowId}`) => {
+  const callbackUrl = new URL(`https://app.test${path}${query}`)
   Object.defineProperty(window, 'location', { value: callbackUrl, configurable: true, writable: true })
   spyOn(window.history, 'replaceState').mockImplementation((_state, _unused, url) => {
     Object.defineProperty(window, 'location', {
@@ -66,6 +66,8 @@ describe('OpenRouter callback without a window opener', () => {
     expect(view.postMessage).toHaveBeenCalledWith({ type: 'openrouter-callback', state: flowId, error: 'cancelled' })
     expect(screen.getByRole('heading')).toHaveTextContent('Connection not completed')
     expect(screen.queryByText('private-provider-message')).not.toBeInTheDocument()
+    expect(screen.getByText('Connection cancelled')).toBeInTheDocument()
+    expect(screen.queryByText('Ready to continue')).not.toBeInTheDocument()
   })
 
   it('does not relay an authorization code with mismatched state and cancels the close timer on unmount', async () => {
@@ -79,5 +81,26 @@ describe('OpenRouter callback without a window opener', () => {
     await act(async () => getClock().tickAsync(1000))
     expect(view.closeWindow).not.toHaveBeenCalled()
     expect(view.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers a manual close action without navigating away', () => {
+    const view = renderCallback(`?code=authorization-code&state=${flowId}`)
+    expect(screen.getByText('Ready to continue')).toBeInTheDocument()
+    expect(screen.getByText('Continue in your Thunderbolt window')).toBeInTheDocument()
+    expect(window.location.pathname).toBe(`/oauth/openrouter/${flowId}`)
+    expect(window.location.search).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: 'Close this window' }))
+    expect(view.closeWindow).toHaveBeenCalledTimes(1)
+    expect(view.postMessage).toHaveBeenCalledTimes(1)
+    view.unmount()
+  })
+
+  it('explains an incomplete link without relaying or closing automatically', async () => {
+    const view = renderCallback('', '/oauth/openrouter')
+    expect(screen.getByRole('heading')).toHaveTextContent('Connection not completed')
+    expect(screen.getByText(/This connection link is no longer valid/)).toBeInTheDocument()
+    expect(view.createChannel).not.toHaveBeenCalled()
+    await act(async () => getClock().tickAsync(1000))
+    expect(view.closeWindow).not.toHaveBeenCalled()
   })
 })

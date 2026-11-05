@@ -30,6 +30,9 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import ConnectionsPage from '.'
+import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { getOtariSearchAvailability } from '@/integrations/otari-search/connection'
+import * as otariBrowser from '@/lib/otari-browser-auth'
 
 /** A 401 shaped like the real transport error `isUnauthorizedError` recognizes. */
 const unauthorized = () => Object.assign(new Error('Unauthorized'), { code: 401 })
@@ -81,6 +84,7 @@ describe('ConnectionsPage list', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
+    useSearchProviderStore.getState().clearSearchProvider()
     const session = createTinfoilSession({ db: getDb, auth: tinfoilAuth, lock: async (work) => work(), now: Date.now })
     spyOn(tinfoilSession, 'setEnabled').mockImplementation(session.setEnabled)
     spyOn(tinfoilSessions, 'withTinfoilSessionLock').mockImplementation(async (work) => work())
@@ -89,6 +93,7 @@ describe('ConnectionsPage list', () => {
   afterEach(() => {
     cleanup()
     mock.restore()
+    useSearchProviderStore.getState().clearSearchProvider()
   })
 
   it('shows disconnected providers as disabled switches in the same list as Google', async () => {
@@ -97,8 +102,109 @@ describe('ConnectionsPage list', () => {
     const openrouter = await waitForElement(() => screen.queryByRole('switch', { name: 'Enable OpenRouter' }))
     expect(openrouter).toBeDisabled()
     expect(screen.getByRole('switch', { name: 'Enable Tinfoil' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Enable Otari' })).toBeDisabled()
     expect(openrouter.closest('ul')).toBe(screen.getByRole('switch', { name: 'Enable Google' }).closest('ul'))
     expect(screen.queryByText('Not connected')).not.toBeInTheDocument()
+  })
+
+  it('recognizes Otari independently of search configuration', async () => {
+    await createModel(getDb(), {
+      id: 'otari-without-search',
+      name: 'Otari model',
+      model: 'example/model',
+      provider: 'otari',
+      url: 'https://otari.example/api/v1',
+      apiKey: 'delegated-key',
+      providerDefault: 1,
+      enabled: 1,
+    })
+    renderWithReactivity(<ConnectionsPage />, {
+      tables: ['models', 'models_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    expect(await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Otari' }))).toBeChecked()
+  })
+
+  it('controls Otari models and search together, and disconnects without deleting model history', async () => {
+    const connection = {
+      modelId: 'otari-model',
+      url: 'https://otari.example/api/v1',
+      searchStatus: 'available' as const,
+    }
+    await createModel(getDb(), {
+      id: connection.modelId,
+      name: 'Deepseek v4.1 Flash',
+      model: 'deepseek/deepseek-v4.1-flash',
+      provider: 'otari',
+      url: connection.url,
+      apiKey: 'delegated-key',
+      providerDefault: 1,
+      enabled: 1,
+    })
+    await createModel(getDb(), {
+      id: 'unrelated',
+      name: 'Unrelated',
+      model: 'other',
+      provider: 'custom',
+      url: connection.url,
+      apiKey: 'other-key',
+      enabled: 1,
+    })
+    await createModel(getDb(), {
+      id: 'manual-otari',
+      name: 'Manual Otari',
+      model: 'other',
+      provider: 'otari',
+      url: connection.url,
+      apiKey: 'manual-key',
+      enabled: 1,
+    })
+    useSearchProviderStore.getState().configureOtariSearch(connection)
+    const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
+      tables: ['models', 'models_secrets'],
+      wrapper: McpProviderWrapper,
+    })
+    const disable = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Otari' }))
+    await act(async () => {
+      fireEvent.click(disable)
+      await getClock().runAllAsync()
+      triggerChange(['models'])
+    })
+    expect((await getOtariSearchAvailability(getDb())).otari).toBe(false)
+    expect(await getModel(getDb(), 'manual-otari')).toMatchObject({ apiKey: 'manual-key', enabled: 1 })
+    const enable = await waitForElement(() => screen.queryByRole('switch', { name: 'Enable Otari' }))
+    expect(enable).toBeEnabled()
+    await act(async () => {
+      fireEvent.click(enable)
+      await getClock().runAllAsync()
+      triggerChange(['models'])
+    })
+    expect((await getOtariSearchAvailability(getDb())).otari).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Otari' }))
+    const disconnect = await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
+    const pendingAuthorization = await getProviderConnectionAttempt(getDb(), 'otari')
+    await act(async () => {
+      fireEvent.click(disconnect)
+      await getClock().runAllAsync()
+      triggerChange(['models', 'models_secrets'])
+    })
+    expect(await getModel(getDb(), connection.modelId)).toMatchObject({ apiKey: null, deletedAt: null })
+    expect(await getModel(getDb(), 'unrelated')).toMatchObject({ apiKey: 'other-key', enabled: 1 })
+    expect(await getModel(getDb(), 'manual-otari')).toMatchObject({ apiKey: 'manual-key', enabled: 1 })
+    await expect(assertProviderConnectionAttemptCurrent(getDb(), pendingAuthorization)).rejects.toThrow(
+      'Provider connection changed',
+    )
+    expect(await getOtariSearchAvailability(getDb())).toEqual({ otari: false, otariConfigured: true })
+    await waitForElement(() => screen.queryByRole('button', { name: 'Connect Otari' }))
+  })
+
+  it('restores the Otari detail panel when browser Back returns from authorization', async () => {
+    spyOn(otariBrowser, 'getOtariBrowserDraft').mockImplementation((context) =>
+      context === 'connections' ? { id: 'draft', origin: 'http://localhost:8099' } : null,
+    )
+    renderWithReactivity(<ConnectionsPage />, { tables: ['models'], wrapper: McpProviderWrapper })
+    await waitForElement(() => screen.queryByRole('button', { name: 'Connect Otari' }))
+    expect(screen.getByLabelText('Otari server URL')).toHaveValue('http://localhost:8099')
   })
 
   it('keeps the account enabled when its models are individually disabled', async () => {

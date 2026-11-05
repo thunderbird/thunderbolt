@@ -7,6 +7,7 @@ import { getOAuthState, type ReturnContext } from '@/lib/oauth-state'
 import { isSafeRelativePath } from '@/lib/safe-relative-path'
 import { isTauri } from '@/lib/platform'
 import { captureTinfoilMobileReturn } from '@/lib/tinfoil-mobile-auth'
+import { captureOtariMobileReturn } from '@/lib/otari-browser-auth'
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
@@ -177,6 +178,14 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
             continue
           }
 
+          const otariReturn = captureOtariMobileReturn(url)
+          if (otariReturn) {
+            handledOAuthStates.add(otariReturn.id)
+            // A short callback route remounts the owning setup screen even when it is already open.
+            navigate('/oauth/otari', { replace: true })
+            continue
+          }
+
           // Handle OAuth callback deep links
           const oauthData = parseOAuthCallback(url)
           if (oauthData) {
@@ -212,6 +221,7 @@ export const useDeepLinkListener = (handler?: DeepLinkHandler, dependencies?: De
           // Collect unhandled URLs for custom handler
           unhandledUrls.push(urlString)
         } catch {
+          // Authorization codes and provider error details must not reach logs.
           console.error('Failed to handle deep link')
         }
       }

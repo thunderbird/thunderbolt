@@ -12,8 +12,10 @@ import { clearCachedSession } from '@/lib/session-cache'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createRecordingClient } from '@/test-utils/http-client'
 import { createTinfoilWebApi } from '@/integrations/tinfoil-search/api'
+import { createOtariWebApi } from '@/integrations/otari-search/api'
+import { stubJsonResponse } from '@/test-utils/http'
 import type { SourceMetadata } from '@/types/source'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn, test } from 'bun:test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
@@ -22,7 +24,14 @@ import { z } from 'zod'
 import type { HttpClient } from '@/contexts'
 import type { ToolConfig } from '@/types'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
-import { createTool, createToolset, getAvailableTools, type ToolAvailabilityContext, type ToolCallCache } from './tools'
+import {
+  createTool,
+  createToolset,
+  getAvailableTools,
+  loadConnectedSearchApis,
+  type ToolAvailabilityContext,
+  type ToolCallCache,
+} from './tools'
 
 const connectedTinfoil = async () => ({ tinfoil: true, tinfoilConfigured: true })
 const unconfiguredTinfoil = async () => ({ tinfoil: false, tinfoilConfigured: false })
@@ -243,6 +252,65 @@ const context = (overrides: Partial<ToolAvailabilityContext> = {}): ToolAvailabi
   ...overrides,
 })
 
+describe('selected gateway discovery', () => {
+  beforeAll(setupTestDatabase)
+  afterAll(teardownTestDatabase)
+  beforeEach(async () => {
+    await createModel(getDb(), {
+      id: 'otari-search',
+      provider: 'otari',
+      name: 'Otari',
+      model: 'test',
+      url: 'https://otari.example/api/v1',
+      apiKey: 'otari-key',
+      enabled: 1,
+    })
+    useSearchProviderStore.getState().configureOtariSearch({
+      modelId: 'otari-search',
+      url: 'https://otari.example/api/v1',
+      searchStatus: 'available',
+    })
+  })
+  afterEach(async () => {
+    mock.restore()
+    useSearchProviderStore.getState().clearSearchProvider()
+    await resetTestDatabase()
+  })
+
+  it.each(['none', 'cloud', 'custom', 'tinfoil'] as const)(
+    'does not contact Otari when %s is selected',
+    async (selection) => {
+      const fetch = spyOn(globalThis, 'fetch')
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      expect((await loadConnectedSearchApis(getDb())).otariSearchApi).toBeUndefined()
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['otari', 'auto'] as const)('discovers Otari when %s selects it', async (selection) => {
+    const fetch = spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ data: [{ id: 'otari_web_search', available: true, direct_available: true }] }),
+    )
+    useSearchProviderStore.getState().selectSearchProvider(selection)
+    expect((await loadConnectedSearchApis(getDb())).otariSearchApi?.search).toBeDefined()
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('honors auto priority before contacting Otari', async () => {
+    const fetch = spyOn(globalThis, 'fetch')
+    useSearchProviderStore.getState().configureSearchProvider('custom-key')
+    useSearchProviderStore.getState().selectSearchProvider('auto')
+    expect((await loadConnectedSearchApis(getDb())).otariSearchApi).toBeUndefined()
+    useSearchProviderStore.getState().disconnectSearchProvider()
+    await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'tinfoil-key' }, true)
+    useSearchProviderStore.getState().selectSearchProvider('auto')
+    const connection = await loadConnectedSearchApis(getDb())
+    expect(connection.tinfoilSearchApi).toBeDefined()
+    expect(connection.otariSearchApi).toBeUndefined()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
 // These run WITHOUT a test database set up. The injected context must fully
 // drive availability, so any reintroduced `getSettings`/`getIntegrationStatus`
 // read (the duplicate the DI removed) would surface here. This locks in the
@@ -269,6 +337,29 @@ describe('getAvailableTools (injected context)', () => {
       }),
     )
     expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+  })
+
+  it('runs web tools through Otari and stops after search is disabled during a turn', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: '' })
+    useSearchProviderStore.getState().selectSearchProvider('otari')
+    const post = mock((_url: string) =>
+      stubJsonResponse({ results: [{ title: 'Page', url: 'https://example.com', snippet: 'Summary' }] }),
+    )
+    const api = createOtariWebApi('https://otari.example/api/v1', async () => 'key', { ...stubHttpClient, post })
+    const tools = await getAvailableTools(
+      stubHttpClient,
+      [],
+      context({ otariSearchApi: api, otariConfigured: true }),
+      unconfiguredTinfoil,
+      async () => ({ otari: true, otariConfigured: true }),
+    )
+    const search = tools.find((tool) => tool.name === 'search')!
+    expect(tools.some((tool) => tool.name === 'fetch_content')).toBe(true)
+    await search.execute({ query: 'test' })
+    expect(post.mock.calls[0][0]).toBe('https://otari.example/api/v1/search')
+    useSearchProviderStore.getState().selectSearchProvider('none')
+    await expect(search.execute({ query: 'private query' })).rejects.toThrow('provider changed')
+    expect(post).toHaveBeenCalledTimes(1)
   })
 
   it('does not expose server web tools without a configured server', async () => {
@@ -532,6 +623,35 @@ describe('live search availability during a turn', () => {
       expect(createApi).toHaveBeenCalledTimes(1)
       expect(requests).toEqual([])
       expect(sources).toMatchObject([{ index: 1, allowRemoteImages: false }])
+    },
+  )
+
+  it.each([true, false])(
+    'stops automatic Cloud tools after Otari is configured (model enabled: %s)',
+    async (enabled) => {
+      const { client, requests } = createRecordingClient(() => cloudResponse)
+      const tools = await getAvailableTools(client, [], context({ settings: cloudSettings }))
+      await tools.find(({ name }) => name === 'search')!.execute({ query: 'before Otari' })
+      const connection = { modelId: 'otari', url: 'https://otari.example/api/v1', searchStatus: 'available' as const }
+      await createModel(getDb(), {
+        id: connection.modelId,
+        name: 'Otari',
+        provider: 'otari',
+        model: 'test',
+        url: connection.url,
+        apiKey: 'workspace-key',
+        enabled: enabled ? 1 : 0,
+      })
+      useSearchProviderStore.getState().configureOtariSearch(connection)
+      useSearchProviderStore.getState().selectSearchProvider('auto')
+      for (const name of ['search', 'fetch_content']) {
+        await expect(
+          tools
+            .find((tool) => tool.name === name)!
+            .execute({ query: 'workspace research', url: 'https://example.com' }),
+        ).rejects.toThrow('Search provider changed')
+      }
+      expect(requests).toEqual(['search'])
     },
   )
 

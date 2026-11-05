@@ -33,6 +33,11 @@ const SearchSettingsPage = () => {
       name: tinfoilName,
       subtitle: t`Exa search through Tinfoil`,
     },
+    {
+      id: 'otari' as const,
+      name: 'Otari',
+      subtitle: t`Search through your Otari workspace`,
+    },
     ...Object.entries(searchProviders).map(([id, provider]) => ({
       id: id as SearchProvider,
       name: provider.name,
@@ -64,9 +69,9 @@ const SearchSettingsPage = () => {
                 leading={
                   isSearchProvider(id) ? (
                     <SearchProviderIconTile provider={id} />
-                  ) : id === 'tinfoil' ? (
+                  ) : id === 'tinfoil' || id === 'otari' ? (
                     <IconTile>
-                      <ProviderBrandLogo provider="tinfoil" className="size-5" />
+                      <ProviderBrandLogo provider={id} className="size-5" />
                     </IconTile>
                   ) : (
                     <ModelProviderIconTile
@@ -102,13 +107,21 @@ const SearchSettingsPage = () => {
           </DetailPanel>
         ) : (
           page.panel && (
-            <DetailPanel title={page.panel === 'tinfoil' ? tinfoilName : 'Thunderbolt'} onClose={close}>
+            <DetailPanel
+              title={page.panel === 'tinfoil' ? tinfoilName : page.panel === 'otari' ? 'Otari' : 'Thunderbolt'}
+              onClose={close}
+            >
               <div className="space-y-4 text-sm text-muted-foreground">
                 <p>
                   {page.panel === 'tinfoil' ? (
                     <Trans>
                       Exa provides search and page content through Tinfoil’s encrypted connection and privacy filters.
                       No separate Exa API key is needed.
+                    </Trans>
+                  ) : page.panel === 'otari' ? (
+                    <Trans>
+                      Search and page content use your Otari connection and your workspace’s web access settings. Manage
+                      your search provider in Otari.
                     </Trans>
                   ) : (
                     <Trans>Search and page content are provided by your connected Thunderbolt server.</Trans>
@@ -117,6 +130,11 @@ const SearchSettingsPage = () => {
                 {page.panel === 'tinfoil' && !page.available.tinfoil && (
                   <p>
                     <Trans>Enable or reconnect Tinfoil in Connections to use this provider.</Trans>
+                  </p>
+                )}
+                {page.panel === 'otari' && !page.available.otari && (
+                  <p>
+                    <Trans>Connect Otari in Connections and enable web search in your Otari workspace.</Trans>
                   </p>
                 )}
                 <Button variant="outline" asChild>

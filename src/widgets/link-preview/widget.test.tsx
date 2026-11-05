@@ -338,7 +338,7 @@ describe('cloud-account private-search preview routing', () => {
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: true })
   })
 
-  it.each(['tinfoil', 'custom', 'none'] as const)(
+  it.each(['tinfoil', 'otari', 'custom', 'none'] as const)(
     'never sends preview URLs to the server when %s is selected',
     async (selection) => {
       useSearchProviderStore.getState().selectSearchProvider(selection)
@@ -392,6 +392,25 @@ describe('cloud-account private-search preview routing', () => {
       expect(requests).toEqual([])
     },
   )
+
+  it.each([true, false])('keeps automatic Otari selection off Cloud when its model is enabled: %s', async (enabled) => {
+    const connection = { modelId: 'otari', url: 'https://otari.example/api/v1', searchStatus: 'available' as const }
+    await createModel(getDb(), {
+      id: connection.modelId,
+      name: 'Otari',
+      provider: 'otari',
+      model: 'test',
+      url: connection.url,
+      apiKey: 'own-key',
+      enabled: enabled ? 1 : 0,
+    })
+    useSearchProviderStore.getState().configureOtariSearch(connection)
+    useSearchProviderStore.getState().selectSearchProvider('auto')
+    const { client, requests } = createRecordingClient(() => previewResponse)
+    renderWithProviders(<LinkPreviewWidget url="https://example.com/workspace-research" messageId="msg-1" />, client)
+    await settleQueries()
+    expect(requests).toEqual([])
+  })
 
   it('allows an explicit cloud choice despite connected private providers', async () => {
     await integrations.saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'own-token' }, true)

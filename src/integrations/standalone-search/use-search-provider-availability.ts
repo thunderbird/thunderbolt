@@ -9,11 +9,13 @@ import { getAllModels } from '@/dal/models'
 import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
 import { hasConfiguredTinfoilSearch, hasTinfoilSearchConnection } from '@/integrations/tinfoil-search/eligibility'
 import { useSearchProviderStore } from '@/stores/search-provider-store'
+import { hasOtariSearchConnection } from '@/integrations/otari-search/eligibility'
 
 /** Shares local-provider eligibility between search settings and passive preview routing. */
 export const useSearchProviderAvailability = () => {
   const db = useDatabase()
   const custom = useSearchProviderStore(({ provider, apiKey }) => Boolean(provider && apiKey))
+  const otariConnection = useSearchProviderStore((state) => state.otariConnection)
   const models = usePowerSyncQuery({
     queryKey: ['models', 'search-providers'],
     query: toCompilableQuery(getAllModels(db)),
@@ -22,6 +24,8 @@ export const useSearchProviderAvailability = () => {
   const oauthAvailable = Boolean(session.data?.enabled && session.data.connected && !session.data.needsReauth)
   return {
     custom,
+    otari: hasOtariSearchConnection(models.data ?? [], otariConnection),
+    otariConfigured: Boolean(otariConnection),
     tinfoil: hasTinfoilSearchConnection(models.data ?? [], oauthAvailable),
     tinfoilConfigured: hasConfiguredTinfoilSearch(models.data ?? [], Boolean(session.data)),
     loading: models.isLoading || session.isLoading,

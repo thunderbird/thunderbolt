@@ -7,7 +7,7 @@ import type { AddServerMode } from './mcp-server-form'
 
 export type ConnectionSelection =
   | { kind: 'integration' | 'server'; id: string }
-  | { kind: 'provider'; id: 'openrouter' | 'tinfoil' }
+  | { kind: 'provider'; id: 'openrouter' | 'tinfoil' | 'otari' }
   | null
 
 export type ConnectionsPageState = {

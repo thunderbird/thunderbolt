@@ -92,6 +92,30 @@ it('switches to Tinfoil without losing a configured search key', async () => {
   ).toBeTruthy()
 })
 
+it('shows Otari selected, supports disabling search, and does not claim confidential transport', async () => {
+  const connection = { searchStatus: 'available' as const, modelId: 'otari', url: 'https://otari.example/api/v1' }
+  await createModel(getDb(), {
+    id: connection.modelId,
+    name: 'Otari model',
+    model: 'test',
+    provider: 'otari',
+    url: connection.url,
+    apiKey: 'key',
+    enabled: 1,
+  })
+  useSearchProviderStore.getState().configureOtariSearch(connection)
+  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
+  const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Otari' }))
+  expect(screen.getByRole('button', { name: 'Open Otari' })).not.toHaveTextContent('Private')
+  fireEvent.click(toggle)
+  expect(useSearchProviderStore.getState().selection).toBe('none')
+  fireEvent.click(screen.getByRole('switch', { name: 'Use Otari' }))
+  expect(useSearchProviderStore.getState().selection).toBe('otari')
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Open Otari' })))
+  expect(screen.getByRole('link', { name: 'Manage connection' })).toHaveAttribute('href', '/settings/connections')
+  expect(screen.getByText(/Search and page content use your Otari connection/)).toBeInTheDocument()
+})
+
 it('lists all providers and opens the chosen provider without reusing another provider’s key', async () => {
   useSearchProviderStore.getState().configureSearchProvider('private-exa-key', 'exa')
   renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })

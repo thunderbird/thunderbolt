@@ -22,6 +22,7 @@ export const customProviderLabel = msg`Custom`
 // here or `getProviderLabel` fails to compile.
 const providerBrandNames: Record<Exclude<Model['provider'], 'thunderbolt' | 'custom'>, string> = {
   tinfoil: 'Tinfoil',
+  otari: 'Otari',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
   anthropic: 'Anthropic',
@@ -67,6 +68,7 @@ const ModelProviderIcon = ({ model }: { model: Pick<Model, 'provider' | 'isSyste
       return <SiAnthropic size={20} aria-hidden="true" />
     case 'openrouter':
     case 'tinfoil':
+    case 'otari':
       return <ProviderBrandLogo provider={model.provider} className="size-5" />
     case 'custom':
       return <Server className="size-5 text-muted-foreground" aria-hidden="true" />

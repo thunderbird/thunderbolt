@@ -24,10 +24,12 @@ import { useModelConnectionTest } from '@/hooks/use-model-connection-test'
 import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
+import { providerRequiresUrl } from './model-policy'
+import { getModelDisplayName } from './model-display-name'
 
 const nameRequired = msg`Name is required.`
 const modelNameRequired = msg`Model name is required.`
-const urlRequiredForCustom = msg`URL is required for Custom providers`
+const urlRequiredForProvider = msg`URL is required for this provider`
 const apiKeyRequired = msg`API Key is required for this provider`
 
 /** Built per render so the validation copy follows the active catalog — see the
@@ -35,7 +37,7 @@ const apiKeyRequired = msg`API Key is required for this provider`
 export const createAddModelFormSchema = (i18n: I18n) =>
   z
     .object({
-      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil', 'otari']),
       name: z.string().min(1, { message: i18n._(nameRequired) }),
       model: z.string().min(1, { message: i18n._(modelNameRequired) }),
       customModel: z.string().optional(),
@@ -43,8 +45,8 @@ export const createAddModelFormSchema = (i18n: I18n) =>
       apiKey: z.string().optional(),
       supportsTools: z.boolean(),
     })
-    .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
-      message: i18n._(urlRequiredForCustom),
+    .refine((data) => !providerRequiresUrl(data.provider) || Boolean(data.url?.trim()), {
+      message: i18n._(urlRequiredForProvider),
       path: ['url'],
     })
     .refine(
@@ -87,19 +89,6 @@ const addModelReducer = (state: AddModelState, action: AddModelAction): AddModel
     case 'FORM_DISCARDED':
       return initialState
   }
-}
-
-/** Generates a readable display name from a provider model identifier. */
-export const generateModelName = (modelId: string): string => {
-  const segment = modelId.split('/').pop() ?? modelId
-  const beforeColon = segment.split(':')[0]
-  const parts = beforeColon.split(/[-_]+/).flatMap((part) => {
-    if (/^[A-Za-z]\d$/.test(part)) {
-      return [part]
-    }
-    return part.match(/[A-Za-z]+|[0-9]+(?:\.[0-9]+)?/g) ?? []
-  })
-  return parts.map((part) => (/^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))).join(' ')
 }
 
 type UseAddModelFormOptions = {
@@ -183,6 +172,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
                     (model.oauthProvider ?? null) === (values.oauthProvider ?? null) &&
                     model.provider === values.provider &&
                     model.model === values.model &&
+                    (!providerRequiresUrl(values.provider) || model.url === values.url) &&
                     model.isSystem !== 1,
                 )
               : []
@@ -224,13 +214,13 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }
-      return getAvailableModels(db)
+      return { id, models: await getAvailableModels(db) }
     },
     onMutate: () => {
       onMutationStart?.()
       dispatch({ type: 'MUTATION_STARTED' })
     },
-    onSuccess: async (models, values) => {
+    onSuccess: async ({ models }, values) => {
       if (values.signal?.aborted) {
         return
       }
@@ -286,7 +276,7 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
     form.setValue('model', modelId, { shouldValidate: true })
     form.setValue('customModel', '')
     const selected = catalog.models.find((candidate) => candidate.id === modelId)
-    form.setValue('name', selected?.name || generateModelName(modelId), { shouldValidate: true })
+    form.setValue('name', getModelDisplayName(selected ?? { id: modelId }), { shouldValidate: true })
     // Thunderbolt models skip the connection test; the shipped defaults already know.
     if (provider === 'thunderbolt') {
       form.setValue('supportsTools', selected?.supports_tools !== false)

@@ -40,7 +40,12 @@ export const readOpenRouterCallback = (url: URL): OpenRouterCallback | null => {
     // the pending channel. Never forward the provider's arbitrary error text.
     return { flowId, message: { type: 'openrouter-callback', state: flowId, error: 'cancelled' } }
   }
-  if (!code?.trim() || state !== flowId) {
+  if (
+    !code?.trim() ||
+    state !== flowId ||
+    url.searchParams.getAll('state').length !== 1 ||
+    url.searchParams.getAll('code').length !== 1
+  ) {
     return { flowId, message: { type: 'openrouter-callback', state: flowId, error: 'invalid_response' } }
   }
   return { flowId, message: { type: 'openrouter-callback', state, code } }

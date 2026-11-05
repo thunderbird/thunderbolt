@@ -14,6 +14,7 @@ import { ResponsiveModalCancel } from '@/components/ui/responsive-modal'
 import { StatusCard } from '@/components/ui/status-card'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
+import { providerRequiresUrl } from './model-policy'
 import { SupportsToolsSwitch } from './supports-tools-switch'
 import { useEditModelFormState, type EditModelSubmission } from './use-edit-model-form-state'
 
@@ -82,7 +83,7 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             </FormItem>
           )}
         />
-        {model.provider === 'custom' && (
+        {providerRequiresUrl(model.provider) && (
           <FormField
             control={state.form.control}
             name="url"

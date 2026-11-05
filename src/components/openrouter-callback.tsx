@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { ProviderAuthorizationResult } from '@/components/provider-authorization-result'
 import { useEffect, useState } from 'react'
 import {
   createOpenRouterCallbackChannel,
@@ -13,9 +13,7 @@ import {
 type OpenRouterCallbackProps = { createChannel?: typeof createOpenRouterCallbackChannel }
 
 /** Relays authorization across COOP-separated windows, without relying on window.opener. */
-export default function OpenRouterCallback({
-  createChannel = createOpenRouterCallbackChannel,
-}: OpenRouterCallbackProps) {
+const OpenRouterCallback = ({ createChannel = createOpenRouterCallbackChannel }: OpenRouterCallbackProps) => {
   const [callback] = useState(() => readOpenRouterCallback(new URL(window.location.href)))
 
   // BroadcastChannel is an external system; retain only the in-memory callback
@@ -34,20 +32,10 @@ export default function OpenRouterCallback({
     }
   }, [callback, createChannel])
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="max-w-sm space-y-3 text-center">
-        <h1 className="text-xl font-semibold">
-          {callback && !callback.message.error ? (
-            <Trans>Return to Thunderbolt</Trans>
-          ) : (
-            <Trans>Connection not completed</Trans>
-          )}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          <Trans>You can close this window and return to Thunderbolt to continue.</Trans>
-        </p>
-      </div>
-    </div>
-  )
+  const isAuthorized = Boolean(callback && !callback.message.error)
+  const isCancelled = callback?.message.error === 'cancelled'
+
+  return <ProviderAuthorizationResult status={isAuthorized ? 'authorized' : isCancelled ? 'cancelled' : 'invalid'} />
 }
+
+export default OpenRouterCallback

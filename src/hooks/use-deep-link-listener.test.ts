@@ -9,6 +9,7 @@ import { afterEach, afterAll, beforeAll, describe, expect, it, mock, spyOn } fro
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { clearMcpOAuthState, setMcpOAuthState } from '@/lib/mcp-auth/mcp-oauth-state'
 import { clearOAuthState, setOAuthState, type ReturnContext } from '@/lib/oauth-state'
+import { clearOtariBrowserReturn, getOtariBrowserReturn } from '@/lib/otari-browser-auth'
 import { getClock } from '@/testing-library'
 import {
   cancelTinfoilMobileConnection,
@@ -38,6 +39,8 @@ afterEach(() => {
   clearMcpOAuthState()
   clearOAuthState()
   cancelTinfoilMobileConnection()
+  localStorage.removeItem('thunderbolt.otari.authorization')
+  clearOtariBrowserReturn('o'.repeat(43))
 })
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -569,6 +572,64 @@ describe('useDeepLinkListener hook', () => {
       log.mockRestore()
     }
   })
+  it.each(['running', 'cold-start'] as const)(
+    'routes Otari app links into its own return flow on %s',
+    async (lifecycle) => {
+      const state = 'o'.repeat(43)
+      localStorage.setItem(
+        'thunderbolt.otari.authorization',
+        JSON.stringify({
+          state,
+          verifier: 'v'.repeat(43),
+          origin: 'https://otari.ai',
+          redirectUri: 'https://app.thunderbolt.io/oauth/callback',
+          returnTo: '/settings/models',
+          context: 'models',
+          attempt: { provider: 'otari', revision: 'before-connect' },
+          createdAt: Date.now(),
+        }),
+      )
+      const urls = [`https://app.thunderbolt.io/oauth/callback?code=one-use&state=${state}`]
+      let callback: ((urls: string[]) => void) | undefined
+      const customHandler = () => {
+        throw new Error('Owned callback reached custom handler')
+      }
+      // A concurrent Google return context must not claim Otari's nonce.
+      setOAuthState({ state: 'google-nonce', provider: 'google', returnContext: '/chats/google' })
+      const view = renderHook(
+        () => {
+          useDeepLinkListener(customHandler, {
+            isTauri: () => true,
+            getCurrent: async () => (lifecycle === 'cold-start' ? urls : null),
+            onOpenUrl: async (handler) => {
+              callback = handler
+              return () => {}
+            },
+          })
+          return { location: useLocation(), navigate: useNavigate() }
+        },
+        { wrapper: ({ children }) => createElement(MemoryRouter, null, children) },
+      )
+      await act(async () => getClock().tickAsync(0))
+      if (lifecycle === 'running') {
+        await act(async () => callback!(urls))
+      }
+      expect(view.result.current.location.pathname).toBe('/oauth/otari')
+      expect(view.result.current.location.search).toBe('')
+      expect(getOtariBrowserReturn('models')).toMatchObject({
+        id: state,
+        returnTo: '/settings/models',
+        error: '',
+        attempt: { provider: 'otari', revision: 'before-connect' },
+      })
+      expect(localStorage.getItem('thunderbolt.otari.authorization')).toBeNull()
+      clearOtariBrowserReturn(state)
+      act(() => view.result.current.navigate('/settings/models'))
+      await act(async () => callback!(urls))
+      expect(view.result.current.location.pathname).toBe('/settings/models')
+      view.unmount()
+    },
+  )
 
   it('does not set up listeners when not running in Tauri', () => {
     const getCurrent = () => Promise.resolve(null)

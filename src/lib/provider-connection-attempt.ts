@@ -6,7 +6,7 @@ import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/int
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import type { TinfoilCredentials } from './tinfoil-auth'
 
-type Provider = 'openrouter' | 'tinfoil'
+type Provider = 'openrouter' | 'tinfoil' | 'otari'
 export type ProviderConnectionAttempt = { provider: Provider; revision: string }
 export type ProviderAuthorization = {
   attempt: ProviderConnectionAttempt

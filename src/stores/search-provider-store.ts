@@ -5,21 +5,26 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { SearchProvider } from '@/integrations/standalone-search/providers'
+import type { OtariSearchStatus } from '@/integrations/otari-search/capabilities'
 
-export type SearchSelection = 'auto' | 'custom' | 'tinfoil' | 'cloud' | 'none'
+export type SearchSelection = 'auto' | 'custom' | 'tinfoil' | 'otari' | 'cloud' | 'none'
+
+export type OtariSearchConnection = { modelId: string; url: string; searchStatus: OtariSearchStatus }
 
 type SearchProviderState = {
   selection: SearchSelection
   selectSearchProvider: (selection: SearchSelection) => void
   provider: SearchProvider | null
   apiKey: string
+  otariConnection: OtariSearchConnection | null
+  configureOtariSearch: (connection: OtariSearchConnection) => void
   configureSearchProvider: (apiKey: string, provider?: SearchProvider) => void
   clearSearchProvider: () => void
   disconnectSearchProvider: () => void
 }
 
 const storageKey = 'thunderbolt-search-provider'
-const initialConfiguration = { selection: 'auto', provider: null, apiKey: '' } as const
+const initialConfiguration = { selection: 'auto', provider: null, apiKey: '', otariConnection: null } as const
 
 /** Device-local search credentials, deliberately excluded from synced settings. */
 export const useSearchProviderStore = create<SearchProviderState>()(
@@ -27,6 +32,12 @@ export const useSearchProviderStore = create<SearchProviderState>()(
     (set) => ({
       ...initialConfiguration,
       selectSearchProvider: (selection) => set({ selection }),
+      configureOtariSearch: (otariConnection) =>
+        set(({ selection }) => ({
+          otariConnection,
+          selection:
+            otariConnection.searchStatus === 'available' ? 'otari' : selection === 'otari' ? 'auto' : selection,
+        })),
       configureSearchProvider: (apiKey, provider = 'brave') =>
         set({ provider, apiKey: apiKey.trim(), selection: 'custom' }),
       clearSearchProvider: () => set(initialConfiguration),
@@ -39,7 +50,12 @@ export const useSearchProviderStore = create<SearchProviderState>()(
     }),
     {
       name: storageKey,
-      partialize: ({ provider, apiKey, selection }) => ({ provider, apiKey, selection }),
+      partialize: ({ provider, apiKey, selection, otariConnection }) => ({
+        provider,
+        apiKey,
+        selection,
+        otariConnection,
+      }),
       // Removal in another window must discard the in-memory key too. Rehydration
       // otherwise merges missing storage over the current (still connected) state.
       merge: (persisted, current) => ({

@@ -15,6 +15,15 @@ it('does not silently switch providers after an explicit choice or disable', () 
   expect(resolveSearchSelection('tinfoil', { custom: true, tinfoil: true, cloud: false })).toBe('tinfoil')
 })
 
+it('uses Otari and never falls back after its saved connection is removed', () => {
+  const available = { custom: false, tinfoil: false, otari: true, otariConfigured: true, cloud: true }
+  expect(resolveSearchSelection('auto', available)).toBe('otari')
+  expect(resolveSearchSelection('otari', { ...available, custom: true, tinfoil: true })).toBe('otari')
+  expect(resolveSearchSelection('auto', { ...available, otari: false })).toBeNull()
+  expect(resolveSearchSelection('otari', { ...available, otari: false, custom: true })).toBeNull()
+  expect(resolveSearchSelection('none', available)).toBeNull()
+})
+
 it('does not fall from an unavailable configured Tinfoil connection to cloud', () => {
   const unavailable = { custom: false, tinfoil: false, tinfoilConfigured: true, cloud: true }
   expect(resolveSearchSelection('auto', unavailable)).toBeNull()

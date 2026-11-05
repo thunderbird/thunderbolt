@@ -48,6 +48,17 @@ describe('model readiness', () => {
       isModelReady(createMockModel({ provider: 'custom', url: 'http://localhost:11434/v1', apiKey: null }), ''),
     ).toBe(true)
   })
+  it('requires both an endpoint and a credential for Otari', () => {
+    const model = createMockModel({
+      provider: 'otari',
+      isSystem: 0,
+      url: 'https://otari.example/api/v1',
+      apiKey: 'key',
+    })
+    expect(isModelReady(model, '')).toBe(true)
+    expect(isModelReady({ ...model, url: null }, '')).toBe(false)
+    expect(isModelReady({ ...model, apiKey: null }, '')).toBe(false)
+  })
   it('rejects disabled, deleted, and keyless provider models', () => {
     for (const overrides of [{ enabled: 0 }, { deletedAt: '2026-01-01' }, { apiKey: null }]) {
       expect(isModelReady(createMockModel(overrides), '')).toBe(false)
@@ -101,6 +112,7 @@ describe('catalog policy', () => {
     expect(catalogRequiresApiKey('openai')).toBe(true)
     expect(catalogRequiresApiKey('openrouter')).toBe(true)
     expect(catalogRequiresApiKey('anthropic')).toBe(true)
+    expect(catalogRequiresApiKey('otari')).toBe(true)
     expect(catalogRequiresApiKey('tinfoil')).toBe(false)
     expect(catalogRequiresApiKey('thunderbolt')).toBe(false)
     expect(catalogRequiresApiKey('custom')).toBe(false)

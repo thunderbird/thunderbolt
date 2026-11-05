@@ -19,13 +19,14 @@ import {
   hasModelConnectionChanges,
   modelApiKeyForConnection,
   providerRequiresConnectionTest,
+  providerRequiresUrl,
   type ApiKeyEdit,
 } from './model-policy'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
 const nameRequired = msg`Name is required.`
 const modelNameRequired = msg`Model name is required.`
-const urlRequiredForCustom = msg`URL is required for Custom providers`
+const urlRequiredForProvider = msg`URL is required for this provider`
 
 const editModelFormSchema = (i18n: I18n) =>
   z.object({
@@ -37,8 +38,8 @@ const editModelFormSchema = (i18n: I18n) =>
   })
 
 const buildEditModelFormSchema = (i18n: I18n, provider: Model['provider']) =>
-  editModelFormSchema(i18n).refine((data) => provider !== 'custom' || Boolean(data.url), {
-    message: i18n._(urlRequiredForCustom),
+  editModelFormSchema(i18n).refine((data) => !providerRequiresUrl(provider) || Boolean(data.url?.trim()), {
+    message: i18n._(urlRequiredForProvider),
     path: ['url'],
   })
 

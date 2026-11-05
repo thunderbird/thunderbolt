@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import '@/testing-library'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { act, cleanup, fireEvent, screen } from '@testing-library/react'
 import { setupTestDatabase, teardownTestDatabase, resetTestDatabase } from '@/dal/test-utils'
 import { createMockChatInstance, createMockModel, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { renderWithReactivity, waitForElement } from '@/test-utils/powersync-reactivity-test'
-import { getChatReasoningEffort } from '@/ai/reasoning-effort'
+import { getChatReasoningEffort, loadReasoningCapabilities } from '@/ai/reasoning-effort'
+import * as settingsDal from '@/dal/settings'
 import { useChatStore } from '@/chats/chat-store'
 import { sessionConfigKey, useSessionConfigStore } from '@/acp/session-config-store'
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
@@ -227,6 +228,7 @@ describe('effort selector state', () => {
     // Switching models keeps the surface open but must not inherit an in-flight optimistic selection.
     const nextSlider = screen.getByRole('slider', { name: 'Reasoning effort' })
     expect(nextSlider.getAttribute('aria-valuetext')).toBe('Low')
+    expect(nextSlider).toBeDisabled()
     await act(async () => {
       useSessionConfigStore.getState().set(key, {
         options: options.map((option) => (option.type === 'select' ? { ...option, currentValue: 'high' } : option)),
@@ -236,6 +238,126 @@ describe('effort selector state', () => {
     })
     expect(nextSlider.getAttribute('aria-valuetext')).toBe('High')
     useSessionConfigStore.getState().remove(key, setOption)
+  })
+
+  it.each([false, true])(
+    'scopes built-in saves by model and waits for every write when first save fails: %s',
+    async (failFirst) => {
+      const first = Promise.withResolvers<void>()
+      const second = Promise.withResolvers<void>()
+      const updateSettings = settingsDal.updateSettings
+      const write = spyOn(settingsDal, 'updateSettings').mockImplementation(async (db, updates, options) => {
+        await (Object.keys(updates)[0].endsWith(model.id) ? first.promise : second.promise)
+        await updateSettings(db, updates, options)
+      })
+      const other = { ...model, id: 'other-model' }
+      try {
+        renderWithReactivity(<Probe />, { tables: ['settings'] })
+        const high = await waitForElement(() => screen.queryByRole('button', { name: 'High' }))
+        await act(async () => {
+          fireEvent.click(high)
+        })
+        expect(high).toBeDisabled()
+        await act(async () => {
+          useChatStore.getState().updateSession('effort-chat', { selectedModel: other })
+        })
+        expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
+        expect(screen.getByRole('status').textContent).toBe('')
+        await act(async () => {
+          fireEvent.click(screen.getByRole('button', { name: 'Low' }))
+        })
+        const barrier = useChatStore.getState().sessions.get('effort-chat')!.configurationChange!
+        const completed = { value: false }
+        const settled = barrier.then(
+          () => {
+            completed.value = true
+          },
+          () => {
+            completed.value = true
+          },
+        )
+        await act(async () => {
+          if (failFirst) {
+            first.reject(new Error('First write failed'))
+          } else {
+            first.resolve()
+          }
+        })
+        expect(completed.value).toBe(false)
+        expect(useChatStore.getState().sessions.get('effort-chat')!.configurationChange).toBe(barrier)
+        expect(screen.getByRole('button', { name: 'Low' })).toBeDisabled()
+        expect(screen.getByRole('status').textContent).toBe('low')
+        await act(async () => {
+          second.resolve()
+          await settled
+        })
+        expect(screen.getByRole('button', { name: 'Low' })).not.toBeDisabled()
+        expect(useChatStore.getState().sessions.get('effort-chat')!.configurationChange).toBeUndefined()
+        expect(await getChatReasoningEffort('effort-chat', other)).toBe('low')
+        if (failFirst) {
+          await expect(barrier).rejects.toThrow('First write failed')
+        } else {
+          await expect(barrier).resolves.toBeUndefined()
+        }
+      } finally {
+        first.resolve()
+        second.resolve()
+        write.mockRestore()
+      }
+    },
+  )
+
+  it('shows a dismissible notification when a write fails after the picker closes', async () => {
+    const save = Promise.withResolvers<void>()
+    const remove = installRemoteOptions(async () => {
+      await save.promise
+    })
+    renderWithReactivity(<EffortSelector modelPicker={(close) => <button onClick={close}>Close picker</button>} />, {
+      tables: ['settings'],
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Model and reasoning effort' }))
+    })
+    await act(async () => {
+      fireEvent.change(screen.getByRole('slider'), { target: { value: '1' } })
+    })
+    await act(async () => {
+      fireEvent.pointerUp(screen.getByRole('slider'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close picker' }))
+    })
+    await act(async () => {
+      save.reject(new Error('Agent rejected change'))
+    })
+    expect(screen.getByRole('alert').textContent).toBe('Could not change reasoning effort')
+    expect(screen.getAllByText('Could not change reasoning effort').some((element) => element.tagName === 'P')).toBe(
+      true,
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }))
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    remove()
+  })
+
+  it('carries toggle capabilities through to the trigger ring', async () => {
+    const toggleModel = { ...model, provider: 'anthropic' as const, model: 'claude-sonnet-4-5' }
+    await loadReasoningCapabilities(toggleModel)
+    useChatStore.getState().updateSession('effort-chat', { selectedModel: toggleModel })
+    renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
+    const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    await act(async () => {
+      fireEvent.change(screen.getByRole('slider'), { target: { value: '1' } })
+    })
+    await act(async () => {
+      fireEvent.pointerUp(screen.getByRole('slider'))
+    })
+    expect(trigger.getAttribute('title')).toBe('Reasoning effort: On')
+    expect(trigger.querySelectorAll('circle[stroke-opacity="1"]')).toHaveLength(6)
   })
 
   it('retains the missing API key warning in the combined trigger', async () => {

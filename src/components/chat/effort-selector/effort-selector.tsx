@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { NotificationCard } from '@/components/ui/notification-card'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
 import { useLingui } from '@lingui/react/macro'
 import { ResponsivePopover } from '@/components/ui/responsive-popover'
@@ -18,7 +20,7 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
   const { t } = useLingui()
   const { selectedModel, chatThread } = useCurrentChatSession()
   const effort = useEffortSelectorState()
-  const { choices, value } = effort
+  const { choices, value, kind, error, dismissError } = effort
   const [open, setOpen] = useState(false)
   if (!choices.length && !modelPicker) {
     return null
@@ -49,27 +51,45 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: (onClose: () => 
           <GradientLock className="size-3.5 shrink-0" />
         ) : null)}
       {modelPicker && <span className="max-w-40 truncate">{selectedModel.name}</span>}
-      {current >= 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} />}
+      {current >= 0 && <EffortRing value={value} values={choices.map((choice) => choice.value)} kind={kind} />}
       <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" />
     </button>
   )
   return (
-    <ResponsivePopover
-      open={open}
-      onOpenChange={setOpen}
-      trigger={trigger}
-      title={t`Model and reasoning effort`}
-      mobileMenu={{ side: 'bottom', showTitle: !modelPicker }}
-      desktopMenu={{
-        side: !chatThread ? 'bottom' : 'top',
-        align: 'end',
-        sideOffset: 5,
-        className:
-          'flex max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0',
-      }}
-    >
-      {modelPicker?.(() => setOpen(false))}
-      {choices.length > 0 && <EffortControls key={selectedModel.id} {...effort} />}
-    </ResponsivePopover>
+    <>
+      <ResponsivePopover
+        open={open}
+        onOpenChange={setOpen}
+        trigger={trigger}
+        title={t`Model and reasoning effort`}
+        mobileMenu={{ side: 'bottom', showTitle: !modelPicker }}
+        desktopMenu={{
+          side: !chatThread ? 'bottom' : 'top',
+          align: 'end',
+          sideOffset: 5,
+          className:
+            'flex max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0',
+        }}
+      >
+        {modelPicker?.(() => setOpen(false))}
+        {choices.length > 0 && <EffortControls key={selectedModel.id} {...effort} />}
+      </ResponsivePopover>
+      {createPortal(
+        <>
+          {!open && error && (
+            <span role="alert" className="sr-only">
+              {error}
+            </span>
+          )}
+          <NotificationCard
+            open={!open && error !== null}
+            icon={<AlertTriangle aria-hidden="true" className="size-[var(--icon-size-default)] text-destructive" />}
+            message={error ?? ''}
+            onDismiss={dismissError}
+          />
+        </>,
+        document.body,
+      )}
+    </>
   )
 }

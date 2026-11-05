@@ -11,6 +11,7 @@ import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
 import { defaultModelGlm53, defaultModelDeepSeekV41Flash, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
+import { tinfoilReasoningCapabilities } from '../../../shared/reasoning-effort.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { readFileOrNull } from '../lib/secure-fs.ts'
@@ -337,9 +338,9 @@ describe('createTinfoilBinding', () => {
   })
 
   test.each([
-    ['glm-5-3', 'off', { type: 'enabled', clear_thinking: false }, 'low'],
-    ['glm-5-3', 'minimal', { type: 'enabled', clear_thinking: false }, 'low'],
-    ['glm-5-3', 'medium', { type: 'enabled', clear_thinking: false }, 'high'],
+    ['glm-5-3', 'off', undefined, 'low'],
+    ['glm-5-3', 'minimal', undefined, 'low'],
+    ['glm-5-3', 'medium', undefined, 'high'],
     ['glm-5-2', 'low', { type: 'enabled', clear_thinking: false }, 'high'],
   ] as const)(
     'maps %s %s thinking through Pi compatibility',
@@ -372,6 +373,72 @@ describe('createTinfoilBinding', () => {
       }
     },
   )
+
+  test.each([defaultModelGlm53, defaultModelDeepSeekV41Flash])(
+    'advertises and sends every native effort unchanged for $model',
+    async (model) => {
+      const requests: Record<string, unknown>[] = []
+      const binding = await createTinfoilBinding({
+        ...bindingOptions(),
+        model,
+        createSecureClient: secureClientFactory(async (request) => {
+          requests.push((await request.json()) as Record<string, unknown>)
+          return successfulCompletion('')
+        }),
+      })
+      const runtime = await createRuntime(binding)
+      const capabilities = tinfoilReasoningCapabilities(model.model)
+      try {
+        expect(runtime.reasoning.capabilities()).toEqual(capabilities)
+        for (const effort of capabilities.efforts) {
+          await runtime.reasoning.set(effort)
+          expect(runtime.reasoning.current()).toBe(effort)
+          await runtime.prompt(`Use ${effort}`)
+          const payload = requests.at(-1)!
+          expect(payload.reasoning_effort).toBe(effort)
+          expect(payload.thinking).toBeUndefined()
+          expect(payload.chat_template_kwargs).toBeUndefined()
+        }
+      } finally {
+        await runtime.dispose()
+      }
+    },
+  )
+
+  test('keeps exact effort controls attached to the current binding across a model switch', async () => {
+    const requests: Record<string, unknown>[] = []
+    const createSecureClient = secureClientFactory(async (request) => {
+      requests.push((await request.json()) as Record<string, unknown>)
+      return successfulCompletion('')
+    })
+    const glm = await createTinfoilBinding({ ...bindingOptions(), createSecureClient })
+    const runtime = await createRuntime(glm)
+    try {
+      await runtime.reasoning.set('max')
+      await runtime.prompt('GLM maximum')
+      const deepseek = await createTinfoilBinding({
+        ...bindingOptions(),
+        model: defaultModelDeepSeekV41Flash,
+        createSecureClient,
+      })
+      await runtime.switchBinding(
+        deepseek,
+        { commit: async () => {}, rollback: async () => {}, finalize: async () => {} },
+        { forceReplace: false },
+      )
+      expect(runtime.reasoning.current()).toBe('max')
+      await runtime.prompt('DeepSeek maximum')
+      await runtime.reasoning.set('none')
+      await runtime.prompt('DeepSeek off')
+      expect(requests.map(({ model, reasoning_effort }) => [model, reasoning_effort])).toEqual([
+        ['glm-5-3', 'max'],
+        ['deepseek-v4-1-flash', 'max'],
+        ['deepseek-v4-1-flash', 'none'],
+      ])
+    } finally {
+      await runtime.dispose()
+    }
+  })
 
   test('derives thinking semantics from each confidential model instead of GLM 5.2', async () => {
     const requestEfforts: unknown[] = []

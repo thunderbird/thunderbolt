@@ -1104,6 +1104,59 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
 })
 
 describe('ACP reasoning configuration', () => {
+  it('does not send a waiting prompt with the previous effort after a config change fails', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      const context = threadCtx('failed-config')
+      await adapter.ensureSession(context)
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+      const change = config.setOption('budget', 'high')
+      const prompt = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        context,
+      )
+      const settled = Promise.allSettled([change, prompt])
+      await getClock().tickAsync(0)
+      gate.reject(new Error('Effort change rejected'))
+      const results = await settled
+      expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+      expect(fake.calls.prompt).toHaveLength(0)
+      expect(config.options[0].currentValue).toBe('low')
+      // A failed preparation releases the session; an explicit retry can send.
+      const retry = await adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'retry' }] }] }) },
+        context,
+      )
+      expect(fake.calls.prompt).toHaveLength(1)
+      fake.releasePrompts()
+      await retry.text()
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
   it('waits for a pending config write before prompting and rejects concurrent changes', async () => {
     const gate = Promise.withResolvers<void>()
     const fake = buildFakeConnection({

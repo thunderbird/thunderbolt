@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useOptimistic, useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useLingui } from '@lingui/react/macro'
 import { useChatStore, useCurrentChatSession } from '@/chats/chat-store'
@@ -32,10 +32,12 @@ export const useEffortSelectorState = () => {
   const effort = resolveReasoningEffort(setting.value, capabilities)
   const scope = `${selectedAgent.id}:${key}`
   const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null)
-  const [pending, startTransition] = useTransition()
+  const [pending, setPending] = useState<ReadonlyMap<string, { scope: string; value: string }>>(() => new Map())
+  // Built-in preferences are per model; an ACP configuration write belongs to the entire session.
+  const writeScope = builtIn ? scope : sessionConfigKey(selectedAgent.id, id)
   const busy =
-    pending ||
-    (builtIn && (setting.isSaving || setting.isLoading)) ||
+    pending.has(writeScope) ||
+    (builtIn && setting.isLoading) ||
     chatInstance.status === 'submitted' ||
     chatInstance.status === 'streaming' ||
     compactionStatus === 'compacting'
@@ -58,34 +60,55 @@ export const useEffortSelectorState = () => {
       : []
   const value = builtIn ? effort : option?.currentValue
   const resolvedValue = typeof value === 'string' ? value : undefined
-  const [optimistic, setOptimisticValue] = useOptimistic({ scope, value: resolvedValue })
-  const displayValue = optimistic.scope === scope ? optimistic.value : resolvedValue
-  const choose = (next: string) => {
+  const optimistic = pending.get(writeScope)
+  const displayValue = optimistic?.scope === scope ? optimistic.value : resolvedValue
+  const choose = async (next: string) => {
     if (busy || !choices.some((choice) => choice.value === next)) {
       return
     }
     setFailure(null)
-    startTransition(async () => {
-      setOptimisticValue({ scope, value: next })
-      try {
-        if (builtIn) {
-          const write = setting.setValue(next)
-          useChatStore.getState().updateSession(id, { configurationChange: write })
-          try {
-            await write
-          } finally {
-            if (useChatStore.getState().sessions.get(id)?.configurationChange === write) {
-              useChatStore.getState().updateSession(id, { configurationChange: undefined })
-            }
+    setPending((current) => new Map(current).set(writeScope, { scope, value: next }))
+    try {
+      if (builtIn) {
+        const previousWrite = useChatStore.getState().sessions.get(id)?.configurationChange
+        const write = setting.setValue(next)
+        const barrier = (async () => {
+          const results = await Promise.allSettled([previousWrite, write])
+          const failure = results.find((result) => result.status === 'rejected')
+          if (failure?.status === 'rejected') {
+            throw failure.reason
           }
-        } else if (remote && option) {
-          await remote.setOption(option.id, next)
+        })()
+        useChatStore.getState().updateSession(id, { configurationChange: barrier })
+        const clearBarrier = () => {
+          if (useChatStore.getState().sessions.get(id)?.configurationChange === barrier) {
+            useChatStore.getState().updateSession(id, { configurationChange: undefined })
+          }
         }
-      } catch (error) {
-        console.error('Could not change reasoning effort', error)
-        setFailure({ scope, message: t`Could not change reasoning effort` })
+        // The send path observes barrier failures; this write reports only its own failure.
+        void barrier.then(clearBarrier, clearBarrier)
+        await write
+      } else if (remote && option) {
+        await remote.setOption(option.id, next)
       }
-    })
+    } catch (error) {
+      console.error('Could not change reasoning effort', error)
+      setFailure({ scope, message: t`Could not change reasoning effort` })
+    } finally {
+      setPending((current) => {
+        const remaining = new Map(current)
+        remaining.delete(writeScope)
+        return remaining
+      })
+    }
   }
-  return { error: failure?.scope === scope ? failure.message : null, choices, value: displayValue, busy, choose }
+  return {
+    error: failure?.scope === scope ? failure.message : null,
+    dismissError: () => setFailure(null),
+    kind: builtIn ? capabilities.kind : undefined,
+    choices,
+    value: displayValue,
+    busy,
+    choose,
+  }
 }

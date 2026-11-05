@@ -98,5 +98,15 @@ export const getChatReasoningEffort = async (threadId: string, model: Model) => 
   if (!isReasoningEffort(settings[key])) {
     return undefined
   }
-  return resolveReasoningEffort(settings[key], await loadReasoningCapabilities(model))
+  try {
+    return resolveReasoningEffort(settings[key], await loadReasoningCapabilities(model))
+  } catch (error) {
+    if (model.provider !== 'openrouter') {
+      throw error
+    }
+    // Discovery is advisory: preserve the user's explicit choice during a cold
+    // catalog outage and let the inference endpoint validate it.
+    console.warn('Could not discover OpenRouter reasoning capabilities; keeping the saved effort', error)
+    return settings[key]
+  }
 }

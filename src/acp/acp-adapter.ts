@@ -690,6 +690,8 @@ export const connectAcpAdapter = async (
     const sessionId = await resolveThreadSession(context)
     preparingPrompts.add(sessionId)
     const preparePrompt = async () => {
+      // A prompt submitted during a config change must not silently run with
+      // the previous setting if that change fails. The user can retry explicitly.
       await configChanges.get(sessionId)
 
       // First real send of a freshly-minted session: persist the id we actually

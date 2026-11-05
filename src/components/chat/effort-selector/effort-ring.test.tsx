@@ -35,6 +35,27 @@ describe('effort ring', () => {
     expect(container.querySelectorAll('circle[stroke-opacity="1"]')).toHaveLength(6)
   })
 
+  it.each([
+    { values: ['low', 'balanced', 'high'] },
+    { values: ['low', 'standard', 'medium', 'high'] },
+    { values: ['quick', 'low'] },
+  ])('uses one ordinal scale for mixed agent values: $values', ({ values }) => {
+    const { container, rerender } = render(<EffortRing value={values[0]} values={values} />)
+    for (const [index, value] of values.entries()) {
+      rerender(<EffortRing value={value} values={values} />)
+      expect(container.querySelectorAll('circle[stroke-opacity="1"]')).toHaveLength(
+        Math.ceil(((index + 1) / values.length) * 6),
+      )
+    }
+  })
+
+  it('fills a toggle ring completely for On and empties it for Off', () => {
+    const { container, rerender } = render(<EffortRing value="high" values={['none', 'high']} kind="toggle" />)
+    expect(container.querySelectorAll('circle[stroke-opacity="1"]')).toHaveLength(6)
+    rerender(<EffortRing value="none" values={['none', 'high']} kind="toggle" />)
+    expect(container.querySelectorAll('circle[stroke-opacity="1"]')).toHaveLength(0)
+  })
+
   it.each([undefined, 'removed'])('does not imply a selected strength for %s', (value) => {
     const { container } = render(<EffortRing value={value} values={['low', 'high']} />)
     expect(container.querySelectorAll('circle[stroke-opacity]')).toHaveLength(0)

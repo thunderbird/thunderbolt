@@ -6,7 +6,13 @@ import { useState, type CSSProperties } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import type { useEffortSelectorState } from './use-effort-selector-state'
 
-export const EffortControls = ({ choices, value, busy, choose, error }: ReturnType<typeof useEffortSelectorState>) => {
+export const EffortControls = ({
+  choices,
+  value,
+  busy,
+  choose,
+  error,
+}: Pick<ReturnType<typeof useEffortSelectorState>, 'choices' | 'value' | 'busy' | 'choose' | 'error'>) => {
   const { t } = useLingui()
   const [preview, setPreview] = useState<string | null>(null)
   const current = choices.findIndex((choice) => choice.value === value)

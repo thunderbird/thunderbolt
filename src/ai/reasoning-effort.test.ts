@@ -113,6 +113,35 @@ it('reads only valid, currently supported per-chat/model effort preferences at s
   expect(await getChatReasoningEffort('saved-chat', { ...model, model: 'llama3-3-70b' })).toBeUndefined()
 })
 
+it('keeps a saved OpenRouter choice when discovery fails before any catalog has loaded', async () => {
+  const model = createMockModel({ id: 'router-outage', provider: 'openrouter', model: 'test/outage' })
+  const key = reasoningEffortSettingKey('router-outage-chat', model.id)
+  const fetch = spyOn(globalThis, 'fetch').mockImplementation(
+    Object.assign(
+      async () => {
+        throw new Error('Catalog unavailable')
+      },
+      { preconnect: () => {} },
+    ),
+  )
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    await updateSettings(getDb(), { [key]: 'high' })
+    expect(await getChatReasoningEffort('router-outage-chat', model)).toBe('high')
+    await updateSettings(getDb(), { [key]: 'none' })
+    expect(await getChatReasoningEffort('router-outage-chat', model)).toBe('none')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledTimes(2)
+    await updateSettings(getDb(), { [key]: 'invalid' })
+    expect(await getChatReasoningEffort('router-outage-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('unsaved-chat', model)).toBeUndefined()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  } finally {
+    fetch.mockRestore()
+    warn.mockRestore()
+  }
+})
+
 it.each([
   { provider: 'openai', vendor: null, model: 'gpt-5.5', efforts: ['none', 'low', 'medium', 'high', 'xhigh'] },
   { provider: 'thunderbolt', vendor: 'openai', model: 'gpt-5.5', efforts: ['none', 'low', 'medium', 'high', 'xhigh'] },

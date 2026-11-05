@@ -4,18 +4,40 @@
 
 import { useId } from 'react'
 import { Sparkles } from 'lucide-react'
+import { isReasoningEffort, reasoningEfforts, type ReasoningCapabilities } from '@shared/reasoning-effort'
 
-const levels: Record<string, number> = { none: 0, off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6 }
+const segmentCount = reasoningEfforts.length - 1
 
-/** Six fixed segments distinguish every native effort; unknown ACP values follow the agent's ordering. */
-export const EffortRing = ({ value, values }: { value: string | undefined; values: string[] }) => {
+/** Recognize Pi's off alias without assigning native meanings to arbitrary ACP values. */
+const nativeEffort = (value: string) => (value === 'off' ? 'none' : value)
+
+/** Native lists use an absolute effort scale; mixed/opaque ACP lists use one ordinal scale. */
+const filledSegments = (value: string, values: readonly string[], kind: ReasoningCapabilities['kind']) => {
+  const effort = nativeEffort(value)
+  if (kind === 'toggle') {
+    return effort === 'none' ? 0 : segmentCount
+  }
+  if (values.every((option) => isReasoningEffort(nativeEffort(option))) && isReasoningEffort(effort)) {
+    return reasoningEfforts.indexOf(effort)
+  }
+  return Math.ceil(((values.indexOf(value) + 1) / values.length) * segmentCount)
+}
+
+/** Toggle controls fill the ring for On, independent of their underlying native effort. */
+export const EffortRing = ({
+  value,
+  values,
+  kind,
+}: {
+  value: string | undefined
+  values: readonly string[]
+  kind?: ReasoningCapabilities['kind']
+}) => {
   const gradientId = useId()
   if (value === undefined || !values.includes(value)) {
     return <Sparkles aria-hidden="true" className="size-[var(--icon-size-default)] shrink-0 text-muted-foreground" />
   }
-  const filled = Object.hasOwn(levels, value)
-    ? levels[value]!
-    : Math.max(1, Math.ceil(((values.indexOf(value) + 1) / values.length) * 6))
+  const filled = filledSegments(value, values, kind)
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20" className="size-[var(--icon-size-default)] shrink-0" fill="none">
       <defs>
@@ -24,7 +46,7 @@ export const EffortRing = ({ value, values }: { value: string | undefined; value
           <stop offset="1" stopColor="var(--color-brand)" />
         </linearGradient>
       </defs>
-      {Array.from({ length: 6 }, (_, index) => (
+      {Array.from({ length: segmentCount }, (_, index) => (
         <circle
           key={index}
           cx="10"

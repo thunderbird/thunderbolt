@@ -4,6 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
+import { installUrlCanParsePolyfill } from '@/polyfills'
 import * as tauriCore from '@tauri-apps/api/core'
 import * as tauriEvent from '@tauri-apps/api/event'
 import * as opener from '@tauri-apps/plugin-opener'
@@ -75,10 +76,11 @@ describe('startSsoFlowLoopback', () => {
     expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
   })
 
-  it('accepts a valid callback without URL.canParse while ignoring malformed callbacks', async () => {
+  it('accepts valid callbacks using the URL.canParse polyfill while ignoring malformed callbacks', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(URL, 'canParse')
     Object.defineProperty(URL, 'canParse', { configurable: true, value: undefined })
     try {
+      installUrlCanParsePolyfill()
       openUrlSpy.mockImplementation(async (url) => {
         callback({ payload: { url: 'not a URL' } })
         respond(url, { client_state: 'wrong-state', token: 'attacker-token' })

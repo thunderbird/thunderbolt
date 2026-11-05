@@ -84,11 +84,14 @@ fn matches_client_state(path: &str, port: u16, expected: Option<&str>) -> bool {
     states.next().is_some_and(|(_, value)| value == expected) && states.next().is_none()
 }
 
+/// Cookies for other localhost ports can accompany the provider's redirect.
+const MAX_REQUEST_BYTES: usize = 64 * 1024;
+
 /// Read a complete, bounded HTTP header, including requests split across TCP packets.
 fn read_request(stream: &mut TcpStream, timeout: Duration) -> Option<String> {
     stream.set_nonblocking(false).ok()?;
     let deadline = Instant::now() + timeout;
-    let mut buffer = [0u8; 4096];
+    let mut buffer = [0u8; MAX_REQUEST_BYTES];
     let mut length = 0;
     while length < buffer.len() {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -115,24 +118,30 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Ignore unrelated connections until a valid callback arrives or the overall deadline expires.
 fn receive_callback(
-    listener: &TcpListener,
+    mut connections: impl Iterator<Item = std::io::Result<TcpStream>>,
     port: u16,
     client_state: Option<&str>,
     timeout: Duration,
 ) -> Option<(TcpStream, String)> {
     let deadline = Instant::now() + timeout;
+    let mut reported_accept_error = false;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return None;
         }
-        let mut stream = match listener.accept() {
-            Ok((stream, _)) => stream,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+        let mut stream = match connections.next()? {
+            Ok(stream) => stream,
+            Err(error) => {
+                // Aborted connections and resource exhaustion can recover. Retry within
+                // the overall deadline, logging once so persistent errors cannot flood logs.
+                if error.kind() != std::io::ErrorKind::WouldBlock && !reported_accept_error {
+                    eprintln!("OAuth loopback accept failed; retrying until the callback deadline: {error}");
+                    reported_accept_error = true;
+                }
                 thread::sleep(remaining.min(Duration::from_millis(50)));
                 continue;
             }
-            Err(_) => return None,
         };
         let request = read_request(&mut stream, remaining.min(REQUEST_TIMEOUT));
         if Instant::now() >= deadline {
@@ -164,9 +173,12 @@ pub fn start(
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
 
     thread::spawn(move || {
-        let Some((mut stream, path)) =
-            receive_callback(&listener, port, client_state.as_deref(), ACCEPT_TIMEOUT)
-        else {
+        let Some((mut stream, path)) = receive_callback(
+            listener.incoming(),
+            port,
+            client_state.as_deref(),
+            ACCEPT_TIMEOUT,
+        ) else {
             return;
         };
         let _ = stream.write_all(RESPONSE_HTML.as_bytes());
@@ -191,7 +203,8 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let state = state.map(str::to_owned);
         let handle = thread::spawn(move || {
-            receive_callback(&listener, port, state.as_deref(), timeout).map(|(_, path)| path)
+            receive_callback(listener.incoming(), port, state.as_deref(), timeout)
+                .map(|(_, path)| path)
         });
         (port, handle)
     }
@@ -315,6 +328,84 @@ mod tests {
             receiver.join().unwrap().as_deref(),
             Some("/?client_state=expected&error=access_denied")
         );
+    }
+
+    #[test]
+    fn accepts_cookie_heavy_redirects_up_to_the_header_limit() {
+        for size in [12 * 1024, MAX_REQUEST_BYTES] {
+            let (port, receiver) = spawn_receiver(Some("expected"), Duration::from_secs(2));
+            let prefix = format!(
+                "GET /?client_state=expected&token=real HTTP/1.1\r\nHost: localhost:{port}\r\nCookie: local="
+            );
+            let raw = format!("{prefix}{}\r\n\r\n", "x".repeat(size - prefix.len() - 4));
+            let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            client.write_all(raw.as_bytes()).unwrap();
+            assert_eq!(
+                receiver.join().unwrap().as_deref(),
+                Some("/?client_state=expected&token=real")
+            );
+        }
+    }
+
+    #[test]
+    fn a_request_exceeding_the_header_budget_does_not_consume_the_callback() {
+        let (port, receiver) = spawn_receiver(Some("expected"), Duration::from_secs(2));
+        let prefix = format!(
+            "GET /?client_state=expected&token=real HTTP/1.1\r\nHost: localhost:{port}\r\nCookie: local="
+        );
+        // Exhaust the budget before the final header delimiter arrives.
+        let raw = format!("{prefix}{}", "x".repeat(MAX_REQUEST_BYTES - prefix.len()));
+        send_rejected_request(port, &raw);
+        let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client
+            .write_all(request(port, "/?client_state=expected&token=real").as_bytes())
+            .unwrap();
+        assert_eq!(
+            receiver.join().unwrap().as_deref(),
+            Some("/?client_state=expected&token=real")
+        );
+    }
+
+    #[test]
+    fn accept_errors_do_not_consume_the_pending_callback() {
+        let (listener, port) = bind_to_port(&[0]).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let receiver = thread::spawn(move || {
+            let errors = [
+                std::io::ErrorKind::Interrupted,
+                std::io::ErrorKind::ConnectionAborted,
+                std::io::ErrorKind::Other,
+            ]
+            .into_iter()
+            .map(|kind| Err(std::io::Error::from(kind)));
+            receive_callback(
+                errors.chain(listener.incoming()),
+                port,
+                Some("expected"),
+                Duration::from_secs(2),
+            )
+            .map(|(_, path)| path)
+        });
+        let mut client = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        client
+            .write_all(request(port, "/?client_state=expected&token=real").as_bytes())
+            .unwrap();
+        assert_eq!(
+            receiver.join().unwrap().as_deref(),
+            Some("/?client_state=expected&token=real")
+        );
+    }
+
+    #[test]
+    fn persistent_accept_errors_remain_bounded_by_the_deadline() {
+        let errors = std::iter::repeat_with(|| {
+            Err(std::io::Error::from(std::io::ErrorKind::ConnectionAborted))
+        });
+        let started = Instant::now();
+        assert!(
+            receive_callback(errors, 17421, Some("expected"), Duration::from_millis(100)).is_none()
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

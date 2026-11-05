@@ -296,6 +296,7 @@ a teardown.
 | `.github/scripts/post-pr-metrics.cjs`                   | `pr-metrics.yml`                                     | Renders the metrics comment; unit-tested by `bun run test`            |
 | `.github/scripts/post-eval-results.ts`                  | `evals.yml`                                          | Unit-tested by `bun run test`                                         |
 | `scripts/lingui-macro-bun-shim.ts`                      | `--preload` on every `eval*` script                  | See below                                                             |
+| `scripts/prune-unreachable-deps.ts`                     | `deploy/docker/backend.Dockerfile`                   | Works around `--production` installing dev-only optional peers        |
 
 Bun has no Babel pass, so a Lingui macro imported under plain `bun run` resolves to a stub
 that throws, and the eval CLIs reach UI modules transitively. Every `eval*` script in

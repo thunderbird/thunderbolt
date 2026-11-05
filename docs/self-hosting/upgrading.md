@@ -211,7 +211,7 @@ If you deploy through the repository's stack workflow instead, pass the same ver
 
 ## Database migrations
 
-Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand. `SKIP_MIGRATIONS=true` stops the API applying them in-process, but the container image's entrypoint runs `drizzle-kit migrate` before the server starts regardless, so migrating separately means overriding the container command as well. They are **not** reversible: migrations are forward-only, and there are no down migrations. The whole run goes in one transaction, so if any migration fails the rest roll back with it, the container exits, and the reason is in its log.
+Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand. `SKIP_MIGRATIONS=true` stops the API applying them, for when you run migrations separately; the image has no migration tool of its own, so run `cd backend && bun db migrate` from a source checkout against the same `DATABASE_URL` before starting the API. They are **not** reversible: migrations are forward-only, and there are no down migrations. The whole run goes in one transaction, so if any migration fails the rest roll back with it, the container exits, and the reason is in its log.
 
 Forward-only also means going back to an older image does not undo a schema change. Some releases drop columns or tables, and an older API against a newer schema may fail. A database backup taken before the upgrade is the only real rollback for a schema change.
 

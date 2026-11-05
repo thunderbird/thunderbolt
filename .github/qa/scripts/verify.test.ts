@@ -298,16 +298,20 @@ describe('replay', () => {
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['never'])
   })
 
-  test('a fake-provider gap logged while a spec ran becomes its provider_gaps, once per request', async () => {
+  test('a fake-provider gap logged during a counted spec run becomes its provider_gaps, once per request', async () => {
     for (const title of ['chat', 'other']) await writeFinding(makeFinding(title, pageError))
     const failing = ['failed', 'failed', 'failed']
     const base = fakeRunner(
-      { 'c2-chat-desktop/repro/chat.spec.ts': failing, 'c2-chat-desktop/repro/other.spec.ts': failing },
+      {
+        'c2-chat-desktop/repro/chat.spec.ts': failing,
+        'c2-chat-desktop/repro/other.spec.ts': ['failed', ...failing],
+      },
       [],
     )
     const runner: RunReplay = async (specs, dir) => {
       const report = await base(specs, dir)
-      for (const spec of report.suites.flatMap((suite) => suite.specs)) {
+      const ran = report.suites.flatMap((suite) => suite.specs)
+      for (const spec of ran) {
         for (const result of spec.tests[0].results) {
           result.startTime = spec.file.endsWith('chat.spec.ts')
             ? '2026-11-04T10:00:00.000Z'
@@ -315,6 +319,10 @@ describe('replay', () => {
           result.duration = 60_000
         }
       }
+      // The other spec's first run failed in its sign-in, during the chat spec's window: it does not count.
+      const unreached = ran.find((spec) => spec.file.endsWith('other.spec.ts'))!.tests[0].results[0]
+      unreached.startTime = '2026-11-04T10:00:00.000Z'
+      unreached.steps = []
       return report
     }
     const stackLog = join(outDir, 'qa-stack.log')
@@ -330,9 +338,10 @@ describe('replay', () => {
 
     const result = await replay(outDir, runner, qaDir, undefined, Date.now, Date.now(), stackLog)
 
-    const gapsOf = (title: string) => result.confirmed.find((file) => file.id === title)?.replay.provider_gaps
-    expect(gapsOf('chat')).toEqual(['[fake-provider] unsupported POST /v1/responses'])
-    expect(gapsOf('other')).toBeUndefined()
+    const replayOf = (title: string) => [...result.confirmed, ...result.flaky].find((file) => file.id === title)?.replay
+    expect(replayOf('chat')?.provider_gaps).toEqual(['[fake-provider] unsupported POST /v1/responses'])
+    expect(replayOf('other')).toMatchObject({ runs: 3, inconclusive: 1 })
+    expect(replayOf('other')?.provider_gaps).toBeUndefined()
   })
 
   test('a layout finding on a web viewport still needs 3/3 failures: only native layout measurements vary', async () => {

@@ -112,12 +112,17 @@ describe('effort selector state', () => {
     await act(async () => {
       fireEvent.click(trigger)
     })
-    expect(screen.queryByRole('slider')).toBeNull()
+    const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    expect(slider.getAttribute('data-selected')).toBe('false')
     expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Low' }))
+      fireEvent.blur(slider)
     })
-    const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
+    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    await act(async () => {
+      fireEvent.pointerUp(slider)
+    })
+    expect(slider.getAttribute('data-selected')).toBe('true')
     await act(async () => {
       fireEvent.change(slider, { target: { value: '1' } })
     })

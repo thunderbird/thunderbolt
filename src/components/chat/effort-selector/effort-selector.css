@@ -46,3 +46,12 @@
   outline-offset: 2px;
   border-radius: 9999px;
 }
+
+/* The native range remains interactive before a level is chosen, without suggesting Low is selected. */
+.effort-slider[data-selected='false']::-webkit-slider-thumb {
+  opacity: 0;
+}
+
+.effort-slider[data-selected='false']::-moz-range-thumb {
+  opacity: 0;
+}

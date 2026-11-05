@@ -25,10 +25,11 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: ReactNode }) => 
   const current = choices.findIndex((choice) => choice.value === value)
   const index = preview ?? current
   const selected = choices[index]
-  const progress = choices.length > 1 ? (index / (choices.length - 1)) * 100 : 0
-  const commit = () => {
-    if (preview !== null && selected) {
-      choose(selected.value)
+  const progress = index >= 0 && choices.length > 1 ? (index / (choices.length - 1)) * 100 : 0
+  const commit = (inputIndex?: number) => {
+    const choice = choices[preview ?? inputIndex ?? -1]
+    if (!busy && choice) {
+      choose(choice.value)
       setPreview(null)
     }
   }
@@ -58,60 +59,53 @@ export const EffortSelector = ({ modelPicker }: { modelPicker?: ReactNode }) => 
       >
         <div className="relative mb-4 text-center">
           <div className="px-7 text-lg font-medium text-brand" aria-live="polite">
-            {selected?.name ?? t`Choose effort`}
+            {selected?.name ?? t`Reasoning effort`}
           </div>
           <div className="flex min-w-0 justify-center text-[length:var(--font-size-sm)] text-muted-foreground">
             {modelPicker ?? selectedAgent.name}
           </div>
         </div>
-        {index < 0 ? (
-          <div className="flex flex-wrap justify-center gap-1">
-            {choices.map((choice) => (
-              <button
-                key={choice.value}
-                type="button"
-                disabled={busy}
-                onClick={() => choose(choice.value)}
-                className="rounded-lg px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
-              >
-                {choice.name}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div
-            className="relative flex h-9 items-center"
-            style={{ '--effort-progress': `${progress}%` } as CSSProperties}
-          >
-            <div aria-hidden="true" className="effort-track pointer-events-none absolute inset-x-0 h-6 rounded-full">
-              <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between">
-                {choices.map((choice) => (
-                  <span key={choice.value} className="size-1 rounded-full bg-muted-foreground/60" />
-                ))}
-              </div>
+        <div
+          className="relative flex h-9 items-center"
+          style={{ '--effort-progress': `${progress}%` } as CSSProperties}
+        >
+          <div aria-hidden="true" className="effort-track pointer-events-none absolute inset-x-0 h-6 rounded-full">
+            <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between">
+              {choices.map((choice) => (
+                <span key={choice.value} className="size-1 rounded-full bg-muted-foreground/60" />
+              ))}
             </div>
-            <input
-              type="range"
-              min={0}
-              max={choices.length - 1}
-              step={1}
-              value={index}
-              disabled={choices.length < 2}
-              aria-disabled={busy}
-              aria-label={t`Reasoning effort`}
-              aria-valuetext={selected?.name ?? t`Choose effort`}
-              onChange={(event) => {
-                if (!busy) {
-                  setPreview(Number(event.target.value))
-                }
-              }}
-              onPointerUp={commit}
-              onKeyUp={commit}
-              onBlur={commit}
-              className="effort-slider relative w-full cursor-pointer disabled:cursor-default"
-            />
           </div>
-        )}
+          <input
+            type="range"
+            min={0}
+            max={choices.length - 1}
+            step={1}
+            value={Math.max(0, index)}
+            data-selected={index >= 0}
+            disabled={choices.length < 2 && index >= 0}
+            aria-disabled={busy}
+            aria-label={t`Reasoning effort`}
+            aria-valuetext={selected?.name ?? t`Reasoning effort`}
+            onChange={(event) => {
+              if (!busy) {
+                setPreview(Number(event.target.value))
+              }
+            }}
+            onPointerUp={(event) => commit(Number(event.currentTarget.value))}
+            onKeyUp={(event) => {
+              if (
+                ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(
+                  event.key,
+                )
+              ) {
+                commit(Number(event.currentTarget.value))
+              }
+            }}
+            onBlur={() => commit()}
+            className="effort-slider relative w-full cursor-pointer disabled:cursor-default"
+          />
+        </div>
         {error && (
           <p role="alert" className="mt-2 text-destructive text-[length:var(--font-size-xs)]">
             {error}

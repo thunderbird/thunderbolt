@@ -333,8 +333,7 @@ shows up there and nowhere else.
 ## Reasoning effort
 
 The chat composer discovers effort controls from the selected provider. Unsupported or unknown models hide the
-selector. Without an explicit selection, the existing model-profile/provider behavior is preserved. The UI shows
-Choose effort rather than inventing a level, and offers only concrete supported values. Off appears only when the
+selector. Without an explicit selection, the existing model-profile/provider behavior is preserved. The UI leaves the slider unselected rather than inventing a level, and offers only concrete supported values. Off appears only when the
 serving model supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
 A saved value that is no longer supported resolves to no override.
 

@@ -162,7 +162,10 @@ records without this marker retain their prior behavior.
 
 Automatic selection does not fall back to Thunderbolt Cloud after a configured
 Tinfoil connection is disabled, disconnected, or needs reauthentication. Choosing
-Cloud or a custom provider explicitly still switches providers.
+Cloud or a custom provider explicitly still switches providers. Each web-tool
+call rechecks local connection availability. If connecting Tinfoil changes the
+automatic selection mid-turn, the old Cloud tool rejects further calls; a new
+turn creates tools for the current provider without mixing citation registries.
 
 An enabled Tinfoil subscription supplies search independently of whether a model
 is enabled or even configured. An enabled BYOK Tinfoil model can also supply its

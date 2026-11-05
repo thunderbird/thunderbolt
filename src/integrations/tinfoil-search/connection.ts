@@ -11,15 +11,32 @@ import { tinfoilSession } from '@/lib/tinfoil-session'
 import { canSupplyTinfoilSearch, hasConfiguredTinfoilSearch } from './eligibility'
 import { createTinfoilWebApi } from './api'
 
-/** Discovers a connected Tinfoil search provider without making network requests or copying credentials. */
-export const getTinfoilSearchConnection = async (db: AnyDrizzleDatabase, createApi = createTinfoilWebApi) => {
+/** Reads only local connection/model state; no SDK, token refresh, or network work. */
+const readTinfoilSearchState = async (db: AnyDrizzleDatabase) => {
   const session = await getIntegrationCredentials(db, 'tinfoil')
   if (session?.enabled && session.credentials.access_token && !session.credentials.reauth_required) {
-    return { tinfoilSearchApi: createApi(() => tinfoilSession.getAccessToken()), tinfoilConfigured: true }
+    return { oauthAvailable: true, model: undefined, tinfoilConfigured: true }
   }
   const models = await getAllModels(db)
-  const tinfoilConfigured = hasConfiguredTinfoilSearch(models, session !== null)
-  const model = models.find(canSupplyTinfoilSearch)
+  return {
+    oauthAvailable: false,
+    model: models.find(canSupplyTinfoilSearch),
+    tinfoilConfigured: hasConfiguredTinfoilSearch(models, session !== null),
+  }
+}
+
+/** Rechecks live provider eligibility without constructing a per-turn search API. */
+export const getTinfoilSearchAvailability = async (db: AnyDrizzleDatabase) => {
+  const { oauthAvailable, model, tinfoilConfigured } = await readTinfoilSearchState(db)
+  return { tinfoil: oauthAvailable || Boolean(model), tinfoilConfigured }
+}
+
+/** Discovers a connected Tinfoil search provider without making network requests or copying credentials. */
+export const getTinfoilSearchConnection = async (db: AnyDrizzleDatabase, createApi = createTinfoilWebApi) => {
+  const { oauthAvailable, model, tinfoilConfigured } = await readTinfoilSearchState(db)
+  if (oauthAvailable) {
+    return { tinfoilSearchApi: createApi(() => tinfoilSession.getAccessToken()), tinfoilConfigured }
+  }
   if (!model) {
     return { tinfoilSearchApi: undefined, tinfoilConfigured }
   }

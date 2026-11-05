@@ -12,7 +12,7 @@ import { createConfigs as createGoogleConfigs } from '@/integrations/google/tool
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
+import { getTinfoilSearchAvailability, getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
@@ -24,7 +24,7 @@ import type { ToolConfig } from '@/types'
 import type { SourceMetadata } from '@/types/source'
 import { tool, type Tool } from 'ai'
 
-/** Settings + integration status that gate which tools are exposed. */
+/** Construction-time snapshot of the settings and connections that gate which tools are exposed. */
 export type ToolAvailabilityContext = {
   tinfoilSearchApi?: WebToolApi
   tinfoilConfigured?: boolean
@@ -45,10 +45,13 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
   return { settings, integrationStatus, ...(await getTinfoilSearchConnection(db)) }
 }
 
+type ReadTinfoilSearchAvailability = () => ReturnType<typeof getTinfoilSearchAvailability>
+
 export const getAvailableTools = async (
   httpClient: HttpClient,
   sourceCollector?: SourceMetadata[],
   context?: ToolAvailabilityContext,
+  readTinfoilSearchAvailability: ReadTinfoilSearchAvailability = () => getTinfoilSearchAvailability(getDb()),
 ): Promise<ToolConfig[]> => {
   const proEnabled = await hasProAccess()
   const {
@@ -84,11 +87,12 @@ export const getAvailableTools = async (
       ...webTools.map((config) => ({
         ...config,
         execute: async (params: unknown) => {
+          // Construction fixes this turn's API and source registry; execution must still honor live provider changes.
+          const tinfoilAvailability = await readTinfoilSearchAvailability()
           const current = useSearchProviderStore.getState()
           const currentSelection = resolveSearchSelection(current.selection, {
             custom: Boolean(current.provider && current.apiKey),
-            tinfoil: Boolean(tinfoilSearchApi),
-            tinfoilConfigured,
+            ...tinfoilAvailability,
             cloud: !usesLocalProviders() && shouldIncludeProTools,
           })
           if (

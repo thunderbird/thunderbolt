@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, it } from 'bun:test'
+import { expect, it, spyOn } from 'bun:test'
 import { Identity } from 'ehbp'
-import { createBrowserSearchClient } from './http-client'
+import * as nativeTransport from '@/lib/native-fetch'
+import { createBrowserSearchClient, nativeSearchClient } from './http-client'
 import { createAttestedSearchFetch } from './attested-fetch'
 
 it('sends only the encrypted search body to the same-origin relay without cookies or redirects', async () => {
@@ -32,4 +33,15 @@ it('sends only the encrypted search body to the same-origin relay without cookie
       })
     ).status,
   ).toBe(401)
+})
+
+it('always uses native transport for native search, independently of Cloud authentication', async () => {
+  const send = spyOn(nativeTransport, 'nativeFetch').mockResolvedValue(new Response('{}'))
+  try {
+    await nativeSearchClient.get('https://websearch.tinfoil.sh/mcp')
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0][1]?.redirect).toBe('error')
+  } finally {
+    send.mockRestore()
+  }
 })

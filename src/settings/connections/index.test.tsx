@@ -306,7 +306,7 @@ describe('ConnectionsPage list', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Open Tinfoil' }))
       await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
       expect(Boolean(screen.queryByRole('button', { name: 'Manage subscription' }))).toBe(oauthConnected)
-      expect(screen.queryByRole('button', { name: 'Reconnect Tinfoil' })).toBeNull()
+      expect(Boolean(screen.queryByRole('button', { name: 'Reconnect Tinfoil' }))).toBe(oauthState === 'expired')
       fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Disconnect Tinfoil' }))

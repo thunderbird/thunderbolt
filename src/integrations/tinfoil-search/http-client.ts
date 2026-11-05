@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createClient } from '@/lib/http'
-import { fetch as nativeFetch } from '@/lib/fetch'
+import { nativeFetch } from '@/lib/native-fetch'
 
 export const nativeSearchClient = createClient({
   fetch: (input, init) => {

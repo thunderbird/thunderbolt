@@ -89,7 +89,7 @@ export const useAiProviderConnections = () => {
         models.some((model) => belongsToConnection(model, 'tinfoil') && model.enabled === 1),
       connected: Boolean(session?.connected) || models.some((model) => belongsToConnection(model, 'tinfoil')),
       oauthConnected: Boolean(session?.connected),
-      needsReauth: Boolean(session?.needsReauth) && !models.some((model) => belongsToConnection(model, 'tinfoil')),
+      needsReauth: Boolean(session?.needsReauth),
     },
   ]
   return {

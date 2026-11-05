@@ -46,7 +46,8 @@ export type VerifiedFinding = FindingFile & {
    * `error`: the first failed run's error message, shown to the judge. A visual finding never replays: 0/0.
    * `inconclusive`: runs that never reached the bug, which `runs` leaves out.
    * `reason`: why too few runs counted to decide, which makes the finding flaky.
-   * `provider_gaps`: requests the fake AI provider logged as unsupported during the finding's runs, shown to the judge.
+   * `provider_gaps`: requests the fake AI provider logged as unsupported during the finding's counted runs, for the
+   * judge.
    */
   replay: {
     failed: number

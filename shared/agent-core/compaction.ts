@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
-  compact,
+  generateSummary,
+  CompactionError,
   DEFAULT_COMPACTION_SETTINGS,
   estimateContextTokens,
   estimateTokens,
@@ -75,6 +76,19 @@ const toSavedContextMessage = (message: AgentMessage): AgentMessage => {
   }
 }
 
+/** Preserve Pi's exact file inventory separately from the model-generated summary. */
+const fileOperationsSummary = (fileOps: { read: Set<string>; written: Set<string>; edited: Set<string> }): string => {
+  const modified = new Set([...fileOps.written, ...fileOps.edited])
+  const groups = [
+    ['read-files', [...fileOps.read].filter((path) => !modified.has(path)).sort()],
+    ['modified-files', [...modified].sort()],
+  ] as const
+  return groups
+    .filter(([, paths]) => paths.length > 0)
+    .map(([tag, paths]) => `<${tag}>\n${paths.join('\n')}\n</${tag}>`)
+    .join('\n\n')
+}
+
 /** Restore Pi's summary entry and real message entries so subsequent compactions can retain them. */
 export const restoreCompaction = async (
   session: Session,
@@ -140,8 +154,8 @@ export const createHarnessCompaction = (
     state.overheadTokens = request.overheadTokens ?? state.overheadTokens
     const signal = request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal
     let status: CompactionStatus = 'idle'
-    request.onStatus?.('compacting')
     try {
+      request.onStatus?.('compacting')
       const model = harness.getModel()
       const settings = {
         ...DEFAULT_COMPACTION_SETTINGS,
@@ -182,43 +196,24 @@ export const createHarnessCompaction = (
       if (!manual && !hasSummaryInput && activeMessages.length <= 1) {
         return checkpoint()
       }
-      // A small conversation can fit entirely inside Pi's retention budget.
-      // Manual compaction must still summarize it instead of summarizing nothing.
-      const preparation = hasSummaryInput
-        ? selected
-        : {
-            ...selected,
-            messagesToSummarize: activeMessages,
-            turnPrefixMessages: [],
-            retainedTail: [],
-            isSplitTurn: false,
-          }
-      // Pi 0.82.1 omits customInstructions from its split-turn prefix request
-      // and drops previousSummary when the cut has no preceding history.
-      // Summarize the same cut together when either needs to be preserved.
-      const guidedPreparation =
-        preparation.isSplitTurn && (request.instructions?.trim() || preparation.previousSummary)
-          ? {
-              ...preparation,
-              messagesToSummarize: [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages],
-              turnPrefixMessages: [],
-              isSplitTurn: false,
-            }
-          : preparation
+      // Summarize the cut in one request, including any split-turn prefix. Pi's
+      // separate prefix request loses custom instructions and previous summaries,
+      // and its separator can disguise an empty model response as a valid summary.
+      // A short manual conversation can fit entirely in the retention budget;
+      // summarize all of it rather than sending an empty summary request.
+      const summaryMessages = hasSummaryInput
+        ? [...selected.messagesToSummarize, ...selected.turnPrefixMessages]
+        : activeMessages
+      const tail = hasSummaryInput ? selected.retainedTail : []
       const summarize = () =>
-        compact(
-          request.transformMessage
-            ? {
-                ...guidedPreparation,
-                messagesToSummarize: guidedPreparation.messagesToSummarize.map(request.transformMessage),
-                turnPrefixMessages: guidedPreparation.turnPrefixMessages.map(request.transformMessage),
-                retainedTail: guidedPreparation.retainedTail.map(request.transformMessage),
-              }
-            : guidedPreparation,
+        generateSummary(
+          request.transformMessage ? summaryMessages.map(request.transformMessage) : summaryMessages,
           harness.models,
           model,
-          request.instructions?.trim() || undefined,
+          settings.reserveTokens,
           signal,
+          request.instructions?.trim() || undefined,
+          selected.previousSummary,
           harness.getThinkingLevel(),
         )
       const result = await (receipts ? receipts.withStandaloneRequests(summarize) : summarize())
@@ -226,20 +221,20 @@ export const createHarnessCompaction = (
       if (!result.ok) {
         throw result.error
       }
-      const value = result.value
-      if (!value.summary.trim()) {
-        throw new Error('Compaction returned an empty summary')
+      if (!result.value.trim()) {
+        throw new CompactionError('summarization_failed', 'Compaction returned an empty summary')
       }
-      const retainedTail = (value.retainedTail ?? []).map(withoutUsage)
+      const summary = [result.value, fileOperationsSummary(selected.fileOps)].filter(Boolean).join('\n\n')
+      const retainedTail = (request.transformMessage ? tail.map(request.transformMessage) : tail).map(withoutUsage)
       // Keep original entries for history, but materialize the retained tail
       // after the boundary. Pi can then compact again even after a restore.
       await restoreCompaction(session, {
-        summary: value.summary,
-        tokensBefore: value.tokensBefore,
+        summary,
+        tokensBefore: selected.tokensBefore,
         retainedTail,
       })
-      state.summary = value.summary
-      state.tokensBefore = value.tokensBefore
+      state.summary = summary
+      state.tokensBefore = selected.tokensBefore
       state.revision++
       const nextCheckpoint = (await checkpoint())!
       status = 'compacted'
@@ -266,14 +261,11 @@ export const createHarnessCompaction = (
       if (!(window > 0) || tokens < window * 0.8) {
         return messages
       }
-      if (state.controller) {
-        throw new Error('Context compaction is already running')
-      }
       try {
         await run(request, false)
       } catch (error) {
         request.signal?.throwIfAborted()
-        if ((error instanceof Error && error.name === 'AbortError') || tokens >= window) {
+        if (!(error instanceof CompactionError) || error.code !== 'summarization_failed' || tokens >= window) {
           throw error
         }
         // Automatic compaction is proactive. A summary outage must not block a

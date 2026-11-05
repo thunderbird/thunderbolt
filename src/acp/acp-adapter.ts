@@ -373,6 +373,23 @@ const withHandshakeGuard = async <T>(
   }
 }
 
+/** Stop waiting for configuration without cancelling the independent configuration write. */
+const waitForConfiguration = async (change: Promise<void> | undefined, signal?: AbortSignal | null): Promise<void> => {
+  signal?.throwIfAborted()
+  if (!change || !signal) {
+    await change
+    return
+  }
+  const aborted = Promise.withResolvers<never>()
+  const onAbort = () => aborted.reject(signal.reason)
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    await Promise.race([change, aborted.promise])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
 /** Open and handshake an ACP adapter against `agent`. The returned adapter owns
  *  a single transport/connection and multiplexes per-thread sessions over it —
  *  call `disconnect()` to tear it down on real teardown (agent delete / config
@@ -653,10 +670,8 @@ export const connectAcpAdapter = async (
     return configured
   }
 
-  /** Persist and consume one freshly minted session marker. A failed write
-   *  restores the marker so the next send retries instead of silently losing
-   *  both durable session continuity and first-send transcript replay. */
-  const consumeFreshSession = async (
+  /** Persist a fresh session, retaining its replay marker until a prompt is dispatched. */
+  const prepareFreshSession = async (
     context: AgentAdapterContext,
     sessionId: string,
   ): Promise<FreshSessionState | null> => {
@@ -666,16 +681,13 @@ export const connectAcpAdapter = async (
     }
     if (pending.persistence) {
       await pending.persistence
-      return null
+      return pending
     }
 
     const persistence = context.onAcpSessionId(sessionId)
     freshPending.set(context.threadId, { ...pending, persistence })
     try {
       await persistence
-      if (freshPending.get(context.threadId)?.persistence === persistence) {
-        freshPending.delete(context.threadId)
-      }
       return pending
     } catch (error) {
       if (freshPending.get(context.threadId)?.persistence === persistence) {
@@ -687,21 +699,27 @@ export const connectAcpAdapter = async (
 
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     throwIfConnectionLost()
+    init.signal?.throwIfAborted()
     const sessionId = await resolveThreadSession(context)
+    if (preparingPrompts.has(sessionId) || sessionUpdateSinks.has(sessionId)) {
+      throw new Error('A prompt is already active for this session')
+    }
     preparingPrompts.add(sessionId)
     const preparePrompt = async () => {
       // A prompt submitted during a config change must not silently run with
       // the previous setting if that change fails. The user can retry explicitly.
-      await configChanges.get(sessionId)
+      await waitForConfiguration(configChanges.get(sessionId), init.signal)
+      init.signal?.throwIfAborted()
+      throwIfConnectionLost()
 
       // First real send of a freshly-minted session: persist the id we actually
       // used, and (tier-3 only) seed the prior transcript as context. The marker
       // is keyed on "fresh session's first prompt" (not "we prepended a
       // transcript") so a brand-new thread's second prompt never re-injects its
-      // first exchange. Consumption happens only after persistence succeeds.
-      const freshSession = await consumeFreshSession(context, sessionId)
+      // first exchange. Consume the marker only once the prepared prompt is dispatched.
+      const freshSession = await prepareFreshSession(context, sessionId)
       const priorTranscript = freshSession ? extractPriorTranscript(init) : undefined
-      return buildPromptBlocks(
+      const prompt = await buildPromptBlocks(
         init,
         context.skillInstructions,
         capabilities.promptCapabilities.embeddedContext,
@@ -710,6 +728,9 @@ export const connectAcpAdapter = async (
         freshSession?.skillDisclosure,
         context.projectSection,
       )
+      init.signal?.throwIfAborted()
+      throwIfConnectionLost()
+      return prompt
     }
     const prompt = await preparePrompt().catch((error: unknown) => {
       preparingPrompts.delete(sessionId)
@@ -721,6 +742,7 @@ export const connectAcpAdapter = async (
       onSideEffect: context.onSessionSideEffect,
     })
 
+    freshPending.delete(context.threadId)
     preparingPrompts.delete(sessionId)
     sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
     if (context.requestPermission) {

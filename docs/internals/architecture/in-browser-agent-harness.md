@@ -203,13 +203,16 @@ completion waits for persistence.
 Automatic compaction leaves a fresh request intact when there is no earlier history to
 summarize; input that still exceeds the model window fails with context-overflow guidance.
 
-`shared/agent-core/compaction.ts` uses Pi's exported `prepareCompaction` and `compact`.
+`shared/agent-core/compaction.ts` uses Pi's exported `prepareCompaction` and `generateSummary`.
 Pi owns the cut point, paired tool history and summary prompts. The app supplies threshold,
 retention and cancellation: Pi 0.82.1's `AgentHarness.compact()` hardcodes its budgets and
-does not forward cancellation to the summary request. That version also omits custom
-instructions from split-turn prefix summaries and can drop a previous summary when only
-a turn prefix is summarized. When either must be preserved, compaction summarizes the
-same cut as one history. Recheck these adaptations when upgrading Pi.
+does not forward cancellation to the summary request. The selected history and any
+split-turn prefix are summarized together in one request,
+retaining Pi's exact cut and tool pairs. This avoids separate prefix requests dropping
+custom instructions or previous summaries. The raw response must contain summary text
+before the app appends the deterministic read/modified-file inventory; otherwise Pi's
+split-turn headings or file tags can disguise an empty response and discard context.
+Recheck these adaptations when upgrading Pi.
 
 Compaction preserves the visible transcript. A versioned checkpoint lives in the boundary
 message's existing encrypted `metadata` column, so it syncs without a schema migration.

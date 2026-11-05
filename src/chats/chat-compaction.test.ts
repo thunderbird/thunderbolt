@@ -187,6 +187,46 @@ describe('chat compaction control', () => {
     expect(useChatStore.getState().sessions.get('chat')?.compactionStatus).toBe('idle')
   })
 
+  it('rejects a stale summary when the transcript changes while the provider is running', async () => {
+    const result = Promise.withResolvers<CompactionCheckpoint>()
+    const entered = Promise.withResolvers<void>()
+    const f = fixture(async () => {
+      entered.resolve()
+      return result.promise
+    })
+    const pending = f.instance.compactContext()
+    await entered.promise
+    const replacement: ThunderboltUIMessage[] = [
+      ...f.messages,
+      { id: 'synced-user', role: 'user', parts: [{ type: 'text', text: 'Arrived from another device' }] },
+    ]
+    f.instance.messages = replacement
+    result.resolve(checkpoint)
+    await expect(pending).rejects.toThrow('conversation changed')
+    expect(f.saved).not.toHaveBeenCalled()
+    expect(f.instance.messages).toBe(replacement)
+    expect(useChatStore.getState().sessions.get('chat')?.compactionStatus).toBe('idle')
+    await f.instance.compactContext()
+    expect(f.saved).toHaveBeenCalledTimes(1)
+  })
+
+  it('discards a late provider result after Stop even if the provider ignores cancellation', async () => {
+    const result = Promise.withResolvers<CompactionCheckpoint>()
+    const entered = Promise.withResolvers<void>()
+    const f = fixture(async () => {
+      entered.resolve()
+      return result.promise
+    })
+    const pending = f.instance.compactContext()
+    await entered.promise
+    await f.instance.stop()
+    result.resolve(checkpoint)
+    await expect(pending).rejects.toThrow()
+    expect(f.saved).not.toHaveBeenCalled()
+    expect(f.instance.messages).toBe(f.messages)
+    expect(useChatStore.getState().sessions.get('chat')?.compactionStatus).toBe('idle')
+  })
+
   it('rejects compaction while generating and refuses an incompatible confidentiality model', async () => {
     const f = fixture()
     Object.assign(f.instance, { status: 'streaming' })

@@ -21,6 +21,7 @@ import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, Check, ChevronDown, Lock, Plus } from 'lucide-react'
 import { useCallback } from 'react'
+import { flushSync } from 'react-dom'
 
 export type ModelSelectorProps = {
   /** Show the model list directly inside a combined picker. */
@@ -232,7 +233,7 @@ export const ModelSelector = ({
                 title={t`Add Model`}
                 className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 onClick={() => {
-                  onClose?.()
+                  flushSync(() => onClose?.())
                   onAddModels()
                 }}
               >

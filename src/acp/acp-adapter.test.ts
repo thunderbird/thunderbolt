@@ -525,7 +525,7 @@ describe('connectAcpAdapter — skills capability', () => {
 describe('connectAcpAdapter — per-thread session multiplexing over one connection', () => {
   it('resolves a separate ACP session per thread and persists each independently', async () => {
     const { transport } = buildFakeTransport()
-    const { FakeConnection, calls } = buildFakeConnection()
+    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
 
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
       openTransport: async () => transport,
@@ -535,11 +535,11 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     const persistedA: string[] = []
     const persistedB: string[] = []
 
-    await adapter.fetch(
+    const first = await adapter.fetch(
       promptInit('a'),
       threadCtx('thread-A', { onAcpSessionId: async (s) => void persistedA.push(s) }),
     )
-    await adapter.fetch(
+    const second = await adapter.fetch(
       promptInit('b'),
       threadCtx('thread-B', { onAcpSessionId: async (s) => void persistedB.push(s) }),
     )
@@ -550,8 +550,12 @@ describe('connectAcpAdapter — per-thread session multiplexing over one connect
     expect(persistedA).toEqual(['sess-1'])
     expect(persistedB).toEqual(['sess-2'])
 
+    await expect(adapter.fetch(promptInit('overlap'), threadCtx('thread-A'))).rejects.toThrow('already active')
+    releasePrompts()
+    await Promise.all([first.text(), second.text()])
     // A second send on thread-A reuses its cached session — no extra newSession.
-    await adapter.fetch(promptInit('a2'), threadCtx('thread-A'))
+    const next = await adapter.fetch(promptInit('a2'), threadCtx('thread-A'))
+    await next.text()
     expect(calls.newSession).toHaveLength(2)
   })
 
@@ -1053,30 +1057,103 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
     expect(outcome?.outcome.outcome).toBe('cancelled')
   })
 
-  it('a signal already aborted at fetch time cancels immediately', async () => {
+  it('does not start a session or remote turn for an already aborted request', async () => {
     const { transport } = buildFakeTransport()
-    const { FakeConnection, calls, releasePrompts } = buildFakeConnection()
-
+    const { FakeConnection, calls } = buildFakeConnection()
     const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
       openTransport: async () => transport,
       ClientSideConnection: FakeConnection as never,
     })
+    try {
+      await expect(adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))).rejects.toThrow()
+      expect(calls.newSession).toHaveLength(0)
+      expect(calls.prompt).toHaveLength(0)
+      expect(calls.cancel).toHaveLength(0)
+    } finally {
+      adapter.disconnect()
+    }
+  })
 
-    const response = await adapter.fetch(promptInit('hi', AbortSignal.abort()), threadCtx('thread-A'))
+  it.each(['abort', 'disconnect'] as const)(
+    'does not dispatch after %s during asynchronous prompt preparation',
+    async (operation) => {
+      const fake = buildFakeConnection()
+      const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+        openTransport: async () => buildFakeTransport().transport,
+        ClientSideConnection: fake.FakeConnection as never,
+        getEnabledSkills: async () => [],
+      })
+      const started = Promise.withResolvers<void>()
+      const persisted = Promise.withResolvers<void>()
+      const controller = new AbortController()
+      try {
+        const pending = adapter.fetch(
+          promptInit('do not execute', controller.signal),
+          threadCtx('preparing', {
+            onAcpSessionId: async () => {
+              started.resolve()
+              await persisted.promise
+            },
+          }),
+        )
+        const settled = Promise.allSettled([pending])
+        await started.promise
+        if (operation === 'abort') {
+          controller.abort()
+        } else {
+          adapter.disconnect()
+        }
+        persisted.resolve()
+        expect((await settled)[0].status).toBe('rejected')
+        expect(fake.calls.prompt).toHaveLength(0)
+        expect(fake.calls.cancel).toHaveLength(0)
+      } finally {
+        persisted.resolve()
+        adapter.disconnect()
+      }
+    },
+  )
 
-    // The turn was issued (can't un-send) but immediately cancelled — once.
-    expect(calls.prompt).toHaveLength(1)
-    expect(calls.cancel).toHaveLength(1)
-    expect(calls.cancel[0]?.sessionId).toBe('sess-1')
-
-    await act(async () => {
-      releasePrompts()
-      await getClock().runAllAsync()
-      await readSse(response)
+  it('retains first-send transcript replay when cancellation happens before dispatch', async () => {
+    const fake = buildFakeConnection()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      openTransport: async () => buildFakeTransport().transport,
+      ClientSideConnection: fake.FakeConnection as never,
+      getEnabledSkills: async () => [],
     })
-
-    // The agent resolving the cancelled turn does not double-cancel.
-    expect(calls.cancel).toHaveLength(1)
+    const started = Promise.withResolvers<void>()
+    const persisted = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const init = conversationInit([
+      { role: 'user', text: 'Earlier requirements' },
+      { role: 'assistant', text: 'Earlier response' },
+      { role: 'user', text: 'Continue' },
+    ])
+    const context = threadCtx('cancelled-first-send', {
+      onAcpSessionId: async () => {
+        started.resolve()
+        await persisted.promise
+      },
+    })
+    try {
+      const pending = adapter.fetch({ ...init, signal: controller.signal }, context)
+      const settled = Promise.allSettled([pending])
+      await started.promise
+      await expect(adapter.fetch(init, context)).rejects.toThrow('already active')
+      controller.abort()
+      persisted.resolve()
+      expect((await settled)[0].status).toBe('rejected')
+      const retry = await adapter.fetch(init, context)
+      fake.releasePrompts()
+      await retry.text()
+      expect(sentPromptText(fake.calls)).toContain('Earlier requirements')
+      expect(sentPromptText(fake.calls)).toContain('Earlier response')
+      expect(fake.calls.prompt).toHaveLength(1)
+    } finally {
+      persisted.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
   })
 
   it('a normal completion never sends session/cancel', async () => {
@@ -1104,6 +1181,58 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
 })
 
 describe('ACP reasoning configuration', () => {
+  it('does not dispatch a stopped prompt after a pending effort change completes', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      const context = threadCtx('stopped-config')
+      await adapter.ensureSession(context)
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+      const change = config.setOption('budget', 'high')
+      const controller = new AbortController()
+      const pending = adapter.fetch(promptInit('do not execute', controller.signal), context)
+      const settled = Promise.allSettled([pending])
+      await getClock().tickAsync(0)
+      controller.abort()
+      expect((await settled)[0].status).toBe('rejected')
+      // Stop settles while the remote configuration call is still pending.
+      expect(fake.calls.prompt).toHaveLength(0)
+      gate.resolve()
+      await change
+      expect(fake.calls.prompt).toHaveLength(0)
+      expect(fake.calls.cancel).toHaveLength(0)
+      // Cancellation releases preparation ownership for a later effort change and retry.
+      await config.setOption('budget', 'low')
+      const retry = await adapter.fetch(promptInit('retry'), context)
+      expect(fake.calls.prompt).toHaveLength(1)
+      fake.releasePrompts()
+      await retry.text()
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
   it('does not send a waiting prompt with the previous effort after a config change fails', async () => {
     const gate = Promise.withResolvers<void>()
     const fake = buildFakeConnection({

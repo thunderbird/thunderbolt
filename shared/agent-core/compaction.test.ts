@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { AgentHarness, estimateContextTokens, InMemorySessionRepo } from '@earendil-works/pi-agent-core'
+import {
+  AgentHarness,
+  estimateContextTokens,
+  InMemorySessionRepo,
+  prepareCompaction,
+  DEFAULT_COMPACTION_SETTINGS,
+} from '@earendil-works/pi-agent-core'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 import {
@@ -14,12 +20,12 @@ import {
 } from './compaction.ts'
 
 /** Exercise Pi's real summarizer, serialization and session storage through a local provider fixture. */
-const fixture = async (fetchOverride?: OpenAiCompatFetch) => {
+const fixture = async (fetchOverride?: OpenAiCompatFetch, summaryText = '## Goal\nKeep the project decisions.') => {
   const requests: string[] = []
   const response = () =>
     new Response(
       [
-        'data: {"id":"summary","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{"role":"assistant","content":"## Goal\\nKeep the project decisions."},"finish_reason":null}]}',
+        `data: {"id":"summary","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{"role":"assistant","content":${JSON.stringify(summaryText)}},"finish_reason":null}]}`,
         'data: {"id":"summary","object":"chat.completion.chunk","created":1,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":600,"completion_tokens":20,"total_tokens":620}}',
         'data: [DONE]',
         '',
@@ -202,6 +208,153 @@ describe('Pi context compaction', () => {
     expect(await f.session.getEntries()).toEqual(before)
     expect(f.compaction.revision).toBe(0)
     expect(status).toEqual(['compacting', 'idle'])
+  })
+
+  it.each(['manual', 'automatic'] as const)('keeps context intact for an empty %s summary', async (mode) => {
+    const f = await fixture(undefined, '')
+    await f.seed(8_100)
+    const before = await f.session.getEntries()
+    const { messages } = await f.session.buildContext()
+    if (mode === 'manual') {
+      await expect(f.compaction.compact()).rejects.toThrow('empty summary')
+    } else {
+      expect(await f.compaction.prepareRequest(messages, {})).toBe(messages)
+    }
+    expect(await f.session.getEntries()).toEqual(before)
+    expect(f.compaction.revision).toBe(0)
+    expect(await f.compaction.checkpoint()).toBeUndefined()
+  })
+
+  it('summarizes history and a split-turn prefix once while retaining exact tool pairs', async () => {
+    const f = await fixture()
+    await f.harness.appendMessage({ role: 'user', content: 'Earlier requirement: keep backups.', timestamp: 0 })
+    await f.harness.appendMessage(fauxAssistantMessage('Acknowledged.'))
+    await f.seed(8_100)
+    const toolCall = { type: 'toolCall' as const, id: 'recent-call', name: 'read', arguments: { path: 'recent.ts' } }
+    await f.harness.appendMessage({ ...fauxAssistantMessage(''), content: [toolCall] })
+    await f.harness.appendMessage({
+      role: 'toolResult',
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      content: [{ type: 'text', text: 'Recent exact evidence' }],
+      isError: false,
+      timestamp: 5,
+    })
+    const preparation = prepareCompaction(await f.session.getBranch(), {
+      ...DEFAULT_COMPACTION_SETTINGS,
+      reserveTokens: 2_000,
+      keepRecentTokens: 1_000,
+    })
+    if (!preparation.ok || !preparation.value) {
+      throw new Error('Expected a compaction cut')
+    }
+    expect(preparation.value.isSplitTurn).toBe(true)
+    expect(preparation.value.messagesToSummarize.length).toBeGreaterThan(0)
+    expect(preparation.value.turnPrefixMessages.length).toBeGreaterThan(0)
+    const checkpoint = await f.compaction.compact()
+    expect(f.requests).toHaveLength(1)
+    expect(f.requests[0]).toContain('Earlier requirement: keep backups.')
+    expect(f.requests[0]).toContain('Old project detail.')
+    expect(checkpoint.retainedTail.map((message) => message.role)).toEqual(
+      preparation.value.retainedTail.map((message) => message.role),
+    )
+    expect(checkpoint.retainedTail.at(-2)).toMatchObject({ role: 'assistant', content: [toolCall] })
+    expect(checkpoint.retainedTail.at(-1)).toMatchObject({
+      role: 'toolResult',
+      toolCallId: 'recent-call',
+      content: [{ type: 'text', text: 'Recent exact evidence' }],
+    })
+    expect(checkpoint.retainedTail).toContainEqual(
+      expect.objectContaining({ role: 'user', content: 'Keep working on the current task.' }),
+    )
+  })
+
+  it.each([false, true])('validates summary text before adding a file inventory (empty: %s)', async (empty) => {
+    const f = await fixture(undefined, empty ? '' : undefined)
+    await f.harness.appendMessage({ role: 'user', content: 'Update the files.', timestamp: 0 })
+    const operations = [
+      ['read', 'z.ts'],
+      ['read', 'a.ts'],
+      ['write', 'a.ts'],
+      ['edit', 'b.ts'],
+    ] as const
+    for (const [name, path] of operations) {
+      const id = `${name}-${path}`
+      await f.harness.appendMessage({
+        ...fauxAssistantMessage(''),
+        content: [{ type: 'toolCall', id, name, arguments: { path } }],
+      })
+      await f.harness.appendMessage({
+        role: 'toolResult',
+        toolCallId: id,
+        toolName: name,
+        content: [{ type: 'text', text: 'Done' }],
+        isError: false,
+        timestamp: 1,
+      })
+    }
+    await f.seed(8_100)
+    if (empty) {
+      const before = await f.session.getEntries()
+      await expect(f.compaction.compact()).rejects.toThrow('empty summary')
+      expect(await f.session.getEntries()).toEqual(before)
+      return
+    }
+    const checkpoint = await f.compaction.compact()
+    expect(checkpoint.summary).toEndWith(
+      '<read-files>\nz.ts\n</read-files>\n\n<modified-files>\na.ts\nb.ts\n</modified-files>',
+    )
+    expect(f.requests[0]).toContain('a.ts')
+    expect(f.requests[0]).toContain('b.ts')
+    expect(f.requests[0]).toContain('z.ts')
+  })
+
+  it('does not hide context transformation errors as recoverable provider outages', async () => {
+    const f = await fixture()
+    await f.seed(8_100)
+    const failure = new Error('Invalid context transformation')
+    await expect(
+      f.compaction.prepareRequest((await f.session.buildContext()).messages, {
+        transformMessage: () => {
+          throw failure
+        },
+      }),
+    ).rejects.toBe(failure)
+    expect(f.requests).toHaveLength(0)
+    expect(f.compaction.revision).toBe(0)
+  })
+
+  it('releases the operation when a status subscriber throws before summarization', async () => {
+    const f = await fixture()
+    await f.seed(8_100)
+    await expect(
+      f.compaction.compact({
+        onStatus: (status) => {
+          if (status === 'compacting') {
+            throw new Error('Subscriber failed')
+          }
+        },
+      }),
+    ).rejects.toThrow('Subscriber failed')
+    expect(f.requests).toHaveLength(0)
+    expect((await f.compaction.compact()).summary).toContain('Keep the project decisions')
+  })
+
+  it('does not send stale context when checkpoint publication fails after compaction', async () => {
+    const f = await fixture()
+    await f.seed(8_100)
+    const failure = new Error('Could not publish checkpoint')
+    await expect(
+      f.compaction.prepareRequest((await f.session.buildContext()).messages, {
+        onStatus: (status) => {
+          if (status === 'compacted') {
+            throw failure
+          }
+        },
+      }),
+    ).rejects.toBe(failure)
+    expect(f.compaction.revision).toBe(1)
+    expect((await f.session.buildContext()).messages[0].role).toBe('compactionSummary')
   })
 
   it('reports a failed automatic summary when the original context no longer fits', async () => {

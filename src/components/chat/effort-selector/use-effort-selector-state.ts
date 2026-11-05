@@ -48,19 +48,14 @@ export const useEffortSelectorState = () => {
     max: t`Maximum`,
   }
   const choices = builtIn
-    ? capabilities.efforts.length
-      ? [
-          { value: 'default', name: t`Default` },
-          ...capabilities.efforts.map((value) => ({
-            value,
-            name: capabilities.kind === 'toggle' && value !== 'none' ? t`On` : labels[value],
-          })),
-        ]
-      : []
+    ? capabilities.efforts.map((value) => ({
+        value,
+        name: capabilities.kind === 'toggle' && value !== 'none' ? t`On` : labels[value],
+      }))
     : option
-      ? configSelectOptions(option)
+      ? configSelectOptions(option).filter((choice) => choice.value !== 'default')
       : []
-  const value = builtIn ? (effort ?? 'default') : option?.currentValue
+  const value = builtIn ? effort : option?.currentValue === 'default' ? undefined : option?.currentValue
   const [displayValue, setOptimisticValue] = useOptimistic(typeof value === 'string' ? value : undefined)
   const choose = (next: string) => {
     if (busy || !choices.some((choice) => choice.value === next)) {
@@ -71,7 +66,7 @@ export const useEffortSelectorState = () => {
       setOptimisticValue(next)
       try {
         if (builtIn) {
-          const write = setting.setValue(next === 'default' ? null : next)
+          const write = setting.setValue(next)
           useChatStore.getState().updateSession(id, { configurationChange: write })
           try {
             await write

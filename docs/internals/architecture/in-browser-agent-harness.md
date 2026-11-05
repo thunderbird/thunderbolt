@@ -333,9 +333,10 @@ shows up there and nowhere else.
 ## Reasoning effort
 
 The chat composer discovers effort controls from the selected provider. Unsupported or unknown models hide the
-selector. Default preserves the existing model-profile/provider behavior; Off appears only when the serving model
-supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
-A saved value that is no longer supported resolves to Default.
+selector. Without an explicit selection, the existing model-profile/provider behavior is preserved. The UI shows
+Choose effort rather than inventing a level, and offers only concrete supported values. Off appears only when the
+serving model supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
+A saved value that is no longer supported resolves to no override.
 
 `shared/reasoning-effort.ts` owns provider capability rules and exact wire values. OpenAI Chat Completions uses
 `reasoning_effort`; OpenRouter uses `reasoning.effort`. Tinfoil uses its documented native `reasoning_effort` values,
@@ -344,7 +345,7 @@ OpenAI/Anthropic capabilities come from Pi's model catalog, OpenRouter from its 
 from its documented per-model list. Update that list when changing the bundled confidential models.
 
 The browser harness changes thinking level between turns without rebuilding the session or losing compaction
-checkpoints. Returning to Default restores the profile's level and removes the explicit payload override.
+checkpoints. An absent override uses the profile's level and leaves the provider payload unchanged.
 
 Remote ACP agents remain authoritative: the composer displays their `thought_level` select options verbatim,
 including grouped choices, and commits through `session/set_config_option`. Initial responses, setter responses,

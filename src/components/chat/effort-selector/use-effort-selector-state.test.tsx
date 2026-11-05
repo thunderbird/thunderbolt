@@ -105,27 +105,29 @@ describe('effort selector state', () => {
     expect(screen.queryByRole('slider')).toBeNull()
   })
 
-  it('opens the slider, previews supported levels, commits on release, and resets', async () => {
+  it('requires an explicit first choice, then previews and commits real effort levels', async () => {
     renderWithReactivity(<EffortSelector />, { tables: ['settings'] })
     const trigger = await waitForElement(() => screen.queryByRole('button', { name: 'Reasoning effort' }))
-    expect(trigger.getAttribute('title')).toBe('Reasoning effort: Default')
+    expect(trigger.getAttribute('title')).toBe('Reasoning effort: Choose effort')
     await act(async () => {
       fireEvent.click(trigger)
     })
+    expect(screen.queryByRole('slider')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Low' }))
+    })
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' })
     await act(async () => {
-      fireEvent.change(slider, { target: { value: '2' } })
+      fireEvent.change(slider, { target: { value: '1' } })
     })
     expect(slider.getAttribute('aria-valuetext')).toBe('High')
-    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    expect(await getChatReasoningEffort('effort-chat', model)).toBe('low')
     await act(async () => {
       fireEvent.pointerUp(slider)
     })
     expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Reset reasoning effort' }))
-    })
-    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    expect(screen.queryByRole('button', { name: 'Reset reasoning effort' })).toBeNull()
   })
 
   it('offers only supported levels and persists the conversation preference without editing the model', async () => {
@@ -138,10 +140,7 @@ describe('effort selector state', () => {
     })
     expect(await getChatReasoningEffort('effort-chat', model)).toBe('high')
     expect(await getChatReasoningEffort('another-chat', model)).toBeUndefined()
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Default' }))
-    })
-    expect(await getChatReasoningEffort('effort-chat', model)).toBeUndefined()
+    expect(screen.queryByRole('button', { name: 'Default' })).toBeNull()
   })
 
   it('disables changes while streaming or compacting', async () => {

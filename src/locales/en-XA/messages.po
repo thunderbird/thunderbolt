@@ -794,6 +794,10 @@ msgstr ""
 msgid "Choose an option"
 msgstr ""
 
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr ""
+
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
 msgstr ""
@@ -1474,8 +1478,8 @@ msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
 
 #: src/components/chat/effort-selector/use-effort-selector-state.ts
-msgid "Default"
-msgstr ""
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -3521,8 +3525,8 @@ msgid "Reset Local Database?"
 msgstr ""
 
 #: src/components/chat/effort-selector/effort-selector.tsx
-msgid "Reset reasoning effort"
-msgstr ""
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"

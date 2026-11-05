@@ -222,21 +222,23 @@ export const ModelSelector = ({
   return (
     <>
       {embedded && (
-        <div className="flex shrink-0 items-center justify-between pl-3 pr-1 pt-2 pb-1">
+        <div className="flex shrink-0 items-center justify-between pl-3 pr-4 pt-2 pb-1">
           <span className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{t`Model`}</span>
           {onAddModels && (
-            <button
-              type="button"
-              aria-label={t`Add Model`}
-              title={t`Add Model`}
-              className="flex size-8 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-              onClick={() => {
-                onClose?.()
-                onAddModels()
-              }}
-            >
-              <Plus aria-hidden="true" className="size-4" />
-            </button>
+            <span className="flex w-3.5 shrink-0 items-center justify-center">
+              <button
+                type="button"
+                aria-label={t`Add Model`}
+                title={t`Add Model`}
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full max-md:size-10 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={() => {
+                  onClose?.()
+                  onAddModels()
+                }}
+              >
+                <Plus aria-hidden="true" className="size-4" />
+              </button>
+            </span>
           )}
         </div>
       )}

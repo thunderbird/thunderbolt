@@ -34,7 +34,7 @@ Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When syn
 | -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`       | none       | PostgreSQL connection string. Required.                                                                                                                                     |
 | `DATABASE_DRIVER`    | `postgres` | Set to `pglite` to run an embedded database with no PostgreSQL server. Sync does not work in this mode.                                                                     |
-| `SKIP_MIGRATIONS`    | unset      | `true` skips the in-process migration pass. The container image's entrypoint runs `drizzle-kit migrate` regardless, so override the container command too.                  |
+| `SKIP_MIGRATIONS`    | unset      | `true` skips the migrations the API applies when it starts. Run them yourself first, from a source checkout: `cd backend && bun db migrate`.                                |
 | `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
 | `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
 

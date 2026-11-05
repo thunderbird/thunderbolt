@@ -34,8 +34,8 @@ export class SsoCallbackError extends Error {
  * @throws On server start failure, network error, or `SsoCallbackError` for an IdP error
  */
 export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeoutMs): Promise<string | null> => {
-  const flowId = generateCodeVerifier()
-  const port = await invoke<number>('start_oauth_server', { flowId })
+  const clientState = generateCodeVerifier()
+  const port = await invoke<number>('start_oauth_server', { flowId: clientState, clientState })
   const callbackOrigin = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
@@ -50,7 +50,14 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
     // Register listener BEFORE opening browser to avoid race condition
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
       const url = URL.canParse(event.payload.url) ? new URL(event.payload.url) : null
-      if (url?.origin === callbackOrigin && url.pathname === '/') {
+      if (
+        url?.origin === callbackOrigin &&
+        url.pathname === '/' &&
+        !url.username &&
+        !url.password &&
+        url.searchParams.getAll('client_state').length === 1 &&
+        url.searchParams.get('client_state') === clientState
+      ) {
         resolveUrl(url.href)
       }
     })
@@ -59,7 +66,10 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
     // This endpoint calls Better Auth's /sign-in/sso internally and redirects
     // to the IdP, ensuring state cookies are set in the system browser context
     // (not the Tauri webview, which drops cross-origin cookies).
-    const initiateUrl = `${baseUrl}/v1/api/auth/sso/desktop-initiate?loopback_port=${port}`
+    const initiateUrl = `${baseUrl}/v1/api/auth/sso/desktop-initiate?${new URLSearchParams({
+      loopback_port: String(port),
+      client_state: clientState,
+    })}`
     await openUrl(initiateUrl)
 
     const callbackUrl = await Promise.race([
@@ -89,6 +99,6 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
   } finally {
     clearTimeout(timeoutId)
     unlisten?.()
-    void invoke<void>('stop_oauth_server', { flowId }).catch(console.error)
+    void invoke<void>('stop_oauth_server', { flowId: clientState }).catch(console.error)
   }
 }

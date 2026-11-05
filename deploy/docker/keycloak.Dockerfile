@@ -1,4 +1,4 @@
-FROM quay.io/keycloak/keycloak:26.7
+FROM quay.io/keycloak/keycloak:26.8
 
 COPY deploy/config/keycloak-realm.json /opt/keycloak/data/import/thunderbolt-realm.json
 

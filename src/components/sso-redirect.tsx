@@ -49,6 +49,9 @@ const SsoRedirect = () => {
       if (isTauri()) {
         analytics.persistForSso()
         const token = await startSsoFlowLoopback(baseUrl)
+        if (signal.aborted) {
+          return
+        }
         if (token) {
           setAuthToken(token, cloudUrl)
           window.location.replace('/')
@@ -71,6 +74,10 @@ const SsoRedirect = () => {
         })
         .json<{ url: string }>()
 
+      if (signal.aborted) {
+        return
+      }
+
       if (!isSafeUrl(data.url)) {
         console.error('SSO redirect blocked: unsafe URL', data.url)
         setStatus('error')
@@ -81,7 +88,7 @@ const SsoRedirect = () => {
       analytics.persistForSso()
       window.location.href = data.url
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
         return
       }
       if (err instanceof SsoCallbackError) {

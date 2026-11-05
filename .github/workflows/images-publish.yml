@@ -47,6 +47,7 @@ on:
       - 'src/**'
       - 'shared/defaults/models.ts'
       - 'shared/inference-usage.ts'
+      - 'scripts/prune-unreachable-deps.ts'
       - 'package.json'
 
 env:

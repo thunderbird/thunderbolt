@@ -78,13 +78,15 @@ const OAUTH_PORTS: &[u16] = &[17421, 17422, 17423];
 ///
 /// The Rust server accepts a valid loopback callback, sends an "Authentication Complete"
 /// response, emits an `"oauth-callback"` event to the frontend, then shuts down.
+/// SSO callbacks must match client_state; flow_id independently owns cancellation.
 /// No external HTTP framework or Tauri plugin is required.
 #[command]
 pub async fn start_oauth_server(
     app: tauri::AppHandle,
     flow_id: Option<String>,
+    client_state: Option<String>,
 ) -> Result<u16, String> {
-    crate::oauth_server::start(app, OAUTH_PORTS, flow_id)
+    crate::oauth_server::start(app, OAUTH_PORTS, flow_id, client_state)
 }
 
 /// Cancel one provider flow and free its registered redirect port.

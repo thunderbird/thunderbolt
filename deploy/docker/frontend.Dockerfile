@@ -49,6 +49,10 @@ RUN bunx vite build && \
 # Stage 2: Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine
 
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
+
 # Backend upstream — resolved at container start via the official nginx
 # image's `envsubst` entrypoint over /etc/nginx/templates/*.template.
 # Override at runtime (e.g. k8s) by setting THUNDERBOLT_BACKEND_HOST /

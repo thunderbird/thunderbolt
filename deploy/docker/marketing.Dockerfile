@@ -26,6 +26,10 @@ RUN bun run build
 # Stage 2: Serve with nginx
 FROM nginxinc/nginx-unprivileged:alpine
 
+# The base image can lag Alpine's security fixes; take them at build time (nightly-images.yml rebuilds daily).
+USER root
+RUN apk upgrade --no-cache
+
 COPY deploy/config/marketing-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/web/dist /usr/share/nginx/html
 

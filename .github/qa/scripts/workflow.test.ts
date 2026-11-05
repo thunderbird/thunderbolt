@@ -5,6 +5,7 @@
 // The workflow's trust boundaries, read from the resolved YAML, and the steps that gate a fix PR.
 
 import { afterAll, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import {
   appendFileSync,
   chmodSync,
@@ -576,6 +577,29 @@ describe('fix job', () => {
       chmodSync(join(tree.dir, 'src/a.ts'), 0o755)
       chmodSync(join(tree.dir, 'scripts/run.sh'), 0o644)
       expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toContain('(scripts/run.sh src/a.ts)')
+    })
+
+    test('a path with a newline, which could forge lines of the record, rejects the approval', () => {
+      const tree = checkout({ '.gitignore': 'dist/\n', 'src/bar.ts': 'reviewed' })
+      const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+      // Two empty files in an ignored path, each named so that a raw name reads as a line for src/bar.ts.
+      const carrier = (name: string, text: string) => {
+        const path = join(tree.dir, `dist/${name}\n${sha(text)}  ./src/bar.ts`)
+        mkdirSync(dirname(path), { recursive: true })
+        writeFileSync(path, '')
+        return path
+      }
+      const after = carrier('x', 'rewritten')
+      const before = carrier('y', 'reviewed')
+      chmodSync(after, 0o755)
+      const reviewed = recordTree(tree)
+      // A test the reviewer runs rewrites the file and swaps the bits, so the forged and real lines trade places.
+      writeFileSync(join(tree.dir, 'src/bar.ts'), 'rewritten')
+      chmodSync(after, 0o644)
+      chmodSync(before, 0o755)
+      expect(collectIn(tree, { REVIEWED_TREE: reviewed })).toBe(
+        'A path in the checkout holds a newline, so the patch is not published.\n',
+      )
     })
 
     test('a missing or rewritten record rejects the approval, and a rejected patch needs none', () => {

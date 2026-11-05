@@ -1453,10 +1453,11 @@ jobs:
             /usr/bin/find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
               -type f "$@" -print0
           }
-          # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too.
+          # Git keeps a file's owner-executable bit besides its content, so the list holds that bit too, as an `x` line.
+          # Both go through sha256sum, which writes a name with a newline in it escaped, on one line.
           {
             files | /usr/bin/xargs -0r /usr/bin/sha256sum
-            files -perm -100 | /usr/bin/xargs -0r /usr/bin/printf 'x  %s\n'
+            files -perm -100 | /usr/bin/xargs -0r /usr/bin/sha256sum | /usr/bin/sed 's/^/x/'
           } > "$RUNNER_TEMP/qa-tree.txt"
           sum=$(/usr/bin/sha256sum < "$RUNNER_TEMP/qa-tree.txt")
           /bin/mv "$RUNNER_TEMP/qa-tree.txt" "$RUNNER_TEMP/qa-tree-${sum%% *}.txt"
@@ -1757,16 +1758,19 @@ jobs:
           if [ "$REVIEWED" = true ]; then
             reviewed="$RUNNER_TEMP/qa-tree-$REVIEWED_TREE.txt"
             sum=$(sha256sum < "$reviewed" 2> /dev/null) || sum=
+            files() {
+              find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
+                -type f "$@" -print0
+            }
             if [ -z "$REVIEWED_TREE" ] || [ "${sum%% *}" != "$REVIEWED_TREE" ]; then
               diagnose "The record of the tree the review read is missing or changed"
+            # A sha256sum that writes such a path raw (macOS's does) would let it forge a line of the list.
+            elif [ -n "$(files -path $'*\n*' | tr -d '\0')" ]; then
+              diagnose "A path in the checkout holds a newline"
             else
-              files() {
-                find . \( -path ./.git -o -name node_modules -o -name 'qa-out*' -o -name 'qa-dist*' \) -prune -o \
-                  -type f "$@" -print0
-              }
               changed=$(LC_ALL=C comm -3 <(LC_ALL=C sort "$reviewed") <(
-                { files | xargs -0r sha256sum; files -perm -100 | xargs -0r printf 'x  %s\n'; } | LC_ALL=C sort
-              ) | sed -E 's/^\t?([0-9a-f]{64}|x)  \.\///' | LC_ALL=C sort -u)
+                { files | xargs -0r sha256sum; files -perm -100 | xargs -0r sha256sum | sed 's/^/x/'; } | LC_ALL=C sort
+              ) | sed -E 's/^\t?x?[0-9a-f]{64}  \.\///' | LC_ALL=C sort -u)
               if [ -n "$changed" ]; then
                 # check-ignore never names a tracked file, so a tracked file under an ignored path still counts.
                 ignored=$(git check-ignore --stdin <<< "$changed" | LC_ALL=C sort -u) || true

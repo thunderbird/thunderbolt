@@ -21,7 +21,12 @@ Also part of the same machinery:
 | `previews-shared-deploy.yml`  | Manual, plus Mondays 07:00 UTC                                    |
 | `nightly-images.yml`          | 05:00 UTC                                                         |
 | `images-publish.yml`          | Push to `main` under a path filter, or called by `preview-deploy` |
+| `image-scan.yml`              | After `images-publish` or `nightly-images` succeeds, plus manual  |
 | `evals.yml`, `test-build.yml` | Manual only                                                       |
+
+`image-scan.yml` runs Trivy over the six published `:latest` images and reports HIGH and CRITICAL
+findings that have a fix to code scanning, one category per image. Findings never fail the job. It covers
+what Dependabot's security alerts can't see: the packages inside container images.
 
 Release workflows: [RELEASE.md](../../../RELEASE.md).
 

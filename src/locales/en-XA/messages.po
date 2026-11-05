@@ -468,6 +468,7 @@ msgstr ""
 msgid "API Key is required for this provider"
 msgstr ""
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -792,6 +793,11 @@ msgstr ""
 
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
@@ -1173,6 +1179,10 @@ msgstr ""
 msgid "Could not bind the pairing code"
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
@@ -1468,6 +1478,10 @@ msgstr ""
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -2003,6 +2017,10 @@ msgstr ""
 msgid "External Links"
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2246,6 +2264,14 @@ msgstr ""
 #: src/settings/devices.tsx
 msgid "Hide QR code for {deviceName}"
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -2545,6 +2571,10 @@ msgstr ""
 msgid "Logging out…"
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr ""
@@ -2565,9 +2595,17 @@ msgstr ""
 msgid "Maximize"
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
+msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
 msgstr ""
 
 #: src/components/sidebar-footer.tsx
@@ -2595,6 +2633,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr ""
@@ -2603,10 +2645,15 @@ msgstr ""
 msgid "Missing CSRF state — restart the authorization."
 msgstr ""
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
 msgstr ""
 
 #: src/settings/models/add-model-form.tsx
@@ -2616,6 +2663,14 @@ msgstr ""
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
 msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -2964,6 +3019,10 @@ msgstr ""
 msgid "Objects"
 msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -2974,6 +3033,10 @@ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
+msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
 msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
@@ -3244,6 +3307,7 @@ msgstr ""
 msgid "Privacy"
 msgstr ""
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr ""
@@ -3313,6 +3377,15 @@ msgstr ""
 
 #: src/content-view/context.tsx
 msgid "Reasoning"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
 msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
@@ -3463,6 +3536,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
 msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"

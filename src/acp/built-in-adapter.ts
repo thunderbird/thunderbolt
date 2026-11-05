@@ -844,6 +844,7 @@ const fetchViaHarness = async (
     buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
   )
   const record = await cached.record
+  await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
   await prepareHarnessForSend(agentCore, record, config, context.httpClient)
   // Not fatal: workspace copies are a cache of IndexedDB and the prompt keeps the preview.
   const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
@@ -969,6 +970,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     aiFetch({
       init,
       modelId: context.selectedModel.id,
+      reasoningEffort: context.reasoningEffort,
       mcpClients: context.mcpClients,
       reconnectClient: context.reconnectClient,
       httpClient: context.httpClient,
@@ -1027,6 +1029,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       buildHarnessRecord(agentCore, context, resolved, history, config, compaction),
     )
     const record = await waitForCompactionHarness(cached.record, init.signal)
+    await record.harness.setReasoningEffort(context.reasoningEffort, resolved.thinkingLevel)
     await prepareHarnessForSend(agentCore, record, config, context.httpClient)
     const failures = await agentCore.writeAgentWorkspaceFiles(context.threadId, files)
     for (const { path, error } of failures) {

@@ -480,6 +480,7 @@ msgstr "Clave de API (opcional)"
 msgid "API Key is required for this provider"
 msgstr "Este proveedor requiere una clave de API"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -805,6 +806,11 @@ msgstr "Elige un icono para {label}"
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
 msgstr "Elige una opción"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
@@ -1185,6 +1191,10 @@ msgstr "Copiar URL"
 msgid "Could not bind the pairing code"
 msgstr "No se pudo vincular el código de emparejamiento"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
@@ -1480,6 +1490,10 @@ msgstr "Los datos se guardan de forma segura en tu dispositivo."
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -2015,6 +2029,10 @@ msgstr "Exportando…"
 msgid "External Links"
 msgstr "Enlaces externos"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2258,6 +2276,14 @@ msgstr "Ocultar el QR"
 #: src/settings/devices.tsx
 msgid "Hide QR code for {deviceName}"
 msgstr "Ocultar el código QR de {deviceName}"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -2557,6 +2583,10 @@ msgstr "Cerrar sesión"
 msgid "Logging out…"
 msgstr "Cerrando sesión…"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "Mayormente despejado"
@@ -2577,10 +2607,18 @@ msgstr "Los mapas no se pueden mostrar aquí: WebGL está desactivado o no dispo
 msgid "Maximize"
 msgstr "Maximizar"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "Servidores MCP"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2607,6 +2645,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "Minimizar"
@@ -2615,11 +2657,16 @@ msgstr "Minimizar"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "Falta el estado CSRF: reinicia la autorización."
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "Modelo"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2629,6 +2676,14 @@ msgstr "Modelo"
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
 msgstr "El nombre del modelo es obligatorio."
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -2976,6 +3031,10 @@ msgstr "Falló la validación de OAuth"
 msgid "Objects"
 msgstr "Objetos"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -2987,6 +3046,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Sin conexión. Los cambios se sincronizarán cuando vuelvas a estar en línea."
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3256,6 +3319,7 @@ msgstr "La vista previa web solo está disponible en la app de escritorio"
 msgid "Privacy"
 msgstr "Privacidad"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "Privado"
@@ -3326,6 +3390,15 @@ msgstr "Listo para enviar"
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "Razonamiento"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
@@ -3475,6 +3548,10 @@ msgstr "Restablecer la base de datos"
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
 msgstr "¿Restablecer la base de datos local?"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"

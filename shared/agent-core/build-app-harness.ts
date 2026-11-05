@@ -33,6 +33,7 @@ import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
 import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
+import type { ReasoningEffort } from '../reasoning-effort.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
 import { createBrowserCodingTools } from './coding-tools/index.ts'
 import { ensureBufferPolyfill } from './ensure-buffer.ts'
@@ -44,7 +45,10 @@ import {
   type HarnessCompaction,
 } from './compaction.ts'
 
-export type AppHarness = AgentHarness & { compaction: HarnessCompaction }
+export type AppHarness = AgentHarness & {
+  compaction: HarnessCompaction
+  setReasoningEffort: (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => Promise<void>
+}
 
 /** Mount-relative root under which every thread carves its isolated workspace. */
 const workspaceRoot = '/workspace'
@@ -216,6 +220,8 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     throw created.error
   }
   const session = await new InMemorySessionRepo().create({})
+  const effortState: { current: ReasoningEffort | undefined } = { current: undefined }
+  const getReasoningEffort = () => effortState.current
   const { models, model } =
     options.model.kind === 'anthropic'
       ? buildAnthropicModel({
@@ -227,8 +233,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           modelId: options.model.modelId,
         })
       : options.model.kind === 'confidential'
-        ? buildConfidentialModel(options.model)
+        ? buildConfidentialModel({ ...options.model, getReasoningEffort })
         : buildOpenAiCompatModel({
+            getReasoningEffort,
             providerId: options.model.providerId,
             modelId: options.model.modelId,
             baseURL: options.model.baseURL,
@@ -265,6 +272,13 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
   }
 
   return Object.assign(harness, {
+    setReasoningEffort: async (effort: ReasoningEffort | undefined, defaultLevel: ThinkingLevel) => {
+      const level = effort === undefined ? defaultLevel : effort === 'none' ? 'off' : effort
+      if (harness.getThinkingLevel() !== level) {
+        await harness.setThinkingLevel(level)
+      }
+      effortState.current = effort
+    },
     compaction: createHarnessCompaction(
       harness,
       session,

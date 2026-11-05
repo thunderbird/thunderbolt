@@ -201,6 +201,83 @@ describe('createAgentRoutingFetch — connection status', () => {
     resetStore()
   })
 
+  it.each(['prompt', 'compact'] as const)('waits for an effort write before routing %s', async (operation) => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const getChatReasoningEffort = mock(async () => 'high' as const)
+    const seen: AgentAdapterContext[] = []
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        seen.push(context)
+        return new Response('ok')
+      },
+      compact: async (_init, context) => {
+        seen.push(context)
+        return { version: 1, summary: 'Summary', tokensBefore: 100, contextTokens: 10, retainedTail: [] }
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    const request =
+      operation === 'prompt'
+        ? route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+        : route.compact([], undefined, new AbortController().signal)
+    await Promise.resolve()
+    expect(getChatReasoningEffort).not.toHaveBeenCalled()
+    expect(seen).toHaveLength(0)
+    write.resolve()
+    await request
+    expect(getChatReasoningEffort).toHaveBeenCalledWith(sessionId, expect.objectContaining({ id: 'm1' }))
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.reasoningEffort).toBe('high')
+  })
+
+  it('does not send with stale effort when its pending settings write fails', async () => {
+    const write = Promise.withResolvers<void>()
+    useChatStore.getState().updateSession(sessionId, { configurationChange: write.promise })
+    const connect = mock(async () => makeAdapter(builtInAgent))
+    const resolveEffort = mock(async () => 'low' as const)
+    const save = mock(async () => {})
+    const route = createAgentRoutingFetch(sessionId, save, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: connect,
+    })
+    const request = route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    write.reject(new Error('Settings write failed'))
+    await expect(request).rejects.toThrow('Settings write failed')
+    expect(resolveEffort).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('leaves effort resolution to remote agents', async () => {
+    const agent: Agent = {
+      ...builtInAgent,
+      id: 'remote',
+      type: 'remote-acp',
+      transport: 'websocket',
+      url: 'wss://agent.test',
+    }
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: agent })
+    const resolveEffort = mock(async () => 'high' as const)
+    const adapter: AgentAdapter = {
+      ...makeAdapter(agent),
+      fetch: async (_init, context) => {
+        expect(context.reasoningEffort).toBeUndefined()
+        return new Response('ok')
+      },
+    }
+    const route = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: resolveEffort,
+      getOrConnectAdapter: async () => adapter,
+    })
+    await route('https://backend.test', { body: JSON.stringify({ messages: [] }) })
+    expect(resolveEffort).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['/research latest', 'research', 30],
     ['/search latest', 'search', 12],
@@ -224,6 +301,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       },
     }
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       getOrConnectAdapter: async () => adapter,
     })
     const response = await fetch('https://backend.test', {
@@ -260,6 +338,7 @@ describe('createAgentRoutingFetch — connection status', () => {
         },
       }
       const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: async () => adapter,
         getAllSkills: (async () => [{ name: 'weather', instruction: 'WEATHER_BODY', enabled: 1 }]) as never,
         getDb: (() => ({})) as never,
@@ -281,6 +360,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -299,6 +379,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     })
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -315,6 +396,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -332,6 +414,7 @@ describe('createAgentRoutingFetch — connection status', () => {
     const connectToAgent = mock(async (agent: Agent) => makeAdapter(agent))
 
     const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getChatReasoningEffort: async () => undefined,
       connectToAgent: connectToAgent as never,
       updateChatThread: (async () => {}) as never,
       getDb: (() => ({})) as never,
@@ -358,6 +441,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         connectToAgent: connectToAgent as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -397,6 +481,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -464,6 +549,7 @@ describe('createAgentRoutingFetch — connection status', () => {
       httpClient,
       getProxyFetch,
       {
+        getChatReasoningEffort: async () => undefined,
         getOrConnectAdapter: (async () => adapter) as never,
         updateChatThread: (async () => {}) as never,
         getDb: (() => ({})) as never,
@@ -1603,6 +1689,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
     },
   }
   const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getChatReasoningEffort: async () => undefined,
     getOrConnectAdapter: async () => adapter,
     trackEvent: () => {},
   })

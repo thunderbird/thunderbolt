@@ -61,6 +61,7 @@ import { ContextOverflowModal } from '../context-overflow-modal'
 import { ContextUsageIndicator, useCompactionSummaryState } from '../context-usage'
 import { supportsPiCompaction } from '@/acp/built-in-model-support'
 import { PromptInput } from '../ui/prompt-input'
+import { EffortSelector } from './effort-selector'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
 import { collapseTextSelectionToEnd } from '@/lib/focus'
@@ -818,7 +819,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // The model picker sits in the footer's right cluster, next to the send
     // button; the connecting / connection-error status replaces it on the
     // left, so the right side only renders it in the healthy state.
-    const footerEndElements = !isConnecting && !isConnectionError ? <ChatModelPicker /> : undefined
+    const footerEndElements =
+      !isConnecting && !isConnectionError ? (
+        <EffortSelector
+          key={`${chatThreadId}:${selectedAgent.id}`}
+          modelPicker={
+            selectedAgent.type === 'built-in' ? (onClose) => <ChatModelPicker embedded onClose={onClose} /> : undefined
+          }
+        />
+      ) : undefined
 
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {

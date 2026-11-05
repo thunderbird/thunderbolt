@@ -68,6 +68,7 @@ import type { SecureClient } from 'tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
 const compactionStub = {
+  setReasoningEffort: async () => {},
   subscribe: () => () => {},
   getActiveTools: () => [],
   compaction: {

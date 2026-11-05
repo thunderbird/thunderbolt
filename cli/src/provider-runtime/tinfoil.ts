@@ -9,8 +9,15 @@ import {
   resolveConfidentialModelCompatibility,
 } from '../../../shared/agent-core/confidential-model.ts'
 import { inferenceModelHeader } from '../../../shared/inference-usage.ts'
+import {
+  reasoningEfforts,
+  resolveReasoningEffort,
+  tinfoilReasoningCapabilities,
+  type ReasoningEffort,
+} from '../../../shared/reasoning-effort.ts'
 import { join } from 'node:path'
 import { SecureClient } from 'tinfoil'
+import { clampThinkingLevel } from '@earendil-works/pi-ai'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { thunderboltHomeDir } from '../paths.ts'
 import { providerRuntimeError } from './types.ts'
@@ -122,6 +129,9 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
         timeoutMs: options.receiptTimeoutMs,
       }),
   })
+  const capabilities = tinfoilReasoningCapabilities(options.model.model)
+  const hasNativeEfforts = capabilities.efforts.length > 0
+  let getReasoningEffort: () => ReasoningEffort | undefined = () => undefined
   const built = buildConfidentialModel({
     providerId,
     modelId: options.model.model,
@@ -130,6 +140,15 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     apiKey: sdkPlaceholderCredential,
     fetch: fetchFn,
     receipts,
+    getReasoningEffort: hasNativeEfforts ? () => getReasoningEffort() : undefined,
+    thinkingLevelMap: hasNativeEfforts
+      ? Object.fromEntries(
+          reasoningEfforts.map((effort) => [
+            effort === 'none' ? 'off' : effort,
+            capabilities.efforts.includes(effort) ? effort : null,
+          ]),
+        )
+      : undefined,
     reasoning: true,
     contextWindow: options.model.contextWindow ?? undefined,
     supportsImages: isKnownToReadImages(options.model),
@@ -150,7 +169,17 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     persistsCredentialStatus: false,
     piModel: built.model,
     install: (models) => models.setProvider(provider),
-    attach: receipts.attach,
+    attach: (harness) => {
+      getReasoningEffort = () => {
+        const level = clampThinkingLevel(built.model, harness.getThinkingLevel())
+        return resolveReasoningEffort(level === 'off' ? 'none' : level, capabilities)
+      }
+      const detach = receipts.attach(harness)
+      return () => {
+        getReasoningEffort = () => undefined
+        detach()
+      }
+    },
     observePromptError: async () => {
       if (!storedSessionUnauthorized) return
       storedSessionUnauthorized = false

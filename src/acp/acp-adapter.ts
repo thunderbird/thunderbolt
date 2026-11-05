@@ -44,6 +44,7 @@ import type {
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionNotification,
+  SessionConfigOption,
 } from '@agentclientprotocol/sdk'
 import { ClientSideConnection as ClientSideConnectionImpl } from '@agentclientprotocol/sdk'
 import type { Agent, AgentAdapter, AgentAdapterContext, AgentCapabilities, EnsureSessionContext } from '@/types/acp'
@@ -62,6 +63,8 @@ import { openTransport } from './transports'
 import type { AcpTransport } from './types'
 import { createTranslatorStream, toAcpCommands, type AcpCommand } from './translators/acp-to-ai-sdk'
 import type { WebSocketFactory } from './transports/websocket'
+
+import { configSelectOptions, sessionConfigKey, useSessionConfigStore } from './session-config-store'
 
 const protocolVersion = 1
 /** Connect-phase budget. Generous on purpose: a cold-starting upstream (e.g. a
@@ -407,6 +410,9 @@ export const connectAcpAdapter = async (
       return terminationError
     }
     const detail = cause instanceof Error ? cause.message : 'ACP connection closed'
+    for (const cleanup of configCleanups) {
+      cleanup()
+    }
     terminationError = new Error(JSON.stringify({ error: detail, kind: 'connection-lost' }), { cause })
     terminationError.name = 'AcpConnectionLostError'
     return terminationError
@@ -437,10 +443,27 @@ export const connectAcpAdapter = async (
   // way. A thread registers its handler while connected; the fallback cancels.
   const permissionHandlers = new Map<string, RequestPermissionFn>()
 
+  const configs = new Map<string, SessionConfigOption[]>()
+  const configPublishers = new Map<string, () => void>()
+  const configCleanups: Array<() => void> = []
+  const preparingPrompts = new Set<string>()
+  const configChanges = new Map<string, Promise<void>>()
+
+  const rememberConfig = (sessionId: string, options: SessionConfigOption[]): void => {
+    configs.set(sessionId, options)
+    configPublishers.get(sessionId)?.()
+  }
+
   const routeSessionUpdate = (notification: SessionNotification): void => {
+    if (terminationError) {
+      return
+    }
     // The advertised command list is an agent-level capability, not part of a
     // single prompt's stream — capture it here regardless of whether a thread
     // is actively prompting, so commands surface before the first send too.
+    if (notification.update.sessionUpdate === 'config_option_update') {
+      rememberConfig(notification.sessionId, notification.update.configOptions)
+    }
     if (notification.update.sessionUpdate === 'available_commands_update') {
       ctx.onAvailableCommands?.(toAcpCommands(notification.update.availableCommands))
       return
@@ -533,15 +556,21 @@ export const connectAcpAdapter = async (
         sessionId: newSession.sessionId,
         skillDisclosure: capabilities.skills ? undefined : buildFallbackSkillDisclosure(skills),
       })
+      if (!configs.has(newSession.sessionId)) {
+        rememberConfig(newSession.sessionId, newSession.configOptions ?? [])
+      }
       return newSession.sessionId
     }
     // Try a stored-session restore, swallowing a runtime rejection (session
     // evicted on the agent, wire still alive) into `false` so the caller degrades
     // to the next tier. A genuinely dead transport also lands here as `false`,
     // then surfaces loudly at `resolveNew`'s own guarded handshake.
-    const tryRestore = async (restore: Promise<unknown>): Promise<boolean> => {
+    const tryRestore = async (restore: Promise<{ configOptions?: SessionConfigOption[] | null }>): Promise<boolean> => {
       try {
-        await guardHandshake(restore)
+        const response = await guardHandshake(restore)
+        if (context.acpSessionId && !configs.has(context.acpSessionId)) {
+          rememberConfig(context.acpSessionId, response.configOptions ?? [])
+        }
         return true
       } catch {
         throwIfConnectionLost()
@@ -588,8 +617,40 @@ export const connectAcpAdapter = async (
     // Evict on failure so a transient handshake error doesn't poison the thread
     // — the next send retries a fresh resolution.
     resolve.catch(() => sessionByThread.delete(context.threadId))
-    sessionByThread.set(context.threadId, resolve)
-    return resolve
+    const configured = resolve.then((sessionId) => {
+      throwIfConnectionLost()
+      const key = sessionConfigKey(agent.id, context.threadId)
+      const setOption = async (configId: string, value: string): Promise<void> => {
+        throwIfConnectionLost()
+        if (sessionUpdateSinks.has(sessionId) || preparingPrompts.has(sessionId) || configChanges.has(sessionId)) {
+          throw new Error('Wait for the current operation to finish')
+        }
+        const option = configs.get(sessionId)?.find((item) => item.id === configId)
+        if (!option || !configSelectOptions(option).some((item) => item.value === value)) {
+          throw new Error('Unsupported session configuration value')
+        }
+        const change = (async () => {
+          const response = await connection.setSessionConfigOption({ sessionId, configId, value })
+          throwIfConnectionLost()
+          rememberConfig(sessionId, response.configOptions)
+        })()
+        configChanges.set(sessionId, change)
+        try {
+          await change
+        } finally {
+          configChanges.delete(sessionId)
+        }
+      }
+      const publish = () =>
+        useSessionConfigStore.getState().set(key, { options: configs.get(sessionId) ?? [], setOption })
+      configPublishers.set(sessionId, publish)
+      configCleanups.push(() => useSessionConfigStore.getState().remove(key, setOption))
+      publish()
+      return sessionId
+    })
+    configured.catch(() => sessionByThread.delete(context.threadId))
+    sessionByThread.set(context.threadId, configured)
+    return configured
   }
 
   /** Persist and consume one freshly minted session marker. A failed write
@@ -627,29 +688,40 @@ export const connectAcpAdapter = async (
   const fetch = async (init: RequestInit, context: AgentAdapterContext): Promise<Response> => {
     throwIfConnectionLost()
     const sessionId = await resolveThreadSession(context)
+    preparingPrompts.add(sessionId)
+    const preparePrompt = async () => {
+      // A prompt submitted during a config change must not silently run with
+      // the previous setting if that change fails. The user can retry explicitly.
+      await configChanges.get(sessionId)
 
-    // First real send of a freshly-minted session: persist the id we actually
-    // used, and (tier-3 only) seed the prior transcript as context. The marker
-    // is keyed on "fresh session's first prompt" (not "we prepended a
-    // transcript") so a brand-new thread's second prompt never re-injects its
-    // first exchange. Consumption happens only after persistence succeeds.
-    const freshSession = await consumeFreshSession(context, sessionId)
-    const priorTranscript = freshSession ? extractPriorTranscript(init) : undefined
-    const prompt = await buildPromptBlocks(
-      init,
-      context.skillInstructions,
-      capabilities.promptCapabilities.embeddedContext,
-      defaultPromptBlockDeps,
-      priorTranscript,
-      freshSession?.skillDisclosure,
-      context.projectSection,
-    )
+      // First real send of a freshly-minted session: persist the id we actually
+      // used, and (tier-3 only) seed the prior transcript as context. The marker
+      // is keyed on "fresh session's first prompt" (not "we prepended a
+      // transcript") so a brand-new thread's second prompt never re-injects its
+      // first exchange. Consumption happens only after persistence succeeds.
+      const freshSession = await consumeFreshSession(context, sessionId)
+      const priorTranscript = freshSession ? extractPriorTranscript(init) : undefined
+      return buildPromptBlocks(
+        init,
+        context.skillInstructions,
+        capabilities.promptCapabilities.embeddedContext,
+        defaultPromptBlockDeps,
+        priorTranscript,
+        freshSession?.skillDisclosure,
+        context.projectSection,
+      )
+    }
+    const prompt = await preparePrompt().catch((error: unknown) => {
+      preparingPrompts.delete(sessionId)
+      throw error
+    })
 
     const { body, translator, close } = createTranslatorStream({
       textDeltaThrottleMs: deps.textDeltaThrottleMs,
       onSideEffect: context.onSessionSideEffect,
     })
 
+    preparingPrompts.delete(sessionId)
     sessionUpdateSinks.set(sessionId, (notification) => translator.handle(notification))
     if (context.requestPermission) {
       permissionHandlers.set(sessionId, context.requestPermission)

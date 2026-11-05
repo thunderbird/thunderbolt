@@ -10,6 +10,7 @@
  * the adapter contract consumed by `src/chats/chat-instance.ts` `customFetch`.
  */
 
+import type { ReasoningEffort } from '@shared/reasoning-effort'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { HttpClient } from '@/lib/http'
@@ -74,6 +75,7 @@ export type AgentAdapterContext = {
   acpSessionId: string | null
   saveMessages: SaveMessagesFunction
   selectedModel: Model
+  reasoningEffort?: ReasoningEffort
   mcpClients: NamedMCPClient[]
   /** Reconnect a dropped MCP client at the `tools()` boundary; returns a fresh
    *  client or null. Supplied by the MCP provider via the chat store. */

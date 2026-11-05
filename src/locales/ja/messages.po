@@ -456,6 +456,7 @@ msgstr "API キー（任意）"
 msgid "API Key is required for this provider"
 msgstr "このプロバイダーには API キーが必要です"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/model-detail.tsx
 #: src/settings/models/models-list.tsx
@@ -781,6 +782,11 @@ msgstr "{label} のアイコンを選択"
 #: src/components/ui/searchable-menu/searchable-menu.tsx
 msgid "Choose an option"
 msgstr "オプションを選択"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Choose effort"
+msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Choose model"
@@ -1161,6 +1167,10 @@ msgstr "URL をコピー"
 msgid "Could not bind the pairing code"
 msgstr "ペアリングコードを紐づけできませんでした"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Could not change reasoning effort"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Could not check whether a removed device still holds your account key. Reload to try again."
 msgstr ""
@@ -1456,6 +1466,10 @@ msgstr "データはお使いのデバイスに安全に保存されます。"
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+#~ msgid "Default"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
@@ -1991,6 +2005,10 @@ msgstr "エクスポートしています…"
 msgid "External Links"
 msgstr "外部リンク"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Extra high"
+msgstr ""
+
 #: src/i18n/unit-labels.ts
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
@@ -2234,6 +2252,14 @@ msgstr "QR を隠す"
 #: src/settings/devices.tsx
 msgid "Hide QR code for {deviceName}"
 msgstr "{deviceName} の QR コードを隠す"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "High"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Higher effort can improve difficult answers but takes more time and tokens."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "How {appName} salutes you"
@@ -2533,6 +2559,10 @@ msgstr "ログアウト"
 msgid "Logging out…"
 msgstr "ログアウトしています…"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Low"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Mainly clear"
 msgstr "おおむね晴れ"
@@ -2553,10 +2583,18 @@ msgstr "このブラウザでは WebGL が無効か利用できないため、�
 msgid "Maximize"
 msgstr "最大化"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Maximum"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
 msgstr "MCP サーバー"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Medium"
+msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2583,6 +2621,10 @@ msgstr ""
 #~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 #~ msgstr ""
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Minimal"
+msgstr ""
+
 #: src/components/window-controls.tsx
 msgid "Minimize"
 msgstr "最小化"
@@ -2591,11 +2633,16 @@ msgstr "最小化"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "CSRF ステートがありません。認可をやり直してください。"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
 msgid "Model"
 msgstr "モデル"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model and reasoning effort"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 #~ msgid "Model may not be compatible"
@@ -2605,6 +2652,14 @@ msgstr "モデル"
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Model name is required."
 msgstr "モデル名は必須です。"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Model: {modelName}. Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/layout/sidebar/settings-sidebar.tsx
 #: src/search/commands/navigation.ts
@@ -2952,6 +3007,10 @@ msgstr "OAuth の検証に失敗しました"
 msgid "Objects"
 msgstr "物"
 
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "Off"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through {appName}'s backend. Local (loopback) models always connect directly."
 msgstr ""
@@ -2963,6 +3022,10 @@ msgstr ""
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "オフラインです。オンラインに戻ると変更が同期されます。"
+
+#: src/components/chat/effort-selector/use-effort-selector-state.ts
+msgid "On"
+msgstr ""
 
 #: src/components/onboarding/onboarding-dialog.tsx
 msgid "Onboarding Wizard"
@@ -3232,6 +3295,7 @@ msgstr "Webview のプレビューはデスクトップアプリでのみ利用�
 msgid "Privacy"
 msgstr "プライバシー"
 
+#: src/components/ui/model-selector/model-selector.tsx
 #: src/components/ui/private-badge.tsx
 msgid "Private"
 msgstr "非公開"
@@ -3302,6 +3366,15 @@ msgstr "送信できます"
 #: src/content-view/context.tsx
 msgid "Reasoning"
 msgstr "推論"
+
+#: src/components/chat/effort-selector/effort-controls.tsx
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort"
+msgstr ""
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+msgid "Reasoning effort: {effortName}"
+msgstr ""
 
 #: src/settings/models/connection-test-section.tsx
 msgid "Received an error while testing the model."
@@ -3451,6 +3524,10 @@ msgstr "データベースをリセット"
 #: src/settings/preferences.tsx
 msgid "Reset Local Database?"
 msgstr "ローカルデータベースをリセットしますか？"
+
+#: src/components/chat/effort-selector/effort-selector.tsx
+#~ msgid "Reset reasoning effort"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"

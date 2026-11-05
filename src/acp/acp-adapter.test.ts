@@ -35,6 +35,8 @@ import type {
   RequestPermissionResponse,
   ResumeSessionRequest,
   SessionNotification,
+  SessionConfigOption,
+  SetSessionConfigOptionRequest,
 } from '@agentclientprotocol/sdk'
 import { describe, expect, it } from 'bun:test'
 import { getClock } from '@/testing-library'
@@ -42,6 +44,7 @@ import type { Agent, AgentAdapterContext } from '@/types/acp'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '@shared/agent-core/skills'
 import type { AcpTransport } from './types'
 import { connectAcpAdapter, type AcpAdapterContext } from './acp-adapter'
+import { sessionConfigKey, useSessionConfigStore } from './session-config-store'
 import { TransportTerminationError } from './termination'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
 
@@ -105,6 +108,8 @@ const buildFakeTransport = (): {
  *  the real routing path the adapter wires up. */
 const buildFakeConnection = (
   opts: {
+    configOptions?: SessionConfigOption[]
+    beforeConfigResponse?: () => Promise<void>
     hangInitialize?: boolean
     loadSession?: boolean
     resume?: boolean
@@ -120,6 +125,7 @@ const buildFakeConnection = (
 ) => {
   const calls = {
     initialize: [] as InitializeRequest[],
+    config: [] as SetSessionConfigOptionRequest[],
     newSession: [] as NewSessionRequest[],
     loadSession: [] as LoadSessionRequest[],
     resumeSession: [] as ResumeSessionRequest[],
@@ -155,7 +161,7 @@ const buildFakeConnection = (
     newSession = (req: NewSessionRequest) => {
       calls.newSession.push(req)
       newSessionCount++
-      return Promise.resolve({ sessionId: `sess-${newSessionCount}` })
+      return Promise.resolve({ sessionId: `sess-${newSessionCount}`, configOptions: opts.configOptions })
     }
     loadSession = (req: LoadSessionRequest) => {
       calls.loadSession.push(req)
@@ -172,6 +178,11 @@ const buildFakeConnection = (
         throw new Error('SDK connection aborted')
       }
       return { stopReason: 'end_turn' as const }
+    }
+    setSessionConfigOption = async (req: SetSessionConfigOptionRequest) => {
+      calls.config.push(req)
+      await opts.beforeConfigResponse?.()
+      return { configOptions: (opts.configOptions ?? []).map((option) => ({ ...option, currentValue: req.value })) }
     }
     cancel = (req: CancelNotification) => {
       calls.cancel.push(req)
@@ -1089,5 +1100,178 @@ describe('connectAcpAdapter — Stop cancels the remote ACP turn', () => {
 
     expect(sse.join('')).toContain('"type":"finish"')
     expect(calls.cancel).toHaveLength(0)
+  })
+})
+
+describe('ACP reasoning configuration', () => {
+  it('does not send a waiting prompt with the previous effort after a config change fails', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      const context = threadCtx('failed-config')
+      await adapter.ensureSession(context)
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, context.threadId))!
+      const change = config.setOption('budget', 'high')
+      const prompt = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        context,
+      )
+      const settled = Promise.allSettled([change, prompt])
+      await getClock().tickAsync(0)
+      gate.reject(new Error('Effort change rejected'))
+      const results = await settled
+      expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+      expect(fake.calls.prompt).toHaveLength(0)
+      expect(config.options[0].currentValue).toBe('low')
+      // A failed preparation releases the session; an explicit retry can send.
+      const retry = await adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'retry' }] }] }) },
+        context,
+      )
+      expect(fake.calls.prompt).toHaveLength(1)
+      fake.releasePrompts()
+      await retry.text()
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('waits for a pending config write before prompting and rejects concurrent changes', async () => {
+    const gate = Promise.withResolvers<void>()
+    const fake = buildFakeConnection({
+      beforeConfigResponse: () => gate.promise,
+      configOptions: [
+        {
+          id: 'budget',
+          name: 'Effort',
+          type: 'select',
+          currentValue: 'low',
+          options: [
+            { value: 'low', name: 'Low' },
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
+    })
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => buildFakeTransport().transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      await adapter.ensureSession(threadCtx('pending-config'))
+      const config = useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, 'pending-config'))!
+      const change = config.setOption('budget', 'high')
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      const pending = adapter.fetch(
+        { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+        threadCtx('pending-config'),
+      )
+      expect(fake.calls.prompt).toHaveLength(0)
+      gate.resolve()
+      await change
+      const response = await pending
+      expect(fake.calls.prompt).toHaveLength(1)
+      await expect(config.setOption('budget', 'low')).rejects.toThrow('current operation')
+      fake.releasePrompts()
+      await response.text()
+      await config.setOption('budget', 'low')
+    } finally {
+      gate.resolve()
+      fake.releasePrompts()
+      adapter.disconnect()
+    }
+  })
+
+  it('ignores queued notifications from a disconnected generation', async () => {
+    const old = buildFakeConnection()
+    const next = buildFakeConnection()
+    const connect = (fake: ReturnType<typeof buildFakeConnection>) =>
+      connectAcpAdapter(remoteAgent, baseCtx(), {
+        ClientSideConnection: fake.FakeConnection as never,
+        openTransport: async () => buildFakeTransport().transport,
+        getEnabledSkills: async () => [],
+      })
+    const first = await connect(old)
+    await first.ensureSession(threadCtx('generation'))
+    first.disconnect()
+    const second = await connect(next)
+    try {
+      await second.ensureSession(threadCtx('generation'))
+      const key = sessionConfigKey(remoteAgent.id, 'generation')
+      const current = useSessionConfigStore.getState().sessions.get(key)
+      await old.pushUpdate({
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'config_option_update', configOptions: [] },
+      })
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+      first.disconnect()
+      expect(useSessionConfigStore.getState().sessions.get(key)).toBe(current)
+    } finally {
+      second.disconnect()
+    }
+  })
+
+  it('retains initial options, forwards opaque values, isolates threads and receives idle updates', async () => {
+    const options: SessionConfigOption[] = [
+      {
+        id: 'budget',
+        category: 'thought_level',
+        name: 'Thinking',
+        type: 'select',
+        currentValue: 'fast-id',
+        options: [
+          { value: 'fast-id', name: 'Fast' },
+          { value: 'deep-id', name: 'Deep' },
+        ],
+      },
+    ]
+    const fake = buildFakeConnection({ configOptions: options })
+    const transport = buildFakeTransport()
+    const adapter = await connectAcpAdapter(remoteAgent, baseCtx(), {
+      ClientSideConnection: fake.FakeConnection as never,
+      openTransport: async () => transport.transport,
+      getEnabledSkills: async () => [],
+    })
+    try {
+      await adapter.ensureSession(threadCtx('one'))
+      await adapter.ensureSession(threadCtx('two'))
+      const get = (id: string) => useSessionConfigStore.getState().sessions.get(sessionConfigKey(remoteAgent.id, id))!
+      expect(get('one').options).toEqual(options)
+      await expect(get('one').setOption('budget', 'high')).rejects.toThrow('Unsupported')
+      await get('one').setOption('budget', 'deep-id')
+      expect(fake.calls.config).toEqual([{ sessionId: 'sess-1', configId: 'budget', value: 'deep-id' }])
+      expect(get('one').options[0].currentValue).toBe('deep-id')
+      expect(get('two').options[0].currentValue).toBe('fast-id')
+      await fake.pushUpdate({
+        sessionId: 'sess-1',
+        update: { sessionUpdate: 'config_option_update', configOptions: [] },
+      })
+      expect(get('one').options).toEqual([])
+    } finally {
+      adapter.disconnect()
+    }
+    expect(useSessionConfigStore.getState().sessions.has(sessionConfigKey(remoteAgent.id, 'one'))).toBe(false)
   })
 })

@@ -18,6 +18,8 @@ import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '../inference-usage.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
+import type { ReasoningEffort } from '../reasoning-effort.ts'
+
 const vendorAliases = { zhipu: 'zai' } as const
 // pi-ai 0.82.1 has no glm-5.3 and no deepseek-v4-1-flash; swap each alias for the real catalog id when upgrading Pi
 const modelAliases = {
@@ -75,6 +77,9 @@ export type BuildConfidentialModelOptions = {
   readonly fetch: OpenAiCompatFetch
   /** Provider-facing capture half of the caller-owned receipt lifecycle. */
   readonly receipts: ReceiptCapture
+  readonly getReasoningEffort?: () => ReasoningEffort | undefined
+  /** Native effort controls may replace Pi's legacy aliases when paired with an exact payload override. */
+  readonly thinkingLevelMap?: Model<'openai-completions'>['thinkingLevelMap']
   readonly reasoning: boolean
   readonly contextWindow?: number
   readonly supportsImages: boolean
@@ -112,10 +117,9 @@ export const resolveConfidentialModelCompatibility = (
       thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
     }
   }
-  // Tinfoil's DeepSeek V4.1 Flash takes reasoning through `chat_template_kwargs`
-  // (`{ thinking: true, reasoning_effort }` on, `{ thinking: false }` off) with its
-  // own effort map, while Pi's deepseek format sends top-level `thinking` and
-  // `reasoning_effort` and maps low/medium to null (clamped up to high).
+  // Legacy inherited Pi levels use the chat-template compatibility mapping.
+  // Explicit native effort uses Tinfoil's documented top-level reasoning_effort
+  // via getReasoningEffort; that override removes these legacy fields and aliases.
   if (model.modelId === 'deepseek-v4-1-flash') {
     return {
       ...resolved,
@@ -387,8 +391,10 @@ export const buildConfidentialModel = (
     reasoning: options.reasoning,
     contextWindow: options.contextWindow,
     supportsImages: options.supportsImages,
+    getReasoningEffort: options.getReasoningEffort,
+    effortFormat: 'tinfoil',
     compat: compatible.compat,
-    thinkingLevelMap: compatible.thinkingLevelMap,
+    thinkingLevelMap: options.thinkingLevelMap ?? compatible.thinkingLevelMap,
   })
   const sourceProvider = built.models.getProvider(options.providerId)
   if (!sourceProvider) {

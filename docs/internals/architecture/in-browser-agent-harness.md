@@ -329,3 +329,34 @@ shows up there and nowhere else.
 | `src/acp/built-in-adapter.ts`              | Adapter seam, harness cache and signature, lazy engine import, teardown              |
 | `src/acp/built-in-conversation.ts`         | Request body → seed history plus the current prompt (including attachments)          |
 | `scripts/agent-core-browser-check.ts`      | Production-chunk regression check in Chromium and WebKit                             |
+
+## Reasoning effort
+
+The combined chat picker lists models directly and discovers effort controls from the selected provider. Unsupported
+or unknown models hide the effort panel while keeping model selection available. Without an explicit selection, the existing model-profile/provider behavior is preserved. The UI leaves the slider unselected rather than inventing a level, and offers only concrete supported values. Off appears only when the
+serving model supports disabling reasoning. Preferences use the existing encrypted settings table, scoped to chat and model.
+A saved value that is no longer supported resolves to no override.
+
+`shared/reasoning-effort.ts` owns provider capability rules and exact wire values. OpenAI Chat Completions uses
+`reasoning_effort`; OpenRouter uses `reasoning.effort`. Tinfoil uses its documented native `reasoning_effort` values,
+including values that differ from Pi's catalog aliases. Explicit overrides replace conflicting profile controls.
+OpenAI/Anthropic capabilities come from Pi's model catalog, OpenRouter from its public model catalog, and Tinfoil
+from its documented per-model list. OpenRouter discovery shares one cached catalog across models; a refresh outage
+retains the last successful catalog, while a cold failure remains an error. Update the Tinfoil list when changing
+the bundled confidential models.
+
+The browser harness changes thinking level between turns without rebuilding the session or losing compaction
+checkpoints. An absent override uses the profile's level and leaves the provider payload unchanged.
+
+Remote ACP agents remain authoritative: the composer displays their `thought_level` select options verbatim,
+including grouped choices, and commits through `session/set_config_option`. Initial responses, setter responses,
+and idle `config_option_update` notifications refresh the control. No advertised option means no selector.
+The CLI Pi harness exposes concrete supported levels, serializes changes against active prompts, and restores saved
+thinking-level entries when resuming a session. If an inherited level cannot resolve to a supported effort, it
+initializes Medium when available, otherwise the lowest enabled reasoning level (Off only if it is the sole option). Valid explicit and resumed choices are
+preserved. No synthetic Default option is advertised.
+
+Provider references: [OpenAI](https://developers.openai.com/api/docs/guides/reasoning),
+[OpenRouter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens),
+[Tinfoil](https://docs.tinfoil.sh/guides/reasoning),
+[ACP configuration](https://agentclientprotocol.com/protocol/v1/session-config-options).

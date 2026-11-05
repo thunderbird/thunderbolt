@@ -67,6 +67,13 @@ const binding = (providerId: string = activeProviderId): PreparedPiBinding => ({
 const successMessage = { stopReason: 'stop' } as AssistantMessage
 
 const harnessRuntime = (overrides: Partial<HarnessRuntime> = {}): HarnessRuntime => ({
+  reasoning: {
+    capabilities: () => ({ efforts: [] }),
+    current: () => undefined,
+    set: async () => {
+      throw new Error('Unsupported reasoning effort.')
+    },
+  },
   subscribe: () => () => {},
   registerToolCallGate: () => {},
   prompt: async () => successMessage,

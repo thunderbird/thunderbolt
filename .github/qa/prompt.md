@@ -28,7 +28,10 @@ another session's user.
 Unless your charter says otherwise, the app's AI is a local fake: every reply is "Hello from the fake provider, one
 word at a time." Before your first chat message, open the model picker (the button with test id
 `model-selector-trigger`, it shows the current model's name) and select "Opus 5.5". No other model is configured here,
-so an error message from another model is expected (a screen that hangs is still a bug).
+so an error message from another model is expected (a screen that hangs is still a bug). A message that contains
+`qa:slow` gets the same reply one word every 3 s, so you have time to stop it while it streams. A message that
+contains `qa:cut` loses its connection after three words the first time the fake sees its exact text, so a retry
+of it gets the whole reply. Neither is a bug in itself: judge what the app does next.
 
 When your charter says the AI is real, replies vary and can use tools (weather, maps, search, link previews, MCP
 servers, files). Read every reply in full, besides the console and the network, and check that the AI really did
@@ -61,8 +64,10 @@ Techniques for choosing your own tests. Use the ones that fit a function, in any
 
 - The normal path first, then variations of it.
 - Boundary input: empty, a 300-character text, emoji and right-to-left text, duplicate names.
-- Interruptions: a double click, cancelling halfway, the back button or a reload in the middle of a flow, stopping a
-  reply mid-stream.
+- Interruptions and transitions: a double click, cancelling halfway, the back button or a reload in the middle of a
+  flow, or a change while something is still in flight (stop a reply and send again, switch the model while a reply
+  streams, retry a reply that broke off, edit while a save is pending). Then check the next state: one reply per message,
+  nothing spinning, nothing lost after a reload.
 - Round trips: create, change, delete and create the same thing again, checking each step after a reload.
 - Combinations: one feature used inside another (a skill in a project's chat, a file in a long thread).
 - Forms: when a submit button stays disabled or a form won't save, check every visible field and fill the empty
@@ -200,8 +205,8 @@ Everything above still holds, with these changes:
   order, an interruption, a reload, a second chat, another model, any technique from the toolbox. Add each variant
   to your list.
 - The AI is **real**: "Opus 5.5" (Anthropic), "DeepSeek V4.1 Flash" and "GLM 5.3" answer for real, so replies vary. Select
-  "Opus 5.5" before your first message unless the goal needs another model. Keep prompts short. The session is
-  sized for about 15 chat messages, across more than one chat: use most of them, and never more than 15.
+  "Opus 5.5" before your first message unless the goal needs another model. Keep prompts short, and send at most 15
+  chat messages, across more than one chat. That is a ceiling, not a goal: a message that tests nothing new is waste.
 - The case's `facts`, when it has any, are known only to you, like the fixture facts above: never tell the app's AI
   any of them, and use them to judge its answers. A wrong answer is an `assert-failed` finding: quote the reply.
 - When the facts name a Google account, connect Google in Settings → Connections → Connect Google and pick exactly
@@ -210,5 +215,6 @@ Everything above still holds, with these changes:
   joined by hyphens (for example `plan-after-reload`); the report lists them as what the session tried.
 - Every finding's `viewport` is the platform's id. Specs replay against the same real providers, three times each,
   and two failures confirm a finding, so a spec may depend on what the model does, never on its exact words.
-- Finish only when every item of your list has an attempt record and you have used most of those messages. A bug
-  you found does not end the session: work around it and go on with the rest of the list.
+- Finish once every item of your list has an attempt record and each risk it names (the variants you added) was
+  tried, however few messages that took. A bug you found does not end the session: work around it and go on with
+  the rest of the list.

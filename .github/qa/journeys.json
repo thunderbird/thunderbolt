@@ -140,5 +140,13 @@
       "Other accounts on the chooser: expired@gmail.test (every call must refresh the token first) and big@gmail.test (1,200 messages)."
     ],
     "pt": "Conecta o Gmail e pede um resumo dos e-mails não lidos por urgência e um rascunho de resposta ao mais urgente."
+  },
+  {
+    "id": "mind-changer",
+    "who": "Lea, a product manager drafting a launch announcement between meetings, and often interrupted.",
+    "goal": "Wants a short launch announcement, but changes her mind halfway through replies. She stops an answer that goes the wrong way and asks again, wants a second opinion from another model while a reply is still coming, and picks up the draft where she left it after a reload.",
+    "style": "Impatient: presses Stop the moment a reply drifts and rephrases, switches the model mid-reply, starts a second chat and comes back to the first.",
+    "crosses": ["chat", "stop and send again", "model picker while streaming", "reload"],
+    "pt": "Interrompe respostas no meio, troca de modelo durante o streaming e retoma o rascunho depois de recarregar."
   }
 ]

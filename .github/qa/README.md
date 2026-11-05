@@ -372,7 +372,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot, a native one on the flow replay ran (the allow list's own
    serialization, read from a path checked like a screenshot's). For a `layout` finding the replayed probe
-   line is the proof and a screenshot only context. The default answer is drop. The judge also proposes the
+   line is the proof and a screenshot only context. The fake AI provider (`e2e/fake-provider.ts`) answers streamed
+   Anthropic Messages and streamed OpenAI-compatible chat completions, the two requests the backend sends it, and
+   gives anything else a 404 and a `[fake-provider] unsupported <time> <request>` line in the stack log. Replay reads
+   that log (`QA_BACKEND_LOG`) and gives each finding the lines logged while one of its counted runs ran, as
+   `replay.provider_gaps`: by time for a spec, since specs replay in parallel and a line can land on another spec's
+   finding too, and from the run's own log lines for a flow. The judge sees them in `<fake_provider>` and drops a
+   finding whose failure follows from one as an environment artifact. A spec can write to that log, so the lines
+   are untrusted like the rest, and at most 10 are kept. The default answer is drop. The judge also proposes the
    ticket's priority from a four-line rubric in `judge.md`. When the kept findings carry two distinct fingerprints or more, one more
    call with the same model groups them by defect (`groupFindings`), because each platform can word one bug
    differently: Android names an icon button by the text before it where the web and iOS also name the icon, and
@@ -601,6 +608,23 @@ the outcome must survive a reload. A function that spans two areas has one owner
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 Every charter runs on desktop and phone. The layout probe covers screen fit, so no function lists it.
 
+Transitions, a change made while something is still in flight, are charter steps with the outcome they must reach.
+c2 covers stop then send and a retry after a reply broke off, on the fake AI, which has two triggers in
+`e2e/fake-provider.ts`, read from the text of the latest user message in any letter case (a phone keyboard
+capitalizes the first letter). With `qa:slow` (`slowReplyTrigger`) the reply streams one word every 3 s, so the
+explorer, and a spec that replays it, has time to press Stop. With `qa:cut`
+(`cutReplyTrigger`) the first request with that exact text loses its connection after three words and a retry gets the
+whole reply, so each run must use a fresh text. Replay rewrites a flow's partial fake reply to the full one, so on a
+device c2 checks only the replies that follow. c3 covers a model switch while a reply streams and the next turn
+after a stopped reply on the real providers, where the reply's content shows whether the stopped turn leaked into it.
+c5 stops the weather prompt while its tool runs. The free session's `mind-changer` case stops and switches the model
+mid-reply in one person's style. The steps fit each charter's existing message cap.
+
+Not covered: offline edits, background and resume, an upgrade over existing data and IME composition. The browser tools
+have no offline switch (`--caps network` is off in `mcp.json`), the Maestro allow list keeps the app in the
+foreground, the pipeline builds only the current app, and `drivers/playwright.md` allows `browser_evaluate` only to
+read the page, so no composition event can be sent.
+
 Coverage counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
 attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
 change.
@@ -608,7 +632,8 @@ Text the explorer typed never counts, and a session without a transcript covers 
 was seen at the right moment, not that it shows the outcome: sample covered functions by hand.
 
 The free session plays one case from `journeys.json` (a person, a goal with no steps, and `facts` the explorer
-uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI.
+uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI. It has no message target:
+it sends at most 15 chat messages and stops once every item of its list, and each risk the list names, was tried.
 
 - `explore.sh journey` picks the case: weeks since 1970 modulo the number of cases, so every case runs once before
   any repeats. A dispatch's `journey` input forces one; `charters: free` runs only the free session.
@@ -653,8 +678,8 @@ QA_BACKEND_PORT to a free port`. So stop any `bun run e2e` first, or move the st
 .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding   # only for c1
 
 # The stack: fake AI, pglite, the normal build on the frontend port and the onboarding build on the onboarding port.
-# Leave it running.
-.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding
+# Leave it running. The tee keeps the log replay reads for the fake provider's lines.
+.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding 2>&1 | tee /tmp/qa-stack.log
 
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
@@ -682,8 +707,9 @@ ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-phone
 Then the rest of the pipeline:
 
 ```sh
-# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*)
-bun .github/qa/scripts/verify.ts replay --out qa-out
+# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*).
+# QA_BACKEND_LOG is the stack's log, where the fake provider writes the requests it cannot answer.
+QA_BACKEND_LOG=/tmp/qa-stack.log bun .github/qa/scripts/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
 bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run; LINEAR_API_KEY adds dedupe and scorecard.json
 bun .github/qa/scripts/fix.ts route --out qa-out       # lists open PRs, so `gh` must be signed in here

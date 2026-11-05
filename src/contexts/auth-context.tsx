@@ -127,14 +127,14 @@ export const hydrateSessionFromCache = (
  * but the initial `useAuthQuery` `onSuccess` writes the raw server payload, so
  * `{ user: null, session: null }` can transit the atom — we filter it out here
  * to avoid caching a payload that would only resurrect as a logged-out flash on
- * the next boot. Real sign-out (atom → `null`) is a no-op here on purpose —
- * cache clearing is owned by the 401 handler and `clearLocalData` callers.
+ * the next boot. A completed, successful signed-out response clears the cache;
+ * pending requests and network failures preserve offline access.
  */
 export const subscribeSessionCachePersist = (
   client: ReturnType<typeof createAuthClient>,
   cloudUrl = getLocalSetting('cloudUrl'),
 ): (() => void) => {
-  return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
+  return client.$store.atoms.session.subscribe((state) => {
     if (!isCurrentServer(cloudUrl)) {
       return
     }
@@ -142,6 +142,8 @@ export const subscribeSessionCachePersist = (
     if (data?.user && data?.session) {
       markServerAuthenticated()
       setCachedSession(data)
+    } else if (!state.isPending && !state.isRefetching && !state.error) {
+      clearCachedSession()
     }
   })
 }

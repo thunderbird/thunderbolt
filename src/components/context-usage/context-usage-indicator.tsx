@@ -107,7 +107,7 @@ export const ContextUsageIndicator = ({
           }
           desktopMenu={{ align: 'start', className: 'w-64 max-w-[calc(100vw-2rem)] p-0' }}
         >
-          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-1">
+          <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-1 max-md:gap-4 max-md:px-4 max-md:pb-4 max-md:pt-2">
             {onCompact ? (
               <>
                 <Textarea
@@ -117,7 +117,7 @@ export const ContextUsageIndicator = ({
                   placeholder={t`Add summary instructions (optional)`}
                   disabled={pending}
                   rows={3}
-                  className="rounded-md text-[length:var(--font-size-sm)]"
+                  className="md:rounded-md md:text-[length:var(--font-size-sm)]"
                 />
                 {state.failed && (
                   <p role="alert" className="px-3 py-2 text-[length:var(--font-size-sm)] text-destructive">
@@ -130,13 +130,17 @@ export const ContextUsageIndicator = ({
                 <Trans>Context compaction is available with supported built-in models.</Trans>
               </p>
             )}
-            <div className={cn('gap-2', onCompact && onViewSummary ? 'grid grid-cols-2' : 'flex justify-end')}>
+            <div
+              className={cn(
+                'gap-2 max-md:flex max-md:flex-col-reverse',
+                onCompact && onViewSummary ? 'md:grid md:grid-cols-2' : 'md:flex md:justify-end',
+              )}
+            >
               {onViewSummary && (
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  className="h-auto min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal max-md:min-h-[var(--touch-height-default)]"
+                  className="h-auto min-h-[var(--touch-height-default)] min-w-0 whitespace-normal md:min-h-0 md:rounded-md md:px-2 md:py-1.5 md:text-[length:var(--font-size-sm)] md:font-normal"
                   onClick={() => {
                     flushSync(() => state.setOpen(false))
                     onViewSummary()
@@ -150,15 +154,14 @@ export const ContextUsageIndicator = ({
                   <TooltipTrigger asChild>
                     <span
                       tabIndex={(busy || !hasHistory) && !pending ? 0 : undefined}
-                      className="inline-flex min-w-0 rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+                      className="inline-flex min-w-0 rounded-lg md:rounded-md focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <Button
                         type="button"
                         variant="default"
-                        size="sm"
                         disabled={busy || pending || !hasHistory}
                         onClick={state.compact}
-                        className="h-auto w-full min-w-0 rounded-md px-2 py-1.5 text-[length:var(--font-size-sm)] whitespace-normal font-normal max-md:min-h-[var(--touch-height-default)]"
+                        className="h-auto min-h-[var(--touch-height-default)] w-full min-w-0 whitespace-normal md:min-h-0 md:rounded-md md:px-2 md:py-1.5 md:text-[length:var(--font-size-sm)] md:font-normal"
                       >
                         {pending ? <Trans>Compacting context…</Trans> : <Trans>Compact now</Trans>}
                       </Button>

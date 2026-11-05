@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
  * Uses the `composer` ModelSelector variant, opening down on desktop and up
  * on mobile (above the bottom-anchored composer).
  */
-export const ChatModelPicker = () => {
+export const ChatModelPicker = ({ embedded = false, onClose }: { embedded?: boolean; onClose?: () => void }) => {
   const models = useChatStore((state) => state.models)
   const setSelectedModel = useChatStore((state) => state.setSelectedModel)
   const { openCreateItem } = useCreateItem()
@@ -32,6 +32,8 @@ export const ChatModelPicker = () => {
 
   return (
     <ModelSelector
+      embedded={embedded}
+      onClose={onClose}
       variant="composer"
       models={models}
       selectedModel={selectedModel ?? null}

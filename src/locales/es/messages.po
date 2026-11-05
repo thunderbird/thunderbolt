@@ -806,6 +806,7 @@ msgstr "Elige un icono para {label}"
 msgid "Choose an option"
 msgstr "Elige una opción"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Choose effort"
 msgstr ""
@@ -2655,6 +2656,7 @@ msgstr "Minimizar"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "Falta el estado CSRF: reinicia la autorización."
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -3379,6 +3381,7 @@ msgstr "Listo para enviar"
 msgid "Reasoning"
 msgstr "Razonamiento"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Reasoning effort"
 msgstr ""

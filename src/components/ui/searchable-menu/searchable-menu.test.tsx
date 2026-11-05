@@ -23,6 +23,31 @@ describe('SearchableMenu', () => {
   })
 
   describe('functionality', () => {
+    it('keeps an embedded list open on selection and closes its host before a footer action', () => {
+      const onChange = mock()
+      const events: string[] = []
+      render(
+        <SearchableMenu
+          embedded
+          items={mockFlatItems}
+          onValueChange={onChange}
+          onOpenChange={(open) => {
+            if (!open) {
+              events.push('close')
+            }
+          }}
+          footerAction={{ label: 'Add option', onAction: () => events.push('add') }}
+        />,
+      )
+      expect(screen.queryByRole('dialog')).toBeNull()
+      fireEvent.click(screen.getByText('Option 2'))
+      expect(onChange).toHaveBeenCalledWith('2', mockFlatItems[1])
+      expect(events).toEqual([])
+      expect(screen.getByText('Option 1')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Add option' }))
+      expect(events).toEqual(['close', 'add'])
+    })
+
     it('calls onValueChange when item is selected', () => {
       const handleChange = mock()
       render(<SearchableMenu items={mockFlatItems} onValueChange={handleChange} open={true} onOpenChange={() => {}} />)

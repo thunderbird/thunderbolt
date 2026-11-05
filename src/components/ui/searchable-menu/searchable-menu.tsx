@@ -175,6 +175,7 @@ const DefaultTrigger = <T,>({
 }
 
 export const SearchableMenu = <T,>({
+  embedded = false,
   items,
   value,
   onValueChange,
@@ -247,7 +248,9 @@ export const SearchableMenu = <T,>({
   }
 
   const handleSelect = (id: string, item: SearchableMenuItem<T>) => {
-    closeMenu()
+    if (!embedded) {
+      closeMenu()
+    }
     onValueChange(id, item)
   }
 
@@ -331,6 +334,10 @@ export const SearchableMenu = <T,>({
       )}
     </div>
   )
+
+  if (embedded) {
+    return menuContent
+  }
 
   return (
     <ResponsivePopover

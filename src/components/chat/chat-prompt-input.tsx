@@ -822,8 +822,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const footerEndElements =
       !isConnecting && !isConnectionError ? (
         <EffortSelector
-          key={`${chatThreadId}:${selectedAgent.id}:${selectedModel.id}`}
-          modelPicker={selectedAgent.type === 'built-in' ? <ChatModelPicker /> : undefined}
+          key={`${chatThreadId}:${selectedAgent.id}`}
+          modelPicker={
+            selectedAgent.type === 'built-in' ? (onClose) => <ChatModelPicker embedded onClose={onClose} /> : undefined
+          }
         />
       ) : undefined
 

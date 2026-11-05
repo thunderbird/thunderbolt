@@ -100,7 +100,10 @@ describe('effort selector state', () => {
 
   it('keeps model selection available when effort is unsupported', async () => {
     useChatStore.getState().updateSession('effort-chat', { selectedModel: { ...model, model: 'llama3-3-70b' } })
-    renderWithReactivity(<EffortSelector modelPicker={<button>Choose model</button>} />, { tables: ['settings'] })
+    renderWithReactivity(<EffortSelector modelPicker={() => <button>Choose model</button>} />, { tables: ['settings'] })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Model and reasoning effort' }))
+    })
     expect(screen.getByRole('button', { name: 'Choose model' })).toBeDefined()
     expect(screen.queryByRole('slider')).toBeNull()
   })

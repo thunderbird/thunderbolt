@@ -19,10 +19,13 @@ import { cn } from '@/lib/utils'
 import { matchesThreadConfidentiality, needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
-import { AlertTriangle, ChevronDown } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown } from 'lucide-react'
 import { useCallback } from 'react'
 
 export type ModelSelectorProps = {
+  /** Show the model list directly inside a combined picker. */
+  embedded?: boolean
+  onClose?: () => void
   models: Model[]
   selectedModel: Model | null
   chatThread: ChatThread | null
@@ -112,6 +115,8 @@ export const categorizeModels = (
 }
 
 export const ModelSelector = ({
+  embedded = false,
+  onClose,
   models,
   selectedModel,
   chatThread,
@@ -170,11 +175,12 @@ export const ModelSelector = ({
         className={cn(
           searchableMenuRowClass,
           'hover:bg-accent/50',
-          isSelected && 'bg-accent',
+          isSelected && (embedded ? 'bg-brand/10 text-brand' : 'bg-accent'),
           item.disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
         <span className="truncate font-normal">{item.label}</span>
+        {embedded && isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0" />}
         {/* ml-auto pushes the trailing indicator (missing-key warning or the
             confidential "Private" badge) to the row's right edge. */}
         {showMissingKeyHint ? (
@@ -212,6 +218,12 @@ export const ModelSelector = ({
 
   return (
     <SearchableMenu
+      embedded={embedded}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose?.()
+        }
+      }}
       items={groupedItems}
       value={selectedModel?.id}
       onValueChange={handleModelChange}
@@ -225,7 +237,7 @@ export const ModelSelector = ({
       footerAction={footerAction}
       contentClassName="max-md:bg-sidebar"
       width={240}
-      maxHeight={340}
+      maxHeight={embedded ? 220 : 340}
       side={side}
       align={align}
     />

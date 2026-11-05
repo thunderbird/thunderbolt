@@ -782,6 +782,7 @@ msgstr "{label} のアイコンを選択"
 msgid "Choose an option"
 msgstr "オプションを選択"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Choose effort"
 msgstr ""
@@ -2631,6 +2632,7 @@ msgstr "最小化"
 msgid "Missing CSRF state — restart the authorization."
 msgstr "CSRF ステートがありません。認可をやり直してください。"
 
+#: src/components/chat/effort-selector/effort-selector.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/model-detail.tsx
@@ -3355,6 +3357,7 @@ msgstr "送信できます"
 msgid "Reasoning"
 msgstr "推論"
 
+#: src/components/chat/effort-selector/effort-controls.tsx
 #: src/components/chat/effort-selector/effort-selector.tsx
 msgid "Reasoning effort"
 msgstr ""

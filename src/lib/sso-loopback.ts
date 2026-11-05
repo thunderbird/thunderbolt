@@ -35,9 +35,9 @@ export const startSsoFlowLoopback = async (baseUrl: string, timeoutMs = ssoTimeo
   const { listen } = await import('@tauri-apps/api/event')
   const { openUrl } = await import('@tauri-apps/plugin-opener')
 
-  const port = await invoke<number>('start_oauth_server')
-  const callbackOrigin = `http://localhost:${port}`
   const clientState = generateCodeVerifier()
+  const port = await invoke<number>('start_oauth_server', { clientState })
+  const callbackOrigin = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
   let timeoutId: ReturnType<typeof setTimeout> | undefined

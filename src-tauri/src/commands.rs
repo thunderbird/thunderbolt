@@ -76,12 +76,15 @@ const OAUTH_PORTS: &[u16] = &[17421, 17422, 17423];
 
 /// Starts the in-house OAuth loopback server and returns the port it bound to.
 ///
-/// The Rust server accepts one HTTP connection, sends an "Authentication Complete"
-/// response, emits an `"oauth-callback"` event to the frontend, then shuts down.
+/// The Rust server rejects unrelated requests and accepts one callback, optionally
+/// matching an SSO client state, then emits `"oauth-callback"` and shuts down.
 /// No external HTTP framework or Tauri plugin is required.
 #[command]
-pub async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
-    crate::oauth_server::start(app, OAUTH_PORTS)
+pub async fn start_oauth_server(
+    app: tauri::AppHandle,
+    client_state: Option<String>,
+) -> Result<u16, String> {
+    crate::oauth_server::start(app, OAUTH_PORTS, client_state)
 }
 
 // === Thunderbolt CLI install =================================================================

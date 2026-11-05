@@ -39,16 +39,22 @@ describe('startSsoFlowLoopback', () => {
     expect(initiate.pathname).toBe('/v1/api/auth/sso/desktop-initiate')
     expect(initiate.searchParams.get('loopback_port')).toBe('17421')
     expect(initiate.searchParams.get('client_state')).toMatch(/^[A-Za-z0-9_-]{43,128}$/)
+    expect(tauriCore.invoke).toHaveBeenCalledWith('start_oauth_server', {
+      clientState: initiate.searchParams.get('client_state'),
+    })
     expect(unlistenFn).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['token=attacker-token', 'error=access_denied'])('ignores callbacks without state: %s', async (params) => {
-    openUrlSpy.mockImplementation(async (url) => {
-      callback({ payload: { url: `http://localhost:17421/?${params}` } })
-      respond(url, { token: 'real-token' })
-    })
-    expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
-  })
+  it.each(['token=attacker-token', 'error=access_denied', 'error=invalid_request'])(
+    'ignores callbacks without state: %s',
+    async (params) => {
+      openUrlSpy.mockImplementation(async (url) => {
+        callback({ payload: { url: `http://localhost:17421/?${params}` } })
+        respond(url, { token: 'real-token' })
+      })
+      expect(await startSsoFlowLoopback('http://localhost:8000')).toBe('real-token')
+    },
+  )
 
   it('ignores wrong origin, port, path, state, duplicate state, and malformed events', async () => {
     openUrlSpy.mockImplementation(async (initiate) => {

@@ -175,6 +175,10 @@ On desktop, OIDC and SAML sign-in opens your system browser: you authenticate th
 
 That browser handoff needs one of the ports `17421`, `17422` or `17423` free on the user's own machine. A listener opens on one of them only during a sign-in, and only the same machine connects to it. A local firewall blocking all three breaks desktop sign-in, with no fallback.
 
+Each desktop sign-in generates a fresh, unguessable `client_state`. The app accepts a token or error only from its expected loopback address and with that exact state. The backend also signs the callback port, client state, and system browser's HttpOnly nonce with `BETTER_AUTH_SECRET`. This server-minted proof prevents changing the callback destination or app state, or forging a binding from a caller-chosen cookie. No persistent server-side flow store is required.
+
+**Roll out the backend before the desktop app.** The updated backend accepts initiations from older clients without `client_state`, but those clients retain their original callback protection and should then be upgraded. The updated desktop app rejects unbound callbacks from an older backend and eventually shows its sign-in retry screen; there is no compatibility fallback that accepts an unbound token. Sign-ins already in progress when the backend is upgraded must be restarted because their callbacks lack the new browser binding. Browser-only sign-in is unchanged.
+
 Which server the apps talk to is fixed when they are built. Pointing desktop or mobile users at your deployment means producing your own builds with your API and app URLs, and rebuilding when you change the authentication mode. The browser app has no such constraint.
 
 The sign-in link in an email opens the hosted Thunderbolt app directly on iOS and Android. For a self-hosted deployment that link opens in the browser instead, which still signs the user in.

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useLingui } from '@lingui/react/macro'
-import { useReducer, useTransition } from 'react'
+import { useEffect, useReducer, useRef, useTransition } from 'react'
 import { useAuth } from '@/contexts'
 import { thunderboltCloudUrl } from '@/lib/constants'
 import {
@@ -46,12 +46,21 @@ export const useOnboardingServerState = (
     waitlist.state.status === 'verifying' ||
     waitlist.state.passkeyPending
 
+  const pending = useRef<AbortController | null>(null)
+  useEffect(() => () => pending.current?.abort(), [])
+
   const connectCloud = () => {
+    pending.current?.abort()
+    const controller = new AbortController()
+    pending.current = controller
     update({ error: null })
     startConnecting(async () => {
       try {
-        await connect(thunderboltCloudUrl)
+        await connect(thunderboltCloudUrl, undefined, controller.signal)
       } catch (cause) {
+        if (controller.signal.aborted) {
+          return
+        }
         update({
           error:
             cause instanceof ServerVersionUnsupportedError

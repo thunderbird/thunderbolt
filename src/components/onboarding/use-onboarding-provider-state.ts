@@ -12,7 +12,14 @@ import {
   startOpenRouterConnection,
   type OpenRouterManualConnection,
 } from '@/lib/openrouter-auth'
-import { tinfoilAuth, TinfoilConnectionError, type TinfoilCredentials } from '@/lib/tinfoil-auth'
+import { tinfoilAuth, TinfoilConnectionError } from '@/lib/tinfoil-auth'
+import {
+  assertProviderConnectionAttemptCurrent,
+  getProviderConnectionAttempt,
+  type ProviderAuthorization,
+  type ProviderConnectionAttempt,
+} from '@/lib/provider-connection-attempt'
+import { useDatabase } from '@/contexts'
 import { isMobile, isTauri } from '@/lib/platform'
 import { useAddModelForm } from '@/settings/models/use-add-model-form'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
@@ -26,7 +33,7 @@ type ProviderState = {
   isDisconnecting: boolean
   showApiKey: boolean
   error: string | null
-  manual: OpenRouterManualConnection | null
+  manual: (OpenRouterManualConnection & { attempt: ProviderConnectionAttempt }) | null
   code: string
 }
 type ProviderAction =
@@ -36,7 +43,7 @@ type ProviderAction =
   | { type: 'disconnecting' }
   | { type: 'api-key' }
   | { type: 'error'; error: string }
-  | { type: 'manual'; manual: OpenRouterManualConnection }
+  | { type: 'manual'; manual: OpenRouterManualConnection & { attempt: ProviderConnectionAttempt } }
   | { type: 'code'; code: string }
 
 /** Keeps provider credentials in the form and transient PKCE material in memory. */
@@ -85,11 +92,13 @@ export const useOnboardingProviderState = (
   connectedProviders: readonly ProviderState['selection'][],
   dependencies = connectionDependencies,
   onConnected?: () => void,
+  options: { initialProvider?: ProviderState['selection']; onSaved?: () => void } = {},
 ) => {
   const { t, i18n } = useLingui()
+  const db = useDatabase()
   const getProxyFetch = useProxyFetchGetter()
   const [state, dispatch] = useReducer(onboardingProviderReducer, {
-    selection: connectedProviders[0] ?? 'openrouter',
+    selection: options.initialProvider ?? connectedProviders[0] ?? 'openrouter',
     view: 'choices',
     isConnecting: false,
     isDisconnecting: false,
@@ -98,15 +107,17 @@ export const useOnboardingProviderState = (
     manual: null,
     code: '',
   })
-  const authorizedSession = useRef<TinfoilCredentials | null>(null)
+  const authorizedSession = useRef<{ key: string; authorization: ProviderAuthorization } | null>(null)
   const pending = useRef<AbortController | null>(null)
   const isFormOpen = state.view === 'other'
   const provider: OnboardingProvider = state.selection === 'tinfoil' ? 'tinfoil' : 'openrouter'
+  const supportsSignIn = provider !== 'tinfoil' || !dependencies.needsManual()
   const isConnected = connectedProviders.includes(state.selection)
   const addForm = useAddModelForm({
     isOpen: state.view === 'other',
     onClose: () => dispatch({ type: 'view', view: state.view === 'other' ? 'choices' : provider }),
     onSaved: () => {
+      options.onSaved?.()
       if (state.view === 'other') {
         onConnected?.()
       }
@@ -120,13 +131,23 @@ export const useOnboardingProviderState = (
     provider: OnboardingProvider,
     key: string,
     controller: AbortController,
-    tokens?: TinfoilCredentials,
+    authorization?: ProviderAuthorization,
   ) => {
     try {
+      const currentAuthorization = authorization ?? { attempt: await getProviderConnectionAttempt(db, provider) }
+      await runProviderSetupStage('save', () =>
+        assertProviderConnectionAttemptCurrent(db, currentAuthorization.attempt),
+      )
+      controller.signal.throwIfAborted()
       const values = await dependencies.prepareModel(provider, key, getProxyFetch, controller.signal)
       if (!controller.signal.aborted) {
         await runProviderSetupStage('save', () =>
-          addForm.saveModel(tokens ? { ...values, oauthProvider: 'tinfoil', tinfoilCredentials: tokens } : values),
+          addForm.saveModel({
+            ...values,
+            signal: controller.signal,
+            providerAuthorization: currentAuthorization,
+            ...(currentAuthorization.tinfoilCredentials ? { oauthProvider: 'tinfoil' } : {}),
+          }),
         )
       }
     } catch (error) {
@@ -143,14 +164,14 @@ export const useOnboardingProviderState = (
     provider: OnboardingProvider,
     key: string,
     controller: AbortController,
-    tokens?: TinfoilCredentials,
+    authorization: ProviderAuthorization,
   ) => {
-    authorizedSession.current = tokens ?? null
+    authorizedSession.current = { key, authorization }
     addForm.onProviderChange(provider)
     addForm.form.setValue('apiKey', key, { shouldValidate: true })
     dispatch({ type: 'view', view: provider })
     dispatch({ type: 'connecting' })
-    await saveProvider(provider, key, controller, tokens)
+    await saveProvider(provider, key, controller, authorization)
   }
 
   const connectProvider = async (provider: OnboardingProvider) => {
@@ -160,6 +181,8 @@ export const useOnboardingProviderState = (
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
+      const attempt = await getProviderConnectionAttempt(db, provider)
+      controller.signal.throwIfAborted()
       if (provider !== 'tinfoil' && dependencies.needsManual()) {
         const manual = await dependencies.prepareManual()
         if (controller.signal.aborted) {
@@ -167,23 +190,26 @@ export const useOnboardingProviderState = (
         }
         await dependencies.openUrl(manual.authorizationUrl)
         if (!controller.signal.aborted) {
-          dispatch({ type: 'manual', manual })
+          dispatch({ type: 'manual', manual: { ...manual, attempt } })
         }
         return
       }
       if (provider === 'tinfoil') {
-        const cached = authorizedSession.current
-        const tokens =
-          !isConnected && cached && cached.expires_at > Date.now() + 60_000
-            ? cached
-            : await dependencies.startTinfoil({ signal: controller.signal })
+        const cached = authorizedSession.current?.authorization
+        const authorization =
+          !isConnected &&
+          cached?.attempt.revision === attempt.revision &&
+          cached.tinfoilCredentials &&
+          cached.tinfoilCredentials.expires_at > Date.now() + 60_000
+            ? { tinfoilCredentials: cached.tinfoilCredentials, attempt: cached.attempt }
+            : { tinfoilCredentials: await dependencies.startTinfoil({ signal: controller.signal }), attempt }
         if (!controller.signal.aborted) {
-          await connectKey(provider, tokens.access_token, controller, tokens)
+          await connectKey(provider, authorization.tinfoilCredentials.access_token, controller, authorization)
         }
       } else {
         const key = await dependencies.start({ signal: controller.signal })
         if (!controller.signal.aborted) {
-          await connectKey(provider, key, controller)
+          await connectKey(provider, key, controller, { attempt })
         }
       }
     } catch (error) {
@@ -210,9 +236,11 @@ export const useOnboardingProviderState = (
     pending.current = controller
     dispatch({ type: 'connecting' })
     try {
+      await assertProviderConnectionAttemptCurrent(db, state.manual.attempt)
+      controller.signal.throwIfAborted()
       const key = await dependencies.exchange(state.code, state.manual.verifier, controller.signal)
       if (!controller.signal.aborted) {
-        await connectKey(provider, key, controller)
+        await connectKey(provider, key, controller, { attempt: state.manual.attempt })
       }
     } catch {
       if (!controller.signal.aborted) {
@@ -240,7 +268,7 @@ export const useOnboardingProviderState = (
       return
     }
     const key = addForm.form.getValues('apiKey')?.trim()
-    if (!key || (state.view !== 'openrouter' && state.view !== 'tinfoil')) {
+    if (!key || state.selection === 'custom') {
       return
     }
     pending.current?.abort()
@@ -248,10 +276,12 @@ export const useOnboardingProviderState = (
     pending.current = controller
     dispatch({ type: 'connecting' })
     await saveProvider(
-      state.view,
+      provider,
       key,
       controller,
-      authorizedSession.current?.access_token === key ? authorizedSession.current : undefined,
+      authorizedSession.current?.key === key && authorizedSession.current.authorization.attempt.provider === provider
+        ? authorizedSession.current.authorization
+        : undefined,
     )
   }
 
@@ -289,6 +319,8 @@ export const useOnboardingProviderState = (
 
   return {
     ...state,
+    supportsSignIn,
+    showApiKey: state.showApiKey || !supportsSignIn,
     addForm,
     isFormOpen,
     connectOpenRouter: () => connectProvider('openrouter'),

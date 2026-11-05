@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AssistantMessage } from './assistant-message'
+import { PrivateSourcesContext } from './private-sources-context'
 import { SyntheticLoadingPart } from './synthetic-loading-part'
 import { UserMessage } from './user-message'
 import { ErrorMessage } from './error-message'
@@ -72,6 +73,12 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
   const { triggerNotification } = useHaptics()
 
   const visibleMessages = useMemo(() => messages.filter((message) => message.metadata?.oauthRetry !== true), [messages])
+  const privateSourceMessageIds = useMemo(() => {
+    const start = messages.findIndex((message) =>
+      message.metadata?.sources?.some((source) => source.allowRemoteImages === false),
+    )
+    return new Set(start === -1 ? [] : messages.slice(start).map((message) => message.id))
+  }, [messages])
   const lastMessage = useMemo(() => visibleMessages.at(-1), [visibleMessages])
   const shareActionHostId = useMemo(() => visibleMessages.findLast(rendersContent)?.id, [visibleMessages])
   const lastAssistantMessage = useMemo(
@@ -177,14 +184,15 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
           const shouldApplyViewport = isLast && shouldUseViewportPositioning(visibleMessages.length)
 
           return (
-            <AssistantMessage
-              key={message.id}
-              message={message}
-              isStreaming={isStreaming && isLast}
-              isLastMessage={shouldApplyViewport}
-              isLastAssistantMessage={message.id === lastAssistantMessage?.id}
-              lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
-            />
+            <PrivateSourcesContext value={privateSourceMessageIds.has(message.id)} key={message.id}>
+              <AssistantMessage
+                message={message}
+                isStreaming={isStreaming && isLast}
+                isLastMessage={shouldApplyViewport}
+                isLastAssistantMessage={message.id === lastAssistantMessage?.id}
+                lastAssistantAction={message.id === shareActionHostId ? shareDebugTranscriptAction : undefined}
+              />
+            </PrivateSourcesContext>
           )
         }
         if (message.role === 'user') {

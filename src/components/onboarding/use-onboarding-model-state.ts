@@ -4,11 +4,14 @@
 
 import { updateModelInTransaction } from '@/dal/models'
 import { tinfoilSession } from '@/lib/tinfoil-session'
+import { invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels } from '@/dal'
 import { useQueryClient } from '@tanstack/react-query'
+import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
+import { hasTinfoilSearchConnection } from '@/integrations/tinfoil-search/eligibility'
 import { useChatStore } from '@/chats/chat-store'
 import type { OnboardingProvider } from './provider-default-model'
 import { isStandaloneModelReady } from '@/settings/models/model-policy'
@@ -22,11 +25,19 @@ export const isConfiguredStandaloneModel = (model: Model): boolean =>
 export const useOnboardingModelState = () => {
   const db = useDatabase()
   const queryClient = useQueryClient()
-  const { data: models = [], isLoading } = useQuery({
+  const { data: models = [], isLoading: modelsLoading } = useQuery({
     queryKey: ['models', 'onboarding'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const configuredModels = models.filter(isConfiguredStandaloneModel)
+  const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
+  const oauthAvailable = Boolean(session?.enabled && session.connected && !session.needsReauth)
+  // Connection status must not flip to disconnected when the user switches a model off.
+  const connectedModels = models.filter(
+    (model) =>
+      isConfiguredStandaloneModel({ ...model, enabled: 1 }) && (model.oauthProvider !== 'tinfoil' || oauthAvailable),
+  )
+  const configuredModels = connectedModels.filter((model) => model.enabled === 1)
+  const hasBuiltInSearch = hasTinfoilSearchConnection(models, oauthAvailable)
   const disconnectProvider = async (provider: OnboardingProvider, oauthOnly = false) => {
     if (provider === 'tinfoil') {
       await tinfoilSession.disconnect()
@@ -37,12 +48,21 @@ export const useOnboardingModelState = () => {
         (model) =>
           model.provider === provider && model.isSystem !== 1 && !model.deletedAt && !model.oauthProvider && !oauthOnly,
       )) {
-        await updateModelInTransaction(tx, model.id, { apiKey: null, enabled: 0 })
+        await updateModelInTransaction(tx, model.id, { apiKey: null })
+      }
+      if (provider === 'openrouter') {
+        await invalidateProviderConnectionAttempts(tx, provider)
       }
     })
     useChatStore.getState().setModels(await getAvailableModels(db))
     await queryClient.invalidateQueries({ queryKey: ['models'] })
-    await queryClient.invalidateQueries({ queryKey: ['tinfoil-session'] })
   }
-  return { configuredModels, hasConfiguredModel: configuredModels.length > 0, isLoading, disconnectProvider }
+  return {
+    connectedModels,
+    configuredModels,
+    hasConfiguredModel: configuredModels.length > 0,
+    hasBuiltInSearch,
+    isLoading: modelsLoading || sessionLoading,
+    disconnectProvider,
+  }
 }

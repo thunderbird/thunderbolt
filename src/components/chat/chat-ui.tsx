@@ -112,18 +112,20 @@ export default function ChatUI() {
     }
   }, [hasMessages, scrollToBottom])
 
-  if (modelNeedsSetup && !hasMessages) {
-    return (
-      <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
-        <ChatModelSetup />
-        <ChatContentReady />
-      </div>
-    )
-  }
+  const showModelSetup = modelNeedsSetup && !hasMessages
 
   return (
     <div className="h-full w-full" style={{ paddingBottom: 'var(--kb, 0px)' }}>
-      <div className={cn('flex flex-col h-full overflow-hidden w-full', isMobile && 'pb-0')}>
+      {showModelSetup && (
+        <div className="flex h-full w-full items-center justify-center overflow-y-auto p-6">
+          <ChatModelSetup />
+        </div>
+      )}
+      {/* Keep the composer mounted: new-chat drafts and pending attachments live in memory. */}
+      <div
+        hidden={showModelSetup}
+        className={cn('flex-col h-full overflow-hidden w-full', showModelSetup ? 'hidden' : 'flex', isMobile && 'pb-0')}
+      >
         <AnimatePresence mode="wait">
           {hasMessages ? (
             <div key="messages" className="relative flex-1 min-h-0">

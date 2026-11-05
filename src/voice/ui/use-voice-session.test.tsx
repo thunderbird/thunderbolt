@@ -105,8 +105,8 @@ describe('hosted voice sign-in gate', () => {
       state: 'idle',
       getOutputLevel: () => 0,
     })
-    const { result } = renderHook(useVoiceSession, { wrapper: createQueryTestWrapper() })
-    return { result, createSession, start }
+    const { result, unmount } = renderHook(useVoiceSession, { wrapper: createQueryTestWrapper() })
+    return { result, unmount, createSession, start }
   }
 
   it.each(['', 'https://server.example/v1'])(
@@ -127,6 +127,60 @@ describe('hosted voice sign-in gate', () => {
       }
     },
   )
+
+  it('does not open the microphone after stop during lazy startup', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+    setCachedSession({ user: { id: 'sso-user' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    const { result, createSession } = renderVoice()
+    await act(async () => {
+      const pending = result.current.start()
+      await result.current.stop()
+      await pending
+    })
+    expect(createSession).not.toHaveBeenCalled()
+    expect(result.current.active).toBe(false)
+    expect(isVoiceModeActive()).toBe(false)
+  })
+
+  it('does not create an orphan voice session after unmount during startup', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+    setCachedSession({ user: { id: 'sso-user' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    const { result, unmount, createSession } = renderVoice()
+    await act(async () => {
+      const pending = result.current.start()
+      unmount()
+      await pending
+    })
+    expect(createSession).not.toHaveBeenCalled()
+    expect(isVoiceModeActive()).toBe(false)
+  })
+
+  it('can restart immediately after cancelling startup without the old stop hiding it', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+    setCachedSession({ user: { id: 'sso-user' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    const { result, createSession, start } = renderVoice()
+    await act(async () => {
+      const cancelled = result.current.start()
+      const stopped = result.current.stop()
+      const restarted = result.current.start()
+      await Promise.all([cancelled, stopped, restarted])
+    })
+    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(result.current.active).toBe(true)
+    expect(isVoiceModeActive()).toBe(true)
+  })
+
+  it('coalesces repeated starts while loading the voice runtime', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })
+    setCachedSession({ user: { id: 'sso-user' }, session: { expiresAt: new Date(Date.now() + 60_000) } })
+    const { result, createSession, start } = renderVoice()
+    await act(async () => {
+      await Promise.all([result.current.start(), result.current.start()])
+    })
+    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(start).toHaveBeenCalledTimes(1)
+  })
 
   it('starts hosted voice for a cookie-authenticated server session', async () => {
     useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: true })

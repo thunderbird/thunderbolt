@@ -7,7 +7,7 @@ import { clearAuthToken, getAuthToken } from '@/lib/auth-token'
 import { fetch } from '@/lib/fetch'
 import { createClient, type HttpClient } from '@/lib/http'
 import { clearCachedSession, getCachedSession } from '@/lib/session-cache'
-import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
+import { getLocalSetting, isCurrentServer, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { appVersionHeader, isVersionBelowMinimum } from '@/lib/app-version'
 
 /** A candidate server needs a newer client; the current connection remains unchanged. */
@@ -20,6 +20,7 @@ export class ServerVersionUnsupportedError extends Error {
 
 /** Only a server that has never owned an account or synced data can be changed in place. */
 export const canChangeServer = (): boolean =>
+  isCurrentServer(getLocalSetting('cloudUrl')) &&
   !!getLocalSetting('cloudUrl') &&
   getLocalSetting('localMode') &&
   !getLocalSetting('serverHasAuthenticated') &&
@@ -50,14 +51,19 @@ export const normalizeServerUrl = (input: string): string => {
 }
 
 /** Validate the public endpoint before selecting a server; never send an existing session to the candidate. */
-export const connectToServer = async (input: string, client?: HttpClient): Promise<void> => {
+export const connectToServer = async (input: string, client?: HttpClient, signal?: AbortSignal): Promise<void> => {
+  signal?.throwIfAborted()
   const cloudUrl = normalizeServerUrl(input)
   const previousUrl = getLocalSetting('cloudUrl')
+  if (!isCurrentServer(previousUrl)) {
+    throw new Error('The selected server changed in another window')
+  }
   if (previousUrl && previousUrl !== cloudUrl) {
     throw new Error('Disconnect the current account before changing servers')
   }
   const httpClient = client ?? createClient({ prefixUrl: cloudUrl, fetch, credentials: 'omit' })
-  const config = await httpClient.get('config', { timeout: 5_000 }).json<AppConfig>()
+  const config = await httpClient.get('config', { timeout: 5_000, signal }).json<AppConfig>()
+  signal?.throwIfAborted()
   if (
     !config ||
     typeof config !== 'object' ||
@@ -69,7 +75,7 @@ export const connectToServer = async (input: string, client?: HttpClient): Promi
   if (isVersionBelowMinimum(appVersionHeader()['X-App-Version'], config.minAppVersion)) {
     throw new ServerVersionUnsupportedError()
   }
-  if (getLocalSetting('cloudUrl') !== previousUrl) {
+  if (!isCurrentServer(previousUrl)) {
     throw new Error('The selected server changed while connecting')
   }
   if (!previousUrl) {

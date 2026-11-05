@@ -15,23 +15,50 @@ type SearchProviderState = {
   apiKey: string
   configureSearchProvider: (apiKey: string, provider?: SearchProvider) => void
   clearSearchProvider: () => void
+  disconnectSearchProvider: () => void
 }
+
+const storageKey = 'thunderbolt-search-provider'
+const initialConfiguration = { selection: 'auto', provider: null, apiKey: '' } as const
 
 /** Device-local search credentials, deliberately excluded from synced settings. */
 export const useSearchProviderStore = create<SearchProviderState>()(
   persist(
     (set) => ({
-      selection: 'auto',
+      ...initialConfiguration,
       selectSearchProvider: (selection) => set({ selection }),
-      provider: null,
-      apiKey: '',
       configureSearchProvider: (apiKey, provider = 'brave') =>
         set({ provider, apiKey: apiKey.trim(), selection: 'custom' }),
-      clearSearchProvider: () => set({ provider: null, apiKey: '', selection: 'auto' }),
+      clearSearchProvider: () => set(initialConfiguration),
+      disconnectSearchProvider: () =>
+        set(({ selection }) => ({
+          provider: null,
+          apiKey: '',
+          selection: selection === 'custom' || selection === 'auto' ? 'none' : selection,
+        })),
     }),
     {
-      name: 'thunderbolt-search-provider',
+      name: storageKey,
       partialize: ({ provider, apiKey, selection }) => ({ provider, apiKey, selection }),
+      // Removal in another window must discard the in-memory key too. Rehydration
+      // otherwise merges missing storage over the current (still connected) state.
+      merge: (persisted, current) => ({
+        ...current,
+        ...initialConfiguration,
+        ...(persisted as Partial<SearchProviderState>),
+      }),
     },
   ),
 )
+
+const onStorage = (event: StorageEvent) => {
+  if (event.storageArea === localStorage && (event.key === storageKey || event.key === null)) {
+    void useSearchProviderStore.persist.rehydrate()
+  }
+}
+
+// The evaluation CLI imports provider selection too, but has no browser windows to synchronize.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', onStorage)
+  import.meta.hot?.dispose(() => window.removeEventListener('storage', onStorage))
+}

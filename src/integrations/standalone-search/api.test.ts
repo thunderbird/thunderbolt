@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { createClient } from '@/lib/http'
-import { createStandaloneWebApi, parseWebPage, searchBrave, searchWeb } from './api'
+import { createStandaloneWebApi, searchBrave, searchWeb } from './api'
 
 describe('standalone web tools', () => {
   it('searches Brave with only its own key and caps the requested result count', async () => {
@@ -37,52 +37,6 @@ describe('standalone web tools', () => {
     const client = createClient({ fetch: async () => Response.json({}) })
     expect(await searchBrave({ query: 'nothing', max_results: 3 }, 'key', client)).toEqual([])
   })
-
-  it('extracts readable article text and metadata without script or navigation content', () => {
-    const result = parseWebPage(
-      '<html><head><title>Example</title><meta name="author" content="Author"></head><body><nav>Navigation</nav><main><h1>Title</h1><p>Evidence</p><script>malicious()</script></main><footer>Footer</footer></body></html>',
-      'https://example.com',
-    )
-    expect(result.title).toBe('Example')
-    expect(result.author).toBe('Author')
-    expect(result.text).toContain('Evidence')
-    expect(result.text).not.toContain('malicious')
-    expect(result.text).not.toContain('Navigation')
-    expect(result.text).not.toContain('Footer')
-  })
-
-  it('shares content and preview downloads, omits cookies and search credentials, and truncates content', async () => {
-    const requests: Request[] = []
-    const client = createClient({
-      fetch: async (input) => {
-        requests.push(input as Request)
-        return new Response('<title>Evidence</title><main>Long article text</main>', {
-          headers: { 'Content-Type': 'text/html' },
-        })
-      },
-    })
-    const api = createStandaloneWebApi('brave-key', client)
-    const [content, preview] = await Promise.all([
-      api.fetchContent({ url: 'https://example.com', max_length: 4 }, client),
-      api.fetchLinkPreview({ url: 'https://example.com' }, client),
-    ])
-    expect(requests).toHaveLength(1)
-    expect(requests[0].credentials).toBe('omit')
-    expect(requests[0].headers.has('X-Subscription-Token')).toBe(false)
-    expect(content?.text).toBe('Long')
-    expect(content?.isTruncated).toBe(true)
-    expect(preview.title).toBe('Evidence')
-  })
-
-  it('rejects non-web URLs and binary documents', async () => {
-    const client = createClient({
-      fetch: async () => new Response('binary', { headers: { 'Content-Type': 'application/pdf' } }),
-    })
-    const api = createStandaloneWebApi('key', client)
-    expect(() => api.fetchContent({ url: 'file:///etc/passwd' }, client)).toThrow()
-    expect(() => api.fetchContent({ url: 'https://user:secret@example.com' }, client)).toThrow()
-    await expect(api.fetchContent({ url: 'https://example.com/file.pdf' }, client)).rejects.toThrow('readable text')
-  })
 })
 
 describe('search provider routing', () => {
@@ -113,5 +67,126 @@ describe('search provider routing', () => {
   it('propagates authorization failures', async () => {
     const client = createClient({ fetch: async () => new Response('', { status: 401 }) })
     await expect(searchWeb('exa', 'bad', { query: 'test', max_results: 1 }, client)).rejects.toThrow('401')
+  })
+})
+
+it('exposes Brave search without an unsupported page-content tool', () => {
+  const api = createStandaloneWebApi('key', createClient(), 'brave')
+  expect(api.fetchContent).toBeUndefined()
+  expect(api.fetchLinkPreview).toBeUndefined()
+})
+
+describe('provider media URLs', () => {
+  it.each(['exa', 'brave', 'tavily'] as const)(
+    'discards unsafe %s metadata while retaining search evidence',
+    async (provider) => {
+      const image = 'http://127.0.0.1/private.png'
+      const favicon = 'javascript:alert(1)'
+      const result = {
+        title: 'Evidence',
+        url: 'https://example.com',
+        favicon,
+        image,
+        profile: { img: favicon },
+        thumbnail: { src: image },
+      }
+      const client = createClient({
+        fetch: async () => Response.json({ results: [result], web: { results: [result] } }),
+      })
+      const results = await searchWeb(provider, 'key', { query: 'test', max_results: 1 }, client)
+      expect(results).toMatchObject([{ title: 'Evidence', faviconUrl: null, previewImageUrl: null }])
+    },
+  )
+
+  it.each(['exa', 'brave', 'tavily'] as const)('preserves public %s metadata', async (provider) => {
+    const image = 'https://example.com/preview.png'
+    const favicon = 'https://example.com/favicon.ico'
+    const result = {
+      title: 'Evidence',
+      url: 'https://example.com',
+      favicon,
+      image,
+      profile: { img: favicon },
+      thumbnail: { src: image },
+    }
+    const client = createClient({ fetch: async () => Response.json({ results: [result], web: { results: [result] } }) })
+    const results = await searchWeb(provider, 'key', { query: 'test', max_results: 1 }, client)
+    expect(results).toMatchObject([
+      {
+        faviconUrl: favicon,
+        previewImageUrl: provider === 'tavily' ? null : image,
+      },
+    ])
+  })
+})
+
+describe('search result boundaries', () => {
+  it.each(['exa', 'brave', 'tavily'] as const)('keeps only public %s source URLs', async (provider) => {
+    const unsafeUrls = [
+      'javascript:alert(1)',
+      'file:///private',
+      'https://localhost/private',
+      'https://127.0.0.1/private',
+      'https://[::1]/private',
+      'https://10.0.0.1/private',
+      'https://user:password@example.com/private',
+    ]
+    const results = [...unsafeUrls, 'https://example.com/article'].map((url) => ({ title: 'Evidence', url }))
+    const client = createClient({ fetch: async () => Response.json({ results, web: { results } }) })
+    expect(await searchWeb(provider, 'key', { query: 'test', max_results: 10 }, client)).toMatchObject([
+      { title: 'Evidence', pageUrl: 'https://example.com/article' },
+    ])
+  })
+
+  it.each(['exa', 'brave', 'tavily'] as const)(
+    'handles untitled %s results without inventing a title',
+    async (provider) => {
+      const results = [{ title: null, url: 'https://example.com/article' }]
+      const client = createClient({ fetch: async () => Response.json({ results, web: { results } }) })
+      expect(await searchWeb(provider, 'key', { query: 'test', max_results: 1 }, client)).toMatchObject([
+        { title: 'https://example.com/article' },
+      ])
+    },
+  )
+
+  it.each(['exa', 'brave', 'tavily'] as const)('rejects malformed %s result payloads', async (provider) => {
+    const results = [{ title: 'Evidence' }]
+    const client = createClient({ fetch: async () => Response.json({ results, web: { results } }) })
+    await expect(searchWeb(provider, 'key', { query: 'test', max_results: 1 }, client)).rejects.toThrow()
+  })
+
+  it('extracts decoded snippet text without adding provider markup to the document', async () => {
+    const originalBody = document.body.innerHTML
+    const client = createClient({
+      fetch: async () =>
+        Response.json({
+          web: {
+            results: [
+              {
+                title: 'Research &amp; development',
+                url: 'https://example.com',
+                description:
+                  'Some <strong>evidence</strong><img src="https://localhost/private"><iframe src="https://localhost/private"></iframe>',
+              },
+            ],
+          },
+        }),
+    })
+    expect(await searchBrave({ query: 'test', max_results: 1 }, 'key', client)).toMatchObject([
+      { title: 'Research & development', snippet: 'Some evidence' },
+    ])
+    expect(document.body.innerHTML).toBe(originalBody)
+  })
+
+  it('preserves Exa publication dates for citation metadata', async () => {
+    const client = createClient({
+      fetch: async () =>
+        Response.json({
+          results: [{ title: 'Evidence', url: 'https://example.com', publishedDate: '2026-11-04' }],
+        }),
+    })
+    expect(await searchWeb('exa', 'key', { query: 'test', max_results: 1 }, client)).toMatchObject([
+      { publishedDate: '2026-11-04' },
+    ])
   })
 })

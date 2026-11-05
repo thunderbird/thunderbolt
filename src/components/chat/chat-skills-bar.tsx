@@ -21,7 +21,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { skillDisplayName, skillMatchesQuery } from '@/skills/display'
 import { chipSurfaceClass, SuggestionChip } from '@/skills/suggestion-chip'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import {
   useEnabledSkills as useEnabledSkills_default,
   useLibrarySkills as useLibrarySkills_default,
@@ -107,7 +107,6 @@ export const ChatSkillsBar = ({
   const { skills: library } = useLibrarySkills()
   const { isEnabled } = useEnabledSkills()
   const { isMobile } = useIsMobile()
-  const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
   // Minimal mode (see `selectMinimalMode`) hides the chips; typed `/skill`
   // text is plain text there.
@@ -126,7 +125,7 @@ export const ChatSkillsBar = ({
     dispatch({ type: 'MUTATION_STARTED' })
     try {
       await togglePin(skill.id)
-      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', skill.id, {})
+      trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', {})
     } catch (error) {
       console.error('togglePin failed:', error)
       // Bound to a local so the catalog placeholder is named `{name}` — a call
@@ -158,7 +157,7 @@ export const ChatSkillsBar = ({
           dispatch({ type: 'MUTATION_STARTED' })
           try {
             await reorderPins(ids)
-            trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
+            trackSkillEvent('skill_reordered', { from_index: move.from, to_index: move.to })
           } catch (error) {
             console.error('reorderPins failed:', error)
             dispatch({ type: 'MUTATION_FAILED', message: t`Couldn't save the new order.` })

@@ -25,7 +25,7 @@ import {
 } from '@/skills/parse-skill-tokens'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { SlashPopup } from '@/skills/slash-popup'
-import { useSkillTelemetry } from '@/skills/telemetry'
+import { trackSkillEvent } from '@/skills/telemetry'
 import { useSlashCommand } from '@/skills/use-slash-command'
 import { useAgentCommands } from '@/acp/agent-commands-store'
 import { useWarmAcpCommands as useWarmAcpCommands_default } from '@/chats/use-warm-acp-commands'
@@ -277,7 +277,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const { skills: library } = useLibrarySkills()
     const { isEnabled } = useEnabledSkills()
-    const trackSkillEvent = useSkillTelemetry()
     // Minimal mode treats `/` as ordinary text: no popup, token resolution,
     // highlighting or token-aware editing (resolution is gated in
     // `resolveSkillTokenInstructions`).
@@ -530,7 +529,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         navigate(location.pathname, { replace: true, state: {} })
         const resolved = skillBySlug.get(runSkill)
         if (resolved) {
-          trackSkillEvent('skill_used', resolved.id, { via: 'settings-nav' })
+          trackSkillEvent('skill_used', { via: 'settings-nav' })
         }
       })
     }
@@ -813,9 +812,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const handleAddChipFromBar = useCallback(
       (skill: Skill) => {
         addSkillChip(skill)
-        trackSkillEvent('skill_used', skill.id, { via: 'chip' })
+        trackSkillEvent('skill_used', { via: 'chip' })
       },
-      [addSkillChip, trackSkillEvent],
+      [addSkillChip],
     )
 
     // Backspace treats a display-title chip (`/Daily Brief`) as atomic: one
@@ -860,10 +859,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         selectItemFromPopup(item)
         // Telemetry is for the user's own skills; agent commands are external.
         if (item.kind === 'skill') {
-          trackSkillEvent('skill_used', item.skill.id, { via: 'slash' })
+          trackSkillEvent('skill_used', { via: 'slash' })
         }
       },
-      [selectItemFromPopup, trackSkillEvent],
+      [selectItemFromPopup],
     )
 
     if (!isAgentAvailable(selectedAgent)) {

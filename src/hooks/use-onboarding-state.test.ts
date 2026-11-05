@@ -118,7 +118,6 @@ describe('useOnboardingState', () => {
       expect(typeof actions.setConnecting).toBe('function')
       expect(typeof actions.setProcessingOAuth).toBe('function')
       expect(typeof actions.setNameValue).toBe('function')
-      expect(typeof actions.setNameValid).toBe('function')
       expect(typeof actions.setSubmittingName).toBe('function')
       expect(typeof actions.setLocationValue).toBe('function')
       expect(typeof actions.setLocationValid).toBe('function')

@@ -5,12 +5,15 @@
 import { useChatStore } from '@/chats/chat-store'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { getSettings } from '@/dal'
+import { getSettings, updateSettings } from '@/dal'
 import { createModel, getAllModels, getModel, updateModel } from '@/dal/models'
+import * as modelsDal from '@/dal/models'
+import { exportUserData } from '@/dal/export'
 import { getIntegrationCredentials } from '@/dal/integrations'
 import { createTinfoilSession } from '@/lib/tinfoil-session'
+import { getProviderConnectionAttempt } from '@/lib/provider-connection-attempt'
 import * as tinfoilSessionModule from '@/lib/tinfoil-session'
-import { tinfoilAuth, TinfoilReauthorizationError } from '@/lib/tinfoil-auth'
+import { tinfoilAuth, TinfoilReauthorizationError, type TinfoilCredentials } from '@/lib/tinfoil-auth'
 import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -22,6 +25,12 @@ import { act, cleanup, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { getLocalSetting, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { generateModelName, useAddModelForm } from './use-add-model-form'
+
+/** Model-save tests represent an authorization started against the current local session. */
+const currentAuthorization = async (credentials: TinfoilCredentials) => ({
+  tinfoilCredentials: credentials,
+  attempt: await getProviderConnectionAttempt(getDb(), 'tinfoil'),
+})
 
 describe('generateModelName', () => {
   it('title-cases hyphenated ids and keeps version numbers intact', () => {
@@ -64,6 +73,7 @@ describe('useAddModelForm', () => {
   let originalLocalMode: boolean
 
   beforeEach(() => {
+    resetStore()
     originalCloudUrl = getLocalSetting('cloudUrl')
     originalLocalMode = getLocalSetting('localMode')
     useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example.com/v1', localMode: false })
@@ -158,16 +168,22 @@ describe('useAddModelForm', () => {
         supportsTools: true,
         name: 'DeepSeek',
         model: 'deepseek',
-        tinfoilCredentials: {
+        apiKey: 'first-token',
+        providerAuthorization: await currentAuthorization({
           access_token: 'first-token',
           refresh_token: 'refresh-token',
           expires_at: Date.now() + 3600000,
-        },
+        }),
       }
       await act(async () => {
         await result.current.saveModel(values)
       })
       const original = (await getAllModels(getDb())).find((model) => model.oauthProvider === 'tinfoil')!
+      expect(original.apiKey).toBeNull()
+      const backup = JSON.stringify(await exportUserData(getDb(), { id: 'user', email: null }))
+      expect(backup).not.toContain('first-token')
+      expect(backup).not.toContain('refresh-token')
+      expect(backup).toContain('own-key')
       await updateModel(getDb(), original.id, { name: 'My renamed model', toolUsage: 0, contextWindow: 8192 })
       const session = createTinfoilSession({
         db: getDb,
@@ -179,7 +195,7 @@ describe('useAddModelForm', () => {
       for (const accessToken of ['second-token', 'third-token']) {
         await session.disconnect()
         expect(await getModel(getDb(), original.id)).toMatchObject({
-          enabled: 0,
+          enabled: 1,
           apiKey: null,
           oauthProvider: 'tinfoil',
         })
@@ -187,7 +203,11 @@ describe('useAddModelForm', () => {
         await act(async () => {
           await result.current.saveModel({
             ...values,
-            tinfoilCredentials: { ...values.tinfoilCredentials, access_token: accessToken },
+            providerDefault: 1,
+            providerAuthorization: await currentAuthorization({
+              ...values.providerAuthorization.tinfoilCredentials,
+              access_token: accessToken,
+            }),
           })
         })
         const oauthModels = (await getAllModels(getDb())).filter((model) => model.oauthProvider === 'tinfoil')
@@ -197,12 +217,23 @@ describe('useAddModelForm', () => {
           enabled: 1,
           apiKey: null,
           name: 'My renamed model',
+          providerDefault: 1,
           toolUsage: 0,
           contextWindow: 8192,
         })
         expect((await getSettings(getDb(), { selected_model: '' })).selectedModel).toBe(original.id)
         expect((await getIntegrationCredentials(getDb(), 'tinfoil'))?.credentials.access_token).toBe(accessToken)
       }
+      await updateModel(getDb(), original.id, { enabled: 0 })
+      await session.disconnect()
+      await act(async () => {
+        await result.current.saveModel({
+          ...values,
+          providerAuthorization: await currentAuthorization(values.providerAuthorization.tinfoilCredentials),
+        })
+      })
+      expect((await getModel(getDb(), original.id))?.enabled).toBe(0)
+      expect(useChatStore.getState().models.some((model) => model.id === original.id)).toBe(false)
       expect(await getModel(getDb(), 'own-tinfoil-key')).toMatchObject({
         enabled: 1,
         apiKey: 'own-key',
@@ -211,6 +242,148 @@ describe('useAddModelForm', () => {
     } finally {
       lockSpy.mockRestore()
     }
+  })
+
+  it('rolls back OAuth credentials and the model when cancellation arrives during the transaction', async () => {
+    const controller = new AbortController()
+    const create = modelsDal.createModelInTransaction
+    const modelWrite = spyOn(modelsDal, 'createModelInTransaction').mockImplementation(async (...args) => {
+      await create(...args)
+      controller.abort()
+    })
+    const lock = spyOn(tinfoilSessionModule, 'withTinfoilSessionLock').mockImplementation(async (operation) =>
+      operation(),
+    )
+    const onClose = mock(() => {})
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
+      wrapper: createTestProvider(),
+    })
+    try {
+      await act(async () => {
+        await expect(
+          result.current.saveModel({
+            provider: 'tinfoil',
+            oauthProvider: 'tinfoil',
+            name: 'Tinfoil',
+            model: 'deepseek',
+            apiKey: 'access-token',
+            supportsTools: true,
+            providerAuthorization: await currentAuthorization({
+              access_token: 'access-token',
+              refresh_token: 'refresh-token',
+              expires_at: 999999,
+            }),
+            signal: controller.signal,
+          }),
+        ).rejects.toHaveProperty('name', 'AbortError')
+      })
+      expect(await getAllModels(getDb())).toEqual([])
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+      expect(result.current.submitError).toBeNull()
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      modelWrite.mockRestore()
+      lock.mockRestore()
+    }
+  })
+
+  it.each([
+    ['openrouter', 1],
+    ['openrouter', 0],
+    ['tinfoil', 1],
+    ['tinfoil', 0],
+  ] as const)(
+    'reuses the %s own-key default with enabled=%i and preserves manual models',
+    async (provider, enabled) => {
+      await createModel(getDb(), {
+        id: 'manual',
+        provider,
+        name: 'Manual default with a different key',
+        model: 'default-model',
+        apiKey: 'manual-key',
+      })
+      const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
+        wrapper: createTestProvider(),
+      })
+      const values = {
+        provider,
+        providerDefault: 1,
+        name: 'Default model',
+        model: 'default-model',
+        apiKey: 'first-key',
+        supportsTools: true,
+      }
+      await act(async () => {
+        await result.current.saveModel(values)
+      })
+      const original = (await getAllModels(getDb())).find((model) => model.providerDefault === 1)!
+      await updateSettings(getDb(), { selected_model: 'manual' })
+      await updateModel(getDb(), original.id, {
+        name: 'My renamed default',
+        enabled,
+        toolUsage: 0,
+        contextWindow: 8192,
+      })
+      for (const apiKey of ['second-key', 'third-key']) {
+        await updateModel(getDb(), original.id, { apiKey: null })
+        await act(async () => {
+          await result.current.saveModel({ ...values, apiKey })
+        })
+        const defaults = (await getAllModels(getDb())).filter((model) => model.providerDefault === 1)
+        expect(defaults).toHaveLength(1)
+        expect(defaults[0]).toMatchObject({
+          id: original.id,
+          enabled,
+          name: 'My renamed default',
+          toolUsage: 0,
+          contextWindow: 8192,
+          apiKey,
+        })
+        expect(await getModel(getDb(), 'manual')).toMatchObject({
+          name: 'Manual default with a different key',
+          apiKey: 'manual-key',
+          providerDefault: null,
+        })
+        expect((await getSettings(getDb(), { selected_model: '' })).selectedModel).toBe('manual')
+      }
+    },
+  )
+
+  it('keeps automatically connected Tinfoil subscription and own-key models separate', async () => {
+    await createModel(getDb(), {
+      id: 'subscription-default',
+      provider: 'tinfoil',
+      oauthProvider: 'tinfoil',
+      providerDefault: 1,
+      name: 'Subscription default',
+      model: 'default-model',
+    })
+    const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose: () => {} }), {
+      wrapper: createTestProvider(),
+    })
+    const values = {
+      provider: 'tinfoil' as const,
+      providerDefault: 1,
+      name: 'Own-key default',
+      model: 'default-model',
+      apiKey: 'own-key',
+      supportsTools: true,
+    }
+    await act(async () => {
+      await result.current.saveModel(values)
+      await result.current.saveModel({ ...values, apiKey: 'updated-key' })
+    })
+    const defaults = (await getAllModels(getDb())).filter((model) => model.providerDefault === 1)
+    expect(defaults).toHaveLength(2)
+    expect(defaults.find((model) => model.oauthProvider === 'tinfoil')).toMatchObject({
+      id: 'subscription-default',
+      name: 'Subscription default',
+      apiKey: null,
+    })
+    expect(defaults.find((model) => !model.oauthProvider)).toMatchObject({
+      name: 'Own-key default',
+      apiKey: 'updated-key',
+    })
   })
 
   it('does not overwrite a different OAuth model when connecting the provider default', async () => {
@@ -236,7 +409,10 @@ describe('useAddModelForm', () => {
           supportsTools: true,
           name: 'Default model',
           model: 'default-model',
-          tinfoilCredentials: { access_token: 'token', expires_at: Date.now() + 3600000 },
+          providerAuthorization: await currentAuthorization({
+            access_token: 'token',
+            expires_at: Date.now() + 3600000,
+          }),
         })
       })
       expect(await getModel(getDb(), 'customized-oauth-model')).toMatchObject({
@@ -275,11 +451,11 @@ describe('useAddModelForm', () => {
     expect(screen.getByTestId('provider-mode').textContent).toBe('custom:false')
   })
 
-  it('surfaces the submit error and stays open when the create mutation fails', async () => {
+  it('surfaces a generic submit error without logging bound credentials when the mutation fails', async () => {
     // The mutation's onError logs the failure; muted so the test output stays clean.
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
     const transactionSpy = spyOn(getDb(), 'transaction').mockImplementation(() => {
-      throw new Error('insert failed')
+      throw new Error('Failed query: insert into models_secrets; params: sk-private-key,refresh-token')
     })
     const onClose = mock(() => {})
     const { result } = renderHook(() => useAddModelForm({ isOpen: false, onClose }), {
@@ -301,7 +477,9 @@ describe('useAddModelForm', () => {
       })
 
       expect(result.current.submitError).toBe("Couldn't add the model. Please try again.")
-      expect(consoleError).toHaveBeenCalledWith('Failed to add the model.', expect.any(Error))
+      expect(consoleError).toHaveBeenCalledWith('Failed to add the model.')
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('sk-private-key')
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('refresh-token')
       expect(onClose).not.toHaveBeenCalled()
     } finally {
       transactionSpy.mockRestore()

@@ -134,7 +134,7 @@ export type Model = WithRequired<
   | 'isConfidential'
   | 'startWithReasoning'
   | 'supportsParallelToolCalls'
-> & { apiKey: string | null; oauthProvider?: 'tinfoil' | null }
+> & { apiKey: string | null; oauthProvider?: 'tinfoil' | null; providerDefault?: number | null }
 
 /**
  * Compile-time invariant: every shipped `SharedModel` default (see

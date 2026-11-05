@@ -10,7 +10,8 @@ import { saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilSession } from '@/lib/tinfoil-session'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createTinfoilWebApi } from './api'
-import { getTinfoilWebApi } from './connection'
+import { getTinfoilSearchConnection } from './connection'
+import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
 import { createMockHttpClient } from '@/test-utils/http-client'
 
 beforeAll(setupTestDatabase)
@@ -18,11 +19,11 @@ afterAll(teardownTestDatabase)
 afterEach(async () => {
   mock.restore()
   await resetTestDatabase()
-  useLocalSettingsStore.setState({ cloudUrl: '' })
+  useLocalSettingsStore.setState({ cloudUrl: '', localMode: true })
 })
 
-it('uses OAuth credentials for normal search tools and honors disable during a turn', async () => {
-  useLocalSettingsStore.setState({ cloudUrl: '' })
+it.each([true, false])('uses OAuth search and honors disable during a turn (local mode: %s)', async (localMode) => {
+  useLocalSettingsStore.setState({ cloudUrl: localMode ? '' : 'https://server.example/v1', localMode })
   await createModel(getDb(), {
     id: 'oauth',
     name: 'Tinfoil',
@@ -34,7 +35,7 @@ it('uses OAuth credentials for normal search tools and honors disable during a t
   })
   await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'saved-token' }, true)
   const access = spyOn(tinfoilSession, 'getAccessToken').mockResolvedValue('fresh-token')
-  const api = await getTinfoilWebApi(getDb(), (getKey) =>
+  const { tinfoilSearchApi: api } = await getTinfoilSearchConnection(getDb(), (getKey) =>
     createTinfoilWebApi(getKey, async () => {
       expect(await getKey()).toBe('fresh-token')
       return { structuredContent: { results: [] } }
@@ -44,10 +45,15 @@ it('uses OAuth credentials for normal search tools and honors disable during a t
   await api!.search({ query: 'test', max_results: 1 }, createMockHttpClient())
   expect(access).toHaveBeenCalledTimes(1)
   await updateModel(getDb(), 'oauth', { enabled: 0 })
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeDefined()
+  await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'saved-token' }, false)
+  access.mockImplementation(async () => {
+    throw new Error('no longer connected')
+  })
   await expect(api!.search({ query: 'test', max_results: 1 }, createMockHttpClient())).rejects.toThrow(
     'no longer connected',
   )
-  expect(await getTinfoilWebApi(getDb())).toBeUndefined()
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeUndefined()
 })
 
 it('uses BYOK search with no separate search key and does not reuse a disconnected credential', async () => {
@@ -61,7 +67,7 @@ it('uses BYOK search with no separate search key and does not reuse a disconnect
     enabled: 1,
     toolUsage: 1,
   })
-  const api = await getTinfoilWebApi(getDb(), (getKey) =>
+  const { tinfoilSearchApi: api } = await getTinfoilSearchConnection(getDb(), (getKey) =>
     createTinfoilWebApi(getKey, async () => {
       expect(await getKey()).toBe('own-key')
       return { structuredContent: { results: [] } }
@@ -84,7 +90,61 @@ it('does not expose a missing or expired OAuth session', async () => {
     oauthProvider: 'tinfoil',
     enabled: 1,
   })
-  expect(await getTinfoilWebApi(getDb())).toBeUndefined()
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeUndefined()
   await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'old', reauth_required: true }, true)
-  expect(await getTinfoilWebApi(getDb())).toBeUndefined()
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeUndefined()
+})
+
+it('discovers OAuth search with no model row and BYOK search without model tool calling', async () => {
+  await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'saved-token' }, true)
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeDefined()
+  await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'saved-token' }, false)
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeUndefined()
+  await createModel(getDb(), {
+    id: 'no-tools',
+    name: 'Tinfoil',
+    provider: 'tinfoil',
+    model: 'test',
+    apiKey: 'own-key',
+    enabled: 1,
+    toolUsage: 0,
+  })
+  expect((await getTinfoilSearchConnection(getDb())).tinfoilSearchApi).toBeDefined()
+})
+
+it.each([
+  { access_token: 'disabled', enabled: false },
+  { access_token: '', enabled: false },
+  { access_token: 'expired', reauth_required: true, enabled: true },
+])(
+  'retains private search intent when the OAuth connection is unavailable: %j',
+  async ({ enabled, ...credentials }) => {
+    await saveIntegrationCredentials(getDb(), 'tinfoil', credentials, enabled)
+    const connection = await getTinfoilSearchConnection(getDb())
+    expect(connection).toEqual({ tinfoilSearchApi: undefined, tinfoilConfigured: true })
+    expect(
+      resolveSearchSelection('auto', {
+        custom: false,
+        tinfoil: Boolean(connection.tinfoilSearchApi),
+        tinfoilConfigured: connection.tinfoilConfigured,
+        cloud: true,
+      }),
+    ).toBeNull()
+  },
+)
+
+it('retains private search intent when a BYOK model is disabled', async () => {
+  await createModel(getDb(), {
+    id: 'disabled',
+    name: 'Tinfoil',
+    provider: 'tinfoil',
+    model: 'test',
+    apiKey: 'own-key',
+    enabled: 0,
+  })
+  expect(await getTinfoilSearchConnection(getDb())).toEqual({ tinfoilSearchApi: undefined, tinfoilConfigured: true })
+})
+
+it('does not infer a private connection for an account that never configured one', async () => {
+  expect(await getTinfoilSearchConnection(getDb())).toEqual({ tinfoilSearchApi: undefined, tinfoilConfigured: false })
 })

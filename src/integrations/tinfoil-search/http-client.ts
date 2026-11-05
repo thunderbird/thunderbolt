@@ -7,7 +7,7 @@ import { fetch as nativeFetch } from '@/lib/fetch'
 
 export const nativeSearchClient = createClient({
   fetch: (input, init) => {
-    const options = { ...init, maxRedirections: 0 }
+    const options: RequestInit = { ...init, redirect: 'error' }
     return nativeFetch(input, options)
   },
 })

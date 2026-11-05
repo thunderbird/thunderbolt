@@ -153,6 +153,7 @@ export const modelsSecretsTable = sqliteTable('models_secrets', {
   modelId: text('id').primaryKey(),
   apiKey: text('api_key'),
   oauthProvider: text('oauth_provider', { enum: ['tinfoil'] }),
+  providerDefault: integer('provider_default'),
 })
 
 /** Local-only table for integration credentials (Google, Microsoft, Tinfoil OAuth tokens). Never synced via PowerSync. */

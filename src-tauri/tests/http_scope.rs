@@ -9,7 +9,8 @@ use tauri::utils::acl::RemoteUrlPattern;
 fn native_http_patterns() -> Vec<RemoteUrlPattern> {
     let capability: serde_json::Value =
         serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-    assert_eq!(capability["windows"], serde_json::json!(["main"]));
+    assert_eq!(capability["webviews"], serde_json::json!(["main"]));
+    assert!(capability.get("windows").is_none());
     capability["permissions"]
         .as_array()
         .unwrap()

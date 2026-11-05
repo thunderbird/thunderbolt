@@ -83,6 +83,28 @@ describe('search provider setup', () => {
     expect(useSearchProviderStore.getState().apiKey).toBe('')
   })
 
+  it.each(['disconnectSearchProvider', 'clearSearchProvider'] as const)(
+    'does not restore a key after %s supersedes its pending test',
+    async (reset) => {
+      const pending = Promise.withResolvers<void>()
+      const saved = mock(() => {})
+      const { result } = renderHook(() => useSearchProviderSetup(undefined, saved, () => pending.promise))
+      act(() => result.current.change({ provider: 'exa', apiKey: 'old-key' }))
+      let running!: Promise<void>
+      act(() => {
+        running = result.current.test()
+      })
+      act(() => useSearchProviderStore.getState()[reset]())
+      await act(async () => {
+        pending.resolve()
+        await running
+      })
+      expect(useSearchProviderStore.getState().apiKey).toBe('')
+      expect(result.current.status).toBe('idle')
+      expect(saved).not.toHaveBeenCalled()
+    },
+  )
+
   it('disconnects saved credentials', () => {
     useSearchProviderStore.getState().configureSearchProvider('existing-key')
     render(<SearchProviderSetup />)
@@ -90,4 +112,47 @@ describe('search provider setup', () => {
     expect(useSearchProviderStore.getState().provider).toBeNull()
     expect(screen.getByRole('button', { name: 'Test connection' }).hasAttribute('disabled')).toBe(true)
   })
+
+  it.each(['disconnect', 'replace key', 'replace provider'] as const)(
+    'stops showing Connected when another window changes the saved connection: %s',
+    (change) => {
+      useSearchProviderStore.getState().configureSearchProvider('existing-key', 'exa')
+      render(<SearchProviderSetup provider="exa" />)
+      expect(screen.getByText('Connected')).toBeTruthy()
+      act(() => {
+        const stored = useSearchProviderStore.getState()
+        if (change === 'disconnect') {
+          stored.disconnectSearchProvider()
+        } else {
+          stored.configureSearchProvider('replacement-key', change === 'replace provider' ? 'brave' : 'exa')
+        }
+      })
+      expect(screen.queryByText('Connected')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Test connection' }).hasAttribute('disabled')).toBe(false)
+      expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('existing-key')
+    },
+  )
+})
+
+it.each(['custom', 'none', 'tinfoil', 'cloud'] as const)(
+  'disconnecting a saved key preserves %s search intent without falling back',
+  (selection) => {
+    useSearchProviderStore.getState().configureSearchProvider('key', 'exa')
+    useSearchProviderStore.getState().selectSearchProvider(selection)
+    const { result } = renderHook(() => useSearchProviderSetup())
+    act(() => result.current.disconnect())
+    expect(useSearchProviderStore.getState().apiKey).toBe('')
+    expect(useSearchProviderStore.getState().selection).toBe(selection === 'custom' ? 'none' : selection)
+  },
+)
+
+it('explains Brave search-only capability when configuring its key', () => {
+  const { rerender } = render(<SearchProviderSetup provider="brave" />)
+  expect(
+    screen.getByText('Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages.'),
+  ).toBeTruthy()
+  rerender(<SearchProviderSetup key="exa" provider="exa" />)
+  expect(
+    screen.queryByText('Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages.'),
+  ).toBeNull()
 })

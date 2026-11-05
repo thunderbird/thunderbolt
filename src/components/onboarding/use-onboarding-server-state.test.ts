@@ -36,7 +36,7 @@ describe('useOnboardingServerState', () => {
     expect(connect).not.toHaveBeenCalled()
     await act(async () => result.current.continueSetup(onContinueLocal))
 
-    expect(connect).toHaveBeenCalledWith(thunderboltCloudUrl)
+    expect(connect).toHaveBeenCalledWith(thunderboltCloudUrl, undefined, expect.any(AbortSignal))
     expect(result.current.showWaitlist).toBe(true)
     expect(result.current.waitlist.state.status).toBe('idle')
     expect(result.current.error).toBeNull()
@@ -125,5 +125,14 @@ describe('useOnboardingServerState', () => {
     act(() => expect(result.current.goBack()).toBe(true))
     expect(result.current.showServerForm).toBe(false)
     expect(result.current.goBack()).toBe(false)
+  })
+  it('cancels Cloud validation when the setup dialog closes', async () => {
+    const pending = Promise.withResolvers<void>()
+    const connect = mock((_url: string, _client?: unknown, _signal?: AbortSignal) => pending.promise)
+    const { result, unmount } = renderHook(() => useOnboardingServerState(connect), { wrapper: createTestProvider() })
+    act(() => result.current.connectCloud())
+    unmount()
+    expect(connect.mock.calls[0][2]?.aborted).toBe(true)
+    await act(async () => pending.reject(new Error('cancelled')))
   })
 })

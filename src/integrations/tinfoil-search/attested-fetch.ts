@@ -22,20 +22,21 @@ export const createAttestedSearchFetch = async (
     if (url.origin !== 'https://websearch.tinfoil.sh' || url.pathname !== '/mcp' || url.username || url.password) {
       throw new Error(t`Tinfoil search refused an unexpected endpoint.`)
     }
-    const method =
-      request.method === 'POST'
-        ? 'post'
-        : request.method === 'GET'
-          ? 'get'
-          : request.method === 'DELETE'
-            ? 'delete'
-            : null
+    // EHBP cannot authenticate a bodyless GET response. The MCP SDK treats 405 as
+    // an unsupported optional event channel and uses encrypted POST responses instead.
+    if (request.method === 'GET') {
+      return new Response(null, { status: 405 })
+    }
+    const method = request.method === 'POST' ? 'post' : request.method === 'DELETE' ? 'delete' : null
     if (!method) {
       throw new Error(t`Tinfoil search refused an unsupported request method.`)
     }
     const { request: encrypted, context } = await identity.encryptRequestWithContext(request, undefined, {
       memoryOnly: true,
     })
+    if (method === 'post' && !context) {
+      throw new Error(t`Tinfoil search refused an unencrypted request.`)
+    }
     const response = await (async () => {
       try {
         return await client[method](encrypted.url, {
@@ -52,8 +53,14 @@ export const createAttestedSearchFetch = async (
         throw error
       }
     })()
+    if (method === 'delete' || response.status === 202) {
+      // Termination and notification acknowledgments have no result. Discard
+      // any body, including native streams representing an empty HTTP response.
+      await response.body?.cancel()
+      return new Response(null, { status: response.status, headers: response.headers })
+    }
     if (!context) {
-      return response
+      throw new Error(t`Tinfoil search refused an unencrypted request.`)
     }
     if (response.headers.has(PROTOCOL.RESPONSE_NONCE_HEADER)) {
       return identity.decryptResponseWithContext(response, context)
@@ -66,12 +73,14 @@ export const createAttestedSearchFetch = async (
         'type' in problem &&
         problem.type === PROTOCOL.KEY_CONFIG_PROBLEM_TYPE
       ) {
+        await response.body?.cancel()
         throw new KeyConfigMismatchError(t`Tinfoil search encryption keys changed. Try again.`)
       }
     }
     if (!response.ok) {
       return response
     }
+    await response.body?.cancel()
     throw new Error(t`Tinfoil search returned an unencrypted response.`)
   }
 }

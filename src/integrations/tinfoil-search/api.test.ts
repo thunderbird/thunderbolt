@@ -63,18 +63,54 @@ it('surfaces tool failures and never presents an error as search evidence', asyn
   )
 })
 
-it('rejects unsafe source URLs and failed fetch results', async () => {
+it('drops unsafe source URLs without discarding valid hits, and rejects failed fetch results', async () => {
   const api = createTinfoilWebApi(
     async () => '',
     async (name) => ({
       structuredContent:
         name === 'search'
-          ? { results: [{ title: 'bad', url: 'javascript:alert(1)', content: 'bad' }] }
+          ? {
+              results: [
+                { title: 'bad', url: 'javascript:alert(1)', content: 'bad' },
+                { title: 'private', url: 'https://localhost/private', content: 'bad' },
+                { title: 'Evidence', url: 'https://example.com', content: 'A fact' },
+              ],
+            }
           : { results: [{ url: 'https://example.com', status: 'failed' }] },
     }),
   )
-  await expect(api.search({ query: 'test', max_results: 1 }, createMockHttpClient())).rejects.toThrow()
+  expect(await api.search({ query: 'test', max_results: 3 }, createMockHttpClient())).toMatchObject([
+    { title: 'Evidence', pageUrl: 'https://example.com' },
+  ])
   await expect(api.fetchContent({ url: 'https://example.com' }, createMockHttpClient())).rejects.toThrow(
     'could not retrieve',
   )
+})
+
+it.each(['http://localhost/favicon', 'http://192.168.1.1/icon', 'data:image/png;base64,abc', 'javascript:alert(1)'])(
+  'discards unsafe favicon %s without losing Tinfoil search evidence',
+  async (favicon) => {
+    const api = createTinfoilWebApi(
+      async () => 'key',
+      async () => ({
+        structuredContent: { results: [{ title: 'Evidence', url: 'https://example.com', content: 'Fact', favicon }] },
+      }),
+    )
+    expect(await api.search({ query: 'test', max_results: 1 }, createMockHttpClient())).toMatchObject([
+      { title: 'Evidence', faviconUrl: null },
+    ])
+  },
+)
+
+it.each(['pages', 'results'] as const)('does not cite empty Tinfoil %s as page content', async (field) => {
+  const api = createTinfoilWebApi(
+    async () => 'key',
+    async () => ({
+      structuredContent: { [field]: [{ url: 'https://example.com/', status: 'completed', content: ' \n ' }] },
+    }),
+  )
+  const sources: SourceMetadata[] = []
+  const tools = createConfigs(createMockHttpClient(), sources, api)
+  await expect(tools[1].execute({ url: 'https://example.com/' })).rejects.toThrow('could not retrieve')
+  expect(sources).toEqual([])
 })

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { i18n } from '@/i18n'
 import {
   createProviderAuthorization,
+  createOAuthRequestSignal,
   type OpenRouterAuthDependencies,
   type OpenRouterConnectionOptions,
 } from './openrouter-auth'
@@ -72,9 +73,9 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           body: new URLSearchParams({ ...params, client_id: clientId }),
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           credentials: 'omit',
+          redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          timeout: 30_000,
-          signal,
+          signal: createOAuthRequestSignal(signal),
         })
         .json<unknown>()
       const tokens = tokenSchema.parse(response)
@@ -126,8 +127,9 @@ export const createTinfoilAuth = (clientId = tinfoilClientId, overrides: Partial
           body: new URLSearchParams({ client_id: clientId, token }),
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           credentials: 'omit',
+          redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          timeout: 30_000,
+          signal: createOAuthRequestSignal(),
         })
       } catch {
         throw new TinfoilConnectionError(i18n._(failed))

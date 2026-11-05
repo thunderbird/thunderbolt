@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createClient, type HttpClient } from '@/lib/http'
+import { isCurrentServer } from '@/stores/local-settings-store'
 import { useConfigStore, type AppConfig } from './config-store'
 
 /**
@@ -18,9 +19,15 @@ export const fetchConfig = async (cloudUrl: string, httpClient?: HttpClient): Pr
   try {
     const client = httpClient ?? createClient({ prefixUrl: cloudUrl })
     const config = await client.get('config', { timeout: 5_000 }).json<AppConfig>()
+    if (!isCurrentServer(cloudUrl)) {
+      return null
+    }
     useConfigStore.getState().updateConfig(config)
     return config
   } catch {
+    if (!isCurrentServer(cloudUrl)) {
+      return null
+    }
     console.warn('Failed to fetch app config, using cached value')
     // Settled, so the gates stop waiting. Whatever is cached stands, and `{}`
     // already reads as default behaviour (standalone mode keeps its toggle).

@@ -6,13 +6,14 @@ import { useState } from 'react'
 import { useLingui } from '@lingui/react/macro'
 import { useChatStore } from '@/chats/chat-store'
 import { updateModelInTransaction } from '@/dal/models'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useQuery as usePowerSyncQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useDatabase } from '@/contexts'
 import { getAllModels, getAvailableModels } from '@/dal'
 import { tinfoilSession } from '@/lib/tinfoil-session'
-import { getIntegrationCredentials } from '@/dal/integrations'
+import { invalidateProviderConnectionAttempts } from '@/lib/provider-connection-attempt'
+import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
 import type { Model } from '@/types'
 import type { AiProviderConnection } from './types'
 
@@ -34,10 +35,7 @@ export const useAiProviderConnections = () => {
     queryKey: ['models', 'provider-connections'],
     query: toCompilableQuery(getAllModels(db)),
   })
-  const { data: session, isLoading: sessionLoading } = useQuery({
-    queryKey: ['tinfoil-session'],
-    queryFn: () => getIntegrationCredentials(db, 'tinfoil'),
-  })
+  const { data: session, isLoading: sessionLoading } = useTinfoilConnection()
   const toggleMutation = useMutation({
     mutationFn: async ({ provider, enabled }: { provider: AiProviderConnection['id']; enabled: boolean }) => {
       if (provider === 'tinfoil') {
@@ -50,11 +48,11 @@ export const useAiProviderConnections = () => {
               await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
             }
           }
+          await invalidateProviderConnectionAttempts(tx, provider)
         })
       }
       useChatStore.getState().setModels(await getAvailableModels(db))
       await queryClient.invalidateQueries({ queryKey: ['models'] })
-      await queryClient.invalidateQueries({ queryKey: ['tinfoil-session'] })
     },
   })
   const providers: AiProviderConnection[] = [
@@ -68,11 +66,9 @@ export const useAiProviderConnections = () => {
     {
       id: 'tinfoil',
       name: t`Tinfoil`,
-      enabled:
-        Boolean(session?.enabled) &&
-        models.some((model) => belongsToConnection(model, 'tinfoil') && model.enabled === 1),
-      connected: Boolean(session?.credentials.access_token),
-      needsReauth: Boolean(session?.credentials.reauth_required),
+      enabled: Boolean(session?.enabled),
+      connected: Boolean(session?.connected),
+      needsReauth: Boolean(session?.needsReauth),
     },
   ]
   return {

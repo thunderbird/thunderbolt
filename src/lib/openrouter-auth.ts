@@ -25,6 +25,12 @@ const openRouterConfig: ProviderAuthorizationConfig = {
 }
 const connectionTimeoutMs = 5 * 60 * 1000
 
+/** Token deadlines must cover body parsing, since a partial response must not hold a credential lock forever. */
+export const createOAuthRequestSignal = (signal?: AbortSignal): AbortSignal => {
+  const deadline = AbortSignal.timeout(30_000)
+  return signal ? AbortSignal.any([signal, deadline]) : deadline
+}
+
 const errorMessages = {
   cancelled: msg`OpenRouter connection was cancelled.`,
   timeout: msg`OpenRouter connection timed out. Please try again.`,
@@ -65,7 +71,8 @@ export type OpenRouterAuthDependencies = {
   openPopup: () => Window | null
   listenForMessage: (handler: (event: MessageEvent<unknown>) => void) => () => void
   createCallbackChannel: typeof createOpenRouterCallbackChannel
-  startLoopback: () => Promise<number>
+  startLoopback: (flowId: string) => Promise<number>
+  stopLoopback: (flowId: string) => Promise<void>
   listenForLoopback: (handler: (url: string) => void) => Promise<() => void>
   openExternalUrl: (url: string) => Promise<void>
   generateVerifier: () => string
@@ -176,7 +183,8 @@ export const createProviderAuthorization = (
       return () => window.removeEventListener('message', handler)
     },
     createCallbackChannel: createOpenRouterCallbackChannel,
-    startLoopback: () => invoke<number>('start_oauth_server'),
+    startLoopback: (flowId) => invoke<number>('start_oauth_server', { flowId }),
+    stopLoopback: (flowId) => invoke<void>('stop_oauth_server', { flowId }),
     listenForLoopback: (handler) => listen<{ url: string }>('oauth-callback', (event) => handler(event.payload.url)),
     openExternalUrl: openUrl,
     generateVerifier: generateCodeVerifier,
@@ -219,7 +227,14 @@ export const createProviderAuthorization = (
       const verifier = deps.generateVerifier()
       const state = deps.generateState()
       const challenge = await withAbort(deps.generateChallenge(verifier), scope.signal)
-      const origin = native ? `http://localhost:${await withAbort(deps.startLoopback(), scope.signal)}` : deps.origin()
+      const startLoopback = async () => {
+        const port = await deps.startLoopback(state)
+        scope.addCleanup(() => {
+          void deps.stopLoopback(state).catch(console.error)
+        })
+        return port
+      }
+      const origin = native ? `http://localhost:${await withAbort(startLoopback(), scope.signal)}` : deps.origin()
       const callbackUrl = native
         ? `${origin}/`
         : `${origin}${config.callbackPath}${config.fixedCallbackPath ? '' : `/${state}`}`
@@ -334,9 +349,9 @@ export const createOpenRouterAuth = (overrides: Partial<OpenRouterAuthDependenci
         .post('https://openrouter.ai/api/v1/auth/keys', {
           json: { code: code.trim(), code_verifier: verifier, code_challenge_method: 'S256' },
           credentials: 'omit',
+          redirect: 'error',
           fetch: overrides.fetch ?? nativeFetch,
-          signal,
-          timeout: 30_000,
+          signal: createOAuthRequestSignal(signal),
         })
         .json<unknown>()
       if (

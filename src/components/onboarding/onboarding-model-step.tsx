@@ -21,9 +21,9 @@ type OnboardingModelStepProps = { onBack?: () => void; onContinue?: () => void; 
 
 const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStepProps) => {
   const { t } = useLingui()
-  const { configuredModels, isLoading, disconnectProvider } = useOnboardingModelState()
+  const { connectedModels, isLoading, disconnectProvider } = useOnboardingModelState()
   const state = useOnboardingProviderState(
-    configuredModels.map(({ provider }) => (provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom')),
+    connectedModels.map(({ provider }) => (provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom')),
     undefined,
     onContinue,
   )
@@ -33,7 +33,7 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
   const back = () => {
     if (state.view === 'choices') {
       onBack?.()
-    } else if (state.view === 'manual' || state.showApiKey) {
+    } else if (state.view === 'manual' || (state.showApiKey && state.supportsSignIn)) {
       state.cancelConnection()
     } else {
       state.showChoices()
@@ -90,7 +90,13 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
               <OnboardingStepHeader
                 icon={<OnboardingProviderLogo provider={state.provider} className="size-10" />}
                 title={<Trans>Connect {providerName}</Trans>}
-                description={<Trans>Connect your account to power your agents.</Trans>}
+                description={
+                  state.supportsSignIn ? (
+                    <Trans>Connect your account to power your agents.</Trans>
+                  ) : (
+                    <Trans>Use a Tinfoil API key to power your agents.</Trans>
+                  )
+                }
               />
               {state.provider === 'tinfoil' && !state.isConnected && !state.showApiKey && (
                 <p className="text-center text-sm text-muted-foreground">
@@ -123,16 +129,18 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
                     >
                       <Trans>Connect</Trans>
                     </Button>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={state.cancelConnection}
-                      disabled={busy}
-                    >
-                      <Trans>Use sign-in instead</Trans>
-                    </Button>
+                    {state.supportsSignIn && (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={state.cancelConnection}
+                        disabled={busy}
+                      >
+                        <Trans>Use sign-in instead</Trans>
+                      </Button>
+                    )}
                   </form>
                 ) : (
                   <>

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { tinfoilSession } from '@/lib/tinfoil-session'
 /**
  * Built-in adapter — the app's first-party agent, exposed through the same
  * `AgentAdapter` seam as every ACP agent. Selecting it must look identical to
@@ -60,6 +59,8 @@ import {
   supersededAppContextOutput,
 } from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
+import { tinfoilSession } from '@/lib/tinfoil-session'
+import { createLiveProxyFetch } from '@/lib/proxy-fetch'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
@@ -473,7 +474,7 @@ export const resolvePiModel = async (
         kind: 'anthropic',
         modelId: model.model,
         apiKey: model.apiKey ?? '',
-        fetch: context.getProxyFetch(),
+        fetch: createLiveProxyFetch(context.getProxyFetch),
       },
       thinkingLevel,
     }

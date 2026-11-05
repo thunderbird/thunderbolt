@@ -25,7 +25,7 @@ describe('useServerConnectionState', () => {
 
     await act(async () => result.current.submit())
 
-    expect(connect).toHaveBeenCalledWith('https://my-server.example')
+    expect(connect).toHaveBeenCalledWith('https://my-server.example', undefined, expect.any(AbortSignal))
     expect(connected).toHaveBeenCalledTimes(1)
     expect(result.current.error).toBeNull()
     expect(result.current.isConnecting).toBe(false)
@@ -45,5 +45,33 @@ describe('useServerConnectionState', () => {
     expect(result.current.serverUrl).toBe('https://my-server.example')
     expect(result.current.error).toContain("Couldn't connect")
     expect(result.current.isConnecting).toBe(false)
+  })
+  it('aborts validation when the form unmounts and ignores a late response', async () => {
+    const pending = Promise.withResolvers<void>()
+    const connect = mock((_url: string, _client?: unknown, _signal?: AbortSignal) => pending.promise)
+    const connected = mock()
+    const { result, unmount } = renderHook(() => useServerConnectionState(connected, connect))
+    act(() => result.current.submit())
+    const signal = connect.mock.calls[0][2]
+    unmount()
+    expect(signal?.aborted).toBe(true)
+    await act(async () => pending.resolve())
+    expect(connected).not.toHaveBeenCalled()
+  })
+
+  it('only the latest submission can advance or display an error', async () => {
+    const first = Promise.withResolvers<void>()
+    const second = Promise.withResolvers<void>()
+    const connect = mock((_url: string, _client?: unknown, _signal?: AbortSignal) => first.promise)
+    const connected = mock()
+    const { result } = renderHook(() => useServerConnectionState(connected, connect))
+    act(() => result.current.submit())
+    connect.mockImplementation(() => second.promise)
+    act(() => result.current.submit())
+    expect(connect.mock.calls[0][2]?.aborted).toBe(true)
+    await act(async () => second.resolve())
+    await act(async () => first.reject(new Error('stale failure')))
+    expect(connected).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBeNull()
   })
 })

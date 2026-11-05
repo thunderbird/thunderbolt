@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { t } from '@lingui/core/macro'
 import type { connectToAgent as defaultConnectToAgent } from '@/acp'
 import {
   getOrConnectAdapter as defaultGetOrConnectAdapter,
@@ -18,9 +19,9 @@ import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry }
 import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
-import { getAllSkills as defaultGetAllSkills } from '@/dal'
+import { getAllSkills as defaultGetAllSkills, getAvailableModels as defaultGetAvailableModels } from '@/dal'
 import { isBuiltInAgent, isHostedAgent } from '@/defaults/agents'
-import { isModelAvailable, matchesThreadConfidentiality } from '@/settings/models/model-policy'
+import { isModelReady, matchesThreadConfidentiality } from '@/settings/models/model-policy'
 import { loadProjectContextForThread as defaultLoadProjectContext } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
@@ -52,7 +53,7 @@ import {
 import type { HttpClient } from '@/lib/http'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
+import type { Model, SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
@@ -65,6 +66,18 @@ import { withStoppedReplyMarkers } from './stopped-prompts'
 export const maxRetries = 3
 const baseRetryDelayMs = 2000
 const emptyTurnRetryDelayMs = 250
+
+/** Resolve current model access for every inference attempt, including regeneration and retries. */
+const requireRunnableModel = (agent: Agent, selectedModel: Model): Model => {
+  if (!isBuiltInAgent(agent)) {
+    return selectedModel
+  }
+  const current = useChatStore.getState().models.find((model) => model.id === selectedModel.id && isModelReady(model))
+  if (!current) {
+    throw new Error(t`Configure and select an available model before sending a message.`)
+  }
+  return current
+}
 
 /**
  * Calculate retry delay with exponential backoff and jitter.
@@ -223,6 +236,7 @@ export type CreateChatInstanceDeps = {
   updateChatThread?: typeof defaultUpdateChatThread
   getDb?: typeof defaultGetDb
   getAllSkills?: typeof defaultGetAllSkills
+  getAvailableModels?: () => Promise<Model[]>
   loadProjectContext?: typeof defaultLoadProjectContext
   createChat?: (init: ChatInit<ThunderboltUIMessage>) => Chat<ThunderboltUIMessage>
   createTurnBudget?: typeof defaultCreateTurnBudget
@@ -273,6 +287,7 @@ export const createAgentRoutingFetch = (
   const updateChatThread = deps.updateChatThread ?? defaultUpdateChatThread
   const getDb = deps.getDb ?? defaultGetDb
   const getAllSkills = deps.getAllSkills ?? defaultGetAllSkills
+  const getAvailableModels = deps.getAvailableModels ?? (async () => defaultGetAvailableModels(getDb()))
   const loadProjectContext = deps.loadProjectContext ?? defaultLoadProjectContext
   const getTurnBudget =
     routingState.getTurnBudget ??
@@ -356,6 +371,7 @@ export const createAgentRoutingFetch = (
       }
 
       const { chatThread, selectedAgent, selectedModel } = session
+      requireRunnableModel(selectedAgent, selectedModel)
       const telemetry = isBuiltInAgent(selectedAgent) ? routingState.getTurnTelemetry?.() : undefined
       telemetry?.setDimensions({
         modelId: selectedModel.id,
@@ -467,12 +483,21 @@ export const createAgentRoutingFetch = (
         ...init,
         body: JSON.stringify({ ...requestBody, messages: withStoppedReplyMarkers(requestMessages) }),
       }
+      // Sync and other tabs can change access without updating this tab's model snapshot.
+      if (isBuiltInAgent(selectedAgent)) {
+        useChatStore.getState().setModels(await getAvailableModels())
+      }
+      const runnableModel = requireRunnableModel(selectedAgent, selectedModel)
+      const currentThread = useChatStore.getState().sessions.get(id)?.chatThread ?? chatThread
+      if (isBuiltInAgent(selectedAgent) && !matchesThreadConfidentiality(runnableModel, currentThread)) {
+        throw new Error(t`This model no longer matches the conversation’s privacy setting.`)
+      }
       const response = await adapter.fetch(modelInit, {
         threadId: id,
-        chatThread,
-        acpSessionId: chatThread?.acpSessionId ?? null,
+        chatThread: currentThread,
+        acpSessionId: currentThread?.acpSessionId ?? null,
         saveMessages,
-        selectedModel,
+        selectedModel: runnableModel,
         mcpClients,
         reconnectClient,
         httpClient,
@@ -1152,9 +1177,7 @@ export const createChatInstance = (
       throw new Error('No selected model')
     }
 
-    if (isBuiltInAgent(selectedAgent) && !isModelAvailable(selectedModel)) {
-      throw new Error('Configure and select an available model before sending a message.')
-    }
+    requireRunnableModel(selectedAgent, selectedModel)
 
     // The hosted agent doesn't use the selected model, and its threads are never
     // private, so the model/thread confidentiality lock doesn't apply to it.

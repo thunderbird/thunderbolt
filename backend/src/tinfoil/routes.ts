@@ -347,8 +347,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 provider: 'tinfoil',
                 status: 504,
                 errorKind: 'connection',
-                subpath,
-                distinctId: user.id,
                 phase: 'stream',
               })
             },
@@ -379,8 +377,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           provider: 'tinfoil',
           status: upstream.status,
           errorKind: errorKindFromStatus(upstream.status),
-          subpath,
-          distinctId: user.id,
         })
       }
 
@@ -401,8 +397,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           provider: 'tinfoil',
           status,
           errorKind: 'connection',
-          subpath,
-          distinctId: user.id,
         })
       }
 

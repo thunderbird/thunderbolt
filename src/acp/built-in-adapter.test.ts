@@ -270,6 +270,25 @@ describe('resolvePiModel — image capability', () => {
   })
 })
 
+describe('resolvePiModel — live provider transport', () => {
+  it('keeps a cached Anthropic descriptor on the current proxy transport', async () => {
+    const first = mock(async () => new Response('first server'))
+    const next = mock(async () => new Response('next server'))
+    const transport = { current: Object.assign(first, { preconnect: async () => false }) }
+    const context = {
+      selectedModel: { provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'key' } as Model,
+      getProxyFetch: () => transport.current,
+    } as unknown as AgentAdapterContext
+    const resolved = await resolvePiModel({ isKnownAnthropicModel: () => true } as never, context, null)
+    const send = resolved!.descriptor.fetch!
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('first server')
+    transport.current = Object.assign(next, { preconnect: async () => false })
+    expect(await (await send('https://api.anthropic.com/v1/messages')).text()).toBe('next server')
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(next).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('resolvePiModel — managed Anthropic', () => {
   it('routes Thunderbolt Opus through Pi native Messages with its public wire alias', async () => {
     const isKnownAnthropicModel = mock((modelId: string) => modelId === 'claude-opus-5')

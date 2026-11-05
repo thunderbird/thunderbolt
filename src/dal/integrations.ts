@@ -7,13 +7,15 @@ import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { integrationsSecretsTable } from '../db/tables'
 import type { OAuthProvider } from '../lib/auth'
 
-type CredentialProvider = OAuthProvider | 'tinfoil'
+type CredentialProvider = OAuthProvider | 'tinfoil' | 'openrouter'
 
 type IntegrationCredentials = {
   access_token: string
   refresh_token?: string
   expires_at?: number
   reauth_required?: boolean
+  /** Local generation invalidates OAuth attempts started before a connection change. */
+  sessionRevision?: string
   profile?: {
     email: string
     name: string

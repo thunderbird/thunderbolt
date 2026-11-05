@@ -4,6 +4,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createMockHttpClient } from '@/test-utils/http-client'
+import { createClient } from '@/lib/http'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { useConfigStore } from './config-store'
 import { fetchConfig } from './config'
 
@@ -21,11 +23,14 @@ const failingClientFor = () => {
 }
 
 describe('fetchConfig', () => {
+  const originalSettings = useLocalSettingsStore.getState()
   beforeEach(() => {
+    useLocalSettingsStore.setState({ cloudUrl: 'http://test-api.local' })
     useConfigStore.setState({ config: {}, configLoaded: false })
   })
 
   afterEach(() => {
+    useLocalSettingsStore.setState(originalSettings)
     useConfigStore.setState({ config: {}, configLoaded: false })
   })
 
@@ -85,5 +90,20 @@ describe('fetchConfig', () => {
     await fetchConfig('http://test-api.local', createMockHttpClient({ builtInAgentEnabled: true }))
 
     expect(useConfigStore.getState().configLoaded).toBe(true)
+  })
+
+  it.each([true, false])('ignores the old server after a switch (successful response: %s)', async (success) => {
+    const response = Promise.withResolvers<Response>()
+    const client = createClient({ prefixUrl: 'http://test-api.local', fetch: () => response.promise })
+    const pending = fetchConfig('http://test-api.local', client)
+    useLocalSettingsStore.setState({ cloudUrl: 'https://next.example/v1' })
+    useConfigStore.setState({ config: { builtInAgentEnabled: true }, configLoaded: false })
+    if (success) {
+      response.resolve(Response.json({ minimalMode: true, authMode: 'oidc', minAppVersion: '99.0.0' }))
+    } else {
+      response.reject(new Error('Offline'))
+    }
+    expect(await pending).toBeNull()
+    expect(useConfigStore.getState()).toMatchObject({ config: { builtInAgentEnabled: true }, configLoaded: false })
   })
 })

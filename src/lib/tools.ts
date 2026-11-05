@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { t } from '@lingui/core/macro'
 import { renderHtmlTool } from '@/artifacts/render-html-tool'
 import type { HttpClient } from '@/contexts'
 import { getIntegrationStatus, getSettings } from '@/dal'
@@ -11,7 +12,7 @@ import { createConfigs as createGoogleConfigs } from '@/integrations/google/tool
 import { createConfigs as createMicrosoftConfigs } from '@/integrations/microsoft/tools'
 import { createConfigs as createWebSearchTools } from '@/integrations/thunderbolt-pro/tools'
 import { hasProAccess } from '@/integrations/thunderbolt-pro/utils'
-import { getTinfoilWebApi } from '@/integrations/tinfoil-search/connection'
+import { getTinfoilSearchConnection } from '@/integrations/tinfoil-search/connection'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import { createStandaloneWebApi } from '@/integrations/standalone-search/api'
 import { resolveSearchSelection } from '@/integrations/standalone-search/selection'
@@ -26,6 +27,7 @@ import { tool, type Tool } from 'ai'
 /** Settings + integration status that gate which tools are exposed. */
 export type ToolAvailabilityContext = {
   tinfoilSearchApi?: WebToolApi
+  tinfoilConfigured?: boolean
   settings: { experimentalFeatureTasks: boolean; integrationsProIsEnabled: boolean }
   integrationStatus: Awaited<ReturnType<typeof getIntegrationStatus>>
 }
@@ -40,7 +42,7 @@ const loadToolAvailabilityContext = async (): Promise<ToolAvailabilityContext> =
     integrations_pro_is_enabled: false,
   })
   const integrationStatus = await getIntegrationStatus(db)
-  return { settings, integrationStatus, tinfoilSearchApi: await getTinfoilWebApi(db) }
+  return { settings, integrationStatus, ...(await getTinfoilSearchConnection(db)) }
 }
 
 export const getAvailableTools = async (
@@ -53,6 +55,7 @@ export const getAvailableTools = async (
     settings: { experimentalFeatureTasks, integrationsProIsEnabled },
     integrationStatus,
     tinfoilSearchApi,
+    tinfoilConfigured,
   } = context ?? (await loadToolAvailabilityContext())
 
   // render_html is a core capability, always available regardless of integrations.
@@ -64,18 +67,42 @@ export const getAvailableTools = async (
 
   const selected = resolveSearchSelection(selection, {
     custom: Boolean(provider && apiKey),
-    tinfoil: !hasServer && Boolean(tinfoilSearchApi),
+    tinfoil: Boolean(tinfoilSearchApi),
+    tinfoilConfigured,
     cloud: shouldIncludeProTools,
   })
 
-  if (selected === 'custom' && provider) {
+  const webApi =
+    selected === 'custom' && provider
+      ? createStandaloneWebApi(apiKey, undefined, provider)
+      : selected === 'tinfoil'
+        ? tinfoilSearchApi
+        : undefined
+  if (selected) {
+    const webTools = createWebSearchTools(httpClient, sourceCollector, webApi)
     baseTools.push(
-      ...createWebSearchTools(httpClient, sourceCollector, createStandaloneWebApi(apiKey, undefined, provider)),
+      ...webTools.map((config) => ({
+        ...config,
+        execute: async (params: unknown) => {
+          const current = useSearchProviderStore.getState()
+          const currentSelection = resolveSearchSelection(current.selection, {
+            custom: Boolean(current.provider && current.apiKey),
+            tinfoil: Boolean(tinfoilSearchApi),
+            tinfoilConfigured,
+            cloud: !usesLocalProviders() && shouldIncludeProTools,
+          })
+          if (
+            currentSelection !== selected ||
+            (selected === 'custom' && (current.provider !== provider || current.apiKey !== apiKey))
+          ) {
+            throw new Error(
+              t`Search provider changed or was disconnected. Start a new turn to use the current provider.`,
+            )
+          }
+          return config.execute(params)
+        },
+      })),
     )
-  } else if (selected === 'tinfoil' && tinfoilSearchApi) {
-    baseTools.push(...createWebSearchTools(httpClient, sourceCollector, tinfoilSearchApi))
-  } else if (selected === 'cloud') {
-    baseTools.push(...createWebSearchTools(httpClient, sourceCollector))
   }
 
   if (hasServer && integrationStatus.googleEnabled) {

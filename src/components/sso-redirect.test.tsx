@@ -5,7 +5,7 @@
 import { AuthContext, createAuthClientInstance } from '@/contexts/auth-context'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
-import { pendingAnonIdKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
+import { pendingPromotionKey } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getClock } from '@/testing-library'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -23,7 +23,7 @@ describe('SsoRedirect', () => {
     cleanup()
     globalThis.fetch = originalFetch
     useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
-    sessionStorage.removeItem(pendingAnonIdKey)
+    sessionStorage.removeItem(pendingPromotionKey)
   })
 
   it('posts to the exact SSO endpoint when cloudUrl has trailing slashes', async () => {
@@ -225,13 +225,16 @@ describe('SsoRedirect', () => {
   })
 
   describe('on Tauri desktop', () => {
-    const renderWithLoopbackCallback = async (callbackUrl: string, authClient = createMockAuthClient()) => {
+    const renderWithLoopbackCallback = async (callbackUrl: string | null, authClient = createMockAuthClient()) => {
       Object.assign(window, { isTauri: true })
       spyOn(tauriCore, 'isTauri').mockReturnValue(true)
       spyOn(tauriCore, 'invoke').mockImplementation(async () => 17421 as never)
       spyOn(opener, 'openUrl').mockImplementation(async () => {})
       spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
-        queueMicrotask(() => cb({ payload: { url: callbackUrl } } as never))
+        if (callbackUrl) {
+          // Rust emits a canonical localhost URL, including redirects received at 127.0.0.1.
+          queueMicrotask(() => cb({ payload: { url: callbackUrl } } as never))
+        }
         return () => {}
       })
       const replaceSpy = spyOn(window.location, 'replace').mockImplementation(() => undefined)
@@ -257,14 +260,14 @@ describe('SsoRedirect', () => {
 
     it('sends a failed login to the error page with the code from the loopback', async () => {
       const { replaceSpy } = await renderWithLoopbackCallback(
-        'http://127.0.0.1:17421/?error=access_denied&error_description=free+text',
+        'http://localhost:17421/?error=access_denied&error_description=free+text',
       )
 
       expect(replaceSpy).toHaveBeenCalledWith('/sso-error?error=access_denied')
     })
 
     it('control: a callback with no token and no error keeps the retry screen', async () => {
-      const { replaceSpy, view } = await renderWithLoopbackCallback('http://127.0.0.1:17421/')
+      const { replaceSpy, view } = await renderWithLoopbackCallback('http://localhost:17421/?state=missing-token')
 
       expect(replaceSpy).not.toHaveBeenCalled()
       expect(view.getByText('Try again')).toBeTruthy()
@@ -273,7 +276,8 @@ describe('SsoRedirect', () => {
 
     it('lets an optional server sign-in timeout return to local work', async () => {
       useLocalSettingsStore.setState({ localMode: true })
-      const { replaceSpy, view } = await renderWithLoopbackCallback('http://127.0.0.1:17421/')
+      const { replaceSpy, view } = await renderWithLoopbackCallback(null)
+      await act(async () => void (await getClock().tickAsync(5 * 60 * 1000)))
 
       fireEvent.click(view.getByRole('button', { name: 'Continue locally' }))
 
@@ -286,10 +290,10 @@ describe('SsoRedirect', () => {
         session: { user: { id: 'anonymous-user', email: '', isAnonymous: true } },
         getSession,
       })
-      const { replaceSpy } = await renderWithLoopbackCallback('http://127.0.0.1:17421/?token=sso-token', authClient)
+      const { replaceSpy } = await renderWithLoopbackCallback('http://localhost:17421/?token=sso-token', authClient)
 
       expect(getSession).not.toHaveBeenCalled()
-      expect(sessionStorage.getItem(pendingAnonIdKey)).toBe('anonymous-user')
+      expect(sessionStorage.getItem(pendingPromotionKey)).toBe('1')
       expect(replaceSpy).toHaveBeenCalledWith('/')
     })
 
@@ -310,7 +314,7 @@ describe('SsoRedirect', () => {
       spyOn(tauriOs, 'platform').mockReturnValue('macos')
       const callbacks: Array<() => void> = []
       spyOn(tauriEvent, 'listen').mockImplementation(async (_event, cb) => {
-        callbacks.push(() => cb({ payload: { url: 'http://127.0.0.1:17421/?token=sso-token' } } as never))
+        callbacks.push(() => cb({ payload: { url: 'http://localhost:17421/?token=sso-token' } } as never))
         return () => {}
       })
       const replace = spyOn(window.location, 'replace').mockImplementation(() => undefined)

@@ -27,6 +27,7 @@ const mockClearLocalData = mock(() => Promise.resolve())
 // clearLocalData, which can call window.location.replace after its test has ended.
 describe('usePowerSyncCredentialsInvalidListener', () => {
   let mockReplace: ReturnType<typeof spyOn>
+  let originalSettings: ReturnType<typeof useLocalSettingsStore.getState>
 
   beforeAll(async () => {
     await setupTestDatabase()
@@ -39,16 +40,18 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
   })
 
   beforeEach(async () => {
+    originalSettings = useLocalSettingsStore.getState()
     await resetTestDatabase()
     mockReplace.mockClear()
     mockClearLocalData.mockClear()
     localStorage.clear()
+    useLocalSettingsStore.setState({ cloudUrl: 'https://server.example/v1', localMode: false, syncEnabled: false })
   })
 
   // Mirror the beforeEach cleanup so the last test's auth token can't leak into the next test file.
   afterEach(() => {
     localStorage.clear()
-    useLocalSettingsStore.setState({ syncEnabled: false })
+    useLocalSettingsStore.setState(originalSettings)
   })
 
   const setupAuthAndDevice = async (deviceOverrides?: { revokedAt?: string | null }) => {

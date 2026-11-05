@@ -11,7 +11,12 @@ import type { AddModelFormValues } from '@/settings/models/use-add-model-form'
 
 export type OnboardingProvider = 'openrouter' | 'tinfoil'
 export type ProviderModelValues = AddModelFormValues &
-  Pick<SharedModel, 'contextWindow' | 'vendor' | 'isConfidential' | 'supportsParallelToolCalls' | 'startWithReasoning'>
+  Pick<
+    SharedModel,
+    'contextWindow' | 'vendor' | 'isConfidential' | 'supportsParallelToolCalls' | 'startWithReasoning'
+  > & {
+    providerDefault: 1
+  }
 
 /** Ignores only provider namespaces and punctuation, retaining model versions and variants. */
 const modelIdentity = (value: string) =>
@@ -57,6 +62,7 @@ export const prepareProviderDefaultModel = async (
     )
     boundedSignal.throwIfAborted()
     return {
+      providerDefault: 1,
       provider,
       apiKey,
       supportsTools: toolSupport === 'supported',

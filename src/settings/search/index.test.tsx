@@ -25,27 +25,33 @@ afterEach(() => {
   useSearchProviderStore.getState().clearSearchProvider()
 })
 
-it('shows automatic Tinfoil selection and can disable search independently of models', async () => {
-  await createModel(getDb(), {
-    id: 'tf',
-    name: 'Tinfoil',
-    provider: 'tinfoil',
-    model: 'test',
-    apiKey: 'key',
-    enabled: 1,
-    toolUsage: 1,
-  })
-  renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
-  const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
-  expect(toggle).toBeTruthy()
-  expect(screen.getByText('Private')).toBeTruthy()
-  expect(screen.queryByText('Selected')).toBeNull()
-  fireEvent.click(toggle)
-  expect(useSearchProviderStore.getState().selection).toBe('none')
-  expect(screen.queryByText('Selected')).toBeNull()
-  fireEvent.click(screen.getByRole('switch', { name: 'Use Tinfoil' }))
-  expect(useSearchProviderStore.getState().selection).toBe('tinfoil')
-})
+it.each([true, false])(
+  'shows Tinfoil selection and disables search independently of models (local mode: %s)',
+  async (localMode) => {
+    useLocalSettingsStore.setState({ cloudUrl: localMode ? '' : 'https://server.example/v1', localMode })
+    await createModel(getDb(), {
+      id: 'tf',
+      name: 'Tinfoil',
+      provider: 'tinfoil',
+      model: 'test',
+      apiKey: 'key',
+      enabled: 1,
+      toolUsage: 1,
+    })
+    renderWithReactivity(<SearchSettingsPage />, { route: '/settings/search', tables: ['models', 'settings'] })
+    const toggle = await waitForElement(() => screen.queryByRole('switch', { name: 'Disable Tinfoil' }))
+    expect(toggle).toBeTruthy()
+    expect(screen.getByText('Exa search through Tinfoil')).toBeTruthy()
+    expect(screen.queryByText('Exa search through your Tinfoil subscription')).toBeNull()
+    expect(screen.getByText('Private')).toBeTruthy()
+    expect(screen.queryByText('Selected')).toBeNull()
+    fireEvent.click(toggle)
+    expect(useSearchProviderStore.getState().selection).toBe('none')
+    expect(screen.queryByText('Selected')).toBeNull()
+    fireEvent.click(screen.getByRole('switch', { name: 'Use Tinfoil' }))
+    expect(useSearchProviderStore.getState().selection).toBe('tinfoil')
+  },
+)
 
 it('switches to Tinfoil without losing a configured search key', async () => {
   await createModel(getDb(), {

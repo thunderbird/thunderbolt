@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModel, getSettings, updateSettings } from '@/dal'
+import { saveIntegrationCredentials } from '@/dal/integrations'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
@@ -319,6 +320,9 @@ describe('OnboardingDialog', () => {
             oauthProvider: auth === 'oauth' ? 'tinfoil' : null,
           }),
         )
+        if (auth === 'oauth') {
+          await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'token' }, true)
+        }
         await updateSettings(getDb(), { onboarding_current_step: '10', selected_model: '' })
         render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
         await flush()
@@ -353,6 +357,52 @@ describe('OnboardingDialog', () => {
       await flush()
       expect(screen.getByRole('heading', { name: 'Add web search' })).toBeInTheDocument()
     })
+
+    it('skips search for an enabled Tinfoil subscription without requiring a model', async () => {
+      useLocalSettingsStore.setState({ cloudUrl: '' })
+      await reconcileDefaults(getDb())
+      await saveIntegrationCredentials(getDb(), 'tinfoil', { access_token: 'token' }, true)
+      await updateSettings(getDb(), { onboarding_current_step: '10' })
+      render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+      await flush()
+      expect(screen.queryByText('Add web search')).toBeNull()
+      expect(screen.getByText('What should we call you?')).toBeInTheDocument()
+    })
+
+    it.each(['missing', 'disabled', 'reauth'] as const)(
+      'keeps search setup when an OAuth model has a %s account connection',
+      async (availability) => {
+        useLocalSettingsStore.setState({ cloudUrl: '' })
+        await reconcileDefaults(getDb())
+        await createModel(
+          getDb(),
+          createMockModel({
+            id: 'tinfoil-no-session',
+            provider: 'tinfoil',
+            isSystem: 0,
+            enabled: 1,
+            toolUsage: 1,
+            apiKey: null,
+            oauthProvider: 'tinfoil',
+          }),
+        )
+        if (availability !== 'missing') {
+          await saveIntegrationCredentials(
+            getDb(),
+            'tinfoil',
+            {
+              access_token: 'token',
+              reauth_required: availability === 'reauth',
+            },
+            availability !== 'disabled',
+          )
+        }
+        await updateSettings(getDb(), { onboarding_current_step: '10' })
+        render(<OnboardingDialog />, { wrapper: createRouterWrapper() })
+        await flush()
+        expect(screen.getByRole('heading', { name: 'Add web search' })).toBeInTheDocument()
+      },
+    )
 
     it('can finish onboarding without a model when AI setup is skipped', async () => {
       useLocalSettingsStore.setState({ cloudUrl: 'https://chosen.example.com/v1', localMode: true })

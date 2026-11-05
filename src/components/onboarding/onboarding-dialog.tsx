@@ -47,14 +47,13 @@ export const OnboardingDialog = () => {
   const { openSignInModal } = useSignInModal()
   const serverState = useOnboardingServerState()
   const hasSearchProvider = useSearchProviderStore((state) => Boolean(state.provider && state.apiKey))
-  const { configuredModels } = useOnboardingModelState()
+  const { hasBuiltInSearch } = useOnboardingModelState()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const { userHasCompletedOnboarding, dataCollection } = useSettings({
     user_has_completed_onboarding: false,
     data_collection: true,
   })
-  const hasBuiltInSearch = configuredModels.some((model) => model.provider === 'tinfoil' && model.toolUsage !== 0)
   const { state, actions, stepIndex, totalSteps } = useOnboardingState({ isStandalone, hasBuiltInSearch })
   // The account gets one passkey, so the step is offered only while it has none.
   const accountPasskey = useAccountPasskey()
@@ -214,9 +213,7 @@ export const OnboardingDialog = () => {
                   onDisconnect={handleProviderDisconnect}
                 />
               )}
-              {state.currentStep === 3 && (
-                <OnboardingNameStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
-              )}
+              {state.currentStep === 3 && <OnboardingNameStep state={state} actions={actions} />}
               {state.currentStep === 4 && (
                 <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
               )}

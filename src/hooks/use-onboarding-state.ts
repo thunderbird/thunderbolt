@@ -66,21 +66,21 @@ type OnboardingAction =
   | { type: 'SET_CONNECTING'; payload: boolean }
   | { type: 'SET_PROCESSING_OAUTH'; payload: boolean }
   | { type: 'SET_NAME_VALUE'; payload: string }
-  | { type: 'SET_NAME_VALID'; payload: boolean }
   | { type: 'SET_SUBMITTING_NAME'; payload: boolean }
   | { type: 'SET_LOCATION_VALUE'; payload: string }
   | { type: 'SET_LOCATION_VALID'; payload: boolean }
   | { type: 'SET_SUBMITTING_LOCATION'; payload: boolean }
   | { type: 'SUBMIT_LOCATION'; payload: { locationName: string; locationLat: number; locationLng: number } }
 
-const initialState: OnboardingState = {
+type OnboardingDraft = Omit<OnboardingState, 'nameValue' | 'isNameValid'> & { nameValue: string | null }
+
+const initialState: OnboardingDraft = {
   currentStep: 1,
   privacyAgreed: false,
   isProviderConnected: false,
   isConnecting: false,
   processingOAuth: false,
-  nameValue: '',
-  isNameValid: false,
+  nameValue: null,
   isSubmittingName: false,
   locationValue: '',
   isLocationValid: false,
@@ -90,7 +90,7 @@ const initialState: OnboardingState = {
   canSkip: false,
 }
 
-const onboardingReducer = (state: OnboardingState, action: OnboardingAction): OnboardingState => {
+const onboardingReducer = (state: OnboardingDraft, action: OnboardingAction): OnboardingDraft => {
   switch (action.type) {
     case 'SET_CURRENT_STEP':
       return {
@@ -131,15 +131,7 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
       return {
         ...state,
         nameValue: action.payload,
-        isNameValid: action.payload.trim().length > 0,
         canGoNext: action.payload.trim().length > 0,
-      }
-
-    case 'SET_NAME_VALID':
-      return {
-        ...state,
-        isNameValid: action.payload,
-        canGoNext: action.payload,
       }
 
     case 'SET_SUBMITTING_NAME':
@@ -212,13 +204,8 @@ export const useOnboardingState = ({
     }
   }, [onboardingCurrentStep.value])
 
-  // Load existing name value from database on mount
-  useEffect(() => {
-    if (preferredName.value && !preferredName.isLoading && preferredName.value.trim().length > 0) {
-      dispatch({ type: 'SET_NAME_VALUE', payload: preferredName.value })
-      dispatch({ type: 'SET_NAME_VALID', payload: true })
-    }
-  }, [preferredName.value, preferredName.isLoading])
+  // An untouched draft follows saved data; typing (including clearing) owns the value from then on.
+  const nameValue = state.nameValue ?? preferredName.value
 
   const isProviderConnected = state.isProviderConnected || (integrationStatusData?.googleConnected ?? false)
 
@@ -239,7 +226,6 @@ export const useOnboardingState = ({
     setConnecting: (connecting: boolean) => dispatch({ type: 'SET_CONNECTING', payload: connecting }),
     setProcessingOAuth: (processing: boolean) => dispatch({ type: 'SET_PROCESSING_OAUTH', payload: processing }),
     setNameValue: (value: string) => dispatch({ type: 'SET_NAME_VALUE', payload: value }),
-    setNameValid: (valid: boolean) => dispatch({ type: 'SET_NAME_VALID', payload: valid }),
     setSubmittingName: (submitting: boolean) => dispatch({ type: 'SET_SUBMITTING_NAME', payload: submitting }),
     setLocationValue: (value: string) => dispatch({ type: 'SET_LOCATION_VALUE', payload: value }),
     setLocationValid: (valid: boolean) => dispatch({ type: 'SET_LOCATION_VALID', payload: valid }),
@@ -247,17 +233,12 @@ export const useOnboardingState = ({
 
     submitName: async (name: string) => {
       dispatch({ type: 'SET_NAME_VALUE', payload: name })
-      dispatch({ type: 'SET_NAME_VALID', payload: true })
       dispatch({ type: 'SET_SUBMITTING_NAME', payload: true })
 
       try {
         await preferredName.setValue(name)
-
+      } finally {
         dispatch({ type: 'SET_SUBMITTING_NAME', payload: false })
-      } catch (error) {
-        console.error('Failed to save name:', error)
-        dispatch({ type: 'SET_SUBMITTING_NAME', payload: false })
-        throw error
       }
     },
 
@@ -325,7 +306,6 @@ export const useOnboardingState = ({
         try {
           await preferredName.setValue('')
           dispatch({ type: 'SET_NAME_VALUE', payload: '' })
-          dispatch({ type: 'SET_NAME_VALID', payload: false })
         } catch (error) {
           console.error('Failed to clear name when skipping:', error)
         }
@@ -338,6 +318,8 @@ export const useOnboardingState = ({
   return {
     state: {
       ...state,
+      nameValue,
+      isNameValid: nameValue.trim().length > 0,
       currentStep,
       isProviderConnected,
       canGoBack: stepIndex > 0,

@@ -62,6 +62,11 @@ export const SearchProviderSetup = ({ onSaved, onReadyChange, testConnection, pr
       )}
       {provider && (
         <>
+          {state.provider === 'brave' && (
+            <p className="text-sm text-muted-foreground">
+              <Trans>Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages.</Trans>
+            </p>
+          )}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor={inputId}>

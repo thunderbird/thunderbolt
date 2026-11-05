@@ -38,6 +38,7 @@ describe('provider default model', () => {
       fetchModels: async () => [{ id: preferred.model }],
       probe,
     })
+    expect(values.providerDefault).toBe(1)
     expect(values.model).toBe(preferred.model)
     expect(values.contextWindow).toBe(preferred.contextWindow)
     expect(values.isConfidential).toBe(1)

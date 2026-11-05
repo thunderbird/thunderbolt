@@ -4,8 +4,7 @@
 
 import { createModelInTransaction, updateModelInTransaction } from '@/dal/models'
 import { withTinfoilSessionLock } from '@/lib/tinfoil-session'
-import { saveIntegrationCredentials } from '@/dal/integrations'
-import type { TinfoilCredentials } from '@/lib/tinfoil-auth'
+import { saveProviderAuthorization, type ProviderAuthorization } from '@/lib/provider-connection-attempt'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
@@ -168,25 +167,34 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
             | 'supportsParallelToolCalls'
             | 'startWithReasoning'
             | 'oauthProvider'
+            | 'providerDefault'
           >
-        > & { tinfoilCredentials?: TinfoilCredentials },
+        > & { providerAuthorization?: ProviderAuthorization; signal?: AbortSignal },
     ) => {
-      const { tinfoilCredentials, supportsTools = true, ...modelValues } = values
+      const { providerAuthorization, signal, supportsTools = true, ...modelValues } = values
       const save = () =>
         db.transaction(async (tx) => {
-          const previous = values.oauthProvider
-            ? (await getAllModels(tx)).find(
-                (model) =>
-                  model.oauthProvider === values.oauthProvider &&
-                  model.provider === values.provider &&
-                  model.model === values.model &&
-                  model.isSystem !== 1,
-              )
-            : undefined
+          // Authorization can be cancelled while this save waits for the session lock or database.
+          signal?.throwIfAborted()
+          const candidates =
+            values.providerDefault === 1 || values.oauthProvider
+              ? (await getAllModels(tx)).filter(
+                  (model) =>
+                    (model.oauthProvider ?? null) === (values.oauthProvider ?? null) &&
+                    model.provider === values.provider &&
+                    model.model === values.model &&
+                    model.isSystem !== 1,
+                )
+              : []
+          // OAuth rows predate the provenance marker; own-key rows cannot be
+          // inferred safely because users may add the same model with different keys.
+          const previous =
+            candidates.find((model) => model.providerDefault === 1) ??
+            (values.oauthProvider ? candidates[0] : undefined)
           const id = previous?.id ?? uuidv7()
 
-          if (tinfoilCredentials) {
-            await saveIntegrationCredentials(tx, 'tinfoil', tinfoilCredentials, true)
+          if (providerAuthorization) {
+            await saveProviderAuthorization(tx, providerAuthorization)
           }
           const modelData = {
             id,
@@ -200,14 +208,20 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
           }
           if (previous) {
             // Reauthorization restores access; it must not reset the user's model configuration.
-            await updateModelInTransaction(tx, id, { apiKey: null, oauthProvider: values.oauthProvider, enabled: 1 })
+            await updateModelInTransaction(tx, id, {
+              apiKey: modelData.apiKey,
+              oauthProvider: values.oauthProvider ?? null,
+              providerDefault: values.providerDefault,
+            })
           } else {
             await createModelInTransaction(tx, modelData)
           }
-          return id
+          signal?.throwIfAborted()
+          return { id, created: !previous }
         })
-      const id = tinfoilCredentials ? await withTinfoilSessionLock(save) : await save()
-      if (isStandalone) {
+      const { id, created } =
+        providerAuthorization?.attempt.provider === 'tinfoil' ? await withTinfoilSessionLock(save) : await save()
+      if (isStandalone && created) {
         await updateSettings(db, { selected_model: id })
       }
       return getAvailableModels(db)
@@ -216,18 +230,27 @@ export const useAddModelForm = ({ isOpen, onClose, onSaved, onMutationStart }: U
       onMutationStart?.()
       dispatch({ type: 'MUTATION_STARTED' })
     },
-    onSuccess: async (models) => {
+    onSuccess: async (models, values) => {
+      if (values.signal?.aborted) {
+        return
+      }
       useChatStore.getState().setModels(models)
       await queryClient.invalidateQueries({ queryKey: ['models'] })
-      await queryClient.invalidateQueries({ queryKey: ['tinfoil-session'] })
       if (isStandalone) {
         await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      }
+      if (values.signal?.aborted) {
+        return
       }
       close()
       onSaved?.()
     },
-    onError: (error: unknown) => {
-      console.error('Failed to add the model.', error)
+    onError: (_error, values) => {
+      if (values.signal?.aborted) {
+        return
+      }
+      // Database errors can include bound API keys and OAuth tokens.
+      console.error('Failed to add the model.')
       dispatch({ type: 'MUTATION_FAILED' })
     },
   })

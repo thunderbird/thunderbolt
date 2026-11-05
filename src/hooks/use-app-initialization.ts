@@ -17,7 +17,7 @@ import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
-import { getLocalSetting } from '@/stores/local-settings-store'
+import { getLocalSetting, isCurrentServer } from '@/stores/local-settings-store'
 import { createHandleError } from '@/lib/error-utils'
 import { createAppDir, resetAppDir } from '@/lib/fs'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -256,7 +256,8 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: storageError }
   }
 
-  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
+  const selectedServer = getLocalSetting('cloudUrl')
+  const cloudUrl = normalizeBackendUrl(selectedServer)
   // Step 6: HTTP client initialization (use provided client or create one)
   let client: HttpClient
 
@@ -267,6 +268,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       client = await time('step6_create_http_client', async () =>
         createAuthenticatedClient(cloudUrl, getAuthToken, {
           credentials: isSsoMode() ? 'include' : undefined,
+          isCurrent: () => isCurrentServer(selectedServer),
         }),
       )
     } catch (error) {

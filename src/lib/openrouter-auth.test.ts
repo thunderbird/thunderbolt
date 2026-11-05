@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
 import { createOpenRouterAuth, type OpenRouterAuthDependencies } from './openrouter-auth'
 import { createTinfoilAuth } from './tinfoil-auth'
@@ -65,6 +65,7 @@ const createHarness = (native = false, overrides: Partial<OpenRouterAuthDependen
       return channel
     },
     startLoopback: async () => 17421,
+    stopLoopback: async () => {},
     listenForLoopback: async (handler) => {
       state.loopbackHandler = handler
       return removeLoopbackListener
@@ -136,6 +137,8 @@ describe('Tinfoil OAuth', () => {
     harness.sendMessage(successfulMessage)
     expect(await pending).toMatchObject({ access_token: 'bearer', refresh_token: 'refresh' })
     expect(harness.requests[0].url).toBe('https://api.tinfoil.sh/oauth/token')
+    expect(harness.requests[0].redirect).toBe('error')
+    expect(harness.requests[0].credentials).toBe('omit')
     expect(Object.fromEntries(new URLSearchParams(await harness.requests[0].text()))).toEqual({
       grant_type: 'authorization_code',
       client_id: 'public-client',
@@ -195,6 +198,7 @@ describe('OpenRouter web connection', () => {
     expect(request.url).toBe('https://openrouter.ai/api/v1/auth/keys')
     expect(request.method).toBe('POST')
     expect(request.credentials).toBe('omit')
+    expect(request.redirect).toBe('error')
     expect(request.headers.get('Authorization')).toBeNull()
     expect(await request.json()).toEqual({
       code: 'authorization-code',
@@ -415,6 +419,32 @@ describe('OpenRouter native connection', () => {
     expect(harness.state.openedUrl).toBe('')
   })
 
+  it('stops a native listener on cancellation, freeing its registered port', async () => {
+    const stopLoopback = mock(async (_flowId: string) => {})
+    const harness = createHarness(true, { stopLoopback })
+    const controller = new AbortController()
+    const promise = harness.auth.startConnection({ signal: controller.signal })
+    await settle()
+    controller.abort()
+    await expect(promise).rejects.toHaveProperty('name', 'AbortError')
+    expect(stopLoopback).toHaveBeenCalledWith('expected-nonce')
+    expect(stopLoopback).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops a listener that finishes starting after the flow was cancelled', async () => {
+    const pending = Promise.withResolvers<number>()
+    const stopLoopback = mock(async (_flowId: string) => {})
+    const harness = createHarness(true, { startLoopback: () => pending.promise, stopLoopback })
+    const controller = new AbortController()
+    const promise = harness.auth.startConnection({ signal: controller.signal })
+    await settle()
+    controller.abort()
+    await expect(promise).rejects.toHaveProperty('name', 'AbortError')
+    pending.resolve(17421)
+    await settle()
+    expect(stopLoopback).toHaveBeenCalledWith('expected-nonce')
+  })
+
   it('uses the manual flow on native mobile without starting a loopback server', async () => {
     const harness = createHarness(true, { isMobile: () => true })
     await expect(harness.auth.startConnection()).rejects.toThrow('authorization code option')
@@ -498,4 +528,81 @@ describe('OpenRouter manual authorization and exchange', () => {
     expect(requestSignals).toHaveLength(1)
     expect(requestSignals[0].aborted).toBe(true)
   })
+})
+
+/** A transport that returns headers but stalls the JSON body until the request is cancelled. */
+const stalledTokenTransport = () => {
+  const signals: AbortSignal[] = []
+  const fetch: OpenRouterAuthDependencies['fetch'] = async (input) => {
+    const request = input as Request
+    signals.push(request.signal)
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          request.signal.addEventListener('abort', () => controller.error(request.signal.reason), { once: true })
+        },
+      }),
+    )
+  }
+  return { fetch, signals }
+}
+
+it.each(['openrouter', 'tinfoil'] as const)(
+  'times out stalled %s token bodies after headers arrive',
+  async (provider) => {
+    // Bun's native AbortSignal.timeout is outside the fake clock; control that boundary explicitly.
+    const deadline = new AbortController()
+    const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal)
+    const transport = stalledTokenTransport()
+    try {
+      const result = (
+        provider === 'openrouter'
+          ? createOpenRouterAuth({ fetch: transport.fetch }).exchangeCode('code', 'verifier')
+          : createTinfoilAuth('client', { fetch: transport.fetch }).refresh('refresh')
+      ).catch((error: unknown) => error)
+      await settle()
+      expect(timeout).toHaveBeenCalledWith(30_000)
+      expect(transport.signals[0].aborted).toBe(false)
+      deadline.abort(new DOMException('Token request timed out', 'TimeoutError'))
+      expect(await result).toBeInstanceOf(Error)
+      expect(((await result) as Error).message).toContain('Could not connect')
+      expect(transport.signals[0].reason.name).toBe('TimeoutError')
+    } finally {
+      timeout.mockRestore()
+    }
+  },
+)
+
+it.each(['openrouter', 'tinfoil'] as const)(
+  'cancels a stalled %s token body on user cancellation',
+  async (provider) => {
+    const transport = stalledTokenTransport()
+    const controller = new AbortController()
+    const harness = createHarness(false, { fetch: transport.fetch })
+    const auth = provider === 'openrouter' ? harness.auth : createTinfoilAuth('client', harness.deps)
+    const result = auth.startConnection({ signal: controller.signal }).catch((error: unknown) => error)
+    await settle()
+    harness.sendMessage(successfulMessage)
+    await settle()
+    controller.abort()
+    expect(await result).toHaveProperty('name', 'AbortError')
+    expect(transport.signals[0].aborted).toBe(true)
+  },
+)
+
+it('refuses redirect replay for Tinfoil refresh and revocation credentials', async () => {
+  const requests: Request[] = []
+  const auth = createTinfoilAuth('client', {
+    fetch: async (input) => {
+      const request = input as Request
+      requests.push(request)
+      return request.url.endsWith('/revoke')
+        ? new Response(null, { status: 204 })
+        : Response.json({ access_token: 'new', expires_in: 900, token_type: 'bearer' })
+    },
+  })
+  await auth.refresh('refresh')
+  await auth.revoke('refresh')
+  expect(requests.map((request) => request.redirect)).toEqual(['error', 'error'])
+  expect(requests.map((request) => request.credentials)).toEqual(['omit', 'omit'])
 })

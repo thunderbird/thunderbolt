@@ -483,6 +483,7 @@ msgid "API key"
 msgstr "API-Schlüssel"
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/ai-provider-detail.tsx
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 msgid "API Key"
@@ -647,6 +648,10 @@ msgstr "Basis-URL"
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Bearer token or API key"
 msgstr "Bearer-Token oder API-Schlüssel"
+
+#: src/components/search-provider-setup/search-provider-setup.tsx
+msgid "Brave provides search results. Choose Exa, Tavily, or Tinfoil to read full pages."
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Bridge"
@@ -1036,6 +1041,10 @@ msgstr "Konfiguration"
 msgid "Configure {0}"
 msgstr "{0} konfigurieren"
 
+#: src/chats/chat-instance.ts
+msgid "Configure and select an available model before sending a message."
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Confirm"
 msgstr "Bestätigen"
@@ -1049,6 +1058,7 @@ msgid "Confirm this code matches the one in your terminal."
 msgstr "Bestätigen Sie, dass dieser Code mit dem in Ihrem Terminal übereinstimmt."
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/ai-provider-detail.tsx
 msgid "Connect"
 msgstr ""
 
@@ -2232,8 +2242,12 @@ msgid "Exa provides search and page content through Tinfoil’s encrypted connec
 msgstr ""
 
 #: src/settings/search/index.tsx
-msgid "Exa search through your Tinfoil subscription"
+msgid "Exa search through Tinfoil"
 msgstr ""
+
+#: src/settings/search/index.tsx
+#~ msgid "Exa search through your Tinfoil subscription"
+#~ msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2292,6 +2306,10 @@ msgstr "Verbindung zum Modell fehlgeschlagen"
 msgid "Failed to delete account."
 msgstr "Das Konto konnte nicht gelöscht werden."
 
+#: src/settings/models/use-models-page-state.ts
+msgid "Failed to delete the model."
+msgstr ""
+
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Failed to disconnect integration"
 msgstr "Die Integration konnte nicht getrennt werden"
@@ -2332,6 +2350,14 @@ msgstr "Der MCP-Server konnte nicht entfernt werden"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Der Bestätigungscode konnte nicht erneut gesendet werden. Bitte prüfen Sie Ihre Verbindung."
 
+#: src/settings/models/use-models-page-state.ts
+msgid "Failed to reset the model."
+msgstr ""
+
+#: src/settings/models/use-models-page-state.ts
+msgid "Failed to save the model."
+msgstr ""
+
 #: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
@@ -2353,6 +2379,10 @@ msgstr "Die Integration konnte nicht aktualisiert werden"
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Failed to update MCP server"
 msgstr "Der MCP-Server konnte nicht aktualisiert werden"
+
+#: src/settings/models/use-models-page-state.ts
+msgid "Failed to update the model."
+msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
 #: src/settings/connections/ai-provider-detail.tsx
@@ -2969,6 +2999,7 @@ msgstr ""
 msgid "My Agent"
 msgstr "Mein Agent"
 
+#: src/components/onboarding/onboarding-name-step.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/projects/project-create-form.tsx
@@ -2979,7 +3010,6 @@ msgstr "Mein Agent"
 msgid "Name"
 msgstr "Name"
 
-#: src/components/onboarding/onboarding-name-step.tsx
 #: src/settings/models/use-add-model-form.ts
 #: src/settings/models/use-edit-model-form-state.ts
 msgid "Name is required."
@@ -4009,6 +4039,10 @@ msgstr "Projekte suchen"
 msgid "Search provider"
 msgstr ""
 
+#: src/lib/tools.ts
+msgid "Search provider changed or was disconnected. Start a new turn to use the current provider."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 #: src/skills/skills-list.tsx
 msgid "Search skills"
@@ -4732,6 +4766,14 @@ msgstr ""
 msgid "The request was denied. You can safely close this page."
 msgstr "Die Anfrage wurde abgelehnt. Sie können diese Seite schließen."
 
+#: src/integrations/standalone-search/content.ts
+msgid "The search provider could not retrieve this page."
+msgstr ""
+
+#: src/integrations/standalone-search/content.ts
+msgid "The search provider returned too much content. Try another page."
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "The server rejected the credential. Check your bearer token or API key."
 msgstr "Der Server hat die Anmeldedaten abgelehnt. Prüfen Sie Ihren Bearer-Token oder API-Schlüssel."
@@ -4853,6 +4895,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model doesn't support tools."
+msgstr ""
+
+#: src/chats/chat-instance.ts
+msgid "This model no longer matches the conversation’s privacy setting."
 msgstr ""
 
 #: src/components/sync-setup/passkey-enroll-step.tsx
@@ -5054,6 +5100,10 @@ msgstr ""
 
 #: src/integrations/tinfoil-search/connection.ts
 msgid "Tinfoil search is no longer connected or enabled."
+msgstr ""
+
+#: src/integrations/tinfoil-search/attested-fetch.ts
+msgid "Tinfoil search refused an unencrypted request."
 msgstr ""
 
 #: src/integrations/tinfoil-search/attested-fetch.ts
@@ -5299,6 +5349,11 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/onboarding/onboarding-model-step.tsx
+#: src/settings/connections/ai-provider-detail.tsx
+msgid "Use a Tinfoil API key to power your agents."
+msgstr ""
+
+#: src/components/onboarding/onboarding-model-step.tsx
 msgid "Use an API key instead"
 msgstr ""
 
@@ -5396,6 +5451,10 @@ msgstr "Beim Tippen vibrieren"
 msgid "View and manage your schedule; create + reschedule events."
 msgstr "Ihren Kalender ansehen und verwalten; Termine erstellen und verschieben."
 
+#: src/components/chat/markdown-utils.tsx
+msgid "View image"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "View install guide"
 msgstr "Installationsanleitung ansehen"
@@ -5483,6 +5542,10 @@ msgstr "Wir haben eine E-Mail mit den nächsten Schritten an <0>{email}</0> gese
 #: src/widgets/weather-forecast/display.tsx
 msgid "Weather data provided by Open-Meteo.com"
 msgstr "Wetterdaten bereitgestellt von Open-Meteo.com"
+
+#: src/integrations/standalone-search/api.ts
+#~ msgid "Web tools can only fetch public HTTP or HTTPS pages without embedded credentials."
+#~ msgstr ""
 
 #: src/components/welcome-dialog.tsx
 msgid "Welcome"

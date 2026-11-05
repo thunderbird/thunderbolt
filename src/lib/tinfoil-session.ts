@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
-import { getAllModels, updateModelInTransaction } from '@/dal/models'
 import { getDb } from '@/db/database'
 import { tinfoilAuth, TinfoilReauthorizationError } from './tinfoil-auth'
 
@@ -34,11 +33,12 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         return current.access_token
       }
       if (!current.refresh_token) {
+        await saveIntegrationCredentials(db, 'tinfoil', { ...current, reauth_required: true }, true)
         throw new TinfoilReauthorizationError()
       }
       try {
         const tokens = await deps.auth.refresh(current.refresh_token)
-        await saveIntegrationCredentials(db, 'tinfoil', tokens, true)
+        await saveIntegrationCredentials(db, 'tinfoil', { ...tokens, sessionRevision: current.sessionRevision }, true)
         return tokens.access_token
       } catch (error) {
         if (error instanceof TinfoilReauthorizationError) {
@@ -55,11 +55,13 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         if (!row?.credentials.access_token || (enabled && row.credentials.reauth_required)) {
           throw new TinfoilReauthorizationError()
         }
-        await saveIntegrationCredentials(tx, 'tinfoil', row.credentials, enabled)
-        for (const model of await getAllModels(tx)) {
-          if (model.oauthProvider === 'tinfoil') {
-            await updateModelInTransaction(tx, model.id, { enabled: enabled ? 1 : 0 })
-          }
+        if (row.enabled !== enabled) {
+          await saveIntegrationCredentials(
+            tx,
+            'tinfoil',
+            { ...row.credentials, sessionRevision: crypto.randomUUID() },
+            enabled,
+          )
         }
       })
     }),
@@ -72,13 +74,12 @@ export const createTinfoilSession = (deps = defaultDependencies) => ({
         await deps.auth.revoke(row.credentials.refresh_token ?? row.credentials.access_token)
       }
       await db.transaction(async (tx) => {
-        await saveIntegrationCredentials(tx, 'tinfoil', { access_token: '' }, false)
-        for (const model of await getAllModels(tx)) {
-          if (model.oauthProvider === 'tinfoil') {
-            // Keep the account association so reconnect can reuse this model's identity.
-            await updateModelInTransaction(tx, model.id, { apiKey: null, oauthProvider: 'tinfoil', enabled: 0 })
-          }
-        }
+        await saveIntegrationCredentials(
+          tx,
+          'tinfoil',
+          { access_token: '', sessionRevision: crypto.randomUUID() },
+          false,
+        )
       })
     }),
 })

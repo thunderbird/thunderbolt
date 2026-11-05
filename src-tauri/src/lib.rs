@@ -44,6 +44,7 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             commands::toggle_dock_icon,
             commands::set_interface_style,
             commands::start_oauth_server,
+            commands::stop_oauth_server,
             commands::install_thunderbolt_cli,
         ]);
 

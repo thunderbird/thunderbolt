@@ -8,6 +8,7 @@ import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
+import { useLiveChatModels } from './use-live-chat-models'
 import { type PropsWithChildren, useEffect, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router'
@@ -63,6 +64,7 @@ export const ChatHydrateHandler = ({
   const [id] = useState(() => existingId ?? newChatId)
   const needsOwnModel = useLocalProviders()
   const cloudUrl = useLocalSettingsStore((state) => state.cloudUrl)
+  useLiveChatModels()
 
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,

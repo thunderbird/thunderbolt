@@ -90,6 +90,33 @@ describe('server selection', () => {
     expect(useConfigStore.getState().config).toEqual({})
   })
 
+  it('does not select a server after its connection flow is cancelled', async () => {
+    const controller = new AbortController()
+    const client = createClient({
+      prefixUrl: 'https://example.com/v1',
+      fetch: async () => {
+        controller.abort()
+        return Response.json({ builtInAgentEnabled: true })
+      },
+    })
+    await expect(connectToServer('https://example.com', client, controller.signal)).rejects.toHaveProperty(
+      'name',
+      'AbortError',
+    )
+    expect(useLocalSettingsStore.getState().cloudUrl).toBe('')
+    expect(useConfigStore.getState().config).toEqual({})
+  })
+
+  it('does not start a request for an already cancelled server connection', async () => {
+    const fetch = mock(async () => Response.json({ builtInAgentEnabled: true }))
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      connectToServer('https://example.com', createClient({ fetch }), controller.signal),
+    ).rejects.toHaveProperty('name', 'AbortError')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('refuses to switch an existing server into another account/data namespace', async () => {
     useLocalSettingsStore.setState({ cloudUrl: 'https://first.example/v1', serverHasAuthenticated: true })
     const fetch = mock(async () => Response.json({ builtInAgentEnabled: true }))

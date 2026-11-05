@@ -255,7 +255,7 @@ describe('getAvailableTools (injected context)', () => {
     useLocalSettingsStore.setState({ cloudUrl: '' })
     useSearchProviderStore.getState().configureSearchProvider('brave-key')
     const tools = await getAvailableTools(stubHttpClient, undefined, context())
-    expect(tools.map(({ name }) => name)).toEqual(['render_html', 'search', 'fetch_content'])
+    expect(tools.map(({ name }) => name)).toEqual(['render_html', 'search'])
   })
 
   it('exposes Tinfoil search through regular Pi tools and the source collector without a separate key', async () => {
@@ -308,6 +308,19 @@ describe('getAvailableTools (injected context)', () => {
     expect(tools.some((tool) => tool.name.startsWith('microsoft'))).toBe(true)
   })
 
+  it('does not expose cloud tools when automatic Tinfoil search becomes unavailable', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'https://cloud.example/v1', localMode: false })
+    const availability = context({
+      settings: { experimentalFeatureTasks: false, integrationsProIsEnabled: true },
+      tinfoilConfigured: true,
+    })
+    const tools = await getAvailableTools(stubHttpClient, undefined, availability)
+    expect(tools.map(({ name }) => name)).toEqual(['render_html'])
+    useSearchProviderStore.getState().selectSearchProvider('cloud')
+    const cloudTools = await getAvailableTools(stubHttpClient, undefined, availability)
+    expect(cloudTools.some(({ name }) => name === 'search')).toBe(true)
+  })
+
   it('includes Pro tools when the Pro integration is enabled', async () => {
     const tools = await getAvailableTools(
       stubHttpClient,
@@ -353,4 +366,38 @@ test('web results expose live remaining calls through the real Pi bridge without
   })
   expect(promoted.details).toEqual(first.details)
   expect(budget.consumed).toBe(webToolCaps.auto)
+})
+
+describe('search provider changes during an active turn', () => {
+  afterEach(() => useSearchProviderStore.getState().clearSearchProvider())
+
+  it.each(['none', 'custom', 'cloud'] as const)(
+    'stops Tinfoil calls when search selection changes to %s',
+    async (selection) => {
+      useSearchProviderStore.getState().selectSearchProvider('tinfoil')
+      let calls = 0
+      const api = createTinfoilWebApi(
+        async () => 'token',
+        async () => {
+          calls++
+          return { structuredContent: { results: [] } }
+        },
+      )
+      const tools = await getAvailableTools(stubHttpClient, undefined, context({ tinfoilSearchApi: api }))
+      const search = tools.find(({ name }) => name === 'search')!
+      useSearchProviderStore.getState().selectSearchProvider(selection)
+      await expect(search.execute({ query: 'test', max_results: 1 })).rejects.toThrow('Search provider changed')
+      expect(calls).toBe(0)
+    },
+  )
+
+  it('does not retain a replaced or disconnected custom search credential', async () => {
+    useSearchProviderStore.getState().configureSearchProvider('old-key', 'exa')
+    const tools = await getAvailableTools(stubHttpClient, undefined, context())
+    const search = tools.find(({ name }) => name === 'search')!
+    useSearchProviderStore.getState().configureSearchProvider('new-key', 'exa')
+    await expect(search.execute({ query: 'test', max_results: 1 })).rejects.toThrow('Search provider changed')
+    useSearchProviderStore.getState().disconnectSearchProvider()
+    await expect(search.execute({ query: 'test', max_results: 1 })).rejects.toThrow('Search provider changed')
+  })
 })

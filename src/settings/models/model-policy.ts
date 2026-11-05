@@ -71,12 +71,16 @@ export const isModelAvailable = (
   cloudUrl = getLocalSetting('cloudUrl'),
 ): boolean => !modelRequiresServer(model) || !usesLocalProviders(cloudUrl)
 
-/** A model that can finish standalone onboarding without relying on server credentials. */
-export const isStandaloneModelReady = (model: Model): boolean =>
+/** Whether a model has the local configuration needed to run on this device. */
+export const isModelReady = (model: Model, cloudUrl = getLocalSetting('cloudUrl')): boolean =>
   model.enabled === 1 &&
-  isModelAvailable(model, '') &&
+  !model.deletedAt &&
+  isModelAvailable(model, cloudUrl) &&
   !needsApiKey(model) &&
   (model.provider !== 'custom' || Boolean(model.url?.trim()))
+
+/** A model that can finish standalone onboarding without relying on server credentials. */
+export const isStandaloneModelReady = (model: Model): boolean => isModelReady(model, '')
 
 /**
  * Whether a model may run in a thread. A thread is locked to models whose

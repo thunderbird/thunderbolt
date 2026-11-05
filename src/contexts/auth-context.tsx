@@ -16,8 +16,13 @@ import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSe
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
-import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
-import { markServerAuthenticated } from '@/stores/local-settings-store'
+import { consumePendingSsoPromotion } from '@/lib/analytics/anonymous-promotion-sso-bridge'
+import {
+  getLocalSetting,
+  isCurrentServer,
+  markServerAuthenticated,
+  onServerChangedInOtherTab,
+} from '@/stores/local-settings-store'
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 
 /**
@@ -35,7 +40,7 @@ export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()
     baseURL,
     basePath: '/v1/api/auth',
     plugins: [emailOTPClient(), anonymousClient()],
-    fetchOptions: cloudUrl ? buildFetchOptions(platform, ssoMode) : { customFetchImpl: standaloneAuthFetch },
+    fetchOptions: cloudUrl ? buildFetchOptions(platform, ssoMode, cloudUrl) : { customFetchImpl: standaloneAuthFetch },
     // Skip focus refetches to avoid spending rate-limit budget on every tab switch.
     // The refresh manager skips offline checks, but still refetches on reconnect
     // and cross-tab broadcasts so cached sessions recover when the network returns.
@@ -46,7 +51,7 @@ export const createAuthClientInstance = (cloudUrl: string, ssoMode = isSsoMode()
   })
 
   if (cloudUrl) {
-    hydrateSessionFromCache(client)
+    hydrateSessionFromCache(client, cloudUrl)
   } else {
     const session = client.$store.atoms.session
     session.set({ ...session.get(), data: null, isPending: false })
@@ -86,8 +91,11 @@ export const standaloneAuthFetch = async (input: string | URL | Request): Promis
  * updates is wired in {@link subscribeSessionCachePersist} from the provider so
  * the listener is released when the auth client is replaced.
  */
-export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClient>) => {
-  if (!getAuthToken()) {
+export const hydrateSessionFromCache = (
+  client: ReturnType<typeof createAuthClient>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+) => {
+  if (!isCurrentServer(cloudUrl) || !getAuthToken()) {
     return
   }
   const cached = getCachedSession()
@@ -122,8 +130,14 @@ export const hydrateSessionFromCache = (client: ReturnType<typeof createAuthClie
  * the next boot. Real sign-out (atom → `null`) is a no-op here on purpose —
  * cache clearing is owned by the 401 handler and `clearLocalData` callers.
  */
-export const subscribeSessionCachePersist = (client: ReturnType<typeof createAuthClient>): (() => void) => {
+export const subscribeSessionCachePersist = (
+  client: ReturnType<typeof createAuthClient>,
+  cloudUrl = getLocalSetting('cloudUrl'),
+): (() => void) => {
   return client.$store.atoms.session.subscribe((state: { data: Session | null }) => {
+    if (!isCurrentServer(cloudUrl)) {
+      return
+    }
     const data = state.data
     if (data?.user && data?.session) {
       markServerAuthenticated()
@@ -153,26 +167,38 @@ const signInPaths = ['/sign-in/email-otp', '/passkey/verify-authentication']
 const isSignInRequest = (url: URL | string | undefined): boolean =>
   url !== undefined && signInPaths.some((path) => new URL(url, 'http://localhost').pathname.endsWith(path))
 
-export const buildFetchOptions = (platform: string, ssoMode = isSsoMode()) => ({
+/** Ignore obsolete auth clients before they can send or persist another server's credentials. */
+const assertCurrentServer = (cloudUrl: string): void => {
+  if (!isCurrentServer(cloudUrl)) {
+    throw new DOMException('The selected server changed', 'AbortError')
+  }
+}
+
+export const buildFetchOptions = (platform: string, ssoMode = isSsoMode(), cloudUrl = getLocalSetting('cloudUrl')) => ({
   credentials: (ssoMode ? 'include' : 'omit') as RequestCredentials,
   // Applied per request instead of through `headers` so the locale is re-read on
   // every call, not frozen at client construction before the synced setting hydrates.
   onRequest: (ctx: { headers: Headers }) => {
+    assertCurrentServer(cloudUrl)
     for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
       ctx.headers.set(key, value)
     }
   },
   auth: {
     type: 'Bearer' as const,
-    token: () => getAuthToken() ?? '',
+    token: () => (isCurrentServer(cloudUrl) ? (getAuthToken() ?? '') : ''),
   },
   onSuccess: (ctx: { response: Response }) => {
+    assertCurrentServer(cloudUrl)
     const token = ctx.response.headers.get('set-auth-token')
     if (token) {
-      setAuthToken(token)
+      setAuthToken(token, cloudUrl)
     }
   },
   onError: (ctx: { response: Response; request?: { url: URL | string } }) => {
+    if (!isCurrentServer(cloudUrl)) {
+      return
+    }
     // A 426 from our backend means this build is below the enforced minimum —
     // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
     // below). Status-only: the response body belongs to Better Auth here.
@@ -240,19 +266,19 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
     if (!client?.$store) {
       return
     }
-    return subscribeSessionCachePersist(client)
-  }, [value])
+    return subscribeSessionCachePersist(client, cloudUrl ?? '')
+  }, [value, cloudUrl])
 
-  // Consume any pending SSO anon-id alias from sessionStorage (written before the SSO redirect
-  // by persistForSso()). A ref guard prevents StrictMode's double-invocation from firing alias
-  // twice.
-  const ssoAliasConsumedRef = useRef(false)
+  // Consume the boolean SSO conversion marker once after returning from sign-in.
+  const ssoPromotionConsumedRef = useRef(false)
   useEffect(() => {
-    if (!cloudUrl || !value.authClient || ssoAliasConsumedRef.current) {
+    if (!cloudUrl || !value.authClient || ssoPromotionConsumedRef.current) {
       return
     }
-    ssoAliasConsumedRef.current = true
-    void consumePendingSsoAnonAlias(value.authClient)
+    ssoPromotionConsumedRef.current = true
+    void consumePendingSsoPromotion(value.authClient).catch((error) => {
+      console.warn('Could not record sign-in conversion', error)
+    })
   }, [value, cloudUrl])
 
   // Check the session on mount via HttpClient — its afterResponse hook fires
@@ -279,7 +305,8 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
   //     (sign-in modal + sync teardown) takes over. Event name kept in sync with
   //     `src/db/powersync/connector.ts`.
   useEffect(() => {
-    return onAuthTokenChangedInOtherTab((next, prev) => {
+    const unsubscribeServer = onServerChangedInOtherTab(() => window.location.reload())
+    const unsubscribeToken = onAuthTokenChangedInOtherTab((next, prev) => {
       if (next && next !== prev) {
         // Cross-tab rotation may swap in a different user identity; wipe the
         // cache so the reloaded tab doesn't seed the previous user's session
@@ -292,6 +319,10 @@ export const AuthProvider = ({ children, cloudUrl, authClient: overrideClient }:
         window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'session_expired' } }))
       }
     })
+    return () => {
+      unsubscribeServer()
+      unsubscribeToken()
+    }
   }, [])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

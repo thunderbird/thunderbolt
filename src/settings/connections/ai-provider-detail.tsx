@@ -27,7 +27,10 @@ export const AiProviderDetail = ({
   const { id, name, connected, needsReauth } = connection
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const { disconnectProvider } = useOnboardingModelState()
-  const state = useOnboardingProviderState(connected ? [id] : [])
+  const state = useOnboardingProviderState(connected ? [id] : [], undefined, undefined, {
+    initialProvider: id,
+    onSaved: onClose,
+  })
   const busy = state.isConnecting || state.isDisconnecting || state.addForm.isPending
   const connect = id === 'tinfoil' ? state.connectTinfoil : state.connectOpenRouter
   const disconnect = () =>
@@ -46,13 +49,37 @@ export const AiProviderDetail = ({
             <Trans>Your connection has expired. Reconnect to continue.</Trans>
           ) : connected ? (
             <Trans>Connected</Trans>
+          ) : !state.supportsSignIn ? (
+            <Trans>Use a Tinfoil API key to power your agents.</Trans>
           ) : id === 'tinfoil' ? (
             <Trans>Connect with a paid Tinfoil subscription.</Trans>
           ) : (
             <Trans>Sign in to connect your account.</Trans>
           )}
         </p>
-        {state.view === 'manual' ? (
+        {!state.supportsSignIn && (!connected || needsReauth) ? (
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void state.connectApiKey()
+            }}
+          >
+            <Label htmlFor="provider-api-key">
+              <Trans>API Key</Trans>
+            </Label>
+            <Input
+              id="provider-api-key"
+              type="password"
+              autoComplete="off"
+              disabled={busy}
+              {...state.addForm.form.register('apiKey')}
+            />
+            <Button type="submit" disabled={busy || !state.addForm.form.watch('apiKey')?.trim()} isLoading={busy}>
+              <Trans>Connect</Trans>
+            </Button>
+          </form>
+        ) : state.view === 'manual' ? (
           <>
             <p className="text-sm text-muted-foreground">
               <Trans>Finish connecting in your browser, then paste the authorization code here.</Trans>

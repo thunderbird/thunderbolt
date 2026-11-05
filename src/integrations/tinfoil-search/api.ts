@@ -5,21 +5,19 @@
 import { t } from '@lingui/core/macro'
 
 import { z } from 'zod'
+import { isPublicWebUrl, publicWebMediaUrl } from '@/integrations/standalone-search/url-policy'
 import type { WebToolApi } from '@/integrations/thunderbolt-pro/tools'
 import type { SearchResultData } from '@/integrations/thunderbolt-pro/schemas'
 import { createTinfoilToolCaller, type TinfoilToolCaller, type TinfoilToolResult } from './transport'
 
-const publicUrl = z.url().refine((value) => {
-  const url = new URL(value)
-  return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
-})
+const publicUrl = z.url().refine(isPublicWebUrl)
 const searchResponse = z.object({
   results: z.array(
     z.object({
       title: z.string(),
-      url: publicUrl,
+      url: z.string(),
       content: z.string(),
-      favicon: publicUrl.nullish(),
+      favicon: z.string().nullish(),
       published_date: z.string().nullish(),
     }),
   ),
@@ -48,9 +46,10 @@ const resultPayload = (result: TinfoilToolResult): unknown => {
 export const createTinfoilWebApi = (
   getApiKey: () => Promise<string>,
   call: TinfoilToolCaller = createTinfoilToolCaller(getApiKey),
-): WebToolApi => {
+): Required<WebToolApi> => {
   const sources = new Map<string, SearchResultData>()
   return {
+    allowRemoteImages: false,
     search: async ({ query, max_results }) => {
       const response = searchResponse.parse(
         resultPayload(
@@ -61,18 +60,20 @@ export const createTinfoilWebApi = (
           }),
         ),
       )
-      return response.results.map((hit) => {
-        const result: SearchResultData = {
-          title: hit.title,
-          pageUrl: hit.url,
-          snippet: hit.content,
-          faviconUrl: hit.favicon ?? null,
-          publishedDate: hit.published_date ?? null,
-          previewImageUrl: null,
-        }
-        sources.set(hit.url, result)
-        return result
-      })
+      return response.results
+        .filter((hit) => isPublicWebUrl(hit.url))
+        .map((hit) => {
+          const result: SearchResultData = {
+            title: hit.title,
+            pageUrl: hit.url,
+            snippet: hit.content,
+            faviconUrl: publicWebMediaUrl(hit.favicon),
+            publishedDate: hit.published_date ?? null,
+            previewImageUrl: null,
+          }
+          sources.set(hit.url, result)
+          return result
+        })
     },
     fetchContent: async ({ url, max_length }) => {
       publicUrl.parse(url)
@@ -80,7 +81,7 @@ export const createTinfoilWebApi = (
       const page =
         response.pages?.find((page) => page.url === url) ??
         response.results?.find((page) => page.url === url && page.status === 'completed' && page.content !== undefined)
-      if (!page || page.content === undefined) {
+      if (!page?.content?.trim()) {
         throw new Error(t`Tinfoil could not retrieve this page.`)
       }
       const source = sources.get(url)

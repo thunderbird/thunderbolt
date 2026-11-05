@@ -40,7 +40,7 @@ const SsoRedirect = () => {
     try {
       // AuthGate already resolved this session on normal entry. Direct visits
       // wait below, so analytics never adds another request before sign-in.
-      await analytics.captureAnonId(authClient, session)
+      await analytics.captureAnonymousSession(authClient, session)
       if (signal.aborted) {
         return
       }
@@ -50,7 +50,7 @@ const SsoRedirect = () => {
         analytics.persistForSso()
         const token = await startSsoFlowLoopback(baseUrl)
         if (token) {
-          setAuthToken(token)
+          setAuthToken(token, cloudUrl)
           window.location.replace('/')
         } else {
           setStatus('error') // timeout
@@ -77,7 +77,7 @@ const SsoRedirect = () => {
         return
       }
 
-      // Persist the anon id to sessionStorage BEFORE the browser navigates away.
+      // Persist only the conversion marker before the browser navigates away.
       analytics.persistForSso()
       window.location.href = data.url
     } catch (err) {

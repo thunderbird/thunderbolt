@@ -4,11 +4,13 @@
 
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { getAvailableModels, getModel, getSettings } from '@/dal'
+import { getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { getIntegrationCredentials } from '@/dal/integrations'
+import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
+import { tinfoilAuth } from '@/lib/tinfoil-auth'
 import { getDb } from '@/db/database'
 import { http } from '@/lib/http'
+import * as platform from '@/lib/platform'
 import type { OpenRouterConnectionOptions, OpenRouterManualConnection } from '@/lib/openrouter-auth'
 import type { OnboardingProvider } from './provider-default-model'
 import { defaultModelId, defaultModels } from '@shared/defaults/models'
@@ -18,8 +20,10 @@ import { stubJsonResponse } from '@/test-utils/http'
 import { createTestProvider } from '@/test-utils/test-provider'
 import OnboardingModelStep from './onboarding-model-step'
 import { useOnboardingProviderState } from './use-onboarding-provider-state'
+import { useOnboardingModelState } from './use-onboarding-model-state'
 import { rejectNestedTransactions } from '@/test-utils/flat-transactions'
 import { getClock } from '@/testing-library'
+import * as tinfoilSession from '@/lib/tinfoil-session'
 
 type Dependencies = NonNullable<Parameters<typeof useOnboardingProviderState>[1]>
 
@@ -43,6 +47,7 @@ const makeDependencies = (overrides: Partial<Dependencies> = {}) => ({
   prepareModel: mock(async (provider: OnboardingProvider, apiKey: string) => {
     const preferred = defaultModels.find((model) => model.id === defaultModelId)!
     return {
+      providerDefault: 1 as const,
       provider,
       apiKey,
       supportsTools: true,
@@ -115,6 +120,7 @@ describe('useOnboardingProviderState', () => {
     act(() => {
       void result.current.connectOpenRouter()
     })
+    await act(async () => {})
     expect(result.current.isConnecting).toBe(true)
 
     act(() => result.current.showChoices())
@@ -136,10 +142,12 @@ describe('useOnboardingProviderState', () => {
     act(() => {
       void result.current.connectOpenRouter()
     })
+    await act(async () => {})
     start.mockImplementation(() => second.promise)
     act(() => {
       void result.current.connectOpenRouter()
     })
+    await act(async () => {})
     expect(start.mock.calls[0][0]?.signal?.aborted).toBe(true)
 
     await act(async () => second.resolve('current-key'))
@@ -158,6 +166,7 @@ describe('useOnboardingProviderState', () => {
     act(() => {
       void result.current.connectOpenRouter()
     })
+    await act(async () => {})
     unmount()
     expect(start.mock.calls[0][0]?.signal?.aborted).toBe(true)
     await act(async () => authorization.reject(new Error('cancelled')))
@@ -190,6 +199,7 @@ describe('useOnboardingProviderState', () => {
     act(() => {
       void result.current.connectOpenRouter()
     })
+    await act(async () => {})
     act(() => result.current.showChoices())
     await act(async () => preparation.resolve({ authorizationUrl: 'https://openrouter.ai/auth', verifier: 'late' }))
 
@@ -208,6 +218,7 @@ describe('useOnboardingProviderState', () => {
     act(() => {
       void result.current.submitCode()
     })
+    await act(async () => {})
     act(() => result.current.showChoices())
     expect(exchangeCode.mock.calls[0][2]?.aborted).toBe(true)
     await act(async () => exchange.resolve('late-key'))
@@ -340,6 +351,170 @@ describe('useOnboardingProviderState', () => {
     expect(await getAvailableModels(getDb())).toEqual([])
   })
 
+  it('does not save OAuth credentials when cancelled while waiting for the session lock', async () => {
+    const lockEntered = Promise.withResolvers<void>()
+    const releaseLock = Promise.withResolvers<void>()
+    spyOn(tinfoilSession, 'withTinfoilSessionLock').mockImplementation(async (operation) => {
+      lockEntered.resolve()
+      await releaseLock.promise
+      return operation()
+    })
+    const deps = makeDependencies()
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    let connection!: Promise<void>
+    await act(async () => {
+      connection = result.current.connectTinfoil()
+      await lockEntered.promise
+    })
+    act(() => result.current.cancelConnection())
+    await act(async () => {
+      releaseLock.resolve()
+      await connection
+    })
+    expect(await getAvailableModels(getDb())).toEqual([])
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toBeNull()
+    expect(result.current.error).toBeNull()
+    expect(result.current.addForm.submitError).toBeNull()
+  })
+
+  it.each([true, false])(
+    'does not restore a disconnected session from a pending OAuth attempt (existing session: %s)',
+    async (existingSession) => {
+      const original = { access_token: 'original-token', expires_at: Date.now() + 900_000 }
+      if (existingSession) {
+        await saveIntegrationCredentials(getDb(), 'tinfoil', original, true)
+      }
+      const probeStarted = Promise.withResolvers<void>()
+      const releaseProbe = Promise.withResolvers<void>()
+      const prepareModel = makeDependencies().prepareModel
+      const deps = makeDependencies({
+        prepareModel: async (...args) => {
+          probeStarted.resolve()
+          await releaseProbe.promise
+          return prepareModel(...args)
+        },
+      })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      let connection!: Promise<void>
+      await act(async () => {
+        connection = result.current.connectTinfoil()
+        await probeStarted.promise
+      })
+      // A second window completes a connection and disconnects while this window is still probing.
+      if (!existingSession) {
+        const second = renderHook(() => useOnboardingProviderState([], makeDependencies()), {
+          wrapper: createTestProvider(),
+        })
+        await act(async () => second.result.current.connectTinfoil())
+        second.unmount()
+      }
+      const session = tinfoilSession.createTinfoilSession({
+        db: getDb,
+        auth: { ...tinfoilAuth, revoke: mock(async () => {}) },
+        lock: async (operation) => operation(),
+        now: Date.now,
+      })
+      await session.disconnect()
+      const disconnected = await getIntegrationCredentials(getDb(), 'tinfoil')
+      await act(async () => {
+        releaseProbe.resolve()
+        await connection
+      })
+      expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual(disconnected)
+      expect(await getAvailableModels(getDb())).toEqual([])
+      expect(result.current.error).toContain('Could not save')
+
+      // Retrying starts a new authorization; it must not adopt the old grant after the disconnect.
+      await act(async () => result.current.connectTinfoil())
+      expect(deps.startTinfoil).toHaveBeenCalledTimes(2)
+      expect(await getAvailableModels(getDb())).toHaveLength(1)
+    },
+  )
+
+  it('does not verify a late OAuth grant after another window disconnects', async () => {
+    const authorizationStarted = Promise.withResolvers<void>()
+    const authorization = Promise.withResolvers<Awaited<ReturnType<Dependencies['startTinfoil']>>>()
+    const deps = makeDependencies({
+      startTinfoil: () => {
+        authorizationStarted.resolve()
+        return authorization.promise
+      },
+    })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    let connection!: Promise<void>
+    await act(async () => {
+      connection = result.current.connectTinfoil()
+      await authorizationStarted.promise
+    })
+    const session = tinfoilSession.createTinfoilSession({
+      db: getDb,
+      auth: { ...tinfoilAuth, revoke: mock(async () => {}) },
+      lock: async (operation) => operation(),
+      now: Date.now,
+    })
+    await session.disconnect()
+    const disconnected = await getIntegrationCredentials(getDb(), 'tinfoil')
+    await act(async () => {
+      authorization.resolve({ access_token: 'late-token', expires_at: Date.now() + 900_000 })
+      await connection
+    })
+    expect(deps.prepareModel).not.toHaveBeenCalled()
+    expect(await getIntegrationCredentials(getDb(), 'tinfoil')).toEqual(disconnected)
+    expect(await getAvailableModels(getDb())).toEqual([])
+  })
+
+  it.each([true, false])(
+    'does not restore OpenRouter after a connect/disconnect cycle in another window (existing row: %s)',
+    async (existingRow) => {
+      const second = renderHook(
+        () => ({
+          setup: useOnboardingProviderState([], makeDependencies()),
+          models: useOnboardingModelState(),
+        }),
+        { wrapper: createTestProvider() },
+      )
+      if (existingRow) {
+        await act(async () => second.result.current.setup.connectOpenRouter())
+        await act(async () => second.result.current.models.disconnectProvider('openrouter'))
+      }
+      const probeStarted = Promise.withResolvers<void>()
+      const releaseProbe = Promise.withResolvers<void>()
+      const prepareModel = makeDependencies().prepareModel
+      const deps = makeDependencies({
+        prepareModel: async (...args) => {
+          probeStarted.resolve()
+          await releaseProbe.promise
+          return prepareModel(...args)
+        },
+      })
+      const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+      let connection!: Promise<void>
+      await act(async () => {
+        connection = result.current.connectOpenRouter()
+        await probeStarted.promise
+      })
+      await act(async () => second.result.current.setup.connectOpenRouter())
+      await act(async () => second.result.current.models.disconnectProvider('openrouter'))
+      const disconnected = await getAllModels(getDb())
+      expect(disconnected).toHaveLength(1)
+      expect(disconnected[0].apiKey).toBeNull()
+      await act(async () => {
+        releaseProbe.resolve()
+        await connection
+      })
+      expect(await getAllModels(getDb())).toEqual(disconnected)
+      expect(result.current.error).toContain('Could not save')
+      // The metadata row does not hold a key or advertise an OAuth integration.
+      expect(await getIntegrationCredentials(getDb(), 'openrouter')).toEqual({
+        enabled: false,
+        credentials: { access_token: '', sessionRevision: expect.any(String) },
+      })
+      await act(async () => result.current.connectOpenRouter())
+      expect(deps.start).toHaveBeenCalledTimes(2)
+      expect((await getAllModels(getDb()))[0].apiKey).toBe('openrouter-key')
+    },
+  )
+
   it('saves Tinfoil with its default model and confidential transport metadata', async () => {
     const deps = makeDependencies()
     const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
@@ -378,6 +553,41 @@ describe('useOnboardingProviderState', () => {
     expect(screen.getByLabelText('URL')).toHaveValue('')
     expect(screen.getByLabelText('API Key (Optional)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Model' })).toBeDisabled()
+  })
+
+  it('uses API keys for native-mobile Tinfoil while retaining OpenRouter code authorization', async () => {
+    const deps = makeDependencies({ needsManual: () => true })
+    const { result } = renderHook(() => useOnboardingProviderState([], deps), { wrapper: createTestProvider() })
+    act(() => result.current.chooseProvider('tinfoil'))
+    expect(result.current.supportsSignIn).toBe(false)
+    expect(result.current.showApiKey).toBe(true)
+    act(() => result.current.addForm.form.setValue('apiKey', 'mobile-key'))
+    await act(async () => result.current.connectApiKey())
+    expect(deps.startTinfoil).not.toHaveBeenCalled()
+    expect((await getAvailableModels(getDb()))[0]).toMatchObject({
+      provider: 'tinfoil',
+      apiKey: 'mobile-key',
+      oauthProvider: null,
+    })
+    act(() => result.current.chooseProvider('openrouter'))
+    expect(result.current.supportsSignIn).toBe(true)
+    expect(result.current.showApiKey).toBe(false)
+    await act(async () => result.current.connectOpenRouter())
+    expect(result.current.view).toBe('manual')
+  })
+
+  it('offers the native-mobile Tinfoil key form immediately and lets Back return to choices', async () => {
+    spyOn(platform, 'isTauri').mockReturnValue(true)
+    spyOn(platform, 'isMobile').mockReturnValue(true)
+    render(<OnboardingModelStep />, { wrapper: createTestProvider() })
+    await act(async () => getClock().runAllAsync())
+    fireEvent.click(screen.getByRole('radio', { name: 'Tinfoil' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByLabelText('API Key')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Connect Tinfoil' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use sign-in instead' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('radio', { name: 'Tinfoil' })).toBeInTheDocument()
   })
 
   it('starts Tinfoil authorization only after its connection button and stays on that screen after saving', async () => {
@@ -434,7 +644,7 @@ describe('useOnboardingProviderState', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     const disconnected = await getModel(getDb(), openrouter.id)
     expect(disconnected?.apiKey).toBeNull()
-    expect(disconnected?.enabled).toBe(0)
+    expect(disconnected?.enabled).toBe(1)
     expect(disconnected?.deletedAt).toBeNull()
     expect((await getModel(getDb(), tinfoil.id))?.oauthProvider).toBe('tinfoil')
   })

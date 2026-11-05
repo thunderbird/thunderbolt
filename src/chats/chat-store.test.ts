@@ -281,7 +281,7 @@ describe('chat-store', () => {
   })
 
   describe('setModels', () => {
-    it('re-resolves only a built-in session the private-chat lock holds, leaving the rest untouched', () => {
+    it('re-resolves removed and incompatible built-in models without changing other agents', () => {
       const hostedAgent: Agent = { ...builtInAgent, id: 'hosted-agent', type: 'managed-http', transport: 'http' }
       const confidentialModel = createMockModel({
         id: 'confidential',
@@ -311,7 +311,7 @@ describe('chat-store', () => {
 
       const after = useChatStore.getState().sessions
       expect(after.get('hosted')).toBe(before.get('hosted'))
-      expect(after.get('fits')).toBe(before.get('fits'))
+      expect(after.get('fits')?.selectedModel.id).toBe(addedModel.id)
       expect(after.get('blocked')?.selectedModel.id).toBe(addedModel.id)
     })
   })

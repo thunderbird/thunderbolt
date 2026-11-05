@@ -30,14 +30,13 @@ export const resetPosthogClient = () => {
   pendingStartupEvents.clear()
 }
 
-/**
- * Returns the initialized PostHog client, or null if analytics has not been
- * initialized (self-hosted without a key, or before {@link initPosthog} resolves).
- * The single site allowed to hold a client reference outside of React.
- */
-export const getPosthogClient = (): PostHog | null => posthogClient
-
-const routePatterns = ['/chats/:chatThreadId', '/oauth/openrouter/:flowId', '/oauth/tinfoil/:flowId'] as const
+const routePatterns = [
+  '/chats/:chatThreadId',
+  '/projects/:projectId',
+  '/apps/:appId',
+  '/oauth/openrouter/:flowId',
+  '/oauth/tinfoil/:flowId',
+] as const
 
 /**
  * Replaces dynamic URL segments and removes query strings and hashes so analytics do not collect secrets or raw IDs.
@@ -45,16 +44,16 @@ const routePatterns = ['/chats/:chatThreadId', '/oauth/openrouter/:flowId', '/oa
  * @returns URL containing only its sanitized route
  */
 export const sanitizeUrl = (url: string): string => {
-  const parsedPathname = (() => {
-    try {
-      return new URL(url, 'http://localhost').pathname
-    } catch {
-      return null
-    }
-  })()
-
-  const pathname = parsedPathname ?? (url.startsWith('/') ? url : `/${url}`)
-  const routeOnlyUrl = parsedPathname === null ? url : url.split(/[?#]/, 1)[0]
+  if (!URL.canParse(url, 'http://localhost')) {
+    return '/unknown'
+  }
+  const parsed = new URL(url, 'http://localhost')
+  parsed.username = ''
+  parsed.password = ''
+  parsed.search = ''
+  parsed.hash = ''
+  const pathname = parsed.pathname
+  const routeOnlyUrl = URL.canParse(url) ? parsed.href : pathname
   for (const pattern of routePatterns) {
     const regex = new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}/?$`)
     if (regex.test(pathname)) {
@@ -93,22 +92,51 @@ const sanitizeAnalyticsUrls = (value: unknown): void => {
   }
 }
 
-/** Remove API keys from a PostHog property tree before it leaves the app. */
-export const stripApiKeys = (value: unknown): boolean => {
+// Synced row IDs and debug trace IDs can join usage back to an account even without identify().
+// Provider/model names may contain user-defined values (including fine-tune account identifiers).
+const privateAnalyticsProperties = new Set([
+  'apikey',
+  'authorization',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'password',
+  'email',
+  'name',
+  'userid',
+  'accountid',
+  'user',
+  'account',
+  'id',
+  'model',
+  'modelname',
+  'agent',
+  'agentname',
+  'error',
+  'message',
+  'stack',
+  'stacktrace',
+  'exceptionmessage',
+  'exceptionstack',
+])
+
+/** Remove credentials, account-linked record identifiers, and raw error text before telemetry leaves the app. */
+export const stripPrivateAnalyticsProperties = (value: unknown): void => {
   if (!value || typeof value !== 'object') {
-    return false
+    return
   }
-
-  if (Array.isArray(value)) {
-    return value.reduce<boolean>((removed, item) => stripApiKeys(item) || removed, false)
+  const properties = value as Record<string, unknown>
+  for (const [key, child] of Object.entries(properties)) {
+    const normalizedKey = key.replace(/[_$-]/g, '').toLowerCase()
+    if (
+      privateAnalyticsProperties.has(normalizedKey) ||
+      /(user|account|chat|chatthread|task|skill|model|agent|project|trace)ids?$/.test(normalizedKey)
+    ) {
+      delete properties[key]
+    } else {
+      stripPrivateAnalyticsProperties(child)
+    }
   }
-
-  const record = value as Record<string, unknown>
-  const removedHere = Object.hasOwn(record, 'apiKey')
-  if (removedHere) {
-    delete record.apiKey
-  }
-  return Object.values(record).reduce<boolean>((removed, item) => stripApiKeys(item) || removed, removedHere)
 }
 
 type CaptureConsent = {
@@ -148,13 +176,15 @@ export const setCapturing = (client: PostHog, isCapturing: boolean) => {
  */
 export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult<PostHog | null>> => {
   try {
+    // Discard the account ID retained by older promotion-analytics builds.
+    sessionStorage.removeItem('thunderbolt_pending_anon_id')
     const analyticsUrl = getAnalyticsUrl(getLocalSetting('cloudUrl'))
     const debugPosthog = getLocalSetting('debugPosthog')
     const db = getDb()
 
     const client = httpClient ?? createClient({ prefixUrl: analyticsUrl })
     const { public_posthog_api_key: apiKey } = await client
-      .get('posthog/config', { timeout: 5_000 })
+      .get('posthog/config', { timeout: 5_000, credentials: 'omit' })
       .json<{ public_posthog_api_key?: string }>()
 
     if (!apiKey) {
@@ -188,16 +218,22 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
         disable_external_dependency_loading: true,
         capture_performance: false,
         persistence: 'localStorage',
+        // Separate prior account-linked identities from device-only usage. Consent uses its
+        // existing project-key storage independently, so an opt-out is never reset here.
+        persistence_name: `thunderbolt_device_usage_v1_${apiKey}`,
+        person_profiles: 'never',
+        ip: false,
+        save_campaign_params: false,
+        save_referrer: false,
+        advanced_disable_flags: true,
         before_send: (event) => {
-          if (!event) {
+          if (!event || event.event === '$identify' || event.event === '$create_alias') {
             return null
           }
 
           sanitizeAnalyticsUrls(event.properties)
 
-          if (stripApiKeys(event.properties) && import.meta.env.DEV) {
-            console.warn('Removed apiKey from PostHog event properties')
-          }
+          stripPrivateAnalyticsProperties(event.properties)
 
           return event
         },
@@ -365,10 +401,9 @@ export const trackError = (error: HandleError, context?: Record<string, unknown>
   try {
     // Don't track PostHog errors with PostHog to avoid circular tracking
     if (posthogClient && error.code !== 'POSTHOG_FETCH_FAILED') {
-      posthogClient.captureException('$exception', {
+      // Error messages and stacks can contain provider responses, account IDs, or local paths.
+      posthogClient.captureException(error.code, {
         $exception_type: error.code,
-        $exception_message: error.message,
-        $exception_stack: error.stackTrace,
         ...context,
       })
     }

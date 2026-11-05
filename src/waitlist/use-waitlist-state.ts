@@ -132,7 +132,7 @@ export const useWaitlistState = ({ authClient, onSuccess }: UseWaitlistStateOpti
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      await analytics.captureAnonId(authClient)
+      await analytics.captureAnonymousSession(authClient)
       const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
@@ -145,7 +145,7 @@ export const useWaitlistState = ({ authClient, onSuccess }: UseWaitlistStateOpti
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      analytics.onPromotionSuccess(result.data.user.id)
+      analytics.onPromotionSuccess()
 
       if (!isNewUser) {
         useWelcomeStore.getState().trigger()
@@ -162,10 +162,10 @@ export const useWaitlistState = ({ authClient, onSuccess }: UseWaitlistStateOpti
     dispatch({ type: 'PASSKEY_START' })
 
     try {
-      await analytics.captureAnonId(authClient)
-      const { userId } = await signInWithPasskey(authClient)
+      await analytics.captureAnonymousSession(authClient)
+      await signInWithPasskey(authClient)
 
-      analytics.onPromotionSuccess(userId)
+      analytics.onPromotionSuccess()
 
       useWelcomeStore.getState().trigger()
       onSuccess?.()

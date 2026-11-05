@@ -5,6 +5,7 @@
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOpenExternalLink } from '@/components/chat/markdown-utils'
 import { isSafeUrl } from '@/lib/url-utils'
+import { publicWebMediaUrl } from '@/integrations/standalone-search/url-policy'
 import { ImageIcon } from 'lucide-react'
 import { type MouseEvent, useState } from 'react'
 
@@ -48,6 +49,7 @@ const LinkPreviewCard = ({
           {isImageLoading && <div className="col-start-1 row-start-1">{placeholder}</div>}
           <img
             src={image ?? undefined}
+            referrerPolicy="no-referrer"
             alt={title ?? description ?? url}
             className={`col-start-1 row-start-1 h-full w-full object-cover transition-opacity ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
             onLoad={onImageLoad}
@@ -70,7 +72,8 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
   const [imageError, setImageError] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(!!image)
   const openExternalLink = useOpenExternalLink()
-  const showPlaceholder = !image || imageError
+  const safeImage = publicWebMediaUrl(image)
+  const showPlaceholder = !safeImage || imageError
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
@@ -88,7 +91,7 @@ export const LinkPreview = ({ description, image, title, url }: LinkPreviewProps
       <a href={isSafeUrl(url) ? url : '#'} target="_blank" rel="noopener noreferrer" onClick={handleClick}>
         <LinkPreviewCard
           description={description}
-          image={image}
+          image={safeImage}
           isImageLoading={isImageLoading}
           onImageError={() => setImageError(true)}
           onImageLoad={() => setIsImageLoading(false)}

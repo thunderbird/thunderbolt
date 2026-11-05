@@ -6,10 +6,12 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useReducer } from 'react'
+import { useLingui } from '@lingui/react/macro'
 
 import { useDatabase } from '@/contexts'
 import { useLocalProviders } from '@/hooks/use-local-providers'
-import { deleteModel, getAllModels, resetModelToDefault, updateModel } from '@/dal'
+import { deleteModel, getAllModels, getAvailableModels, resetModelToDefault, updateModel } from '@/dal'
+import { useChatStore } from '@/chats/chat-store'
 import { defaultModels } from '@shared/defaults/models'
 import type { EditModelSubmission } from './edit-model-form'
 import { initialModelsPageState, modelsPageReducer, type ModelPanel } from './page-state'
@@ -18,6 +20,7 @@ import { modelRequiresServer } from './model-policy'
 
 /** Owns Models page reducer, forms, catalog requests, tests, and DAL mutations. */
 export const useModelsPageState = () => {
+  const { t } = useLingui()
   const db = useDatabase()
   const localProviders = useLocalProviders()
   const [state, dispatch] = useReducer(modelsPageReducer, initialModelsPageState)
@@ -39,21 +42,27 @@ export const useModelsPageState = () => {
     onMutationStart: clearMutationError,
   })
 
-  const failMutation = (message: string) => (error: unknown) => {
-    console.error(message, error)
+  const failMutation = (message: string) => () => {
+    // Database errors can include the API key bound to an update statement.
+    console.error(message)
     dispatch({ type: 'MUTATION_FAILED', error: message })
   }
+  const refreshModels = async () => useChatStore.getState().setModels(await getAvailableModels(db))
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       updateModel(db, id, { enabled: enabled ? 1 : 0 }),
     onMutate: clearMutationError,
-    onError: failMutation('Failed to update the model.'),
+    onSuccess: refreshModels,
+    onError: failMutation(t`Failed to update the model.`),
   })
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteModel(db, id),
     onMutate: clearMutationError,
-    onSuccess: () => dispatch({ type: 'DELETE_DISMISSED' }),
-    onError: failMutation('Failed to delete the model.'),
+    onSuccess: async () => {
+      await refreshModels()
+      dispatch({ type: 'DELETE_DISMISSED' })
+    },
+    onError: failMutation(t`Failed to delete the model.`),
   })
   const editMutation = useMutation({
     mutationFn: async (values: EditModelSubmission) => {
@@ -61,8 +70,11 @@ export const useModelsPageState = () => {
       await updateModel(db, id, { ...fields, url: fields.url || null })
     },
     onMutate: clearMutationError,
-    onSuccess: (_result, values) => dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId: values.id } }),
-    onError: failMutation('Failed to save the model.'),
+    onSuccess: async (_result, values) => {
+      await refreshModels()
+      dispatch({ type: 'PANEL_CHANGED', panel: { kind: 'detail', modelId: values.id } })
+    },
+    onError: failMutation(t`Failed to save the model.`),
   })
   const resetMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -74,7 +86,8 @@ export const useModelsPageState = () => {
       await resetModelToDefault(db, id, defaultModel)
     },
     onMutate: clearMutationError,
-    onError: failMutation('Failed to reset the model.'),
+    onSuccess: refreshModels,
+    onError: failMutation(t`Failed to reset the model.`),
   })
 
   const openAddPanel = () => {

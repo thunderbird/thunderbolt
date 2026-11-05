@@ -44,11 +44,17 @@ export const useSearchProviderSetup = (
     pending.current?.abort()
     const controller = new AbortController()
     pending.current = controller
+    const configuration = useSearchProviderStore.getState()
     update({ status: 'testing', error: '' })
     onReadyChange?.(false)
     try {
       await testConnection(state.provider, state.apiKey.trim(), controller.signal)
       if (controller.signal.aborted) {
+        return
+      }
+      // A disconnect, reset, or selection in another window supersedes this test.
+      if (useSearchProviderStore.getState() !== configuration) {
+        update({ status: 'idle' })
         return
       }
       stored.configureSearchProvider(state.apiKey, state.provider)
@@ -63,11 +69,16 @@ export const useSearchProviderSetup = (
     }
   }
   const disconnect = () => {
-    stored.clearSearchProvider()
+    stored.disconnectSearchProvider()
     change({ apiKey: '' })
   }
   return {
     ...state,
+    // Another window may disconnect or replace credentials after a successful test.
+    status:
+      state.status === 'success' && (stored.provider !== state.provider || stored.apiKey !== state.apiKey.trim())
+        ? 'idle'
+        : state.status,
     change,
     test,
     disconnect,

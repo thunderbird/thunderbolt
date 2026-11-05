@@ -67,7 +67,7 @@ import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
 import { type ComponentProps, Suspense, lazy, useEffect, useMemo, useState } from 'react'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import { isCurrentServer, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createAuthenticatedClient } from '@/lib/http'
 import { getAuthToken } from '@/lib/auth-token'
 import { markAppMounted } from '@/lib/init-timing'
@@ -310,7 +310,11 @@ export const App = () => {
   useConfigStore((state) => state.config.authMode)
   const ssoMode = isSsoMode()
   const httpClient = useMemo(
-    () => createAuthenticatedClient(cloudUrl, getAuthToken, { credentials: ssoMode ? 'include' : undefined }),
+    () =>
+      createAuthenticatedClient(cloudUrl, getAuthToken, {
+        credentials: ssoMode ? 'include' : undefined,
+        isCurrent: () => isCurrentServer(cloudUrl),
+      }),
     [cloudUrl, ssoMode],
   )
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()

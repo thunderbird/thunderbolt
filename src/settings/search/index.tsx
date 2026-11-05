@@ -31,7 +31,7 @@ const SearchSettingsPage = () => {
     {
       id: 'tinfoil' as const,
       name: tinfoilName,
-      subtitle: t`Exa search through your Tinfoil subscription`,
+      subtitle: t`Exa search through Tinfoil`,
     },
     ...Object.entries(searchProviders).map(([id, provider]) => ({
       id: id as SearchProvider,

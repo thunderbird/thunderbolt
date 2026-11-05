@@ -27,7 +27,7 @@ const oauthTimeout = Symbol('oauth-timeout')
  * Starts an OAuth flow using an in-house localhost loopback server and the system browser.
  *
  * Invokes the Rust `start_oauth_server` command to bind a TCP listener on one of the
- * pre-registered ports (17421–17423) or an OS-assigned fallback. Opens the system browser
+ * pre-registered ports (17421–17423). Opens the system browser
  * to the OAuth provider's consent screen, waits for the `"oauth-callback"` Tauri event,
  * then validates the response and exchanges the code for tokens.
  *
@@ -41,13 +41,13 @@ export const startOAuthFlowLoopback = async (
   provider: OAuthProvider,
   timeoutMs = oauthTimeoutMs,
 ): Promise<{ tokens: OAuthTokens; userInfo: OAuthUserInfo } | null> => {
-  const port = await invoke<number>('start_oauth_server')
+  const state = uuidv4()
+  const port = await invoke<number>('start_oauth_server', { flowId: state })
   const redirectUri = `http://localhost:${port}`
 
   let unlisten: (() => void) | undefined
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
-    const state = uuidv4()
     const codeVerifier = generateCodeVerifier()
     const codeChallenge = await generateCodeChallenge(codeVerifier)
 
@@ -58,7 +58,10 @@ export const startOAuthFlowLoopback = async (
 
     // Register listener BEFORE opening browser to avoid race condition
     unlisten = await listen<{ url: string }>('oauth-callback', (event) => {
-      resolveUrl(event.payload.url)
+      const url = URL.canParse(event.payload.url) ? new URL(event.payload.url) : null
+      if (url?.origin === redirectUri && url.pathname === '/') {
+        resolveUrl(url.href)
+      }
     })
 
     const authUrl = await buildAuthUrl(httpClient, provider, state, codeChallenge, redirectUri)
@@ -99,6 +102,6 @@ export const startOAuthFlowLoopback = async (
   } finally {
     clearTimeout(timeoutId)
     unlisten?.()
-    // No cancel needed — the Rust server shuts itself down after one request
+    void invoke<void>('stop_oauth_server', { flowId: state }).catch(console.error)
   }
 }

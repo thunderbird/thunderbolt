@@ -59,6 +59,8 @@ type LocalSettingsActions = {
 
 type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 
+const localSettingsKey = 'thunderbolt-local-settings'
+
 const initialCloudUrl =
   isTauri() && import.meta.env.VITE_AUTH_MODE !== 'sso' ? '' : import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || ''
 
@@ -111,7 +113,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       setLocalSetting: (key, value) => set({ [key]: value }),
     }),
     {
-      name: 'thunderbolt-local-settings',
+      name: localSettingsKey,
       merge: mergeLocalSettings,
       // See migrateLocalSettings; index.html reads this version too.
       version: 1,
@@ -144,6 +146,42 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
  */
 export const getLocalSetting = <K extends keyof LocalSettingsState>(key: K): LocalSettingsState[K] =>
   useLocalSettingsStore.getState()[key]
+
+/** Check shared storage too: another window can select a server before its storage event reaches this one. */
+export const isCurrentServer = (cloudUrl: string): boolean => {
+  if (getLocalSetting('cloudUrl') !== cloudUrl) {
+    return false
+  }
+  try {
+    const raw = localStorage.getItem(localSettingsKey)
+    if (!raw) {
+      return cloudUrl === initialLocalSettings.cloudUrl
+    }
+    const persisted: unknown = JSON.parse(raw)
+    return (
+      isRecord(persisted) &&
+      isRecord(persisted.state) &&
+      (persisted.state.cloudUrl ?? initialLocalSettings.cloudUrl) === cloudUrl
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Reload consumers after a different window changes the server shared by this installation. */
+export const onServerChangedInOtherTab = (listener: () => void): (() => void) => {
+  const onStorage = (event: StorageEvent) => {
+    if (
+      event.storageArea === localStorage &&
+      (event.key === localSettingsKey || event.key === null) &&
+      !isCurrentServer(getLocalSetting('cloudUrl'))
+    ) {
+      listener()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+  return () => window.removeEventListener('storage', onStorage)
+}
 
 /** Keep a selected server bound after the first credential, including after that credential expires. */
 export const markServerAuthenticated = (): void => {

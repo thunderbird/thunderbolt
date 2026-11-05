@@ -11,9 +11,12 @@ import {
   providerAutoFetchesCatalog,
   shouldDisableAddModel,
   isModelAvailable,
+  isModelReady,
   modelRequiresServer,
   needsApiKey,
 } from './model-policy'
+
+import { createMockModel } from '@/test-utils/chat-store-mocks'
 
 const model = {
   model: 'gpt-4',
@@ -33,6 +36,22 @@ describe('standalone model availability', () => {
     expect(isModelAvailable({ provider: 'openai', isSystem: 0 }, '')).toBe(true)
     expect(isModelAvailable({ provider: 'tinfoil', isSystem: 0 }, '')).toBe(true)
     expect(needsApiKey({ provider: 'openai', isSystem: 0, apiKey: null })).toBe(true)
+  })
+})
+
+describe('model readiness', () => {
+  it.each([null, '', '   '])('requires a configured custom endpoint (%s)', (url) => {
+    expect(isModelReady(createMockModel({ provider: 'custom', url }), '')).toBe(false)
+  })
+  it('allows a custom endpoint without a key', () => {
+    expect(
+      isModelReady(createMockModel({ provider: 'custom', url: 'http://localhost:11434/v1', apiKey: null }), ''),
+    ).toBe(true)
+  })
+  it('rejects disabled, deleted, and keyless provider models', () => {
+    for (const overrides of [{ enabled: 0 }, { deletedAt: '2026-01-01' }, { apiKey: null }]) {
+      expect(isModelReady(createMockModel(overrides), '')).toBe(false)
+    }
   })
 })
 

@@ -7,6 +7,8 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { setupTestDatabase, resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createModel, getModel } from '@/dal/models'
 import { getDb } from '@/db/database'
+import { getClock } from '@/testing-library'
+import { isStandaloneModelReady } from '@/settings/models/model-policy'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { createMockModel, resetStore } from '@/test-utils/chat-store-mocks'
 import { isConfiguredStandaloneModel, useOnboardingModelState } from './use-onboarding-model-state'
@@ -56,6 +58,25 @@ describe('provider disconnect', () => {
     await resetTestDatabase()
   })
 
+  it('shows a key-bearing disabled model as connected without treating it as runnable', async () => {
+    await createModel(getDb(), {
+      id: 'disabled',
+      name: 'Disabled model',
+      provider: 'openrouter',
+      model: 'default-model',
+      apiKey: 'key',
+      enabled: 0,
+    })
+    const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+    expect(result.current.connectedModels.map((model) => model.id)).toEqual(['disabled'])
+    expect(result.current.configuredModels).toEqual([])
+    expect(result.current.hasConfiguredModel).toBe(false)
+    expect((await getModel(getDb(), 'disabled'))?.enabled).toBe(0)
+  })
+
   it('clears models added after the disconnect handler rendered, retaining other providers', async () => {
     const { result } = renderHook(() => useOnboardingModelState(), { wrapper: createTestProvider() })
     const disconnect = result.current.disconnectProvider
@@ -76,7 +97,39 @@ describe('provider disconnect', () => {
     await act(async () => {
       await disconnect('openrouter')
     })
-    expect(await getModel(getDb(), 'late-model')).toMatchObject({ enabled: 0, apiKey: null, deletedAt: null })
+    expect(await getModel(getDb(), 'late-model')).toMatchObject({ enabled: 1, apiKey: null, deletedAt: null })
     expect(await getModel(getDb(), 'other-provider')).toMatchObject({ enabled: 1, apiKey: 'other-key' })
+  })
+  it('removes keys without overwriting enabled preferences or other providers', async () => {
+    const db = getDb()
+    for (const enabled of [0, 1]) {
+      await createModel(db, {
+        id: `router-${enabled}`,
+        name: `Router model ${enabled}`,
+        provider: 'openrouter',
+        model: 'default-model',
+        enabled,
+        apiKey: 'router-key',
+      })
+    }
+    await createModel(db, {
+      id: 'other',
+      name: 'Other model',
+      provider: 'openai',
+      model: 'other-model',
+      enabled: 1,
+      apiKey: 'other-key',
+    })
+    const { result } = renderHook(useOnboardingModelState, { wrapper: createTestProvider() })
+    await act(async () => {
+      await result.current.disconnectProvider('openrouter')
+    })
+    for (const enabled of [0, 1]) {
+      const model = (await getModel(db, `router-${enabled}`))!
+      expect(model.enabled).toBe(enabled)
+      expect(model.apiKey).toBeNull()
+      expect(isStandaloneModelReady(model)).toBe(false)
+    }
+    expect((await getModel(db, 'other'))?.apiKey).toBe('other-key')
   })
 })

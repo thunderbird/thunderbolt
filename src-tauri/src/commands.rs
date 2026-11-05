@@ -76,12 +76,21 @@ const OAUTH_PORTS: &[u16] = &[17421, 17422, 17423];
 
 /// Starts the in-house OAuth loopback server and returns the port it bound to.
 ///
-/// The Rust server accepts one HTTP connection, sends an "Authentication Complete"
+/// The Rust server accepts a valid loopback callback, sends an "Authentication Complete"
 /// response, emits an `"oauth-callback"` event to the frontend, then shuts down.
 /// No external HTTP framework or Tauri plugin is required.
 #[command]
-pub async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
-    crate::oauth_server::start(app, OAUTH_PORTS)
+pub async fn start_oauth_server(
+    app: tauri::AppHandle,
+    flow_id: Option<String>,
+) -> Result<u16, String> {
+    crate::oauth_server::start(app, OAUTH_PORTS, flow_id)
+}
+
+/// Cancel one provider flow and free its registered redirect port.
+#[command]
+pub fn stop_oauth_server(flow_id: String) {
+    crate::oauth_server::stop(&flow_id);
 }
 
 // === Thunderbolt CLI install =================================================================
@@ -107,6 +116,9 @@ mod tests {
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
         assert_eq!(capability["webviews"], json!(["main"]));
         assert!(capability.get("windows").is_none());
+        // Tauri treats its configured devUrl as local. Production must not grant
+        // these permissions to a separate service listening on the dev port.
+        assert!(capability.get("remote").is_none());
         let http = capability["permissions"]
             .as_array()
             .unwrap()

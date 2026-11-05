@@ -166,12 +166,14 @@ describe('ConnectionsPage list', () => {
         provider,
         model: 'test-model',
         enabled: 1,
-        ...(provider === 'tinfoil' ? { oauthProvider: 'tinfoil' as const } : { apiKey: 'test-key' }),
+        ...(provider === 'tinfoil'
+          ? { oauthProvider: 'tinfoil' as const }
+          : { apiKey: 'test-key', providerDefault: 1 }),
       })
       await createModel(getDb(), {
         id: otherId,
         name: 'Unrelated model',
-        provider: 'tinfoil',
+        provider,
         model: 'byok-model',
         apiKey: 'byok-key',
         enabled: 1,
@@ -317,12 +319,26 @@ describe('ConnectionsPage list', () => {
     await createModel(getDb(), {
       id,
       name: 'My OpenRouter model',
+      providerDefault: 1,
       model: 'test-model',
       provider: 'openrouter',
       apiKey: 'test-key',
       enabled: 0,
     })
-    renderWithReactivity(<ConnectionsPage />, { tables: ['models', 'models_secrets'], wrapper: McpProviderWrapper })
+    for (const enabled of [0, 1]) {
+      await createModel(getDb(), {
+        id: `manual-${enabled}`,
+        name: 'Manual OpenRouter model',
+        provider: 'openrouter',
+        model: 'test-model',
+        apiKey: `manual-key-${enabled}`,
+        enabled,
+      })
+    }
+    const { triggerChange } = renderWithReactivity(<ConnectionsPage />, {
+      tables: ['models', 'models_secrets'],
+      wrapper: McpProviderWrapper,
+    })
     fireEvent.click(await waitForElement(() => screen.queryByRole('button', { name: 'Open OpenRouter' })))
     const disconnect = await waitForElement(() => screen.queryByRole('button', { name: 'Disconnect' }))
     await act(async () => {
@@ -333,6 +349,15 @@ describe('ConnectionsPage list', () => {
     expect(model?.apiKey).toBeNull()
     expect(model?.deletedAt).toBeNull()
     expect(model?.enabled).toBe(0)
+    for (const enabled of [0, 1]) {
+      expect(await getModel(getDb(), `manual-${enabled}`)).toMatchObject({
+        apiKey: `manual-key-${enabled}`,
+        enabled,
+        deletedAt: null,
+      })
+    }
+    triggerChange(['models', 'models_secrets'])
+    expect(await waitForElement(() => screen.queryByRole('button', { name: 'Connect OpenRouter' }))).toBeTruthy()
   })
 
   it('shows the pre-baked integrations and updates when mcp_servers changes', async () => {

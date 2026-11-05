@@ -17,13 +17,13 @@ import { useTinfoilConnection } from '@/hooks/use-tinfoil-connection'
 import type { Model } from '@/types'
 import type { AiProviderConnection } from './types'
 
-/** Matches the saved models controlled by an account connection, excluding managed and BYOK Tinfoil models. */
+/** Matches the saved models controlled by an account connection, excluding managed and manually added API-key models. */
 const belongsToConnection = (model: Model, provider: AiProviderConnection['id']) =>
   model.isSystem !== 1 &&
   !model.deletedAt &&
   (provider === 'tinfoil'
     ? model.oauthProvider === 'tinfoil'
-    : model.provider === 'openrouter' && Boolean(model.apiKey))
+    : model.provider === 'openrouter' && model.providerDefault === 1 && Boolean(model.apiKey))
 
 /** Reads device-local provider access independently of individual model toggles. */
 export const useAiProviderConnections = () => {

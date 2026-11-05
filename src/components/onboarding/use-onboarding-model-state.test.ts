@@ -82,6 +82,7 @@ describe('provider disconnect', () => {
     const disconnect = result.current.disconnectProvider
     await createModel(getDb(), {
       id: 'late-model',
+      providerDefault: 1,
       provider: 'openrouter',
       name: 'Late model',
       model: 'model',
@@ -89,7 +90,7 @@ describe('provider disconnect', () => {
     })
     await createModel(getDb(), {
       id: 'other-provider',
-      provider: 'openai',
+      provider: 'openrouter',
       name: 'Other model',
       model: 'model',
       apiKey: 'other-key',
@@ -106,6 +107,7 @@ describe('provider disconnect', () => {
       await createModel(db, {
         id: `router-${enabled}`,
         name: `Router model ${enabled}`,
+        providerDefault: 1,
         provider: 'openrouter',
         model: 'default-model',
         enabled,

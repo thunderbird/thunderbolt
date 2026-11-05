@@ -4,7 +4,7 @@
 
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
+import { createModel, getAllModels, getAvailableModels, getModel, getSettings } from '@/dal'
 import { resetTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getIntegrationCredentials, saveIntegrationCredentials } from '@/dal/integrations'
 import { tinfoilAuth } from '@/lib/tinfoil-auth'
@@ -627,6 +627,14 @@ describe('useOnboardingProviderState', () => {
     const models = await getAvailableModels(getDb())
     const openrouter = models.find((model) => model.provider === 'openrouter')!
     const tinfoil = models.find((model) => model.provider === 'tinfoil')!
+    await createModel(getDb(), {
+      id: 'manual-openrouter',
+      name: 'Manual',
+      provider: 'openrouter',
+      model: 'other',
+      apiKey: 'own-key',
+      enabled: 1,
+    })
     unmount()
     render(<OnboardingModelStep />, { wrapper: createTestProvider() })
     await act(async () => getClock().runAllAsync())
@@ -643,6 +651,11 @@ describe('useOnboardingProviderState', () => {
     expect(screen.getByRole('button', { name: 'Connect OpenRouter' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     const disconnected = await getModel(getDb(), openrouter.id)
+    expect(await getModel(getDb(), 'manual-openrouter')).toMatchObject({
+      apiKey: 'own-key',
+      enabled: 1,
+      deletedAt: null,
+    })
     expect(disconnected?.apiKey).toBeNull()
     expect(disconnected?.enabled).toBe(1)
     expect(disconnected?.deletedAt).toBeNull()

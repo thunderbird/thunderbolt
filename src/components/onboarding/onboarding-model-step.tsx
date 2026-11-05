@@ -23,7 +23,9 @@ const OnboardingModelStep = ({ onBack, onContinue, onSkip }: OnboardingModelStep
   const { t } = useLingui()
   const { connectedModels, isLoading, disconnectProvider } = useOnboardingModelState()
   const state = useOnboardingProviderState(
-    connectedModels.map(({ provider }) => (provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom')),
+    connectedModels
+      .filter((model) => model.provider !== 'openrouter' || model.providerDefault === 1)
+      .map(({ provider }) => (provider === 'openrouter' || provider === 'tinfoil' ? provider : 'custom')),
     undefined,
     onContinue,
   )

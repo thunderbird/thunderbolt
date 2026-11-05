@@ -46,7 +46,12 @@ export const useOnboardingModelState = () => {
     await db.transaction(async (tx) => {
       for (const model of (await getAllModels(tx)).filter(
         (model) =>
-          model.provider === provider && model.isSystem !== 1 && !model.deletedAt && !model.oauthProvider && !oauthOnly,
+          model.provider === provider &&
+          (provider !== 'openrouter' || model.providerDefault === 1) &&
+          model.isSystem !== 1 &&
+          !model.deletedAt &&
+          !model.oauthProvider &&
+          !oauthOnly,
       )) {
         await updateModelInTransaction(tx, model.id, { apiKey: null })
       }

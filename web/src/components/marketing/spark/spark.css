@@ -239,12 +239,15 @@
   overflow: hidden;
   background: var(--spark-device-shell);
 }
+.spark-themed-screenshot {
+  display: block;
+}
 .spark-themed-screenshot img {
   display: block;
   width: 100%;
   height: auto;
 }
-/* CSS selects the matching capture before React hydrates. */
+/* The development theme override can differ from the system preference. */
 :root:not([data-theme='dark']) .spark-themed-screenshot [data-screenshot-theme='dark'],
 :root[data-theme='dark'] .spark-themed-screenshot [data-screenshot-theme='light'] {
   display: none;

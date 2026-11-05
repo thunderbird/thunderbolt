@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useState } from 'react'
+import { useProductPreviewState } from './use-product-preview-state'
 import { SparkBurst } from './spark-burst'
 import { ThemedScreenshot } from './themed-screenshot'
-
-const platforms = ['Desktop', 'Mobile', 'Terminal'] as const
 
 const WindowChrome = ({ title }: { title: string }) => (
   <div className="spark-window-chrome" aria-hidden="true">
@@ -20,7 +18,7 @@ const WindowChrome = ({ title }: { title: string }) => (
 )
 
 export const ProductPreview = () => {
-  const [platform, setPlatform] = useState<(typeof platforms)[number]>('Desktop')
+  const { platform, setPlatform, platforms } = useProductPreviewState()
 
   return (
     <div className="spark-world" id="spark-preview">

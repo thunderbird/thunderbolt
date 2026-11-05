@@ -15,17 +15,29 @@ const screenshots = {
   },
 } as const
 
-export const ThemedScreenshot = ({ platform }: { platform: keyof typeof screenshots }) => (
-  <div className="spark-themed-screenshot">
-    {(['light', 'dark'] as const).map((theme) => (
-      <img
-        key={theme}
-        data-screenshot-theme={theme}
-        src={`/images/marketing/screenshots/${platform}-${theme}.webp`}
-        {...screenshots[platform]}
-        fetchPriority={platform === 'desktop' ? 'high' : 'auto'}
-        decoding="async"
-      />
-    ))}
-  </div>
-)
+export const ThemedScreenshot = ({ platform }: { platform: keyof typeof screenshots }) => {
+  const imageProps = {
+    ...screenshots[platform],
+    fetchPriority: platform === 'desktop' ? ('high' as const) : ('auto' as const),
+    decoding: 'async' as const,
+  }
+  const light = `/images/marketing/screenshots/${platform}-light.webp`
+  const dark = `/images/marketing/screenshots/${platform}-dark.webp`
+
+  // Development can preview a theme independently of the OS.
+  if (import.meta.env.DEV) {
+    return (
+      <div className="spark-themed-screenshot">
+        <img data-screenshot-theme="light" src={light} {...imageProps} />
+        <img data-screenshot-theme="dark" src={dark} {...imageProps} />
+      </div>
+    )
+  }
+
+  return (
+    <picture className="spark-themed-screenshot">
+      <source media="(prefers-color-scheme: dark)" srcSet={dark} />
+      <img src={light} {...imageProps} />
+    </picture>
+  )
+}

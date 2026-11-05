@@ -494,6 +494,30 @@ describe('fix job', () => {
     })
   })
 
+  test('the metrics list each review or correction session that ran, also one that left no execution file', () => {
+    const dir = mkdtempSync(join(work, 'metrics-'))
+    writeFileSync(join(dir, 'bun'), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${dir}/bun.log"\n`, { mode: 0o755 })
+    const proc = Bun.spawnSync(['bash', '-e', '-c', step('fix', 'Record the session metrics').run ?? ''], {
+      cwd: dir,
+      env: {
+        PATH: `${dir}:${process.env.PATH}`,
+        RUNNER_TEMP: '/runner',
+        QA_FP: 'fp1',
+        QA_FIX_TIMEOUT_MINUTES: '60',
+        SESSIONS: 'review=failure correct=skipped review-again=',
+      },
+    })
+    expect(proc.exitCode).toBe(0)
+    expect(readFileSync(join(dir, 'bun.log'), 'utf8')).toBe(
+      '.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-fix.json --charter fix-fp1 --out qa-out\n' +
+        '.github/qa/scripts/report.ts session --execution-file /runner/qa-execution-review.json --charter fix-fp1-review --out qa-out\n',
+    )
+    expect(step('fix', 'Record the session metrics').env?.SESSIONS).toBe(
+      'review=${{ steps.review.outcome }} correct=${{ steps.correct.outcome }} ' +
+        'review-again=${{ steps.review-again.outcome }}',
+    )
+  })
+
   test('a fix step that never started still leaves a diagnosis, which only the fix status overrides', () => {
     expect(collect({ ...spec, FIX_OUTCOME: 'skipped', REPLAY: 'skipped' })).toContain('step outcome: skipped')
   })

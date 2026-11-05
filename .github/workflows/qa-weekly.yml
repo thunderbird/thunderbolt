@@ -1725,21 +1725,25 @@ jobs:
           if [ -n "$SPEC" ]; then cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"; fi
           if [ -n "$FLOW" ]; then cp "$FLOW" "qa-out/fix/$QA_FP.yaml"; fi
 
-      # The fix session as `fix-<fp>`, and each review or correction session that ran as `fix-<fp>-<session>`.
+      # The fix session as `fix-<fp>`, and each review or correction session that ran as `fix-<fp>-<session>`, also
+      # one cut off before it wrote its execution file, which the report lists as incomplete.
       - name: Record the session metrics
         if: always()
         env:
           START: ${{ steps.prompt.outputs.start }}
           END: ${{ steps.keep-fix.outputs.end }}
+          SESSIONS: >-
+            review=${{ steps.review.outcome }} correct=${{ steps.correct.outcome }}
+            review-again=${{ steps.review-again.outcome }}
         run: |
           timed_out=()
           if [ $(( ${END:-$(date +%s)} - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
           bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-fix.json" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
-          for session in review correct review-again; do
-            file="$RUNNER_TEMP/qa-execution-$session.json"
-            if [ -e "$file" ]; then
-              bun .github/qa/scripts/report.ts session --execution-file "$file" --charter "fix-$QA_FP-$session" --out qa-out
-            fi
+          for entry in $SESSIONS; do
+            session=${entry%%=*}
+            case ${entry#*=} in skipped | '') continue ;; esac
+            bun .github/qa/scripts/report.ts session --execution-file "$RUNNER_TEMP/qa-execution-$session.json" \
+              --charter "fix-$QA_FP-$session" --out qa-out
           done
 
       # Token shapes only, since no later step holds the key; JWT shapes are left to publish's check because repo
